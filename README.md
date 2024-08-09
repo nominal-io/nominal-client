@@ -3,9 +3,9 @@ Python client for Nominal test data, storage, &amp; compute
 
 🚧 WIP - API and syntax subject to change
 
-## Install (TODO)
+## Install
 
-> pip install nominal
+> pip3 install nominal
 
 ## Usage
 
