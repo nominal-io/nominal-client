@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nominal"
+authors = [
+    {name = "JP", email = "jack@nominal.io"}
+]
+description = "Automate Nominal workflows in Python"
+version = "0.0.0"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+]
+
+[tool.distutils.bdist_wheel]
+universal = true
