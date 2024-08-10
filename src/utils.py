@@ -14,10 +14,10 @@ def default_filename(nominal_file_class):
     return '_'.join([nominal_file_class, ts, rand_str])
 
 class PayloadFactory:
-    """
+    '''
     Given a Nominal Python object, generate JSON payload 
     for REST API to instantiate on Nominal platform.
-    """
+    '''
 
     @staticmethod
     def dataset_trigger_ingest(ds) -> dict:
@@ -79,11 +79,11 @@ class PayloadFactory:
             "title": r.title,
             "description": r.description,
             "startTime": {
-                "secondsSinceEpoch": r.boundaries['START']['SECONDS'],
-                "offsetNanoseconds": r.boundaries['START']['NANOS'],
+                "secondsSinceEpoch": r.run_domain['START']['SECONDS'],
+                "offsetNanoseconds": r.run_domain['START']['NANOS'],
             },
-            "endTime": {"secondsSinceEpoch": r.boundaries['END']['SECONDS'],
-                        "offsetNanoseconds": r.boundaries['END']['NANOS'],
+            "endTime": {"secondsSinceEpoch": r.run_domain['END']['SECONDS'],
+                        "offsetNanoseconds": r.run_domain['END']['NANOS'],
             },
             "dataSources": datasets_payload,
         }

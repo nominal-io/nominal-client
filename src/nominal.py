@@ -26,13 +26,49 @@ def set_token(token):
     kr.set_password('Nominal API', 'python-client', token)
 
 class Dataset(pl.DataFrame):
-    """
-    Dataset inherits from polars dataframes to inheit their rich display, ingestion, and wrangling capabilities.
-    Dataset attempts to infer the datetime column. If it finds one, it adds two new internal convenience columns:
-    Dataset['_python_datetime'] and Dataset['_iso_8601'].
-    Dataset['_python_datetime'] is used as the canonical timestamp column when uploading to Nominal.
-    """
-    def __init__(self, data = None, filename = None, overwrite = False, properties = dict(), description = ''):
+    '''
+    Dataset inherits from Polars DataFrame for its rich display, ingestion, and wrangling capabilities.
+
+    Parameters
+    ----------
+    data : various, optional
+        The input data for the dataset. This can be in any format supported by Polars DataFrame.
+    filename : str, optional
+        The name of the dataset file. Default is None.
+    overwrite : bool, optional
+        A flag to indicate whether to overwrite an existing file during upload. Default is False.
+    properties : dict, optional
+        A dictionary of additional properties associated with the dataset. Default is an empty dictionary.
+    description : str, optional
+        A brief description of the dataset. Default is an empty string.
+
+    Attributes
+    ----------
+    s3_path : str or None
+        The S3 path where the dataset is stored after upload. Initially None.
+    filename : str
+        The name of the dataset file.
+    properties : dict
+        A dictionary of additional properties associated with the dataset.
+    description : str
+        A brief description of the dataset.
+    rid : str or None
+        The dataset's RID (Resource ID) after registration on the Nominal platform. Initially None.
+    dataset_link : str
+        A URL link to the dataset on the Nominal platform. Initially an empty string.
+
+    Methods
+    -------
+    upload(overwrite=False)
+        Uploads and registers the dataset on the Nominal platform.
+    '''
+
+    def __init__(self, 
+                 data: any = None, 
+                 filename: str = None, 
+                 overwrite: bool = False, 
+                 properties: dict = dict(), 
+                 description: str = ''):
         super().__init__(data)
 
         self.s3_path = None
@@ -42,20 +78,20 @@ class Dataset(pl.DataFrame):
         self.rid = None
         self.dataset_link = ''
 
-    def __get_headers(self, content_type = 'json'):
+    def __get_headers(self, content_type: str = 'json') -> dict:
         TOKEN = kr.get_password('Nominal API', 'python-client')
         return {
             "Authorization": "Bearer {}".format(TOKEN),
             "Content-Type": "application/{0}".format(content_type),
         }
 
-    def __upload_file(self, overwrite):
-        """
+    def __upload_file(self, overwrite: bool) -> requests.Response:
+        '''
         Uploads dataframe to S3 as a file.
         
         Returns:
         Response object from the REST call.
-        """
+        '''
 
         if self.s3_path is not None and not overwrite:
             print('\nThis Dataset is already uploaded to an S3 bucket:\n{0}\nTry [code]upload(overwrite = True)[/code] to overwrite it.'.format(self.s3_path))
@@ -92,8 +128,8 @@ class Dataset(pl.DataFrame):
 
         return resp
 
-    def upload(self, overwrite = False):        
-        """
+    def upload(self, overwrite: bool = False):        
+        '''
         Registers Dataset in Nominal on Nominal platform.
 
         Endpoint:
@@ -101,7 +137,7 @@ class Dataset(pl.DataFrame):
 
         Returns:
         Response object from the REST call.
-        """
+        '''
 
         s3_upload_resp = self.__upload_file(overwrite)
 
@@ -135,15 +171,50 @@ class Dataset(pl.DataFrame):
         return resp
 
 class Ingest:
-    """
-    Handles ingestions of various tabular and video file formats
-    TODO: Consider ibis for database source connectivity?
-    """
-    def __init__(self):
-        pass
+    '''
+    Handles ingestion of various tabular and video file formats.
+
+    This class provides static and instance methods for ingesting data from various formats, such as CSV and Parquet files,
+    and for setting a timestamp index column in the ingested data. The ingested data is returned as a `Dataset` object.
+
+    Methods
+    -------
+    set_ts_index(df, ts_col)
+        Sets a timestamp index for the provided DataFrame. This method adds internal columns for the datetime in Python format,
+        ISO 8601 format, and Unix timestamp format.
+    
+    read_csv(path, ts_col=None)
+        Reads a CSV file from the specified path and returns a `Dataset` object with a timestamp index set.
+
+    read_parquet(path, ts_col=None)
+        Reads a Parquet file from the specified path and returns a `Dataset` object with a timestamp index set.
+
+    Notes
+    -----
+    TODO: Consider using Ibis for database source connectivity.
+    TODO: Implement video ingest functionality.    
+    '''
 
     @staticmethod
-    def set_ts_index(df, ts_col):
+    def set_ts_index(df: pl.DataFrame, ts_col: str = None) -> pl.DataFrame:
+        '''
+        Sets a timestamp index for the provided DataFrame.
+
+        This method attempts to infer the timestamp column if one is not specified. It adds three internal columns to the
+        DataFrame: '_python_datetime', '_iso_8601', and '_unix'. The DataFrame is then sorted by the '_python_datetime' column.
+
+        Parameters
+        ----------
+        df : polars.DataFrame
+            The DataFrame for which the timestamp index will be set.
+        ts_col : str, optional
+            The name of the column to use as the timestamp. If None, the method will attempt to infer the timestamp column.
+
+        Returns
+        -------
+        polars.DataFrame
+            The modified DataFrame with the timestamp index set.
+        '''        
         if ts_col is None:
             # Infer timestamp column
             for col in df.columns:
@@ -173,13 +244,60 @@ class Ingest:
             print('A Dataset must have at least one column that is a timestamp. Please specify which column is a date or datetime with the `ts_col` parameter.')
 
         return df
-        
-    def read_csv(self, path, ts_col = None):
+
+    def read_csv(self, path: str, ts_col: str = None) -> Dataset:
         dfc = pl.read_csv(path)
         dft = self.set_ts_index(dfc, ts_col)
         return Dataset(dft, filename = os.path.basename(path))
 
+    def read_parquet(self, path: str, ts_col: str = None) -> Dataset:
+        dfp = pl.read_parquet(path)
+        dft = self.set_ts_index(dfp, ts_col)
+        return Dataset(dft, filename = os.path.basename(path))
+
 class Run:
+    '''
+    Python representation of a Nominal Run.
+
+    Parameters
+    ----------
+    path : str, optional
+        A single file path to a dataset. If provided, it will be added to `paths`. Default is None.
+    paths : list of str, optional
+        A list of file paths to datasets. Default is an empty list.
+    datasets : list of Dataset, optional
+        A list of `Dataset` objects to be included in the run. Default is an empty list.
+    properties : list of str, optional
+        A list of properties associated with the run. Default is an empty list.
+    title : str, optional
+        The title of the run. Default is None, which will generate a default filename.
+    description : str, optional
+        A brief description of the run. Default is an empty string.
+    start : str or datetime, optional
+        The start time for the run. Can be a string or a datetime object. Default is None.
+    end : str or datetime, optional
+        The end time for the run. Can be a string or a datetime object. Default is None.
+
+    Attributes
+    ----------
+    title : str
+        The title of the run. Defaults to a timestamped, autogenerated filename if not provided.    
+    description : str
+        A brief description of the run.
+    properties : list of str
+        A list of properties associated with the run.
+    datasets : list of Dataset
+        A list of `Dataset` objects associated with the run.        
+    run_domain : dict
+        A dictionary containing 'START' and 'END' time run_domain for the run.
+    datasets_domain : dict
+        A dictionary holding the overall 'START' and 'END' datetime run_domain derived from the datasets.
+
+    Methods
+    -------
+    upload()
+        Uploads the run and its datasets to Nominal.
+    '''    
     def __init__(self,
                  path: str = None,
                  paths: list[str] = [],
@@ -192,7 +310,7 @@ class Run:
         
         self.description = description
         self.properties = properties
-        self.boundaries = {'START': {}, 'END': {}}
+        self.run_domain = {'START': {}, 'END': {}}
 
         if path is not None:
             paths = [path]
@@ -216,44 +334,51 @@ class Run:
         self.__set_run_datetime_boundary('START', start)
         self.__set_run_datetime_boundary('END', end)
 
-        self.__set_run_unix_boundaries()
+        self.__set_run_unix_run_domain()
 
         if title is None:
             self.title = default_filename('RUN')
 
-    def __set_run_datetime_boundary(self, key, str_datetime):
+    def __set_run_datetime_boundary(self, key: str, str_datetime: any):
         '''
         Set start & end boundary variables for Run
         '''
         # If an explicit start/end timestamp is not provided,
         # use the min/max of the combined Datasets domain
         if str_datetime is None:
-            self.boundaries[key]['DATETIME'] = self.datasets_domain[key]
+            self.run_domain[key]['DATETIME'] = self.datasets_domain[key]
         elif type(str_datetime) is datetime:
-            self.boundaries[key]['DATETIME'] = str_datetime
+            self.run_domain[key]['DATETIME'] = str_datetime
         elif type(str_datetime) is str:
-            self.boundaries[key]['DATETIME'] = parser.parse(str_datetime)
+            self.run_domain[key]['DATETIME'] = parser.parse(str_datetime)
 
-    def __set_run_unix_boundaries(self):
+    def __set_run_unix_run_domain(self):
         '''
         Set start & end boundary variables for Run
         '''        
         for key in ['START', 'END']:
-            dt = self.boundaries[key]['DATETIME']
+            dt = self.run_domain[key]['DATETIME']
             unix = dt.timestamp()
             seconds = floor(unix)
-            self.boundaries[key]['SECONDS'] = seconds
-            self.boundaries[key]['NANOS'] = floor((unix - seconds) / 1e9)
+            self.run_domain[key]['SECONDS'] = seconds
+            self.run_domain[key]['NANOS'] = floor((unix - seconds) / 1e9)
 
-    def __get_headers(self, content_type = 'json'):
+    def __get_headers(self, content_type: str = 'json') -> dict:
         TOKEN = kr.get_password('Nominal API', 'python-client')
         return {
             "Authorization": "Bearer {}".format(TOKEN),
             "Content-Type": "application/{0}".format(content_type),
         }
 
-    def upload(self):
+    def upload(self) -> requests.Response:
+        '''
+        Uploads the run and its datasets to Nominal.
 
+        Returns
+        -------
+        requests.Response
+            The response object from the REST call.
+        '''
         datasets_payload = dict()
 
         for ds in self.datasets:
@@ -272,5 +397,11 @@ class Run:
                 )
         
         self.last_payload = run_payload
+
+        if resp.status_code == 200:
+            self.rid = resp.json()['runRid']
+            print('\nRun RID: ', self.rid)
+        else:
+            print('\n{0} error registering Run on Nominal:\n'.format(resp.status_code), resp.json())    
 
         return resp

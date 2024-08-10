@@ -9,6 +9,16 @@ Python client for Nominal test data, storage, &amp; compute
 
 ## Usage
 
+### Set your API key
+
+Retrieve your API key from /sandbox on your Nominal tenant
+
+```py
+import nominal as nm
+
+nm.set_token(...)
+```
+
 ### Upload a Dataset (3 lines)
 
 ```py
