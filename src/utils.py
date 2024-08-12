@@ -6,6 +6,7 @@ import random
 import string
 from datetime import datetime
 
+
 def default_filename(nominal_file_class):
     if nominal_file_class not in ['DATASET', 'RUN']:
         raise Exception('Unrecognized Nominal class', nominal_file_class)

@@ -16,13 +16,44 @@ ENDPOINTS = dict(
     run_upload = '{}/ingest/v1/ingest-run'
 )
 
-def get_api_domain():
-    # TODO store in env variable and make settable
-    return 'https://api-staging.gov.nominal.io/api'
+BASE_URLS = dict(
+    STAGING = 'https://api-staging.gov.nominal.io/api',
+    PROD = 'https://api.gov.nominal.io/api',
+)
+
+def set_base_url(base_url: str = 'STAGING'):
+    '''
+    Usage:
+    import nominal as nm
+    nm.set_base_url('PROD')
+
+    TODO
+    ----
+    Default is staging. Change to prod after beta period.
+    '''
+    if base_url in BASE_URLS.keys():
+        os.environ['NOMINAL_BASE_URL'] = BASE_URLS[base_url]
+    else:
+        os.environ['NOMINAL_BASE_URL'] = base_url
+
+def get_base_url():
+    if 'NOMINAL_BASE_URL' not in os.environ:
+        set_base_url() # set to default
+    return os.environ['NOMINAL_BASE_URL']
+
+def get_app_base_url():
+    '''
+    eg, https://app-staging.gov.nominal.io
+
+    TODO
+    ----
+    This won't work for custom domains
+    '''
+    return get_base_url().rstrip('/api').replace('api', 'app')
 
 def set_token(token):
     if token is None:
-        print('Retrieve your access token from https://app-staging.gov.nominal.io/sandbox')
+        print('Retrieve your access token from [link]{0}/sandbox[/link]'.format(get_base_url()))
     kr.set_password('Nominal API', 'python-client', token)
 
 class Dataset(pl.DataFrame):
@@ -65,8 +96,8 @@ class Dataset(pl.DataFrame):
 
     def __init__(self, 
                  data: any = None, 
-                 filename: str = None, 
-                 overwrite: bool = False, 
+                 filename: str = None,
+                 rid: str = None,
                  properties: dict = dict(), 
                  description: str = ''):
         super().__init__(data)
@@ -75,8 +106,11 @@ class Dataset(pl.DataFrame):
         self.filename = filename
         self.properties = properties
         self.description = description
-        self.rid = None
+        self.rid = rid
         self.dataset_link = ''
+
+        if self.rid is not None:
+            pass
 
     def __get_headers(self, content_type: str = 'json') -> dict:
         TOKEN = kr.get_password('Nominal API', 'python-client')
@@ -110,11 +144,11 @@ class Dataset(pl.DataFrame):
         csv_file_buffer.seek(0)
 
         print('\nUploading: [bold green]{0}[/bold green]\nto {1}\n = {2} bytes'
-              .format(self.filename, get_api_domain(), csv_buffer_size_bytes))
+              .format(self.filename, get_base_url(), csv_buffer_size_bytes))
 
         # Make POST request to upload data file to S3
         resp = requests.post(
-                    url = ENDPOINTS['file_upload'].format(get_api_domain(), self.filename),
+                    url = ENDPOINTS['file_upload'].format(get_base_url(), self.filename),
                     data = csv_file_buffer.read(),
                     params = {"sizeBytes": csv_buffer_size_bytes},
                     headers = self.__get_headers(content_type = 'octet-stream'),
@@ -150,10 +184,10 @@ class Dataset(pl.DataFrame):
             print('Cannnot register Dataset on Nominal - Dataset.s3_path is not set')
             return
 
-        print('\nRegistering [bold green]{0}[/bold green] on {1}'.format(self.filename, get_api_domain()))
+        print('\nRegistering [bold green]{0}[/bold green] on {1}'.format(self.filename, get_base_url()))
 
         payload = dict(
-            url = ENDPOINTS['dataset_upload'].format(get_api_domain()),
+            url = ENDPOINTS['dataset_upload'].format(get_base_url()),
             json = PayloadFactory.dataset_trigger_ingest(self),
             headers = self.__get_headers()
         )
@@ -162,7 +196,7 @@ class Dataset(pl.DataFrame):
 
         if resp.status_code == 200:
             self.rid = resp.json()['datasetRid']
-            self.dataset_link = 'https://app-staging.gov.nominal.io/data-sources/{0}'.format(self.rid)
+            self.dataset_link = '{0}/data-sources/{1}'.format(get_app_base_url(), self.rid)
             print('\nDataset RID: ', self.rid)
             print('\nDataset Link: ', '[link={0}]{0}[/link]\n'.format(self.dataset_link))
         else:
@@ -200,8 +234,8 @@ class Ingest:
         '''
         Sets a timestamp index for the provided DataFrame.
 
-        This method attempts to infer the timestamp column if one is not specified. It adds three internal columns to the
-        DataFrame: '_python_datetime', '_iso_8601', and '_unix'. The DataFrame is then sorted by the '_python_datetime' column.
+        This method attempts to infer the timestamp column if one is not specified. It adds internal columns to the
+        DataFrame: '_python_datetime' and '_unix_timestamp'. The DataFrame is then sorted by the '_python_datetime' column.
 
         Parameters
         ----------
@@ -229,16 +263,13 @@ class Ingest:
         if ts_col is not None:
             try:
                 df.drop_in_place('_python_datetime')
-                df.drop_in_place('_iso_8601')
-                df.drop_in_place('_unix')
+                df.drop_in_place('_unix_timestamp')
             except Exception:
                 pass
             datetime_series = pl.Series('_python_datetime', [parser.parse(dt_str) for dt_str in df[ts_col]])
-            iso_8601_series = pl.Series('_iso_8601', [dt.isoformat() + '.000Z' for dt in datetime_series])
-            unix_series = pl.Series('_unix', [dt.timestamp() for dt in datetime_series])
-            df.insert_column(0, datetime_series)
-            df.insert_column(0, iso_8601_series)
-            df.insert_column(0, unix_series)            
+            unix_series = pl.Series('_unix_timestamp', [dt.timestamp() for dt in datetime_series])
+            df.insert_column(-1, datetime_series)
+            df.insert_column(-1, unix_series)            
             df = df.sort('_python_datetime') # Datasets must be sorted in order to upload to Nominal
         else:
             print('A Dataset must have at least one column that is a timestamp. Please specify which column is a date or datetime with the `ts_col` parameter.')
@@ -391,7 +422,7 @@ class Run:
 
         # Make POST request to register Run and Datasets on Nominal
         resp = requests.post(
-                    url = ENDPOINTS['run_upload'].format(get_api_domain()),
+                    url = ENDPOINTS['run_upload'].format(get_base_url()),
                     json = run_payload,
                     headers = self.__get_headers(),
                 )
