@@ -4,16 +4,14 @@ version = "0.0.1"
 description = "Automate Nominal workflows in Python"
 authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>"]
 readme = "README.md"
-<<<<<<< HEAD
 requires-python = ">=3.7"
 dependencies = [
     "python-dateutil",
     "polars",
     "jsondiff"
-=======
+]
 packages = [
     {include = "nominal/**/*.py"},
->>>>>>> 5f6d1984ee399711d2556461d412feeeb56f1e6f
 ]
 include = ["README.md", "LICENSE"]
 
