@@ -140,7 +140,7 @@ class Dataset(pl.DataFrame):
 
         # Create a default dataset name
         if self.filename is None:
-            self.filname = utils.default_filename("DATASET")
+            self.filename = utils.default_filename("DATASET")
 
         csv_file_buffer = io.BytesIO()
         self.write_csv(csv_file_buffer)
@@ -196,21 +196,15 @@ class Dataset(pl.DataFrame):
 
         print("\nRegistering [bold green]{0}[/bold green] on {1}".format(self.filename, get_base_url()))
 
-        payload = dict(
-            url=ENDPOINTS["dataset_upload"].format(get_base_url()),
-            json=utils.PayloadFactory.dataset_trigger_ingest(self),
-            headers=self.__get_headers(),
-        )
+        from nominal_conjure import create_service
+        from _api.ingest.ingest_api import TriggerIngest, IngestSource, S3IngestSource
+        TOKEN = kr.get_password('Nominal API', 'python-client')
 
-        resp = requests.post(url=payload["url"], json=payload["json"], headers=payload["headers"])
+        service = create_service(get_base_url())
+        ingest_request = TriggerIngest(source=IngestSource(S3IngestSource(self.s3_path)), dataset_name=self.filename)
+        resp = service.trigger_ingest(TOKEN, ingest_request)
 
-        if resp.status_code == 200:
-            self.rid = resp.json()["datasetRid"]
-            self.dataset_link = "{0}/data-sources/{1}".format(get_app_base_url(), self.rid)
-            print("\nDataset RID: ", self.rid)
-            print("\nDataset Link: ", "[link={0}]{0}[/link]\n".format(self.dataset_link))
-        else:
-            print("\n{0} error registering Dataset on Nominal:\n".format(resp.status_code), resp.json())
+        print("Triggered file ingest: ", resp)
 
         return resp
 
