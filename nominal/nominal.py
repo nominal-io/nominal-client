@@ -10,7 +10,7 @@ import jsondiff as jd
 from jsondiff import diff
 from math import floor
 from rich import print
-import utils
+import utils.payload_factory as utils
 
 ENDPOINTS = dict(
     file_upload = '{}/upload/v1/upload-file?fileName={}',
