@@ -16,7 +16,7 @@ requests = "^2.32.3"
 python-dateutil = "^2.9.0.post0"
 jsondiff = "^2.2.0"
 polars = "^1.4.1"
-keyring = "^25.3.0"
+keyring = "^25.0.0"
 rich = "^13.7.1"
 
 [tool.poetry.dev-dependencies]
