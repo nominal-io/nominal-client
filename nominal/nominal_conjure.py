@@ -3,7 +3,7 @@ from conjure_python_client import (
     ServiceConfiguration,
 )
 
-from _api.ingest.ingest_api import IngestService, TriggerIngest, IngestSource, S3IngestSource, TimestampMetadata
+from _api.ingest.ingest_api import IngestService
 
 
 def create_service(uri: str) -> IngestService:
