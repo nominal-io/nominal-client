@@ -13,9 +13,3 @@ def create_service(uri: str) -> IngestService:
         IngestService, user_agent="nominal-client", service_config=config
     )
     return service
-
-
-def trigger_ingest(service: IngestService, auth: str, s3_path: str, dataset_name: str = "some_dataset"):
-    ingest_request = TriggerIngest(source=IngestSource(S3IngestSource(s3_path)), dataset_name=dataset_name)
-
-    service.trigger_ingest(auth, ingest_request)
