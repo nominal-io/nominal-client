@@ -10,7 +10,7 @@ import jsondiff as jd
 from jsondiff import diff
 from math import floor
 from rich import print
-import utils.payload_factory as utils
+from .utils import PayloadFactory, default_filename
 
 ENDPOINTS = dict(
     file_upload = '{}/upload/v1/upload-file?fileName={}',
@@ -140,7 +140,7 @@ class Dataset(pl.DataFrame):
 
         # Create a default dataset name
         if self.filename is None:
-            self.filname = utils.default_filename("DATASET")
+            self.filname = default_filename("DATASET")
 
         csv_file_buffer = io.BytesIO()
         self.write_csv(csv_file_buffer)
@@ -198,7 +198,7 @@ class Dataset(pl.DataFrame):
 
         payload = dict(
             url=ENDPOINTS["dataset_upload"].format(get_base_url()),
-            json=utils.PayloadFactory.dataset_trigger_ingest(self),
+            json=PayloadFactory.dataset_trigger_ingest(self),
             headers=self.__get_headers(),
         )
 
@@ -385,7 +385,7 @@ class Run:
                  cloud: dict = {}):
 
         if title is None:
-            self.title = utils.default_filename('RUN')
+            self.title = default_filename('RUN')
         self.description = description
         self.properties = properties
         self._domain = {'START': {}, 'END': {}}
@@ -482,7 +482,7 @@ class Run:
             print('Download a run with [code]r = Run(rid = RID)[/code]')            
             return
 
-        local_copy = utils.PayloadFactory.run_upload(self)
+        local_copy = PayloadFactory.run_upload(self)
         cloud_copy = copy.deepcopy(self.cloud)
 
         # rm datasources - we're not comparing those
@@ -550,9 +550,9 @@ class Run:
             # First, check if Run Datasets have been uploaded to S3
             if ds.s3_path is None:
                 ds.upload()
-            datasets_payload[ds.filename] = utils.PayloadFactory.create_unix_datasource(ds)
+            datasets_payload[ds.filename] = PayloadFactory.create_unix_datasource(ds)
 
-        run_payload = utils.PayloadFactory.run_upload(self, datasets_payload)
+        run_payload = PayloadFactory.run_upload(self, datasets_payload)
 
         # Make POST request to register Run and Datasets on Nominal
         resp = requests.post(
