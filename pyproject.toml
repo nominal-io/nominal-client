@@ -1,21 +1,39 @@
-[build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "nominal"
-authors = [
-    {name = "JP", email = "jack@nominal.io"}
-]
+version = "0.0.1"
 description = "Automate Nominal workflows in Python"
-version = "0.0.0"
+authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>"]
 readme = "README.md"
+<<<<<<< HEAD
 requires-python = ">=3.7"
 dependencies = [
     "python-dateutil",
     "polars",
     "jsondiff"
+=======
+packages = [
+    {include = "nominal/**/*.py"},
+>>>>>>> 5f6d1984ee399711d2556461d412feeeb56f1e6f
 ]
+include = ["README.md", "LICENSE"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+requests = "^2.32.3"
+python-dateutil = "^2.9.0.post0"
+polars = "^1.4.1"
+keyring = "^25.3.0"
+rich = "^13.7.1"
+
+[tool.poetry.dev-dependencies]
+ruff = "^ 0.4.2"
 
 [tool.distutils.bdist_wheel]
 universal = true
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120

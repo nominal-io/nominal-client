@@ -4,13 +4,13 @@ import copy
 import requests
 from dateutil import parser
 import polars as pl
-import keyring as kr 
+import keyring as kr
 from datetime import datetime
 import jsondiff as jd
 from jsondiff import diff
 from math import floor
 from rich import print
-from utils import default_filename, PayloadFactory
+from .utils import default_filename, PayloadFactory
 
 
 ENDPOINTS = dict(
@@ -22,12 +22,13 @@ ENDPOINTS = dict(
 )
 
 BASE_URLS = dict(
-    STAGING = 'https://api-staging.gov.nominal.io/api',
-    PROD = 'https://api.gov.nominal.io/api',
+    STAGING="https://api-staging.gov.nominal.io/api",
+    PROD="https://api.gov.nominal.io/api",
 )
 
-def set_base_url(base_url: str = 'STAGING'):
-    '''
+
+def set_base_url(base_url: str = "STAGING"):
+    """
     Usage:
     import nominal as nm
     nm.set_base_url('PROD')
@@ -35,34 +36,38 @@ def set_base_url(base_url: str = 'STAGING'):
     TODO
     ----
     Default is staging. Change to prod after beta period.
-    '''
+    """
     if base_url in BASE_URLS.keys():
-        os.environ['NOMINAL_BASE_URL'] = BASE_URLS[base_url]
+        os.environ["NOMINAL_BASE_URL"] = BASE_URLS[base_url]
     else:
-        os.environ['NOMINAL_BASE_URL'] = base_url
+        os.environ["NOMINAL_BASE_URL"] = base_url
+
 
 def get_base_url():
-    if 'NOMINAL_BASE_URL' not in os.environ:
-        set_base_url() # set to default
-    return os.environ['NOMINAL_BASE_URL']
+    if "NOMINAL_BASE_URL" not in os.environ:
+        set_base_url()  # set to default
+    return os.environ["NOMINAL_BASE_URL"]
+
 
 def get_app_base_url():
-    '''
+    """
     eg, https://app-staging.gov.nominal.io
 
     TODO
     ----
     This won't work for custom domains
-    '''
-    return get_base_url().rstrip('/api').replace('api', 'app')
+    """
+    return get_base_url().rstrip("/api").replace("api", "app")
+
 
 def set_token(token):
     if token is None:
-        print('Retrieve your access token from [link]{0}/sandbox[/link]'.format(get_base_url()))
-    kr.set_password('Nominal API', 'python-client', token)
+        print("Retrieve your access token from [link]{0}/sandbox[/link]".format(get_base_url()))
+    kr.set_password("Nominal API", "python-client", token)
+
 
 class Dataset(pl.DataFrame):
-    '''
+    """
     Dataset inherits from Polars DataFrame for its rich display, ingestion, and wrangling capabilities.
 
     Parameters
@@ -97,14 +102,11 @@ class Dataset(pl.DataFrame):
     -------
     upload(overwrite=False)
         Uploads and registers the dataset on the Nominal platform.
-    '''
+    """
 
-    def __init__(self, 
-                 data: any = None, 
-                 filename: str = None,
-                 rid: str = None,
-                 properties: dict = dict(), 
-                 description: str = ''):
+    def __init__(
+        self, data: any = None, filename: str = None, rid: str = None, properties: dict = dict(), description: str = ""
+    ):
         super().__init__(data)
 
         self.s3_path = None
@@ -112,7 +114,7 @@ class Dataset(pl.DataFrame):
         self.properties = properties
         self.description = description
         self.rid = rid
-        self.dataset_link = ''
+        self.dataset_link = ""
 
     def __get_headers(self, content_type: str = 'json') -> dict:
         TOKEN = kr.get_password('Nominal API', 'python-client')
@@ -122,20 +124,24 @@ class Dataset(pl.DataFrame):
         }
 
     def __upload_file(self, overwrite: bool) -> requests.Response:
-        '''
+        """
         Uploads dataframe to S3 as a file.
-        
+
         Returns:
         Response object from the REST call.
-        '''
+        """
 
         if self.s3_path is not None and not overwrite:
-            print('\nThis Dataset is already uploaded to an S3 bucket:\n{0}\nTry [code]upload(overwrite = True)[/code] to overwrite it.'.format(self.s3_path))
+            print(
+                "\nThis Dataset is already uploaded to an S3 bucket:\n{0}\nTry [code]upload(overwrite = True)[/code] to overwrite it.".format(
+                    self.s3_path
+                )
+            )
             return
 
         # Create a default dataset name
         if self.filename is None:
-            self.filname = default_filename('DATASET')
+            self.filname = default_filename("DATASET")
 
         csv_file_buffer = io.BytesIO()
         self.write_csv(csv_file_buffer)
@@ -145,27 +151,30 @@ class Dataset(pl.DataFrame):
         csv_buffer_size_bytes = csv_file_buffer.tell()
         csv_file_buffer.seek(0)
 
-        print('\nUploading: [bold green]{0}[/bold green]\nto {1}\n = {2} bytes'
-              .format(self.filename, get_base_url(), csv_buffer_size_bytes))
+        print(
+            "\nUploading: [bold green]{0}[/bold green]\nto {1}\n = {2} bytes".format(
+                self.filename, get_base_url(), csv_buffer_size_bytes
+            )
+        )
 
         # Make POST request to upload data file to S3
         resp = requests.post(
-                    url = ENDPOINTS['file_upload'].format(get_base_url(), self.filename),
-                    data = csv_file_buffer.read(),
-                    params = {"sizeBytes": csv_buffer_size_bytes},
-                    headers = self.__get_headers(content_type = 'octet-stream'),
-                )
+            url=ENDPOINTS["file_upload"].format(get_base_url(), self.filename),
+            data=csv_file_buffer.read(),
+            params={"sizeBytes": csv_buffer_size_bytes},
+            headers=self.__get_headers(content_type="octet-stream"),
+        )
 
         if resp.status_code == 200:
             self.s3_path = resp.text.strip('"')
-            print('\nUpload to S3 successful.\nS3 bucket:\n', self.s3_path)
+            print("\nUpload to S3 successful.\nS3 bucket:\n", self.s3_path)
         else:
-            print('\n{0} error during upload to S3:\n'.format(resp.status_code), resp.json())
+            print("\n{0} error during upload to S3:\n".format(resp.status_code), resp.json())
 
         return resp
 
-    def upload(self, overwrite: bool = False):        
-        '''
+    def upload(self, overwrite: bool = False):
+        """
         Registers Dataset in Nominal on Nominal platform.
 
         Endpoint:
@@ -173,41 +182,42 @@ class Dataset(pl.DataFrame):
 
         Returns:
         Response object from the REST call.
-        '''
+        """
 
         s3_upload_resp = self.__upload_file(overwrite)
 
         if isinstance(s3_upload_resp, dict):
             if s3_upload_resp.status_code != 200:
-                print('Aborting Dataset registration')
+                print("Aborting Dataset registration")
                 return
 
         if self.s3_path is None:
-            print('Cannnot register Dataset on Nominal - Dataset.s3_path is not set')
+            print("Cannnot register Dataset on Nominal - Dataset.s3_path is not set")
             return
 
-        print('\nRegistering [bold green]{0}[/bold green] on {1}'.format(self.filename, get_base_url()))
+        print("\nRegistering [bold green]{0}[/bold green] on {1}".format(self.filename, get_base_url()))
 
         payload = dict(
-            url = ENDPOINTS['dataset_upload'].format(get_base_url()),
-            json = PayloadFactory.dataset_trigger_ingest(self),
-            headers = self.__get_headers()
+            url=ENDPOINTS["dataset_upload"].format(get_base_url()),
+            json=PayloadFactory.dataset_trigger_ingest(self),
+            headers=self.__get_headers(),
         )
 
-        resp = requests.post(url = payload['url'], json = payload['json'], headers = payload['headers'])
+        resp = requests.post(url=payload["url"], json=payload["json"], headers=payload["headers"])
 
         if resp.status_code == 200:
-            self.rid = resp.json()['datasetRid']
-            self.dataset_link = '{0}/data-sources/{1}'.format(get_app_base_url(), self.rid)
-            print('\nDataset RID: ', self.rid)
-            print('\nDataset Link: ', '[link={0}]{0}[/link]\n'.format(self.dataset_link))
+            self.rid = resp.json()["datasetRid"]
+            self.dataset_link = "{0}/data-sources/{1}".format(get_app_base_url(), self.rid)
+            print("\nDataset RID: ", self.rid)
+            print("\nDataset Link: ", "[link={0}]{0}[/link]\n".format(self.dataset_link))
         else:
-            print('\n{0} error registering Dataset on Nominal:\n'.format(resp.status_code), resp.json())                
+            print("\n{0} error registering Dataset on Nominal:\n".format(resp.status_code), resp.json())
 
         return resp
 
+
 class Ingest:
-    '''
+    """
     Handles ingestion of various tabular and video file formats.
 
     This class provides static and instance methods for ingesting data from various formats, such as CSV and Parquet files,
@@ -218,7 +228,7 @@ class Ingest:
     set_ts_index(df, ts_col)
         Sets a timestamp index for the provided DataFrame. This method adds internal columns for the datetime in Python format,
         ISO 8601 format, and Unix timestamp format.
-    
+
     read_csv(path, ts_col=None)
         Reads a CSV file from the specified path and returns a `Dataset` object with a timestamp index set.
 
@@ -228,12 +238,12 @@ class Ingest:
     Notes
     -----
     TODO: Consider using Ibis for database source connectivity.
-    TODO: Implement video ingest functionality.    
-    '''
+    TODO: Implement video ingest functionality.
+    """
 
     @staticmethod
     def set_ts_index(df: pl.DataFrame, ts_col: str = None) -> pl.DataFrame:
-        '''
+        """
         Sets a timestamp index for the provided DataFrame.
 
         This method attempts to infer the timestamp column if one is not specified. It adds internal columns to the
@@ -250,7 +260,7 @@ class Ingest:
         -------
         polars.DataFrame
             The modified DataFrame with the timestamp index set.
-        '''        
+        """
         if ts_col is None:
             # Infer timestamp column
             for col in df.columns:
@@ -264,29 +274,32 @@ class Ingest:
 
         if ts_col is not None:
             try:
-                df.drop_in_place('_python_datetime')
-                df.drop_in_place('_unix_timestamp')
+                df.drop_in_place("_python_datetime")
+                df.drop_in_place("_unix_timestamp")
             except Exception:
                 pass
-            datetime_series = pl.Series('_python_datetime', [parser.parse(dt_str) for dt_str in df[ts_col]])
-            unix_series = pl.Series('_unix_timestamp', [dt.timestamp() for dt in datetime_series])
+            datetime_series = pl.Series("_python_datetime", [parser.parse(dt_str) for dt_str in df[ts_col]])
+            unix_series = pl.Series("_unix_timestamp", [dt.timestamp() for dt in datetime_series])
             df.insert_column(-1, datetime_series)
-            df.insert_column(-1, unix_series)            
-            df = df.sort('_python_datetime') # Datasets must be sorted in order to upload to Nominal
+            df.insert_column(-1, unix_series)
+            df = df.sort("_python_datetime")  # Datasets must be sorted in order to upload to Nominal
         else:
-            print('A Dataset must have at least one column that is a timestamp. Please specify which column is a date or datetime with the `ts_col` parameter.')
+            print(
+                "A Dataset must have at least one column that is a timestamp. Please specify which column is a date or datetime with the `ts_col` parameter."
+            )
 
         return df
 
     def read_csv(self, path: str, ts_col: str = None) -> Dataset:
         dfc = pl.read_csv(path)
         dft = self.set_ts_index(dfc, ts_col)
-        return Dataset(dft, filename = os.path.basename(path))
+        return Dataset(dft, filename=os.path.basename(path))
 
     def read_parquet(self, path: str, ts_col: str = None) -> Dataset:
         dfp = pl.read_parquet(path)
         dft = self.set_ts_index(dfp, ts_col)
-        return Dataset(dft, filename = os.path.basename(path))
+        return Dataset(dft, filename=os.path.basename(path))
+
 
 class Run:
     '''
@@ -314,7 +327,7 @@ class Run:
     Attributes
     ----------
     title : str
-        The title of the run. Defaults to a timestamped, autogenerated filename if not provided.    
+        The title of the run. Defaults to a timestamped, autogenerated filename if not provided.
     description : str
         A brief description of the run.
     properties : dict
@@ -413,7 +426,7 @@ class Run:
             paths = [path]
 
         if len(paths) == 0 and len(datasets) == 0:
-            print('Please provide a list of Datasets or list of paths for this Run')
+            print("Please provide a list of Datasets or list of paths for this Run")
             return
 
         if len(paths) > 0:
@@ -424,9 +437,9 @@ class Run:
         mins = []
         maxs = []
         for ds in self.datasets:
-            mins.append(ds['_python_datetime'].min())
-            maxs.append(ds['_python_datetime'].max())
-        self.datasets_domain = dict(START = min(mins), END = max(maxs))
+            mins.append(ds["_python_datetime"].min())
+            maxs.append(ds["_python_datetime"].max())
+        self.datasets_domain = dict(START=min(mins), END=max(maxs))
 
         self.__set_run_datetime_boundary('START', start)
         self.__set_run_datetime_boundary('END', end)
@@ -454,8 +467,8 @@ class Run:
             self._domain[key]['SECONDS'] = seconds
             self._domain[key]['NANOS'] = floor((unix - seconds) / 1e9)
 
-    def __get_headers(self, content_type: str = 'json') -> dict:
-        TOKEN = kr.get_password('Nominal API', 'python-client')
+    def __get_headers(self, content_type: str = "json") -> dict:
+        TOKEN = kr.get_password("Nominal API", "python-client")
         return {
             "Authorization": "Bearer {}".format(TOKEN),
             "Content-Type": "application/{0}".format(content_type),
@@ -524,14 +537,14 @@ class Run:
             print('\n{0} error updating Run on Nominal:\n'.format(resp.status_code), resp.json())        
 
     def upload(self) -> requests.Response:
-        '''
+        """
         Uploads the run and its datasets to Nominal.
 
         Returns
         -------
         requests.Response
             The response object from the REST call.
-        '''
+        """
         datasets_payload = dict()
 
         for ds in self.datasets:
@@ -539,7 +552,7 @@ class Run:
             if ds.s3_path is None:
                 ds.upload()
             datasets_payload[ds.filename] = PayloadFactory.create_unix_datasource(ds)
-        
+
         run_payload = PayloadFactory.run_upload(self, datasets_payload)
 
         # Make POST request to register Run and Datasets on Nominal
@@ -552,9 +565,9 @@ class Run:
         self.last_upload_payload = run_payload
 
         if resp.status_code == 200:
-            self.rid = resp.json()['runRid']
-            print('\nRun RID: ', self.rid)
+            self.rid = resp.json()["runRid"]
+            print("\nRun RID: ", self.rid)
         else:
-            print('\n{0} error registering Run on Nominal:\n'.format(resp.status_code), resp.json())    
+            print("\n{0} error registering Run on Nominal:\n".format(resp.status_code), resp.json())
 
         return resp
