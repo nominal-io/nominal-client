@@ -12,6 +12,9 @@ version = "0.0.0"
 readme = "README.md"
 requires-python = ">=3.7"
 dependencies = [
+    "python-dateutil",
+    "polars",
+    "jsondiff"
 ]
 
 [tool.distutils.bdist_wheel]

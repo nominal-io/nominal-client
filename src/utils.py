@@ -75,16 +75,17 @@ class PayloadFactory:
         }
 
     @staticmethod
-    def run_upload(r, datasets_payload) -> dict:
+    def run_upload(r, datasets_payload = {}) -> dict:
         return {
             "title": r.title,
             "description": r.description,
             "startTime": {
-                "secondsSinceEpoch": r.run_domain['START']['SECONDS'],
-                "offsetNanoseconds": r.run_domain['START']['NANOS'],
+                "secondsSinceEpoch": r._domain['START']['SECONDS'],
+                "offsetNanoseconds": r._domain['START']['NANOS'],
             },
-            "endTime": {"secondsSinceEpoch": r.run_domain['END']['SECONDS'],
-                        "offsetNanoseconds": r.run_domain['END']['NANOS'],
+            "endTime": {"secondsSinceEpoch": r._domain['END']['SECONDS'],
+                        "offsetNanoseconds": r._domain['END']['NANOS'],
             },
             "dataSources": datasets_payload,
+            "properties": {}
         }
