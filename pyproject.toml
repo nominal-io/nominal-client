@@ -11,6 +11,11 @@ include = ["README.md", "LICENSE"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
+requests = "^2.32.3"
+python-dateutil = "^2.9.0.post0"
+polars = "^1.4.1"
+keyring = "^25.3.0"
+rich = "^13.7.1"
 
 [tool.poetry.dev-dependencies]
 ruff = "^ 0.4.2"
