@@ -10,7 +10,7 @@ import jsondiff as jd
 from jsondiff import diff
 from math import floor
 from rich import print
-from .utils import default_filename, PayloadFactory
+from utils import default_filename, PayloadFactory
 
 
 ENDPOINTS = dict(
