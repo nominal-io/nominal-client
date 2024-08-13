@@ -4,7 +4,6 @@ version = "0.0.21"
 description = "Automate Nominal workflows in Python"
 authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>"]
 readme = "README.md"
-requires-python = ">=3.7"
 packages = [
     {include = "nominal/**/*.py"},
 ]
@@ -18,6 +17,7 @@ jsondiff = "^2.2.0"
 polars = "^1.4.1"
 keyring = "^25.0.0"
 rich = "^13.7.1"
+conjure-python-client = ">=2.8.0,<3"
 
 [tool.poetry.dev-dependencies]
 ruff = "^ 0.4.2"
