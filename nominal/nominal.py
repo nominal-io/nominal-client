@@ -191,7 +191,7 @@ class Dataset(pl.DataFrame):
                 return
 
         if self.s3_path is None:
-            print("Cannnot register Dataset on Nominal - Dataset.s3_path is not set")
+            print("Cannot register Dataset on Nominal - Dataset.s3_path is not set")
             return
 
         print("\nRegistering [bold green]{0}[/bold green] on {1}".format(self.filename, get_base_url()))
