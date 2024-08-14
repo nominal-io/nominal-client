@@ -13,11 +13,11 @@ from rich import print
 from .utils import PayloadFactory, default_filename
 
 ENDPOINTS = dict(
-    file_upload = '{}/upload/v1/upload-file?fileName={}',
-    dataset_upload = '{}/ingest/v1/trigger-ingest-v2',
-    run_upload = '{}/ingest/v1/ingest-run',
-    run_retrieve = '{}/scout/v1/run/{}', # GET
-    run_update = '{}/scout/v1/run/{}' # PUT
+    file_upload="{}/upload/v1/upload-file?fileName={}",
+    dataset_upload="{}/ingest/v1/trigger-ingest-v2",
+    run_upload="{}/ingest/v1/ingest-run",
+    run_retrieve="{}/scout/v1/run/{}",  # GET
+    run_update="{}/scout/v1/run/{}",  # PUT
 )
 
 BASE_URLS = dict(
@@ -98,10 +98,15 @@ class Dataset(pl.DataFrame):
     """
 
     def __init__(
-        self, df: pl.DataFrame = None, filename: str = None, rid: str = None, properties: dict = dict(), description: str = ""
+        self,
+        df: pl.DataFrame = None,
+        filename: str = None,
+        rid: str = None,
+        properties: dict = dict(),
+        description: str = "",
     ):
         if df is not None:
-            print('DataFrame received')            
+            print("DataFrame received")
             dft = Ingest.set_ts_index(df)
 
         super().__init__(dft)
@@ -113,8 +118,8 @@ class Dataset(pl.DataFrame):
         self.rid = rid
         self.dataset_link = ""
 
-    def __get_headers(self, content_type: str = 'json') -> dict:
-        TOKEN = kr.get_password('Nominal API', 'python-client')
+    def __get_headers(self, content_type: str = "json") -> dict:
+        TOKEN = kr.get_password("Nominal API", "python-client")
         return {
             "Authorization": "Bearer {}".format(TOKEN),
             "Content-Type": "application/{0}".format(content_type),
@@ -281,8 +286,8 @@ class Ingest:
             df.insert_column(-1, unix_series)
             df = df.sort("_python_datetime")  # Datasets must be sorted in order to upload to Nominal
         else:
-            print('A Dataset must have at least one column that is a timestamp.')
-            print('Please specify which column is a date or datetime with the [code]ts_col[/code] parameter.')
+            print("A Dataset must have at least one column that is a timestamp.")
+            print("Please specify which column is a date or datetime with the [code]ts_col[/code] parameter.")
 
         return df
 
@@ -298,7 +303,7 @@ class Ingest:
 
 
 class Run:
-    '''
+    """
     Python representation of a Nominal Run.
 
     Parameters
@@ -329,7 +334,7 @@ class Run:
     properties : dict
         A dict of properties associated with the run.
     datasets : list of Dataset
-        A list of `Dataset` objects associated with the run.        
+        A list of `Dataset` objects associated with the run.
     domain : dict
         A dictionary containing 'START' and 'END' time domain for the run.
     datasets_domain : dict
@@ -339,82 +344,80 @@ class Run:
     -------
     upload()
         Uploads the run and its datasets to Nominal.
-    ''' 
+    """
 
     def __print_human_readable_endpoint(self, endpoint):
-            '''
-            Print the Run datetime endpoints in a human-readable form
-            '''
-            print('Run {} time:'.format(endpoint))
-            unix_seconds = self._domain[endpoint]['SECONDS'] + self._domain[endpoint]['NANOS']*10e9
-            print('Unix: ', unix_seconds)
-            datetime_endpoint = datetime.fromtimestamp(unix_seconds)
-            print('Datetime: ', datetime_endpoint)
+        """
+        Print the Run datetime endpoints in a human-readable form
+        """
+        print("Run {} time:".format(endpoint))
+        unix_seconds = self._domain[endpoint]["SECONDS"] + self._domain[endpoint]["NANOS"] * 10e9
+        print("Unix: ", unix_seconds)
+        datetime_endpoint = datetime.fromtimestamp(unix_seconds)
+        print("Datetime: ", datetime_endpoint)
 
     def __setattr__(self, k: str, v) -> None:
-        '''
+        """
         Convenience method to allow setting Run endpoints as human-readable strings
-        '''
-        if k in ['start', 'end']:
+        """
+        if k in ["start", "end"]:
             endpoint = k.upper()
-            self._domain[endpoint]['DATETIME'] = parser.parse(v)
+            self._domain[endpoint]["DATETIME"] = parser.parse(v)
             self.__set_run_unix_timestamp_domain([endpoint])
             self.__print_human_readable_endpoint(endpoint)
         else:
             super().__setattr__(k, v)
 
     def __getattr__(self, k: str) -> None:
-        if k in ['start', 'end']:
+        if k in ["start", "end"]:
             self.__print_human_readable_endpoint(k.upper())
         else:
             super().__getattr__(k)
 
-    def __init__(self,
-                 rid: str = None,
-                 path: str = None,
-                 paths: list[str] = [],
-                 datasets: list[Dataset] = [],
-                 properties: dict = {},
-                 title: str = None,
-                 description: str = '',               
-                 start: str = None, 
-                 end: str = None,
-                 cloud: dict = {}):
-
+    def __init__(
+        self,
+        rid: str = None,
+        path: str = None,
+        paths: list[str] = [],
+        datasets: list[Dataset] = [],
+        properties: dict = {},
+        title: str = None,
+        description: str = "",
+        start: str = None,
+        end: str = None,
+        cloud: dict = {},
+    ):
         if title is None:
-            self.title = default_filename('RUN')
+            self.title = default_filename("RUN")
         self.description = description
         self.properties = properties
-        self._domain = {'START': {}, 'END': {}}
+        self._domain = {"START": {}, "END": {}}
 
         if rid is not None:
             # Attempt to retrieve run by its resource ID (rid)
-            resp = requests.get(
-                headers = self.__get_headers(),
-                url = ENDPOINTS['run_retrieve'].format(get_base_url(), rid)
-            )
-            if resp.status_code == 200:                
+            resp = requests.get(headers=self.__get_headers(), url=ENDPOINTS["run_retrieve"].format(get_base_url(), rid))
+            if resp.status_code == 200:
                 self.cloud = resp.json()
-                print('Cloud response:')
+                print("Cloud response:")
                 print(self.cloud)
-                print('... Downloaded to Run.cloud')
+                print("... Downloaded to Run.cloud")
 
                 # Assign Run metadata to local Run object metadata
-                local_metadata = ['rid', 'description', 'title', 'start', 'end', 'properties', 'labels']
+                local_metadata = ["rid", "description", "title", "start", "end", "properties", "labels"]
                 cloud_metadata = list(self.cloud.keys())
                 for md_key in local_metadata:
                     if md_key in cloud_metadata:
                         # Override local value with cloud value
                         setattr(self, md_key, self.cloud[md_key])
-                    elif md_key == 'start':
-                        self._domain['START']['SECONDS'] = self.cloud['startTime']['secondsSinceEpoch']
-                        self._domain['START']['NANOS'] = self.cloud['startTime']['offsetNanoseconds']
-                    elif md_key == 'end':
-                        self._domain['END']['SECONDS'] = self.cloud['endTime']['secondsSinceEpoch']
-                        self._domain['END']['NANOS'] = self.cloud['endTime']['offsetNanoseconds']                        
+                    elif md_key == "start":
+                        self._domain["START"]["SECONDS"] = self.cloud["startTime"]["secondsSinceEpoch"]
+                        self._domain["START"]["NANOS"] = self.cloud["startTime"]["offsetNanoseconds"]
+                    elif md_key == "end":
+                        self._domain["END"]["SECONDS"] = self.cloud["endTime"]["secondsSinceEpoch"]
+                        self._domain["END"]["NANOS"] = self.cloud["endTime"]["offsetNanoseconds"]
             else:
-                print('There was an error retrieving Run with rid = {0}'.format(rid))
-                print('Make sure that your rid is correct and from [link]{0}[/link]'.format(get_app_base_url()))
+                print("There was an error retrieving Run with rid = {0}".format(rid))
+                print("Make sure that your rid is correct and from [link]{0}[/link]".format(get_app_base_url()))
                 print(resp.json())
             return
 
@@ -437,31 +440,31 @@ class Run:
             maxs.append(ds["_python_datetime"].max())
         self.datasets_domain = dict(START=min(mins), END=max(maxs))
 
-        self.__set_run_datetime_boundary('START', start)
-        self.__set_run_datetime_boundary('END', end)
+        self.__set_run_datetime_boundary("START", start)
+        self.__set_run_datetime_boundary("END", end)
         self.__set_run_unix_timestamp_domain()
 
     def __set_run_datetime_boundary(self, key: str, str_datetime: any):
-        '''
+        """
         Set start & end boundary variables for Run
-        '''
+        """
         if str_datetime is None:
-            self._domain[key]['DATETIME'] = self.datasets_domain[key]
+            self._domain[key]["DATETIME"] = self.datasets_domain[key]
         elif type(str_datetime) is datetime:
-            self._domain[key]['DATETIME'] = str_datetime
+            self._domain[key]["DATETIME"] = str_datetime
         elif type(str_datetime) is str:
-            self._domain[key]['DATETIME'] = parser.parse(str_datetime)
+            self._domain[key]["DATETIME"] = parser.parse(str_datetime)
 
-    def __set_run_unix_timestamp_domain(self, endpoints = ['START', 'END']):
-        '''
+    def __set_run_unix_timestamp_domain(self, endpoints=["START", "END"]):
+        """
         Set start & end boundary variables for Run
-        '''
+        """
         for key in endpoints:
-            dt = self._domain[key]['DATETIME']
+            dt = self._domain[key]["DATETIME"]
             unix = dt.timestamp()
             seconds = floor(unix)
-            self._domain[key]['SECONDS'] = seconds
-            self._domain[key]['NANOS'] = floor((unix - seconds) / 1e9)
+            self._domain[key]["SECONDS"] = seconds
+            self._domain[key]["NANOS"] = floor((unix - seconds) / 1e9)
 
     def __get_headers(self, content_type: str = "json") -> dict:
         TOKEN = kr.get_password("Nominal API", "python-client")
@@ -471,26 +474,26 @@ class Run:
         }
 
     def diff(self):
-        '''
+        """
         Compare local and cloud Run instances
-        '''
+        """
         if self.cloud is None:
-            print('No Run instance has been downloaded from the cloud')
-            print('Download a run with [code]r = Run(rid = RID)[/code]')            
+            print("No Run instance has been downloaded from the cloud")
+            print("Download a run with [code]r = Run(rid = RID)[/code]")
             return
 
         local_copy = PayloadFactory.run_upload(self)
         cloud_copy = copy.deepcopy(self.cloud)
 
         # rm datasources - we're not comparing those
-        del cloud_copy['dataSources']
-        del local_copy['dataSources']
+        del cloud_copy["dataSources"]
+        del local_copy["dataSources"]
 
         def rm_deletions_and_datasources(rd):
             if jd.delete in rd:
                 del rd[jd.delete]
-        
-        run_diff_labeled = diff(cloud_copy, local_copy, syntax='explicit')
+
+        run_diff_labeled = diff(cloud_copy, local_copy, syntax="explicit")
         rm_deletions_and_datasources(run_diff_labeled)
         print(run_diff_labeled)
 
@@ -499,7 +502,7 @@ class Run:
         return run_diff_unlabeled
 
     def update(self):
-        '''
+        """
         Updating run metadata is done in 4 steps:
         1.  Download a Run: r = Run(rid = RID)
         2.  Update something about the Run: r.title = 'Runs with Friends'
@@ -507,30 +510,30 @@ class Run:
         4.  r.update()
         By design, no changes are synced with the cloud without an explicit call to update()
         At the moment, only Run start, end, and metadata can be updated (not datasources)
-        '''
+        """
 
         if self.rid is None or self.cloud is None:
-            print('No Run instance has been downloaded from the cloud')
-            print('Download a run with [code]r = Run(rid = RID)[/code]')             
+            print("No Run instance has been downloaded from the cloud")
+            print("Download a run with [code]r = Run(rid = RID)[/code]")
 
-        rd = self.diff() # rd = "run diff"
+        rd = self.diff()  # rd = "run diff"
         if len(rd) == 0:
-            print('No difference between Run.cloud and the local Run instance')
+            print("No difference between Run.cloud and the local Run instance")
             return
 
         # Make PUT request to update Run
         resp = requests.put(
-                    url = ENDPOINTS['run_update'].format(get_base_url(), self.rid),
-                    json = rd,
-                    headers = self.__get_headers(),
-                )
-        
+            url=ENDPOINTS["run_update"].format(get_base_url(), self.rid),
+            json=rd,
+            headers=self.__get_headers(),
+        )
+
         if resp.status_code == 200:
             self.cloud = resp.json()
-            print('\nUpdated Run on Nominal:')
-            print('[link]{0}/runs/{1}[/link]'.format(get_app_base_url(), self.cloud['runNumber']))
+            print("\nUpdated Run on Nominal:")
+            print("[link]{0}/runs/{1}[/link]".format(get_app_base_url(), self.cloud["runNumber"]))
         else:
-            print('\n{0} error updating Run on Nominal:\n'.format(resp.status_code), resp.json())        
+            print("\n{0} error updating Run on Nominal:\n".format(resp.status_code), resp.json())
 
     def upload(self) -> requests.Response:
         """
@@ -553,11 +556,11 @@ class Run:
 
         # Make POST request to register Run and Datasets on Nominal
         resp = requests.post(
-                    url = ENDPOINTS['run_upload'].format(get_base_url()),
-                    json = run_payload,
-                    headers = self.__get_headers(),
-                )
-        
+            url=ENDPOINTS["run_upload"].format(get_base_url()),
+            json=run_payload,
+            headers=self.__get_headers(),
+        )
+
         self.last_upload_payload = run_payload
 
         if resp.status_code == 200:
