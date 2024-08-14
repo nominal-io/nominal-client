@@ -1,15 +1,20 @@
-from conjure_python_client import (
-    RequestsClient,
-    ServiceConfiguration,
-)
+import requests
+from requests.adapters import CaseInsensitiveDict
+from typing import Type, TypeVar
+from conjure_python_client import ServiceConfiguration
 
-from ._api.ingest.ingest_api import IngestService
-
-
-def create_service(uri: str) -> IngestService:
+T = TypeVar("T")
+def create_service(service_class: Type[T], uri: str) -> T:
     config = ServiceConfiguration()
-    config.uris = [uri]
-    service = RequestsClient.create(
-        IngestService, user_agent="nominal-client", service_config=config
+
+    session = requests.Session()
+    session.headers = CaseInsensitiveDict({"User-Agent": "nominal-python"})
+
+    return service_class(
+        session,
+        [uri],
+        config.connect_timeout,
+        config.read_timeout,
+        None,
+        False
     )
-    return service
