@@ -10,6 +10,7 @@ import string
 from datetime import datetime
 from typing import TypeVar, Type
 
+
 def default_filename(nominal_file_class):
     if nominal_file_class not in ["DATASET", "RUN"]:
         raise Exception("Unrecognized Nominal class", nominal_file_class)
@@ -19,20 +20,16 @@ def default_filename(nominal_file_class):
 
 
 T = TypeVar("T")
+
+
 def create_service(service_class: Type[T], uri: str) -> T:
     config = ServiceConfiguration()
 
     session = requests.Session()
     session.headers = CaseInsensitiveDict({"User-Agent": "nominal-python"})
 
-    return service_class(
-        session,
-        [uri],
-        config.connect_timeout,
-        config.read_timeout,
-        None,
-        False
-    )
+    return service_class(session, [uri], config.connect_timeout, config.read_timeout, None, False)
+
 
 class PayloadFactory:
     """

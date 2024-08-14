@@ -200,14 +200,12 @@ class Dataset(pl.DataFrame):
 
         print("\nRegistering [bold green]{0}[/bold green] on {1}".format(self.filename, get_base_url()))
 
-        TOKEN = kr.get_password('Nominal API', 'python-client')
+        TOKEN = kr.get_password("Nominal API", "python-client")
 
         ingest = create_service(IngestService, get_base_url())
         ingest_request = TriggerIngest(
-            labels=[],
-            properties={},
-            source=IngestSource(S3IngestSource(self.s3_path)),
-            dataset_name=self.filename)
+            labels=[], properties={}, source=IngestSource(S3IngestSource(self.s3_path)), dataset_name=self.filename
+        )
         resp = ingest.trigger_ingest(TOKEN, ingest_request)
 
         print("Triggered file ingest: ", resp)
