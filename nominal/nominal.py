@@ -10,7 +10,8 @@ import jsondiff as jd
 from jsondiff import diff
 from math import floor
 from rich import print
-from .utils import PayloadFactory, default_filename
+from .utils import create_service, PayloadFactory, default_filename
+from ._api.ingest.ingest_api import IngestService, TriggerIngest, IngestSource, S3IngestSource
 
 ENDPOINTS = dict(
     file_upload="{}/upload/v1/upload-file?fileName={}",
@@ -143,7 +144,7 @@ class Dataset(pl.DataFrame):
 
         # Create a default dataset name
         if self.filename is None:
-            self.filname = default_filename("DATASET")
+            self.filename = default_filename("DATASET")
 
         csv_file_buffer = io.BytesIO()
         self.write_csv(csv_file_buffer)
@@ -194,26 +195,20 @@ class Dataset(pl.DataFrame):
                 return
 
         if self.s3_path is None:
-            print("Cannnot register Dataset on Nominal - Dataset.s3_path is not set")
+            print("Cannot register Dataset on Nominal - Dataset.s3_path is not set")
             return
 
         print("\nRegistering [bold green]{0}[/bold green] on {1}".format(self.filename, get_base_url()))
 
-        payload = dict(
-            url=ENDPOINTS["dataset_upload"].format(get_base_url()),
-            json=PayloadFactory.dataset_trigger_ingest(self),
-            headers=self.__get_headers(),
+        TOKEN = kr.get_password("Nominal API", "python-client")
+
+        ingest = create_service(IngestService, get_base_url())
+        ingest_request = TriggerIngest(
+            labels=[], properties={}, source=IngestSource(S3IngestSource(self.s3_path)), dataset_name=self.filename
         )
+        resp = ingest.trigger_ingest(TOKEN, ingest_request)
 
-        resp = requests.post(url=payload["url"], json=payload["json"], headers=payload["headers"])
-
-        if resp.status_code == 200:
-            self.rid = resp.json()["datasetRid"]
-            self.dataset_link = "{0}/data-sources/{1}".format(get_app_base_url(), self.rid)
-            print("\nDataset RID: ", self.rid)
-            print("\nDataset Link: ", "[link={0}]{0}[/link]\n".format(self.dataset_link))
-        else:
-            print("\n{0} error registering Dataset on Nominal:\n".format(resp.status_code), resp.json())
+        print("Triggered file ingest: ", resp)
 
         return resp
 

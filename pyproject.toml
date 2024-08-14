@@ -18,9 +18,13 @@ jsondiff = "^2.2.0"
 polars = "^1.4.1"
 keyring = "^25.0.0"
 rich = "^13.7.1"
+conjure-python-client = ">=2.8.0,<3"
 
 [tool.poetry.dev-dependencies]
 ruff = "^ 0.4.2"
+
+[tool.poetry.group.dev.dependencies]
+jupyterlab = "^4.2.4"
 
 [tool.distutils.bdist_wheel]
 universal = true
@@ -31,3 +35,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 120
+exclude = ["nominal/_api/*"]
