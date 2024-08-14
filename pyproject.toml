@@ -6,7 +6,7 @@ authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>"]
 readme = "README.md"
 packages = [
     {include = "nominal/**/*.py"},
-    {include = "package_data"},    
+    {include = "nominal/package_data"},    
 ]
 include = ["README.md", "LICENSE"]
 
