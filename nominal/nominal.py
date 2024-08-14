@@ -11,6 +11,8 @@ from jsondiff import diff
 from math import floor
 from rich import print
 from .utils import PayloadFactory, default_filename
+from .nominal_conjure import create_service
+from ._api.ingest.ingest_api import TriggerIngest, IngestSource, S3IngestSource
 
 ENDPOINTS = dict(
     file_upload="{}/upload/v1/upload-file?fileName={}",
@@ -199,12 +201,14 @@ class Dataset(pl.DataFrame):
 
         print("\nRegistering [bold green]{0}[/bold green] on {1}".format(self.filename, get_base_url()))
 
-        from nominal_conjure import create_service
-        from _api.ingest.ingest_api import TriggerIngest, IngestSource, S3IngestSource
         TOKEN = kr.get_password('Nominal API', 'python-client')
 
         service = create_service(get_base_url())
-        ingest_request = TriggerIngest(source=IngestSource(S3IngestSource(self.s3_path)), dataset_name=self.filename)
+        ingest_request = TriggerIngest(
+            [],
+            {},
+            source=IngestSource(S3IngestSource(self.s3_path)),
+            dataset_name=self.filename)
         resp = service.trigger_ingest(TOKEN, ingest_request)
 
         print("Triggered file ingest: ", resp)
