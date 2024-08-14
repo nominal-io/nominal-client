@@ -5,7 +5,7 @@ Python client for Nominal test data, storage, &amp; compute
 
 ## Install
 
-> pip3 install nominal
+> pip3 install nominal --upgrade
 
 ## Usage
 
