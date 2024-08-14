@@ -2,10 +2,13 @@
 Internal utility functions for Nominal Python client
 """
 
+import requests
+from requests.utils import CaseInsensitiveDict
+from conjure_python_client import ServiceConfiguration
 import random
 import string
 from datetime import datetime
-
+from typing import TypeVar, Type
 
 def default_filename(nominal_file_class):
     if nominal_file_class not in ["DATASET", "RUN"]:
@@ -14,6 +17,22 @@ def default_filename(nominal_file_class):
     ts = datetime.today().strftime("%Y-%m-%d")
     return "_".join([nominal_file_class, ts, rand_str])
 
+
+T = TypeVar("T")
+def create_service(service_class: Type[T], uri: str) -> T:
+    config = ServiceConfiguration()
+
+    session = requests.Session()
+    session.headers = CaseInsensitiveDict({"User-Agent": "nominal-python"})
+
+    return service_class(
+        session,
+        [uri],
+        config.connect_timeout,
+        config.read_timeout,
+        None,
+        False
+    )
 
 class PayloadFactory:
     """

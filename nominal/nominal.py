@@ -10,8 +10,7 @@ import jsondiff as jd
 from jsondiff import diff
 from math import floor
 from rich import print
-from .utils import PayloadFactory, default_filename
-from .nominal_conjure import create_service
+from .utils import create_service, PayloadFactory, default_filename
 from ._api.ingest.ingest_api import IngestService, TriggerIngest, IngestSource, S3IngestSource
 
 ENDPOINTS = dict(
