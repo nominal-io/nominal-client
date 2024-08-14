@@ -24,8 +24,7 @@ def _get_dataset(d, ext = '.csv'):
     return polars.read_csv(
         os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
-            "package_data",
-            "datasets",
+            "data",
             d + ext,
         )
     )

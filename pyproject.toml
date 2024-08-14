@@ -1,22 +1,26 @@
 [tool.poetry]
 name = "nominal"
-version = "0.0.26"
+version = "0.0.1"
 description = "Automate Nominal workflows in Python"
 authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>"]
 readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    "python-dateutil",
+    "polars",
+    "jsondiff"
+]
 packages = [
     {include = "nominal/**/*.py"},
-    {include = "nominal/package_data"},    
 ]
-include = ["README.md", "LICENSE"]
+include = ["README.md", "LICENSE", "/data"]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.12"
 requests = "^2.32.3"
 python-dateutil = "^2.9.0.post0"
-jsondiff = "^2.2.0"
 polars = "^1.4.1"
-keyring = "^25.0.0"
+keyring = "^25.3.0"
 rich = "^13.7.1"
 
 [tool.poetry.dev-dependencies]
