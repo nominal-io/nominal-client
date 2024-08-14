@@ -73,7 +73,7 @@ class PayloadFactory:
         }
 
     @staticmethod
-    def run_upload(r, datasets_payload = {}) -> dict:
+    def run_upload(r, datasets_payload={}) -> dict:
         return {
             "title": r.title,
             "description": r.description,
@@ -86,5 +86,5 @@ class PayloadFactory:
                 "offsetNanoseconds": r._domain["END"]["NANOS"],
             },
             "dataSources": datasets_payload,
-            "properties": {}
+            "properties": {},
         }
