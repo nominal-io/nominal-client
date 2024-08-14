@@ -12,7 +12,7 @@ from math import floor
 from rich import print
 from .utils import PayloadFactory, default_filename
 from .nominal_conjure import create_service
-from ._api.ingest.ingest_api import TriggerIngest, IngestSource, S3IngestSource
+from ._api.ingest.ingest_api import IngestService, TriggerIngest, IngestSource, S3IngestSource
 
 ENDPOINTS = dict(
     file_upload="{}/upload/v1/upload-file?fileName={}",
@@ -203,13 +203,13 @@ class Dataset(pl.DataFrame):
 
         TOKEN = kr.get_password('Nominal API', 'python-client')
 
-        service = create_service(get_base_url())
+        ingest = create_service(IngestService, get_base_url())
         ingest_request = TriggerIngest(
-            [],
-            {},
+            labels=[],
+            properties={},
             source=IngestSource(S3IngestSource(self.s3_path)),
             dataset_name=self.filename)
-        resp = service.trigger_ingest(TOKEN, ingest_request)
+        resp = ingest.trigger_ingest(TOKEN, ingest_request)
 
         print("Triggered file ingest: ", resp)
 
