@@ -47,7 +47,7 @@ r.title = 'my_new_run_title'
 r.update()
 ```
 
-### Compare changes madde to a Run locally
+### Compare changes made to a Run locally
 
 ```py
 from nominal import Run
