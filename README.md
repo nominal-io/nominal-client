@@ -15,27 +15,26 @@ Retrieve your API key from /sandbox on your Nominal tenant
 
 ```py
 import nominal as nm
-
 nm.set_token(...)
 ```
 
-### Upload a Dataset (3 lines)
+### Upload a Dataset (4 lines)
 
 ```py
-from nominal import Ingest
-
-dataset = Ingest().read_csv('../data/penguins.csv')
-
+import nominal as nm
+from nominal import Ingest, Dataset
+dataset = Dataset(nm.data.penguins())
+# dataset = Ingest().read_csv('../path/to/your/data.csv')
 dataset.upload()
 ```
 
-### Upload a Run (3 lines)
+### Upload a Run (4 lines)
 
 ```py
-from nominal import Run
-
-r = Run(path='../data/penguins.csv')
-
+import nominal as nm
+from nominal import Run, Dataset
+r = Run(datasets=[Dataset(nm.data.penguins())])
+# r = Run(path='../path/to/your/data.csv')
 r.upload()
 ```
 
@@ -43,11 +42,8 @@ r.upload()
 
 ```py
 from nominal import Run
-
 r = Run(rid = 'ri.scout.gov-staging.run.ce205f7e-9ef1-4a8b-92ae-11edc77441c6')
-
 r.title = 'my_new_run_title'
-
 r.update()
 ```
 
@@ -55,11 +51,8 @@ r.update()
 
 ```py
 from nominal import Run
-
 r = Run(rid = 'ri.scout.gov-staging.run.ce205f7e-9ef1-4a8b-92ae-11edc77441c6')
-
 r.title = 'my_new_run_title'
-
 r.diff()
 ```
 

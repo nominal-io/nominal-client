@@ -3,6 +3,8 @@ from .nominal import (
     Ingest as Ingest,
     Run as Run,
 )
-import os
 
+from . import data as data
+
+import os
 os.environ["NOMINAL_BASE_URL"] = "https://api-staging.gov.nominal.io/api"

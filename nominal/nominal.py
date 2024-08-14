@@ -104,9 +104,13 @@ class Dataset(pl.DataFrame):
     """
 
     def __init__(
-        self, data: any = None, filename: str = None, rid: str = None, properties: dict = dict(), description: str = ""
+        self, df: pl.DataFrame = None, filename: str = None, rid: str = None, properties: dict = dict(), description: str = ""
     ):
-        super().__init__(data)
+        if df is not None:
+            print('DataFrame received')            
+            dft = Ingest.set_ts_index(df)
+
+        super().__init__(dft)
 
         self.s3_path = None
         self.filename = filename
@@ -283,9 +287,8 @@ class Ingest:
             df.insert_column(-1, unix_series)
             df = df.sort("_python_datetime")  # Datasets must be sorted in order to upload to Nominal
         else:
-            print(
-                "A Dataset must have at least one column that is a timestamp. Please specify which column is a date or datetime with the `ts_col` parameter."
-            )
+            print('A Dataset must have at least one column that is a timestamp.')
+            print('Please specify which column is a date or datetime with the [code]ts_col[/code] parameter.')
 
         return df
 
