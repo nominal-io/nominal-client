@@ -15,7 +15,7 @@ Retrieve your API key from /sandbox on your Nominal tenant
 
 ```py
 import nominal as nm
-nm.set_token(...)
+nm.auth.set_token(...)
 ```
 
 ### Upload a Dataset (4 lines)

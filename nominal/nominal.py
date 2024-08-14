@@ -59,12 +59,6 @@ def get_app_base_url():
     return get_base_url().rstrip("/api").replace("api", "app")
 
 
-def set_token(token):
-    if token is None:
-        print("Retrieve your access token from [link]{0}/sandbox[/link]".format(get_base_url()))
-    kr.set_password("Nominal API", "python-client", token)
-
-
 class Dataset(pl.DataFrame):
     """
     Dataset inherits from Polars DataFrame for its rich display, ingestion, and wrangling capabilities.
