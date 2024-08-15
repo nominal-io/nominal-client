@@ -35,7 +35,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 120
-exclude = ["nominal/_api/*"]
+exclude = ["nominal/_api/*", "example.ipynb"]
 
 [tool.ruff.lint]
 select = ["ALL"]
