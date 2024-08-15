@@ -1,19 +1,29 @@
-import os
-import io
 import copy
+import io
+import os
+from datetime import datetime
+from math import floor
+
+import jsondiff as jd
+import keyring as kr
+import polars as pl
 import requests
 from dateutil import parser
-import polars as pl
-import keyring as kr
-from datetime import datetime
-import jsondiff as jd
 from jsondiff import diff
-from math import floor
 from rich import print
 
-from .cloud import get_app_base_url, get_base_url, _auth_help_blurb, ENDPOINTS
-from ._utils import create_service, PayloadFactory, default_filename
-from ._api.ingest.ingest_api import IngestService, TriggerIngest, IngestSource, S3IngestSource
+from ._api.ingest.ingest_api import (
+    IngestService,
+    IngestSource,
+    S3IngestSource,
+    TimestampMetadata,
+    TimestampType,
+    TriggerIngest,
+    AbsoluteTimestamp,
+    CustomTimestamp,
+)
+from ._utils import PayloadFactory, create_service, default_filename
+from .cloud import ENDPOINTS, _auth_help_blurb, get_app_base_url, get_base_url
 
 
 class Dataset(pl.DataFrame):
@@ -163,27 +173,23 @@ class Dataset(pl.DataFrame):
 
         TOKEN = kr.get_password("Nominal API", "python-client")
 
-        # ingest = create_service(IngestService, get_base_url())
-        # ingest_request = TriggerIngest(
-        #    labels=[], properties={}, source=IngestSource(S3IngestSource(self.s3_path)), dataset_name=self.filename
-        # )
-        # resp = ingest.trigger_ingest(TOKEN, ingest_request)
-
-        payload = dict(
-            url=ENDPOINTS["dataset_upload"].format(get_base_url()),
-            json=PayloadFactory.dataset_trigger_ingest(self),
-            headers=self.__get_headers(),
+        ingest = create_service(IngestService, get_base_url())
+        ingest_request = TriggerIngest(
+            labels=[],
+            properties=self.properties,
+            source=IngestSource(S3IngestSource(self.s3_path)),
+            dataset_name=self.filename,
+            dataset_description=self.description,
+            timestamp_metadata=TimestampMetadata("_python_datetime", TimestampType(
+                absolute=AbsoluteTimestamp(custom_format=CustomTimestamp("yyyy-MM-dd['T']HH:mm:ss.SSSSSS", 0))
+            )),
         )
+        resp = ingest.trigger_ingest(TOKEN, ingest_request)
 
-        resp = requests.post(url=payload["url"], json=payload["json"], headers=payload["headers"])
-
-        if resp.status_code == 200:
-            self.rid = resp.json()["datasetRid"]
-            self.dataset_link = "{0}/data-sources/{1}".format(get_app_base_url(), self.rid)
-            print("\nDataset RID: ", self.rid)
-            print("\nDataset Link: ", "[link={0}]{0}[/link]\n".format(self.dataset_link))
-        else:
-            print("\n{0} error registering Dataset on Nominal:\n".format(resp.status_code), resp.json())
+        self.rid = resp.dataset_rid
+        self.dataset_link = "{0}/data-sources/{1}".format(get_app_base_url(), self.rid)
+        print("\nDataset RID: ", self.rid)
+        print("\nDataset Link: ", "[link={0}]{0}[/link]\n".format(self.dataset_link))
 
         return resp
 

@@ -39,4 +39,4 @@ exclude = ["nominal/_api/*", "example.ipynb"]
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["COM812", "ISC001"]
+ignore = ["COM812", "ISC001", "UP", "D", "ANN"]

@@ -13,4 +13,4 @@ from . import cloud as cloud
 
 import os
 
-os.environ["NOMINAL_BASE_URL"] = "https://api.gov.nominal.io/api"
+os.environ["NOMINAL_BASE_URL"] = "https://api-staging.gov.nominal.io/api"
