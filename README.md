@@ -9,13 +9,21 @@ Python client for Nominal test data, storage, &amp; compute
 
 ## Usage
 
-### Set your API key
+### Setup
 
-Retrieve your API key from /sandbox on your Nominal tenant
+Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on your Nominal tenant
 
 ```py
 import nominal as nm
-nm.auth.set_token(...)
+nm.cloud.set_token(...)
+```
+
+Change base URL to staging for dev or a custom URL
+
+```py
+import nominal as nm
+nm.cloud.set_base_url('STAGING')
+nm.cloud.set_base_url('https://nominal.acme.co')
 ```
 
 ### Upload a Dataset (4 lines)
@@ -50,9 +58,7 @@ r.update()
 ### Compare changes made to a Run locally
 
 ```py
-from nominal import Run
-r = Run(rid = 'ri.scout.gov-staging.run.ce205f7e-9ef1-4a8b-92ae-11edc77441c6')
-r.title = 'my_new_run_title'
+r.title = 'my_new__new_run_title'
 r.diff()
 ```
 

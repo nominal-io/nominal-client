@@ -15,6 +15,7 @@ from .cloud import get_app_base_url, get_base_url, _auth_help_blurb, ENDPOINTS
 from ._utils import create_service, PayloadFactory, default_filename
 from ._api.ingest.ingest_api import IngestService, TriggerIngest, IngestSource, S3IngestSource
 
+
 class Dataset(pl.DataFrame):
     """
     Dataset inherits from Polars DataFrame for its rich display, ingestion, and wrangling capabilities.
@@ -154,15 +155,35 @@ class Dataset(pl.DataFrame):
             print("Cannot register Dataset on Nominal - Dataset.s3_path is not set")
             return
 
-        print("\nRegistering [bold green]{0}[/bold green] on\n[link]{1}/data-sources?sidebar=allDatasets[/link]\n".format(self.filename, get_app_base_url()))
+        print(
+            "\nRegistering [bold green]{0}[/bold green] on\n[link]{1}/data-sources?sidebar=allDatasets[/link]\n".format(
+                self.filename, get_app_base_url()
+            )
+        )
 
         TOKEN = kr.get_password("Nominal API", "python-client")
 
-        ingest = create_service(IngestService, get_base_url())
-        ingest_request = TriggerIngest(
-            labels=[], properties={}, source=IngestSource(S3IngestSource(self.s3_path)), dataset_name=self.filename
+        # ingest = create_service(IngestService, get_base_url())
+        # ingest_request = TriggerIngest(
+        #    labels=[], properties={}, source=IngestSource(S3IngestSource(self.s3_path)), dataset_name=self.filename
+        # )
+        # resp = ingest.trigger_ingest(TOKEN, ingest_request)
+
+        payload = dict(
+            url=ENDPOINTS["dataset_upload"].format(get_base_url()),
+            json=PayloadFactory.dataset_trigger_ingest(self),
+            headers=self.__get_headers(),
         )
-        resp = ingest.trigger_ingest(TOKEN, ingest_request)
+
+        resp = requests.post(url=payload["url"], json=payload["json"], headers=payload["headers"])
+
+        if resp.status_code == 200:
+            self.rid = resp.json()["datasetRid"]
+            self.dataset_link = "{0}/data-sources/{1}".format(get_app_base_url(), self.rid)
+            print("\nDataset RID: ", self.rid)
+            print("\nDataset Link: ", "[link={0}]{0}[/link]\n".format(self.dataset_link))
+        else:
+            print("\n{0} error registering Dataset on Nominal:\n".format(resp.status_code), resp.json())
 
         return resp
 
@@ -345,8 +366,8 @@ class Run:
         if rid is not None:
             # Attempt to retrieve run by its resource ID (rid)
             resp = requests.get(headers=self.__get_headers(), url=ENDPOINTS["run_retrieve"].format(get_base_url(), rid))
-            if 'errorCode' in resp:
-                if resp['errorCode'] == 'NOT_FOUND':
+            if "errorCode" in resp:
+                if resp["errorCode"] == "NOT_FOUND":
                     self.__run_download_error_blurb(rid, resp)
             elif resp.status_code == 401:
                 _auth_help_blurb()
@@ -435,7 +456,7 @@ class Run:
         """
         Compare local and cloud Run instances
         """
-        if bool(self.cloud) is False: # self.cloud = {}
+        if bool(self.cloud) is False:  # self.cloud = {}
             print("No Run instance has been downloaded from the cloud")
             print("Download a run with [code]r = Run(rid = RID)[/code]")
             return
