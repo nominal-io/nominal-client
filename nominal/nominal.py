@@ -10,55 +10,10 @@ import jsondiff as jd
 from jsondiff import diff
 from math import floor
 from rich import print
-from .utils import create_service, PayloadFactory, default_filename
+
+from .cloud import get_app_base_url, get_base_url, _auth_help_blurb, ENDPOINTS
+from ._utils import create_service, PayloadFactory, default_filename
 from ._api.ingest.ingest_api import IngestService, TriggerIngest, IngestSource, S3IngestSource
-
-ENDPOINTS = dict(
-    file_upload="{}/upload/v1/upload-file?fileName={}",
-    dataset_upload="{}/ingest/v1/trigger-ingest-v2",
-    run_upload="{}/ingest/v1/ingest-run",
-    run_retrieve="{}/scout/v1/run/{}",  # GET
-    run_update="{}/scout/v1/run/{}",  # PUT
-)
-
-BASE_URLS = dict(
-    STAGING="https://api-staging.gov.nominal.io/api",
-    PROD="https://api.gov.nominal.io/api",
-)
-
-
-def set_base_url(base_url: str = "STAGING"):
-    """
-    Usage:
-    import nominal as nm
-    nm.set_base_url('PROD')
-
-    TODO
-    ----
-    Default is staging. Change to prod after beta period.
-    """
-    if base_url in BASE_URLS.keys():
-        os.environ["NOMINAL_BASE_URL"] = BASE_URLS[base_url]
-    else:
-        os.environ["NOMINAL_BASE_URL"] = base_url
-
-
-def get_base_url():
-    if "NOMINAL_BASE_URL" not in os.environ:
-        set_base_url()  # set to default
-    return os.environ["NOMINAL_BASE_URL"]
-
-
-def get_app_base_url():
-    """
-    eg, https://app-staging.gov.nominal.io
-
-    TODO
-    ----
-    This won't work for custom domains
-    """
-    return get_base_url().rstrip("/api").replace("api", "app")
-
 
 class Dataset(pl.DataFrame):
     """
@@ -107,7 +62,6 @@ class Dataset(pl.DataFrame):
         description: str = "",
     ):
         if df is not None:
-            print("DataFrame received")
             dft = Ingest.set_ts_index(df)
 
         super().__init__(dft)
@@ -170,7 +124,9 @@ class Dataset(pl.DataFrame):
 
         if resp.status_code == 200:
             self.s3_path = resp.text.strip('"')
-            print("\nUpload to S3 successful.\nS3 bucket:\n", self.s3_path)
+            print("\nUpload to S3 successful. S3 bucket:", self.s3_path)
+        elif resp.status_code == 401:
+            _auth_help_blurb()
         else:
             print("\n{0} error during upload to S3:\n".format(resp.status_code), resp.json())
 
@@ -198,7 +154,7 @@ class Dataset(pl.DataFrame):
             print("Cannot register Dataset on Nominal - Dataset.s3_path is not set")
             return
 
-        print("\nRegistering [bold green]{0}[/bold green] on {1}".format(self.filename, get_base_url()))
+        print("\nRegistering [bold green]{0}[/bold green] on\n[link]{1}/data-sources?sidebar=allDatasets[/link]\n".format(self.filename, get_app_base_url()))
 
         TOKEN = kr.get_password("Nominal API", "python-client")
 
@@ -207,8 +163,6 @@ class Dataset(pl.DataFrame):
             labels=[], properties={}, source=IngestSource(S3IngestSource(self.s3_path)), dataset_name=self.filename
         )
         resp = ingest.trigger_ingest(TOKEN, ingest_request)
-
-        print("Triggered file ingest: ", resp)
 
         return resp
 
@@ -380,18 +334,23 @@ class Run:
         description: str = "",
         start: str = None,
         end: str = None,
-        cloud: dict = {},
     ):
         if title is None:
             self.title = default_filename("RUN")
         self.description = description
         self.properties = properties
         self._domain = {"START": {}, "END": {}}
+        self.cloud = {}
 
         if rid is not None:
             # Attempt to retrieve run by its resource ID (rid)
             resp = requests.get(headers=self.__get_headers(), url=ENDPOINTS["run_retrieve"].format(get_base_url(), rid))
-            if resp.status_code == 200:
+            if 'errorCode' in resp:
+                if resp['errorCode'] == 'NOT_FOUND':
+                    self.__run_download_error_blurb(rid, resp)
+            elif resp.status_code == 401:
+                _auth_help_blurb()
+            elif resp.status_code == 200:
                 self.cloud = resp.json()
                 print("Cloud response:")
                 print(self.cloud)
@@ -411,9 +370,8 @@ class Run:
                         self._domain["END"]["SECONDS"] = self.cloud["endTime"]["secondsSinceEpoch"]
                         self._domain["END"]["NANOS"] = self.cloud["endTime"]["offsetNanoseconds"]
             else:
-                print("There was an error retrieving Run with rid = {0}".format(rid))
-                print("Make sure that your rid is correct and from [link]{0}[/link]".format(get_app_base_url()))
-                print(resp.json())
+                self.__run_download_error_blurb(rid, resp)
+            # Run has been downloaded from cloud - no need
             return
 
         if path is not None:
@@ -438,6 +396,11 @@ class Run:
         self.__set_run_datetime_boundary("START", start)
         self.__set_run_datetime_boundary("END", end)
         self.__set_run_unix_timestamp_domain()
+
+    def __run_download_error_blurb(self, rid, resp):
+        print("There was an error retrieving Run with rid = {0}".format(rid))
+        print("Make sure that your rid is correct and from [link]{0}[/link]".format(get_app_base_url()))
+        print(resp.json())
 
     def __set_run_datetime_boundary(self, key: str, str_datetime: any):
         """
@@ -472,7 +435,7 @@ class Run:
         """
         Compare local and cloud Run instances
         """
-        if self.cloud is None:
+        if bool(self.cloud) is False: # self.cloud = {}
             print("No Run instance has been downloaded from the cloud")
             print("Download a run with [code]r = Run(rid = RID)[/code]")
             return
@@ -527,6 +490,8 @@ class Run:
             self.cloud = resp.json()
             print("\nUpdated Run on Nominal:")
             print("[link]{0}/runs/{1}[/link]".format(get_app_base_url(), self.cloud["runNumber"]))
+        elif resp.status_code == 401:
+            _auth_help_blurb()
         else:
             print("\n{0} error updating Run on Nominal:\n".format(resp.status_code), resp.json())
 
@@ -560,7 +525,10 @@ class Run:
 
         if resp.status_code == 200:
             self.rid = resp.json()["runRid"]
-            print("\nRun RID: ", self.rid)
+            print("\nLink to Run:")
+            print("[link]{0}/runs/[/link]".format(get_app_base_url()))
+        elif resp.status_code == 401:
+            _auth_help_blurb()
         else:
             print("\n{0} error registering Run on Nominal:\n".format(resp.status_code), resp.json())
 

@@ -6,11 +6,11 @@ from .nominal import (
 
 # Allows:
 # import nominal as nm
-# nm.auth ...
+# nm.cloud ...
 # nm.data ...
 from . import data as data
-from . import auth as auth
+from . import cloud as cloud
 
 import os
 
-os.environ["NOMINAL_BASE_URL"] = "https://api-staging.gov.nominal.io/api"
+os.environ["NOMINAL_BASE_URL"] = "https://api.gov.nominal.io/api"
