@@ -20,8 +20,9 @@ def penguins():
 
 
 def _get_dataset(d, ext=".csv"):
-    import polars
     import os
+
+    import polars
 
     return polars.read_csv(
         os.path.join(

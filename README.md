@@ -65,3 +65,24 @@ r.diff()
 ### Apply a Check to a Run
 
 TODO
+
+## Development
+
+Install the following VSCode extensions:
+
+- Ruff
+- isort
+
+And add the following lines to `User Settings (JSON)`:
+
+```
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit",
+        },
+    },
+```
+
+To make sure your code is linted properly on save.

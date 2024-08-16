@@ -9,9 +9,9 @@ nm.cloud.set_base_url('STAGING')
 """
 
 import os
+
 import keyring as kr
 from rich import print
-
 
 ENDPOINTS = dict(
     file_upload="{}/upload/v1/upload-file?fileName={}",

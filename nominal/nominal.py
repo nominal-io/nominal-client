@@ -13,14 +13,14 @@ from jsondiff import diff
 from rich import print
 
 from ._api.ingest.ingest_api import (
+    AbsoluteTimestamp,
+    CustomTimestamp,
     IngestService,
     IngestSource,
     S3IngestSource,
     TimestampMetadata,
     TimestampType,
     TriggerIngest,
-    AbsoluteTimestamp,
-    CustomTimestamp,
 )
 from ._utils import PayloadFactory, create_service, default_filename
 from .cloud import ENDPOINTS, _auth_help_blurb, get_app_base_url, get_base_url
@@ -180,9 +180,12 @@ class Dataset(pl.DataFrame):
             source=IngestSource(S3IngestSource(self.s3_path)),
             dataset_name=self.filename,
             dataset_description=self.description,
-            timestamp_metadata=TimestampMetadata("_python_datetime", TimestampType(
-                absolute=AbsoluteTimestamp(custom_format=CustomTimestamp("yyyy-MM-dd['T']HH:mm:ss.SSSSSS", 0))
-            )),
+            timestamp_metadata=TimestampMetadata(
+                "_python_datetime",
+                TimestampType(
+                    absolute=AbsoluteTimestamp(custom_format=CustomTimestamp("yyyy-MM-dd['T']HH:mm:ss.SSSSSS", 0))
+                ),
+            ),
         )
         resp = ingest.trigger_ingest(TOKEN, ingest_request)
 
