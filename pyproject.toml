@@ -11,7 +11,7 @@ packages = [
 include = ["README.md", "LICENSE"]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.12"
 requests = "^2.32.3"
 python-dateutil = "^2.9.0.post0"
 jsondiff = "^2.2.0"
@@ -21,7 +21,8 @@ rich = "^13.7.1"
 conjure-python-client = ">=2.8.0,<3"
 
 [tool.poetry.dev-dependencies]
-ruff = "^ 0.4.2"
+isort = "^5.13.2"
+ruff = "^0.4.2"
 
 [tool.poetry.group.dev.dependencies]
 jupyterlab = "^4.2.4"
@@ -40,3 +41,8 @@ exclude = ["nominal/_api/*", "example.ipynb"]
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = ["COM812", "ISC001", "UP", "D", "ANN"]
+
+[tool.isort]
+profile = "black"
+skip = ["nominal/_api"]
+src_paths = ["nominal"]

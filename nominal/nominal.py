@@ -13,14 +13,14 @@ from jsondiff import diff
 from rich import print
 
 from ._api.ingest.ingest_api import (
+    AbsoluteTimestamp,
+    CustomTimestamp,
     IngestService,
     IngestSource,
     S3IngestSource,
     TimestampMetadata,
     TimestampType,
     TriggerIngest,
-    AbsoluteTimestamp,
-    CustomTimestamp,
 )
 from ._utils import PayloadFactory, create_service, default_filename
 from .cloud import ENDPOINTS, _auth_help_blurb, get_app_base_url, get_base_url

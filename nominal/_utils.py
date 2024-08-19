@@ -2,13 +2,14 @@
 Internal utility functions for Nominal Python client
 """
 
-import requests
-from requests.utils import CaseInsensitiveDict
-from conjure_python_client import ServiceConfiguration
 import random
 import string
 from datetime import datetime
-from typing import TypeVar, Type
+from typing import Type, TypeVar
+
+import requests
+from conjure_python_client import ServiceConfiguration
+from requests.utils import CaseInsensitiveDict
 
 
 def default_filename(nominal_file_class):
