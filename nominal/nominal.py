@@ -180,9 +180,12 @@ class Dataset(pl.DataFrame):
             source=IngestSource(S3IngestSource(self.s3_path)),
             dataset_name=self.filename,
             dataset_description=self.description,
-            timestamp_metadata=TimestampMetadata("_python_datetime", TimestampType(
-                absolute=AbsoluteTimestamp(custom_format=CustomTimestamp("yyyy-MM-dd['T']HH:mm:ss.SSSSSS", 0))
-            )),
+            timestamp_metadata=TimestampMetadata(
+                "_python_datetime",
+                TimestampType(
+                    absolute=AbsoluteTimestamp(custom_format=CustomTimestamp("yyyy-MM-dd['T']HH:mm:ss.SSSSSS", 0))
+                ),
+            ),
         )
         resp = ingest.trigger_ingest(TOKEN, ingest_request)
 
