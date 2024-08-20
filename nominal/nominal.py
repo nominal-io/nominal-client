@@ -237,11 +237,8 @@ class Ingest:
         Sets a timestamp index for the provided DataFrame. This method adds internal columns for the datetime in Python format,
         ISO 8601 format, and Unix timestamp format.
 
-    read_csv(path, ts_col=None)
-        Reads a CSV file from the specified path and returns a `Dataset` object with a timestamp index set.
-
-    read_parquet(path, ts_col=None)
-        Reads a Parquet file from the specified path and returns a `Dataset` object with a timestamp index set.
+    read(path, ts_col=None)
+        Reads a file from the specified path and returns a `Dataset` object with a timestamp index set.
 
     Notes
     -----
@@ -296,15 +293,28 @@ class Ingest:
 
         return df
 
-    def read_csv(self, path: str, ts_col: str = None) -> Dataset:
-        dfc = pl.read_csv(path)
-        dft = self.set_ts_index(dfc, ts_col)
-        return Dataset(dft, filename=Path.name(path))
+    def read(self, path: str, ts_col: Optional[str] = None, relative: bool = False) -> Dataset:
 
-    def read_parquet(self, path: str, ts_col: str = None) -> Dataset:
-        dfp = pl.read_parquet(path)
-        dft = self.set_ts_index(dfp, ts_col)
-        return Dataset(dft, filename=Path.name(path))
+        extension = Path(path).suffix
+
+        match extension:
+            case "csv":
+                df = pl.read_csv(path)
+            case "parquet":
+                df = pl.read_parquet(path)
+            case _:
+                df = pl.read_csv(path)
+
+        if relative is True:
+            if ts_col in df.columns:
+                dft = df.sort(ts_col) # Nominal datasets must be sorted by their time series index
+            else:
+                print("Please specify a relative timestamp column with [code]ts_col[/code]")
+                return None
+        else:
+            dft = self.set_ts_index(df, ts_col)
+
+        return Dataset(dft, filename=Path(path).name, ts_col=ts_col, relative=relative)
 
 
 class Run:
