@@ -17,6 +17,7 @@ from ._api.ingest.ingest_api import (
     CustomTimestamp,
     IngestService,
     IngestSource,
+    RelativeTimestamp,
     S3IngestSource,
     TimestampMetadata,
     TimestampType,
@@ -71,9 +72,19 @@ class Dataset(pl.DataFrame):
         rid: str = None,
         properties: dict = dict(),
         description: str = "",
+        ts_col: str = None,
+        relative: bool = False,
+        relative_units: str = "SECONDS"
     ):
         if df is not None:
-            dft = Ingest.set_ts_index(df)
+            if relative is True:
+                if ts_col in df.columns:
+                    dft = df.sort(ts_col) # Nominal datasets must be sorted by their time series index
+                else:
+                    print("Please specify a relative timestamp column with [code]ts_col[/code]")
+                    return
+            else:
+                dft = Ingest.set_ts_index(df)
 
         super().__init__(dft)
 
@@ -83,6 +94,9 @@ class Dataset(pl.DataFrame):
         self.description = description
         self.rid = rid
         self.dataset_link = ""
+        self.ts_col = ts_col
+        self.relative = relative
+        self.relative_units = relative_units
 
     def __get_headers(self, content_type: str = "json") -> dict:
         TOKEN = kr.get_password("Nominal API", "python-client")
@@ -156,14 +170,13 @@ class Dataset(pl.DataFrame):
 
         s3_upload_resp = self.__upload_file(overwrite)
 
-        if isinstance(s3_upload_resp, dict):
-            if s3_upload_resp.status_code != 200:
-                print("Aborting Dataset registration")
-                return
+        if isinstance(s3_upload_resp, dict) and s3_upload_resp.status_code != 200:
+            print("Aborting Dataset registration")
+            return None
 
         if self.s3_path is None:
             print("Cannot register Dataset on Nominal - Dataset.s3_path is not set")
-            return
+            return None
 
         print(
             "\nRegistering [bold green]{0}[/bold green] on\n[link]{1}/data-sources?sidebar=allDatasets[/link]\n".format(
@@ -173,6 +186,21 @@ class Dataset(pl.DataFrame):
 
         TOKEN = kr.get_password("Nominal API", "python-client")
 
+        nominal_ts_metadata = TimestampMetadata(
+                "_python_datetime",
+                TimestampType(
+                    absolute=AbsoluteTimestamp(custom_format=CustomTimestamp("yyyy-MM-dd['T']HH:mm:ss.SSSSSS", 0))
+                ),
+            )
+
+        if self.relative:
+            nominal_ts_metadata = TimestampMetadata(
+                self.ts_col,
+                TimestampType(
+                    relative=RelativeTimestamp(time_unit=self.relative_units)
+                ),
+            )
+
         ingest = create_service(IngestService, get_base_url())
         ingest_request = TriggerIngest(
             labels=[],
@@ -180,12 +208,7 @@ class Dataset(pl.DataFrame):
             source=IngestSource(S3IngestSource(self.s3_path)),
             dataset_name=self.filename,
             dataset_description=self.description,
-            timestamp_metadata=TimestampMetadata(
-                "_python_datetime",
-                TimestampType(
-                    absolute=AbsoluteTimestamp(custom_format=CustomTimestamp("yyyy-MM-dd['T']HH:mm:ss.SSSSSS", 0))
-                ),
-            ),
+            timestamp_metadata=nominal_ts_metadata,
         )
         resp = ingest.trigger_ingest(TOKEN, ingest_request)
 
@@ -218,7 +241,6 @@ class Ingest:
 
     Notes
     -----
-    TODO: Consider using Ibis for database source connectivity.
     TODO: Implement video ingest functionality.
     """
 
