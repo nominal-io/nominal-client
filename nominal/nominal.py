@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import copy
 import io
 import os
 from datetime import datetime
 from math import floor
+from pathlib import Path
+from typing import Optional
 
 import jsondiff as jd
 import keyring as kr
@@ -68,9 +72,9 @@ class Dataset(pl.DataFrame):
     def __init__(
         self,
         df: pl.DataFrame = None,
-        filename: str = None,
-        rid: str = None,
-        properties: dict = dict(),
+        filename: Optional[str] = None,
+        rid: Optional[str] = None,
+        properties: Optional[dict] = None,
         description: str = "",
         ts_col: str = None,
         relative: bool = False,
@@ -245,7 +249,7 @@ class Ingest:
     """
 
     @staticmethod
-    def set_ts_index(df: pl.DataFrame, ts_col: str = None) -> pl.DataFrame:
+    def set_ts_index(df: pl.DataFrame, ts_col: Optional[str] = None) -> pl.DataFrame:
         """
         Sets a timestamp index for the provided DataFrame.
 
@@ -295,12 +299,12 @@ class Ingest:
     def read_csv(self, path: str, ts_col: str = None) -> Dataset:
         dfc = pl.read_csv(path)
         dft = self.set_ts_index(dfc, ts_col)
-        return Dataset(dft, filename=os.path.basename(path))
+        return Dataset(dft, filename=Path.name(path))
 
     def read_parquet(self, path: str, ts_col: str = None) -> Dataset:
         dfp = pl.read_parquet(path)
         dft = self.set_ts_index(dfp, ts_col)
-        return Dataset(dft, filename=os.path.basename(path))
+        return Dataset(dft, filename=Path.name(path))
 
 
 class Run:
@@ -377,15 +381,15 @@ class Run:
 
     def __init__(
         self,
-        rid: str = None,
-        path: str = None,
-        paths: list[str] = [],
-        datasets: list[Dataset] = [],
-        properties: dict = {},
-        title: str = None,
-        description: str = "",
-        start: str = None,
-        end: str = None,
+        rid: Optional[str] = None,
+        path: Optional[str] = None,
+        paths: Optional[list[str]] = None,
+        datasets: Optional[list[Dataset]] = None,
+        properties: Optional[dict] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = "",
+        start: Optional[str] = None,
+        end: Optional[str] = None,
     ):
         if title is None:
             self.title = default_filename("RUN")
