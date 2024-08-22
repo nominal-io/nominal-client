@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nominal"
-version = "0.0.32"
+version = "0.0.34"
 description = "Automate Nominal workflows in Python"
 authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>"]
 readme = "README.md"
@@ -11,7 +11,7 @@ packages = [
 include = ["README.md", "LICENSE"]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.8"
 requests = "^2.32.3"
 python-dateutil = "^2.9.0.post0"
 jsondiff = "^2.2.0"
