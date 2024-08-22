@@ -271,15 +271,16 @@ class Ingest:
                     if type(dt) is datetime:
                         ts_col = col
                         break
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.exception(exc)
 
         if ts_col is not None:
             try:
                 df.drop_in_place("_python_datetime")
                 df.drop_in_place("_unix_timestamp")
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.exception(exc)
+
             datetime_series = pl.Series("_python_datetime", [parser.parse(dt_str) for dt_str in df[ts_col]])
             unix_series = pl.Series("_unix_timestamp", [dt.timestamp() for dt in datetime_series])
             df.insert_column(-1, datetime_series)
@@ -294,13 +295,12 @@ class Ingest:
     def read(self, path: str, ts_col: Optional[str] = None, relative: bool = False) -> Dataset:
         extension = Path(path).suffix
 
-        match extension:
-            case "csv":
-                df = pl.read_csv(path)
-            case "parquet":
-                df = pl.read_parquet(path)
-            case _:
-                df = pl.read_csv(path)
+        if extension == "csv":
+            df = pl.read_csv(path)
+        elif extension == "parquet":
+            df = pl.read_parquet(path)
+        else:
+            df = pl.read_csv(path)
 
         if relative is True:
             if ts_col in df.columns:
