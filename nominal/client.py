@@ -24,94 +24,120 @@ TOKEN = kr.get_password("Nominal API", "python-client")
 # wrappers for conjure service apis
 
 from _api.scout_catalog import CatalogService
+
 catalog = create_service(CatalogService, get_base_url())
 
 from _api.timeseries_logicalseries import LogicalSeriesService
+
 logical_series = create_service(LogicalSeriesService, get_base_url())
 
 from _api.timeseries_seriescache import SeriesCacheService
+
 series_cache = create_service(SeriesCacheService, get_base_url())
 
 from _api.scout import RunService
+
 runs = create_service(RunService, get_base_url())
+
 
 def _create_dataset(filename: str, bucket: str, key: str, ts_name: str):
     from _api.scout_catalog import (
-        TimestampType, CreateDataset, Handle, S3Handle, DatasetOriginMetadata, TimestampMetadata, AbsoluteTimestamp, Iso8601Timestamp
+        TimestampType,
+        CreateDataset,
+        Handle,
+        S3Handle,
+        DatasetOriginMetadata,
+        TimestampMetadata,
+        AbsoluteTimestamp,
+        Iso8601Timestamp,
     )
-    return catalog.create_or_update_dataset(TOKEN, CreateDataset(
-        name=filename,
-        handle=Handle(s3=S3Handle(bucket, key)),
-        labels=[],
-        metadata={},
-        origin_metadata=DatasetOriginMetadata(
-            timestamp_metadata=TimestampMetadata(
-                series_name=ts_name,
-                timestamp_type=TimestampType(absolute=AbsoluteTimestamp(iso8601=Iso8601Timestamp()))
-            )
+
+    return catalog.create_or_update_dataset(
+        TOKEN,
+        CreateDataset(
+            name=filename,
+            handle=Handle(s3=S3Handle(bucket, key)),
+            labels=[],
+            metadata={},
+            origin_metadata=DatasetOriginMetadata(
+                timestamp_metadata=TimestampMetadata(
+                    series_name=ts_name,
+                    timestamp_type=TimestampType(absolute=AbsoluteTimestamp(iso8601=Iso8601Timestamp())),
+                )
+            ),
+            properties={},
         ),
-        properties={})
     )
 
 
 from _api.timeseries_logicalseries_api import BatchCreateLogicalSeriesRequest, CreateLogicalSeries
 from _api.timeseries_seriescache_api import CachedSeries, CreateCachedSeriesRequest
+
+
 def _create_logical_series(requests: list[CreateLogicalSeries]):
-    return logical_series.batch_create_logical_series(
-        TOKEN,
-        BatchCreateLogicalSeriesRequest(requests=requests))
+    return logical_series.batch_create_logical_series(TOKEN, BatchCreateLogicalSeriesRequest(requests=requests))
+
 
 def _create_run(name: str, datasets: list["Dataset"], start_time: int, end_time: int):
-    from _api.scout_run_api import (
-        CreateRunRequest, UtcTimestamp,
-        DataSourceRefName, CreateRunDataSource,
-        DataSource
-    )
+    from _api.scout_run_api import CreateRunRequest, UtcTimestamp, DataSourceRefName, CreateRunDataSource, DataSource
+
     data_sources = [
-        (ds.filename, CreateRunDataSource(
-            data_source=DataSource(dataset=ds.dataset_rid),
-            series_tags={}
-        ))
+        (ds.filename, CreateRunDataSource(data_source=DataSource(dataset=ds.dataset_rid), series_tags={}))
         for ds in datasets
     ]
-    return runs.create_run(TOKEN, CreateRunRequest(
-        title=name,
-        start_time=UtcTimestamp(seconds_since_epoch=start_time),
-        end_time=UtcTimestamp(seconds_since_epoch=end_time),
-        data_sources=dict(data_sources),
-        attachments=[],
-        description="",
-        properties={},
-        labels=[],
-        links=[]
-    ))
+    return runs.create_run(
+        TOKEN,
+        CreateRunRequest(
+            title=name,
+            start_time=UtcTimestamp(seconds_since_epoch=start_time),
+            end_time=UtcTimestamp(seconds_since_epoch=end_time),
+            data_sources=dict(data_sources),
+            attachments=[],
+            description="",
+            properties={},
+            labels=[],
+            links=[],
+        ),
+    )
+
 
 def _complete_ingest(dataset_rid: str, start_epoch: int, end_epoch: int, logical_series):
     from _api.scout_catalog import UpdateBoundsRequest, Bounds, UpdateIngestStatusV2, IngestStatusV2, SuccessResult
     from _api.datasource import Timestamp as ds_Timestamp, TimestampType as ds_TimestampType
     from _api.timeseries_seriescache_api import Timestamp as cache_Timestamp
+
     print("updating bounds")
-    catalog.update_bounds(TOKEN, UpdateBoundsRequest(bounds=Bounds(
-        start=ds_Timestamp(seconds=start_epoch, nanos=0),
-        end=ds_Timestamp(seconds=end_epoch, nanos=0),
-        type=ds_TimestampType.ABSOLUTE
-    )), dataset_rid)
+    catalog.update_bounds(
+        TOKEN,
+        UpdateBoundsRequest(
+            bounds=Bounds(
+                start=ds_Timestamp(seconds=start_epoch, nanos=0),
+                end=ds_Timestamp(seconds=end_epoch, nanos=0),
+                type=ds_TimestampType.ABSOLUTE,
+            )
+        ),
+        dataset_rid,
+    )
 
     from _api.timeseries_seriescache_api import CreateCachedSeriesRequest, CachedSeries
+
     cache_reqs = []
     for ser in logical_series.responses:
-        cache_reqs.append(CachedSeries(
-            logical_series_rid=ser.rid,
-            start_timestamp=cache_Timestamp(seconds=start_epoch, nanos=0),
-            end_timestamp=cache_Timestamp(seconds=end_epoch, nanos=0),
-            series_data_type=ser.series_data_type
-        ))
+        cache_reqs.append(
+            CachedSeries(
+                logical_series_rid=ser.rid,
+                start_timestamp=cache_Timestamp(seconds=start_epoch, nanos=0),
+                end_timestamp=cache_Timestamp(seconds=end_epoch, nanos=0),
+                series_data_type=ser.series_data_type,
+            )
+        )
     print("creating cached series")
     series_cache.create_cached_series(TOKEN, CreateCachedSeriesRequest(series_to_cache=cache_reqs))
     print("updating ingest status")
-    catalog.update_dataset_ingest_status_v2(TOKEN, UpdateIngestStatusV2(
-        status=IngestStatusV2(success=SuccessResult()),dataset_uuid=dataset_rid.split(".")[-1]
-    ))
+    catalog.update_dataset_ingest_status_v2(
+        TOKEN,
+        UpdateIngestStatusV2(status=IngestStatusV2(success=SuccessResult()), dataset_uuid=dataset_rid.split(".")[-1]),
+    )
 
 
 class Dataset:
@@ -143,13 +169,13 @@ class Dataset:
             if col == self.ts_col:
                 continue
             series_id = str(uuid4())
-            tbl = 'dataset_string'
-            func = 'toString'
-            col_type = 'string'
+            tbl = "dataset_string"
+            func = "toString"
+            col_type = "string"
             if self.df.collect_schema().get(col).is_numeric():
-                tbl = 'dataset_float64'
-                func = 'toFloat64'
-                col_type = 'float64'
+                tbl = "dataset_float64"
+                func = "toFloat64"
+                col_type = "float64"
 
             self.col_series[col] = (series_id, col_type)
 
@@ -170,51 +196,50 @@ class Dataset:
         if self.uploaded:
             print(f"dataset {self.dataset_rid} already created", flush=True)
         self._upload_file_s3()
-        if not hasattr(self, 'dataset_rid'):
+        if not hasattr(self, "dataset_rid"):
             s3_split = self.s3_path.replace("s3://", "").split("/")
-            dataset = _create_dataset(
-                self.filename,
-                s3_split[0],
-                "/".join(s3_split[1:]),
-                self.ts_col)
+            dataset = _create_dataset(self.filename, s3_split[0], "/".join(s3_split[1:]), self.ts_col)
             self.dataset_rid = dataset.rid
 
-        print(f'dataset rid: {self.dataset_rid}')
+        print(f"dataset rid: {self.dataset_rid}")
 
-        if not hasattr(self, 'logical_series'):
+        if not hasattr(self, "logical_series"):
             print("creating logical series")
+
             def _req(idx, series_id, series_name, series_type):
                 from _api.timeseries_logicalseries_api import (
-                    SeriesDataType, Channel, Locator, CsvLocatorV2, DataSourceRid
+                    SeriesDataType,
+                    Channel,
+                    Locator,
+                    CsvLocatorV2,
+                    DataSourceRid,
                 )
+
                 t = SeriesDataType.DOUBLE
                 if series_type == "string":
                     t = SeriesDataType.STRING
 
                 return CreateLogicalSeries(
                     channel=Channel(series_name),
-                    locator=Locator(
-                        csv_v2=CsvLocatorV2(
-                            s3_path=self.s3_path,
-                            index=idx,
-                            time_index=0
-                        )),
+                    locator=Locator(csv_v2=CsvLocatorV2(s3_path=self.s3_path, index=idx, time_index=0)),
                     id_locator=series_id,
                     data_source_rid=DataSourceRid(self.dataset_rid),
-                    series_data_type=t)
+                    series_data_type=t,
+                )
+
             i = 1
             reqs = []
-            for (series_name, (series_id, series_type)) in ds.col_series.items():
+            for series_name, (series_id, series_type) in ds.col_series.items():
                 reqs.append(_req(i, series_id, series_name, series_type))
                 i = i + 1
             series = _create_logical_series(reqs)
             print("created logical series")
             self.logical_series = series
 
-        print(f'created {len(self.logical_series.responses)} series', flush=True)
+        print(f"created {len(self.logical_series.responses)} series", flush=True)
 
         # TODO: replace this with safer ingest / insert workflow
-        if not hasattr(self, 'remote_insert'):
+        if not hasattr(self, "remote_insert"):
             for series_type in ["string", "float64"]:
                 remote_func = remote_tbl_fmt % series_type
                 print(f"inserting all {series_type} columns into remote ch")
@@ -237,19 +262,19 @@ class Dataset:
     @cache
     def _bounds(self):
         bounds = self.df.select(
-                pl.min("source_time").dt.epoch("s").alias("min"),
-                pl.max("source_time").dt.epoch("s").alias("max")).collect()
+            pl.min("source_time").dt.epoch("s").alias("min"), pl.max("source_time").dt.epoch("s").alias("max")
+        ).collect()
         return (bounds["min"].item(), bounds["max"].item())
 
     # todo - merge this with the existing _upload_s3 function, it's mostly copy-pasted wholesale
     def _upload_file_s3(self):
-        if hasattr(self, 's3_path'):
+        if hasattr(self, "s3_path"):
             print(f"already uploaded dataset {self.csv_path} to {self.s3_path}")
             return
 
         self.filename = os.path.basename(self.csv_path)
 
-        csv_file = open(self.csv_path, 'rb')
+        csv_file = open(self.csv_path, "rb")
         csv_buffer_size_bytes = os.stat(self.csv_path).st_size
 
         print(
@@ -263,10 +288,7 @@ class Dataset:
             url=f"{get_base_url}/upload/v1/upload-file?fileName={self.filename}",
             data=csv_file.read(),
             params={"sizeBytes": csv_buffer_size_bytes},
-            headers={
-                "Authorization": f"Bearer {TOKEN}",
-                "Content-Type": "application/octet-stream"
-            },
+            headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/octet-stream"},
         )
 
         if resp.status_code == 200:
@@ -276,7 +298,7 @@ class Dataset:
             print("\n{0} error during upload to S3:\n".format(resp.status_code), resp.json())
 
     def _init_sess(self):
-        if hasattr(self, 'sess'):
+        if hasattr(self, "sess"):
             return
         self.sess = chs.Session()
         self.sess.query("CREATE DATABASE IF NOT EXISTS nominal")
@@ -316,7 +338,7 @@ class Run:
                 return Series.from_ch(self, ds.sess, series, series_id, series_type)
 
     def sync(self):
-        if hasattr(self, 'run_rid'):
+        if hasattr(self, "run_rid"):
             return
 
         (ts_min, ts_max) = self.sources[0]._bounds()
@@ -332,14 +354,16 @@ class Run:
         print(f"created run {resp.rid}")
         self.run_rid = resp.rid
 
+
 from _api.scout_compute_api import (
     RawNumericSeriesNode,
     DerivativeSeriesNode,
     ScaleSeriesNode,
     UnaryArithmeticSeriesNode,
     UnaryArithmeticOperation,
-    TimeUnit
+    TimeUnit,
 )
+
 
 class Series:
     @staticmethod
@@ -373,8 +397,8 @@ class Series:
 
     def preview(self):
         df = self.pandas()
-        plt.figure(figsize=(10,6))
-        plt.plot(df['timestamp'], df['value'], marker='o')
+        plt.figure(figsize=(10, 6))
+        plt.plot(df["timestamp"], df["value"], marker="o")
 
     def derivative(self, time_unit: TimeUnit = TimeUnit.SECONDS):
         conversion_factors = {
@@ -426,9 +450,9 @@ class Chart:
         plt.figure(figsize=(10, 6))
         for ser in self.series:
             df = ser.pandas()
-            plt.plot(df['timestamp'], df['value'], label=ser.name)
+            plt.plot(df["timestamp"], df["value"], label=ser.name)
 
-        plt.xlabel('Time')
+        plt.xlabel("Time")
         plt.title(self.name)
         plt.legend()
 
@@ -438,6 +462,7 @@ class Chart:
     def sync(self):
         for s in self.series:
             s.sync()
+
 
 class Workbook:
     def __init__(self, name, *charts):
@@ -454,4 +479,3 @@ class Workbook:
 
         for c in self.charts:
             c.sync()
-        
