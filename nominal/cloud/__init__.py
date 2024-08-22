@@ -46,7 +46,7 @@ def set_base_url(base_url: str = "STAGING"):
     import nominal as nm
     nm.cloud.set_base_url('PROD')
     """
-    if base_url in BASE_URLS.keys():
+    if base_url in BASE_URLS:
         os.environ["NOMINAL_BASE_URL"] = BASE_URLS[base_url]
     else:
         os.environ["NOMINAL_BASE_URL"] = base_url

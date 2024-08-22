@@ -18,12 +18,13 @@ import nominal as nm
 nm.cloud.set_token(...)
 ```
 
-Change base URL to staging for dev or a custom URL
+### API base URL is set to prod by default
 
 ```py
 import nominal as nm
-nm.cloud.set_base_url('STAGING')
-nm.cloud.set_base_url('https://nominal.acme.co')
+nm.cloud.set_base_url('PROD') # Set to 'STAGING' for development
+nm.cloud.get_base_url()
+# 'https://api.gov.nominal.io/api'
 ```
 
 ### Upload a Dataset (4 lines)
@@ -32,7 +33,7 @@ nm.cloud.set_base_url('https://nominal.acme.co')
 import nominal as nm
 from nominal import Ingest, Dataset
 dataset = Dataset(nm.data.penguins())
-# dataset = Ingest().read_csv('../path/to/your/data.csv')
+# dataset = Ingest().read('../path/to/your/data.csv')
 dataset.upload()
 ```
 
