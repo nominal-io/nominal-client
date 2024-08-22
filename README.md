@@ -32,7 +32,7 @@ nm.cloud.set_base_url('https://nominal.acme.co')
 import nominal as nm
 from nominal import Ingest, Dataset
 dataset = Dataset(nm.data.penguins())
-# dataset = Ingest().read_csv('../path/to/your/data.csv')
+# dataset = Ingest().read('../path/to/your/data.csv')
 dataset.upload()
 ```
 
