@@ -271,15 +271,15 @@ class Ingest:
                     if type(dt) is datetime:
                         ts_col = col
                         break
-                except Exception as exc:
-                    logging.exception(exc)
+                except:
+                    pass
 
         if ts_col is not None:
             try:
                 df.drop_in_place("_python_datetime")
                 df.drop_in_place("_unix_timestamp")
-            except Exception as exc:
-                logging.exception(exc)
+            except:
+                pass
 
             datetime_series = pl.Series("_python_datetime", [parser.parse(dt_str) for dt_str in df[ts_col]])
             unix_series = pl.Series("_unix_timestamp", [dt.timestamp() for dt in datetime_series])
