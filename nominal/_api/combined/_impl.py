@@ -986,37 +986,6 @@ Its name is a bit of a misnomer.
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), authentication_api_UserSettings, self._return_none_for_unknown_union_types)
 
-    def get_my_org(self, auth_header: str) -> "authentication_api_OrgV2":
-        """
-        Gets the org of the authenticated user.
-        """
-
-        _headers: Dict[str, Any] = {
-            'Accept': 'application/json',
-            'Authorization': auth_header,
-        }
-
-        _params: Dict[str, Any] = {
-        }
-
-        _path_params: Dict[str, Any] = {
-        }
-
-        _json: Any = None
-
-        _path = '/authentication/v2/org'
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request(
-            'GET',
-            self._uri + _path,
-            params=_params,
-            headers=_headers,
-            json=_json)
-
-        _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), authentication_api_OrgV2, self._return_none_for_unknown_union_types)
-
     def get_my_org_settings(self, auth_header: str) -> "authentication_api_OrgSettings":
         """
         Gets the settings of the org of the authenticated user.
@@ -1228,47 +1197,6 @@ authentication_api_OrgSettings.__qualname__ = "OrgSettings"
 authentication_api_OrgSettings.__module__ = "scout_service_api.authentication_api"
 
 
-class authentication_api_OrgV2(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'rid': ConjureFieldDefinition('rid', authentication_api_OrgRid),
-            'name': ConjureFieldDefinition('name', str),
-            'display_name': ConjureFieldDefinition('displayName', str),
-            'logo_url': ConjureFieldDefinition('logoUrl', str)
-        }
-
-    __slots__: List[str] = ['_rid', '_name', '_display_name', '_logo_url']
-
-    def __init__(self, display_name: str, logo_url: str, name: str, rid: str) -> None:
-        self._rid = rid
-        self._name = name
-        self._display_name = display_name
-        self._logo_url = logo_url
-
-    @builtins.property
-    def rid(self) -> str:
-        return self._rid
-
-    @builtins.property
-    def name(self) -> str:
-        return self._name
-
-    @builtins.property
-    def display_name(self) -> str:
-        return self._display_name
-
-    @builtins.property
-    def logo_url(self) -> str:
-        return self._logo_url
-
-
-authentication_api_OrgV2.__name__ = "OrgV2"
-authentication_api_OrgV2.__qualname__ = "OrgV2"
-authentication_api_OrgV2.__module__ = "scout_service_api.authentication_api"
-
-
 class authentication_api_SearchUsersResponse(ConjureBeanType):
 
     @builtins.classmethod
@@ -1358,18 +1286,16 @@ class authentication_api_UserV2(ConjureBeanType):
             'rid': ConjureFieldDefinition('rid', authentication_api_UserRid),
             'org_rid': ConjureFieldDefinition('orgRid', authentication_api_OrgRid),
             'email': ConjureFieldDefinition('email', str),
-            'email_verified': ConjureFieldDefinition('emailVerified', bool),
             'display_name': ConjureFieldDefinition('displayName', str),
             'avatar_url': ConjureFieldDefinition('avatarUrl', str)
         }
 
-    __slots__: List[str] = ['_rid', '_org_rid', '_email', '_email_verified', '_display_name', '_avatar_url']
+    __slots__: List[str] = ['_rid', '_org_rid', '_email', '_display_name', '_avatar_url']
 
-    def __init__(self, avatar_url: str, display_name: str, email: str, email_verified: bool, org_rid: str, rid: str) -> None:
+    def __init__(self, avatar_url: str, display_name: str, email: str, org_rid: str, rid: str) -> None:
         self._rid = rid
         self._org_rid = org_rid
         self._email = email
-        self._email_verified = email_verified
         self._display_name = display_name
         self._avatar_url = avatar_url
 
@@ -1384,10 +1310,6 @@ class authentication_api_UserV2(ConjureBeanType):
     @builtins.property
     def email(self) -> str:
         return self._email
-
-    @builtins.property
-    def email_verified(self) -> bool:
-        return self._email_verified
 
     @builtins.property
     def display_name(self) -> str:
@@ -6291,6 +6213,35 @@ scout_VersioningService.__qualname__ = "VersioningService"
 scout_VersioningService.__module__ = "scout_service_api.scout"
 
 
+class scout_asset_api_AddDataScopesToAssetRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'data_scopes': ConjureFieldDefinition('dataScopes', List[scout_asset_api_CreateAssetDataScope])
+        }
+
+    __slots__: List[str] = ['_data_scopes']
+
+    def __init__(self, data_scopes: List["scout_asset_api_CreateAssetDataScope"]) -> None:
+        self._data_scopes = data_scopes
+
+    @builtins.property
+    def data_scopes(self) -> List["scout_asset_api_CreateAssetDataScope"]:
+        """
+        The data scopes to add to the asset.
+
+Throws if any existing data scopes have data scope names that conflict with the data scope names
+in the request.
+        """
+        return self._data_scopes
+
+
+scout_asset_api_AddDataScopesToAssetRequest.__name__ = "AddDataScopesToAssetRequest"
+scout_asset_api_AddDataScopesToAssetRequest.__qualname__ = "AddDataScopesToAssetRequest"
+scout_asset_api_AddDataScopesToAssetRequest.__module__ = "scout_service_api.scout_asset_api"
+
+
 class scout_asset_api_Asset(ConjureBeanType):
 
     @builtins.classmethod
@@ -6303,7 +6254,7 @@ class scout_asset_api_Asset(ConjureBeanType):
             'labels': ConjureFieldDefinition('labels', List[scout_run_api_Label]),
             'links': ConjureFieldDefinition('links', List[scout_run_api_Link]),
             'data_scopes': ConjureFieldDefinition('dataScopes', List[scout_asset_api_AssetDataScope]),
-            'created_by': ConjureFieldDefinition('createdBy', str),
+            'created_by': ConjureFieldDefinition('createdBy', OptionalTypeWrapper[str]),
             'created_at': ConjureFieldDefinition('createdAt', str),
             'updated_at': ConjureFieldDefinition('updatedAt', str),
             'attachments': ConjureFieldDefinition('attachments', List[scout_rids_api_AttachmentRid])
@@ -6311,7 +6262,7 @@ class scout_asset_api_Asset(ConjureBeanType):
 
     __slots__: List[str] = ['_rid', '_title', '_description', '_properties', '_labels', '_links', '_data_scopes', '_created_by', '_created_at', '_updated_at', '_attachments']
 
-    def __init__(self, attachments: List[str], created_at: str, created_by: str, data_scopes: List["scout_asset_api_AssetDataScope"], labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], rid: str, title: str, updated_at: str, description: Optional[str] = None) -> None:
+    def __init__(self, attachments: List[str], created_at: str, data_scopes: List["scout_asset_api_AssetDataScope"], labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], rid: str, title: str, updated_at: str, created_by: Optional[str] = None, description: Optional[str] = None) -> None:
         self._rid = rid
         self._title = title
         self._description = description
@@ -6364,7 +6315,7 @@ To associate links with a range of time, create a time range on the asset with l
         return self._data_scopes
 
     @builtins.property
-    def created_by(self) -> str:
+    def created_by(self) -> Optional[str]:
         return self._created_by
 
     @builtins.property
@@ -6392,14 +6343,18 @@ class scout_asset_api_AssetDataScope(ConjureBeanType):
         return {
             'data_scope_name': ConjureFieldDefinition('dataScopeName', scout_asset_api_DataScopeName),
             'data_source': ConjureFieldDefinition('dataSource', scout_run_api_DataSource),
+            'offset': ConjureFieldDefinition('offset', OptionalTypeWrapper[scout_run_api_Duration]),
+            'timestamp_type': ConjureFieldDefinition('timestampType', scout_run_api_WeakTimestampType),
             'series_tags': ConjureFieldDefinition('seriesTags', Dict[scout_asset_api_SeriesTagName, scout_asset_api_SeriesTagValue])
         }
 
-    __slots__: List[str] = ['_data_scope_name', '_data_source', '_series_tags']
+    __slots__: List[str] = ['_data_scope_name', '_data_source', '_offset', '_timestamp_type', '_series_tags']
 
-    def __init__(self, data_scope_name: str, data_source: "scout_run_api_DataSource", series_tags: Dict[str, str]) -> None:
+    def __init__(self, data_scope_name: str, data_source: "scout_run_api_DataSource", series_tags: Dict[str, str], timestamp_type: "scout_run_api_WeakTimestampType", offset: Optional["scout_run_api_Duration"] = None) -> None:
         self._data_scope_name = data_scope_name
         self._data_source = data_source
+        self._offset = offset
+        self._timestamp_type = timestamp_type
         self._series_tags = series_tags
 
     @builtins.property
@@ -6412,6 +6367,14 @@ class scout_asset_api_AssetDataScope(ConjureBeanType):
     @builtins.property
     def data_source(self) -> "scout_run_api_DataSource":
         return self._data_source
+
+    @builtins.property
+    def offset(self) -> Optional["scout_run_api_Duration"]:
+        return self._offset
+
+    @builtins.property
+    def timestamp_type(self) -> "scout_run_api_WeakTimestampType":
+        return self._timestamp_type
 
     @builtins.property
     def series_tags(self) -> Dict[str, str]:
@@ -6479,23 +6442,34 @@ class scout_asset_api_CreateAssetDataScope(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
+            'data_scope_name': ConjureFieldDefinition('dataScopeName', scout_asset_api_DataScopeName),
             'data_source': ConjureFieldDefinition('dataSource', scout_run_api_DataSource),
+            'offset': ConjureFieldDefinition('offset', OptionalTypeWrapper[scout_run_api_Duration]),
             'series_tags': ConjureFieldDefinition('seriesTags', Dict[scout_asset_api_SeriesTagName, scout_asset_api_SeriesTagValue])
         }
 
-    __slots__: List[str] = ['_data_source', '_series_tags']
+    __slots__: List[str] = ['_data_scope_name', '_data_source', '_offset', '_series_tags']
 
-    def __init__(self, data_source: "scout_run_api_DataSource", series_tags: Dict[str, str]) -> None:
+    def __init__(self, data_scope_name: str, data_source: "scout_run_api_DataSource", series_tags: Dict[str, str], offset: Optional["scout_run_api_Duration"] = None) -> None:
+        self._data_scope_name = data_scope_name
         self._data_source = data_source
+        self._offset = offset
         self._series_tags = series_tags
 
     @builtins.property
+    def data_scope_name(self) -> str:
+        """
+        The name of the data scope. The name is guaranteed to be be unique within the context of an asset.
+        """
+        return self._data_scope_name
+
+    @builtins.property
     def data_source(self) -> "scout_run_api_DataSource":
-        """
-        The data source to create the data scope from. This is typically a connection to a database
-or a dataset containing one or many files.
-        """
         return self._data_source
+
+    @builtins.property
+    def offset(self) -> Optional["scout_run_api_Duration"]:
+        return self._offset
 
     @builtins.property
     def series_tags(self) -> Dict[str, str]:
@@ -6521,13 +6495,13 @@ class scout_asset_api_CreateAssetRequest(ConjureBeanType):
             'properties': ConjureFieldDefinition('properties', Dict[scout_run_api_PropertyName, scout_run_api_PropertyValue]),
             'labels': ConjureFieldDefinition('labels', List[scout_run_api_Label]),
             'links': ConjureFieldDefinition('links', List[scout_run_api_Link]),
-            'data_scopes': ConjureFieldDefinition('dataScopes', List[scout_asset_api_AssetDataScope]),
+            'data_scopes': ConjureFieldDefinition('dataScopes', List[scout_asset_api_CreateAssetDataScope]),
             'attachments': ConjureFieldDefinition('attachments', List[scout_rids_api_AttachmentRid])
         }
 
     __slots__: List[str] = ['_title', '_description', '_properties', '_labels', '_links', '_data_scopes', '_attachments']
 
-    def __init__(self, attachments: List[str], data_scopes: List["scout_asset_api_AssetDataScope"], labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], title: str, description: Optional[str] = None) -> None:
+    def __init__(self, attachments: List[str], data_scopes: List["scout_asset_api_CreateAssetDataScope"], labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], title: str, description: Optional[str] = None) -> None:
         self._title = title
         self._description = description
         self._properties = properties
@@ -6557,9 +6531,9 @@ class scout_asset_api_CreateAssetRequest(ConjureBeanType):
         return self._links
 
     @builtins.property
-    def data_scopes(self) -> List["scout_asset_api_AssetDataScope"]:
+    def data_scopes(self) -> List["scout_asset_api_CreateAssetDataScope"]:
         """
-        The data scopes associated with the asset, keyed by data scope name.
+        The data scopes associated with the asset.
         """
         return self._data_scopes
 
@@ -6934,24 +6908,6 @@ scout_asset_api_SortOptions.__qualname__ = "SortOptions"
 scout_asset_api_SortOptions.__module__ = "scout_service_api.scout_asset_api"
 
 
-class scout_asset_api_TimestampType(ConjureEnumType):
-
-    ABSOLUTE = 'ABSOLUTE'
-    '''ABSOLUTE'''
-    RELATIVE = 'RELATIVE'
-    '''RELATIVE'''
-    UNKNOWN = 'UNKNOWN'
-    '''UNKNOWN'''
-
-    def __reduce_ex__(self, proto):
-        return self.__class__, (self.name,)
-
-
-scout_asset_api_TimestampType.__name__ = "TimestampType"
-scout_asset_api_TimestampType.__qualname__ = "TimestampType"
-scout_asset_api_TimestampType.__module__ = "scout_service_api.scout_asset_api"
-
-
 class scout_asset_api_Unit(ConjureBeanType):
 
     @builtins.classmethod
@@ -6991,12 +6947,12 @@ class scout_asset_api_UpdateAssetRequest(ConjureBeanType):
             'properties': ConjureFieldDefinition('properties', OptionalTypeWrapper[Dict[scout_run_api_PropertyName, scout_run_api_PropertyValue]]),
             'labels': ConjureFieldDefinition('labels', OptionalTypeWrapper[List[scout_run_api_Label]]),
             'links': ConjureFieldDefinition('links', OptionalTypeWrapper[List[scout_run_api_Link]]),
-            'data_scopes': ConjureFieldDefinition('dataScopes', OptionalTypeWrapper[List[scout_asset_api_AssetDataScope]])
+            'data_scopes': ConjureFieldDefinition('dataScopes', OptionalTypeWrapper[List[scout_asset_api_CreateAssetDataScope]])
         }
 
     __slots__: List[str] = ['_title', '_description', '_properties', '_labels', '_links', '_data_scopes']
 
-    def __init__(self, data_scopes: Optional[List["scout_asset_api_AssetDataScope"]] = None, description: Optional[str] = None, labels: Optional[List[str]] = None, links: Optional[List["scout_run_api_Link"]] = None, properties: Optional[Dict[str, str]] = None, title: Optional[str] = None) -> None:
+    def __init__(self, data_scopes: Optional[List["scout_asset_api_CreateAssetDataScope"]] = None, description: Optional[str] = None, labels: Optional[List[str]] = None, links: Optional[List["scout_run_api_Link"]] = None, properties: Optional[Dict[str, str]] = None, title: Optional[str] = None) -> None:
         self._title = title
         self._description = description
         self._properties = properties
@@ -7025,9 +6981,9 @@ class scout_asset_api_UpdateAssetRequest(ConjureBeanType):
         return self._links
 
     @builtins.property
-    def data_scopes(self) -> Optional[List["scout_asset_api_AssetDataScope"]]:
+    def data_scopes(self) -> Optional[List["scout_asset_api_CreateAssetDataScope"]]:
         """
-        The data scopes associated with the asset.
+        The data scopes for the asset. This will replace all existing data scopes with the scopes specified.
         """
         return self._data_scopes
 
@@ -7124,6 +7080,41 @@ endpoints allow for CRUD operations on asset objects.
 
         _response: Response = self._request(
             'PUT',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_asset_api_Asset, self._return_none_for_unknown_union_types)
+
+    def add_data_scopes_to_asset(self, asset_rid: str, auth_header: str, request: "scout_asset_api_AddDataScopesToAssetRequest") -> "scout_asset_api_Asset":
+        """
+        Adds data scopes to an asset.
+
+Throws if the asset already has data scopes with data scope names matching those in the request.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'assetRid': asset_rid,
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/scout/v1/asset/{assetRid}/data-sources'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
             self._uri + _path,
             params=_params,
             headers=_headers,
@@ -7381,6 +7372,35 @@ class scout_catalog_AbsoluteTimestampVisitor:
 scout_catalog_AbsoluteTimestampVisitor.__name__ = "AbsoluteTimestampVisitor"
 scout_catalog_AbsoluteTimestampVisitor.__qualname__ = "AbsoluteTimestampVisitor"
 scout_catalog_AbsoluteTimestampVisitor.__module__ = "scout_service_api.scout_catalog"
+
+
+class scout_catalog_AddFileToDataset(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'handle': ConjureFieldDefinition('handle', scout_catalog_Handle),
+            'timestamp_metadata': ConjureFieldDefinition('timestampMetadata', OptionalTypeWrapper[scout_catalog_TimestampMetadata])
+        }
+
+    __slots__: List[str] = ['_handle', '_timestamp_metadata']
+
+    def __init__(self, handle: "scout_catalog_Handle", timestamp_metadata: Optional["scout_catalog_TimestampMetadata"] = None) -> None:
+        self._handle = handle
+        self._timestamp_metadata = timestamp_metadata
+
+    @builtins.property
+    def handle(self) -> "scout_catalog_Handle":
+        return self._handle
+
+    @builtins.property
+    def timestamp_metadata(self) -> Optional["scout_catalog_TimestampMetadata"]:
+        return self._timestamp_metadata
+
+
+scout_catalog_AddFileToDataset.__name__ = "AddFileToDataset"
+scout_catalog_AddFileToDataset.__qualname__ = "AddFileToDataset"
+scout_catalog_AddFileToDataset.__module__ = "scout_service_api.scout_catalog"
 
 
 class scout_catalog_AllPropertiesAndLabelsResponse(ConjureBeanType):
@@ -7804,6 +7824,131 @@ a file, primarily CSV.
 
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), scout_catalog_EnrichedDataset, self._return_none_for_unknown_union_types)
+
+    def add_file_to_dataset(self, auth_header: str, dataset_rid: str, request: "scout_catalog_AddFileToDataset") -> "scout_catalog_DatasetFile":
+        """
+        Adds a single file to an existing dataset.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'datasetRid': dataset_rid,
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/catalog/v1/datasets/{datasetRid}/add-file'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_catalog_DatasetFile, self._return_none_for_unknown_union_types)
+
+    def list_dataset_files(self, auth_header: str, dataset_rid: str, next_page_token: Optional[str] = None) -> "scout_catalog_DatasetFilesPage":
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+            'nextPageToken': next_page_token,
+        }
+
+        _path_params: Dict[str, Any] = {
+            'datasetRid': dataset_rid,
+        }
+
+        _json: Any = None
+
+        _path = '/catalog/v1/datasets/{datasetRid}/files'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'GET',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_catalog_DatasetFilesPage, self._return_none_for_unknown_union_types)
+
+    def mark_file_ingest_successful(self, auth_header: str, dataset_rid: str, file_id: str, request: "scout_catalog_MarkFileIngestSuccessful") -> "scout_catalog_DatasetFile":
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'datasetRid': dataset_rid,
+            'fileId': file_id,
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/catalog/v1/datasets/{datasetRid}/file/{fileId}/success'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'PUT',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_catalog_DatasetFile, self._return_none_for_unknown_union_types)
+
+    def mark_file_ingest_error(self, auth_header: str, dataset_rid: str, file_id: str, request: "scout_catalog_MarkFileIngestError") -> "scout_catalog_DatasetFile":
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'datasetRid': dataset_rid,
+            'fileId': file_id,
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/catalog/v1/datasets/{datasetRid}/file/{fileId}/error'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'PUT',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_catalog_DatasetFile, self._return_none_for_unknown_union_types)
 
     def update_dataset_metadata(self, auth_header: str, dataset_rid: str, request: "scout_catalog_UpdateDatasetMetadata") -> "scout_catalog_EnrichedDataset":
 
@@ -8270,6 +8415,113 @@ scout_catalog_Dataset.__qualname__ = "Dataset"
 scout_catalog_Dataset.__module__ = "scout_service_api.scout_catalog"
 
 
+class scout_catalog_DatasetFile(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'id': ConjureFieldDefinition('id', datasource_DatasetFileId),
+            'dataset_rid': ConjureFieldDefinition('datasetRid', datasource_DatasetRid),
+            'name': ConjureFieldDefinition('name', str),
+            'handle': ConjureFieldDefinition('handle', scout_catalog_Handle),
+            'status': ConjureFieldDefinition('status', scout_catalog_IngestStatusV2),
+            'bounds': ConjureFieldDefinition('bounds', OptionalTypeWrapper[scout_catalog_Bounds]),
+            'uploaded_at': ConjureFieldDefinition('uploadedAt', str),
+            'ingested_at': ConjureFieldDefinition('ingestedAt', OptionalTypeWrapper[str]),
+            'timestamp_metadata': ConjureFieldDefinition('timestampMetadata', OptionalTypeWrapper[scout_catalog_TimestampMetadata])
+        }
+
+    __slots__: List[str] = ['_id', '_dataset_rid', '_name', '_handle', '_status', '_bounds', '_uploaded_at', '_ingested_at', '_timestamp_metadata']
+
+    def __init__(self, dataset_rid: str, handle: "scout_catalog_Handle", id: str, name: str, status: "scout_catalog_IngestStatusV2", uploaded_at: str, bounds: Optional["scout_catalog_Bounds"] = None, ingested_at: Optional[str] = None, timestamp_metadata: Optional["scout_catalog_TimestampMetadata"] = None) -> None:
+        self._id = id
+        self._dataset_rid = dataset_rid
+        self._name = name
+        self._handle = handle
+        self._status = status
+        self._bounds = bounds
+        self._uploaded_at = uploaded_at
+        self._ingested_at = ingested_at
+        self._timestamp_metadata = timestamp_metadata
+
+    @builtins.property
+    def id(self) -> str:
+        return self._id
+
+    @builtins.property
+    def dataset_rid(self) -> str:
+        return self._dataset_rid
+
+    @builtins.property
+    def name(self) -> str:
+        return self._name
+
+    @builtins.property
+    def handle(self) -> "scout_catalog_Handle":
+        return self._handle
+
+    @builtins.property
+    def status(self) -> "scout_catalog_IngestStatusV2":
+        return self._status
+
+    @builtins.property
+    def bounds(self) -> Optional["scout_catalog_Bounds"]:
+        return self._bounds
+
+    @builtins.property
+    def uploaded_at(self) -> str:
+        """
+        Timestamp that the file was received and stored, but not processed or made available to consumers.
+        """
+        return self._uploaded_at
+
+    @builtins.property
+    def ingested_at(self) -> Optional[str]:
+        """
+        Timestamp that the file is ingested at and made available for processing. If the file has failed to be
+ingested for any reason or is still being processed, then this value will be empty.
+        """
+        return self._ingested_at
+
+    @builtins.property
+    def timestamp_metadata(self) -> Optional["scout_catalog_TimestampMetadata"]:
+        return self._timestamp_metadata
+
+
+scout_catalog_DatasetFile.__name__ = "DatasetFile"
+scout_catalog_DatasetFile.__qualname__ = "DatasetFile"
+scout_catalog_DatasetFile.__module__ = "scout_service_api.scout_catalog"
+
+
+class scout_catalog_DatasetFilesPage(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'file': ConjureFieldDefinition('file', List[scout_catalog_DatasetFile]),
+            'next_page': ConjureFieldDefinition('nextPage', OptionalTypeWrapper[datasource_Token])
+        }
+
+    __slots__: List[str] = ['_file', '_next_page']
+
+    def __init__(self, file: List["scout_catalog_DatasetFile"], next_page: Optional[str] = None) -> None:
+        self._file = file
+        self._next_page = next_page
+
+    @builtins.property
+    def file(self) -> List["scout_catalog_DatasetFile"]:
+        return self._file
+
+    @builtins.property
+    def next_page(self) -> Optional[str]:
+        return self._next_page
+
+
+scout_catalog_DatasetFilesPage.__name__ = "DatasetFilesPage"
+scout_catalog_DatasetFilesPage.__qualname__ = "DatasetFilesPage"
+scout_catalog_DatasetFilesPage.__module__ = "scout_service_api.scout_catalog"
+
+
 class scout_catalog_DatasetFilter(ConjureBeanType):
 
     @builtins.classmethod
@@ -8310,23 +8562,19 @@ class scout_catalog_DatasetOriginMetadata(ConjureBeanType):
             'x_series_column_name': ConjureFieldDefinition('xSeriesColumnName', OptionalTypeWrapper[str]),
             'x_series_time_unit': ConjureFieldDefinition('xSeriesTimeUnit', OptionalTypeWrapper[scout_catalog_TimeUnit]),
             'timestamp_metadata': ConjureFieldDefinition('timestampMetadata', OptionalTypeWrapper[scout_catalog_TimestampMetadata]),
-            'skip_rows_config': ConjureFieldDefinition('skipRowsConfig', OptionalTypeWrapper[scout_catalog_SkipRowsConfig]),
-            'channel_config': ConjureFieldDefinition('channelConfig', OptionalTypeWrapper[scout_catalog_ChannelConfig]),
-            'unit_config': ConjureFieldDefinition('unitConfig', OptionalTypeWrapper[scout_catalog_UnitConfig])
+            'channel_config': ConjureFieldDefinition('channelConfig', OptionalTypeWrapper[scout_catalog_ChannelConfig])
         }
 
-    __slots__: List[str] = ['_path', '_x_series_is_absolute', '_schema_directive_path', '_x_series_column_name', '_x_series_time_unit', '_timestamp_metadata', '_skip_rows_config', '_channel_config', '_unit_config']
+    __slots__: List[str] = ['_path', '_x_series_is_absolute', '_schema_directive_path', '_x_series_column_name', '_x_series_time_unit', '_timestamp_metadata', '_channel_config']
 
-    def __init__(self, channel_config: Optional["scout_catalog_ChannelConfig"] = None, path: Optional[str] = None, schema_directive_path: Optional[str] = None, skip_rows_config: Optional["scout_catalog_SkipRowsConfig"] = None, timestamp_metadata: Optional["scout_catalog_TimestampMetadata"] = None, unit_config: Optional["scout_catalog_UnitConfig"] = None, x_series_column_name: Optional[str] = None, x_series_is_absolute: Optional[bool] = None, x_series_time_unit: Optional["scout_catalog_TimeUnit"] = None) -> None:
+    def __init__(self, channel_config: Optional["scout_catalog_ChannelConfig"] = None, path: Optional[str] = None, schema_directive_path: Optional[str] = None, timestamp_metadata: Optional["scout_catalog_TimestampMetadata"] = None, x_series_column_name: Optional[str] = None, x_series_is_absolute: Optional[bool] = None, x_series_time_unit: Optional["scout_catalog_TimeUnit"] = None) -> None:
         self._path = path
         self._x_series_is_absolute = x_series_is_absolute
         self._schema_directive_path = schema_directive_path
         self._x_series_column_name = x_series_column_name
         self._x_series_time_unit = x_series_time_unit
         self._timestamp_metadata = timestamp_metadata
-        self._skip_rows_config = skip_rows_config
         self._channel_config = channel_config
-        self._unit_config = unit_config
 
     @builtins.property
     def path(self) -> Optional[str]:
@@ -8353,16 +8601,8 @@ class scout_catalog_DatasetOriginMetadata(ConjureBeanType):
         return self._timestamp_metadata
 
     @builtins.property
-    def skip_rows_config(self) -> Optional["scout_catalog_SkipRowsConfig"]:
-        return self._skip_rows_config
-
-    @builtins.property
     def channel_config(self) -> Optional["scout_catalog_ChannelConfig"]:
         return self._channel_config
-
-    @builtins.property
-    def unit_config(self) -> Optional["scout_catalog_UnitConfig"]:
-        return self._unit_config
 
 
 scout_catalog_DatasetOriginMetadata.__name__ = "DatasetOriginMetadata"
@@ -9085,22 +9325,74 @@ scout_catalog_ListDatasetsRequest.__qualname__ = "ListDatasetsRequest"
 scout_catalog_ListDatasetsRequest.__module__ = "scout_service_api.scout_catalog"
 
 
+class scout_catalog_MarkFileIngestError(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'error_message': ConjureFieldDefinition('errorMessage', OptionalTypeWrapper[str])
+        }
+
+    __slots__: List[str] = ['_error_message']
+
+    def __init__(self, error_message: Optional[str] = None) -> None:
+        self._error_message = error_message
+
+    @builtins.property
+    def error_message(self) -> Optional[str]:
+        return self._error_message
+
+
+scout_catalog_MarkFileIngestError.__name__ = "MarkFileIngestError"
+scout_catalog_MarkFileIngestError.__qualname__ = "MarkFileIngestError"
+scout_catalog_MarkFileIngestError.__module__ = "scout_service_api.scout_catalog"
+
+
+class scout_catalog_MarkFileIngestSuccessful(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'bounds': ConjureFieldDefinition('bounds', scout_catalog_Bounds)
+        }
+
+    __slots__: List[str] = ['_bounds']
+
+    def __init__(self, bounds: "scout_catalog_Bounds") -> None:
+        self._bounds = bounds
+
+    @builtins.property
+    def bounds(self) -> "scout_catalog_Bounds":
+        return self._bounds
+
+
+scout_catalog_MarkFileIngestSuccessful.__name__ = "MarkFileIngestSuccessful"
+scout_catalog_MarkFileIngestSuccessful.__qualname__ = "MarkFileIngestSuccessful"
+scout_catalog_MarkFileIngestSuccessful.__module__ = "scout_service_api.scout_catalog"
+
+
 class scout_catalog_RelativeTimestamp(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'time_unit': ConjureFieldDefinition('timeUnit', scout_catalog_TimeUnit)
+            'time_unit': ConjureFieldDefinition('timeUnit', scout_catalog_TimeUnit),
+            'offset': ConjureFieldDefinition('offset', OptionalTypeWrapper[str])
         }
 
-    __slots__: List[str] = ['_time_unit']
+    __slots__: List[str] = ['_time_unit', '_offset']
 
-    def __init__(self, time_unit: "scout_catalog_TimeUnit") -> None:
+    def __init__(self, time_unit: "scout_catalog_TimeUnit", offset: Optional[str] = None) -> None:
         self._time_unit = time_unit
+        self._offset = offset
 
     @builtins.property
     def time_unit(self) -> "scout_catalog_TimeUnit":
         return self._time_unit
+
+    @builtins.property
+    def offset(self) -> Optional[str]:
+        return self._offset
 
 
 scout_catalog_RelativeTimestamp.__name__ = "RelativeTimestamp"
@@ -13296,6 +13588,39 @@ every automatic check against the given run.
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), scout_checklistexecution_api_BatchChecklistLiveStatusResponse, self._return_none_for_unknown_union_types)
 
+    def execute_checklist_on_assets(self, auth_header: str, request: "scout_checklistexecution_api_ExecuteChecklistForAssetsRequest") -> "scout_checklistexecution_api_ExecuteChecklistForAssetsResponse":
+        """
+        Triggers a checklist to run continuously against assets. Returns a ChecklistAlreadyRunning error if the
+checklist is already running for the given asset.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/scout/v2/checklist-execution/execute-checklist-on-assets'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_checklistexecution_api_ExecuteChecklistForAssetsResponse, self._return_none_for_unknown_union_types)
+
 
 scout_checklistexecution_api_ChecklistExecutionService.__name__ = "ChecklistExecutionService"
 scout_checklistexecution_api_ChecklistExecutionService.__qualname__ = "ChecklistExecutionService"
@@ -13456,6 +13781,51 @@ class scout_checklistexecution_api_Computing(ConjureBeanType):
 scout_checklistexecution_api_Computing.__name__ = "Computing"
 scout_checklistexecution_api_Computing.__qualname__ = "Computing"
 scout_checklistexecution_api_Computing.__module__ = "scout_service_api.scout_checklistexecution_api"
+
+
+class scout_checklistexecution_api_ExecuteChecklistForAssetsRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'checklist': ConjureFieldDefinition('checklist', scout_rids_api_ChecklistRid),
+            'assets': ConjureFieldDefinition('assets', List[scout_rids_api_AssetRid])
+        }
+
+    __slots__: List[str] = ['_checklist', '_assets']
+
+    def __init__(self, assets: List[str], checklist: str) -> None:
+        self._checklist = checklist
+        self._assets = assets
+
+    @builtins.property
+    def checklist(self) -> str:
+        return self._checklist
+
+    @builtins.property
+    def assets(self) -> List[str]:
+        return self._assets
+
+
+scout_checklistexecution_api_ExecuteChecklistForAssetsRequest.__name__ = "ExecuteChecklistForAssetsRequest"
+scout_checklistexecution_api_ExecuteChecklistForAssetsRequest.__qualname__ = "ExecuteChecklistForAssetsRequest"
+scout_checklistexecution_api_ExecuteChecklistForAssetsRequest.__module__ = "scout_service_api.scout_checklistexecution_api"
+
+
+class scout_checklistexecution_api_ExecuteChecklistForAssetsResponse(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+        }
+
+    __slots__: List[str] = []
+
+
+
+scout_checklistexecution_api_ExecuteChecklistForAssetsResponse.__name__ = "ExecuteChecklistForAssetsResponse"
+scout_checklistexecution_api_ExecuteChecklistForAssetsResponse.__qualname__ = "ExecuteChecklistForAssetsResponse"
+scout_checklistexecution_api_ExecuteChecklistForAssetsResponse.__module__ = "scout_service_api.scout_checklistexecution_api"
 
 
 class scout_checklistexecution_api_Fail(ConjureBeanType):
@@ -17592,6 +17962,728 @@ scout_checks_api_VersionedChecklistPage.__qualname__ = "VersionedChecklistPage"
 scout_checks_api_VersionedChecklistPage.__module__ = "scout_service_api.scout_checks_api"
 
 
+class scout_comparisonnotebook_api_AggregationType(ConjureUnionType):
+    _max: Optional["scout_comparisonnotebook_api_Max"] = None
+    _min: Optional["scout_comparisonnotebook_api_Min"] = None
+    _mean: Optional["scout_comparisonnotebook_api_Mean"] = None
+    _standard_deviation: Optional["scout_comparisonnotebook_api_StandardDeviation"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'max': ConjureFieldDefinition('max', scout_comparisonnotebook_api_Max),
+            'min': ConjureFieldDefinition('min', scout_comparisonnotebook_api_Min),
+            'mean': ConjureFieldDefinition('mean', scout_comparisonnotebook_api_Mean),
+            'standard_deviation': ConjureFieldDefinition('standardDeviation', scout_comparisonnotebook_api_StandardDeviation)
+        }
+
+    def __init__(
+            self,
+            max: Optional["scout_comparisonnotebook_api_Max"] = None,
+            min: Optional["scout_comparisonnotebook_api_Min"] = None,
+            mean: Optional["scout_comparisonnotebook_api_Mean"] = None,
+            standard_deviation: Optional["scout_comparisonnotebook_api_StandardDeviation"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (max is not None) + (min is not None) + (mean is not None) + (standard_deviation is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if max is not None:
+                self._max = max
+                self._type = 'max'
+            if min is not None:
+                self._min = min
+                self._type = 'min'
+            if mean is not None:
+                self._mean = mean
+                self._type = 'mean'
+            if standard_deviation is not None:
+                self._standard_deviation = standard_deviation
+                self._type = 'standardDeviation'
+
+        elif type_of_union == 'max':
+            if max is None:
+                raise ValueError('a union value must not be None')
+            self._max = max
+            self._type = 'max'
+        elif type_of_union == 'min':
+            if min is None:
+                raise ValueError('a union value must not be None')
+            self._min = min
+            self._type = 'min'
+        elif type_of_union == 'mean':
+            if mean is None:
+                raise ValueError('a union value must not be None')
+            self._mean = mean
+            self._type = 'mean'
+        elif type_of_union == 'standardDeviation':
+            if standard_deviation is None:
+                raise ValueError('a union value must not be None')
+            self._standard_deviation = standard_deviation
+            self._type = 'standardDeviation'
+
+    @builtins.property
+    def max(self) -> Optional["scout_comparisonnotebook_api_Max"]:
+        return self._max
+
+    @builtins.property
+    def min(self) -> Optional["scout_comparisonnotebook_api_Min"]:
+        return self._min
+
+    @builtins.property
+    def mean(self) -> Optional["scout_comparisonnotebook_api_Mean"]:
+        return self._mean
+
+    @builtins.property
+    def standard_deviation(self) -> Optional["scout_comparisonnotebook_api_StandardDeviation"]:
+        return self._standard_deviation
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_comparisonnotebook_api_AggregationTypeVisitor):
+            raise ValueError('{} is not an instance of scout_comparisonnotebook_api_AggregationTypeVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'max' and self.max is not None:
+            return visitor._max(self.max)
+        if self._type == 'min' and self.min is not None:
+            return visitor._min(self.min)
+        if self._type == 'mean' and self.mean is not None:
+            return visitor._mean(self.mean)
+        if self._type == 'standardDeviation' and self.standard_deviation is not None:
+            return visitor._standard_deviation(self.standard_deviation)
+
+
+scout_comparisonnotebook_api_AggregationType.__name__ = "AggregationType"
+scout_comparisonnotebook_api_AggregationType.__qualname__ = "AggregationType"
+scout_comparisonnotebook_api_AggregationType.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_AggregationTypeVisitor:
+
+    @abstractmethod
+    def _max(self, max: "scout_comparisonnotebook_api_Max") -> Any:
+        pass
+
+    @abstractmethod
+    def _min(self, min: "scout_comparisonnotebook_api_Min") -> Any:
+        pass
+
+    @abstractmethod
+    def _mean(self, mean: "scout_comparisonnotebook_api_Mean") -> Any:
+        pass
+
+    @abstractmethod
+    def _standard_deviation(self, standard_deviation: "scout_comparisonnotebook_api_StandardDeviation") -> Any:
+        pass
+
+
+scout_comparisonnotebook_api_AggregationTypeVisitor.__name__ = "AggregationTypeVisitor"
+scout_comparisonnotebook_api_AggregationTypeVisitor.__qualname__ = "AggregationTypeVisitor"
+scout_comparisonnotebook_api_AggregationTypeVisitor.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ChannelVariable(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'display_name': ConjureFieldDefinition('displayName', OptionalTypeWrapper[str]),
+            'variable_name': ConjureFieldDefinition('variableName', scout_comparisonnotebook_api_VariableName),
+            'value': ConjureFieldDefinition('value', scout_comparisonnotebook_api_VariableLocator)
+        }
+
+    __slots__: List[str] = ['_display_name', '_variable_name', '_value']
+
+    def __init__(self, value: "scout_comparisonnotebook_api_VariableLocator", variable_name: str, display_name: Optional[str] = None) -> None:
+        self._display_name = display_name
+        self._variable_name = variable_name
+        self._value = value
+
+    @builtins.property
+    def display_name(self) -> Optional[str]:
+        return self._display_name
+
+    @builtins.property
+    def variable_name(self) -> str:
+        return self._variable_name
+
+    @builtins.property
+    def value(self) -> "scout_comparisonnotebook_api_VariableLocator":
+        return self._value
+
+
+scout_comparisonnotebook_api_ChannelVariable.__name__ = "ChannelVariable"
+scout_comparisonnotebook_api_ChannelVariable.__qualname__ = "ChannelVariable"
+scout_comparisonnotebook_api_ChannelVariable.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ChartDefinition(ConjureUnionType):
+    _table: Optional["scout_comparisonnotebook_api_ComparisonTableDefinition"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'table': ConjureFieldDefinition('table', scout_comparisonnotebook_api_ComparisonTableDefinition)
+        }
+
+    def __init__(
+            self,
+            table: Optional["scout_comparisonnotebook_api_ComparisonTableDefinition"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (table is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if table is not None:
+                self._table = table
+                self._type = 'table'
+
+        elif type_of_union == 'table':
+            if table is None:
+                raise ValueError('a union value must not be None')
+            self._table = table
+            self._type = 'table'
+
+    @builtins.property
+    def table(self) -> Optional["scout_comparisonnotebook_api_ComparisonTableDefinition"]:
+        return self._table
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_comparisonnotebook_api_ChartDefinitionVisitor):
+            raise ValueError('{} is not an instance of scout_comparisonnotebook_api_ChartDefinitionVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'table' and self.table is not None:
+            return visitor._table(self.table)
+
+
+scout_comparisonnotebook_api_ChartDefinition.__name__ = "ChartDefinition"
+scout_comparisonnotebook_api_ChartDefinition.__qualname__ = "ChartDefinition"
+scout_comparisonnotebook_api_ChartDefinition.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ChartDefinitionVisitor:
+
+    @abstractmethod
+    def _table(self, table: "scout_comparisonnotebook_api_ComparisonTableDefinition") -> Any:
+        pass
+
+
+scout_comparisonnotebook_api_ChartDefinitionVisitor.__name__ = "ChartDefinitionVisitor"
+scout_comparisonnotebook_api_ChartDefinitionVisitor.__qualname__ = "ChartDefinitionVisitor"
+scout_comparisonnotebook_api_ChartDefinitionVisitor.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonTableColumn(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'title': ConjureFieldDefinition('title', OptionalTypeWrapper[str]),
+            'channel': ConjureFieldDefinition('channel', scout_comparisonnotebook_api_VariableName),
+            'visualization_options': ConjureFieldDefinition('visualizationOptions', scout_comparisonnotebook_api_ComparisonTableColumnVisualizationOptions)
+        }
+
+    __slots__: List[str] = ['_title', '_channel', '_visualization_options']
+
+    def __init__(self, channel: str, visualization_options: "scout_comparisonnotebook_api_ComparisonTableColumnVisualizationOptions", title: Optional[str] = None) -> None:
+        self._title = title
+        self._channel = channel
+        self._visualization_options = visualization_options
+
+    @builtins.property
+    def title(self) -> Optional[str]:
+        return self._title
+
+    @builtins.property
+    def channel(self) -> str:
+        return self._channel
+
+    @builtins.property
+    def visualization_options(self) -> "scout_comparisonnotebook_api_ComparisonTableColumnVisualizationOptions":
+        return self._visualization_options
+
+
+scout_comparisonnotebook_api_ComparisonTableColumn.__name__ = "ComparisonTableColumn"
+scout_comparisonnotebook_api_ComparisonTableColumn.__qualname__ = "ComparisonTableColumn"
+scout_comparisonnotebook_api_ComparisonTableColumn.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonTableColumnOptions(ConjureEnumType):
+
+    AXIS = 'AXIS'
+    '''AXIS'''
+    BARS = 'BARS'
+    '''BARS'''
+    UNKNOWN = 'UNKNOWN'
+    '''UNKNOWN'''
+
+    def __reduce_ex__(self, proto):
+        return self.__class__, (self.name,)
+
+
+scout_comparisonnotebook_api_ComparisonTableColumnOptions.__name__ = "ComparisonTableColumnOptions"
+scout_comparisonnotebook_api_ComparisonTableColumnOptions.__qualname__ = "ComparisonTableColumnOptions"
+scout_comparisonnotebook_api_ComparisonTableColumnOptions.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonTableColumnVisualizationOptions(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'format': ConjureFieldDefinition('format', scout_comparisonnotebook_api_ComparisonTableColumnOptions)
+        }
+
+    __slots__: List[str] = ['_format']
+
+    def __init__(self, format: "scout_comparisonnotebook_api_ComparisonTableColumnOptions") -> None:
+        self._format = format
+
+    @builtins.property
+    def format(self) -> "scout_comparisonnotebook_api_ComparisonTableColumnOptions":
+        return self._format
+
+
+scout_comparisonnotebook_api_ComparisonTableColumnVisualizationOptions.__name__ = "ComparisonTableColumnVisualizationOptions"
+scout_comparisonnotebook_api_ComparisonTableColumnVisualizationOptions.__qualname__ = "ComparisonTableColumnVisualizationOptions"
+scout_comparisonnotebook_api_ComparisonTableColumnVisualizationOptions.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonTableDefinition(ConjureUnionType):
+    _v1: Optional["scout_comparisonnotebook_api_ComparisonTableDefinitionV1"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'v1': ConjureFieldDefinition('v1', scout_comparisonnotebook_api_ComparisonTableDefinitionV1)
+        }
+
+    def __init__(
+            self,
+            v1: Optional["scout_comparisonnotebook_api_ComparisonTableDefinitionV1"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (v1 is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if v1 is not None:
+                self._v1 = v1
+                self._type = 'v1'
+
+        elif type_of_union == 'v1':
+            if v1 is None:
+                raise ValueError('a union value must not be None')
+            self._v1 = v1
+            self._type = 'v1'
+
+    @builtins.property
+    def v1(self) -> Optional["scout_comparisonnotebook_api_ComparisonTableDefinitionV1"]:
+        return self._v1
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_comparisonnotebook_api_ComparisonTableDefinitionVisitor):
+            raise ValueError('{} is not an instance of scout_comparisonnotebook_api_ComparisonTableDefinitionVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'v1' and self.v1 is not None:
+            return visitor._v1(self.v1)
+
+
+scout_comparisonnotebook_api_ComparisonTableDefinition.__name__ = "ComparisonTableDefinition"
+scout_comparisonnotebook_api_ComparisonTableDefinition.__qualname__ = "ComparisonTableDefinition"
+scout_comparisonnotebook_api_ComparisonTableDefinition.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonTableDefinitionVisitor:
+
+    @abstractmethod
+    def _v1(self, v1: "scout_comparisonnotebook_api_ComparisonTableDefinitionV1") -> Any:
+        pass
+
+
+scout_comparisonnotebook_api_ComparisonTableDefinitionVisitor.__name__ = "ComparisonTableDefinitionVisitor"
+scout_comparisonnotebook_api_ComparisonTableDefinitionVisitor.__qualname__ = "ComparisonTableDefinitionVisitor"
+scout_comparisonnotebook_api_ComparisonTableDefinitionVisitor.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonTableDefinitionV1(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'title': ConjureFieldDefinition('title', OptionalTypeWrapper[str]),
+            'range_aggregations': ConjureFieldDefinition('rangeAggregations', List[scout_comparisonnotebook_api_VariableName]),
+            'visualization_options': ConjureFieldDefinition('visualizationOptions', scout_comparisonnotebook_api_ComparisonTableVisualizationOptions),
+            'columns': ConjureFieldDefinition('columns', List[scout_comparisonnotebook_api_ComparisonTableColumn])
+        }
+
+    __slots__: List[str] = ['_title', '_range_aggregations', '_visualization_options', '_columns']
+
+    def __init__(self, columns: List["scout_comparisonnotebook_api_ComparisonTableColumn"], range_aggregations: List[str], visualization_options: "scout_comparisonnotebook_api_ComparisonTableVisualizationOptions", title: Optional[str] = None) -> None:
+        self._title = title
+        self._range_aggregations = range_aggregations
+        self._visualization_options = visualization_options
+        self._columns = columns
+
+    @builtins.property
+    def title(self) -> Optional[str]:
+        return self._title
+
+    @builtins.property
+    def range_aggregations(self) -> List[str]:
+        return self._range_aggregations
+
+    @builtins.property
+    def visualization_options(self) -> "scout_comparisonnotebook_api_ComparisonTableVisualizationOptions":
+        return self._visualization_options
+
+    @builtins.property
+    def columns(self) -> List["scout_comparisonnotebook_api_ComparisonTableColumn"]:
+        return self._columns
+
+
+scout_comparisonnotebook_api_ComparisonTableDefinitionV1.__name__ = "ComparisonTableDefinitionV1"
+scout_comparisonnotebook_api_ComparisonTableDefinitionV1.__qualname__ = "ComparisonTableDefinitionV1"
+scout_comparisonnotebook_api_ComparisonTableDefinitionV1.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonTableVisualizationOptions(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'aggregation_colors': ConjureFieldDefinition('aggregationColors', Dict[scout_comparisonnotebook_api_VariableName, scout_api_HexColor])
+        }
+
+    __slots__: List[str] = ['_aggregation_colors']
+
+    def __init__(self, aggregation_colors: Dict[str, str]) -> None:
+        self._aggregation_colors = aggregation_colors
+
+    @builtins.property
+    def aggregation_colors(self) -> Dict[str, str]:
+        return self._aggregation_colors
+
+
+scout_comparisonnotebook_api_ComparisonTableVisualizationOptions.__name__ = "ComparisonTableVisualizationOptions"
+scout_comparisonnotebook_api_ComparisonTableVisualizationOptions.__qualname__ = "ComparisonTableVisualizationOptions"
+scout_comparisonnotebook_api_ComparisonTableVisualizationOptions.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonWorkbookContent(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'channel_variables': ConjureFieldDefinition('channelVariables', scout_comparisonnotebook_api_ComparisonChannelVariableMap),
+            'charts': ConjureFieldDefinition('charts', scout_comparisonnotebook_api_ComparisonChartDefinitionMap)
+        }
+
+    __slots__: List[str] = ['_channel_variables', '_charts']
+
+    def __init__(self, channel_variables: Dict[str, "scout_comparisonnotebook_api_ChannelVariable"], charts: Dict[str, "scout_comparisonnotebook_api_ChartDefinition"]) -> None:
+        self._channel_variables = channel_variables
+        self._charts = charts
+
+    @builtins.property
+    def channel_variables(self) -> Dict[str, "scout_comparisonnotebook_api_ChannelVariable"]:
+        return self._channel_variables
+
+    @builtins.property
+    def charts(self) -> Dict[str, "scout_comparisonnotebook_api_ChartDefinition"]:
+        return self._charts
+
+
+scout_comparisonnotebook_api_ComparisonWorkbookContent.__name__ = "ComparisonWorkbookContent"
+scout_comparisonnotebook_api_ComparisonWorkbookContent.__qualname__ = "ComparisonWorkbookContent"
+scout_comparisonnotebook_api_ComparisonWorkbookContent.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonWorkbookContext(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'variables': ConjureFieldDefinition('variables', Dict[scout_compute_api_VariableName, scout_comparisonnotebook_api_VariableLocator]),
+            'sub_function_variables': ConjureFieldDefinition('subFunctionVariables', Dict[scout_compute_api_FunctionReference, scout_comparisonnotebook_api_ComparisonWorkbookContext])
+        }
+
+    __slots__: List[str] = ['_variables', '_sub_function_variables']
+
+    def __init__(self, sub_function_variables: Dict[str, "scout_comparisonnotebook_api_ComparisonWorkbookContext"], variables: Dict[str, "scout_comparisonnotebook_api_VariableLocator"]) -> None:
+        self._variables = variables
+        self._sub_function_variables = sub_function_variables
+
+    @builtins.property
+    def variables(self) -> Dict[str, "scout_comparisonnotebook_api_VariableLocator"]:
+        return self._variables
+
+    @builtins.property
+    def sub_function_variables(self) -> Dict[str, "scout_comparisonnotebook_api_ComparisonWorkbookContext"]:
+        return self._sub_function_variables
+
+
+scout_comparisonnotebook_api_ComparisonWorkbookContext.__name__ = "ComparisonWorkbookContext"
+scout_comparisonnotebook_api_ComparisonWorkbookContext.__qualname__ = "ComparisonWorkbookContext"
+scout_comparisonnotebook_api_ComparisonWorkbookContext.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ContextProvider(ConjureUnionType):
+    _variable_context: Optional["scout_comparisonnotebook_api_ComparisonWorkbookContext"] = None
+    _range_aggregation_context: Optional["scout_comparisonnotebook_api_RangeAggregationContext"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'variable_context': ConjureFieldDefinition('variableContext', scout_comparisonnotebook_api_ComparisonWorkbookContext),
+            'range_aggregation_context': ConjureFieldDefinition('rangeAggregationContext', scout_comparisonnotebook_api_RangeAggregationContext)
+        }
+
+    def __init__(
+            self,
+            variable_context: Optional["scout_comparisonnotebook_api_ComparisonWorkbookContext"] = None,
+            range_aggregation_context: Optional["scout_comparisonnotebook_api_RangeAggregationContext"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (variable_context is not None) + (range_aggregation_context is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if variable_context is not None:
+                self._variable_context = variable_context
+                self._type = 'variableContext'
+            if range_aggregation_context is not None:
+                self._range_aggregation_context = range_aggregation_context
+                self._type = 'rangeAggregationContext'
+
+        elif type_of_union == 'variableContext':
+            if variable_context is None:
+                raise ValueError('a union value must not be None')
+            self._variable_context = variable_context
+            self._type = 'variableContext'
+        elif type_of_union == 'rangeAggregationContext':
+            if range_aggregation_context is None:
+                raise ValueError('a union value must not be None')
+            self._range_aggregation_context = range_aggregation_context
+            self._type = 'rangeAggregationContext'
+
+    @builtins.property
+    def variable_context(self) -> Optional["scout_comparisonnotebook_api_ComparisonWorkbookContext"]:
+        return self._variable_context
+
+    @builtins.property
+    def range_aggregation_context(self) -> Optional["scout_comparisonnotebook_api_RangeAggregationContext"]:
+        return self._range_aggregation_context
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_comparisonnotebook_api_ContextProviderVisitor):
+            raise ValueError('{} is not an instance of scout_comparisonnotebook_api_ContextProviderVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'variableContext' and self.variable_context is not None:
+            return visitor._variable_context(self.variable_context)
+        if self._type == 'rangeAggregationContext' and self.range_aggregation_context is not None:
+            return visitor._range_aggregation_context(self.range_aggregation_context)
+
+
+scout_comparisonnotebook_api_ContextProvider.__name__ = "ContextProvider"
+scout_comparisonnotebook_api_ContextProvider.__qualname__ = "ContextProvider"
+scout_comparisonnotebook_api_ContextProvider.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ContextProviderVisitor:
+
+    @abstractmethod
+    def _variable_context(self, variable_context: "scout_comparisonnotebook_api_ComparisonWorkbookContext") -> Any:
+        pass
+
+    @abstractmethod
+    def _range_aggregation_context(self, range_aggregation_context: "scout_comparisonnotebook_api_RangeAggregationContext") -> Any:
+        pass
+
+
+scout_comparisonnotebook_api_ContextProviderVisitor.__name__ = "ContextProviderVisitor"
+scout_comparisonnotebook_api_ContextProviderVisitor.__qualname__ = "ContextProviderVisitor"
+scout_comparisonnotebook_api_ContextProviderVisitor.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_Max(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+        }
+
+    __slots__: List[str] = []
+
+
+
+scout_comparisonnotebook_api_Max.__name__ = "Max"
+scout_comparisonnotebook_api_Max.__qualname__ = "Max"
+scout_comparisonnotebook_api_Max.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_Mean(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+        }
+
+    __slots__: List[str] = []
+
+
+
+scout_comparisonnotebook_api_Mean.__name__ = "Mean"
+scout_comparisonnotebook_api_Mean.__qualname__ = "Mean"
+scout_comparisonnotebook_api_Mean.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_Min(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+        }
+
+    __slots__: List[str] = []
+
+
+
+scout_comparisonnotebook_api_Min.__name__ = "Min"
+scout_comparisonnotebook_api_Min.__qualname__ = "Min"
+scout_comparisonnotebook_api_Min.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_RangeAggregationContext(ConjureBeanType):
+    """
+    specifies the context for a range aggregation query
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'data_scope': ConjureFieldDefinition('dataScope', scout_comparisonnotebook_api_RangeAggregationDataScope),
+            'channels_to_aggregate': ConjureFieldDefinition('channelsToAggregate', Dict[scout_comparisonnotebook_api_VariableName, scout_comparisonnotebook_api_AggregationType])
+        }
+
+    __slots__: List[str] = ['_data_scope', '_channels_to_aggregate']
+
+    def __init__(self, channels_to_aggregate: Dict[str, "scout_comparisonnotebook_api_AggregationType"], data_scope: "scout_comparisonnotebook_api_RangeAggregationDataScope") -> None:
+        self._data_scope = data_scope
+        self._channels_to_aggregate = channels_to_aggregate
+
+    @builtins.property
+    def data_scope(self) -> "scout_comparisonnotebook_api_RangeAggregationDataScope":
+        return self._data_scope
+
+    @builtins.property
+    def channels_to_aggregate(self) -> Dict[str, "scout_comparisonnotebook_api_AggregationType"]:
+        return self._channels_to_aggregate
+
+
+scout_comparisonnotebook_api_RangeAggregationContext.__name__ = "RangeAggregationContext"
+scout_comparisonnotebook_api_RangeAggregationContext.__qualname__ = "RangeAggregationContext"
+scout_comparisonnotebook_api_RangeAggregationContext.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_RangeAggregationDataScope(ConjureUnionType):
+    _runs: Optional[List[str]] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'runs': ConjureFieldDefinition('runs', List[scout_run_api_RunRid])
+        }
+
+    def __init__(
+            self,
+            runs: Optional[List[str]] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (runs is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if runs is not None:
+                self._runs = runs
+                self._type = 'runs'
+
+        elif type_of_union == 'runs':
+            if runs is None:
+                raise ValueError('a union value must not be None')
+            self._runs = runs
+            self._type = 'runs'
+
+    @builtins.property
+    def runs(self) -> Optional[List[str]]:
+        return self._runs
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_comparisonnotebook_api_RangeAggregationDataScopeVisitor):
+            raise ValueError('{} is not an instance of scout_comparisonnotebook_api_RangeAggregationDataScopeVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'runs' and self.runs is not None:
+            return visitor._runs(self.runs)
+
+
+scout_comparisonnotebook_api_RangeAggregationDataScope.__name__ = "RangeAggregationDataScope"
+scout_comparisonnotebook_api_RangeAggregationDataScope.__qualname__ = "RangeAggregationDataScope"
+scout_comparisonnotebook_api_RangeAggregationDataScope.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_RangeAggregationDataScopeVisitor:
+
+    @abstractmethod
+    def _runs(self, runs: List[str]) -> Any:
+        pass
+
+
+scout_comparisonnotebook_api_RangeAggregationDataScopeVisitor.__name__ = "RangeAggregationDataScopeVisitor"
+scout_comparisonnotebook_api_RangeAggregationDataScopeVisitor.__qualname__ = "RangeAggregationDataScopeVisitor"
+scout_comparisonnotebook_api_RangeAggregationDataScopeVisitor.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_StandardDeviation(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+        }
+
+    __slots__: List[str] = []
+
+
+
+scout_comparisonnotebook_api_StandardDeviation.__name__ = "StandardDeviation"
+scout_comparisonnotebook_api_StandardDeviation.__qualname__ = "StandardDeviation"
+scout_comparisonnotebook_api_StandardDeviation.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_VariableLocator(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'compute_node': ConjureFieldDefinition('computeNode', scout_compute_api_ComputeNode),
+            'context': ConjureFieldDefinition('context', scout_comparisonnotebook_api_ContextProvider)
+        }
+
+    __slots__: List[str] = ['_compute_node', '_context']
+
+    def __init__(self, compute_node: "scout_compute_api_ComputeNode", context: "scout_comparisonnotebook_api_ContextProvider") -> None:
+        self._compute_node = compute_node
+        self._context = context
+
+    @builtins.property
+    def compute_node(self) -> "scout_compute_api_ComputeNode":
+        return self._compute_node
+
+    @builtins.property
+    def context(self) -> "scout_comparisonnotebook_api_ContextProvider":
+        return self._context
+
+
+scout_comparisonnotebook_api_VariableLocator.__name__ = "VariableLocator"
+scout_comparisonnotebook_api_VariableLocator.__qualname__ = "VariableLocator"
+scout_comparisonnotebook_api_VariableLocator.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
 class scout_comparisonrun_api_ComparisonRun(ConjureBeanType):
 
     @builtins.classmethod
@@ -19450,7 +20542,41 @@ class scout_compute_api_ComputeService(Service):
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), scout_compute_api_ComputeNodeResponse, self._return_none_for_unknown_union_types)
 
-    def compute_units(self, auth_header: str, request: "scout_compute_api_ComputeNodeRequest") -> "scout_compute_api_ComputeUnitResult":
+    def parameterized_compute(self, auth_header: str, request: "scout_compute_api_ParameterizedComputeNodeRequest") -> "scout_compute_api_ParameterizedComputeNodeResponse":
+        """
+        Computes the output of the compute graph specified by a ParameterizedComputeNodeRequest. A parameterized 
+compute request supports multiple values for a single variable, supplied by the ParameterizedContext.
+Results are returned in the same order of the request.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/compute/v2/compute/parameterized'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_compute_api_ParameterizedComputeNodeResponse, self._return_none_for_unknown_union_types)
+
+    def compute_units(self, auth_header: str, request: "scout_compute_api_ComputeUnitsRequest") -> "scout_compute_api_ComputeUnitResult":
         """
         Returns the resulting unit for the output of a compute graph. If the resulting unit is equivalent to exactly
 one existing unit in the system, it will be returned (for example, a series in Coulombs divided by a series
@@ -19567,6 +20693,35 @@ class scout_compute_api_ComputeUnitResultVisitor:
 scout_compute_api_ComputeUnitResultVisitor.__name__ = "ComputeUnitResultVisitor"
 scout_compute_api_ComputeUnitResultVisitor.__qualname__ = "ComputeUnitResultVisitor"
 scout_compute_api_ComputeUnitResultVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ComputeUnitsRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'node': ConjureFieldDefinition('node', scout_compute_api_ComputableNode),
+            'context': ConjureFieldDefinition('context', scout_compute_api_Context)
+        }
+
+    __slots__: List[str] = ['_node', '_context']
+
+    def __init__(self, context: "scout_compute_api_Context", node: "scout_compute_api_ComputableNode") -> None:
+        self._node = node
+        self._context = context
+
+    @builtins.property
+    def node(self) -> "scout_compute_api_ComputableNode":
+        return self._node
+
+    @builtins.property
+    def context(self) -> "scout_compute_api_Context":
+        return self._context
+
+
+scout_compute_api_ComputeUnitsRequest.__name__ = "ComputeUnitsRequest"
+scout_compute_api_ComputeUnitsRequest.__qualname__ = "ComputeUnitsRequest"
+scout_compute_api_ComputeUnitsRequest.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_Context(ConjureBeanType):
@@ -19850,6 +21005,22 @@ class scout_compute_api_DurationConstantVisitor:
 scout_compute_api_DurationConstantVisitor.__name__ = "DurationConstantVisitor"
 scout_compute_api_DurationConstantVisitor.__qualname__ = "DurationConstantVisitor"
 scout_compute_api_DurationConstantVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_Empty(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+        }
+
+    __slots__: List[str] = []
+
+
+
+scout_compute_api_Empty.__name__ = "Empty"
+scout_compute_api_Empty.__qualname__ = "Empty"
+scout_compute_api_Empty.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_EnumAggregationFunction(ConjureEnumType):
@@ -20621,6 +21792,35 @@ class scout_compute_api_EqualityOperator(ConjureEnumType):
 scout_compute_api_EqualityOperator.__name__ = "EqualityOperator"
 scout_compute_api_EqualityOperator.__qualname__ = "EqualityOperator"
 scout_compute_api_EqualityOperator.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ErrorResult(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'error_type': ConjureFieldDefinition('errorType', scout_compute_api_ErrorType),
+            'code': ConjureFieldDefinition('code', scout_compute_api_ErrorCode)
+        }
+
+    __slots__: List[str] = ['_error_type', '_code']
+
+    def __init__(self, code: int, error_type: str) -> None:
+        self._error_type = error_type
+        self._code = code
+
+    @builtins.property
+    def error_type(self) -> str:
+        return self._error_type
+
+    @builtins.property
+    def code(self) -> int:
+        return self._code
+
+
+scout_compute_api_ErrorResult.__name__ = "ErrorResult"
+scout_compute_api_ErrorResult.__qualname__ = "ErrorResult"
+scout_compute_api_ErrorResult.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_ExcludeNegativeValues(ConjureBeanType):
@@ -23324,6 +24524,217 @@ scout_compute_api_OutputRangeStartVisitor.__qualname__ = "OutputRangeStartVisito
 scout_compute_api_OutputRangeStartVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
+class scout_compute_api_ParameterInput(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'variables': ConjureFieldDefinition('variables', Dict[scout_compute_api_VariableName, scout_compute_api_VariableValue]),
+            'function_variables': ConjureFieldDefinition('functionVariables', Dict[scout_compute_api_FunctionReference, scout_compute_api_FunctionVariables])
+        }
+
+    __slots__: List[str] = ['_variables', '_function_variables']
+
+    def __init__(self, function_variables: Dict[str, "scout_compute_api_FunctionVariables"], variables: Dict[str, "scout_compute_api_VariableValue"]) -> None:
+        self._variables = variables
+        self._function_variables = function_variables
+
+    @builtins.property
+    def variables(self) -> Dict[str, "scout_compute_api_VariableValue"]:
+        return self._variables
+
+    @builtins.property
+    def function_variables(self) -> Dict[str, "scout_compute_api_FunctionVariables"]:
+        """
+        Map of function references to their variables. The function reference is defined in the FunctionNode definition.
+If a function references another function, the variables for the referenced function should be in the
+subFunctionVariables field of the FunctionVariables.
+        """
+        return self._function_variables
+
+
+scout_compute_api_ParameterInput.__name__ = "ParameterInput"
+scout_compute_api_ParameterInput.__qualname__ = "ParameterInput"
+scout_compute_api_ParameterInput.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ParameterizedComputeNodeRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'node': ConjureFieldDefinition('node', scout_compute_api_ComputableNode),
+            'start': ConjureFieldDefinition('start', scout_compute_api_Timestamp),
+            'end': ConjureFieldDefinition('end', scout_compute_api_Timestamp),
+            'context': ConjureFieldDefinition('context', scout_compute_api_Context),
+            'parameterized_context': ConjureFieldDefinition('parameterizedContext', scout_compute_api_ParameterizedContext)
+        }
+
+    __slots__: List[str] = ['_node', '_start', '_end', '_context', '_parameterized_context']
+
+    def __init__(self, context: "scout_compute_api_Context", end: "scout_compute_api_Timestamp", node: "scout_compute_api_ComputableNode", parameterized_context: "scout_compute_api_ParameterizedContext", start: "scout_compute_api_Timestamp") -> None:
+        self._node = node
+        self._start = start
+        self._end = end
+        self._context = context
+        self._parameterized_context = parameterized_context
+
+    @builtins.property
+    def node(self) -> "scout_compute_api_ComputableNode":
+        return self._node
+
+    @builtins.property
+    def start(self) -> "scout_compute_api_Timestamp":
+        return self._start
+
+    @builtins.property
+    def end(self) -> "scout_compute_api_Timestamp":
+        return self._end
+
+    @builtins.property
+    def context(self) -> "scout_compute_api_Context":
+        return self._context
+
+    @builtins.property
+    def parameterized_context(self) -> "scout_compute_api_ParameterizedContext":
+        """
+        Specifies how certain variables should be parameterized. If a variable name appears in both the context
+and the parameterized context, it will be treated as parameterized.
+        """
+        return self._parameterized_context
+
+
+scout_compute_api_ParameterizedComputeNodeRequest.__name__ = "ParameterizedComputeNodeRequest"
+scout_compute_api_ParameterizedComputeNodeRequest.__qualname__ = "ParameterizedComputeNodeRequest"
+scout_compute_api_ParameterizedComputeNodeRequest.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ParameterizedComputeNodeResponse(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'results': ConjureFieldDefinition('results', List[scout_compute_api_ParameterizedComputeNodeResult])
+        }
+
+    __slots__: List[str] = ['_results']
+
+    def __init__(self, results: List["scout_compute_api_ParameterizedComputeNodeResult"]) -> None:
+        self._results = results
+
+    @builtins.property
+    def results(self) -> List["scout_compute_api_ParameterizedComputeNodeResult"]:
+        return self._results
+
+
+scout_compute_api_ParameterizedComputeNodeResponse.__name__ = "ParameterizedComputeNodeResponse"
+scout_compute_api_ParameterizedComputeNodeResponse.__qualname__ = "ParameterizedComputeNodeResponse"
+scout_compute_api_ParameterizedComputeNodeResponse.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ParameterizedComputeNodeResult(ConjureUnionType):
+    _success: Optional["scout_compute_api_ComputeNodeResponse"] = None
+    _error: Optional["scout_compute_api_ErrorResult"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'success': ConjureFieldDefinition('success', scout_compute_api_ComputeNodeResponse),
+            'error': ConjureFieldDefinition('error', scout_compute_api_ErrorResult)
+        }
+
+    def __init__(
+            self,
+            success: Optional["scout_compute_api_ComputeNodeResponse"] = None,
+            error: Optional["scout_compute_api_ErrorResult"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (success is not None) + (error is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if success is not None:
+                self._success = success
+                self._type = 'success'
+            if error is not None:
+                self._error = error
+                self._type = 'error'
+
+        elif type_of_union == 'success':
+            if success is None:
+                raise ValueError('a union value must not be None')
+            self._success = success
+            self._type = 'success'
+        elif type_of_union == 'error':
+            if error is None:
+                raise ValueError('a union value must not be None')
+            self._error = error
+            self._type = 'error'
+
+    @builtins.property
+    def success(self) -> Optional["scout_compute_api_ComputeNodeResponse"]:
+        return self._success
+
+    @builtins.property
+    def error(self) -> Optional["scout_compute_api_ErrorResult"]:
+        return self._error
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_ParameterizedComputeNodeResultVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_ParameterizedComputeNodeResultVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'success' and self.success is not None:
+            return visitor._success(self.success)
+        if self._type == 'error' and self.error is not None:
+            return visitor._error(self.error)
+
+
+scout_compute_api_ParameterizedComputeNodeResult.__name__ = "ParameterizedComputeNodeResult"
+scout_compute_api_ParameterizedComputeNodeResult.__qualname__ = "ParameterizedComputeNodeResult"
+scout_compute_api_ParameterizedComputeNodeResult.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ParameterizedComputeNodeResultVisitor:
+
+    @abstractmethod
+    def _success(self, success: "scout_compute_api_ComputeNodeResponse") -> Any:
+        pass
+
+    @abstractmethod
+    def _error(self, error: "scout_compute_api_ErrorResult") -> Any:
+        pass
+
+
+scout_compute_api_ParameterizedComputeNodeResultVisitor.__name__ = "ParameterizedComputeNodeResultVisitor"
+scout_compute_api_ParameterizedComputeNodeResultVisitor.__qualname__ = "ParameterizedComputeNodeResultVisitor"
+scout_compute_api_ParameterizedComputeNodeResultVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ParameterizedContext(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'parameter_inputs': ConjureFieldDefinition('parameterInputs', List[scout_compute_api_ParameterInput])
+        }
+
+    __slots__: List[str] = ['_parameter_inputs']
+
+    def __init__(self, parameter_inputs: List["scout_compute_api_ParameterInput"]) -> None:
+        self._parameter_inputs = parameter_inputs
+
+    @builtins.property
+    def parameter_inputs(self) -> List["scout_compute_api_ParameterInput"]:
+        """
+        Each parameter input provides a satisfying set of values for the parameterized variables of the compute node.
+        """
+        return self._parameter_inputs
+
+
+scout_compute_api_ParameterizedContext.__name__ = "ParameterizedContext"
+scout_compute_api_ParameterizedContext.__qualname__ = "ParameterizedContext"
+scout_compute_api_ParameterizedContext.__module__ = "scout_service_api.scout_compute_api"
+
+
 class scout_compute_api_PeakRangesNode(ConjureBeanType):
     """
     Produces a list of ranges for each point that is greater than its neighbors.
@@ -23498,14 +24909,16 @@ end to the range.
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'start': ConjureFieldDefinition('start', OptionalTypeWrapper[scout_compute_api_Timestamp]),
-            'end': ConjureFieldDefinition('end', OptionalTypeWrapper[scout_compute_api_Timestamp])
+            'end': ConjureFieldDefinition('end', OptionalTypeWrapper[scout_compute_api_Timestamp]),
+            'value': ConjureFieldDefinition('value', OptionalTypeWrapper[scout_compute_api_RangeValue])
         }
 
-    __slots__: List[str] = ['_start', '_end']
+    __slots__: List[str] = ['_start', '_end', '_value']
 
-    def __init__(self, end: Optional["scout_compute_api_Timestamp"] = None, start: Optional["scout_compute_api_Timestamp"] = None) -> None:
+    def __init__(self, end: Optional["scout_compute_api_Timestamp"] = None, start: Optional["scout_compute_api_Timestamp"] = None, value: Optional["scout_compute_api_RangeValue"] = None) -> None:
         self._start = start
         self._end = end
+        self._value = value
 
     @builtins.property
     def start(self) -> Optional["scout_compute_api_Timestamp"]:
@@ -23515,10 +24928,195 @@ end to the range.
     def end(self) -> Optional["scout_compute_api_Timestamp"]:
         return self._end
 
+    @builtins.property
+    def value(self) -> Optional["scout_compute_api_RangeValue"]:
+        return self._value
+
 
 scout_compute_api_Range.__name__ = "Range"
 scout_compute_api_Range.__qualname__ = "Range"
 scout_compute_api_Range.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_RangeAggregation(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'average': ConjureFieldDefinition('average', float),
+            'min': ConjureFieldDefinition('min', float),
+            'max': ConjureFieldDefinition('max', float),
+            'standard_deviation': ConjureFieldDefinition('standardDeviation', float)
+        }
+
+    __slots__: List[str] = ['_average', '_min', '_max', '_standard_deviation']
+
+    def __init__(self, average: float, max: float, min: float, standard_deviation: float) -> None:
+        self._average = average
+        self._min = min
+        self._max = max
+        self._standard_deviation = standard_deviation
+
+    @builtins.property
+    def average(self) -> float:
+        return self._average
+
+    @builtins.property
+    def min(self) -> float:
+        return self._min
+
+    @builtins.property
+    def max(self) -> float:
+        return self._max
+
+    @builtins.property
+    def standard_deviation(self) -> float:
+        return self._standard_deviation
+
+
+scout_compute_api_RangeAggregation.__name__ = "RangeAggregation"
+scout_compute_api_RangeAggregation.__qualname__ = "RangeAggregation"
+scout_compute_api_RangeAggregation.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_RangeAggregationOperation(ConjureUnionType):
+    _average: Optional["scout_compute_api_Average"] = None
+    _min: Optional["scout_compute_api_Minimum"] = None
+    _max: Optional["scout_compute_api_Maximum"] = None
+    _standard_deviation: Optional["scout_compute_api_StandardDeviation"] = None
+    _all: Optional["scout_compute_api_Empty"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'average': ConjureFieldDefinition('average', scout_compute_api_Average),
+            'min': ConjureFieldDefinition('min', scout_compute_api_Minimum),
+            'max': ConjureFieldDefinition('max', scout_compute_api_Maximum),
+            'standard_deviation': ConjureFieldDefinition('standardDeviation', scout_compute_api_StandardDeviation),
+            'all': ConjureFieldDefinition('all', scout_compute_api_Empty)
+        }
+
+    def __init__(
+            self,
+            average: Optional["scout_compute_api_Average"] = None,
+            min: Optional["scout_compute_api_Minimum"] = None,
+            max: Optional["scout_compute_api_Maximum"] = None,
+            standard_deviation: Optional["scout_compute_api_StandardDeviation"] = None,
+            all: Optional["scout_compute_api_Empty"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (average is not None) + (min is not None) + (max is not None) + (standard_deviation is not None) + (all is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if average is not None:
+                self._average = average
+                self._type = 'average'
+            if min is not None:
+                self._min = min
+                self._type = 'min'
+            if max is not None:
+                self._max = max
+                self._type = 'max'
+            if standard_deviation is not None:
+                self._standard_deviation = standard_deviation
+                self._type = 'standardDeviation'
+            if all is not None:
+                self._all = all
+                self._type = 'all'
+
+        elif type_of_union == 'average':
+            if average is None:
+                raise ValueError('a union value must not be None')
+            self._average = average
+            self._type = 'average'
+        elif type_of_union == 'min':
+            if min is None:
+                raise ValueError('a union value must not be None')
+            self._min = min
+            self._type = 'min'
+        elif type_of_union == 'max':
+            if max is None:
+                raise ValueError('a union value must not be None')
+            self._max = max
+            self._type = 'max'
+        elif type_of_union == 'standardDeviation':
+            if standard_deviation is None:
+                raise ValueError('a union value must not be None')
+            self._standard_deviation = standard_deviation
+            self._type = 'standardDeviation'
+        elif type_of_union == 'all':
+            if all is None:
+                raise ValueError('a union value must not be None')
+            self._all = all
+            self._type = 'all'
+
+    @builtins.property
+    def average(self) -> Optional["scout_compute_api_Average"]:
+        return self._average
+
+    @builtins.property
+    def min(self) -> Optional["scout_compute_api_Minimum"]:
+        return self._min
+
+    @builtins.property
+    def max(self) -> Optional["scout_compute_api_Maximum"]:
+        return self._max
+
+    @builtins.property
+    def standard_deviation(self) -> Optional["scout_compute_api_StandardDeviation"]:
+        return self._standard_deviation
+
+    @builtins.property
+    def all(self) -> Optional["scout_compute_api_Empty"]:
+        return self._all
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_RangeAggregationOperationVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_RangeAggregationOperationVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'average' and self.average is not None:
+            return visitor._average(self.average)
+        if self._type == 'min' and self.min is not None:
+            return visitor._min(self.min)
+        if self._type == 'max' and self.max is not None:
+            return visitor._max(self.max)
+        if self._type == 'standardDeviation' and self.standard_deviation is not None:
+            return visitor._standard_deviation(self.standard_deviation)
+        if self._type == 'all' and self.all is not None:
+            return visitor._all(self.all)
+
+
+scout_compute_api_RangeAggregationOperation.__name__ = "RangeAggregationOperation"
+scout_compute_api_RangeAggregationOperation.__qualname__ = "RangeAggregationOperation"
+scout_compute_api_RangeAggregationOperation.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_RangeAggregationOperationVisitor:
+
+    @abstractmethod
+    def _average(self, average: "scout_compute_api_Average") -> Any:
+        pass
+
+    @abstractmethod
+    def _min(self, min: "scout_compute_api_Minimum") -> Any:
+        pass
+
+    @abstractmethod
+    def _max(self, max: "scout_compute_api_Maximum") -> Any:
+        pass
+
+    @abstractmethod
+    def _standard_deviation(self, standard_deviation: "scout_compute_api_StandardDeviation") -> Any:
+        pass
+
+    @abstractmethod
+    def _all(self, all: "scout_compute_api_Empty") -> Any:
+        pass
+
+
+scout_compute_api_RangeAggregationOperationVisitor.__name__ = "RangeAggregationOperationVisitor"
+scout_compute_api_RangeAggregationOperationVisitor.__qualname__ = "RangeAggregationOperationVisitor"
+scout_compute_api_RangeAggregationOperationVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_RangeSummary(ConjureBeanType):
@@ -23557,6 +25155,104 @@ class scout_compute_api_RangeSummary(ConjureBeanType):
 scout_compute_api_RangeSummary.__name__ = "RangeSummary"
 scout_compute_api_RangeSummary.__qualname__ = "RangeSummary"
 scout_compute_api_RangeSummary.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_RangeValue(ConjureUnionType):
+    _double: Optional[float] = None
+    _aggregation: Optional["scout_compute_api_RangeAggregation"] = None
+    _no_points_in_range: Optional["scout_compute_api_Empty"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'double': ConjureFieldDefinition('double', float),
+            'aggregation': ConjureFieldDefinition('aggregation', scout_compute_api_RangeAggregation),
+            'no_points_in_range': ConjureFieldDefinition('noPointsInRange', scout_compute_api_Empty)
+        }
+
+    def __init__(
+            self,
+            double: Optional[float] = None,
+            aggregation: Optional["scout_compute_api_RangeAggregation"] = None,
+            no_points_in_range: Optional["scout_compute_api_Empty"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (double is not None) + (aggregation is not None) + (no_points_in_range is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if double is not None:
+                self._double = double
+                self._type = 'double'
+            if aggregation is not None:
+                self._aggregation = aggregation
+                self._type = 'aggregation'
+            if no_points_in_range is not None:
+                self._no_points_in_range = no_points_in_range
+                self._type = 'noPointsInRange'
+
+        elif type_of_union == 'double':
+            if double is None:
+                raise ValueError('a union value must not be None')
+            self._double = double
+            self._type = 'double'
+        elif type_of_union == 'aggregation':
+            if aggregation is None:
+                raise ValueError('a union value must not be None')
+            self._aggregation = aggregation
+            self._type = 'aggregation'
+        elif type_of_union == 'noPointsInRange':
+            if no_points_in_range is None:
+                raise ValueError('a union value must not be None')
+            self._no_points_in_range = no_points_in_range
+            self._type = 'noPointsInRange'
+
+    @builtins.property
+    def double(self) -> Optional[float]:
+        return self._double
+
+    @builtins.property
+    def aggregation(self) -> Optional["scout_compute_api_RangeAggregation"]:
+        return self._aggregation
+
+    @builtins.property
+    def no_points_in_range(self) -> Optional["scout_compute_api_Empty"]:
+        return self._no_points_in_range
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_RangeValueVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_RangeValueVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'double' and self.double is not None:
+            return visitor._double(self.double)
+        if self._type == 'aggregation' and self.aggregation is not None:
+            return visitor._aggregation(self.aggregation)
+        if self._type == 'noPointsInRange' and self.no_points_in_range is not None:
+            return visitor._no_points_in_range(self.no_points_in_range)
+
+
+scout_compute_api_RangeValue.__name__ = "RangeValue"
+scout_compute_api_RangeValue.__qualname__ = "RangeValue"
+scout_compute_api_RangeValue.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_RangeValueVisitor:
+
+    @abstractmethod
+    def _double(self, double: float) -> Any:
+        pass
+
+    @abstractmethod
+    def _aggregation(self, aggregation: "scout_compute_api_RangeAggregation") -> Any:
+        pass
+
+    @abstractmethod
+    def _no_points_in_range(self, no_points_in_range: "scout_compute_api_Empty") -> Any:
+        pass
+
+
+scout_compute_api_RangeValueVisitor.__name__ = "RangeValueVisitor"
+scout_compute_api_RangeValueVisitor.__qualname__ = "RangeValueVisitor"
+scout_compute_api_RangeValueVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_RangesFunction(ConjureBeanType):
@@ -23612,6 +25308,7 @@ class scout_compute_api_RangesNode(ConjureUnionType):
     _stale_range: Optional["scout_compute_api_StaleRangesNode"] = None
     _threshold: Optional["scout_compute_api_ThresholdingRangesNode"] = None
     _union_range: Optional["scout_compute_api_UnionRangesNode"] = None
+    _range_numeric_aggregation: Optional["scout_compute_api_RangesNumericAggregationNode"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
@@ -23629,7 +25326,8 @@ class scout_compute_api_RangesNode(ConjureUnionType):
             'enum_series_equality_ranges_node': ConjureFieldDefinition('enumSeriesEqualityRangesNode', scout_compute_api_EnumSeriesEqualityRangesNode),
             'stale_range': ConjureFieldDefinition('staleRange', scout_compute_api_StaleRangesNode),
             'threshold': ConjureFieldDefinition('threshold', scout_compute_api_ThresholdingRangesNode),
-            'union_range': ConjureFieldDefinition('unionRange', scout_compute_api_UnionRangesNode)
+            'union_range': ConjureFieldDefinition('unionRange', scout_compute_api_UnionRangesNode),
+            'range_numeric_aggregation': ConjureFieldDefinition('rangeNumericAggregation', scout_compute_api_RangesNumericAggregationNode)
         }
 
     def __init__(
@@ -23648,10 +25346,11 @@ class scout_compute_api_RangesNode(ConjureUnionType):
             stale_range: Optional["scout_compute_api_StaleRangesNode"] = None,
             threshold: Optional["scout_compute_api_ThresholdingRangesNode"] = None,
             union_range: Optional["scout_compute_api_UnionRangesNode"] = None,
+            range_numeric_aggregation: Optional["scout_compute_api_RangesNumericAggregationNode"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (enum_filter is not None) + (function is not None) + (intersect_range is not None) + (not_ is not None) + (on_change is not None) + (min_max_threshold is not None) + (peak is not None) + (raw is not None) + (series_crossover_ranges_node is not None) + (series_equality_ranges_node is not None) + (enum_series_equality_ranges_node is not None) + (stale_range is not None) + (threshold is not None) + (union_range is not None) != 1:
+            if (enum_filter is not None) + (function is not None) + (intersect_range is not None) + (not_ is not None) + (on_change is not None) + (min_max_threshold is not None) + (peak is not None) + (raw is not None) + (series_crossover_ranges_node is not None) + (series_equality_ranges_node is not None) + (enum_series_equality_ranges_node is not None) + (stale_range is not None) + (threshold is not None) + (union_range is not None) + (range_numeric_aggregation is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if enum_filter is not None:
@@ -23696,6 +25395,9 @@ class scout_compute_api_RangesNode(ConjureUnionType):
             if union_range is not None:
                 self._union_range = union_range
                 self._type = 'unionRange'
+            if range_numeric_aggregation is not None:
+                self._range_numeric_aggregation = range_numeric_aggregation
+                self._type = 'rangeNumericAggregation'
 
         elif type_of_union == 'enumFilter':
             if enum_filter is None:
@@ -23767,6 +25469,11 @@ class scout_compute_api_RangesNode(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._union_range = union_range
             self._type = 'unionRange'
+        elif type_of_union == 'rangeNumericAggregation':
+            if range_numeric_aggregation is None:
+                raise ValueError('a union value must not be None')
+            self._range_numeric_aggregation = range_numeric_aggregation
+            self._type = 'rangeNumericAggregation'
 
     @builtins.property
     def enum_filter(self) -> Optional["scout_compute_api_EnumFilterRangesNode"]:
@@ -23830,6 +25537,10 @@ class scout_compute_api_RangesNode(ConjureUnionType):
     def union_range(self) -> Optional["scout_compute_api_UnionRangesNode"]:
         return self._union_range
 
+    @builtins.property
+    def range_numeric_aggregation(self) -> Optional["scout_compute_api_RangesNumericAggregationNode"]:
+        return self._range_numeric_aggregation
+
     def accept(self, visitor) -> Any:
         if not isinstance(visitor, scout_compute_api_RangesNodeVisitor):
             raise ValueError('{} is not an instance of scout_compute_api_RangesNodeVisitor'.format(visitor.__class__.__name__))
@@ -23861,6 +25572,8 @@ class scout_compute_api_RangesNode(ConjureUnionType):
             return visitor._threshold(self.threshold)
         if self._type == 'unionRange' and self.union_range is not None:
             return visitor._union_range(self.union_range)
+        if self._type == 'rangeNumericAggregation' and self.range_numeric_aggregation is not None:
+            return visitor._range_numeric_aggregation(self.range_numeric_aggregation)
 
 
 scout_compute_api_RangesNode.__name__ = "RangesNode"
@@ -23926,10 +25639,52 @@ class scout_compute_api_RangesNodeVisitor:
     def _union_range(self, union_range: "scout_compute_api_UnionRangesNode") -> Any:
         pass
 
+    @abstractmethod
+    def _range_numeric_aggregation(self, range_numeric_aggregation: "scout_compute_api_RangesNumericAggregationNode") -> Any:
+        pass
+
 
 scout_compute_api_RangesNodeVisitor.__name__ = "RangesNodeVisitor"
 scout_compute_api_RangesNodeVisitor.__qualname__ = "RangesNodeVisitor"
 scout_compute_api_RangesNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_RangesNumericAggregationNode(ConjureBeanType):
+    """
+    Aggregates the values of a numeric series at each range specified by the input ranges.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'operation': ConjureFieldDefinition('operation', scout_compute_api_RangeAggregationOperation)
+        }
+
+    __slots__: List[str] = ['_ranges', '_input', '_operation']
+
+    def __init__(self, input: "scout_compute_api_NumericSeriesNode", operation: "scout_compute_api_RangeAggregationOperation", ranges: "scout_compute_api_RangesNode") -> None:
+        self._ranges = ranges
+        self._input = input
+        self._operation = operation
+
+    @builtins.property
+    def ranges(self) -> "scout_compute_api_RangesNode":
+        return self._ranges
+
+    @builtins.property
+    def input(self) -> "scout_compute_api_NumericSeriesNode":
+        return self._input
+
+    @builtins.property
+    def operation(self) -> "scout_compute_api_RangeAggregationOperation":
+        return self._operation
+
+
+scout_compute_api_RangesNumericAggregationNode.__name__ = "RangesNumericAggregationNode"
+scout_compute_api_RangesNumericAggregationNode.__qualname__ = "RangesNumericAggregationNode"
+scout_compute_api_RangesNumericAggregationNode.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_RangesSummary(ConjureBeanType):
@@ -30495,6 +32250,7 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
     _series_crossover_ranges_node: Optional["scout_compute_resolved_api_SeriesCrossoverRangesNode"] = None
     _stale_range: Optional["scout_compute_resolved_api_StaleRangesNode"] = None
     _union_range: Optional["scout_compute_resolved_api_UnionRangesNode"] = None
+    _range_numeric_aggregation: Optional["scout_compute_resolved_api_RangesNumericAggregationNode"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
@@ -30509,7 +32265,8 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
             'threshold': ConjureFieldDefinition('threshold', scout_compute_resolved_api_ThresholdingRangesNode),
             'series_crossover_ranges_node': ConjureFieldDefinition('seriesCrossoverRangesNode', scout_compute_resolved_api_SeriesCrossoverRangesNode),
             'stale_range': ConjureFieldDefinition('staleRange', scout_compute_resolved_api_StaleRangesNode),
-            'union_range': ConjureFieldDefinition('unionRange', scout_compute_resolved_api_UnionRangesNode)
+            'union_range': ConjureFieldDefinition('unionRange', scout_compute_resolved_api_UnionRangesNode),
+            'range_numeric_aggregation': ConjureFieldDefinition('rangeNumericAggregation', scout_compute_resolved_api_RangesNumericAggregationNode)
         }
 
     def __init__(
@@ -30525,10 +32282,11 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
             series_crossover_ranges_node: Optional["scout_compute_resolved_api_SeriesCrossoverRangesNode"] = None,
             stale_range: Optional["scout_compute_resolved_api_StaleRangesNode"] = None,
             union_range: Optional["scout_compute_resolved_api_UnionRangesNode"] = None,
+            range_numeric_aggregation: Optional["scout_compute_resolved_api_RangesNumericAggregationNode"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (enum_filter is not None) + (enum_equality is not None) + (extrema is not None) + (intersect_range is not None) + (not_ is not None) + (min_max_threshold is not None) + (on_change is not None) + (threshold is not None) + (series_crossover_ranges_node is not None) + (stale_range is not None) + (union_range is not None) != 1:
+            if (enum_filter is not None) + (enum_equality is not None) + (extrema is not None) + (intersect_range is not None) + (not_ is not None) + (min_max_threshold is not None) + (on_change is not None) + (threshold is not None) + (series_crossover_ranges_node is not None) + (stale_range is not None) + (union_range is not None) + (range_numeric_aggregation is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if enum_filter is not None:
@@ -30564,6 +32322,9 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
             if union_range is not None:
                 self._union_range = union_range
                 self._type = 'unionRange'
+            if range_numeric_aggregation is not None:
+                self._range_numeric_aggregation = range_numeric_aggregation
+                self._type = 'rangeNumericAggregation'
 
         elif type_of_union == 'enumFilter':
             if enum_filter is None:
@@ -30620,6 +32381,11 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._union_range = union_range
             self._type = 'unionRange'
+        elif type_of_union == 'rangeNumericAggregation':
+            if range_numeric_aggregation is None:
+                raise ValueError('a union value must not be None')
+            self._range_numeric_aggregation = range_numeric_aggregation
+            self._type = 'rangeNumericAggregation'
 
     @builtins.property
     def enum_filter(self) -> Optional["scout_compute_resolved_api_EnumFilterRangesNode"]:
@@ -30665,6 +32431,10 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
     def union_range(self) -> Optional["scout_compute_resolved_api_UnionRangesNode"]:
         return self._union_range
 
+    @builtins.property
+    def range_numeric_aggregation(self) -> Optional["scout_compute_resolved_api_RangesNumericAggregationNode"]:
+        return self._range_numeric_aggregation
+
     def accept(self, visitor) -> Any:
         if not isinstance(visitor, scout_compute_resolved_api_RangesNodeVisitor):
             raise ValueError('{} is not an instance of scout_compute_resolved_api_RangesNodeVisitor'.format(visitor.__class__.__name__))
@@ -30690,6 +32460,8 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
             return visitor._stale_range(self.stale_range)
         if self._type == 'unionRange' and self.union_range is not None:
             return visitor._union_range(self.union_range)
+        if self._type == 'rangeNumericAggregation' and self.range_numeric_aggregation is not None:
+            return visitor._range_numeric_aggregation(self.range_numeric_aggregation)
 
 
 scout_compute_resolved_api_RangesNode.__name__ = "RangesNode"
@@ -30743,10 +32515,49 @@ class scout_compute_resolved_api_RangesNodeVisitor:
     def _union_range(self, union_range: "scout_compute_resolved_api_UnionRangesNode") -> Any:
         pass
 
+    @abstractmethod
+    def _range_numeric_aggregation(self, range_numeric_aggregation: "scout_compute_resolved_api_RangesNumericAggregationNode") -> Any:
+        pass
+
 
 scout_compute_resolved_api_RangesNodeVisitor.__name__ = "RangesNodeVisitor"
 scout_compute_resolved_api_RangesNodeVisitor.__qualname__ = "RangesNodeVisitor"
 scout_compute_resolved_api_RangesNodeVisitor.__module__ = "scout_service_api.scout_compute_resolved_api"
+
+
+class scout_compute_resolved_api_RangesNumericAggregationNode(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_resolved_api_RangesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_resolved_api_NumericSeriesNode),
+            'operation': ConjureFieldDefinition('operation', scout_compute_api_RangeAggregationOperation)
+        }
+
+    __slots__: List[str] = ['_ranges', '_input', '_operation']
+
+    def __init__(self, input: "scout_compute_resolved_api_NumericSeriesNode", operation: "scout_compute_api_RangeAggregationOperation", ranges: "scout_compute_resolved_api_RangesNode") -> None:
+        self._ranges = ranges
+        self._input = input
+        self._operation = operation
+
+    @builtins.property
+    def ranges(self) -> "scout_compute_resolved_api_RangesNode":
+        return self._ranges
+
+    @builtins.property
+    def input(self) -> "scout_compute_resolved_api_NumericSeriesNode":
+        return self._input
+
+    @builtins.property
+    def operation(self) -> "scout_compute_api_RangeAggregationOperation":
+        return self._operation
+
+
+scout_compute_resolved_api_RangesNumericAggregationNode.__name__ = "RangesNumericAggregationNode"
+scout_compute_resolved_api_RangesNumericAggregationNode.__qualname__ = "RangesNumericAggregationNode"
+scout_compute_resolved_api_RangesNumericAggregationNode.__module__ = "scout_service_api.scout_compute_resolved_api"
 
 
 class scout_compute_resolved_api_RawEnumSeriesNode(ConjureBeanType):
@@ -37216,8 +39027,7 @@ The Connection Service is responsible for creating, updating, and retrieving dat
 
     def create_connection(self, auth_header: str, create_connection: "scout_datasource_connection_api_CreateConnection") -> "scout_datasource_connection_api_Connection":
         """
-        Creates a new connection. Requires the admin token but will change in the future once we have
-secrets as first class resources.
+        Creates a new connection.
         """
 
         _headers: Dict[str, Any] = {
@@ -37249,8 +39059,7 @@ secrets as first class resources.
 
     def update_connection(self, auth_header: str, request: "scout_datasource_connection_api_UpdateConnectionRequest", rid: str) -> "scout_datasource_connection_api_Connection":
         """
-        Updates an existing connection. Requires the admin token but will change in the future once we have
-secrets as first class resources.
+        Updates an existing connection.
         """
 
         _headers: Dict[str, Any] = {
@@ -37283,8 +39092,7 @@ secrets as first class resources.
 
     def update_connection_status(self, auth_header: str, request: "scout_datasource_connection_api_ConnectionStatus", rid: str) -> None:
         """
-        Updates an existing connection status. Requires the admin token but will change in the future once we have
-secrets as first class resources.
+        Updates an existing connection status.
         """
 
         _headers: Dict[str, Any] = {
@@ -37800,7 +39608,6 @@ class scout_datasource_connection_api_CreateConnection(ConjureBeanType):
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
             'connection_details': ConjureFieldDefinition('connectionDetails', scout_datasource_connection_api_ConnectionDetails),
             'metadata': ConjureFieldDefinition('metadata', Dict[str, str]),
-            'organization_rid': ConjureFieldDefinition('organizationRid', scout_datasource_connection_api_OrganizationRid),
             'required_tag_names': ConjureFieldDefinition('requiredTagNames', List[scout_datasource_connection_api_TagName]),
             'available_tag_values': ConjureFieldDefinition('availableTagValues', Dict[scout_datasource_connection_api_TagName, List[scout_datasource_connection_api_TagValue]]),
             'scraping': ConjureFieldDefinition('scraping', OptionalTypeWrapper[scout_datasource_connection_api_ScrapingConfig]),
@@ -37808,14 +39615,13 @@ class scout_datasource_connection_api_CreateConnection(ConjureBeanType):
             'limits': ConjureFieldDefinition('limits', OptionalTypeWrapper[scout_datasource_connection_api_LimitsConfig])
         }
 
-    __slots__: List[str] = ['_name', '_description', '_connection_details', '_metadata', '_organization_rid', '_required_tag_names', '_available_tag_values', '_scraping', '_should_scrape', '_limits']
+    __slots__: List[str] = ['_name', '_description', '_connection_details', '_metadata', '_required_tag_names', '_available_tag_values', '_scraping', '_should_scrape', '_limits']
 
-    def __init__(self, available_tag_values: Dict[str, List[str]], connection_details: "scout_datasource_connection_api_ConnectionDetails", metadata: Dict[str, str], name: str, organization_rid: str, required_tag_names: List[str], should_scrape: bool, description: Optional[str] = None, limits: Optional["scout_datasource_connection_api_LimitsConfig"] = None, scraping: Optional["scout_datasource_connection_api_ScrapingConfig"] = None) -> None:
+    def __init__(self, available_tag_values: Dict[str, List[str]], connection_details: "scout_datasource_connection_api_ConnectionDetails", metadata: Dict[str, str], name: str, required_tag_names: List[str], should_scrape: bool, description: Optional[str] = None, limits: Optional["scout_datasource_connection_api_LimitsConfig"] = None, scraping: Optional["scout_datasource_connection_api_ScrapingConfig"] = None) -> None:
         self._name = name
         self._description = description
         self._connection_details = connection_details
         self._metadata = metadata
-        self._organization_rid = organization_rid
         self._required_tag_names = required_tag_names
         self._available_tag_values = available_tag_values
         self._scraping = scraping
@@ -37840,13 +39646,6 @@ class scout_datasource_connection_api_CreateConnection(ConjureBeanType):
         Metadata information about the connection which is not relevant to the DB connection itself.
         """
         return self._metadata
-
-    @builtins.property
-    def organization_rid(self) -> str:
-        """
-        The organization to which this connection belongs
-        """
-        return self._organization_rid
 
     @builtins.property
     def required_tag_names(self) -> List[str]:
@@ -37924,34 +39723,28 @@ scout_datasource_connection_api_Empty.__module__ = "scout_service_api.scout_data
 
 class scout_datasource_connection_api_HeaderValue(ConjureUnionType):
     _plain: Optional[str] = None
-    _secret: Optional[str] = None
     _secret_rid: Optional[str] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'plain': ConjureFieldDefinition('plain', str),
-            'secret': ConjureFieldDefinition('secret', scout_datasource_connection_api_SecretName),
             'secret_rid': ConjureFieldDefinition('secretRid', scout_datasource_connection_api_SecretRid)
         }
 
     def __init__(
             self,
             plain: Optional[str] = None,
-            secret: Optional[str] = None,
             secret_rid: Optional[str] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (plain is not None) + (secret is not None) + (secret_rid is not None) != 1:
+            if (plain is not None) + (secret_rid is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if plain is not None:
                 self._plain = plain
                 self._type = 'plain'
-            if secret is not None:
-                self._secret = secret
-                self._type = 'secret'
             if secret_rid is not None:
                 self._secret_rid = secret_rid
                 self._type = 'secretRid'
@@ -37961,11 +39754,6 @@ class scout_datasource_connection_api_HeaderValue(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._plain = plain
             self._type = 'plain'
-        elif type_of_union == 'secret':
-            if secret is None:
-                raise ValueError('a union value must not be None')
-            self._secret = secret
-            self._type = 'secret'
         elif type_of_union == 'secretRid':
             if secret_rid is None:
                 raise ValueError('a union value must not be None')
@@ -37977,10 +39765,6 @@ class scout_datasource_connection_api_HeaderValue(ConjureUnionType):
         return self._plain
 
     @builtins.property
-    def secret(self) -> Optional[str]:
-        return self._secret
-
-    @builtins.property
     def secret_rid(self) -> Optional[str]:
         return self._secret_rid
 
@@ -37989,8 +39773,6 @@ class scout_datasource_connection_api_HeaderValue(ConjureUnionType):
             raise ValueError('{} is not an instance of scout_datasource_connection_api_HeaderValueVisitor'.format(visitor.__class__.__name__))
         if self._type == 'plain' and self.plain is not None:
             return visitor._plain(self.plain)
-        if self._type == 'secret' and self.secret is not None:
-            return visitor._secret(self.secret)
         if self._type == 'secretRid' and self.secret_rid is not None:
             return visitor._secret_rid(self.secret_rid)
 
@@ -38004,10 +39786,6 @@ class scout_datasource_connection_api_HeaderValueVisitor:
 
     @abstractmethod
     def _plain(self, plain: str) -> Any:
-        pass
-
-    @abstractmethod
-    def _secret(self, secret: str) -> Any:
         pass
 
     @abstractmethod
@@ -38073,18 +39851,16 @@ class scout_datasource_connection_api_Influx2ConnectionDetails(ConjureBeanType):
             'port': ConjureFieldDefinition('port', int),
             'headers': ConjureFieldDefinition('headers', Dict[str, scout_datasource_connection_api_HeaderValue]),
             'org': ConjureFieldDefinition('org', scout_datasource_connection_api_influx_OrgId),
-            'token_secret_name': ConjureFieldDefinition('tokenSecretName', scout_datasource_connection_api_SecretName),
-            'token_secret_rid': ConjureFieldDefinition('tokenSecretRid', OptionalTypeWrapper[scout_datasource_connection_api_SecretRid])
+            'token_secret_rid': ConjureFieldDefinition('tokenSecretRid', scout_datasource_connection_api_SecretRid)
         }
 
-    __slots__: List[str] = ['_host', '_port', '_headers', '_org', '_token_secret_name', '_token_secret_rid']
+    __slots__: List[str] = ['_host', '_port', '_headers', '_org', '_token_secret_rid']
 
-    def __init__(self, headers: Dict[str, "scout_datasource_connection_api_HeaderValue"], host: str, org: str, port: int, token_secret_name: str, token_secret_rid: Optional[str] = None) -> None:
+    def __init__(self, headers: Dict[str, "scout_datasource_connection_api_HeaderValue"], host: str, org: str, port: int, token_secret_rid: str) -> None:
         self._host = host
         self._port = port
         self._headers = headers
         self._org = org
-        self._token_secret_name = token_secret_name
         self._token_secret_rid = token_secret_rid
 
     @builtins.property
@@ -38107,16 +39883,9 @@ class scout_datasource_connection_api_Influx2ConnectionDetails(ConjureBeanType):
         return self._org
 
     @builtins.property
-    def token_secret_name(self) -> str:
+    def token_secret_rid(self) -> str:
         """
-        The name of the secret containing the API token.
-        """
-        return self._token_secret_name
-
-    @builtins.property
-    def token_secret_rid(self) -> Optional[str]:
-        """
-        Secret Rid of secret stored in Secrets Service.
+        Secret Rid of token secret stored in Secrets Service.
         """
         return self._token_secret_rid
 
@@ -38582,15 +40351,13 @@ class scout_datasource_connection_api_PasswordCredentials(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'username': ConjureFieldDefinition('username', str),
-            'password_secret_name': ConjureFieldDefinition('passwordSecretName', scout_datasource_connection_api_SecretName),
-            'password_secret_rid': ConjureFieldDefinition('passwordSecretRid', OptionalTypeWrapper[scout_datasource_connection_api_SecretRid])
+            'password_secret_rid': ConjureFieldDefinition('passwordSecretRid', scout_datasource_connection_api_SecretRid)
         }
 
-    __slots__: List[str] = ['_username', '_password_secret_name', '_password_secret_rid']
+    __slots__: List[str] = ['_username', '_password_secret_rid']
 
-    def __init__(self, password_secret_name: str, username: str, password_secret_rid: Optional[str] = None) -> None:
+    def __init__(self, password_secret_rid: str, username: str) -> None:
         self._username = username
-        self._password_secret_name = password_secret_name
         self._password_secret_rid = password_secret_rid
 
     @builtins.property
@@ -38598,16 +40365,9 @@ class scout_datasource_connection_api_PasswordCredentials(ConjureBeanType):
         return self._username
 
     @builtins.property
-    def password_secret_name(self) -> str:
+    def password_secret_rid(self) -> str:
         """
-        The name of the secret containing the password.
-        """
-        return self._password_secret_name
-
-    @builtins.property
-    def password_secret_rid(self) -> Optional[str]:
-        """
-        Secret Rid of secret stored in Secrets Service.
+        Secret Rid of password secret stored in Secrets Service.
         """
         return self._password_secret_rid
 
@@ -38981,18 +40741,16 @@ class scout_datasource_connection_api_TimescaleConnectionDetails(ConjureBeanType
             'host': ConjureFieldDefinition('host', str),
             'port': ConjureFieldDefinition('port', int),
             'username': ConjureFieldDefinition('username', str),
-            'password_secret_name': ConjureFieldDefinition('passwordSecretName', scout_datasource_connection_api_SecretName),
-            'password_secret_rid': ConjureFieldDefinition('passwordSecretRid', OptionalTypeWrapper[scout_datasource_connection_api_SecretRid])
+            'password_secret_rid': ConjureFieldDefinition('passwordSecretRid', scout_datasource_connection_api_SecretRid)
         }
 
-    __slots__: List[str] = ['_database', '_host', '_port', '_username', '_password_secret_name', '_password_secret_rid']
+    __slots__: List[str] = ['_database', '_host', '_port', '_username', '_password_secret_rid']
 
-    def __init__(self, database: str, host: str, password_secret_name: str, port: int, username: str, password_secret_rid: Optional[str] = None) -> None:
+    def __init__(self, database: str, host: str, password_secret_rid: str, port: int, username: str) -> None:
         self._database = database
         self._host = host
         self._port = port
         self._username = username
-        self._password_secret_name = password_secret_name
         self._password_secret_rid = password_secret_rid
 
     @builtins.property
@@ -39015,16 +40773,9 @@ class scout_datasource_connection_api_TimescaleConnectionDetails(ConjureBeanType
         return self._username
 
     @builtins.property
-    def password_secret_name(self) -> str:
+    def password_secret_rid(self) -> str:
         """
-        The name of the secret containing the password.
-        """
-        return self._password_secret_name
-
-    @builtins.property
-    def password_secret_rid(self) -> Optional[str]:
-        """
-        Secret Rid of secret stored in Secrets Service.
+        Secret Rid of password secret stored in Secrets Service.
         """
         return self._password_secret_rid
 
@@ -39557,27 +41308,18 @@ class scout_datasource_connection_api_VisualCrossingConnectionDetails(ConjureBea
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'key_name': ConjureFieldDefinition('keyName', scout_datasource_connection_api_SecretName),
-            'api_key_secret_rid': ConjureFieldDefinition('apiKeySecretRid', OptionalTypeWrapper[scout_datasource_connection_api_SecretRid])
+            'api_key_secret_rid': ConjureFieldDefinition('apiKeySecretRid', scout_datasource_connection_api_SecretRid)
         }
 
-    __slots__: List[str] = ['_key_name', '_api_key_secret_rid']
+    __slots__: List[str] = ['_api_key_secret_rid']
 
-    def __init__(self, key_name: str, api_key_secret_rid: Optional[str] = None) -> None:
-        self._key_name = key_name
+    def __init__(self, api_key_secret_rid: str) -> None:
         self._api_key_secret_rid = api_key_secret_rid
 
     @builtins.property
-    def key_name(self) -> str:
+    def api_key_secret_rid(self) -> str:
         """
-        Reference to the secret containing the API Key for Visual Crossing.
-        """
-        return self._key_name
-
-    @builtins.property
-    def api_key_secret_rid(self) -> Optional[str]:
-        """
-        Secret Rid of secret stored in Secrets Service.
+        Secret Rid of API key stored in Secrets Service.
         """
         return self._api_key_secret_rid
 
@@ -41718,25 +43460,31 @@ class scout_notebook_api_CreateNotebookRequest(ConjureBeanType):
         return {
             'title': ConjureFieldDefinition('title', str),
             'description': ConjureFieldDefinition('description', str),
+            'notebook_type': ConjureFieldDefinition('notebookType', OptionalTypeWrapper[scout_notebook_api_NotebookType]),
             'is_draft': ConjureFieldDefinition('isDraft', bool),
             'state_as_json': ConjureFieldDefinition('stateAsJson', str),
             'charts': ConjureFieldDefinition('charts', List[scout_notebook_api_ChartWithOverlays]),
-            'run_rid': ConjureFieldDefinition('runRid', scout_run_api_RunRid),
+            'run_rid': ConjureFieldDefinition('runRid', OptionalTypeWrapper[scout_run_api_RunRid]),
+            'data_scope': ConjureFieldDefinition('dataScope', OptionalTypeWrapper[scout_notebook_api_NotebookDataScope]),
             'layout': ConjureFieldDefinition('layout', scout_layout_api_WorkbookLayout),
-            'content': ConjureFieldDefinition('content', scout_workbookcommon_api_WorkbookContent)
+            'content': ConjureFieldDefinition('content', OptionalTypeWrapper[scout_workbookcommon_api_WorkbookContent]),
+            'content_v2': ConjureFieldDefinition('contentV2', OptionalTypeWrapper[scout_workbookcommon_api_UnifiedWorkbookContent])
         }
 
-    __slots__: List[str] = ['_title', '_description', '_is_draft', '_state_as_json', '_charts', '_run_rid', '_layout', '_content']
+    __slots__: List[str] = ['_title', '_description', '_notebook_type', '_is_draft', '_state_as_json', '_charts', '_run_rid', '_data_scope', '_layout', '_content', '_content_v2']
 
-    def __init__(self, charts: List["scout_notebook_api_ChartWithOverlays"], content: "scout_workbookcommon_api_WorkbookContent", description: str, is_draft: bool, layout: "scout_layout_api_WorkbookLayout", run_rid: str, state_as_json: str, title: str) -> None:
+    def __init__(self, charts: List["scout_notebook_api_ChartWithOverlays"], description: str, is_draft: bool, layout: "scout_layout_api_WorkbookLayout", state_as_json: str, title: str, content: Optional["scout_workbookcommon_api_WorkbookContent"] = None, content_v2: Optional["scout_workbookcommon_api_UnifiedWorkbookContent"] = None, data_scope: Optional["scout_notebook_api_NotebookDataScope"] = None, notebook_type: Optional["scout_notebook_api_NotebookType"] = None, run_rid: Optional[str] = None) -> None:
         self._title = title
         self._description = description
+        self._notebook_type = notebook_type
         self._is_draft = is_draft
         self._state_as_json = state_as_json
         self._charts = charts
         self._run_rid = run_rid
+        self._data_scope = data_scope
         self._layout = layout
         self._content = content
+        self._content_v2 = content_v2
 
     @builtins.property
     def title(self) -> str:
@@ -41745,6 +43493,13 @@ class scout_notebook_api_CreateNotebookRequest(ConjureBeanType):
     @builtins.property
     def description(self) -> str:
         return self._description
+
+    @builtins.property
+    def notebook_type(self) -> Optional["scout_notebook_api_NotebookType"]:
+        """
+        Optional for backcompatibility. Default is a normal workbook.
+        """
+        return self._notebook_type
 
     @builtins.property
     def is_draft(self) -> bool:
@@ -41759,16 +43514,33 @@ class scout_notebook_api_CreateNotebookRequest(ConjureBeanType):
         return self._charts
 
     @builtins.property
-    def run_rid(self) -> str:
+    def run_rid(self) -> Optional[str]:
+        """
+        deprecated. Use dataScope instead
+        """
         return self._run_rid
+
+    @builtins.property
+    def data_scope(self) -> Optional["scout_notebook_api_NotebookDataScope"]:
+        """
+        Optional for back-compatibility.
+        """
+        return self._data_scope
 
     @builtins.property
     def layout(self) -> "scout_layout_api_WorkbookLayout":
         return self._layout
 
     @builtins.property
-    def content(self) -> "scout_workbookcommon_api_WorkbookContent":
+    def content(self) -> Optional["scout_workbookcommon_api_WorkbookContent"]:
         return self._content
+
+    @builtins.property
+    def content_v2(self) -> Optional["scout_workbookcommon_api_UnifiedWorkbookContent"]:
+        """
+        Optional for backcompatibility
+        """
+        return self._content_v2
 
 
 scout_notebook_api_CreateNotebookRequest.__name__ = "CreateNotebookRequest"
@@ -41853,12 +43625,13 @@ class scout_notebook_api_Notebook(ConjureBeanType):
             'state_as_json': ConjureFieldDefinition('stateAsJson', str),
             'charts': ConjureFieldDefinition('charts', List[scout_notebook_api_ChartWithOverlays]),
             'layout': ConjureFieldDefinition('layout', scout_layout_api_WorkbookLayout),
-            'content': ConjureFieldDefinition('content', scout_workbookcommon_api_WorkbookContent)
+            'content': ConjureFieldDefinition('content', OptionalTypeWrapper[scout_workbookcommon_api_WorkbookContent]),
+            'content_v2': ConjureFieldDefinition('contentV2', scout_workbookcommon_api_UnifiedWorkbookContent)
         }
 
-    __slots__: List[str] = ['_rid', '_snapshot_rid', '_snapshot_author_rid', '_snapshot_created_at', '_metadata', '_state_as_json', '_charts', '_layout', '_content']
+    __slots__: List[str] = ['_rid', '_snapshot_rid', '_snapshot_author_rid', '_snapshot_created_at', '_metadata', '_state_as_json', '_charts', '_layout', '_content', '_content_v2']
 
-    def __init__(self, charts: List["scout_notebook_api_ChartWithOverlays"], content: "scout_workbookcommon_api_WorkbookContent", layout: "scout_layout_api_WorkbookLayout", metadata: "scout_notebook_api_NotebookMetadata", rid: str, snapshot_author_rid: str, snapshot_created_at: str, snapshot_rid: str, state_as_json: str) -> None:
+    def __init__(self, charts: List["scout_notebook_api_ChartWithOverlays"], content_v2: "scout_workbookcommon_api_UnifiedWorkbookContent", layout: "scout_layout_api_WorkbookLayout", metadata: "scout_notebook_api_NotebookMetadata", rid: str, snapshot_author_rid: str, snapshot_created_at: str, snapshot_rid: str, state_as_json: str, content: Optional["scout_workbookcommon_api_WorkbookContent"] = None) -> None:
         self._rid = rid
         self._snapshot_rid = snapshot_rid
         self._snapshot_author_rid = snapshot_author_rid
@@ -41868,6 +43641,7 @@ class scout_notebook_api_Notebook(ConjureBeanType):
         self._charts = charts
         self._layout = layout
         self._content = content
+        self._content_v2 = content_v2
 
     @builtins.property
     def rid(self) -> str:
@@ -41902,8 +43676,12 @@ class scout_notebook_api_Notebook(ConjureBeanType):
         return self._layout
 
     @builtins.property
-    def content(self) -> "scout_workbookcommon_api_WorkbookContent":
+    def content(self) -> Optional["scout_workbookcommon_api_WorkbookContent"]:
         return self._content
+
+    @builtins.property
+    def content_v2(self) -> "scout_workbookcommon_api_UnifiedWorkbookContent":
+        return self._content_v2
 
 
 scout_notebook_api_Notebook.__name__ = "Notebook"
@@ -41911,12 +43689,70 @@ scout_notebook_api_Notebook.__qualname__ = "Notebook"
 scout_notebook_api_Notebook.__module__ = "scout_service_api.scout_notebook_api"
 
 
+class scout_notebook_api_NotebookDataScope(ConjureUnionType):
+    _run_rids: Optional[List[str]] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'run_rids': ConjureFieldDefinition('runRids', List[scout_run_api_RunRid])
+        }
+
+    def __init__(
+            self,
+            run_rids: Optional[List[str]] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (run_rids is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if run_rids is not None:
+                self._run_rids = run_rids
+                self._type = 'runRids'
+
+        elif type_of_union == 'runRids':
+            if run_rids is None:
+                raise ValueError('a union value must not be None')
+            self._run_rids = run_rids
+            self._type = 'runRids'
+
+    @builtins.property
+    def run_rids(self) -> Optional[List[str]]:
+        return self._run_rids
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_notebook_api_NotebookDataScopeVisitor):
+            raise ValueError('{} is not an instance of scout_notebook_api_NotebookDataScopeVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'runRids' and self.run_rids is not None:
+            return visitor._run_rids(self.run_rids)
+
+
+scout_notebook_api_NotebookDataScope.__name__ = "NotebookDataScope"
+scout_notebook_api_NotebookDataScope.__qualname__ = "NotebookDataScope"
+scout_notebook_api_NotebookDataScope.__module__ = "scout_service_api.scout_notebook_api"
+
+
+class scout_notebook_api_NotebookDataScopeVisitor:
+
+    @abstractmethod
+    def _run_rids(self, run_rids: List[str]) -> Any:
+        pass
+
+
+scout_notebook_api_NotebookDataScopeVisitor.__name__ = "NotebookDataScopeVisitor"
+scout_notebook_api_NotebookDataScopeVisitor.__qualname__ = "NotebookDataScopeVisitor"
+scout_notebook_api_NotebookDataScopeVisitor.__module__ = "scout_service_api.scout_notebook_api"
+
+
 class scout_notebook_api_NotebookMetadata(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'run_rid': ConjureFieldDefinition('runRid', scout_run_api_RunRid),
+            'run_rid': ConjureFieldDefinition('runRid', OptionalTypeWrapper[scout_run_api_RunRid]),
+            'data_scope': ConjureFieldDefinition('dataScope', scout_notebook_api_NotebookDataScope),
+            'notebook_type': ConjureFieldDefinition('notebookType', scout_notebook_api_NotebookType),
             'title': ConjureFieldDefinition('title', str),
             'description': ConjureFieldDefinition('description', str),
             'is_draft': ConjureFieldDefinition('isDraft', bool),
@@ -41928,10 +43764,12 @@ class scout_notebook_api_NotebookMetadata(ConjureBeanType):
             'labels': ConjureFieldDefinition('labels', List[scout_run_api_Label])
         }
 
-    __slots__: List[str] = ['_run_rid', '_title', '_description', '_is_draft', '_is_archived', '_lock', '_created_by_rid', '_created_at', '_properties', '_labels']
+    __slots__: List[str] = ['_run_rid', '_data_scope', '_notebook_type', '_title', '_description', '_is_draft', '_is_archived', '_lock', '_created_by_rid', '_created_at', '_properties', '_labels']
 
-    def __init__(self, created_at: str, created_by_rid: str, description: str, is_archived: bool, is_draft: bool, labels: List[str], lock: "scout_notebook_api_Lock", properties: Dict[str, str], run_rid: str, title: str) -> None:
+    def __init__(self, created_at: str, created_by_rid: str, data_scope: "scout_notebook_api_NotebookDataScope", description: str, is_archived: bool, is_draft: bool, labels: List[str], lock: "scout_notebook_api_Lock", notebook_type: "scout_notebook_api_NotebookType", properties: Dict[str, str], title: str, run_rid: Optional[str] = None) -> None:
         self._run_rid = run_rid
+        self._data_scope = data_scope
+        self._notebook_type = notebook_type
         self._title = title
         self._description = description
         self._is_draft = is_draft
@@ -41943,8 +43781,19 @@ class scout_notebook_api_NotebookMetadata(ConjureBeanType):
         self._labels = labels
 
     @builtins.property
-    def run_rid(self) -> str:
+    def run_rid(self) -> Optional[str]:
+        """
+        deprecated. Use dataScope instead
+        """
         return self._run_rid
+
+    @builtins.property
+    def data_scope(self) -> "scout_notebook_api_NotebookDataScope":
+        return self._data_scope
+
+    @builtins.property
+    def notebook_type(self) -> "scout_notebook_api_NotebookType":
+        return self._notebook_type
 
     @builtins.property
     def title(self) -> str:
@@ -42017,6 +43866,24 @@ scout_notebook_api_NotebookMetadataWithRid.__qualname__ = "NotebookMetadataWithR
 scout_notebook_api_NotebookMetadataWithRid.__module__ = "scout_service_api.scout_notebook_api"
 
 
+class scout_notebook_api_NotebookType(ConjureEnumType):
+
+    WORKBOOK = 'WORKBOOK'
+    '''WORKBOOK'''
+    COMPARISON_WORKBOOK = 'COMPARISON_WORKBOOK'
+    '''COMPARISON_WORKBOOK'''
+    UNKNOWN = 'UNKNOWN'
+    '''UNKNOWN'''
+
+    def __reduce_ex__(self, proto):
+        return self.__class__, (self.name,)
+
+
+scout_notebook_api_NotebookType.__name__ = "NotebookType"
+scout_notebook_api_NotebookType.__qualname__ = "NotebookType"
+scout_notebook_api_NotebookType.__module__ = "scout_service_api.scout_notebook_api"
+
+
 class scout_notebook_api_SearchNotebooksQuery(ConjureUnionType):
     _and_: Optional[List["scout_notebook_api_SearchNotebooksQuery"]] = None
     _or_: Optional[List["scout_notebook_api_SearchNotebooksQuery"]] = None
@@ -42026,6 +43893,7 @@ class scout_notebook_api_SearchNotebooksQuery(ConjureUnionType):
     _property: Optional["scout_run_api_Property"] = None
     _author_rid: Optional[str] = None
     _run_rid: Optional[str] = None
+    _notebook_type: Optional["scout_notebook_api_NotebookType"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
@@ -42037,7 +43905,8 @@ class scout_notebook_api_SearchNotebooksQuery(ConjureUnionType):
             'label': ConjureFieldDefinition('label', scout_run_api_Label),
             'property': ConjureFieldDefinition('property', scout_run_api_Property),
             'author_rid': ConjureFieldDefinition('authorRid', scout_rids_api_UserRid),
-            'run_rid': ConjureFieldDefinition('runRid', scout_run_api_RunRid)
+            'run_rid': ConjureFieldDefinition('runRid', scout_run_api_RunRid),
+            'notebook_type': ConjureFieldDefinition('notebookType', scout_notebook_api_NotebookType)
         }
 
     def __init__(
@@ -42050,10 +43919,11 @@ class scout_notebook_api_SearchNotebooksQuery(ConjureUnionType):
             property: Optional["scout_run_api_Property"] = None,
             author_rid: Optional[str] = None,
             run_rid: Optional[str] = None,
+            notebook_type: Optional["scout_notebook_api_NotebookType"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (and_ is not None) + (or_ is not None) + (exact_match is not None) + (search_text is not None) + (label is not None) + (property is not None) + (author_rid is not None) + (run_rid is not None) != 1:
+            if (and_ is not None) + (or_ is not None) + (exact_match is not None) + (search_text is not None) + (label is not None) + (property is not None) + (author_rid is not None) + (run_rid is not None) + (notebook_type is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if and_ is not None:
@@ -42080,6 +43950,9 @@ class scout_notebook_api_SearchNotebooksQuery(ConjureUnionType):
             if run_rid is not None:
                 self._run_rid = run_rid
                 self._type = 'runRid'
+            if notebook_type is not None:
+                self._notebook_type = notebook_type
+                self._type = 'notebookType'
 
         elif type_of_union == 'and':
             if and_ is None:
@@ -42121,6 +43994,11 @@ class scout_notebook_api_SearchNotebooksQuery(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._run_rid = run_rid
             self._type = 'runRid'
+        elif type_of_union == 'notebookType':
+            if notebook_type is None:
+                raise ValueError('a union value must not be None')
+            self._notebook_type = notebook_type
+            self._type = 'notebookType'
 
     @builtins.property
     def and_(self) -> Optional[List["scout_notebook_api_SearchNotebooksQuery"]]:
@@ -42157,6 +44035,10 @@ class scout_notebook_api_SearchNotebooksQuery(ConjureUnionType):
     def run_rid(self) -> Optional[str]:
         return self._run_rid
 
+    @builtins.property
+    def notebook_type(self) -> Optional["scout_notebook_api_NotebookType"]:
+        return self._notebook_type
+
     def accept(self, visitor) -> Any:
         if not isinstance(visitor, scout_notebook_api_SearchNotebooksQueryVisitor):
             raise ValueError('{} is not an instance of scout_notebook_api_SearchNotebooksQueryVisitor'.format(visitor.__class__.__name__))
@@ -42176,6 +44058,8 @@ class scout_notebook_api_SearchNotebooksQuery(ConjureUnionType):
             return visitor._author_rid(self.author_rid)
         if self._type == 'runRid' and self.run_rid is not None:
             return visitor._run_rid(self.run_rid)
+        if self._type == 'notebookType' and self.notebook_type is not None:
+            return visitor._notebook_type(self.notebook_type)
 
 
 scout_notebook_api_SearchNotebooksQuery.__name__ = "SearchNotebooksQuery"
@@ -42215,6 +44099,10 @@ class scout_notebook_api_SearchNotebooksQueryVisitor:
 
     @abstractmethod
     def _run_rid(self, run_rid: str) -> Any:
+        pass
+
+    @abstractmethod
+    def _notebook_type(self, notebook_type: "scout_notebook_api_NotebookType") -> Any:
         pass
 
 
@@ -42366,16 +44254,18 @@ class scout_notebook_api_UpdateNotebookMetadataRequest(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'title': ConjureFieldDefinition('title', OptionalTypeWrapper[str]),
+            'data_scope': ConjureFieldDefinition('dataScope', OptionalTypeWrapper[scout_notebook_api_NotebookDataScope]),
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
             'properties': ConjureFieldDefinition('properties', OptionalTypeWrapper[Dict[scout_run_api_PropertyName, scout_run_api_PropertyValue]]),
             'labels': ConjureFieldDefinition('labels', OptionalTypeWrapper[List[scout_run_api_Label]]),
             'is_draft': ConjureFieldDefinition('isDraft', OptionalTypeWrapper[bool])
         }
 
-    __slots__: List[str] = ['_title', '_description', '_properties', '_labels', '_is_draft']
+    __slots__: List[str] = ['_title', '_data_scope', '_description', '_properties', '_labels', '_is_draft']
 
-    def __init__(self, description: Optional[str] = None, is_draft: Optional[bool] = None, labels: Optional[List[str]] = None, properties: Optional[Dict[str, str]] = None, title: Optional[str] = None) -> None:
+    def __init__(self, data_scope: Optional["scout_notebook_api_NotebookDataScope"] = None, description: Optional[str] = None, is_draft: Optional[bool] = None, labels: Optional[List[str]] = None, properties: Optional[Dict[str, str]] = None, title: Optional[str] = None) -> None:
         self._title = title
+        self._data_scope = data_scope
         self._description = description
         self._properties = properties
         self._labels = labels
@@ -42384,6 +44274,13 @@ class scout_notebook_api_UpdateNotebookMetadataRequest(ConjureBeanType):
     @builtins.property
     def title(self) -> Optional[str]:
         return self._title
+
+    @builtins.property
+    def data_scope(self) -> Optional["scout_notebook_api_NotebookDataScope"]:
+        """
+        Optional for backcompatibility.
+        """
+        return self._data_scope
 
     @builtins.property
     def description(self) -> Optional[str]:
@@ -42415,17 +44312,19 @@ class scout_notebook_api_UpdateNotebookRequest(ConjureBeanType):
             'state_as_json': ConjureFieldDefinition('stateAsJson', str),
             'charts': ConjureFieldDefinition('charts', List[scout_notebook_api_ChartWithOverlays]),
             'layout': ConjureFieldDefinition('layout', scout_layout_api_WorkbookLayout),
-            'content': ConjureFieldDefinition('content', scout_workbookcommon_api_WorkbookContent),
+            'content': ConjureFieldDefinition('content', OptionalTypeWrapper[scout_workbookcommon_api_WorkbookContent]),
+            'content_v2': ConjureFieldDefinition('contentV2', OptionalTypeWrapper[scout_workbookcommon_api_UnifiedWorkbookContent]),
             'latest_snapshot_rid': ConjureFieldDefinition('latestSnapshotRid', OptionalTypeWrapper[scout_rids_api_SnapshotRid])
         }
 
-    __slots__: List[str] = ['_state_as_json', '_charts', '_layout', '_content', '_latest_snapshot_rid']
+    __slots__: List[str] = ['_state_as_json', '_charts', '_layout', '_content', '_content_v2', '_latest_snapshot_rid']
 
-    def __init__(self, charts: List["scout_notebook_api_ChartWithOverlays"], content: "scout_workbookcommon_api_WorkbookContent", layout: "scout_layout_api_WorkbookLayout", state_as_json: str, latest_snapshot_rid: Optional[str] = None) -> None:
+    def __init__(self, charts: List["scout_notebook_api_ChartWithOverlays"], layout: "scout_layout_api_WorkbookLayout", state_as_json: str, content: Optional["scout_workbookcommon_api_WorkbookContent"] = None, content_v2: Optional["scout_workbookcommon_api_UnifiedWorkbookContent"] = None, latest_snapshot_rid: Optional[str] = None) -> None:
         self._state_as_json = state_as_json
         self._charts = charts
         self._layout = layout
         self._content = content
+        self._content_v2 = content_v2
         self._latest_snapshot_rid = latest_snapshot_rid
 
     @builtins.property
@@ -42441,8 +44340,15 @@ class scout_notebook_api_UpdateNotebookRequest(ConjureBeanType):
         return self._layout
 
     @builtins.property
-    def content(self) -> "scout_workbookcommon_api_WorkbookContent":
+    def content(self) -> Optional["scout_workbookcommon_api_WorkbookContent"]:
         return self._content
+
+    @builtins.property
+    def content_v2(self) -> Optional["scout_workbookcommon_api_UnifiedWorkbookContent"]:
+        """
+        Optional for backcompatibility
+        """
+        return self._content_v2
 
     @builtins.property
     def latest_snapshot_rid(self) -> Optional[str]:
@@ -43299,12 +45205,13 @@ class scout_run_api_Run(ConjureBeanType):
             'created_at': ConjureFieldDefinition('createdAt', str),
             'updated_at': ConjureFieldDefinition('updatedAt', str),
             'data_sources': ConjureFieldDefinition('dataSources', Dict[scout_run_api_DataSourceRefName, scout_run_api_RunDataSource]),
-            'attachments': ConjureFieldDefinition('attachments', List[scout_rids_api_AttachmentRid])
+            'attachments': ConjureFieldDefinition('attachments', List[scout_rids_api_AttachmentRid]),
+            'asset': ConjureFieldDefinition('asset', OptionalTypeWrapper[scout_rids_api_AssetRid])
         }
 
-    __slots__: List[str] = ['_rid', '_run_number', '_run_prefix', '_title', '_description', '_author_rid', '_start_time', '_end_time', '_properties', '_labels', '_links', '_created_at', '_updated_at', '_data_sources', '_attachments']
+    __slots__: List[str] = ['_rid', '_run_number', '_run_prefix', '_title', '_description', '_author_rid', '_start_time', '_end_time', '_properties', '_labels', '_links', '_created_at', '_updated_at', '_data_sources', '_attachments', '_asset']
 
-    def __init__(self, attachments: List[str], created_at: str, data_sources: Dict[str, "scout_run_api_RunDataSource"], description: str, labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], rid: str, run_number: int, start_time: "scout_run_api_UtcTimestamp", title: str, updated_at: str, author_rid: Optional[str] = None, end_time: Optional["scout_run_api_UtcTimestamp"] = None, run_prefix: Optional[str] = None) -> None:
+    def __init__(self, attachments: List[str], created_at: str, data_sources: Dict[str, "scout_run_api_RunDataSource"], description: str, labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], rid: str, run_number: int, start_time: "scout_run_api_UtcTimestamp", title: str, updated_at: str, asset: Optional[str] = None, author_rid: Optional[str] = None, end_time: Optional["scout_run_api_UtcTimestamp"] = None, run_prefix: Optional[str] = None) -> None:
         self._rid = rid
         self._run_number = run_number
         self._run_prefix = run_prefix
@@ -43320,6 +45227,7 @@ class scout_run_api_Run(ConjureBeanType):
         self._updated_at = updated_at
         self._data_sources = data_sources
         self._attachments = attachments
+        self._asset = asset
 
     @builtins.property
     def rid(self) -> str:
@@ -43380,6 +45288,10 @@ class scout_run_api_Run(ConjureBeanType):
     @builtins.property
     def attachments(self) -> List[str]:
         return self._attachments
+
+    @builtins.property
+    def asset(self) -> Optional[str]:
+        return self._asset
 
 
 scout_run_api_Run.__name__ = "Run"
@@ -46364,16 +48276,18 @@ class scout_video_api_CreateSegment(ConjureBeanType):
             'data_handle': ConjureFieldDefinition('dataHandle', scout_video_api_Handle),
             'frame_rate': ConjureFieldDefinition('frameRate', float),
             'duration_seconds': ConjureFieldDefinition('durationSeconds', float),
-            'timestamps': ConjureFieldDefinition('timestamps', scout_video_api_SegmentTimestamps)
+            'timestamps': ConjureFieldDefinition('timestamps', scout_video_api_SegmentTimestamps),
+            'segment_end_timestamp': ConjureFieldDefinition('segmentEndTimestamp', scout_video_api_Timestamp)
         }
 
-    __slots__: List[str] = ['_data_handle', '_frame_rate', '_duration_seconds', '_timestamps']
+    __slots__: List[str] = ['_data_handle', '_frame_rate', '_duration_seconds', '_timestamps', '_segment_end_timestamp']
 
-    def __init__(self, data_handle: "scout_video_api_Handle", duration_seconds: float, frame_rate: float, timestamps: "scout_video_api_SegmentTimestamps") -> None:
+    def __init__(self, data_handle: "scout_video_api_Handle", duration_seconds: float, frame_rate: float, segment_end_timestamp: "scout_video_api_Timestamp", timestamps: "scout_video_api_SegmentTimestamps") -> None:
         self._data_handle = data_handle
         self._frame_rate = frame_rate
         self._duration_seconds = duration_seconds
         self._timestamps = timestamps
+        self._segment_end_timestamp = segment_end_timestamp
 
     @builtins.property
     def data_handle(self) -> "scout_video_api_Handle":
@@ -46393,6 +48307,10 @@ class scout_video_api_CreateSegment(ConjureBeanType):
     @builtins.property
     def timestamps(self) -> "scout_video_api_SegmentTimestamps":
         return self._timestamps
+
+    @builtins.property
+    def segment_end_timestamp(self) -> "scout_video_api_Timestamp":
+        return self._segment_end_timestamp
 
 
 scout_video_api_CreateSegment.__name__ = "CreateSegment"
@@ -47263,6 +49181,9 @@ class scout_video_api_Segment(ConjureBeanType):
 
     @builtins.property
     def duration_seconds(self) -> float:
+        """
+        The duration of a segment in media time.
+        """
         return self._duration_seconds
 
     @builtins.property
@@ -48026,13 +49947,90 @@ scout_video_api_VideoTimestampManifestVisitor.__qualname__ = "VideoTimestampMani
 scout_video_api_VideoTimestampManifestVisitor.__module__ = "scout_service_api.scout_video_api"
 
 
+class scout_workbookcommon_api_UnifiedWorkbookContent(ConjureUnionType):
+    _workbook: Optional["scout_workbookcommon_api_WorkbookContent"] = None
+    _comparison_workbook: Optional["scout_comparisonnotebook_api_ComparisonWorkbookContent"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'workbook': ConjureFieldDefinition('workbook', scout_workbookcommon_api_WorkbookContent),
+            'comparison_workbook': ConjureFieldDefinition('comparisonWorkbook', scout_comparisonnotebook_api_ComparisonWorkbookContent)
+        }
+
+    def __init__(
+            self,
+            workbook: Optional["scout_workbookcommon_api_WorkbookContent"] = None,
+            comparison_workbook: Optional["scout_comparisonnotebook_api_ComparisonWorkbookContent"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (workbook is not None) + (comparison_workbook is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if workbook is not None:
+                self._workbook = workbook
+                self._type = 'workbook'
+            if comparison_workbook is not None:
+                self._comparison_workbook = comparison_workbook
+                self._type = 'comparisonWorkbook'
+
+        elif type_of_union == 'workbook':
+            if workbook is None:
+                raise ValueError('a union value must not be None')
+            self._workbook = workbook
+            self._type = 'workbook'
+        elif type_of_union == 'comparisonWorkbook':
+            if comparison_workbook is None:
+                raise ValueError('a union value must not be None')
+            self._comparison_workbook = comparison_workbook
+            self._type = 'comparisonWorkbook'
+
+    @builtins.property
+    def workbook(self) -> Optional["scout_workbookcommon_api_WorkbookContent"]:
+        return self._workbook
+
+    @builtins.property
+    def comparison_workbook(self) -> Optional["scout_comparisonnotebook_api_ComparisonWorkbookContent"]:
+        return self._comparison_workbook
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_workbookcommon_api_UnifiedWorkbookContentVisitor):
+            raise ValueError('{} is not an instance of scout_workbookcommon_api_UnifiedWorkbookContentVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'workbook' and self.workbook is not None:
+            return visitor._workbook(self.workbook)
+        if self._type == 'comparisonWorkbook' and self.comparison_workbook is not None:
+            return visitor._comparison_workbook(self.comparison_workbook)
+
+
+scout_workbookcommon_api_UnifiedWorkbookContent.__name__ = "UnifiedWorkbookContent"
+scout_workbookcommon_api_UnifiedWorkbookContent.__qualname__ = "UnifiedWorkbookContent"
+scout_workbookcommon_api_UnifiedWorkbookContent.__module__ = "scout_service_api.scout_workbookcommon_api"
+
+
+class scout_workbookcommon_api_UnifiedWorkbookContentVisitor:
+
+    @abstractmethod
+    def _workbook(self, workbook: "scout_workbookcommon_api_WorkbookContent") -> Any:
+        pass
+
+    @abstractmethod
+    def _comparison_workbook(self, comparison_workbook: "scout_comparisonnotebook_api_ComparisonWorkbookContent") -> Any:
+        pass
+
+
+scout_workbookcommon_api_UnifiedWorkbookContentVisitor.__name__ = "UnifiedWorkbookContentVisitor"
+scout_workbookcommon_api_UnifiedWorkbookContentVisitor.__qualname__ = "UnifiedWorkbookContentVisitor"
+scout_workbookcommon_api_UnifiedWorkbookContentVisitor.__module__ = "scout_service_api.scout_workbookcommon_api"
+
+
 class scout_workbookcommon_api_WorkbookContent(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'channel_variables': ConjureFieldDefinition('channelVariables', scout_channelvariables_api_ChannelVariableMap),
-            'charts': ConjureFieldDefinition('charts', scout_chartdefinition_api_ChartDefinitionMap)
+            'channel_variables': ConjureFieldDefinition('channelVariables', scout_channelvariables_api_WorkbookChannelVariableMap),
+            'charts': ConjureFieldDefinition('charts', scout_chartdefinition_api_WorkbookChartDefinitionMap)
         }
 
     __slots__: List[str] = ['_channel_variables', '_charts']
@@ -52896,6 +54894,8 @@ timeseries_seriescache_api_Timestamp.__module__ = "scout_service_api.timeseries_
 
 timeseries_logicalseries_api_MeasurementName = str
 
+scout_compute_api_ErrorType = str
+
 timeseries_seriescache_api_ChunkRid = str
 
 datasource_api_Channel = str
@@ -52950,6 +54950,8 @@ timeseries_logicalseries_api_AttributeName = str
 
 attachments_api_PropertyName = str
 
+scout_compute_api_ErrorCode = int
+
 datasource_logset_api_LogSetRid = str
 
 authentication_api_OrgRid = str
@@ -52973,6 +54975,8 @@ scout_datareview_api_CheckAlertRid = str
 scout_units_api_UnitSymbol = str
 
 scout_channelvariables_api_ChannelVariableName = str
+
+scout_channelvariables_api_WorkbookChannelVariableMap = Dict[scout_channelvariables_api_ChannelVariableName, scout_channelvariables_api_ChannelVariable]
 
 scout_rids_api_ChecklistRid = str
 
@@ -53024,9 +55028,9 @@ scout_chartdefinition_api_DataSourceRefName = str
 
 scout_rids_api_AssetRid = str
 
-timeseries_logicalseries_api_BucketName = str
+datasource_DatasetRid = str
 
-scout_channelvariables_api_ChannelVariableMap = Dict[scout_channelvariables_api_ChannelVariableName, scout_channelvariables_api_ChannelVariable]
+timeseries_logicalseries_api_BucketName = str
 
 scout_api_HexColor = str
 
@@ -53039,8 +55043,6 @@ storage_series_api_TagValue = str
 scout_datasource_connection_api_SecretRid = str
 
 scout_rids_api_AttachmentRid = str
-
-scout_chartdefinition_api_ChartDefinitionMap = Dict[scout_rids_api_ChartRid, scout_chartdefinition_api_ChartDefinition]
 
 timeseries_logicalseries_api_TableName = str
 
@@ -53094,6 +55096,8 @@ scout_compute_api_LocalVariableName = str
 
 scout_video_api_PropertyName = str
 
+datasource_DatasetFileId = str
+
 secrets_api_SecretRid = str
 
 scout_chart_api_JsonString = str
@@ -53101,6 +55105,8 @@ scout_chart_api_JsonString = str
 scout_datasource_connection_api_TagName = str
 
 timeseries_logicalseries_api_MeasureName = str
+
+scout_chartdefinition_api_WorkbookChartDefinitionMap = Dict[scout_rids_api_ChartRid, scout_chartdefinition_api_ChartDefinition]
 
 datasource_Token = str
 
@@ -53133,6 +55139,8 @@ scout_datasource_connection_api_influx_OrgId = str
 scout_datasource_connection_api_ColumnName = str
 
 storage_writer_api_MeasurementName = str
+
+scout_comparisonnotebook_api_ComparisonChartDefinitionMap = Dict[scout_rids_api_ChartRid, scout_comparisonnotebook_api_ChartDefinition]
 
 attachments_api_S3Path = str
 
@@ -53177,4 +55185,8 @@ timeseries_logicalseries_api_ColumnName = str
 storage_datasource_api_NominalDataSourceRid = str
 
 authentication_api_UserRid = str
+
+scout_comparisonnotebook_api_VariableName = str
+
+scout_comparisonnotebook_api_ComparisonChannelVariableMap = Dict[scout_comparisonnotebook_api_VariableName, scout_comparisonnotebook_api_ChannelVariable]
 

@@ -22,6 +22,7 @@ __all__ = [
     'scout_chartdefinition_api',
     'scout_checklistexecution_api',
     'scout_checks_api',
+    'scout_comparisonnotebook_api',
     'scout_comparisonrun_api',
     'scout_compute_api',
     'scout_compute_api_deprecated',
@@ -62,5 +63,5 @@ __all__ = [
 
 __conjure_generator_version__ = "4.9.0"
 
-__version__ = "0.373.0+46.g8cf0464"
+__version__ = "0.376.0+67.gc247f25.dirty"
 
