@@ -3,6 +3,7 @@ import io
 import os
 from datetime import datetime
 from math import floor
+from typing import Mapping, Sequence
 
 import jsondiff as jd
 import keyring as kr
@@ -290,11 +291,12 @@ class Run:
     path : str, optional
         A single file path to a dataset. If provided, it will be added to `paths`. Default is None.
     paths : list of str, optional
-        A list of file paths to datasets. Default is an empty list.
-    datasets : list of Dataset, optional
-        A list of `Dataset` objects to be included in the run. Default is an empty list.
-    properties : list of str, optional
-        A list of properties associated with the run. Default is an empty list.
+        A sequence of file paths to datasets. Default is an empty list.
+    datasets : list of Dataset or dict mapping ref names to datasets, optional
+        A sequence of `Dataset` objects, or a dict mapping ref names (namespaces) to `Dataset` objects to be included in the run.
+        Default is an empty sequence. Ref names will default to the filename for uploaded files, or will fallback to a generated name.
+    properties : dict of str, optional
+        A dict of properties associated with the run. Default is an empty dict.
     title : str, optional
         The title of the run. Default is None, which will generate a default filename.
     description : str, optional
@@ -312,8 +314,8 @@ class Run:
         A brief description of the run.
     properties : dict
         A dict of properties associated with the run.
-    datasets : list of Dataset
-        A list of `Dataset` objects associated with the run.
+    datasets : dict
+        A dict mapping ref names to `Dataset` objects associated with the run.
     domain : dict
         A dictionary containing 'START' and 'END' time domain for the run.
     datasets_domain : dict
@@ -355,20 +357,20 @@ class Run:
 
     def __init__(
         self,
-        rid: str = None,
-        path: str = None,
-        paths: list[str] = [],
-        datasets: list[Dataset] = [],
-        properties: dict = {},
-        title: str = None,
+        rid: str | None = None,
+        path: str | None = None,
+        paths: Sequence[str] = (),
+        datasets: Sequence[Dataset] | Mapping[str, Dataset] = (),
+        properties: dict[str, str] | None = None,
+        title: str | None = None,
         description: str = "",
-        start: str = None,
-        end: str = None,
+        start: str | None = None,
+        end: str | None = None,
     ):
         if title is None:
             self.title = default_filename("RUN")
         self.description = description
-        self.properties = properties
+        self.properties = properties or {}
         self._domain = {"START": {}, "END": {}}
         self.cloud = {}
 
@@ -411,14 +413,21 @@ class Run:
             print("Please provide a list of Datasets or list of paths for this Run")
             return
 
+        # TODO: make (datasets | paths) mutually exclusive
+        self.datasets: dict[str, Dataset] = {}
         if len(paths) > 0:
-            self.datasets = [Ingest().read_csv(fp) for fp in paths]
+            for fp in path:
+                ds = Ingest().read_csv(fp)
+                self.datasets[ds.filename] = ds
         else:
-            self.datasets = datasets
+            if isinstance(datasets, Sequence):
+                self.datasets = {ds.filename: ds for ds in datasets}
+            else:
+                self.datasets = datasets
 
         mins = []
         maxs = []
-        for ds in self.datasets:
+        for ds in self.datasets.values():
             mins.append(ds["_python_datetime"].min())
             maxs.append(ds["_python_datetime"].max())
         self.datasets_domain = dict(START=min(mins), END=max(maxs))
@@ -536,11 +545,11 @@ class Run:
         """
         datasets_payload = dict()
 
-        for ds in self.datasets:
+        for ref_name, ds in self.datasets.items():
             # First, check if Run Datasets have been uploaded to S3
             if ds.s3_path is None:
                 ds.upload()
-            datasets_payload[ds.filename] = PayloadFactory.create_unix_datasource(ds)
+            datasets_payload[ref_name] = PayloadFactory.create_unix_datasource(ds)
 
         run_payload = PayloadFactory.run_upload(self, datasets_payload)
 
