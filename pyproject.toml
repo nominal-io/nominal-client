@@ -19,6 +19,7 @@ polars = "^1.4.1"
 keyring = "^25.0.0"
 rich = "^13.7.1"
 conjure-python-client = ">=2.8.0,<3"
+chdb = "1.4.1"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.13.2"
