@@ -106,5 +106,5 @@ class PayloadFactory:
                 "offsetNanoseconds": r._domain["END"]["NANOS"],
             },
             "dataSources": datasets_payload,
-            "properties": {},
+            "properties": r.properties,
         }
