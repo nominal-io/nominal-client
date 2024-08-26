@@ -18,12 +18,12 @@ from rich import print
 
 from ._api.ingest.ingest_api import (
     AbsoluteTimestamp,
-    CustomTimestamp,
     IngestService,
     IngestSource,
     RelativeTimestamp,
     S3IngestSource,
     TimestampMetadata,
+    Iso8601Timestamp,
     TimestampType,
     TriggerIngest,
 )
@@ -130,7 +130,7 @@ class Dataset(pl.DataFrame):
             self.filename = default_filename("DATASET")
 
         csv_file_buffer = io.BytesIO()
-        self.write_csv(csv_file_buffer)
+        self.write_csv(csv_file_buffer, datetime_format=r"%Y-%m-%dT%H:%M:%S.%fZ")
 
         # Get the size of the buffer in bytes
         csv_file_buffer.seek(0, os.SEEK_END)
@@ -192,9 +192,7 @@ class Dataset(pl.DataFrame):
 
         nominal_ts_metadata = TimestampMetadata(
             "_python_datetime",
-            TimestampType(
-                absolute=AbsoluteTimestamp(custom_format=CustomTimestamp("yyyy-MM-dd['T']HH:mm:ss.SSSSSS", 0))
-            ),
+            TimestampType(absolute=AbsoluteTimestamp(iso8601=Iso8601Timestamp())),
         )
 
         if self.relative:
