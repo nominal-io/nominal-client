@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import io
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import floor
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
@@ -362,7 +362,7 @@ class Run:
         Print the Run datetime endpoints in a human-readable form
         """
         print("Run {} time:".format(endpoint))
-        unix_seconds = self._domain[endpoint]["SECONDS"] + self._domain[endpoint]["NANOS"] * 10e9
+        unix_seconds = self._domain[endpoint]["SECONDS"] + self._domain[endpoint]["NANOS"] // 1e9
         print("Unix: ", unix_seconds)
         datetime_endpoint = datetime.fromtimestamp(unix_seconds)
         print("Datetime: ", datetime_endpoint)
@@ -455,12 +455,36 @@ class Run:
             else:
                 self.datasets = datasets
 
-        mins = []
-        maxs = []
-        for ds in self.datasets.values():
-            mins.append(ds["_python_datetime"].min())
-            maxs.append(ds["_python_datetime"].max())
-        self.datasets_domain = dict(START=min(mins), END=max(maxs))
+        start_dt = datetime.min
+        end_dt = datetime.min
+
+        # if you pass in a start, we use that
+        # if you don't, we can compute the start from the datasets,
+        # but only if they all use absolute timestamps
+        if start is None:
+            if any(ds.relative for ds in self.datasets.values()):
+                raise ValueError("runs must provide a start time if any dataset uses relative timestamps")
+            start_dt = min(ds["_python_datetime"].min() for ds in self.datasets.values())
+        else:
+            start_dt = parser.parse(start)
+
+        # if you pass in an end, we use that
+        # if you don't, we can compute the end from the datasets
+        # if they use relative timestamps, we can compute the end since we know the start
+        if end is None:
+            for ds in self.datasets.values():
+                if ds.relative:
+                    assert ds.ts_col in ds.columns
+                    assert ds.relative_units == "SECONDS", "relative timestamps are only currently supported in seconds"
+                    absolute_end = start_dt + timedelta(seconds=ds[ds.ts_col].max())
+                    end_dt = max(end_dt, absolute_end)
+                else:
+                    absolute_end = ds["_python_datetime"].max()
+                    end_dt = max(end_dt, absolute_end)
+        else:
+            end_dt = parser.parse(end)
+
+        self.datasets_domain = dict(START=start_dt, END=end_dt)
 
         self.__set_run_datetime_boundary("START", start)
         self.__set_run_datetime_boundary("END", end)
@@ -491,7 +515,7 @@ class Run:
             unix = dt.timestamp()
             seconds = floor(unix)
             self._domain[key]["SECONDS"] = seconds
-            self._domain[key]["NANOS"] = floor((unix - seconds) / 1e9)
+            self._domain[key]["NANOS"] = floor((unix - seconds) * 1e9)
 
     def __get_headers(self, content_type: str = "json") -> dict:
         TOKEN = kr.get_password("Nominal API", "python-client")
