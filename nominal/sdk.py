@@ -72,21 +72,6 @@ class AbsoluteTimestamp:
         )
 
 
-# class RelativeTimestamp:
-#     def __init__(self, nanoseconds: IntegralNanosecondsRelative) -> None:
-#         self.nanoseconds = nanoseconds
-
-#     def _to_conjure(self) -> scout_run_api.RelativeTimestamp:
-#         seconds, nanos = self.to_seconds_nanos()
-#         return scout_run_api.RelativeTimestamp(seconds=seconds, nanoseconds=nanos)
-
-#     @classmethod
-#     def _from_conjure(
-#         cls, timestamp: scout_run_api.RelativeTimestamp
-#     ) -> RelativeTimestamp:
-#         return cls.from_seconds_nanos(timestamp.seconds, timestamp.nanoseconds)
-
-
 @dataclass
 class CustomTimestampFormat:
     format: str
