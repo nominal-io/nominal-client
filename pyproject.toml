@@ -26,6 +26,7 @@ ruff = "^0.4.2"
 
 [tool.poetry.group.dev.dependencies]
 jupyterlab = "^4.2.4"
+mypy = "^1.11.2"
 
 [tool.distutils.bdist_wheel]
 universal = true
@@ -46,3 +47,10 @@ ignore = ["COM812", "ISC001", "UP", "D", "ANN"]
 profile = "black"
 skip = ["nominal/_api"]
 src_paths = ["nominal"]
+
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = "nominal._api.*"
+implicit_reexport = true
