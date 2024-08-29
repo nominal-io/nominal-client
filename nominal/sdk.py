@@ -19,15 +19,23 @@ from ._timeutils import (
     _flexible_time_to_conjure_scout_run_api,
     _conjure_time_to_integral_nanoseconds,
     _timestamp_type_to_conjure_ingest_api,
-    IntegralNanosecondsUTC as IntegralNanosecondsUTC,  # explicit re-export
-    CustomTimestampFormat as CustomTimestampFormat,  # explicit re-export
+    IntegralNanosecondsUTC,
+    CustomTimestampFormat,
 )
-from .exceptions import (
-    NominalIngestError as NominalIngestError,  # explicit re-export
-    NominalIngestFailed as NominalIngestFailed,  # explicit re-export
-)
+from .exceptions import NominalIngestError, NominalIngestFailed
 
 _AllowedFileExtensions = Literal[".csv", ".csv.gz", ".parquet"]
+
+__all__ = [
+    "NominalClient",
+    "Run",
+    "Dataset",
+    "Attachment",
+    "IntegralNanosecondsUTC",
+    "CustomTimestampFormat",
+    "NominalIngestError",
+    "NominalIngestFailed",
+]
 
 
 @dataclass(frozen=True)
