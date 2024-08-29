@@ -51,27 +51,19 @@ def _timestamp_type_to_conjure_ingest_api(
     if isinstance(ts_type, CustomTimestampFormat):
         return ingest_api.TimestampType(
             absolute=ingest_api.AbsoluteTimestamp(
-                custom_format=ingest_api.CustomTimestamp(
-                    format=ts_type.format, default_year=ts_type.default_year
-                )
+                custom_format=ingest_api.CustomTimestamp(format=ts_type.format, default_year=ts_type.default_year)
             )
         )
     elif ts_type == "iso_8601":
-        return ingest_api.TimestampType(
-            absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp())
-        )
+        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
     relation, unit = ts_type.split("_", 1)
     time_unit = ingest_api.TimeUnit[unit.upper()]
     if relation == "epoch":
         return ingest_api.TimestampType(
-            absolute=ingest_api.AbsoluteTimestamp(
-                epoch_of_time_unit=ingest_api.EpochTimestamp(time_unit=time_unit)
-            )
+            absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=ingest_api.EpochTimestamp(time_unit=time_unit))
         )
     elif relation == "relative":
-        return ingest_api.TimestampType(
-            relative=ingest_api.RelativeTimestamp(time_unit=time_unit)
-        )
+        return ingest_api.TimestampType(relative=ingest_api.RelativeTimestamp(time_unit=time_unit))
     raise ValueError(f"invalid timestamp type: {ts_type}")
 
 
@@ -115,9 +107,7 @@ class Run:
         raise NotImplementedError()
 
     @classmethod
-    def _from_conjure_scout_run_api(
-        cls, client: NominalClient, run: scout_run_api.Run
-    ) -> Run:
+    def _from_conjure_scout_run_api(cls, client: NominalClient, run: scout_run_api.Run) -> Run:
         return cls(
             rid=run.rid,
             title=run.title,
@@ -125,11 +115,7 @@ class Run:
             properties=MappingProxyType(run.properties),
             labels=tuple(run.labels),
             start=_conjure_time_to_integral_nanoseconds(run.start_time),
-            end=(
-                _conjure_time_to_integral_nanoseconds(run.end_time)
-                if run.end_time
-                else None
-            ),
+            end=(_conjure_time_to_integral_nanoseconds(run.end_time) if run.end_time else None),
             _client=client,
         )
 
@@ -185,9 +171,7 @@ class Attachment:
         raise NotImplementedError()
 
     @classmethod
-    def _from_conjure(
-        cls, client: NominalClient, attachment: attachments_api.Attachment
-    ) -> Attachment:
+    def _from_conjure(cls, client: NominalClient, attachment: attachments_api.Attachment) -> Attachment:
         return cls(
             rid=attachment.rid,
             title=attachment.title,
@@ -240,9 +224,7 @@ class NominalClient:
             The RIDs are retrieved from creating or getting a `Dataset` object.
         """
         start_abs = _flexible_time_to_conjure_scout_run_api(start_time)
-        end_abs = (
-            _flexible_time_to_conjure_scout_run_api(end_time) if end_time else None
-        )
+        end_abs = _flexible_time_to_conjure_scout_run_api(end_time) if end_time else None
         datasets = datasets or {}
         request = scout_run_api.CreateRunRequest(
             attachments=list(attachment_rids),
@@ -270,9 +252,7 @@ class NominalClient:
         response = self._run_client.get_run(self._auth_header, run_rid)
         return Run._from_conjure_scout_run_api(self, response)
 
-    def _list_runs_paginated(
-        self, request: scout_run_api.SearchRunsRequest
-    ) -> Iterable[scout_run_api.Run]:
+    def _list_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
         while True:
             response = self._run_client.search_runs(self._auth_header, request)
             yield from response.results
@@ -295,10 +275,7 @@ class NominalClient:
                 is_descending=True,
             ),
         )
-        return [
-            Run._from_conjure_scout_run_api(self, run)
-            for run in self._list_runs_paginated(request)
-        ]
+        return [Run._from_conjure_scout_run_api(self, run) for run in self._list_runs_paginated(request)]
 
     def create_dataset_from_io(
         self,
@@ -311,9 +288,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
     ) -> str:
-        s3_path = self._upload_client.upload_file(
-            self._auth_header, csvfile, file_name=f"{name}{file_extension}"
-        )
+        s3_path = self._upload_client.upload_file(self._auth_header, csvfile, file_name=f"{name}{file_extension}")
         request = ingest_api.TriggerIngest(
             labels=list(labels),
             properties=dict(properties or {}),
@@ -322,9 +297,7 @@ class NominalClient:
             dataset_name=name,
             timestamp_metadata=ingest_api.TimestampMetadata(
                 series_name=timestamp_column_name,
-                timestamp_type=_timestamp_type_to_conjure_ingest_api(
-                    timestamp_column_type
-                ),
+                timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_column_type),
             ),
         )
         response = self._ingest_client.trigger_ingest(self._auth_header, request)
@@ -351,17 +324,11 @@ def _flexible_time_to_conjure_scout_run_api(
 ) -> scout_run_api.UtcTimestamp:
     if isinstance(timestamp, datetime):
         seconds, nanos = _datetime_to_seconds_nanos(timestamp)
-        return scout_run_api.UtcTimestamp(
-            seconds_since_epoch=seconds, offset_nanoseconds=nanos
-        )
+        return scout_run_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
     elif isinstance(timestamp, IntegralNanosecondsUTC):
         seconds, nanos = divmod(timestamp, 1_000_000_000)
-        return scout_run_api.UtcTimestamp(
-            seconds_since_epoch=seconds, offset_nanoseconds=nanos
-        )
-    raise TypeError(
-        f"expected {datetime} or {IntegralNanosecondsUTC}, got {type(timestamp)}"
-    )
+        return scout_run_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
+    raise TypeError(f"expected {datetime} or {IntegralNanosecondsUTC}, got {type(timestamp)}")
 
 
 def _conjure_time_to_integral_nanoseconds(
