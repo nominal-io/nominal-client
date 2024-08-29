@@ -1,70 +1,33 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, TextIO
+from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, TextIO, Type, cast
 
-from conjure_python_client import RequestsClient, ServiceConfiguration
+from conjure_python_client import RequestsClient, Service, ServiceConfiguration
 
 from ._api.combined import attachments_api
+from ._api.combined import scout_catalog
 from ._api.combined import scout
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
 from ._api.ingest import upload_api
-
-IntegralNanosecondsUTC = int
-_AllowedFileExtensions = Literal[".csv", ".csv.gz", ".parquet"]
-
-
-@dataclass
-class CustomTimestampFormat:
-    format: str
-    default_year: int = 0
-
-
-_TimestampColumnType = (
-    Literal[
-        "iso_8601",
-        "epoch_days",
-        "epoch_hours",
-        "epoch_minutes",
-        "epoch_seconds",
-        "epoch_milliseconds",
-        "epoch_microseconds",
-        "epoch_nanoseconds",
-        "relative_days",
-        "relative_hours",
-        "relative_minutes",
-        "relative_seconds",
-        "relative_milliseconds",
-        "relative_microseconds",
-        "relative_nanoseconds",
-    ]
-    | CustomTimestampFormat
+from ._timeutils import (
+    _TimestampColumnType,
+    _flexible_time_to_conjure_scout_run_api,
+    _conjure_time_to_integral_nanoseconds,
+    _timestamp_type_to_conjure_ingest_api,
+    IntegralNanosecondsUTC as IntegralNanosecondsUTC,  # explicit re-export
+    CustomTimestampFormat as CustomTimestampFormat,  # explicit re-export
+)
+from .exceptions import (
+    NominalIngestError as NominalIngestError,  # explicit re-export
+    NominalIngestFailed as NominalIngestFailed,  # explicit re-export
 )
 
-
-def _timestamp_type_to_conjure_ingest_api(
-    ts_type: _TimestampColumnType,
-) -> ingest_api.TimestampType:
-    if isinstance(ts_type, CustomTimestampFormat):
-        return ingest_api.TimestampType(
-            absolute=ingest_api.AbsoluteTimestamp(
-                custom_format=ingest_api.CustomTimestamp(format=ts_type.format, default_year=ts_type.default_year)
-            )
-        )
-    elif ts_type == "iso_8601":
-        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
-    relation, unit = ts_type.split("_", 1)
-    time_unit = ingest_api.TimeUnit[unit.upper()]
-    if relation == "epoch":
-        return ingest_api.TimestampType(
-            absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=ingest_api.EpochTimestamp(time_unit=time_unit))
-        )
-    elif relation == "relative":
-        return ingest_api.TimestampType(relative=ingest_api.RelativeTimestamp(time_unit=time_unit))
-    raise ValueError(f"invalid timestamp type: {ts_type}")
+_AllowedFileExtensions = Literal[".csv", ".csv.gz", ".parquet"]
 
 
 @dataclass(frozen=True)
@@ -78,14 +41,34 @@ class Run:
     end: IntegralNanosecondsUTC | None
     _client: NominalClient
 
-    def add_dataset(self) -> None:
-        raise NotImplementedError()
+    def add_datasets(self, datasets: Mapping[str, str]) -> None:
+        """Adds datasets to this run.
 
-    def create_dataset(self) -> Dataset:
-        raise NotImplementedError()
+        Datasets map "ref names" (their name within the run) to dataset RIDs.
+            The same type of datasets should use the same ref name across runs,
+            since checklists and templates use ref names to reference datasets.
+            The RIDs are retrieved from creating or getting a `Dataset` object.
+        """
+        data_sources = {
+            ref_name: scout_run_api.CreateRunDataSource(
+                data_source=scout_run_api.DataSource(dataset=rid),
+                series_tags={},
+                offset=None,  # TODO(alkasm): support per-dataset offsets
+            )
+            for ref_name, rid in datasets.items()
+        }
+        self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
 
-    def list_datasets(self) -> list[Dataset]:
-        raise NotImplementedError()
+    def list_datasets(self) -> Iterable[tuple[str, str]]:
+        """Lists the datasets associated with this run.
+
+        Yields (ref_name, dataset_rid) pairs.
+        """
+        run = self._client._run_client.get_run(self._client._auth_header, self.rid)
+        for ref_name, source in run.data_sources.items():
+            if source.data_source.type == "dataset":
+                dataset_rid = cast(str, source.data_source.dataset)
+                yield (ref_name, dataset_rid)
 
     def add_attachment(self) -> None:
         raise NotImplementedError()
@@ -103,8 +86,15 @@ class Run:
         description: str | None,
         properties: Mapping[str, str] | None,
         labels: Sequence[str] | None,
-    ) -> None:
-        raise NotImplementedError()
+    ) -> Run:
+        request = scout_run_api.UpdateRunRequest(
+            description=description or self.description,
+            labels=list(labels or self.labels),
+            properties=dict(properties or self.properties),
+            title=title or self.title,
+        )
+        response = self._client._run_client.update_run(self._client._auth_header, request, self.rid)
+        return Run._from_conjure_scout_run_api(self._client, response)
 
     @classmethod
     def _from_conjure_scout_run_api(cls, client: NominalClient, run: scout_run_api.Run) -> Run:
@@ -129,6 +119,17 @@ class Dataset:
     labels: Sequence[str]
     _client: NominalClient
 
+    def poll_until_ingestion_completed(self, dataset_rid: str, interval: timedelta = timedelta(seconds=2)) -> None:
+        while True:
+            dataset = self._client._get_dataset(dataset_rid)
+            if dataset.ingest_status == scout_catalog.IngestStatus.COMPLETED:
+                return
+            elif dataset.ingest_status == scout_catalog.IngestStatus.FAILED:
+                raise NominalIngestFailed(f"ingest failed for dataset: {dataset.rid}")
+            elif dataset.ingest_status == scout_catalog.IngestStatus.UNKNOWN:
+                raise NominalIngestError(f"ingest status unknown for dataset: {dataset.rid}")
+            time.sleep(interval.total_seconds())
+
     def replace(
         self,
         *,
@@ -136,19 +137,26 @@ class Dataset:
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
-    ) -> None:
-        raise NotImplementedError()
+    ) -> Dataset:
+        request = scout_catalog.UpdateDatasetMetadata(
+            description=description or self.description,
+            labels=list(labels or self.labels),
+            name=name or self.name,
+            properties=dict(properties or self.properties),
+        )
+        response = self._client._catalog_client.update_dataset_metadata(self._client._auth_header, self.rid, request)
+        return Dataset._from_conjure_scout_catalog(self._client, response)
 
-    # @classmethod
-    # def _from_conjure...(cls, client: NominalClient, ds: scout_catalog.Dataset) -> Dataset:
-    #     return cls(
-    #         rid=ds.rid,
-    #         name=ds.name,
-    #         description=ds.description,
-    #         properties=MappingProxyType(ds.properties),
-    #         labels=tuple(ds.labels),
-    #         _client=client,
-    #     )
+    @classmethod
+    def _from_conjure_scout_catalog(cls, client: NominalClient, ds: scout_catalog.EnrichedDataset) -> Dataset:
+        return cls(
+            rid=ds.rid,
+            name=ds.name,
+            description=ds.description,
+            properties=MappingProxyType(ds.properties),
+            labels=tuple(ds.labels),
+            _client=client,
+        )
 
 
 @dataclass(frozen=True)
@@ -167,7 +175,7 @@ class Attachment:
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
-    ) -> None:
+    ) -> Attachment:
         raise NotImplementedError()
 
     @classmethod
@@ -188,21 +196,24 @@ class NominalClient:
     _run_client: scout.RunService
     _upload_client: upload_api.UploadService
     _ingest_client: ingest_api.IngestService
+    _catalog_client: scout_catalog.CatalogService
 
     @classmethod
     def create(cls, base_url: str, token: str) -> NominalClient:
         cfg = ServiceConfiguration(uris=[base_url])
-        # TODO: add library version to user agent
+        # TODO(alkasm): add library version to user agent
         agent = "nominal-python"
         run_client = RequestsClient.create(scout.RunService, agent, cfg)
         upload_client = RequestsClient.create(upload_api.UploadService, agent, cfg)
         ingest_client = RequestsClient.create(ingest_api.IngestService, agent, cfg)
+        catalog_client = RequestsClient.create(scout_catalog.CatalogService, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
             _run_client=run_client,
             _upload_client=upload_client,
             _ingest_client=ingest_client,
+            _catalog_client=catalog_client,
         )
 
     def create_run(
@@ -232,20 +243,19 @@ class NominalClient:
                 ref_name: scout_run_api.CreateRunDataSource(
                     data_source=scout_run_api.DataSource(dataset=rid),
                     series_tags={},
-                    offset=None,  # TODO: support per-dataset offsets
+                    offset=None,  # TODO(alkasm): support per-dataset offsets
                 )
                 for ref_name, rid in datasets.items()
             },
             description=description,
             labels=list(labels),
-            links=[],  # TODO: support links
+            links=[],  # TODO(alkasm): support links
             properties={} if properties is None else dict(properties),
             start_time=start_abs,
             title=title,
             end_time=end_abs,
         )
         response = self._run_client.create_run(self._auth_header, request)
-        response.rid
         return Run._from_conjure_scout_run_api(self, response)
 
     def get_run(self, run_rid: str) -> Run:
@@ -265,8 +275,8 @@ class NominalClient:
                 next_page_token=response.next_page_token,
             )
 
-    def list_runs(self) -> list[Run]:
-        # TODO: search filters
+    def list_runs(self) -> Iterable[Run]:
+        # TODO(alkasm): search filters
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
             query=scout_run_api.SearchQuery(),
@@ -275,7 +285,8 @@ class NominalClient:
                 is_descending=True,
             ),
         )
-        return [Run._from_conjure_scout_run_api(self, run) for run in self._list_runs_paginated(request)]
+        for run in self._list_runs_paginated(request):
+            yield Run._from_conjure_scout_run_api(self, run)
 
     def create_dataset_from_io(
         self,
@@ -303,11 +314,34 @@ class NominalClient:
         response = self._ingest_client.trigger_ingest(self._auth_header, request)
         return response.dataset_rid
 
-    def get_dataset(self, dataset_rid: str) -> Dataset:
-        raise NotImplementedError()
+    def _get_datasets(self, dataset_rids: Iterable[str]) -> Iterable[scout_catalog.EnrichedDataset]:
+        request = scout_catalog.GetDatasetsRequest(dataset_rids=list(dataset_rids))
+        yield from self._catalog_client.get_enriched_datasets(self._auth_header, request)
 
-    def list_datasets(self) -> list[Dataset]:
-        raise NotImplementedError()
+    def _get_dataset(self, dataset_rid: str) -> scout_catalog.EnrichedDataset:
+        datasets = list(self._get_datasets([dataset_rid]))
+        if not datasets:
+            raise ValueError(f"dataset not found: {dataset_rid}")
+        if len(datasets) > 1:
+            raise ValueError(f"expected exactly one dataset, got: {len(datasets)}")
+        return datasets[0]
+
+    def get_dataset(self, dataset_rid: str) -> Dataset:
+        return Dataset._from_conjure_scout_catalog(self, self._get_dataset(dataset_rid))
+
+    def get_datasets(self, dataset_rids: Iterable[str]) -> Iterable[Dataset]:
+        for ds in self._get_datasets(dataset_rids):
+            yield Dataset._from_conjure_scout_catalog(self, ds)
+
+    def search_datasets(self) -> Iterable[Dataset]:
+        # TODO(alkasm): search filters
+        request = scout_catalog.SearchDatasetsRequest(
+            query=scout_catalog.SearchDatasetsQuery(),
+            sort_options=scout_catalog.SortOptions(field=scout_catalog.SortField.INGEST_DATE, is_descending=True),
+        )
+        response = self._catalog_client.search_datasets(self._auth_header, request)
+        for ds in response.results:
+            yield Dataset._from_conjure_scout_catalog(self, ds)
 
     def create_attachment(self) -> Attachment:
         raise NotImplementedError()
@@ -315,30 +349,5 @@ class NominalClient:
     def get_attachment(self, attachment_rid: str) -> Attachment:
         raise NotImplementedError()
 
-    def list_attachments(self) -> list[Attachment]:
+    def list_attachments(self) -> Iterable[Attachment]:
         raise NotImplementedError()
-
-
-def _flexible_time_to_conjure_scout_run_api(
-    timestamp: datetime | IntegralNanosecondsUTC,
-) -> scout_run_api.UtcTimestamp:
-    if isinstance(timestamp, datetime):
-        seconds, nanos = _datetime_to_seconds_nanos(timestamp)
-        return scout_run_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
-    elif isinstance(timestamp, IntegralNanosecondsUTC):
-        seconds, nanos = divmod(timestamp, 1_000_000_000)
-        return scout_run_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
-    raise TypeError(f"expected {datetime} or {IntegralNanosecondsUTC}, got {type(timestamp)}")
-
-
-def _conjure_time_to_integral_nanoseconds(
-    ts: scout_run_api.UtcTimestamp,
-) -> IntegralNanosecondsUTC:
-    return ts.seconds_since_epoch * 1_000_000_000 + (ts.offset_nanoseconds or 0)
-
-
-def _datetime_to_seconds_nanos(dt: datetime) -> tuple[int, int]:
-    dt = dt.astimezone(timezone.utc)
-    seconds = int(dt.timestamp())
-    nanos = dt.microsecond * 1000
-    return seconds, nanos
