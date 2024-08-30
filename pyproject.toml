@@ -1,10 +1,11 @@
 [tool.poetry]
 name = "nominal"
-version = "0.0.39"
+version = "1.0.0-beta"
 description = "Automate Nominal workflows in Python"
-authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>"]
+authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>", "Alexander Reynolds <alex.reynolds@nominal.io>"]
 readme = "README.md"
 packages = [
+    {include = "nominal/py.typed"},
     {include = "nominal/**/*.py"},
     {include = "nominal/**/*.csv"},
 ]
