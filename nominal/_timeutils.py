@@ -13,7 +13,7 @@ class CustomTimestampFormat:
     default_year: int = 0
 
 
-_TimestampColumnType = (
+TimestampColumnType = (
     Literal[
         "iso_8601",
         "epoch_days",
@@ -36,7 +36,7 @@ _TimestampColumnType = (
 
 
 def _timestamp_type_to_conjure_ingest_api(
-    ts_type: _TimestampColumnType,
+    ts_type: TimestampColumnType,
 ) -> ingest_api.TimestampType:
     if isinstance(ts_type, CustomTimestampFormat):
         return ingest_api.TimestampType(

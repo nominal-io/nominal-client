@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, TextIO, Type, cast
@@ -16,7 +16,7 @@ from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
 from ._api.ingest import upload_api
 from ._timeutils import (
-    _TimestampColumnType,
+    TimestampColumnType,
     _flexible_time_to_conjure_scout_run_api,
     _conjure_time_to_integral_nanoseconds,
     _timestamp_type_to_conjure_ingest_api,
@@ -48,7 +48,7 @@ class Run:
     labels: Sequence[str]
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
-    _client: NominalClient
+    _client: NominalClient = field(repr=False)
 
     def add_datasets(self, datasets: Mapping[str, str]) -> None:
         """Adds datasets to this run.
@@ -79,11 +79,17 @@ class Run:
                 dataset_rid = cast(str, source.data_source.dataset)
                 yield (ref_name, dataset_rid)
 
-    def add_attachment(self) -> None:
-        raise NotImplementedError()
+    def add_attachments(self, attachment_rids: Iterable[str]) -> None:
+        request = scout_run_api.UpdateAttachmentsRequest(
+            attachments_to_add=list(attachment_rids), attachments_to_remove=[]
+        )
+        self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
 
-    def list_attachments(self) -> list[Attachment]:
-        raise NotImplementedError()
+    def remove_attachments(self, attachment_rids: Iterable[str]) -> None:
+        request = scout_run_api.UpdateAttachmentsRequest(
+            attachments_to_add=[], attachments_to_remove=list(attachment_rids)
+        )
+        self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
 
     def replace(
         self,
@@ -123,7 +129,7 @@ class Dataset:
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _client: NominalClient
+    _client: NominalClient = field(repr=False)
 
     def poll_until_ingestion_completed(self, dataset_rid: str, interval: timedelta = timedelta(seconds=2)) -> None:
         while True:
@@ -172,7 +178,7 @@ class Attachment:
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _client: NominalClient
+    _client: NominalClient = field(repr=False)
 
     def replace(
         self,
@@ -183,6 +189,12 @@ class Attachment:
         labels: Sequence[str] | None = None,
     ) -> Attachment:
         raise NotImplementedError()
+
+    def get_contents(self) -> BinaryIO:
+        response = self._client._attachment_client.get_content(self._client._auth_header, self.rid)
+        # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
+        # this acts like a file-like object in binary-mode.
+        return cast(BinaryIO, response)
 
     @classmethod
     def _from_conjure(cls, client: NominalClient, attachment: attachments_api.Attachment) -> Attachment:
@@ -198,11 +210,12 @@ class Attachment:
 
 @dataclass(frozen=True)
 class NominalClient:
-    _auth_header: str
-    _run_client: scout.RunService
-    _upload_client: upload_api.UploadService
-    _ingest_client: ingest_api.IngestService
-    _catalog_client: scout_catalog.CatalogService
+    _auth_header: str = field(repr=False)
+    _run_client: scout.RunService = field(repr=False)
+    _upload_client: upload_api.UploadService = field(repr=False)
+    _ingest_client: ingest_api.IngestService = field(repr=False)
+    _catalog_client: scout_catalog.CatalogService = field(repr=False)
+    _attachment_client: attachments_api.AttachmentService = field(repr=False)
 
     @classmethod
     def create(cls, base_url: str, token: str, trust_store_path: str | None = None) -> NominalClient:
@@ -224,6 +237,7 @@ class NominalClient:
         upload_client = RequestsClient.create(upload_api.UploadService, agent, cfg)
         ingest_client = RequestsClient.create(ingest_api.IngestService, agent, cfg)
         catalog_client = RequestsClient.create(scout_catalog.CatalogService, agent, cfg)
+        attachment_client = RequestsClient.create(attachments_api.AttachmentService, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
@@ -231,6 +245,7 @@ class NominalClient:
             _upload_client=upload_client,
             _ingest_client=ingest_client,
             _catalog_client=catalog_client,
+            _attachment_client=attachment_client,
         )
 
     def create_run(
@@ -276,6 +291,7 @@ class NominalClient:
         return Run._from_conjure_scout_run_api(self, response)
 
     def get_run(self, run_rid: str) -> Run:
+        """Retrieves a run from the Nominal platform by its run RID."""
         response = self._run_client.get_run(self._auth_header, run_rid)
         return Run._from_conjure_scout_run_api(self, response)
 
@@ -293,6 +309,7 @@ class NominalClient:
             )
 
     def list_runs(self) -> Iterable[Run]:
+        """Yields the runs in the Nominal platform."""
         # TODO(alkasm): search filters
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
@@ -310,12 +327,21 @@ class NominalClient:
         name: str,
         csvfile: TextIO | BinaryIO,
         timestamp_column_name: str,
-        timestamp_column_type: _TimestampColumnType,
+        timestamp_column_type: TimestampColumnType,
         file_extension: _AllowedFileExtensions = ".csv",
         description: str | None = None,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
     ) -> str:
+        """Creates a dataset in the Nominal platform from a file-like object.
+
+        Specify the timestamp column name and type to use for the dataset.
+        Timestamp column types are one of the following literals or a `CustomTimestampFormat` object.
+            - "iso_8601": `timestamp_column_name` holds ISO 8601 formatted strings
+            - "epoch_<unit>": `timestamp_column_name` holds epoch timestamps in UTC (floats or ints)
+            - "relative_<unit>": `timestamp_column_name` holds relative timestamps (floats or ints)
+            where <unit> is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
+        """
         s3_path = self._upload_client.upload_file(self._auth_header, csvfile, file_name=f"{name}{file_extension}")
         request = ingest_api.TriggerIngest(
             labels=list(labels),
@@ -353,18 +379,37 @@ class NominalClient:
     def search_datasets(self) -> Iterable[Dataset]:
         # TODO(alkasm): search filters
         request = scout_catalog.SearchDatasetsRequest(
-            query=scout_catalog.SearchDatasetsQuery(),
+            query=scout_catalog.SearchDatasetsQuery(
+                or_=[
+                    scout_catalog.SearchDatasetsQuery(archive_status=False),
+                    scout_catalog.SearchDatasetsQuery(archive_status=True),
+                ]
+            ),
             sort_options=scout_catalog.SortOptions(field=scout_catalog.SortField.INGEST_DATE, is_descending=True),
         )
         response = self._catalog_client.search_datasets(self._auth_header, request)
         for ds in response.results:
             yield Dataset._from_conjure_scout_catalog(self, ds)
 
-    def create_attachment(self) -> Attachment:
-        raise NotImplementedError()
+    def create_attachment_from_io(
+        self,
+        attachment: BinaryIO | TextIO,
+        title: str,
+        description: str,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Attachment:
+        s3_path = self._upload_client.upload_file(self._auth_header, attachment, file_name=title)
+        request = attachments_api.CreateAttachmentRequest(
+            description=description,
+            labels=list(labels),
+            properties=dict(properties or {}),
+            s3_path=s3_path,
+            title=title,
+        )
+        attachment = self._attachment_client.create(self._auth_header, request)
+        return Attachment._from_conjure(self, attachment)
 
     def get_attachment(self, attachment_rid: str) -> Attachment:
-        raise NotImplementedError()
-
-    def list_attachments(self) -> Iterable[Attachment]:
-        raise NotImplementedError()
+        attachment = self._attachment_client.get(self._auth_header, attachment_rid)
+        return Attachment._from_conjure(self, attachment)
