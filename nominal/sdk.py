@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, TextIO, Type, cast
 
-from conjure_python_client import RequestsClient, Service, ServiceConfiguration
+import certifi
+from conjure_python_client import RequestsClient, Service, ServiceConfiguration, SslConfiguration
 
 from ._api.combined import attachments_api
 from ._api.combined import scout_catalog
@@ -79,9 +80,6 @@ class Run:
                 yield (ref_name, dataset_rid)
 
     def add_attachment(self) -> None:
-        raise NotImplementedError()
-
-    def create_attachment(self) -> Dataset:
         raise NotImplementedError()
 
     def list_attachments(self) -> list[Attachment]:
@@ -207,8 +205,19 @@ class NominalClient:
     _catalog_client: scout_catalog.CatalogService
 
     @classmethod
-    def create(cls, base_url: str, token: str) -> NominalClient:
-        cfg = ServiceConfiguration(uris=[base_url])
+    def create(cls, base_url: str, token: str, trust_store_path: str | None = None) -> NominalClient:
+        """Create a connection to the Nominal platform.
+
+        Args:
+            base_url: The URL of the Nominal API platform, e.g. https://api.gov.nominal.io/api.
+            token: An API token to authenticate with. You can grab a client token from the Nominal sandbox, e.g.
+                at https://api.gov.nominal.io/sandbox.
+            trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
+                certifi's trust store is used.
+        """
+        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
+        cfg = ServiceConfiguration(uris=[base_url], security=SslConfiguration(trust_store_path=trust_store_path))
+
         # TODO(alkasm): add library version to user agent
         agent = "nominal-python"
         run_client = RequestsClient.create(scout.RunService, agent, cfg)
