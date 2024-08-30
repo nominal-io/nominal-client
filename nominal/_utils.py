@@ -1,8 +1,11 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
+
+logger = logging.getLogger(__name__)
 
 IntegralNanosecondsUTC = int
 
@@ -80,3 +83,23 @@ def _datetime_to_seconds_nanos(dt: datetime) -> tuple[int, int]:
     seconds = int(dt.timestamp())
     nanos = dt.microsecond * 1000
     return seconds, nanos
+
+
+def construct_user_agent_string() -> str:
+    """Constructs a user-agent string with system & Python metadata.
+    E.g.: nominal-python/1.0.0b0 (macOS-14.4-arm64-arm-64bit) cpython/3.12.4
+    """
+    import importlib.metadata
+    import platform
+    import sys
+
+    try:
+        v = importlib.metadata.version("nominal")
+        p = platform.platform()
+        impl = sys.implementation
+        py = platform.python_version()
+        return f"nominal-python/{v} ({p}) {impl.name}/{py}"
+    except Exception as e:
+        # I believe all of the above are cross-platform, but just in-case...
+        logger.error("failed to construct user-agent string", exc_info=e)
+        return "nominal-python/unknown"

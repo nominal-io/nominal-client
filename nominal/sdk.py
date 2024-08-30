@@ -15,13 +15,14 @@ from ._api.combined import scout
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
 from ._api.ingest import upload_api
-from ._timeutils import (
+from ._utils import (
     TimestampColumnType,
     _flexible_time_to_conjure_scout_run_api,
     _conjure_time_to_integral_nanoseconds,
     _timestamp_type_to_conjure_ingest_api,
     IntegralNanosecondsUTC,
     CustomTimestampFormat,
+    construct_user_agent_string,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
 
@@ -285,8 +286,7 @@ class NominalClient:
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         cfg = ServiceConfiguration(uris=[base_url], security=SslConfiguration(trust_store_path=trust_store_path))
 
-        # TODO(alkasm): add library version to user agent
-        agent = "nominal-python"
+        agent = construct_user_agent_string()
         run_client = RequestsClient.create(scout.RunService, agent, cfg)
         upload_client = RequestsClient.create(upload_api.UploadService, agent, cfg)
         ingest_client = RequestsClient.create(ingest_api.IngestService, agent, cfg)
