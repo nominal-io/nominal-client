@@ -51,8 +51,7 @@ class Run:
     _client: NominalClient = field(repr=False)
 
     def add_datasets(self, datasets: Mapping[str, str]) -> None:
-        """Adds datasets to this run.
-
+        """Add datasets to this run.
         Datasets map "ref names" (their name within the run) to dataset RIDs.
             The same type of datasets should use the same ref name across runs,
             since checklists and templates use ref names to reference datasets.
@@ -69,8 +68,7 @@ class Run:
         self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
 
     def list_datasets(self) -> Iterable[tuple[str, str]]:
-        """Lists the datasets associated with this run.
-
+        """List the datasets associated with this run.
         Yields (ref_name, dataset_rid) pairs.
         """
         run = self._client._run_client.get_run(self._client._auth_header, self.rid)
@@ -80,12 +78,16 @@ class Run:
                 yield (ref_name, dataset_rid)
 
     def add_attachments(self, attachment_rids: Iterable[str]) -> None:
+        """Add attachments that have already been uploaded to this run."""
         request = scout_run_api.UpdateAttachmentsRequest(
             attachments_to_add=list(attachment_rids), attachments_to_remove=[]
         )
         self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
 
     def remove_attachments(self, attachment_rids: Iterable[str]) -> None:
+        """Remove attachments from this run.
+        Does not remove the attachments from Nominal.
+        """
         request = scout_run_api.UpdateAttachmentsRequest(
             attachments_to_add=[], attachments_to_remove=list(attachment_rids)
         )
@@ -99,6 +101,18 @@ class Run:
         properties: Mapping[str, str] | None,
         labels: Sequence[str] | None,
     ) -> Run:
+        """Replace run metadata.
+        Returns the run with updated metadata.
+        Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+        calling this method. E.g.:
+
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in run.labels:
+                new_labels.append(old_label)
+            run = run.replace(labels=new_labels)
+        """
         request = scout_run_api.UpdateRunRequest(
             description=description or self.description,
             labels=list(labels or self.labels),
@@ -132,6 +146,13 @@ class Dataset:
     _client: NominalClient = field(repr=False)
 
     def poll_until_ingestion_completed(self, dataset_rid: str, interval: timedelta = timedelta(seconds=2)) -> None:
+        """Block until dataset ingestion has completed.
+        This method polls Nominal for ingest status after uploading a dataset on an interval.
+
+        Raises:
+            NominalIngestError: if the ingest status is not known
+            NominalIngestFailed: if the ingest failed
+        """
         while True:
             dataset = self._client._get_dataset(dataset_rid)
             if dataset.ingest_status == scout_catalog.IngestStatus.COMPLETED:
@@ -150,6 +171,18 @@ class Dataset:
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Dataset:
+        """Replace dataset metadata.
+        Returns the dataset with updated metadata.
+        Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+        calling this method. E.g.:
+
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in dataset.labels:
+                new_labels.append(old_label)
+            dataset = dataset.replace(labels=new_labels)
+        """
         request = scout_catalog.UpdateDatasetMetadata(
             description=description or self.description,
             labels=list(labels or self.labels),
@@ -188,9 +221,31 @@ class Attachment:
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Attachment:
-        raise NotImplementedError()
+        """Replace attachment metadata.
+        Returns the attachment with updated metadata.
+        Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+        calling this method. E.g.:
+
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in attachment.labels:
+                new_labels.append(old_label)
+            attachment = attachment.replace(labels=new_labels)
+        """
+        request = attachments_api.UpdateAttachmentRequest(
+            description=description,
+            labels=None if labels is None else list(labels),
+            properties=None if properties is None else dict(properties),
+            title=title,
+        )
+        response = self._client._attachment_client.update(self._client._auth_header, request, self.rid)
+        return Attachment._from_conjure(response)
 
     def get_contents(self) -> BinaryIO:
+        """Retrieves the contents of this attachment.
+        Returns a file-like object in binary mode for reading.
+        """
         response = self._client._attachment_client.get_content(self._client._auth_header, self.rid)
         # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
         # this acts like a file-like object in binary-mode.
@@ -220,7 +275,6 @@ class NominalClient:
     @classmethod
     def create(cls, base_url: str, token: str, trust_store_path: str | None = None) -> NominalClient:
         """Create a connection to the Nominal platform.
-
         Args:
             base_url: The URL of the Nominal API platform, e.g. https://api.gov.nominal.io/api.
             token: An API token to authenticate with. You can grab a client token from the Nominal sandbox, e.g.
@@ -259,8 +313,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         attachment_rids: Sequence[str] = (),
     ) -> Run:
-        """Creates a run in the Nominal platform.
-
+        """Create a run.
         Datasets map "ref names" (their name within the run) to dataset RIDs.
             The same type of datasets should use the same ref name across runs,
             since checklists and templates use ref names to reference datasets.
@@ -291,7 +344,7 @@ class NominalClient:
         return Run._from_conjure_scout_run_api(self, response)
 
     def get_run(self, run_rid: str) -> Run:
-        """Retrieves a run from the Nominal platform by its run RID."""
+        """Retrieve a run."""
         response = self._run_client.get_run(self._auth_header, run_rid)
         return Run._from_conjure_scout_run_api(self, response)
 
@@ -308,9 +361,9 @@ class NominalClient:
                 next_page_token=response.next_page_token,
             )
 
-    def list_runs(self) -> Iterable[Run]:
-        """Yields the runs in the Nominal platform."""
+    def _list_runs(self) -> Iterable[Run]:
         # TODO(alkasm): search filters
+        # TODO(alkasm): put in public API when we decide if we only expose search, or search + list.
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
             query=scout_run_api.SearchQuery(),
@@ -324,8 +377,8 @@ class NominalClient:
 
     def create_dataset_from_io(
         self,
+        dataset: BinaryIO,
         name: str,
-        csvfile: TextIO | BinaryIO,
         timestamp_column_name: str,
         timestamp_column_type: TimestampColumnType,
         file_extension: _AllowedFileExtensions = ".csv",
@@ -333,16 +386,19 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
     ) -> str:
-        """Creates a dataset in the Nominal platform from a file-like object.
+        """Create a dataset from a file-like object.
+        The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        If the file is not in binary-mode, the requests library blocks indefinitely.
 
         Specify the timestamp column name and type to use for the dataset.
-        Timestamp column types are one of the following literals or a `CustomTimestampFormat` object.
-            - "iso_8601": `timestamp_column_name` holds ISO 8601 formatted strings
-            - "epoch_<unit>": `timestamp_column_name` holds epoch timestamps in UTC (floats or ints)
-            - "relative_<unit>": `timestamp_column_name` holds relative timestamps (floats or ints)
+        Timestamp column types are one of the following literals or a `CustomTimestampFormat` object:
+            - "iso_8601": timestamps are ISO 8601 formatted strings
+            - "epoch_<unit>": timestamps are epoch timestamps in UTC (floats or ints)
+            - "relative_<unit>": timestamps are relative timestamps (floats or ints)
             where <unit> is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
         """
-        s3_path = self._upload_client.upload_file(self._auth_header, csvfile, file_name=f"{name}{file_extension}")
+        # TODO(alkasm): detect text-mode files and throw to stop from indefitely blocking.
+        s3_path = self._upload_client.upload_file(self._auth_header, dataset, file_name=f"{name}{file_extension}")
         request = ingest_api.TriggerIngest(
             labels=list(labels),
             properties=dict(properties or {}),
@@ -370,14 +426,17 @@ class NominalClient:
         return datasets[0]
 
     def get_dataset(self, dataset_rid: str) -> Dataset:
+        """Retrieve a dataset."""
         return Dataset._from_conjure_scout_catalog(self, self._get_dataset(dataset_rid))
 
     def get_datasets(self, dataset_rids: Iterable[str]) -> Iterable[Dataset]:
+        """Retrieve datasets."""
         for ds in self._get_datasets(dataset_rids):
             yield Dataset._from_conjure_scout_catalog(self, ds)
 
-    def search_datasets(self) -> Iterable[Dataset]:
+    def _search_datasets(self) -> Iterable[Dataset]:
         # TODO(alkasm): search filters
+        # TODO(alkasm): put in public API when we decide if we only expose search, or search + list.
         request = scout_catalog.SearchDatasetsRequest(
             query=scout_catalog.SearchDatasetsQuery(
                 or_=[
@@ -393,12 +452,17 @@ class NominalClient:
 
     def create_attachment_from_io(
         self,
-        attachment: BinaryIO | TextIO,
+        attachment: BinaryIO,
         title: str,
         description: str,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
     ) -> Attachment:
+        """Upload an attachment.
+        The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        If the file is not in binary-mode, the requests library blocks indefinitely.
+        """
+        # TODO(alkasm): detect text-mode files and throw to stop from indefitely blocking.
         s3_path = self._upload_client.upload_file(self._auth_header, attachment, file_name=title)
         request = attachments_api.CreateAttachmentRequest(
             description=description,
@@ -411,5 +475,6 @@ class NominalClient:
         return Attachment._from_conjure(self, attachment)
 
     def get_attachment(self, attachment_rid: str) -> Attachment:
+        """Retrieve an attachment."""
         attachment = self._attachment_client.get(self._auth_header, attachment_rid)
         return Attachment._from_conjure(self, attachment)
