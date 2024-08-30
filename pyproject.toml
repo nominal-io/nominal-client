@@ -27,6 +27,7 @@ ruff = "^0.4.2"
 [tool.poetry.group.dev.dependencies]
 jupyterlab = "^4.2.4"
 mypy = "^1.11.2"
+jupyter = "^1.1.1"
 
 [tool.distutils.bdist_wheel]
 universal = true
