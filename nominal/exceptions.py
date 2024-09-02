@@ -1,6 +1,14 @@
-class NominalIngestError(Exception):
+class NominalError(Exception):
+    pass
+
+
+class NominalIngestError(NominalError):
     pass
 
 
 class NominalIngestFailed(NominalIngestError):
+    pass
+
+
+class NominalMultipartUploadFailed(NominalError):
     pass
