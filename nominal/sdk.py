@@ -105,7 +105,7 @@ class Run:
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
-    ) -> Run:
+    ) -> Self:
         """Replace run metadata.
         Returns the run with updated metadata.
         Only the metadata passed in will be replaced, the rest will remain untouched.
@@ -128,7 +128,7 @@ class Run:
         return self.__class__._from_conjure(self._auth_header, self._run_client, response)
 
     @classmethod
-    def _from_conjure(cls, auth_header: str, run_client: scout.RunService, run: scout_run_api.Run) -> Run:
+    def _from_conjure(cls, auth_header: str, run_client: scout.RunService, run: scout_run_api.Run) -> Self:
         return cls(
             rid=run.rid,
             title=run.title,
@@ -288,7 +288,7 @@ class NominalClient:
     _attachment_client: attachments_api.AttachmentService = field(repr=False)
 
     @classmethod
-    def create(cls, base_url: str, token: str, trust_store_path: str | None = None) -> NominalClient:
+    def create(cls, base_url: str, token: str, trust_store_path: str | None = None) -> Self:
         """Create a connection to the Nominal platform.
 
         base_url: The URL of the Nominal API platform, e.g. https://api.gov.nominal.io/api.
