@@ -5,12 +5,10 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Literal, Mapping, Self, Sequence, TextIO, Type, cast
+from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
 
 import certifi
-from conjure_python_client import RequestsClient, Service, ServiceConfiguration, SslConfiguration
-
-from ._multipart import put_multipart_upload
+from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
 
 from ._api.combined import attachments_api
 from ._api.combined import scout_catalog
@@ -18,14 +16,16 @@ from ._api.combined import scout
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
 from ._api.ingest import upload_api
+from ._multipart import put_multipart_upload
 from ._utils import (
-    TimestampColumnType,
-    _flexible_time_to_conjure_scout_run_api,
     _conjure_time_to_integral_nanoseconds,
+    _flexible_time_to_conjure_scout_run_api,
     _timestamp_type_to_conjure_ingest_api,
-    IntegralNanosecondsUTC,
-    CustomTimestampFormat,
     construct_user_agent_string,
+    CustomTimestampFormat,
+    IntegralNanosecondsUTC,
+    Self,
+    TimestampColumnType,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
 

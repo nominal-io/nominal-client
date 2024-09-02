@@ -1,9 +1,23 @@
+from __future__ import annotations
+
 import logging
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, Union
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
+
+if sys.version_info >= (3, 11):
+    from typing import Self as Self
+else:
+    from typing_extensions import Self as Self
+
+
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias as TypeAlias
+else:
+    from typing_extensions import TypeAlias as TypeAlias
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +30,8 @@ class CustomTimestampFormat:
     default_year: int = 0
 
 
-TimestampColumnType = (
+# Using Union rather than the "|" operator due to https://github.com/python/mypy/issues/11665.
+TimestampColumnType: TypeAlias = Union[
     Literal[
         "iso_8601",
         "epoch_days",
@@ -33,9 +48,9 @@ TimestampColumnType = (
         "relative_milliseconds",
         "relative_microseconds",
         "relative_nanoseconds",
-    ]
-    | CustomTimestampFormat
-)
+    ],
+    CustomTimestampFormat,
+]
 
 
 def _timestamp_type_to_conjure_ingest_api(
