@@ -106,7 +106,7 @@ class Run:
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._run_client.update_run_attachment(self._auth_header, request, self.rid)
 
-    def replace(
+    def update(
         self,
         *,
         title: str | None = None,
@@ -124,7 +124,7 @@ class Run:
             new_labels = ["new-label-a", "new-label-b"]
             for old_label in run.labels:
                 new_labels.append(old_label)
-            run = run.replace(labels=new_labels)
+            run = run.update(labels=new_labels)
         """
         request = scout_run_api.UpdateRunRequest(
             description=description,
@@ -183,7 +183,7 @@ class Dataset:
                 raise NominalIngestError(f"ingest status unknown for dataset: {self.rid}")
             time.sleep(interval.total_seconds())
 
-    def replace(
+    def update(
         self,
         *,
         name: str | None = None,
@@ -202,7 +202,7 @@ class Dataset:
             new_labels = ["new-label-a", "new-label-b"]
             for old_label in dataset.labels:
                 new_labels.append(old_label)
-            dataset = dataset.replace(labels=new_labels)
+            dataset = dataset.update(labels=new_labels)
         """
         request = scout_catalog.UpdateDatasetMetadata(
             description=description,
@@ -241,7 +241,7 @@ class Attachment:
     _auth_header: str = field(repr=False)
     _attachment_client: attachments_api.AttachmentService = field(repr=False)
 
-    def replace(
+    def update(
         self,
         *,
         title: str | None = None,
@@ -258,7 +258,7 @@ class Attachment:
         calling this method. E.g.:
 
             new_labels = ["new-label-a", "new-label-b", *attachment.labels]
-            attachment = attachment.replace(labels=new_labels)
+            attachment = attachment.update(labels=new_labels)
         """
         request = attachments_api.UpdateAttachmentRequest(
             description=description,
