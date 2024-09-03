@@ -422,7 +422,7 @@ class NominalClient:
         description: str | None = None,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
-    ) -> str:
+    ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
@@ -452,7 +452,7 @@ class NominalClient:
             ),
         )
         response = self._ingest_client.trigger_ingest(self._auth_header, request)
-        return response.dataset_rid
+        return self.get_dataset(response.dataset_rid)
 
     def get_dataset(self, dataset: Dataset | str) -> Dataset:
         """Retrieve a dataset by dataset or dataset RID."""
