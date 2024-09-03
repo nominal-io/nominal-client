@@ -20,6 +20,7 @@ polars = "^1.4.1"
 keyring = "^25.0.0"
 rich = "^13.7.1"
 conjure-python-client = ">=2.8.0,<3"
+pandas = ">=2.0,<3.0"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.13.2"
