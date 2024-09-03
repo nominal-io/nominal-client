@@ -116,7 +116,7 @@ import logging
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal, Union
+from typing import Literal, Union, Iterable
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
 
@@ -230,3 +230,12 @@ def construct_user_agent_string() -> str:
         # I believe all of the above are cross-platform, but just in-case...
         logger.error("failed to construct user-agent string", exc_info=e)
         return "nominal-python/unknown"
+
+
+def update_dataclass(self: T, other: T, fields: Iterable[str]) -> None:
+    """Update dataclass attributes, copying from `other` into `self`.
+
+    Uses __dict__ to update `self` to update frozen dataclasses.
+    """
+    for field in fields:
+        self.__dict__[field] = getattr(other, field)

@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, TypeVar, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -26,6 +26,7 @@ from ._utils import (
     IntegralNanosecondsUTC,
     Self,
     TimestampColumnType,
+    update_dataclass,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
 
@@ -54,48 +55,55 @@ class Run:
     end: IntegralNanosecondsUTC | None
     _auth_header: str = field(repr=False)
     _run_client: scout.RunService = field(repr=False)
+    _nominal_client: NominalClient = field(repr=False)
 
-    def add_datasets(self, datasets: Mapping[str, str]) -> None:
+    def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
         """Add datasets to this run.
-        Datasets map "ref names" (their name within the run) to dataset RIDs.
-            The same type of datasets should use the same ref name across runs,
-            since checklists and templates use ref names to reference datasets.
-            The RIDs are retrieved from creating or getting a `Dataset` object.
+        Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
+        should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
         """
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(dataset=rid),
+                data_source=scout_run_api.DataSource(dataset=_rid_from_instance_or_string(ds)),
                 series_tags={},
                 offset=None,  # TODO(alkasm): support per-dataset offsets
             )
-            for ref_name, rid in datasets.items()
+            for ref_name, ds in datasets.items()
         }
         self._run_client.add_data_sources_to_run(self._auth_header, data_sources, self.rid)
 
-    def list_datasets(self) -> Iterable[tuple[str, str]]:
+    def list_datasets(self) -> Iterable[tuple[str, Dataset]]:
         """List the datasets associated with this run.
-        Yields (ref_name, dataset_rid) pairs.
+        Yields (ref_name, dataset) pairs.
         """
         run = self._run_client.get_run(self._auth_header, self.rid)
+        dataset_rids_by_ref_name = {}
         for ref_name, source in run.data_sources.items():
             if source.data_source.type == "dataset":
                 dataset_rid = cast(str, source.data_source.dataset)
-                yield (ref_name, dataset_rid)
+                dataset_rids_by_ref_name[ref_name] = dataset_rid
+        datasets_by_rids = {ds.rid: ds for ds in self._nominal_client.get_datasets(dataset_rids_by_ref_name.values())}
+        for ref_name, rid in dataset_rids_by_ref_name.items():
+            dataset = datasets_by_rids[rid]
+            yield (ref_name, dataset)
 
-    def add_attachments(self, attachment_rids: Iterable[str]) -> None:
-        """Add attachments that have already been uploaded to this run."""
-        request = scout_run_api.UpdateAttachmentsRequest(
-            attachments_to_add=list(attachment_rids), attachments_to_remove=[]
-        )
+    def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
+        """Add attachments that have already been uploaded to this run.
+
+        `attachments` can be `Attachment` instances, or attachment RIDs.
+        """
+        rids = [_rid_from_instance_or_string(a) for a in attachments]
+        request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
         self._run_client.update_run_attachment(self._auth_header, request, self.rid)
 
-    def remove_attachments(self, attachment_rids: Iterable[str]) -> None:
+    def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this run.
         Does not remove the attachments from Nominal.
+
+        `attachments` can be `Attachment` instances, or attachment RIDs.
         """
-        request = scout_run_api.UpdateAttachmentsRequest(
-            attachments_to_add=[], attachments_to_remove=list(attachment_rids)
-        )
+        rids = [_rid_from_instance_or_string(a) for a in attachments]
+        request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._run_client.update_run_attachment(self._auth_header, request, self.rid)
 
     def replace(
@@ -107,7 +115,7 @@ class Run:
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace run metadata.
-        Returns the run with updated metadata.
+        Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
@@ -125,10 +133,14 @@ class Run:
             title=title,
         )
         response = self._run_client.update_run(self._auth_header, request, self.rid)
-        return self.__class__._from_conjure(self._auth_header, self._run_client, response)
+        run = self.__class__._from_conjure(self._auth_header, self._run_client, self._nominal_client, response)
+        update_dataclass(self, run, fields=self.__dataclass_fields__)
+        return self
 
     @classmethod
-    def _from_conjure(cls, auth_header: str, run_client: scout.RunService, run: scout_run_api.Run) -> Self:
+    def _from_conjure(
+        cls, auth_header: str, run_client: scout.RunService, nominal_client: NominalClient, run: scout_run_api.Run
+    ) -> Self:
         return cls(
             rid=run.rid,
             title=run.title,
@@ -139,6 +151,7 @@ class Run:
             end=(_conjure_time_to_integral_nanoseconds(run.end_time) if run.end_time else None),
             _auth_header=auth_header,
             _run_client=run_client,
+            _nominal_client=nominal_client,
         )
 
 
@@ -152,7 +165,7 @@ class Dataset:
     _auth_header: str = field(repr=False)
     _catalog_client: scout_catalog.CatalogService = field(repr=False)
 
-    def poll_until_ingestion_completed(self, dataset_rid: str, interval: timedelta = timedelta(seconds=2)) -> None:
+    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=2)) -> None:
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
@@ -161,13 +174,13 @@ class Dataset:
             NominalIngestFailed: if the ingest failed
         """
         while True:
-            dataset = _get_dataset(self._auth_header, self._catalog_client, dataset_rid)
+            dataset = _get_dataset(self._auth_header, self._catalog_client, self.rid)
             if dataset.ingest_status == scout_catalog.IngestStatus.COMPLETED:
                 return
             elif dataset.ingest_status == scout_catalog.IngestStatus.FAILED:
-                raise NominalIngestFailed(f"ingest failed for dataset: {dataset.rid}")
+                raise NominalIngestFailed(f"ingest failed for dataset: {self.rid}")
             elif dataset.ingest_status == scout_catalog.IngestStatus.UNKNOWN:
-                raise NominalIngestError(f"ingest status unknown for dataset: {dataset.rid}")
+                raise NominalIngestError(f"ingest status unknown for dataset: {self.rid}")
             time.sleep(interval.total_seconds())
 
     def replace(
@@ -179,7 +192,8 @@ class Dataset:
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace dataset metadata.
-        Returns the dataset with updated metadata.
+        Updates the current instance, and returns it.
+
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
@@ -197,18 +211,21 @@ class Dataset:
             properties=None if properties is None else dict(properties),
         )
         response = self._catalog_client.update_dataset_metadata(self._auth_header, self.rid, request)
-        return self.__class__._from_conjure(self._auth_header, self._catalog_client, response)
+
+        dataset = self.__class__._from_conjure(self._auth_header, self._catalog_client, response)
+        update_dataclass(self, dataset, fields=self.__dataclass_fields__)
+        return self
 
     @classmethod
     def _from_conjure(
-        cls, auth_header: str, catalog_client: scout_catalog.CatalogService, ds: scout_catalog.EnrichedDataset
+        cls, auth_header: str, catalog_client: scout_catalog.CatalogService, dataset: scout_catalog.EnrichedDataset
     ) -> Self:
         return cls(
-            rid=ds.rid,
-            name=ds.name,
-            description=ds.description,
-            properties=MappingProxyType(ds.properties),
-            labels=tuple(ds.labels),
+            rid=dataset.rid,
+            name=dataset.name,
+            description=dataset.description,
+            properties=MappingProxyType(dataset.properties),
+            labels=tuple(dataset.labels),
             _auth_header=auth_header,
             _catalog_client=catalog_client,
         )
@@ -233,7 +250,8 @@ class Attachment:
         labels: Sequence[str] | None = None,
     ) -> Self:
         """Replace attachment metadata.
-        Returns the attachment with updated metadata.
+        Updates the current instance, and returns it.
+
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
@@ -249,7 +267,9 @@ class Attachment:
             title=title,
         )
         response = self._attachment_client.update(self._auth_header, request, self.rid)
-        return self.__class__._from_conjure(self._auth_header, self._attachment_client, response)
+        attachment = self.__class__._from_conjure(self._auth_header, self._attachment_client, response)
+        update_dataclass(self, attachment, fields=self.__dataclass_fields__)
+        return self
 
     def get_contents(self) -> BinaryIO:
         """Retrieves the contents of this attachment.
@@ -356,12 +376,13 @@ class NominalClient:
             end_time=end_abs,
         )
         response = self._run_client.create_run(self._auth_header, request)
-        return Run._from_conjure(self._auth_header, self._run_client, response)
+        return Run._from_conjure(self._auth_header, self._run_client, self, response)
 
-    def get_run(self, run_rid: str) -> Run:
-        """Retrieve a run."""
+    def get_run(self, run: Run | str) -> Run:
+        """Retrieve a run by run or run RID."""
+        run_rid = _rid_from_instance_or_string(run)
         response = self._run_client.get_run(self._auth_header, run_rid)
-        return Run._from_conjure(self._auth_header, self._run_client, response)
+        return Run._from_conjure(self._auth_header, self._run_client, self, response)
 
     def _list_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
         while True:
@@ -388,7 +409,7 @@ class NominalClient:
             ),
         )
         for run in self._list_runs_paginated(request):
-            yield Run._from_conjure(self._auth_header, self._run_client, run)
+            yield Run._from_conjure(self._auth_header, self._run_client, self, run)
 
     def create_dataset_from_io(
         self,
@@ -413,6 +434,8 @@ class NominalClient:
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
         """
 
+        # TODO(alkasm): create dataset from file/path
+
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
         filename = f"{name}{file_extension}"
@@ -431,13 +454,15 @@ class NominalClient:
         response = self._ingest_client.trigger_ingest(self._auth_header, request)
         return response.dataset_rid
 
-    def get_dataset(self, dataset_rid: str) -> Dataset:
-        """Retrieve a dataset."""
-        dataset = _get_dataset(self._auth_header, self._catalog_client, dataset_rid)
-        return Dataset._from_conjure(self._auth_header, self._catalog_client, dataset)
+    def get_dataset(self, dataset: Dataset | str) -> Dataset:
+        """Retrieve a dataset by dataset or dataset RID."""
+        dataset_rid = _rid_from_instance_or_string(dataset)
+        response = _get_dataset(self._auth_header, self._catalog_client, dataset_rid)
+        return Dataset._from_conjure(self._auth_header, self._catalog_client, response)
 
-    def get_datasets(self, dataset_rids: Iterable[str]) -> Iterable[Dataset]:
-        """Retrieve datasets."""
+    def get_datasets(self, datasets: Iterable[Dataset] | Iterable[str]) -> Iterable[Dataset]:
+        """Retrieve datasets by dataset or dataset RID."""
+        dataset_rids = (_rid_from_instance_or_string(ds) for ds in datasets)
         for ds in _get_datasets(self._auth_header, self._catalog_client, dataset_rids):
             yield Dataset._from_conjure(self._auth_header, self._catalog_client, ds)
 
@@ -471,6 +496,8 @@ class NominalClient:
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
         """
+
+        # TODO(alkasm): create attachment from file/path
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
         s3_path = put_multipart_upload(self._auth_header, attachment, title, mimetype, self._upload_client)
@@ -484,10 +511,11 @@ class NominalClient:
         response = self._attachment_client.create(self._auth_header, request)
         return Attachment._from_conjure(self._auth_header, self._attachment_client, response)
 
-    def get_attachment(self, attachment_rid: str) -> Attachment:
-        """Retrieve an attachment."""
-        attachment = self._attachment_client.get(self._auth_header, attachment_rid)
-        return Attachment._from_conjure(self._auth_header, self._attachment_client, attachment)
+    def get_attachment(self, attachment: Attachment | str) -> Attachment:
+        """Retrieve an attachment by attachment or attachment RID."""
+        attachment_rid = _rid_from_instance_or_string(attachment)
+        response = self._attachment_client.get(self._auth_header, attachment_rid)
+        return Attachment._from_conjure(self._auth_header, self._attachment_client, response)
 
 
 def _get_datasets(
@@ -502,7 +530,17 @@ def _get_dataset(
 ) -> scout_catalog.EnrichedDataset:
     datasets = list(_get_datasets(auth_header, client, [dataset_rid]))
     if not datasets:
-        raise ValueError(f"dataset not found: {dataset_rid}")
+        raise ValueError(f"dataset '{dataset_rid}' not found")
     if len(datasets) > 1:
         raise ValueError(f"expected exactly one dataset, got: {len(datasets)}")
     return datasets[0]
+
+
+def _rid_from_instance_or_string(value: Attachment | Run | Dataset | str) -> str:
+    if isinstance(value, str):
+        return value
+    elif isinstance(value, (Attachment, Run, Dataset)):
+        return value.rid
+    elif hasattr(value, "rid"):
+        return value.rid
+    raise TypeError("{value} is not a string nor has the attribute 'rid'")
