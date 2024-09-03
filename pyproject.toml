@@ -1,10 +1,11 @@
 [tool.poetry]
 name = "nominal"
-version = "0.0.39"
+version = "1.0.0-alpha"
 description = "Automate Nominal workflows in Python"
-authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>"]
+authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>", "Alexander Reynolds <alex.reynolds@nominal.io>"]
 readme = "README.md"
 packages = [
+    {include = "nominal/py.typed"},
     {include = "nominal/**/*.py"},
     {include = "nominal/**/*.csv"},
 ]
@@ -26,6 +27,9 @@ ruff = "^0.4.2"
 
 [tool.poetry.group.dev.dependencies]
 jupyterlab = "^4.2.4"
+mypy = "^1.11.2"
+jupyter = "^1.1.1"
+types-requests = "^2.32.0.20240712"
 
 [tool.distutils.bdist_wheel]
 universal = true
@@ -46,3 +50,10 @@ ignore = ["COM812", "ISC001", "UP", "D", "ANN"]
 profile = "black"
 skip = ["nominal/_api"]
 src_paths = ["nominal"]
+
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = "nominal._api.*"
+implicit_reexport = true
