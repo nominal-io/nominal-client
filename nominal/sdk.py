@@ -145,7 +145,7 @@ class Run:
             properties=MappingProxyType(run.properties),
             labels=tuple(run.labels),
             start=_conjure_time_to_integral_nanoseconds(run.start_time),
-            end=None if run.end_time is None else _conjure_time_to_integral_nanoseconds(run.end_time),
+            end=(_conjure_time_to_integral_nanoseconds(run.end_time) if run.end_time else None),
             _client=nominal_client,
         )
 
