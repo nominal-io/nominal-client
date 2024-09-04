@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal, TypeVar, Union, Iterable
+from typing import Literal, NamedTuple, TypeVar, Union, Iterable
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
 
@@ -132,11 +132,33 @@ def update_dataclass(self: T, other: T, fields: Iterable[str]) -> None:
         self.__dict__[field] = getattr(other, field)
 
 
-def use_or_guess_mimetype(mimetype: str | None, path: Path | str, default: str = "application/octet-stream") -> str:
-    # https://issues.apache.org/jira/browse/PARQUET-1889
-    mimetypes.add_type("application/vnd.apache.parquet", ".parquet")
-    if mimetype is None:
+class FileType(NamedTuple):
+    extension: str
+    mimetype: str
+
+    @classmethod
+    def from_path(cls, path: Path | str, default_mimetype: str = "application/octect-stream") -> FileType:
+        ext = "".join(Path(path).suffixes)
         mimetype, _encoding = mimetypes.guess_type(path)
         if mimetype is None:
-            mimetype = default
-    return mimetype
+            return cls(ext, default_mimetype)
+        return cls(ext, mimetype)
+
+    @classmethod
+    def from_path_dataset(cls, path: Path | str) -> FileType:
+        ext = "".join(Path(path).suffixes)
+        if ext == ".csv":
+            return FileTypes.CSV
+        if ext == ".csv.gz":
+            return FileTypes.CSV_GZ
+        if ext == ".parquet":
+            return FileTypes.PARQUET
+        raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
+
+
+class FileTypes:
+    CSV: FileType = FileType(".csv", "text/csv")
+    CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
+    # https://issues.apache.org/jira/browse/PARQUET-1889
+    PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
+    BINARY: FileType = FileType("", "application/octet-stream")

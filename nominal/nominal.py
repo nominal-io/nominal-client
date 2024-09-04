@@ -10,7 +10,13 @@ import dateutil.parser
 
 from .exceptions import NominalError
 from .sdk import Attachment, Dataset, NominalClient, Run, _AllowedFileExtensions
-from ._utils import IntegralNanosecondsUTC, TimestampColumnType, _datetime_to_seconds_nanos
+from ._utils import (
+    FileType,
+    FileTypes,
+    IntegralNanosecondsUTC,
+    TimestampColumnType,
+    _datetime_to_seconds_nanos,
+)
 
 import dateutil
 
@@ -55,8 +61,7 @@ def upload_dataset_from_pandas(
         name,
         timestamp_column_name=timestamp_column,
         timestamp_column_type=timestamp_type,
-        file_extension=".csv",
-        mimetype="text/csv",
+        file_type=FileTypes.CSV,
         description=description,
         properties=properties,
         labels=labels,
@@ -82,8 +87,7 @@ def upload_dataset_from_polars(
         name,
         timestamp_column_name=timestamp_column,
         timestamp_column_type=timestamp_type,
-        file_extension=".csv",
-        mimetype="text/csv",
+        file_type=FileTypes.CSV,
         description=description,
         properties=properties,
         labels=labels,
@@ -101,10 +105,7 @@ def upload_dataset(
     labels: Sequence[str] = (),
 ) -> Dataset:
     path = Path(path)
-    ext = ".".join(path.suffixes)
-    if ext not in [".csv", ".csv.gz", ".parquet"]:
-        raise ValueError("dataset files must be .csv, .csv.gz, or .parquet files")
-    ext = cast(_AllowedFileExtensions, ext)
+    file_type = FileType.from_path_dataset(path)
     conn = get_default_connection()
     with open(path, "rb") as f:
         return conn.create_dataset_from_io(
@@ -112,7 +113,7 @@ def upload_dataset(
             name,
             timestamp_column_name=timestamp_column,
             timestamp_column_type=timestamp_type,
-            file_extension=ext,
+            file_type=file_type,
             description=description,
             properties=properties,
             labels=labels,
@@ -200,8 +201,9 @@ def upload_attachment(
     labels: Sequence[str] = (),
 ) -> Attachment:
     conn = get_default_connection()
+    file_type = FileType.from_path(Path(path))
     with open(path, "rb") as f:
-        return conn.create_attachment_from_io(f, title, path.name, description, properties=properties, labels=labels)
+        return conn.create_attachment_from_io(f, title, description, file_type, properties=properties, labels=labels)
 
 
 def get_attachment_by_rid(rid: str) -> Attachment:

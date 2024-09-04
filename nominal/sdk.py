@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import enum
+import mimetypes
+from pathlib import Path
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Literal, Mapping, NamedTuple, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -18,6 +21,8 @@ from ._api.ingest import ingest_api
 from ._api.ingest import upload_api
 from ._multipart import put_multipart_upload
 from ._utils import (
+    FileType,
+    FileTypes,
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_scout_run_api,
     _timestamp_type_to_conjure_ingest_api,
@@ -27,7 +32,6 @@ from ._utils import (
     Self,
     TimestampColumnType,
     update_dataclass,
-    use_or_guess_mimetype,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
 
@@ -424,10 +428,9 @@ class NominalClient:
         name: str,
         timestamp_column_name: str,
         timestamp_column_type: TimestampColumnType,
-        file_extension: _AllowedFileExtensions = ".csv",
-        mimetype: str | None = None,
-        *,
+        file_type: FileType = FileTypes.CSV,
         description: str | None = None,
+        *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
     ) -> Dataset:
@@ -440,17 +443,14 @@ class NominalClient:
             "epoch_{unit}": epoch timestamps in UTC (floats or ints),
             "relative_{unit}": relative timestamps (floats or ints),
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
-
-        If mimetype is None (default), the mimetype is inferred from the file extension, defaulting to application/octet-stream.
         """
 
         # TODO(alkasm): create dataset from file/path
 
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
-        filename = f"{name}{file_extension}"
-        mimetype = use_or_guess_mimetype(mimetype, filename)
-        s3_path = put_multipart_upload(self._auth_header, dataset, filename, mimetype, self._upload_client)
+        filename = f"{name}{file_type.extension}"
+        s3_path = put_multipart_upload(self._auth_header, dataset, filename, file_type.mimetype, self._upload_client)
         request = ingest_api.TriggerIngest(
             labels=list(labels),
             properties={} if properties is None else dict(properties),
@@ -497,9 +497,8 @@ class NominalClient:
         self,
         attachment: BinaryIO,
         title: str,
-        filename: str,
         description: str,
-        mimetype: str | None = None,
+        file_type: FileType = FileTypes.BINARY,
         *,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
@@ -507,15 +506,13 @@ class NominalClient:
         """Upload an attachment.
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
-
-        If mimetype is None (default), the mimetype is inferred from the file extension, defaulting to application/octet-stream.
         """
 
         # TODO(alkasm): create attachment from file/path
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
-        mimetype = use_or_guess_mimetype(mimetype, filename)
-        s3_path = put_multipart_upload(self._auth_header, attachment, filename, mimetype, self._upload_client)
+        filename = f"{title}{file_type.extension}"
+        s3_path = put_multipart_upload(self._auth_header, attachment, filename, file_type.mimetype, self._upload_client)
         request = attachments_api.CreateAttachmentRequest(
             description=description,
             labels=list(labels),
