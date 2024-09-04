@@ -194,7 +194,6 @@ def list_attachments_for_run(run: Run) -> list[Attachment]:
 def upload_attachment(
     path: Path | str,
     title: str,
-    filename: str,
     description: str,
     *,
     properties: Mapping[str, str] | None = None,
@@ -202,7 +201,7 @@ def upload_attachment(
 ) -> Attachment:
     conn = get_default_connection()
     with open(path, "rb") as f:
-        return conn.create_attachment_from_io(f, title, filename, description, properties=properties, labels=labels)
+        return conn.create_attachment_from_io(f, title, path.name, description, properties=properties, labels=labels)
 
 
 def get_attachment_by_rid(rid: str) -> Attachment:
