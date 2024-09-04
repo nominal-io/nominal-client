@@ -4,6 +4,7 @@ from io import BytesIO
 import shutil
 from datetime import datetime
 from pathlib import Path
+from threading import Thread
 from typing import TYPE_CHECKING, Iterable, Mapping, Sequence, cast
 
 import dateutil.parser
@@ -16,6 +17,7 @@ from ._utils import (
     IntegralNanosecondsUTC,
     TimestampColumnType,
     _datetime_to_seconds_nanos,
+    reader_writer,
 )
 
 import dateutil
@@ -50,22 +52,23 @@ def upload_dataset_from_pandas(
     labels: Sequence[str] = (),
 ) -> Dataset:
     conn = get_default_connection()
-    # copy the dataframe as a CSV to an in-memory file-like object
-    # TODO(alkasm): do something more efficient like a reader/writer over a FIFO
     # TODO(alkasm): use parquet instead of CSV as an intermediary
-    f = BytesIO()
-    df.to_csv(f)
-    f.seek(0)
-    return conn.create_dataset_from_io(
-        f,
-        name,
-        timestamp_column_name=timestamp_column,
-        timestamp_column_type=timestamp_type,
-        file_type=FileTypes.CSV,
-        description=description,
-        properties=properties,
-        labels=labels,
-    )
+    with reader_writer() as (reader, writer):
+        # write the dataframe to CSV in another thread
+        t = Thread(target=df.to_csv, args=(writer,))
+        t.start()
+        dataset = conn.create_dataset_from_io(
+            reader,
+            name,
+            timestamp_column_name=timestamp_column,
+            timestamp_column_type=timestamp_type,
+            file_type=FileTypes.CSV,
+            description=description,
+            properties=properties,
+            labels=labels,
+        )
+        t.join()
+        return dataset
 
 
 def upload_dataset_from_polars(
@@ -78,20 +81,22 @@ def upload_dataset_from_polars(
     labels: Sequence[str] = (),
 ) -> Dataset:
     conn = get_default_connection()
-    # copy the dataframe as a CSV to an in-memory file-like object
-    f = BytesIO()
-    df.write_csv(f)
-    f.seek(0)
-    return conn.create_dataset_from_io(
-        f,
-        name,
-        timestamp_column_name=timestamp_column,
-        timestamp_column_type=timestamp_type,
-        file_type=FileTypes.CSV,
-        description=description,
-        properties=properties,
-        labels=labels,
-    )
+    with reader_writer() as (reader, writer):
+        # write the dataframe to CSV in another thread
+        t = Thread(target=df.write_csv, args=(writer,))
+        t.start()
+        dataset = conn.create_dataset_from_io(
+            reader,
+            name,
+            timestamp_column_name=timestamp_column,
+            timestamp_column_type=timestamp_type,
+            file_type=FileTypes.CSV,
+            description=description,
+            properties=properties,
+            labels=labels,
+        )
+        t.join()
+        return dataset
 
 
 def upload_dataset(

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import logging
 import mimetypes
+import os
 from pathlib import Path
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal, NamedTuple, TypeVar, Union, Iterable
+from typing import BinaryIO, Iterator, Literal, NamedTuple, TypeVar, Union, Iterable
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
 
@@ -162,3 +164,15 @@ class FileTypes:
     # https://issues.apache.org/jira/browse/PARQUET-1889
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
     BINARY: FileType = FileType("", "application/octet-stream")
+
+
+@contextmanager
+def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
+    rd, wd = os.pipe()
+    r = open(rd, "rb")
+    w = open(wd, "wb")
+    try:
+        yield r, w
+    finally:
+        w.close()
+        r.close()
