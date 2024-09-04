@@ -31,6 +31,7 @@ jupyterlab = "^4.2.4"
 mypy = "^1.11.2"
 jupyter = "^1.1.1"
 types-requests = "^2.32.0.20240712"
+pandas-stubs = "~2.0"
 
 [tool.distutils.bdist_wheel]
 universal = true
