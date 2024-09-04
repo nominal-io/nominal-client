@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from io import TextIOBase
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from io import TextIOBase
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, TypeVar, cast
+from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -27,8 +27,10 @@ from ._utils import (
     Self,
     TimestampColumnType,
     update_dataclass,
+    use_or_guess_mimetype,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
+
 
 _AllowedFileExtensions = Literal[".csv", ".csv.gz", ".parquet"]
 
@@ -57,7 +59,7 @@ class Run:
     _run_client: scout.RunService = field(repr=False)
     _nominal_client: NominalClient = field(repr=False)
 
-    def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
+    def add_datasets(self, datasets: Mapping[str, Dataset] | Mapping[str, str]) -> None:
         """Add datasets to this run.
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
@@ -105,6 +107,10 @@ class Run:
         rids = [_rid_from_instance_or_string(a) for a in attachments]
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._run_client.update_run_attachment(self._auth_header, request, self.rid)
+
+    def list_attachments(self) -> Iterable[Attachment]:
+        run = self._run_client.get_run(self._auth_header, self.rid)
+        return self._nominal_client.get_attachments(run.attachments)
 
     def update(
         self,
@@ -343,29 +349,30 @@ class NominalClient:
         start_time: datetime | IntegralNanosecondsUTC,
         end_time: datetime | IntegralNanosecondsUTC | None = None,
         *,
-        datasets: Mapping[str, str] | None = None,
-        labels: Sequence[str] = (),
+        datasets: Mapping[str, Dataset] | Mapping[str, str] | None = None,
         properties: Mapping[str, str] | None = None,
-        attachment_rids: Sequence[str] = (),
+        labels: Sequence[str] = (),
+        attachments: Iterable[Attachment] | Iterable[str] = (),
     ) -> Run:
         """Create a run.
 
-        Datasets map "ref names" (their name within the run) to dataset RIDs. The same type of datasets should use the
-            same ref name across runs, since checklists and templates use ref names to reference datasets. RIDs can be
-            retrieved from `Dataset.rid` after getting or creating a dataset.
+        Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
+        should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
         """
         start_abs = _flexible_time_to_conjure_scout_run_api(start_time)
         end_abs = _flexible_time_to_conjure_scout_run_api(end_time) if end_time else None
-        datasets = datasets or {}
+        if datasets is None:
+            datasets = {}
+        datasets_rids = {ref_name: _rid_from_instance_or_string(ds) for ref_name, ds in datasets.items()}
         request = scout_run_api.CreateRunRequest(
-            attachments=list(attachment_rids),
+            attachments=[_rid_from_instance_or_string(a) for a in attachments],
             data_sources={
                 ref_name: scout_run_api.CreateRunDataSource(
                     data_source=scout_run_api.DataSource(dataset=rid),
                     series_tags={},
                     offset=None,  # TODO(alkasm): support per-dataset offsets
                 )
-                for ref_name, rid in datasets.items()
+                for ref_name, rid in datasets_rids.items()
             },
             description=description,
             labels=list(labels),
@@ -418,6 +425,7 @@ class NominalClient:
         timestamp_column_name: str,
         timestamp_column_type: TimestampColumnType,
         file_extension: _AllowedFileExtensions = ".csv",
+        mimetype: str | None = None,
         *,
         description: str | None = None,
         labels: Sequence[str] = (),
@@ -432,6 +440,8 @@ class NominalClient:
             "epoch_{unit}": epoch timestamps in UTC (floats or ints),
             "relative_{unit}": relative timestamps (floats or ints),
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
+
+        If mimetype is None (default), the mimetype is inferred from the file extension, defaulting to application/octet-stream.
         """
 
         # TODO(alkasm): create dataset from file/path
@@ -439,7 +449,8 @@ class NominalClient:
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
         filename = f"{name}{file_extension}"
-        s3_path = put_multipart_upload(self._auth_header, dataset, filename, "text/csv", self._upload_client)
+        mimetype = use_or_guess_mimetype(mimetype, filename)
+        s3_path = put_multipart_upload(self._auth_header, dataset, filename, mimetype, self._upload_client)
         request = ingest_api.TriggerIngest(
             labels=list(labels),
             properties={} if properties is None else dict(properties),
@@ -485,22 +496,26 @@ class NominalClient:
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,
-        mimetype: str,
         title: str,
+        filename: str,
         description: str,
+        mimetype: str | None = None,
         *,
-        labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
     ) -> Attachment:
         """Upload an attachment.
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
+
+        If mimetype is None (default), the mimetype is inferred from the file extension, defaulting to application/octet-stream.
         """
 
         # TODO(alkasm): create attachment from file/path
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
-        s3_path = put_multipart_upload(self._auth_header, attachment, title, mimetype, self._upload_client)
+        mimetype = use_or_guess_mimetype(mimetype, filename)
+        s3_path = put_multipart_upload(self._auth_header, attachment, filename, mimetype, self._upload_client)
         request = attachments_api.CreateAttachmentRequest(
             description=description,
             labels=list(labels),
@@ -516,6 +531,14 @@ class NominalClient:
         attachment_rid = _rid_from_instance_or_string(attachment)
         response = self._attachment_client.get(self._auth_header, attachment_rid)
         return Attachment._from_conjure(self._auth_header, self._attachment_client, response)
+
+    def get_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> Iterable[Attachment]:
+        """Retrieve multiple attachments by attachment or attachment RIDs."""
+        rids = [_rid_from_instance_or_string(a) for a in attachments]
+        request = attachments_api.GetAttachmentsRequest(attachment_rids=rids)
+        response = self._attachment_client.get_batch(self._auth_header, request)
+        for a in response.response:
+            yield Attachment._from_conjure(self._auth_header, self._attachment_client, a)
 
 
 def _get_datasets(

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
+from pathlib import Path
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal, Union, Iterable
+from typing import Literal, TypeVar, Union, Iterable
 from ._api.combined import scout_run_api
 from ._api.ingest import ingest_api
 
@@ -22,6 +24,7 @@ else:
 logger = logging.getLogger(__name__)
 
 IntegralNanosecondsUTC = int
+T = TypeVar("T")
 
 
 @dataclass
@@ -127,3 +130,13 @@ def update_dataclass(self: T, other: T, fields: Iterable[str]) -> None:
     """
     for field in fields:
         self.__dict__[field] = getattr(other, field)
+
+
+def use_or_guess_mimetype(mimetype: str | None, path: Path | str, default: str = "application/octet-stream") -> str:
+    # https://issues.apache.org/jira/browse/PARQUET-1889
+    mimetypes.add_type("application/vnd.apache.parquet", ".parquet")
+    if mimetype is None:
+        mimetype, _encoding = mimetypes.guess_type(path)
+        if mimetype is None:
+            mimetype = default
+    return mimetype
