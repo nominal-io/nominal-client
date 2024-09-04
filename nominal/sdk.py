@@ -218,6 +218,9 @@ class Dataset:
     ) -> None:
         """Append to a dataset from a file-like object."""
 
+        if timestamp_column_type.startswith("relative"):
+            raise ValueError("multifile datasets with relative timestamps are not yet supported by the client library")
+
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
