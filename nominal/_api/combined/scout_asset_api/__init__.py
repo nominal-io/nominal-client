@@ -1,5 +1,6 @@
 # coding=utf-8
 from .._impl import (
+    scout_asset_api_AddDataScopesToAssetRequest as AddDataScopesToAssetRequest,
     scout_asset_api_Asset as Asset,
     scout_asset_api_AssetDataScope as AssetDataScope,
     scout_asset_api_Channel as Channel,
@@ -18,7 +19,6 @@ from .._impl import (
     scout_asset_api_SeriesTagValue as SeriesTagValue,
     scout_asset_api_SortField as SortField,
     scout_asset_api_SortOptions as SortOptions,
-    scout_asset_api_TimestampType as TimestampType,
     scout_asset_api_Unit as Unit,
     scout_asset_api_UpdateAssetRequest as UpdateAssetRequest,
     scout_asset_api_UpdateAttachmentsRequest as UpdateAttachmentsRequest,

@@ -7,6 +7,7 @@ from .._impl import (
     scout_rids_api_CheckLineageRid as CheckLineageRid,
     scout_rids_api_CheckRid as CheckRid,
     scout_rids_api_ChecklistRid as ChecklistRid,
+    scout_rids_api_Empty as Empty,
     scout_rids_api_FunctionLineageRid as FunctionLineageRid,
     scout_rids_api_FunctionRid as FunctionRid,
     scout_rids_api_NotebookRid as NotebookRid,

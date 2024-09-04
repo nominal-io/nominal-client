@@ -61,6 +61,7 @@ from .._impl import (
     scout_compute_resolved_api_ProductSeriesNode as ProductSeriesNode,
     scout_compute_resolved_api_RangesNode as RangesNode,
     scout_compute_resolved_api_RangesNodeVisitor as RangesNodeVisitor,
+    scout_compute_resolved_api_RangesNumericAggregationNode as RangesNumericAggregationNode,
     scout_compute_resolved_api_RawEnumSeriesNode as RawEnumSeriesNode,
     scout_compute_resolved_api_RawNumericSeriesNode as RawNumericSeriesNode,
     scout_compute_resolved_api_RawUntypedSeriesNode as RawUntypedSeriesNode,

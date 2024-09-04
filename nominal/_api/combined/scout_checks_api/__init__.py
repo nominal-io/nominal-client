@@ -5,7 +5,6 @@ from .._impl import (
     scout_checks_api_BatchGetChecklistMetadataResponse as BatchGetChecklistMetadataResponse,
     scout_checks_api_BatchGetJobReportsRequest as BatchGetJobReportsRequest,
     scout_checks_api_BatchGetJobReportsResponse as BatchGetJobReportsResponse,
-    scout_checks_api_ChannelLocator as ChannelLocator,
     scout_checks_api_Check as Check,
     scout_checks_api_CheckCondition as CheckCondition,
     scout_checks_api_CheckConditionVisitor as CheckConditionVisitor,
