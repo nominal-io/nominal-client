@@ -460,15 +460,22 @@ class NominalClient:
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
         filename = f"{name}{file_extension}"
         s3_path = put_multipart_upload(self._auth_header, dataset, filename, "text/csv", self._upload_client)
-        request = ingest_api.TriggerIngest(
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
+        request = ingest_api.TriggerFileIngest(
+            destination=ingest_api.IngestDestination(
+                new_dataset=ingest_api.NewDatasetIngestDestination(
+                    labels=list(labels),
+                    properties={} if properties is None else dict(properties),
+                    channel_config=None,  # TODO(alkasm): support offsets
+                    dataset_description=description,
+                    dataset_name=name,
+                )
+            ),
             source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-            dataset_description=description,
-            dataset_name=name,
-            timestamp_metadata=ingest_api.TimestampMetadata(
-                series_name=timestamp_column_name,
-                timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_column_type),
+            source_metadata=ingest_api.IngestSourceMetadata(
+                timestamp_metadata=ingest_api.TimestampMetadata(
+                    series_name=timestamp_column_name,
+                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_column_type),
+                ),
             ),
         )
         response = self._ingest_client.trigger_ingest(self._auth_header, request)
