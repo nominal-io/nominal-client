@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from io import TextIOBase
 import time
+from base64 import urlsafe_b64encode
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from io import TextIOBase
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
 
@@ -453,12 +454,12 @@ class NominalClient:
             "relative_{unit}": relative timestamps (floats or ints),
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
         """
-
         # TODO(alkasm): create dataset from file/path
 
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
-        filename = f"{name}{file_extension}"
+        urlsafe_name = urlsafe_b64encode(name.encode()).decode()
+        filename = f"{urlsafe_name}{file_extension}"
         s3_path = put_multipart_upload(self._auth_header, dataset, filename, "text/csv", self._upload_client)
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
@@ -512,9 +513,9 @@ class NominalClient:
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,
-        mimetype: str,
         title: str,
         description: str,
+        mimetype: str,
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
@@ -525,9 +526,10 @@ class NominalClient:
         """
 
         # TODO(alkasm): create attachment from file/path
+        urlsafe_name = urlsafe_b64encode(title).decode()
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
-        s3_path = put_multipart_upload(self._auth_header, attachment, title, mimetype, self._upload_client)
+        s3_path = put_multipart_upload(self._auth_header, attachment, urlsafe_name, mimetype, self._upload_client)
         request = attachments_api.CreateAttachmentRequest(
             description=description,
             labels=list(labels),
