@@ -219,8 +219,11 @@ class Dataset:
     ) -> None:
         """Append to a dataset from a file-like object."""
 
-        if timestamp_column_type.startswith("relative"):
-            raise ValueError("multifile datasets with relative timestamps are not yet supported by the client library")
+        if not isinstance(timestamp_column_type, CustomTimestampFormat):
+            if timestamp_column_type.startswith("relative"):
+                raise ValueError(
+                    "multifile datasets with relative timestamps are not yet supported by the client library"
+                )
 
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
@@ -479,7 +482,7 @@ class NominalClient:
                 ),
             ),
         )
-        response = self._ingest_client.trigger_ingest(self._auth_header, request)
+        response = self._ingest_client.trigger_file_ingest(self._auth_header, request)
         return self.get_dataset(response.dataset_rid)
 
     def get_dataset(self, dataset: Dataset | str) -> Dataset:
@@ -526,7 +529,7 @@ class NominalClient:
         """
 
         # TODO(alkasm): create attachment from file/path
-        urlsafe_name = urlsafe_b64encode(title).decode()
+        urlsafe_name = urlsafe_b64encode(title.encode()).decode()
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
         s3_path = put_multipart_upload(self._auth_header, attachment, urlsafe_name, mimetype, self._upload_client)
