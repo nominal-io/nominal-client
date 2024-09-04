@@ -11,6 +11,7 @@ __all__ = [
     'datasource_logset_api',
     'datasource_pagination_api',
     'event',
+    'ingest_api',
     'openapi',
     'scout',
     'scout_api',
@@ -22,9 +23,11 @@ __all__ = [
     'scout_chartdefinition_api',
     'scout_checklistexecution_api',
     'scout_checks_api',
+    'scout_comparisonnotebook_api',
     'scout_comparisonrun_api',
     'scout_compute_api',
     'scout_compute_api_deprecated',
+    'scout_compute_representation_api',
     'scout_compute_resolved_api',
     'scout_dataexport_api',
     'scout_datareview_api',
@@ -58,9 +61,10 @@ __all__ = [
     'timeseries_logicalseries_api',
     'timeseries_seriescache',
     'timeseries_seriescache_api',
+    'upload_api',
 ]
 
 __conjure_generator_version__ = "4.9.0"
 
-__version__ = "0.373.0+46.g8cf0464"
+__version__ = "0.407.0+3.ga82f7fe"
 

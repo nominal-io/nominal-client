@@ -16,7 +16,7 @@ from dateutil import parser
 from jsondiff import diff
 from rich import print
 
-from ._api.ingest.ingest_api import (
+from ._api.combined.ingest_api import (
     AbsoluteTimestamp,
     IngestService,
     IngestSource,
