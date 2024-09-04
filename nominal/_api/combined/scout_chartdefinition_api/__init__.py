@@ -13,7 +13,6 @@ from .._impl import (
     scout_chartdefinition_api_CartesianChartDefinitionVisitor as CartesianChartDefinitionVisitor,
     scout_chartdefinition_api_CartesianPlot as CartesianPlot,
     scout_chartdefinition_api_ChartDefinition as ChartDefinition,
-    scout_chartdefinition_api_ChartDefinitionMap as ChartDefinitionMap,
     scout_chartdefinition_api_ChartDefinitionVisitor as ChartDefinitionVisitor,
     scout_chartdefinition_api_ChecklistChartDefinition as ChecklistChartDefinition,
     scout_chartdefinition_api_ChecklistChartDefinitionV1 as ChecklistChartDefinitionV1,
@@ -77,5 +76,6 @@ from .._impl import (
     scout_chartdefinition_api_VideoChartDefinition as VideoChartDefinition,
     scout_chartdefinition_api_VideoChartDefinitionV1 as VideoChartDefinitionV1,
     scout_chartdefinition_api_VideoChartDefinitionVisitor as VideoChartDefinitionVisitor,
+    scout_chartdefinition_api_WorkbookChartDefinitionMap as WorkbookChartDefinitionMap,
 )
 

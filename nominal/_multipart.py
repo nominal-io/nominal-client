@@ -8,8 +8,8 @@ from typing import BinaryIO, Iterable
 
 import requests
 from .exceptions import NominalMultipartUploadFailed
-from ._api.ingest import ingest_api
-from ._api.ingest import upload_api
+from ._api.combined import ingest_api
+from ._api.combined import upload_api
 
 logger = logging.getLogger(__name__)
 
