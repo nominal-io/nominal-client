@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import urllib.parse
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -11,22 +12,28 @@ from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
 
-from ._api.combined import attachments_api
-from ._api.combined import scout_catalog
-from ._api.combined import scout
-from ._api.combined import scout_run_api
-from ._api.combined import ingest_api
-from ._api.combined import upload_api
+from ._api.combined import (
+    attachments_api,
+    ingest_api,
+    scout,
+    scout_api,
+    scout_catalog,
+    scout_checks_api,
+    scout_compute_api,
+    scout_compute_representation_api,
+    scout_run_api,
+    upload_api,
+)
 from ._multipart import put_multipart_upload
 from ._utils import (
-    _conjure_time_to_integral_nanoseconds,
-    _flexible_time_to_conjure_scout_run_api,
-    _timestamp_type_to_conjure_ingest_api,
-    construct_user_agent_string,
     CustomTimestampFormat,
     IntegralNanosecondsUTC,
     Self,
     TimestampColumnType,
+    _conjure_time_to_integral_nanoseconds,
+    _flexible_time_to_conjure_scout_run_api,
+    _timestamp_type_to_conjure_ingest_api,
+    construct_user_agent_string,
     update_dataclass,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
@@ -42,6 +49,9 @@ __all__ = [
     "CustomTimestampFormat",
     "NominalIngestError",
     "NominalIngestFailed",
+    "Checklist",
+    "Check",
+    "ChecklistVariable"
 ]
 
 
@@ -325,6 +335,96 @@ class Attachment:
 
 
 @dataclass(frozen=True)
+class Checklist:
+    title: str
+    description: str
+    properties: Mapping[str, str]
+    labels: Sequence[str]
+    variables: Sequence[ChecklistVariable]
+    checks: Sequence[Check]
+
+    _client: NominalClient = field(repr=False)
+
+    def create_checklist(self) -> bool:
+        request = scout_checks_api.CreateChecklistRequest(
+            commit_message="",
+            # TODO
+            assignee_rid="ri.authn.gov-staging.user.07e46bc5-6a60-42a2-8d27-ea6f2f1c38e1",
+            title=self.title,
+            description=self.description,
+            functions={},
+            properties=dict(self.properties),
+            labels=list(self.labels),
+            checks=[scout_checks_api.CreateChecklistEntryRequest(check._to_conjure()) for check in self.checks],
+            checklist_variables=[var._to_conjure() for var in self.variables],
+            is_published=False,
+        )
+        self._client._checklist_api_client.create(self._client._auth_header, request)
+        return True
+
+@dataclass(frozen=True)
+class Check:
+    title: str
+    description: str
+    expression: str
+
+    _client: NominalClient = field(repr=False)
+
+    def _to_conjure(self) -> scout_checks_api.CreateCheckRequest:
+        return scout_checks_api.CreateCheckRequest(
+            check_lineage_rid=str(uuid.uuid4()),
+            title=self.title,
+            description=self.description,
+            # TODO
+            priority=scout_checks_api.Priority.P0,
+            condition=scout_checks_api.UnresolvedCheckCondition(num_ranges_v3=self._get_compute_condition()))
+
+
+    def _get_compute_condition(self) -> scout_checks_api.UnresolvedNumRangesConditionV3:
+        compiledNode = self._client._compute_representation_client.expression_to_compute(self._client._auth_header, self.expression)
+        if (compiledNode.node.type == "rangeSeries" and compiledNode.node.range_series is not None):
+            return scout_checks_api.UnresolvedNumRangesConditionV3(
+                function_spec={},
+                operator=scout_compute_api.ThresholdOperator.GREATER_THAN,
+                threshold=0,
+                ranges=compiledNode.node.range_series,
+                variables={ key: _representationVariableToUnresolvedVariableLocator(value) for key, value in compiledNode.context.variables.items() },
+                function_variables={},
+            )
+        else:
+            raise ValueError("Expression does not evaluate to a rangeSeries")
+
+@dataclass(frozen=True)
+class ChecklistVariable:
+    name: str
+    expression: str
+
+    _client: NominalClient = field(repr=False)
+
+    def _to_conjure(self) -> scout_checks_api.UnresolvedChecklistVariable:
+        compiledNode = self._client._compute_representation_client.expression_to_compute(self._client._auth_header, self.expression)
+        return scout_checks_api.UnresolvedChecklistVariable(
+            name=self.name,
+            value=scout_checks_api.UnresolvedVariableLocator(
+                compute_node=scout_checks_api.UnresolvedComputeNodeWithContext(
+                    series_node=ChecklistVariable._compiledNodeToComputeNode(compiledNode.node),
+                    context=scout_checks_api.UnresolvedVariables(
+                        sub_function_variables={},
+                        variables={ key: _representationVariableToUnresolvedVariableLocator(value) for key, value in compiledNode.context.variables.items() }))))
+
+    @staticmethod
+    def _compiledNodeToComputeNode(node: scout_compute_representation_api.Node) -> scout_compute_api.ComputeNode:
+        class NodeVisitor(scout_compute_representation_api.NodeVisitor):
+            def _enumerated_series(self, enumerated_series: scout_compute_api.EnumSeriesNode) -> scout_compute_api.ComputeNode:
+                return scout_compute_api.ComputeNode(enum=enumerated_series)
+            def _numeric_series(self, numeric_series: scout_compute_api.NumericSeriesNode) -> scout_compute_api.ComputeNode:
+                return scout_compute_api.ComputeNode(numeric=numeric_series)
+            def _range_series(self, range_series: scout_compute_api.RangesNode) -> scout_compute_api.ComputeNode:
+                return scout_compute_api.ComputeNode(ranges=range_series)
+        val: scout_compute_api.ComputeNode = node.accept(visitor=NodeVisitor())
+        return val
+
+@dataclass(frozen=True)
 class NominalClient:
     _auth_header: str = field(repr=False)
     _run_client: scout.RunService = field(repr=False)
@@ -332,6 +432,8 @@ class NominalClient:
     _ingest_client: ingest_api.IngestService = field(repr=False)
     _catalog_client: scout_catalog.CatalogService = field(repr=False)
     _attachment_client: attachments_api.AttachmentService = field(repr=False)
+    _compute_representation_client: scout_compute_representation_api.ComputeRepresentationService = field(repr=False)
+    _checklist_api_client: scout_checks_api.ChecklistService = field(repr=False)
 
     @classmethod
     def create(cls, base_url: str, token: str, trust_store_path: str | None = None) -> Self:
@@ -352,6 +454,8 @@ class NominalClient:
         ingest_client = RequestsClient.create(ingest_api.IngestService, agent, cfg)
         catalog_client = RequestsClient.create(scout_catalog.CatalogService, agent, cfg)
         attachment_client = RequestsClient.create(attachments_api.AttachmentService, agent, cfg)
+        compute_representation_client = RequestsClient.create(scout_compute_representation_api.ComputeRepresentationService, agent, cfg)
+        checklist_api_client = RequestsClient.create(scout_checks_api.ChecklistService, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
@@ -360,6 +464,8 @@ class NominalClient:
             _ingest_client=ingest_client,
             _catalog_client=catalog_client,
             _attachment_client=attachment_client,
+            _compute_representation_client=compute_representation_client,
+            _checklist_api_client=checklist_api_client,
         )
 
     def create_run(
@@ -578,3 +684,36 @@ def _rid_from_instance_or_string(value: Attachment | Run | Dataset | str) -> str
     elif hasattr(value, "rid"):
         return value.rid
     raise TypeError("{value} is not a string nor has the attribute 'rid'")
+
+def _representationVariableToUnresolvedVariableLocator(variable: scout_compute_representation_api.ComputeRepresentationVariableValue) -> scout_checks_api.UnresolvedVariableLocator:
+    class VariableValueVisitor(scout_compute_representation_api.ComputeRepresentationVariableValueVisitor):
+        def _double(self, _double: float) -> scout_checks_api.UnresolvedVariableLocator:
+            raise ValueError(
+                "Double variables are not yet supported by the client library"
+            )
+        def _duration(self, _duration: scout_run_api.Duration) -> scout_checks_api.UnresolvedVariableLocator:
+            raise ValueError(
+                "Duration variables are not yet supported by the client library"
+            )
+        def _integer(self, _integer: int) -> scout_checks_api.UnresolvedVariableLocator:
+            raise ValueError(
+                "Integer variables are not yet supported by the client library"
+            )
+        def _string_set(self, _string_set: list[str]) -> scout_checks_api.UnresolvedVariableLocator:
+            raise ValueError(
+                "String set variables are not yet supported by the client library"
+            )
+        def _timestamp(self, _timestamp: scout_compute_api.Timestamp) -> scout_checks_api.UnresolvedVariableLocator:
+            raise ValueError(
+                "Timestamp variables are not yet supported by the client library"
+            )
+        def _function_rid(self, function_rid: str) -> scout_checks_api.UnresolvedVariableLocator:
+            raise ValueError(
+                "Functions are not yet supported by the client library"
+            )
+        def _series(self, series: scout_compute_representation_api.ChannelLocator) -> scout_checks_api.UnresolvedVariableLocator:
+            return scout_checks_api.UnresolvedVariableLocator(series=scout_api.ChannelLocator(channel=series.channel, data_source_ref=series.data_source_ref, tags={}))
+        def _external_variable_reference(self, external_variable_reference: str) -> scout_checks_api.UnresolvedVariableLocator:
+            return scout_checks_api.UnresolvedVariableLocator(checklist_variable=external_variable_reference)
+    var: scout_checks_api.UnresolvedVariableLocator = variable.accept(visitor=VariableValueVisitor())
+    return var
