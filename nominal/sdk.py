@@ -113,11 +113,7 @@ class Run:
         self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
 
     def list_attachments(self) -> Iterable[Attachment]:
-        run = self._client._run_client.get_run(self._auth_header, self.rid)
-        return self._client.get_attachments(run.attachments)
-
-    def list_attachments(self) -> Iterable[Attachment]:
-        run = self._client._run_client.get_run(self._auth_header, self.rid)
+        run = self._client._run_client.get_run(self._client._auth_header, self.rid)
         return self._client.get_attachments(run.attachments)
 
     def update(
@@ -575,14 +571,6 @@ class NominalClient:
         response = self._attachment_client.get_batch(self._auth_header, request)
         for a in response.response:
             yield Attachment._from_conjure(self, a)
-
-    def get_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> Iterable[Attachment]:
-        """Retrieve multiple attachments by attachment or attachment RIDs."""
-        rids = [_rid_from_instance_or_string(a) for a in attachments]
-        request = attachments_api.GetAttachmentsRequest(attachment_rids=rids)
-        response = self._attachment_client.get_batch(self._auth_header, request)
-        for a in response.response:
-            yield Attachment._from_conjure(self._auth_header, self._attachment_client, a)
 
 
 def _get_datasets(
