@@ -47,8 +47,6 @@ def upload_dataset_from_pandas(
     description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] = (),
 ) -> Dataset:
     conn = get_default_connection()
     # TODO(alkasm): use parquet instead of CSV as an intermediary
@@ -63,8 +61,6 @@ def upload_dataset_from_pandas(
             timestamp_column_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
-            properties=properties,
-            labels=labels,
         )
         t.join()
         return dataset
@@ -76,8 +72,6 @@ def upload_dataset_from_polars(
     description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] = (),
 ) -> Dataset:
     conn = get_default_connection()
     with reader_writer() as (reader, writer):
@@ -91,8 +85,6 @@ def upload_dataset_from_polars(
             timestamp_column_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
-            properties=properties,
-            labels=labels,
         )
         t.join()
         return dataset
@@ -104,9 +96,6 @@ def upload_dataset(
     description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
-    *,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] = (),
 ) -> Dataset:
     path = Path(path)
     file_type = FileType.from_path_dataset(path)
@@ -119,8 +108,6 @@ def upload_dataset(
             timestamp_column_type=timestamp_type,
             file_type=file_type,
             description=description,
-            properties=properties,
-            labels=labels,
         )
 
 
@@ -145,11 +132,6 @@ def create_run(
     description: str,
     start: datetime | str | IntegralNanosecondsUTC,
     end: datetime | str | IntegralNanosecondsUTC,
-    datasets: Mapping[str, Dataset] | None = None,
-    *,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] = (),
-    attachments: Iterable[Attachment] = (),
 ) -> Run:
     conn = get_default_connection()
     return conn.create_run(
@@ -157,10 +139,7 @@ def create_run(
         description,
         start=_parse_timestamp(start),
         end=_parse_timestamp(end),
-        datasets=datasets or {},
-        properties=properties,
-        labels=labels,
-        attachments=attachments,
+        datasets={},
     )
 
 
@@ -200,14 +179,11 @@ def upload_attachment(
     path: Path | str,
     title: str,
     description: str,
-    *,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] = (),
 ) -> Attachment:
     conn = get_default_connection()
     file_type = FileType.from_path(Path(path))
     with open(path, "rb") as f:
-        return conn.create_attachment_from_io(f, title, description, file_type, properties=properties, labels=labels)
+        return conn.create_attachment_from_io(f, title, description, file_type)
 
 
 def get_attachment_by_rid(rid: str) -> Attachment:
