@@ -167,22 +167,34 @@ class Dataset:
     labels: Sequence[str]
     _client: NominalClient = field(repr=False)
 
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=2)) -> None:
+    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
         Raises:
-            NominalIngestError: if the ingest status is not known
             NominalIngestFailed: if the ingest failed
+            NominalIngestError: if the ingest status is not known
         """
+
         while True:
-            dataset = _get_dataset(self._client._auth_header, self._client._catalog_client, self.rid)
-            if dataset.ingest_status == scout_catalog.IngestStatus.COMPLETED:
+            progress = self._client._catalog_client.get_ingest_progress_v2(self._client._auth_header, self.rid)
+            if progress.ingest_status.type == "success":
                 return
-            elif dataset.ingest_status == scout_catalog.IngestStatus.FAILED:
-                raise NominalIngestFailed(f"ingest failed for dataset: {self.rid}")
-            elif dataset.ingest_status == scout_catalog.IngestStatus.UNKNOWN:
-                raise NominalIngestError(f"ingest status unknown for dataset: {self.rid}")
+            elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
+                pass
+            elif progress.ingest_status.type == "error":
+                error = progress.ingest_status.error
+                if error is not None:
+                    raise NominalIngestFailed(
+                        f"ingest failed for dataset {self.rid!r}: {error.message} ({error.error_type})"
+                    )
+                raise NominalIngestError(
+                    f"ingest status type marked as 'error' but with no instance for dataset {self.rid!r}"
+                )
+            else:
+                raise NominalIngestError(
+                    f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
+                )
             time.sleep(interval.total_seconds())
 
     def update(
@@ -234,7 +246,7 @@ class Dataset:
                 )
 
         if isinstance(dataset, TextIOBase):
-            raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
+            raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
         self.poll_until_ingestion_completed()
         urlsafe_name = urllib.parse.quote_plus(self.name)
@@ -374,8 +386,8 @@ class NominalClient:
         self,
         title: str,
         description: str,
-        start_time: datetime | IntegralNanosecondsUTC,
-        end_time: datetime | IntegralNanosecondsUTC,
+        start: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC,
         *,
         datasets: Mapping[str, Dataset] | Mapping[str, str] | None = None,
         properties: Mapping[str, str] | None = None,
@@ -387,11 +399,10 @@ class NominalClient:
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
         """
-        start_abs = _flexible_time_to_conjure_scout_run_api(start_time)
-        end_abs = _flexible_time_to_conjure_scout_run_api(end_time) if end_time else None
         if datasets is None:
             datasets = {}
         datasets_rids = {ref_name: _rid_from_instance_or_string(ds) for ref_name, ds in datasets.items()}
+        datasets = datasets or {}
         request = scout_run_api.CreateRunRequest(
             attachments=[_rid_from_instance_or_string(a) for a in attachments],
             data_sources={
@@ -406,9 +417,9 @@ class NominalClient:
             labels=list(labels),
             links=[],  # TODO(alkasm): support links
             properties={} if properties is None else dict(properties),
-            start_time=start_abs,
+            start_time=_flexible_time_to_conjure_scout_run_api(start),
             title=title,
-            end_time=end_abs,
+            end_time=_flexible_time_to_conjure_scout_run_api(end),
         )
         response = self._run_client.create_run(self._auth_header, request)
         return Run._from_conjure(self, response)
@@ -419,7 +430,7 @@ class NominalClient:
         response = self._run_client.get_run(self._auth_header, run_rid)
         return Run._from_conjure(self, response)
 
-    def _list_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
+    def _search_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
         while True:
             response = self._run_client.search_runs(self._auth_header, request)
             yield from response.results
@@ -432,18 +443,29 @@ class NominalClient:
                 next_page_token=response.next_page_token,
             )
 
-    def _list_runs(self) -> Iterable[Run]:
-        # TODO(alkasm): search filters
-        # TODO(alkasm): put in public API when we decide if we only expose search, or search + list.
+    def search_runs(
+        self,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        end: datetime | IntegralNanosecondsUTC | None = None,
+        exact_title: str | None = None,
+        label: str | None = None,
+        property: tuple[str, str] | None = None,
+    ) -> Iterable[Run]:
+        """Search for runs meeting the specified filters.
+        Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
+        - `start` and `end` times are both inclusive
+        - `exact_title` is case-insensitive
+        - `property` is a key-value pair, e.g. ("name", "value")
+        """
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
-            query=scout_run_api.SearchQuery(),
+            query=_create_search_runs_query(start, end, exact_title, label, property),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
             ),
         )
-        for run in self._list_runs_paginated(request):
+        for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self, run)
 
     def create_dataset_from_io(
@@ -582,9 +604,9 @@ def _get_dataset(
 ) -> scout_catalog.EnrichedDataset:
     datasets = list(_get_datasets(auth_header, client, [dataset_rid]))
     if not datasets:
-        raise ValueError(f"dataset '{dataset_rid}' not found")
+        raise ValueError(f"dataset {dataset_rid!r} not found")
     if len(datasets) > 1:
-        raise ValueError(f"expected exactly one dataset, got: {len(datasets)}")
+        raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
     return datasets[0]
 
 
@@ -595,4 +617,31 @@ def _rid_from_instance_or_string(value: Attachment | Run | Dataset | str) -> str
         return value.rid
     elif hasattr(value, "rid"):
         return value.rid
-    raise TypeError("{value} is not a string nor has the attribute 'rid'")
+    raise TypeError("{value!r} is not a string nor has the attribute 'rid'")
+
+
+def _create_search_runs_query(
+    start: datetime | IntegralNanosecondsUTC | None = None,
+    end: datetime | IntegralNanosecondsUTC | None = None,
+    exact_title: str | None = None,
+    label: str | None = None,
+    property: tuple[str, str] | None = None,
+) -> scout_run_api.SearchQuery:
+    queries = []
+    if start is not None:
+        q = scout_run_api.SearchQuery(start_time_inclusive=_flexible_time_to_conjure_scout_run_api(start))
+        queries.append(q)
+    if end is not None:
+        q = scout_run_api.SearchQuery(end_time_inclusive=_flexible_time_to_conjure_scout_run_api(end))
+        queries.append(q)
+    if exact_title is not None:
+        q = scout_run_api.SearchQuery(exact_match=exact_title)
+        queries.append(q)
+    if label is not None:
+        q = scout_run_api.SearchQuery(label=label)
+        queries.append(q)
+    if property is not None:
+        name, value = property
+        q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
+        queries.append(q)
+    return scout_run_api.SearchQuery(and_=queries)
