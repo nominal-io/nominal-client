@@ -367,7 +367,7 @@ class NominalClient:
         title: str,
         description: str,
         start_time: datetime | IntegralNanosecondsUTC,
-        end_time: datetime | IntegralNanosecondsUTC | None = None,
+        end_time: datetime | IntegralNanosecondsUTC,
         *,
         datasets: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
@@ -381,7 +381,7 @@ class NominalClient:
             retrieved from `Dataset.rid` after getting or creating a dataset.
         """
         start_abs = _flexible_time_to_conjure_scout_run_api(start_time)
-        end_abs = _flexible_time_to_conjure_scout_run_api(end_time) if end_time else None
+        end_abs = _flexible_time_to_conjure_scout_run_api(end_time)
         datasets = datasets or {}
         request = scout_run_api.CreateRunRequest(
             attachments=list(attachment_rids),
