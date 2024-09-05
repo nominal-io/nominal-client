@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 import enum
 from typing import Any
@@ -40,31 +40,199 @@ class DerivativeHandleNegatives(enum.Enum):
     REMOVE = enum.auto()
 
 
+class Operation:
+    pass
+
+
+@dataclass
+class Resample(Operation):
+    interval: timedelta
+
+
+@dataclass
+class DeduplicateTimestamps(Operation):
+    operation: TimestampAggregate
+
+
+@dataclass
+class RollingAggregate(Operation):
+    operation: RollingAggregate
+    window: timedelta
+
+
+@dataclass
+class CumulativeAggregate(Operation):
+    operation: CumulativeAggregate
+
+
+@dataclass
+class TimeShift(Operation):
+    duration: timedelta
+
+
+@dataclass
+class Scale(Operation):
+    scalar: int | float
+
+
+@dataclass
+class Offset(Operation):
+    scalar: int | float
+
+
+@dataclass
+class Tangent(Operation):
+    pass
+
+
+@dataclass
+class Cosine(Operation):
+    pass
+
+
+@dataclass
+class AbsoluteValue(Operation):
+    pass
+
+
+@dataclass
+class Sine(Operation):
+    pass
+
+
+@dataclass
+class Arcsin(Operation):
+    pass
+
+
+@dataclass
+class Arccos(Operation):
+    pass
+
+
+@dataclass
+class Arctan2(Operation):
+    pass
+
+
+@dataclass
+class Derivative(Operation):
+    time_unit: TimeUnit
+    handle_negatives: DerivativeHandleNegatives
+
+
+@dataclass
+class Integral(Operation):
+    time_unit: TimeUnit
+
+
+@dataclass
+class ValueDifference(Operation):
+    pass
+
+
+@dataclass
+class TimeDifference(Operation):
+    time_unit: TimeUnit
+
+
+@dataclass
+class BitwiseAnd(Operation):
+    mask: int
+
+
+@dataclass
+class BitwiseOr(Operation):
+    mask: int
+
+
+@dataclass
+class BitwiseXor(Operation):
+    mask: int
+
+
+@dataclass
+class GetNthBit(Operation):
+    bit_index: int
+
+
+@dataclass
+class UnitConversion(Operation):
+    output_unit: Any
+
+
 @dataclass
 class Transform:
-    def resample(self, interval: timedelta) -> Transform: ...
-    def deduplicate_timestamps(self, operation: TimestampAggregate) -> Transform: ...
-    def rolling_aggregate(self, operation: RollingAggregate, window: timedelta) -> Transform: ...
-    def cumulative_aggregate(self, operation: CumulativeAggregate) -> Transform: ...
-    def time_shift(self, duration: timedelta) -> Transform: ...
-    def scale(self, scalar: int | float) -> Transform: ...
-    def offset(self, scalar: int | float) -> Transform: ...
-    def tangent(self) -> Transform: ...
-    def cosine(self) -> Transform: ...
-    def absolute_value(self) -> Transform: ...
-    def sine(self) -> Transform: ...
-    def arcsin(self) -> Transform: ...
-    def arccos(self) -> Transform: ...
-    def arctan2(self) -> Transform: ...
-    def derivative(self, time_unit: TimeUnit, handle_negatives: DerivativeHandleNegatives) -> Transform: ...
-    def integral(self, time_unit: TimeUnit) -> Transform: ...
-    def value_difference(self) -> Transform: ...
-    def time_difference(self, time_unit: TimeUnit) -> Transform: ...
-    def bitwise_and(self, mask: int) -> Transform: ...
-    def bitwise_or(self, mask: int) -> Transform: ...
-    def bitwise_xor(self, mask: int) -> Transform: ...
-    def get_nth_bit(self, bit_index: int) -> Transform: ...
-    def unit_conversion(self, output_unit: Any) -> Transform: ...
+    operations: list[Operation] = field(default_factory=list)
+
+    def resample(self, interval: timedelta) -> Transform:
+        self.operations.append(Resample(interval))
+
+    def deduplicate_timestamps(self, operation: TimestampAggregate) -> Transform:
+        self.operations.append(DeduplicateTimestamps(operation))
+
+    def rolling_aggregate(self, operation: RollingAggregate, window: timedelta) -> Transform:
+        self.operations.append(RollingAggregate(operation, window))
+
+    def cumulative_aggregate(self, operation: CumulativeAggregate) -> Transform:
+        self.operations.append(CumulativeAggregate(operation))
+
+    def time_shift(self, duration: timedelta) -> Transform:
+        self.operations.append(TimeShift(duration))
+
+    def scale(self, scalar: int | float) -> Transform:
+        self.operations.append(Scale(scalar))
+
+    def offset(self, scalar: int | float) -> Transform:
+        self.operations.append(Offset(scalar))
+
+    def tangent(self) -> Transform:
+        self.operations.append(Tangent())
+
+    def cosine(self) -> Transform:
+        self.operations.append(Cosine())
+
+    def absolute_value(self) -> Transform:
+        self.operations.append(AbsoluteValue())
+
+    def sine(self) -> Transform:
+        self.operations.append(Sine())
+
+    def arcsin(self) -> Transform:
+        self.operations.append(Arcsin())
+
+    def arccos(self) -> Transform:
+        self.operations.append(Arccos())
+
+    def arctan2(self) -> Transform:
+        self.operations.append(Arctan2())
+
+    def derivative(self, time_unit: TimeUnit, handle_negatives: DerivativeHandleNegatives) -> Transform:
+        self.operations.append(Derivative(time_unit, handle_negatives))
+
+    def integral(self, time_unit: TimeUnit) -> Transform:
+        self.operations.append(Integral(time_unit))
+
+    def value_difference(self) -> Transform:
+        self.operations.append(ValueDifference())
+
+    def time_difference(self, time_unit: TimeUnit) -> Transform:
+        self.operations.append(TimeDifference(time_unit))
+
+    def bitwise_and(self, mask: int) -> Transform:
+        self.operations.append(BitwiseAnd(mask))
+
+    def bitwise_or(self, mask: int) -> Transform:
+        self.operations.append(BitwiseOr(mask))
+
+    def bitwise_xor(self, mask: int) -> Transform:
+        self.operations.append(BitwiseXor(mask))
+
+    def get_nth_bit(self, bit_index: int) -> Transform:
+        self.operations.append(GetNthBit(bit_index))
+
+    def unit_conversion(self, output_unit: Any) -> Transform:
+        self.operations.append(UnitConversion(output_unit))
 
 
 class ConditionalBinaryOperation(enum.Enum):
