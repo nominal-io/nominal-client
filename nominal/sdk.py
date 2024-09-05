@@ -366,8 +366,8 @@ class NominalClient:
         self,
         title: str,
         description: str,
-        start_time: datetime | IntegralNanosecondsUTC,
-        end_time: datetime | IntegralNanosecondsUTC,
+        start: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC,
         *,
         datasets: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
@@ -380,8 +380,6 @@ class NominalClient:
             same ref name across runs, since checklists and templates use ref names to reference datasets. RIDs can be
             retrieved from `Dataset.rid` after getting or creating a dataset.
         """
-        start_abs = _flexible_time_to_conjure_scout_run_api(start_time)
-        end_abs = _flexible_time_to_conjure_scout_run_api(end_time)
         datasets = datasets or {}
         request = scout_run_api.CreateRunRequest(
             attachments=list(attachment_rids),
@@ -397,9 +395,9 @@ class NominalClient:
             labels=list(labels),
             links=[],  # TODO(alkasm): support links
             properties={} if properties is None else dict(properties),
-            start_time=start_abs,
+            start_time=_flexible_time_to_conjure_scout_run_api(start),
             title=title,
-            end_time=end_abs,
+            end_time=_flexible_time_to_conjure_scout_run_api(end),
         )
         response = self._run_client.create_run(self._auth_header, request)
         return Run._from_conjure(self, response)
