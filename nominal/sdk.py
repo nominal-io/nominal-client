@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from base64 import urlsafe_b64encode
+import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -229,7 +229,7 @@ class Dataset:
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
         self.poll_until_ingestion_completed()
-        urlsafe_name = urlsafe_b64encode(self.name.encode()).decode()
+        urlsafe_name = urllib.parse.quote_plus(self.name)
         filename = f"{urlsafe_name}{file_extension}"
         s3_path = put_multipart_upload(
             self._client._auth_header, dataset, filename, "text/csv", self._client._upload_client
@@ -463,7 +463,7 @@ class NominalClient:
 
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
-        urlsafe_name = urlsafe_b64encode(name.encode()).decode()
+        urlsafe_name = urllib.parse.quote_plus(name)
         filename = f"{urlsafe_name}{file_extension}"
         s3_path = put_multipart_upload(self._auth_header, dataset, filename, "text/csv", self._upload_client)
         request = ingest_api.TriggerFileIngest(
@@ -531,7 +531,7 @@ class NominalClient:
         """
 
         # TODO(alkasm): create attachment from file/path
-        urlsafe_name = urlsafe_b64encode(title.encode()).decode()
+        urlsafe_name = urllib.parse.quote_plus(title)
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
         s3_path = put_multipart_upload(self._auth_header, attachment, urlsafe_name, mimetype, self._upload_client)
