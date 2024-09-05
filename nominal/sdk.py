@@ -378,8 +378,8 @@ class NominalClient:
         self,
         title: str,
         description: str,
-        start_time: datetime | IntegralNanosecondsUTC,
-        end_time: datetime | IntegralNanosecondsUTC,
+        start: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC,
         *,
         datasets: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
@@ -392,8 +392,6 @@ class NominalClient:
             same ref name across runs, since checklists and templates use ref names to reference datasets. RIDs can be
             retrieved from `Dataset.rid` after getting or creating a dataset.
         """
-        start_abs = _flexible_time_to_conjure_scout_run_api(start_time)
-        end_abs = _flexible_time_to_conjure_scout_run_api(end_time)
         datasets = datasets or {}
         request = scout_run_api.CreateRunRequest(
             attachments=list(attachment_rids),
@@ -409,9 +407,9 @@ class NominalClient:
             labels=list(labels),
             links=[],  # TODO(alkasm): support links
             properties={} if properties is None else dict(properties),
-            start_time=start_abs,
+            start_time=_flexible_time_to_conjure_scout_run_api(start),
             title=title,
-            end_time=end_abs,
+            end_time=_flexible_time_to_conjure_scout_run_api(end),
         )
         response = self._run_client.create_run(self._auth_header, request)
         return Run._from_conjure(self, response)
@@ -422,7 +420,7 @@ class NominalClient:
         response = self._run_client.get_run(self._auth_header, run_rid)
         return Run._from_conjure(self, response)
 
-    def _list_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
+    def _search_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
         while True:
             response = self._run_client.search_runs(self._auth_header, request)
             yield from response.results
@@ -435,18 +433,29 @@ class NominalClient:
                 next_page_token=response.next_page_token,
             )
 
-    def _list_runs(self) -> Iterable[Run]:
-        # TODO(alkasm): search filters
-        # TODO(alkasm): put in public API when we decide if we only expose search, or search + list.
+    def search_runs(
+        self,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        end: datetime | IntegralNanosecondsUTC | None = None,
+        exact_title: str | None = None,
+        label: str | None = None,
+        property: tuple[str, str] | None = None,
+    ) -> Iterable[Run]:
+        """Search for runs meeting the specified filters.
+        Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
+        - `start` and `end` times are both inclusive
+        - `exact_title` is case-insensitive
+        - `property` is a key-value pair, e.g. ("name", "value")
+        """
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
-            query=scout_run_api.SearchQuery(),
+            query=_create_search_runs_query(start, end, exact_title, label, property),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
             ),
         )
-        for run in self._list_runs_paginated(request):
+        for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self, run)
 
     def create_dataset_from_io(
@@ -590,3 +599,30 @@ def _rid_from_instance_or_string(value: Attachment | Run | Dataset | str) -> str
     elif hasattr(value, "rid"):
         return value.rid
     raise TypeError("{value!r} is not a string nor has the attribute 'rid'")
+
+
+def _create_search_runs_query(
+    start: datetime | IntegralNanosecondsUTC | None = None,
+    end: datetime | IntegralNanosecondsUTC | None = None,
+    exact_title: str | None = None,
+    label: str | None = None,
+    property: tuple[str, str] | None = None,
+) -> scout_run_api.SearchQuery:
+    queries = []
+    if start is not None:
+        q = scout_run_api.SearchQuery(start_time_inclusive=_flexible_time_to_conjure_scout_run_api(start))
+        queries.append(q)
+    if end is not None:
+        q = scout_run_api.SearchQuery(end_time_inclusive=_flexible_time_to_conjure_scout_run_api(end))
+        queries.append(q)
+    if exact_title is not None:
+        q = scout_run_api.SearchQuery(exact_match=exact_title)
+        queries.append(q)
+    if label is not None:
+        q = scout_run_api.SearchQuery(label=label)
+        queries.append(q)
+    if property is not None:
+        name, value = property
+        q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
+        queries.append(q)
+    return scout_run_api.SearchQuery(and_=queries)
