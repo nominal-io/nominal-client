@@ -242,7 +242,7 @@ class Dataset:
 
         self.poll_until_ingestion_completed()
         urlsafe_name = urllib.parse.quote_plus(self.name)
-        filename = f"{self.name}{file_extension}"
+        filename = f"{urlsafe_name}{file_extension}"
         s3_path = put_multipart_upload(
             self._client._auth_header, dataset, filename, "text/csv", self._client._upload_client
         )
@@ -476,7 +476,7 @@ class NominalClient:
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
         urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{name}{file_extension}"
+        filename = f"{urlsafe_name}{file_extension}"
         s3_path = put_multipart_upload(self._auth_header, dataset, filename, "text/csv", self._upload_client)
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
