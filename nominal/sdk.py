@@ -159,22 +159,34 @@ class Dataset:
     labels: Sequence[str]
     _client: NominalClient = field(repr=False)
 
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=2)) -> None:
+    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
         Raises:
-            NominalIngestError: if the ingest status is not known
             NominalIngestFailed: if the ingest failed
+            NominalIngestError: if the ingest status is not known
         """
+
         while True:
-            dataset = _get_dataset(self._client._auth_header, self._client._catalog_client, self.rid)
-            if dataset.ingest_status == scout_catalog.IngestStatus.COMPLETED:
+            progress = self._client._catalog_client.get_ingest_progress_v2(self._client._auth_header, self.rid)
+            if progress.ingest_status.type == "success":
                 return
-            elif dataset.ingest_status == scout_catalog.IngestStatus.FAILED:
-                raise NominalIngestFailed(f"ingest failed for dataset: {self.rid}")
-            elif dataset.ingest_status == scout_catalog.IngestStatus.UNKNOWN:
-                raise NominalIngestError(f"ingest status unknown for dataset: {self.rid}")
+            elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
+                pass
+            elif progress.ingest_status.type == "error":
+                error = progress.ingest_status.error
+                if error is not None:
+                    raise NominalIngestFailed(
+                        f"ingest failed for dataset {self.rid!r}: {error.message} ({error.error_type})"
+                    )
+                raise NominalIngestError(
+                    f"ingest status type marked as 'error' but with no instance for dataset {self.rid!r}"
+                )
+            else:
+                raise NominalIngestError(
+                    f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
+                )
             time.sleep(interval.total_seconds())
 
     def update(
@@ -226,7 +238,7 @@ class Dataset:
                 )
 
         if isinstance(dataset, TextIOBase):
-            raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
+            raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
         self.poll_until_ingestion_completed()
         urlsafe_name = urllib.parse.quote_plus(self.name)
@@ -573,9 +585,9 @@ def _get_dataset(
 ) -> scout_catalog.EnrichedDataset:
     datasets = list(_get_datasets(auth_header, client, [dataset_rid]))
     if not datasets:
-        raise ValueError(f"dataset '{dataset_rid}' not found")
+        raise ValueError(f"dataset {dataset_rid!r} not found")
     if len(datasets) > 1:
-        raise ValueError(f"expected exactly one dataset, got: {len(datasets)}")
+        raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
     return datasets[0]
 
 
@@ -586,7 +598,7 @@ def _rid_from_instance_or_string(value: Attachment | Run | Dataset | str) -> str
         return value.rid
     elif hasattr(value, "rid"):
         return value.rid
-    raise TypeError("{value} is not a string nor has the attribute 'rid'")
+    raise TypeError("{value!r} is not a string nor has the attribute 'rid'")
 
 
 def _create_search_runs_query(
