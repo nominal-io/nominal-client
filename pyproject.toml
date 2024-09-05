@@ -63,8 +63,5 @@ implicit_reexport = true
 filterwarnings = [
     "ignore:The 'strict' parameter is no longer needed on Python 3+."
 ]
-markers = [
-    "e2e: marks tests as e2e, which require a token (deselect with '-m \"not e2e\"')",
-]
 testpaths = ["tests"]
 norecursedirs = ["tests/e2e"]

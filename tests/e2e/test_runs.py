@@ -1,6 +1,6 @@
-import pytest
-from nominal.sdk import NominalClient, Run
 from uuid import uuid4
+
+from nominal.sdk import NominalClient, Run
 
 
 def _update_run_attribute_and_revert(run: Run, attribute, value) -> None:
@@ -21,14 +21,12 @@ def _update_run_attribute_and_revert(run: Run, attribute, value) -> None:
     assert run.labels == initial_labels
 
 
-@pytest.mark.e2e
 def test_search_for_run(client: NominalClient, run: Run) -> None:
     runs = list(client.search_runs(start=run.start))
     assert len(runs) > 0
     assert any(r.rid == run.rid for r in runs)
 
 
-@pytest.mark.e2e
 def test_update_run(run: Run) -> None:
     assert run.rid != ""
     # update each attribute individually
