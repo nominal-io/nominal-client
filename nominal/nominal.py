@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from io import BytesIO
 import shutil
 from datetime import datetime
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, Iterable, Mapping, Sequence, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
 import dateutil.parser
 
 from .exceptions import NominalError
-from .sdk import Attachment, Dataset, NominalClient, Run, _AllowedFileExtensions
+from .sdk import Attachment, Dataset, NominalClient, Run
 from ._utils import (
     FileType,
     FileTypes,
