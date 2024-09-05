@@ -16,7 +16,7 @@ from ._utils import (
     FileTypes,
     IntegralNanosecondsUTC,
     TimestampColumnType,
-    _datetime_to_seconds_nanos,
+    _datetime_to_integral_nanoseconds,
     reader_writer,
 )
 
@@ -237,5 +237,4 @@ def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNan
         return ts
     if isinstance(ts, str):
         ts = dateutil.parser.parse(ts)
-    seconds, nanos = _datetime_to_seconds_nanos(ts)
-    return seconds * 1_000_000_000 + nanos
+    return _datetime_to_integral_nanoseconds(ts)
