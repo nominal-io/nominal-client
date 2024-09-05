@@ -61,6 +61,9 @@ implicit_reexport = true
 
 [tool.pytest.ini_options]
 filterwarnings = [
+    # DeprecationWarning: The 'strict' parameter is no longer needed on Python 3+. This will raise an error in urllib3 v2.1.0.
+    # from conjure-python-client, in conjure_python_client/_http/requests_client.py,
+    # TransportAdapter.init_poolmanager() uses urllib3.poolmanager.PoolManager(..., strict=True) which is deprecated.
     "ignore:The 'strict' parameter is no longer needed on Python 3+."
 ]
 testpaths = ["tests"]
