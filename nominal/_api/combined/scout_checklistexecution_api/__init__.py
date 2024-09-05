@@ -13,6 +13,8 @@ from .._impl import (
     scout_checklistexecution_api_ComputationRange as ComputationRange,
     scout_checklistexecution_api_ComputedResult as ComputedResult,
     scout_checklistexecution_api_Computing as Computing,
+    scout_checklistexecution_api_ExecuteChecklistForAssetsRequest as ExecuteChecklistForAssetsRequest,
+    scout_checklistexecution_api_ExecuteChecklistForAssetsResponse as ExecuteChecklistForAssetsResponse,
     scout_checklistexecution_api_Fail as Fail,
     scout_checklistexecution_api_FailedToResolve as FailedToResolve,
     scout_checklistexecution_api_Failure as Failure,

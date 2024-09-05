@@ -1,7 +1,6 @@
 # coding=utf-8
 from .._impl import (
     scout_run_api_AllRunsPropertiesAndLabelsResponse as AllRunsPropertiesAndLabelsResponse,
-    scout_run_api_Channel as Channel,
     scout_run_api_ChannelMetadata as ChannelMetadata,
     scout_run_api_ConnectionRid as ConnectionRid,
     scout_run_api_CreateOrUpdateRunRequest as CreateOrUpdateRunRequest,
@@ -11,7 +10,6 @@ from .._impl import (
     scout_run_api_DataReviewCheckMetrics as DataReviewCheckMetrics,
     scout_run_api_DataReviewMetrics as DataReviewMetrics,
     scout_run_api_DataSource as DataSource,
-    scout_run_api_DataSourceRefName as DataSourceRefName,
     scout_run_api_DataSourceSeriesTag as DataSourceSeriesTag,
     scout_run_api_DataSourceType as DataSourceType,
     scout_run_api_DataSourceVisitor as DataSourceVisitor,

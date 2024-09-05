@@ -9,8 +9,8 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import BinaryIO, Iterator, Literal, NamedTuple, TypeVar, Union, Iterable
+from ._api.combined import ingest_api
 from ._api.combined import scout_run_api
-from ._api.ingest import ingest_api
 
 if sys.version_info >= (3, 11):
     from typing import Self as Self
