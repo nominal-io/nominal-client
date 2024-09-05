@@ -30,6 +30,7 @@ jupyterlab = "^4.2.4"
 mypy = "^1.11.2"
 jupyter = "^1.1.1"
 types-requests = "^2.32.0.20240712"
+pytest = "^8.3.2"
 
 [tool.distutils.bdist_wheel]
 universal = true
@@ -57,3 +58,13 @@ strict = true
 [[tool.mypy.overrides]]
 module = "nominal._api.*"
 implicit_reexport = true
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:The 'strict' parameter is no longer needed on Python 3+."
+]
+markers = [
+    "e2e: marks tests as e2e, which require a token (deselect with '-m \"not e2e\"')",
+]
+testpaths = ["tests"]
+norecursedirs = ["tests/e2e"]
