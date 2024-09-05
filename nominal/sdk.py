@@ -159,22 +159,34 @@ class Dataset:
     labels: Sequence[str]
     _client: NominalClient = field(repr=False)
 
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=2)) -> None:
+    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
         Raises:
-            NominalIngestError: if the ingest status is not known
             NominalIngestFailed: if the ingest failed
+            NominalIngestError: if the ingest status is not known
         """
+
         while True:
-            dataset = _get_dataset(self._client._auth_header, self._client._catalog_client, self.rid)
-            if dataset.ingest_status == scout_catalog.IngestStatus.COMPLETED:
+            progress = self._client._catalog_client.get_ingest_progress_v2(self._client._auth_header, self.rid)
+            if progress.ingest_status.type == "success":
                 return
-            elif dataset.ingest_status == scout_catalog.IngestStatus.FAILED:
-                raise NominalIngestFailed(f"ingest failed for dataset: {self.rid}")
-            elif dataset.ingest_status == scout_catalog.IngestStatus.UNKNOWN:
-                raise NominalIngestError(f"ingest status unknown for dataset: {self.rid}")
+            elif progress.ingest_status.type == "in_progress":
+                pass
+            elif progress.ingest_status.type == "error":
+                error = progress.ingest_status.error
+                if error is not None:
+                    raise NominalIngestFailed(
+                        f"ingest failed for dataset: {self.rid}: {error.error_type}: {error.message}"
+                    )
+                raise NominalIngestError(
+                    f"ingest status type marked as 'error' but with no instance for dataset: {self.rid}"
+                )
+            else:
+                raise NominalIngestError(
+                    f"unhandled ingest status '{progress.ingest_status.type}' for dataset: {self.rid}"
+                )
             time.sleep(interval.total_seconds())
 
     def update(
