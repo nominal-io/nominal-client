@@ -60,18 +60,19 @@ class Run:
     end: IntegralNanosecondsUTC | None
     _client: NominalClient = field(repr=False)
 
-    def add_datasets(self, datasets: Mapping[str, Dataset] | Mapping[str, str]) -> None:
-        """Add datasets to this run.
+    def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
+        """Add a dataset to this run.
+
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
         """
+        # TODO(alkasm): support series tags & offset
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(dataset=_rid_from_instance_or_string(ds)),
+                data_source=scout_run_api.DataSource(dataset=_rid_from_instance_or_string(dataset)),
                 series_tags={},
-                offset=None,  # TODO(alkasm): support per-dataset offsets
+                offset=None,
             )
-            for ref_name, ds in datasets.items()
         }
         self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
 
@@ -389,33 +390,18 @@ class NominalClient:
         start: datetime | IntegralNanosecondsUTC,
         end: datetime | IntegralNanosecondsUTC,
         *,
-        datasets: Mapping[str, Dataset] | Mapping[str, str] | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
     ) -> Run:
-        """Create a run.
-
-        Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
-        should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
-        """
-        if datasets is None:
-            datasets = {}
-        datasets_rids = {ref_name: _rid_from_instance_or_string(ds) for ref_name, ds in datasets.items()}
-        datasets = datasets or {}
+        """Create a run."""
+        # TODO(alkasm): support links
         request = scout_run_api.CreateRunRequest(
             attachments=[_rid_from_instance_or_string(a) for a in attachments],
-            data_sources={
-                ref_name: scout_run_api.CreateRunDataSource(
-                    data_source=scout_run_api.DataSource(dataset=rid),
-                    series_tags={},
-                    offset=None,  # TODO(alkasm): support per-dataset offsets
-                )
-                for ref_name, rid in datasets_rids.items()
-            },
+            data_sources={},
             description=description,
             labels=list(labels),
-            links=[],  # TODO(alkasm): support links
+            links=[],
             properties={} if properties is None else dict(properties),
             start_time=_flexible_time_to_conjure_scout_run_api(start),
             title=title,

@@ -139,7 +139,6 @@ def create_run(
         description,
         start=_parse_timestamp(start),
         end=_parse_timestamp(end),
-        datasets={},
     )
 
 
@@ -160,7 +159,7 @@ def update_run(
 
 
 def add_dataset_to_run(ref_name: str, dataset: Dataset, run: Run) -> None:
-    run.add_datasets({ref_name: dataset})
+    run.add_dataset(ref_name, dataset)
 
 
 def list_datasets_for_run(run: Run) -> list[tuple[str, Dataset]]:
