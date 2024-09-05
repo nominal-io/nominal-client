@@ -229,8 +229,8 @@ class Dataset:
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
         self.poll_until_ingestion_completed()
-
-        filename = f"{self.name}{file_extension}"
+        urlsafe_name = urlsafe_b64encode(self.name.encode()).decode()
+        filename = f"{urlsafe_name}{file_extension}"
         s3_path = put_multipart_upload(
             self._client._auth_header, dataset, filename, "text/csv", self._client._upload_client
         )
