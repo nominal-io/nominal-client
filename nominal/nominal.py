@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, BinaryIO, Mapping, Sequence
 
 import dateutil.parser
 
@@ -19,14 +19,12 @@ from ._utils import (
     reader_writer,
 )
 
-import dateutil
-
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
 
 
-_default_connection: NominalClient | None
+_default_connection: NominalClient | None = None
 
 
 def set_default_connection(base_url: str, token: str) -> None:
@@ -36,6 +34,7 @@ def set_default_connection(base_url: str, token: str) -> None:
 
 # TODO(alkasm): assert operations with N > 1 objects are using the same connection
 def get_default_connection() -> NominalClient:
+    global _default_connection
     if _default_connection is None:
         raise NominalError("No default connection set: initialize with `set_default_connection(base_url, token)`")
     return _default_connection
@@ -49,10 +48,16 @@ def upload_dataset_from_pandas(
     timestamp_type: TimestampColumnType,
 ) -> Dataset:
     conn = get_default_connection()
+
     # TODO(alkasm): use parquet instead of CSV as an intermediary
+
+    def write_and_close(df: pd.DataFrame, w: BinaryIO) -> None:
+        df.to_csv(w)
+        w.close()
+
     with reader_writer() as (reader, writer):
         # write the dataframe to CSV in another thread
-        t = Thread(target=df.to_csv, args=(writer,))
+        t = Thread(target=write_and_close, args=(df, writer))
         t.start()
         dataset = conn.create_dataset_from_io(
             reader,
@@ -74,9 +79,14 @@ def upload_dataset_from_polars(
     timestamp_type: TimestampColumnType,
 ) -> Dataset:
     conn = get_default_connection()
+
+    def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
+        df.write_csv(w)
+        w.close()
+
     with reader_writer() as (reader, writer):
         # write the dataframe to CSV in another thread
-        t = Thread(target=df.write_csv, args=(writer,))
+        t = Thread(target=write_and_close, args=(df, writer))
         t.start()
         dataset = conn.create_dataset_from_io(
             reader,
@@ -145,6 +155,24 @@ def create_run(
 def get_run_by_rid(rid: str) -> Run:
     conn = get_default_connection()
     return conn.get_run(rid)
+
+
+def search_runs(
+    start: str | datetime | IntegralNanosecondsUTC | None = None,
+    end: str | datetime | IntegralNanosecondsUTC | None = None,
+    exact_title: str | None = None,
+    label: str | None = None,
+    property: tuple[str, str] | None = None,
+) -> list[Run]:
+    conn = get_default_connection()
+    runs = conn.search_runs(
+        start=None if start is None else _parse_timestamp(start),
+        end=None if end is None else _parse_timestamp(end),
+        exact_title=exact_title,
+        label=label,
+        property=property,
+    )
+    return list(runs)
 
 
 def update_run(

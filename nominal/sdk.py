@@ -477,7 +477,6 @@ class NominalClient:
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
         """
         # TODO(alkasm): create dataset from file/path
-
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
         urlsafe_name = urllib.parse.quote_plus(name)

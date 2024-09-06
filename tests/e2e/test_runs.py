@@ -1,6 +1,30 @@
 from uuid import uuid4
-
+import pytest
 from nominal.sdk import NominalClient, Run
+from nominal import _utils
+
+from . import _create_random_start_end
+
+
+@pytest.fixture(scope="session")
+def run(client: NominalClient):
+    title = f"run-{uuid4()}"
+    desc = f"run description {uuid4()}"
+    start, end = _create_random_start_end()
+    run = client.create_run(
+        title=title,
+        description=desc,
+        start=start,
+        end=end,
+    )
+    assert len(run.rid) >= 0
+    assert run.title == title
+    assert run.description == desc
+    assert run.start == _utils._datetime_to_integral_nanoseconds(start)
+    assert run.end == _utils._datetime_to_integral_nanoseconds(end)
+    assert len(run.labels) == 0
+    assert len(run.properties) == 0
+    return run
 
 
 def _update_run_attribute_and_revert(run: Run, attribute, value) -> None:
