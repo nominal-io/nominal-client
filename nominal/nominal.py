@@ -39,6 +39,10 @@ def set_default_connection(base_url: str, token: str) -> None:
 
 
 def get_default_connection() -> NominalClient:
+    """Retrieve the default global connection to the Nominal platform.
+
+    Raises nominal.exceptions.NominalError if no global connection has been set.
+    """
     global _default_connection
     if _default_connection is None:
         raise NominalError("No default connection set: initialize with `set_default_connection(base_url, token)`")
@@ -67,8 +71,8 @@ def upload_dataset_from_pandas(
         dataset = conn.create_dataset_from_io(
             reader,
             name,
-            timestamp_column_name=timestamp_column,
-            timestamp_column_type=timestamp_type,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
         )
@@ -96,8 +100,8 @@ def upload_dataset_from_polars(
         dataset = conn.create_dataset_from_io(
             reader,
             name,
-            timestamp_column_name=timestamp_column,
-            timestamp_column_type=timestamp_type,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
         )
@@ -119,8 +123,8 @@ def upload_dataset(
         return conn.create_dataset_from_io(
             f,
             name,
-            timestamp_column_name=timestamp_column,
-            timestamp_column_type=timestamp_type,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
             file_type=file_type,
             description=description,
         )

@@ -234,14 +234,14 @@ class Dataset:
     def add_to_dataset_from_io(
         self,
         dataset: BinaryIO,
-        timestamp_column_name: str,
-        timestamp_column_type: TimestampColumnType,
+        timestamp_column: str,
+        timestamp_type: TimestampColumnType,
         file_type: FileType = FileTypes.CSV,
     ) -> None:
         """Append to a dataset from a file-like object."""
 
-        if not isinstance(timestamp_column_type, CustomTimestampFormat):
-            if timestamp_column_type.startswith("relative"):
+        if not isinstance(timestamp_type, CustomTimestampFormat):
+            if timestamp_type.startswith("relative"):
                 raise ValueError(
                     "multifile datasets with relative timestamps are not yet supported by the client library"
                 )
@@ -264,8 +264,8 @@ class Dataset:
             source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
-                    series_name=timestamp_column_name,
-                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_column_type),
+                    series_name=timestamp_column,
+                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_type),
                 ),
             ),
         )
@@ -460,8 +460,8 @@ class NominalClient:
         self,
         dataset: BinaryIO,
         name: str,
-        timestamp_column_name: str,
-        timestamp_column_type: TimestampColumnType,
+        timestamp_column: str,
+        timestamp_type: TimestampColumnType,
         file_type: FileType = FileTypes.CSV,
         description: str | None = None,
         *,
@@ -500,8 +500,8 @@ class NominalClient:
             source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
-                    series_name=timestamp_column_name,
-                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_column_type),
+                    series_name=timestamp_column,
+                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_type),
                 ),
             ),
         )
