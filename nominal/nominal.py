@@ -32,7 +32,6 @@ def set_default_connection(base_url: str, token: str) -> None:
     _default_connection = NominalClient.create(base_url, token)
 
 
-# TODO(alkasm): assert operations with N > 1 objects are using the same connection
 def get_default_connection() -> NominalClient:
     global _default_connection
     if _default_connection is None:
@@ -187,6 +186,7 @@ def update_run(
 
 
 def add_dataset_to_run(ref_name: str, dataset: Dataset, run: Run) -> None:
+    _ensure_same_clients(dataset, run)
     run.add_dataset(ref_name, dataset)
 
 
@@ -240,3 +240,8 @@ def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNan
     if isinstance(ts, str):
         ts = dateutil.parser.parse(ts)
     return _datetime_to_integral_nanoseconds(ts)
+
+
+def _ensure_same_clients(*objs: Dataset | Run | Attachment) -> None:
+    if len(set(obj._client for obj in objs)) != 1:
+        raise NominalError("All objects must be created with the same NominalClient")
