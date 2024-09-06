@@ -28,6 +28,12 @@ _default_connection: NominalClient | None = None
 
 
 def set_default_connection(base_url: str, token: str) -> None:
+    """Set the default global connection to the Nominal platform.
+
+    base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+    token: An API token to authenticate with. You can grab a client token from the Nominal sandbox, e.g.
+        at https://app.gov.nominal.io/sandbox.
+    """
     global _default_connection
     _default_connection = NominalClient.create(base_url, token)
 

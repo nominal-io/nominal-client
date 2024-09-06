@@ -236,7 +236,7 @@ class Dataset:
         dataset: BinaryIO,
         timestamp_column_name: str,
         timestamp_column_type: TimestampColumnType,
-        file_extension: _AllowedFileExtensions = ".csv",
+        file_type: FileType = FileTypes.CSV,
     ) -> None:
         """Append to a dataset from a file-like object."""
 
@@ -249,11 +249,13 @@ class Dataset:
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
+        file_type = FileType(*file_type)
+
         self.poll_until_ingestion_completed()
         urlsafe_name = urllib.parse.quote_plus(self.name)
-        filename = f"{urlsafe_name}{file_extension}"
+        filename = f"{urlsafe_name}{file_type.extension}"
         s3_path = put_multipart_upload(
-            self._client._auth_header, dataset, filename, "text/csv", self._client._upload_client
+            self._client._auth_header, dataset, filename, file_type.mimetype, self._client._upload_client
         )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
@@ -479,8 +481,11 @@ class NominalClient:
         # TODO(alkasm): create dataset from file/path
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
+
+        file_type = FileType(*file_type)
         urlsafe_name = urllib.parse.quote_plus(name)
         filename = f"{urlsafe_name}{file_type.extension}"
+
         s3_path = put_multipart_upload(self._auth_header, dataset, filename, file_type.mimetype, self._upload_client)
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
@@ -547,10 +552,13 @@ class NominalClient:
         """
 
         # TODO(alkasm): create attachment from file/path
-        urlsafe_name = urllib.parse.quote_plus(title)
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
+
+        file_type = FileType(*file_type)
+        urlsafe_name = urllib.parse.quote_plus(title)
         filename = f"{urlsafe_name}{file_type.extension}"
+
         s3_path = put_multipart_upload(self._auth_header, attachment, filename, file_type.mimetype, self._upload_client)
         request = attachments_api.CreateAttachmentRequest(
             description=description,
