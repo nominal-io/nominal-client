@@ -56,6 +56,7 @@ def upload_dataset_from_pandas(
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
 ) -> Dataset:
+    """Create a dataset in the Nominal platform from a pandas.DataFrame."""
     conn = get_default_connection()
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
@@ -87,6 +88,7 @@ def upload_dataset_from_polars(
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
 ) -> Dataset:
+    """Create a dataset in the Nominal platform from a polars.DataFrame."""
     conn = get_default_connection()
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
@@ -116,6 +118,7 @@ def upload_dataset(
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
 ) -> Dataset:
+    """Create a dataset in the Nominal platform from a .csv, .csv.gz, or .parquet file."""
     path = Path(path)
     file_type = FileType.from_path_dataset(path)
     conn = get_default_connection()
@@ -131,6 +134,7 @@ def upload_dataset(
 
 
 def get_dataset_by_rid(rid: str) -> Dataset:
+    """Retrieve a dataset from the Nominal platform by its RID."""
     conn = get_default_connection()
     return conn.get_dataset(rid)
 
@@ -143,6 +147,11 @@ def update_dataset(
     properties: Mapping[str, str] | None = None,
     labels: Sequence[str] | None = None,
 ) -> Dataset:
+    """Update dataset metadata.
+    Updates the current instance and returns it.
+
+    Note: This replaces the metadata (rather than adding to it).
+    """
     return dataset.update(name=name, description=description, properties=properties, labels=labels)
 
 
@@ -162,6 +171,7 @@ def create_run(
 
 
 def get_run_by_rid(rid: str) -> Run:
+    """Retrieve a run from the Nominal platform by its RID."""
     conn = get_default_connection()
     return conn.get_run(rid)
 
@@ -173,6 +183,13 @@ def search_runs(
     label: str | None = None,
     property: tuple[str, str] | None = None,
 ) -> list[Run]:
+    """Search for runs meeting the specified filters.
+
+    Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
+    - `start` and `end` times are both inclusive
+    - `exact_title` is case-insensitive
+    - `property` is a key-value pair, e.g. ("name", "value")
+    """
     conn = get_default_connection()
     runs = conn.search_runs(
         start=None if start is None else _parse_timestamp(start),
@@ -192,23 +209,38 @@ def update_run(
     properties: Mapping[str, str] | None = None,
     labels: Sequence[str] | None = None,
 ) -> Run:
+    """Update run metadata.
+    Updates the current instance and returns it.
+
+    Note: This replaces the metadata (rather than adding to it).
+    """
     return run.update(title=title, description=description, properties=properties, labels=labels)
 
 
 def add_dataset_to_run(ref_name: str, dataset: Dataset, run: Run) -> None:
+    """Add a dataset to this run.
+
+    Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
+    should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
+    """
     _ensure_same_clients(dataset, run)
     run.add_dataset(ref_name, dataset)
 
 
 def list_datasets_for_run(run: Run) -> list[tuple[str, Dataset]]:
+    """List the datasets associated with this run.
+    Returns (ref_name, dataset) pairs.
+    """
     return list(run.list_datasets())
 
 
 def add_attachment_to_run(attachment: Attachment, run: Run) -> None:
+    """Add attachments that have already been uploaded to the run."""
     run.add_attachments([attachment])
 
 
 def list_attachments_for_run(run: Run) -> list[Attachment]:
+    """List attachments that have been associated to the run."""
     return list(run.list_attachments())
 
 
@@ -217,6 +249,7 @@ def upload_attachment(
     title: str,
     description: str,
 ) -> Attachment:
+    """Upload an attachment to the Nominal platform."""
     conn = get_default_connection()
     file_type = FileType.from_path(Path(path))
     with open(path, "rb") as f:
@@ -224,6 +257,7 @@ def upload_attachment(
 
 
 def get_attachment_by_rid(rid: str) -> Attachment:
+    """Retrieve an attachment from the Nominal platform by its RID."""
     conn = get_default_connection()
     return conn.get_attachment(rid)
 
@@ -236,10 +270,21 @@ def update_attachment(
     properties: Mapping[str, str] | None = None,
     labels: Sequence[str] | None = None,
 ) -> Attachment:
+    """Update attachment metadata.
+    Updates the current instance and returns it.
+
+    Note: This replaces the metadata (rather than adding to it).
+    """
     return attachment.update(title=title, description=description, properties=properties, labels=labels)
 
 
-def save_attachment(attachment: Attachment, path: Path | str) -> None:
+def save_attachment(attachment: Attachment, path: Path | str, mkdir: bool = True) -> None:
+    """Save an attachment to the local filesystem.
+
+    `path` should be the path you want to save to, i.e. a file, not a directory.
+    """
+    if mkdir:
+        path.mkdir(exist_ok=True, parents=True)
     with open(path, "wb") as wf:
         shutil.copyfileobj(attachment.get_contents(), wf)
 
