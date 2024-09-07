@@ -323,7 +323,7 @@ class Attachment:
         return self
 
     def get_contents(self) -> BinaryIO:
-        """Retrieves the contents of this attachment.
+        """Retrieve the contents of this attachment.
         Returns a file-like object in binary mode for reading.
         """
         response = self._client._attachment_client.get_content(self._client._auth_header, self.rid)
