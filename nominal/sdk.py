@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+import shutil
 import time
 import urllib.parse
 from dataclasses import dataclass, field
@@ -330,6 +332,16 @@ class Attachment:
         # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
         # this acts like a file-like object in binary-mode.
         return cast(BinaryIO, response)
+
+    def write(self, path: Path, mkdir: bool = True) -> None:
+        """Write an attachment to the filesystem.
+
+        `path` should be the path you want to save to, i.e. a file, not a directory.
+        """
+        if mkdir:
+            path.mkdir(exist_ok=True, parents=True)
+        with open(path, "wb") as wf:
+            shutil.copyfileobj(Attachment.get_contents(), wf)
 
     @classmethod
     def _from_conjure(

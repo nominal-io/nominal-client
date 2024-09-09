@@ -244,15 +244,11 @@ def get_attachment(rid: str) -> Attachment:
     return conn.get_attachment(rid)
 
 
-def save_attachment(attachment: Attachment, path: Path | str, mkdir: bool = True) -> None:
-    """Save an attachment to the local filesystem.
-
-    `path` should be the path you want to save to, i.e. a file, not a directory.
-    """
-    if mkdir:
-        path.mkdir(exist_ok=True, parents=True)
-    with open(path, "wb") as wf:
-        shutil.copyfileobj(attachment.get_contents(), wf)
+def download_attachment(rid: str, file: Path | str) -> None:
+    """Retrieve an attachment from the Nominal platform and save it to `file`."""
+    conn = get_default_connection()
+    attachment = conn.get_attachment(rid)
+    attachment.write(Path(file))
 
 
 def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNanosecondsUTC:
