@@ -20,10 +20,10 @@ from ._api.combined.ingest_api import (
     AbsoluteTimestamp,
     IngestService,
     IngestSource,
+    Iso8601Timestamp,
     RelativeTimestamp,
     S3IngestSource,
     TimestampMetadata,
-    Iso8601Timestamp,
     TimestampType,
     TriggerIngest,
 )
@@ -123,7 +123,7 @@ class Dataset(pl.DataFrame):
                     self.s3_path
                 )
             )
-            return
+            return None
 
         # Create a default dataset name
         if self.filename is None:
@@ -449,11 +449,10 @@ class Run:
             for fp in path:
                 ds = Ingest().read_csv(fp)
                 self.datasets[ds.filename] = ds
+        elif isinstance(datasets, Sequence):
+            self.datasets = {ds.filename: ds for ds in datasets}
         else:
-            if isinstance(datasets, Sequence):
-                self.datasets = {ds.filename: ds for ds in datasets}
-            else:
-                self.datasets = datasets
+            self.datasets = datasets
 
         start_dt = datetime.min
         end_dt = datetime.min
@@ -531,7 +530,7 @@ class Run:
         if bool(self.cloud) is False:  # self.cloud = {}
             print("No Run instance has been downloaded from the cloud")
             print("Download a run with [code]r = Run(rid = RID)[/code]")
-            return
+            return None
 
         local_copy = PayloadFactory.run_upload(self)
         cloud_copy = copy.deepcopy(self.cloud)

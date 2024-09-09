@@ -4,37 +4,39 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-import dateutil
 from io import TextIOBase
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
 
 import certifi
-from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
+import dateutil
 import dateutil.parser
+from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
 
-from ._api.combined import attachments_api
-from ._api.combined import scout_catalog
-from ._api.combined import scout
-from ._api.combined import scout_run_api
-from ._api.combined import ingest_api
-from ._api.combined import upload_api
+from ._api.combined import (
+    attachments_api,
+    datasource_logset,
+    datasource_logset_api,
+    ingest_api,
+    scout,
+    scout_catalog,
+    scout_run_api,
+    upload_api,
+)
 from ._multipart import put_multipart_upload
-from ._api.combined import datasource_logset
-from ._api.combined import datasource_logset_api
 from ._utils import (
-    _conjure_time_to_integral_nanoseconds,
-    _flexible_time_to_conjure_scout_run_api,
-    _timestamp_type_to_conjure_ingest_api,
-    _datetime_to_conjure_datasource_api,
-    _datasource_api_timestamp_to_datetime,
-    construct_user_agent_string,
     CustomTimestampFormat,
+    DataSourceTimestampType,
+    DataSourceType,
     IntegralNanosecondsUTC,
     Self,
     TimestampColumnType,
-    DataSourceType,
-    DataSourceTimestampType,
+    _conjure_time_to_integral_nanoseconds,
+    _datasource_api_timestamp_to_datetime,
+    _datetime_to_conjure_datasource_api,
+    _flexible_time_to_conjure_scout_run_api,
+    _timestamp_type_to_conjure_ingest_api,
+    construct_user_agent_string,
     update_dataclass,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
@@ -308,7 +310,7 @@ class LogSet:
         log_set_metadata = self.__class__._from_conjure(self._client, response)
         update_dataclass(self, log_set_metadata, fields=self.__dataclass_fields__)
         return self
-    
+
     def search_logs(
             self,
             page_size: int | None = None,
@@ -508,7 +510,7 @@ class NominalClient:
         """
 
         def create_run_data_sources_for_data_source_type(
-                data_sources: Mapping[str, str], 
+                data_sources: Mapping[str, str],
                 data_source_type: DataSourceType
         ) -> dict[str, scout_run_api.CreateRunDataSource]:
             return {
@@ -520,7 +522,7 @@ class NominalClient:
                 for ref_name, rid in data_sources.items()
             } if data_sources else {}
 
-        combined_data_sources = { 
+        combined_data_sources = {
             **create_run_data_sources_for_data_source_type(datasets, "dataset"),
             **create_run_data_sources_for_data_source_type(log_sets, "log_set"),
         }
@@ -756,9 +758,7 @@ def _get_dataset(
 def _rid_from_instance_or_string(value: Attachment | Run | Dataset | str) -> str:
     if isinstance(value, str):
         return value
-    elif isinstance(value, (Attachment, Run, Dataset)):
-        return value.rid
-    elif hasattr(value, "rid"):
+    elif isinstance(value, (Attachment, Run, Dataset)) or hasattr(value, "rid"):
         return value.rid
     raise TypeError("{value!r} is not a string nor has the attribute 'rid'")
 

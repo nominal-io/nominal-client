@@ -7,12 +7,12 @@ Internal utility functions for Nominal Python client
 import random
 import string
 from datetime import datetime
+from enum import Enum
 from typing import Type, TypeVar
 
 import requests
 from conjure_python_client import ServiceConfiguration
 from requests.utils import CaseInsensitiveDict
-from enum import Enum
 
 
 def default_filename(nominal_file_class):
@@ -116,11 +116,10 @@ class PayloadFactory:
 import logging
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import Literal, Union, Iterable
-from ._api.combined import ingest_api
-from ._api.combined import scout_run_api
-from ._api.combined import datasource
+from datetime import timedelta, timezone
+from typing import Iterable, Literal, Union
+
+from ._api.combined import datasource, ingest_api, scout_run_api
 
 if sys.version_info >= (3, 11):
     from typing import Self as Self
