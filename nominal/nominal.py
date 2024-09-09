@@ -246,8 +246,3 @@ def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNan
     if isinstance(ts, str):
         ts = dateutil.parser.parse(ts)
     return _datetime_to_integral_nanoseconds(ts)
-
-
-def _ensure_same_clients(*objs: Dataset | Run | Attachment) -> None:
-    if len(set(obj._client for obj in objs)) != 1:
-        raise NominalError("All objects must be created with the same NominalClient")
