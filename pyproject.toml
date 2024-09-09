@@ -58,8 +58,10 @@ src_paths = ["nominal"]
 strict = true
 
 [[tool.mypy.overrides]]
-module = "nominal._api.*"
+module = "nominal._api.*.*"
 implicit_reexport = true
+no_implicit_optional = false
+disable_error_code = ["no-any-return", "no-untyped-def"]
 
 [tool.pytest.ini_options]
 filterwarnings = [
