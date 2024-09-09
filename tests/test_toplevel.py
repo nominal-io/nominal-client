@@ -3,7 +3,7 @@ from unittest import mock
 
 import requests
 from conjure_python_client import ConjureEncoder
-import nominal.nominal as nm
+import nominal as nm
 from nominal._api.combined.attachments_api import Attachment as _Attachment
 
 
@@ -46,7 +46,7 @@ def test_default_connection(mock_get: mock.Mock):
         test_url = str(uuid4())
         test_token = str(uuid4())
         nm.set_default_connection(test_url, test_token)
-        _ = nm.get_attachment_by_rid("")
+        _ = nm.get_attachment("")
 
         assert mock_get.call_count == 1
         assert len(mock_get.call_args_list) == 1
