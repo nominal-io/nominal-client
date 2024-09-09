@@ -229,13 +229,13 @@ def list_attachments_for_run(run: Run) -> list[Attachment]:
 def upload_attachment(
     path: Path | str,
     title: str,
-    description: str,
+    description: str | None = None,
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
     conn = get_default_connection()
     file_type = FileType.from_path(Path(path))
     with open(path, "rb") as f:
-        return conn.create_attachment_from_io(f, title, description, file_type)
+        return conn.create_attachment_from_io(f, title, "" if description is None else description, file_type)
 
 
 def get_attachment(rid: str) -> Attachment:
