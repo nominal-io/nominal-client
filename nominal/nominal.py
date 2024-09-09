@@ -146,7 +146,7 @@ def upload_dataset(
     return dataset
 
 
-def get_dataset_by_rid(rid: str) -> Dataset:
+def get_dataset(rid: str) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID."""
     conn = get_default_connection()
     return conn.get_dataset(rid)
@@ -167,7 +167,7 @@ def create_run(
     )
 
 
-def get_run_by_rid(rid: str) -> Run:
+def get_run(rid: str) -> Run:
     """Retrieve a run from the Nominal platform by its RID."""
     conn = get_default_connection()
     return conn.get_run(rid)
@@ -238,7 +238,7 @@ def upload_attachment(
         return conn.create_attachment_from_io(f, title, description, file_type)
 
 
-def get_attachment_by_rid(rid: str) -> Attachment:
+def get_attachment(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
     conn = get_default_connection()
     return conn.get_attachment(rid)
