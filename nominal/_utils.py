@@ -12,6 +12,7 @@ from typing import Type, TypeVar
 import requests
 from conjure_python_client import ServiceConfiguration
 from requests.utils import CaseInsensitiveDict
+from enum import Enum
 
 
 def default_filename(nominal_file_class):
@@ -115,10 +116,11 @@ class PayloadFactory:
 import logging
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Literal, Union, Iterable
 from ._api.combined import ingest_api
 from ._api.combined import scout_run_api
+from ._api.combined import datasource
 
 if sys.version_info >= (3, 11):
     from typing import Self as Self
@@ -164,6 +166,13 @@ TimestampColumnType: TypeAlias = Union[
     CustomTimestampFormat,
 ]
 
+DataSourceType: TypeAlias = Union[
+    Literal[
+        "dataset"
+        "log_set",
+    ],
+]
+
 
 def _timestamp_type_to_conjure_ingest_api(
     ts_type: TimestampColumnType,
@@ -198,12 +207,20 @@ def _flexible_time_to_conjure_scout_run_api(
         return scout_run_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
     raise TypeError(f"expected {datetime} or {IntegralNanosecondsUTC}, got {type(timestamp)}")
 
+def _datetime_to_conjure_datasource_api(timestamp: datetime) -> datasource.Timestamp:
+    seconds, nanos = _datetime_to_seconds_nanos(timestamp)
+    return datasource.Timestamp(seconds=seconds, nanos=nanos)
 
 def _conjure_time_to_integral_nanoseconds(
     ts: scout_run_api.UtcTimestamp,
 ) -> IntegralNanosecondsUTC:
     return ts.seconds_since_epoch * 1_000_000_000 + (ts.offset_nanoseconds or 0)
 
+def _datasource_api_timestamp_to_datetime(
+    ts:  datasource.Timestamp
+) -> datetime:
+    seconds, nanos = ts.seconds, ts.nanos
+    return datetime.fromtimestamp(seconds, tz=timezone.utc) + timedelta(microseconds=nanos // 1000)
 
 def _datetime_to_seconds_nanos(dt: datetime) -> tuple[int, int]:
     dt = dt.astimezone(timezone.utc)
@@ -239,3 +256,15 @@ def update_dataclass(self: T, other: T, fields: Iterable[str]) -> None:
     """
     for field in fields:
         self.__dict__[field] = getattr(other, field)
+
+class DataSourceTimestampType(Enum):
+    ABSOLUTE = "ABSOLUTE"
+    RELATIVE = "RELATIVE"
+    UNKNOWN = "UNKNOWN"
+
+    def to_conjure(self) -> datasource.TimestampType:
+        return datasource.TimestampType(self.value)
+
+    @staticmethod
+    def from_conjure(ts_type: datasource.TimestampType) -> DataSourceTimestampType:
+        return DataSourceTimestampType(ts_type.value)
