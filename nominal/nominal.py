@@ -55,6 +55,8 @@ def upload_dataset_from_pandas(
     description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
+    *,
+    wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a pandas.DataFrame."""
     conn = get_default_connection()
@@ -78,7 +80,9 @@ def upload_dataset_from_pandas(
             description=description,
         )
         t.join()
-        return dataset
+    if wait_until_complete:
+        dataset.poll_until_ingestion_completed()
+    return dataset
 
 
 def upload_dataset_from_polars(
@@ -87,6 +91,8 @@ def upload_dataset_from_polars(
     description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
+    *,
+    wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a polars.DataFrame."""
     conn = get_default_connection()
@@ -108,7 +114,9 @@ def upload_dataset_from_polars(
             description=description,
         )
         t.join()
-        return dataset
+    if wait_until_complete:
+        dataset.poll_until_ingestion_completed()
+    return dataset
 
 
 def upload_dataset(
@@ -117,13 +125,15 @@ def upload_dataset(
     description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
+    *,
+    wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a .csv, .csv.gz, or .parquet file."""
     path = Path(path)
     file_type = FileType.from_path_dataset(path)
     conn = get_default_connection()
     with open(path, "rb") as f:
-        return conn.create_dataset_from_io(
+        dataset = conn.create_dataset_from_io(
             f,
             name,
             timestamp_column=timestamp_column,
@@ -131,6 +141,9 @@ def upload_dataset(
             file_type=file_type,
             description=description,
         )
+    if wait_until_complete:
+        dataset.poll_until_ingestion_completed()
+    return dataset
 
 
 def get_dataset_by_rid(rid: str) -> Dataset:
@@ -177,6 +190,7 @@ def get_run_by_rid(rid: str) -> Run:
 
 
 def search_runs(
+    *,
     start: str | datetime | IntegralNanosecondsUTC | None = None,
     end: str | datetime | IntegralNanosecondsUTC | None = None,
     exact_title: str | None = None,
