@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import shutil
 from datetime import datetime
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Mapping, Sequence
+from typing import TYPE_CHECKING, BinaryIO
 
 import dateutil.parser
 
@@ -120,7 +119,7 @@ def upload_polars(
 
 
 def upload_csv(
-    path: Path | str,
+    file: Path | str,
     name: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
@@ -129,7 +128,7 @@ def upload_csv(
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file"""
-    path = Path(path)
+    path = Path(file)
     conn = get_default_connection()
     with open(path, "rb") as f:
         dataset = conn.create_dataset_from_io(
@@ -199,13 +198,14 @@ def search_runs(
 
 
 def upload_attachment(
-    path: Path | str,
+    file: Path | str,
     title: str,
     description: str | None = None,
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
+    path = Path(file)
     conn = get_default_connection()
-    file_type = FileType.from_path(Path(path))
+    file_type = FileType.from_path(path)
     with open(path, "rb") as f:
         return conn.create_attachment_from_io(f, title, file_type, description)
 
