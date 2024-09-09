@@ -161,9 +161,9 @@ def create_run(
     conn = get_default_connection()
     return conn.create_run(
         title,
-        "" if description is None else description,
         start=_parse_timestamp(start),
         end=_parse_timestamp(end),
+        description=description,
     )
 
 
@@ -235,7 +235,7 @@ def upload_attachment(
     conn = get_default_connection()
     file_type = FileType.from_path(Path(path))
     with open(path, "rb") as f:
-        return conn.create_attachment_from_io(f, title, "" if description is None else description, file_type)
+        return conn.create_attachment_from_io(f, title, file_type, description)
 
 
 def get_attachment(rid: str) -> Attachment:

@@ -341,7 +341,7 @@ class Attachment:
         if mkdir:
             path.mkdir(exist_ok=True, parents=True)
         with open(path, "wb") as wf:
-            shutil.copyfileobj(Attachment.get_contents(), wf)
+            shutil.copyfileobj(self.get_contents(), wf)
 
     @classmethod
     def _from_conjure(
@@ -400,9 +400,9 @@ class NominalClient:
     def create_run(
         self,
         title: str,
-        description: str,
         start: datetime | IntegralNanosecondsUTC,
         end: datetime | IntegralNanosecondsUTC,
+        description: str | None = None,
         *,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
@@ -413,7 +413,7 @@ class NominalClient:
         request = scout_run_api.CreateRunRequest(
             attachments=[_rid_from_instance_or_string(a) for a in attachments],
             data_sources={},
-            description=description,
+            description=description or "",
             labels=list(labels),
             links=[],
             properties={} if properties is None else dict(properties),
@@ -552,8 +552,8 @@ class NominalClient:
         self,
         attachment: BinaryIO,
         title: str,
-        description: str,
         file_type: FileType = FileTypes.BINARY,
+        description: str | None = None,
         *,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
@@ -573,7 +573,7 @@ class NominalClient:
 
         s3_path = put_multipart_upload(self._auth_header, attachment, filename, file_type.mimetype, self._upload_client)
         request = attachments_api.CreateAttachmentRequest(
-            description=description,
+            description=description or "",
             labels=list(labels),
             properties={} if properties is None else dict(properties),
             s3_path=s3_path,
