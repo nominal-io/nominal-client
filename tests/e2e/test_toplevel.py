@@ -5,33 +5,11 @@ from unittest import mock
 
 import pandas as pd
 import polars as pl
-import pytest
-import nominal.nominal as nm
+import nominal as nm
 from nominal import _utils
+from nominal.nominal import _parse_timestamp
 
 from . import _create_random_start_end
-
-
-@pytest.fixture(scope="session", autouse=True)
-def set_conn(base_url, auth_token):
-    nm.set_default_connection(base_url, auth_token)
-
-
-@pytest.fixture(scope="session")
-def csv_data():
-    return b"""\
-timestamp,temperature,humidity
-2024-09-05T18:00:00Z,20,50
-2024-09-05T18:01:00Z,21,49
-2024-09-05T18:02:00Z,22,48
-2024-09-05T18:03:00Z,23,47
-2024-09-05T18:04:00Z,24,46
-2024-09-05T18:05:00Z,25,45
-2024-09-05T18:06:00Z,26,44
-2024-09-05T18:07:00Z,27,43
-2024-09-05T18:08:00Z,28,42
-2024-09-05T18:09:00Z,29,41
-"""
 
 
 def test_upload_csv(csv_data):
@@ -120,8 +98,8 @@ def test_get_run():
     assert run2.rid == run.rid != ""
     assert run2.title == run.title == title
     assert run2.description == run.description == desc
-    assert run2.start == run.start == nm._parse_timestamp(start)
-    assert run2.end == run.end == nm._parse_timestamp(end)
+    assert run2.start == run.start == _parse_timestamp(start)
+    assert run2.end == run.end == _parse_timestamp(end)
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
@@ -139,8 +117,8 @@ def test_search_runs():
     assert run2.rid == run.rid != ""
     assert run2.title == run.title == title
     assert run2.description == run.description == desc
-    assert run2.start == run.start == nm._parse_timestamp(start)
-    assert run2.end == run.end == nm._parse_timestamp(end)
+    assert run2.start == run.start == _parse_timestamp(start)
+    assert run2.end == run.end == _parse_timestamp(end)
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
