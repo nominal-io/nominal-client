@@ -46,7 +46,7 @@ __all__ = [
     "Run",
     "Dataset",
     "Attachment",
-    "LogSetMetadata",
+    "LogSet",
     "IntegralNanosecondsUTC",
     "CustomTimestampFormat",
     "NominalIngestError",
@@ -280,7 +280,7 @@ class Dataset:
         )
 
 @dataclass(frozen=True)
-class LogSetMetadata:
+class LogSet:
     rid: str
     created_by: str
     name: str
@@ -293,18 +293,41 @@ class LogSetMetadata:
     _client: NominalClient = field(repr=False)
 
     def attach_logs_and_finalize_request(self, logs: list[Log]) -> Self:
-        conjure_logs = [log._to_conjure() for log in logs]
+        """
+        Attaches a list of logs to this log set and finalizes it. A logset is not considered readable
+        until it has been finalized. Once finalized, the logset is immutable.
+        """
         request = datasource_logset_api.AttachLogsAndFinalizeRequest(
-            logs=conjure_logs,
+            logs=[log._to_conjure() for log in logs],
         )
         response = self._client._logset_client.attach_logs_and_finalize(
-            auth_header = self._client._auth_header, 
-            log_set_rid = self.rid, 
+            auth_header = self._client._auth_header,
+            log_set_rid = self.rid,
             request = request
         )
         log_set_metadata = self.__class__._from_conjure(self._client, response)
         update_dataclass(self, log_set_metadata, fields=self.__dataclass_fields__)
         return self
+    
+    def search_logs(
+            self,
+            page_size: int | None = None,
+            next_page_token: str | None = None,
+        ):
+        """
+        Search for logs within this log set.
+        """
+        request = datasource_logset_api.SearchLogsRequest(
+            token = next_page_token,
+            page_size = page_size,
+        )
+        response = self._client._logset_client.search_logs(
+            self._client._auth_header,
+            log_set_rid = self.rid,
+            request = request,
+        )
+
+        return SearchLogsResponse._from_conjure(response)
 
     @classmethod
     def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
@@ -353,7 +376,7 @@ class SearchLogsResponse:
     next_page_token: str | None = None
 
     @classmethod
-    def _from_conjure(cls, client: NominalClient, response: datasource_logset_api.SearchLogsResponse) -> Self:
+    def _from_conjure(cls, response: datasource_logset_api.SearchLogsResponse) -> Self:
         return cls(
             logs = [Log._from_conjure(log) for log in response.logs],
             next_page_token = response.next_page_token,
@@ -566,7 +589,7 @@ class NominalClient:
         timestamp_type: str,
         description: str | None = None,
         origin_metadata: Mapping[str, str] = MappingProxyType({}),
-    ) -> LogSetMetadata:
+    ) -> LogSet:
         """
         Creates a log set, to which logs can be attached using `attach-and-finalize`. The logs within a logset are
         not searchable until the logset is finalized.
@@ -588,30 +611,14 @@ class NominalClient:
             timestamp_type=timestamp_type_enum.to_conjure(),
         )
         response = self._logset_client.create(self._auth_header, request)
-        return LogSetMetadata._from_conjure(self, response)
+        return LogSet._from_conjure(self, response)
 
-    def get_log_set_metadata(self, log_set_rid) -> LogSetMetadata:
-        """Returns metadata about a log set given its RID."""
+    def get_log_set(self, log_set_rid: str) -> LogSet:
+        """
+        Retrieve a LogSet along with its metadata given its RID.
+        """
         response = self._logset_client.get_log_set_metadata(self._auth_header, log_set_rid)
-        return LogSetMetadata._from_conjure(self, response)
-
-    def search_logs(
-            self,
-            log_set_rid: str,
-            page_size: int | None = None,
-            next_page_token: str | None = None,
-        ):
-        request = datasource_logset_api.SearchLogsRequest(
-            token = next_page_token,
-            page_size = page_size,
-        )
-        response = self._logset_client.search_logs(
-            self._auth_header,
-            log_set_rid = log_set_rid,
-            request = request,
-        )
-
-        return SearchLogsResponse._from_conjure(self, response)
+        return LogSet._from_conjure(self, response)
 
     def create_dataset_from_io(
         self,
