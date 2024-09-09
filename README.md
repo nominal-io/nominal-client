@@ -1,73 +1,82 @@
 # ⬖ Nominal
-Python client for Nominal test data, storage, &amp; compute
 
-🚧 WIP - API and syntax subject to change
+Python client for Nominal test data, storage, and compute.
 
 ## Install
 
-> pip3 install nominal --upgrade
+```sh
+python3 -m pip install nominal --upgrade
+```
 
 ## Usage
 
+```py
+import nominal as nm
+```
+
 ### Setup
 
-Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on your Nominal tenant
+Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on your Nominal tenant. Then, set the Nominal connection:
 
 ```py
-import nominal as nm
-nm.cloud.set_token(...)
+nm.set_default_connection(
+    base_url='https://api.gov.nominal.io/api',
+    token='eyJ...',  # replace with your API key from /sandbox
+)
 ```
 
-### API base URL is set to prod by default
+### Upload a Dataset
 
 ```py
-import nominal as nm
-nm.cloud.set_base_url('PROD') # Set to 'STAGING' for development
-nm.cloud.get_base_url()
-# 'https://api.gov.nominal.io/api'
+dataset = nm.upload_csv(
+    '../path/to/data.csv',
+    name='Stand A',
+    timestamp_column='timestamp',
+    timestamp_type='epoch_seconds',
+)
+print('Uploaded dataset:', dataset.rid)
 ```
 
-### Upload a Dataset (4 lines)
+### Create a Run
 
 ```py
-import nominal as nm
-from nominal import Ingest, Dataset
-dataset = Dataset(nm.data.penguins())
-# dataset = Ingest().read('../path/to/your/data.csv')
-dataset.upload()
+run = nm.create_run(
+    name='Run A',
+    start='2024-09-09T12:35:00Z',
+    start='2024-09-09T13:18:00Z',
+)
+print("Created run:", run.rid)
 ```
 
-### Upload a Run (4 lines)
+### Update metadata of an existing Run
 
 ```py
-import nominal as nm
-from nominal import Run, Dataset
-r = Run(datasets=[Dataset(nm.data.penguins())])
-# r = Run(path='../path/to/your/data.csv')
-r.upload()
+run = nm.get_run('ri.scout.gov-staging.run.ce205f7e-9ef1-4a8b-92ae-11edc77441c6')
+run.update(name='New Run Title')
 ```
-
-### Update metadata of an existing Run (4 lines)
-
-```py
-from nominal import Run
-r = Run(rid = 'ri.scout.gov-staging.run.ce205f7e-9ef1-4a8b-92ae-11edc77441c6')
-r.title = 'my_new_run_title'
-r.update()
-```
-
-### Compare changes made to a Run locally
-
-```py
-r.title = 'my_new__new_run_title'
-r.diff()
-```
-
-### Apply a Check to a Run
-
-TODO
 
 ## Development
+
+### Testing
+
+Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end tests in `tests/e2e`. Run unit tests with
+
+```sh
+poetry run pytest
+```
+
+To run end-to-end (e2e) tests, you need to point `pytest` the e2e test directory and specify command-line arguments for connecting to the Nominal platform to test against. Run the e2e tests with
+
+```sh
+poetry run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
+```
+
+### Static analysis
+
+```sh
+poetry run mypy nominal
+```
+
 
 Install the following VSCode extensions:
 
@@ -87,17 +96,3 @@ And add the following lines to `User Settings (JSON)`:
 ```
 
 To make sure your code is linted properly on save.
-
-## Testing
-
-Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end tests in `tests/e2e`. Run unit tests with
-
-```
-poetry run pytest
-```
-
-To run end-to-end (e2e) tests, you need to point `pytest` the e2e test directory and specify command-line arguments for connecting to the Nominal platform to test against. Run the e2e tests with
-
-```
-poetry run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
-```
