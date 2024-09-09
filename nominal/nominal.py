@@ -154,14 +154,14 @@ def get_dataset(rid: str) -> Dataset:
 
 def create_run(
     title: str,
-    description: str,
     start: datetime | str | IntegralNanosecondsUTC,
     end: datetime | str | IntegralNanosecondsUTC,
+    description: str | None = None,
 ) -> Run:
     conn = get_default_connection()
     return conn.create_run(
         title,
-        description,
+        "" if description is None else description,
         start=_parse_timestamp(start),
         end=_parse_timestamp(end),
     )
