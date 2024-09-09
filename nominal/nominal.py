@@ -130,7 +130,6 @@ def upload_csv(
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file"""
     path = Path(path)
-    file_type = FileType.from_path_dataset(path)
     conn = get_default_connection()
     with open(path, "rb") as f:
         dataset = conn.create_dataset_from_io(
@@ -138,7 +137,7 @@ def upload_csv(
             name,
             timestamp_column=timestamp_column,
             timestamp_type=timestamp_type,
-            file_type=file_type,
+            file_type=FileTypes.CSV,
             description=description,
         )
     if wait_until_complete:
@@ -197,33 +196,6 @@ def search_runs(
         property=property,
     )
     return list(runs)
-
-
-def add_dataset_to_run(ref_name: str, dataset: Dataset, run: Run) -> None:
-    """Add a dataset to this run.
-
-    Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
-    should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
-    """
-    _ensure_same_clients(dataset, run)
-    run.add_dataset(ref_name, dataset)
-
-
-def list_datasets_for_run(run: Run) -> list[tuple[str, Dataset]]:
-    """List the datasets associated with this run.
-    Returns (ref_name, dataset) pairs.
-    """
-    return list(run.list_datasets())
-
-
-def add_attachment_to_run(attachment: Attachment, run: Run) -> None:
-    """Add attachments that have already been uploaded to the run."""
-    run.add_attachments([attachment])
-
-
-def list_attachments_for_run(run: Run) -> list[Attachment]:
-    """List attachments that have been associated to the run."""
-    return list(run.list_attachments())
 
 
 def upload_attachment(

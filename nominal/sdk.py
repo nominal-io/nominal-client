@@ -78,10 +78,7 @@ class Run:
         }
         self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
 
-    def list_datasets(self) -> Iterable[tuple[str, Dataset]]:
-        """List the datasets associated with this run.
-        Yields (ref_name, dataset) pairs.
-        """
+    def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
         run = self._client._run_client.get_run(self._client._auth_header, self.rid)
         dataset_rids_by_ref_name = {}
         for ref_name, source in run.data_sources.items():
@@ -92,6 +89,12 @@ class Run:
         for ref_name, rid in dataset_rids_by_ref_name.items():
             dataset = datasets_by_rids[rid]
             yield (ref_name, dataset)
+
+    def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
+        """List the datasets associated with this run.
+        Returns (ref_name, dataset) pairs for each dataset.
+        """
+        return list(self._iter_list_datasets())
 
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Add attachments that have already been uploaded to this run.
@@ -112,9 +115,12 @@ class Run:
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
 
-    def list_attachments(self) -> Iterable[Attachment]:
+    def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._client._run_client.get_run(self._client._auth_header, self.rid)
         return self._client.get_attachments(run.attachments)
+
+    def list_attachments(self) -> Sequence[Attachment]:
+        return list(self._iter_list_attachments())
 
     def update(
         self,
@@ -443,7 +449,7 @@ class NominalClient:
                 next_page_token=response.next_page_token,
             )
 
-    def search_runs(
+    def _iter_search_runs(
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
@@ -451,12 +457,6 @@ class NominalClient:
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Iterable[Run]:
-        """Search for runs meeting the specified filters.
-        Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
-        - `start` and `end` times are both inclusive
-        - `exact_title` is case-insensitive
-        - `property` is a key-value pair, e.g. ("name", "value")
-        """
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
             query=_create_search_runs_query(start, end, exact_title, label, property),
@@ -467,6 +467,22 @@ class NominalClient:
         )
         for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self, run)
+
+    def search_runs(
+        self,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        end: datetime | IntegralNanosecondsUTC | None = None,
+        exact_title: str | None = None,
+        label: str | None = None,
+        property: tuple[str, str] | None = None,
+    ) -> Sequence[Run]:
+        """Search for runs meeting the specified filters.
+        Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
+        - `start` and `end` times are both inclusive
+        - `exact_title` is case-insensitive
+        - `property` is a key-value pair, e.g. ("name", "value")
+        """
+        return list(self._iter_search_runs(start, end, exact_title, label, property))
 
     def create_dataset_from_io(
         self,
@@ -526,11 +542,14 @@ class NominalClient:
         response = _get_dataset(self._auth_header, self._catalog_client, dataset_rid)
         return Dataset._from_conjure(self, response)
 
-    def get_datasets(self, datasets: Iterable[Dataset] | Iterable[str]) -> Iterable[Dataset]:
-        """Retrieve datasets by dataset or dataset RID."""
+    def _iter_get_datasets(self, datasets: Iterable[Dataset] | Iterable[str]) -> Iterable[Dataset]:
         dataset_rids = (_rid_from_instance_or_string(ds) for ds in datasets)
         for ds in _get_datasets(self._auth_header, self._catalog_client, dataset_rids):
             yield Dataset._from_conjure(self, ds)
+
+    def get_datasets(self, datasets: Iterable[Dataset] | Iterable[str]) -> Sequence[Dataset]:
+        """Retrieve datasets by dataset or dataset RID."""
+        return list(self._iter_get_datasets(datasets))
 
     def _search_datasets(self) -> Iterable[Dataset]:
         # TODO(alkasm): search filters
@@ -588,13 +607,15 @@ class NominalClient:
         response = self._attachment_client.get(self._auth_header, attachment_rid)
         return Attachment._from_conjure(self, response)
 
-    def get_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> Iterable[Attachment]:
-        """Retrieve multiple attachments by attachment or attachment RIDs."""
+    def _iter_get_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> Iterable[Attachment]:
         rids = [_rid_from_instance_or_string(a) for a in attachments]
         request = attachments_api.GetAttachmentsRequest(attachment_rids=rids)
         response = self._attachment_client.get_batch(self._auth_header, request)
         for a in response.response:
             yield Attachment._from_conjure(self, a)
+
+    def get_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> Sequence[Attachment]:
+        return list(self._iter_get_attachments(attachments))
 
 
 def _get_datasets(
