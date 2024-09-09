@@ -49,12 +49,12 @@ def get_default_connection() -> NominalClient:
     return _default_connection
 
 
-def upload_dataset_from_pandas(
+def upload_pandas(
     df: pd.DataFrame,
     name: str,
-    description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
+    description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -85,12 +85,12 @@ def upload_dataset_from_pandas(
     return dataset
 
 
-def upload_dataset_from_polars(
+def upload_polars(
     df: pl.DataFrame,
     name: str,
-    description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
+    description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -122,9 +122,9 @@ def upload_dataset_from_polars(
 def upload_dataset(
     path: Path | str,
     name: str,
-    description: str,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
+    description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
