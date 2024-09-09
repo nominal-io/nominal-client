@@ -119,7 +119,7 @@ def upload_polars(
     return dataset
 
 
-def upload_dataset(
+def upload_csv(
     path: Path | str,
     name: str,
     timestamp_column: str,
@@ -128,7 +128,7 @@ def upload_dataset(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a .csv, .csv.gz, or .parquet file."""
+    """Create a dataset in the Nominal platform from a .csv or .csv.gz file"""
     path = Path(path)
     file_type = FileType.from_path_dataset(path)
     conn = get_default_connection()
