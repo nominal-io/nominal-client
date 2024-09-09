@@ -1,6 +1,5 @@
 import pytest
 from nominal.sdk import NominalClient
-import nominal.nominal as nm
 
 
 def pytest_addoption(parser):
