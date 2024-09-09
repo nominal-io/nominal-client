@@ -51,7 +51,7 @@ __all__ = [
 @dataclass(frozen=True)
 class Run:
     rid: str
-    title: str
+    name: str
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
@@ -122,7 +122,7 @@ class Run:
     def update(
         self,
         *,
-        title: str | None = None,
+        name: str | None = None,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
@@ -143,7 +143,7 @@ class Run:
             description=description,
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
-            title=title,
+            title=name,
         )
         response = self._client._run_client.update_run(self._client._auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._client, response)
@@ -154,7 +154,7 @@ class Run:
     def _from_conjure(cls, nominal_client: NominalClient, run: scout_run_api.Run) -> Self:
         return cls(
             rid=run.rid,
-            title=run.title,
+            name=run.title,
             description=run.description,
             properties=MappingProxyType(run.properties),
             labels=tuple(run.labels),
@@ -291,7 +291,7 @@ class Dataset:
 @dataclass(frozen=True)
 class Attachment:
     rid: str
-    title: str
+    name: str
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
@@ -300,7 +300,7 @@ class Attachment:
     def update(
         self,
         *,
-        title: str | None = None,
+        name: str | None = None,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
@@ -320,7 +320,7 @@ class Attachment:
             description=description,
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
-            title=title,
+            title=name,
         )
         response = self._client._attachment_client.update(self._client._auth_header, request, self.rid)
         attachment = self.__class__._from_conjure(self._client, response)
@@ -354,7 +354,7 @@ class Attachment:
     ) -> Self:
         return cls(
             rid=attachment.rid,
-            title=attachment.title,
+            name=attachment.title,
             description=attachment.description,
             properties=MappingProxyType(attachment.properties),
             labels=tuple(attachment.labels),
@@ -402,7 +402,7 @@ class NominalClient:
 
     def create_run(
         self,
-        title: str,
+        name: str,
         start: datetime | IntegralNanosecondsUTC,
         end: datetime | IntegralNanosecondsUTC,
         description: str | None = None,
@@ -421,7 +421,7 @@ class NominalClient:
             links=[],
             properties={} if properties is None else dict(properties),
             start_time=_flexible_time_to_conjure_scout_run_api(start),
-            title=title,
+            title=name,
             end_time=_flexible_time_to_conjure_scout_run_api(end),
         )
         response = self._run_client.create_run(self._auth_header, request)
@@ -450,13 +450,13 @@ class NominalClient:
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        exact_title: str | None = None,
+        exact_name: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
-            query=_create_search_runs_query(start, end, exact_title, label, property),
+            query=_create_search_runs_query(start, end, exact_name, label, property),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
@@ -469,17 +469,17 @@ class NominalClient:
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        exact_title: str | None = None,
+        exact_name: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
         - `start` and `end` times are both inclusive
-        - `exact_title` is case-insensitive
+        - `exact_name` is case-insensitive
         - `property` is a key-value pair, e.g. ("name", "value")
         """
-        return list(self._iter_search_runs(start, end, exact_title, label, property))
+        return list(self._iter_search_runs(start, end, exact_name, label, property))
 
     def create_dataset_from_io(
         self,
@@ -567,7 +567,7 @@ class NominalClient:
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,
-        title: str,
+        name: str,
         file_type: FileType = FileTypes.BINARY,
         description: str | None = None,
         *,
@@ -584,7 +584,7 @@ class NominalClient:
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(title)
+        urlsafe_name = urllib.parse.quote_plus(name)
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(self._auth_header, attachment, filename, file_type.mimetype, self._upload_client)
@@ -593,7 +593,7 @@ class NominalClient:
             labels=list(labels),
             properties={} if properties is None else dict(properties),
             s3_path=s3_path,
-            title=title,
+            title=name,
         )
         response = self._attachment_client.create(self._auth_header, request)
         return Attachment._from_conjure(self, response)
@@ -646,7 +646,7 @@ def _rid_from_instance_or_string(value: Attachment | Run | Dataset | str) -> str
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
     end: datetime | IntegralNanosecondsUTC | None = None,
-    exact_title: str | None = None,
+    exact_name: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
 ) -> scout_run_api.SearchQuery:
@@ -657,8 +657,8 @@ def _create_search_runs_query(
     if end is not None:
         q = scout_run_api.SearchQuery(end_time_inclusive=_flexible_time_to_conjure_scout_run_api(end))
         queries.append(q)
-    if exact_title is not None:
-        q = scout_run_api.SearchQuery(exact_match=exact_title)
+    if exact_name is not None:
+        q = scout_run_api.SearchQuery(exact_match=exact_name)
         queries.append(q)
     if label is not None:
         q = scout_run_api.SearchQuery(label=label)

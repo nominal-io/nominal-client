@@ -74,13 +74,13 @@ def test_get_dataset(csv_data):
 
 
 def test_create_run():
-    title = f"run-{uuid4()}"
+    name = f"run-{uuid4()}"
     desc = f"top-level test to create a run {uuid4()}"
     start, end = _create_random_start_end()
-    run = nm.create_run(title, start, end, desc)
+    run = nm.create_run(name, start, end, desc)
 
     assert run.rid != ""
-    assert run.title == title
+    assert run.name == name
     assert run.description == desc
     assert run.start == _utils._datetime_to_integral_nanoseconds(start)
     assert run.end == _utils._datetime_to_integral_nanoseconds(end)
@@ -89,14 +89,14 @@ def test_create_run():
 
 
 def test_get_run():
-    title = f"run-{uuid4()}"
+    name = f"run-{uuid4()}"
     desc = f"top-level test to get a run {uuid4()}"
     start, end = _create_random_start_end()
-    run = nm.create_run(title, start, end, desc)
+    run = nm.create_run(name, start, end, desc)
     run2 = nm.get_run(run.rid)
 
     assert run2.rid == run.rid != ""
-    assert run2.title == run.title == title
+    assert run2.name == run.name == name
     assert run2.description == run.description == desc
     assert run2.start == run.start == _parse_timestamp(start)
     assert run2.end == run.end == _parse_timestamp(end)
@@ -106,16 +106,16 @@ def test_get_run():
 
 def test_search_runs():
     # TODO: Add more search criteria
-    title = f"run-{uuid4()}"
+    name = f"run-{uuid4()}"
     desc = f"top-level test to search for a run {uuid4()}"
     start, end = _create_random_start_end()
-    run = nm.create_run(title, start, end, desc)
+    run = nm.create_run(name, start, end, desc)
     runs = nm.search_runs(start=start, end=end)
     assert len(runs) == 1
     run2 = runs[0]
 
     assert run2.rid == run.rid != ""
-    assert run2.title == run.title == title
+    assert run2.name == run.name == name
     assert run2.description == run.description == desc
     assert run2.start == run.start == _parse_timestamp(start)
     assert run2.end == run.end == _parse_timestamp(end)
@@ -131,7 +131,7 @@ def test_upload_attachment(csv_data):
         at = nm.upload_attachment("fake_path.csv", at_title, at_desc)
 
     assert at.rid != ""
-    assert at.title == at_title
+    assert at.name == at_title
     assert at.description == at_desc
     assert len(at.properties) == 0
     assert len(at.labels) == 0
@@ -146,7 +146,7 @@ def test_get_attachment(csv_data):
 
     a2 = nm.get_attachment(at.rid)
     assert a2.rid == at.rid != ""
-    assert a2.title == at.title == at_title
+    assert a2.name == at.name == at_title
     assert a2.description == at.description == at_desc
     assert a2.properties == at.properties == {}
     assert a2.labels == at.labels == ()

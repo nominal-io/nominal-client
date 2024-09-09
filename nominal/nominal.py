@@ -151,14 +151,14 @@ def get_dataset(rid: str) -> Dataset:
 
 
 def create_run(
-    title: str,
+    name: str,
     start: datetime | str | IntegralNanosecondsUTC,
     end: datetime | str | IntegralNanosecondsUTC,
     description: str | None = None,
 ) -> Run:
     conn = get_default_connection()
     return conn.create_run(
-        title,
+        name,
         start=_parse_timestamp(start),
         end=_parse_timestamp(end),
         description=description,
@@ -175,7 +175,7 @@ def search_runs(
     *,
     start: str | datetime | IntegralNanosecondsUTC | None = None,
     end: str | datetime | IntegralNanosecondsUTC | None = None,
-    exact_title: str | None = None,
+    exact_name: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
 ) -> list[Run]:
@@ -183,14 +183,14 @@ def search_runs(
 
     Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
     - `start` and `end` times are both inclusive
-    - `exact_title` is case-insensitive
+    - `exact_name` is case-insensitive
     - `property` is a key-value pair, e.g. ("name", "value")
     """
     conn = get_default_connection()
     runs = conn.search_runs(
         start=None if start is None else _parse_timestamp(start),
         end=None if end is None else _parse_timestamp(end),
-        exact_title=exact_title,
+        exact_name=exact_name,
         label=label,
         property=property,
     )
@@ -199,7 +199,7 @@ def search_runs(
 
 def upload_attachment(
     file: Path | str,
-    title: str,
+    name: str,
     description: str | None = None,
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
@@ -207,7 +207,7 @@ def upload_attachment(
     conn = get_default_connection()
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:
-        return conn.create_attachment_from_io(f, title, file_type, description)
+        return conn.create_attachment_from_io(f, name, file_type, description)
 
 
 def get_attachment(rid: str) -> Attachment:
