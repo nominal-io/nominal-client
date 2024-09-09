@@ -36,8 +36,6 @@ from ._utils import (
 from .exceptions import NominalIngestError, NominalIngestFailed
 
 
-_AllowedFileExtensions = Literal[".csv", ".csv.gz", ".parquet"]
-
 __all__ = [
     "NominalClient",
     "Run",
