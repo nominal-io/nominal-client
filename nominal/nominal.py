@@ -152,22 +152,6 @@ def get_dataset_by_rid(rid: str) -> Dataset:
     return conn.get_dataset(rid)
 
 
-def update_dataset(
-    dataset: Dataset,
-    *,
-    name: str | None = None,
-    description: str | None = None,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] | None = None,
-) -> Dataset:
-    """Update dataset metadata.
-    Updates the current instance and returns it.
-
-    Note: This replaces the metadata (rather than adding to it).
-    """
-    return dataset.update(name=name, description=description, properties=properties, labels=labels)
-
-
 def create_run(
     title: str,
     description: str,
@@ -215,22 +199,6 @@ def search_runs(
     return list(runs)
 
 
-def update_run(
-    run: Run,
-    *,
-    title: str | None = None,
-    description: str | None = None,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] | None = None,
-) -> Run:
-    """Update run metadata.
-    Updates the current instance and returns it.
-
-    Note: This replaces the metadata (rather than adding to it).
-    """
-    return run.update(title=title, description=description, properties=properties, labels=labels)
-
-
 def add_dataset_to_run(ref_name: str, dataset: Dataset, run: Run) -> None:
     """Add a dataset to this run.
 
@@ -274,22 +242,6 @@ def get_attachment_by_rid(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
     conn = get_default_connection()
     return conn.get_attachment(rid)
-
-
-def update_attachment(
-    attachment: Attachment,
-    *,
-    title: str | None = None,
-    description: str | None = None,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] | None = None,
-) -> Attachment:
-    """Update attachment metadata.
-    Updates the current instance and returns it.
-
-    Note: This replaces the metadata (rather than adding to it).
-    """
-    return attachment.update(title=title, description=description, properties=properties, labels=labels)
 
 
 def save_attachment(attachment: Attachment, path: Path | str, mkdir: bool = True) -> None:
