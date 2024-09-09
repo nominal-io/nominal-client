@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from functools import cache
 from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
@@ -30,6 +31,11 @@ _KEYRING_USER = "nominal-python-user"
 
 # global variable which `set_base_url()` is intended to modify
 _global_base_url = _DEFAULT_BASE_URL
+
+
+@cache
+def _get_or_create_connection(base_url: str, token: str) -> NominalClient:
+    return NominalClient.create(base_url, token)
 
 
 def set_base_url(base_url: str = _DEFAULT_BASE_URL) -> None:
@@ -62,7 +68,7 @@ def get_default_connection() -> NominalClient:
     token = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USER)
     if token is None:
         raise NominalError("No token set: initialize with `nm.set_token('eyJ...')`")
-    return NominalClient.create(_global_base_url, token)
+    return _get_or_create_connection(_global_base_url, token)
 
 
 def upload_pandas(
