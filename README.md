@@ -87,3 +87,17 @@ And add the following lines to `User Settings (JSON)`:
 ```
 
 To make sure your code is linted properly on save.
+
+## Testing
+
+Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end tests in `tests/e2e`. Run unit tests with
+
+```
+poetry run pytest
+```
+
+To run end-to-end (e2e) tests, you need to point `pytest` the e2e test directory and specify command-line arguments for connecting to the Nominal platform to test against. Run the e2e tests with
+
+```
+poetry run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
+```

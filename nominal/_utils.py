@@ -229,6 +229,13 @@ def _datetime_to_seconds_nanos(dt: datetime) -> tuple[int, int]:
     return seconds, nanos
 
 
+def _datetime_to_integral_nanoseconds(dt: datetime) -> IntegralNanosecondsUTC:
+    dt = dt.astimezone(timezone.utc)
+    seconds = int(dt.timestamp())
+    nanos = dt.microsecond * 1000
+    return seconds * 1_000_000_000 + nanos
+
+
 def construct_user_agent_string() -> str:
     """Constructs a user-agent string with system & Python metadata.
     E.g.: nominal-python/1.0.0b0 (macOS-14.4-arm64-arm-64bit) cpython/3.12.4
