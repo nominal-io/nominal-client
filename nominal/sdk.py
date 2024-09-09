@@ -7,7 +7,6 @@ import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
-from io import TextIOBase
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
 
