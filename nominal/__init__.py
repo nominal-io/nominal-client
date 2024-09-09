@@ -1,5 +1,6 @@
 from .nominal import (
-    set_default_connection,
+    set_base_url,
+    set_token,
     get_default_connection,
     upload_pandas,
     upload_polars,
@@ -15,7 +16,8 @@ from .nominal import (
 from .sdk import Dataset, Run, Attachment, NominalClient
 
 __all__ = [
-    "set_default_connection",
+    "set_base_url",
+    "set_token",
     "get_default_connection",
     "upload_pandas",
     "upload_polars",

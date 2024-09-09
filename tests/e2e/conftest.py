@@ -25,7 +25,8 @@ def client(base_url, auth_token):
 
 @pytest.fixture(scope="session", autouse=True)
 def set_conn(base_url, auth_token):
-    nm.set_default_connection(base_url, auth_token)
+    nm.set_base_url(base_url)
+    nm.set_token(auth_token)
 
 
 @pytest.fixture(scope="session")

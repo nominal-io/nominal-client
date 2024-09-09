@@ -45,7 +45,8 @@ def test_default_connection(mock_get: mock.Mock):
     try:
         test_url = str(uuid4())
         test_token = str(uuid4())
-        nm.set_default_connection(test_url, test_token)
+        nm.set_base_url(test_url)
+        nm.set_token(test_token)
         _ = nm.get_attachment("")
 
         assert mock_get.call_count == 1

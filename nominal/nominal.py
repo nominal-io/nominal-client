@@ -6,6 +6,7 @@ from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
 
 import dateutil.parser
+import keyring
 
 from .exceptions import NominalError
 from .sdk import Attachment, Dataset, NominalClient, Run
@@ -23,29 +24,45 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-_default_connection: NominalClient | None = None
+_DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
+_KEYRING_SERVICE = "nominal-python-client"
+_KEYRING_USER = "nominal-python-user"
+
+# global variable which `set_base_url()` is intended to modify
+_global_base_url = _DEFAULT_BASE_URL
 
 
-def set_default_connection(base_url: str, token: str) -> None:
-    """Set the default global connection to the Nominal platform.
+def set_base_url(base_url: str = _DEFAULT_BASE_URL) -> None:
+    """Set the default Nominal platform base url.
 
-    base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+    For typical production environments, the default is "https://api.gov.nominal.io/api".
+    For staging environments: "https://api-staging.gov.nominal.io/api".
+    For local development: "https://api.nominal.test".
+    """
+    global _global_base_url
+    _global_base_url = base_url
+
+
+def set_token(token: str) -> None:
+    """Set the default Nominal platform auth token.
+
+    Note that this sets the token on your system, and you don't need to set it every time you run a script.
+
     token: An API token to authenticate with. You can grab a client token from the Nominal sandbox, e.g.
         at https://app.gov.nominal.io/sandbox.
     """
-    global _default_connection
-    _default_connection = NominalClient.create(base_url, token)
+    keyring.set_password(_KEYRING_SERVICE, _KEYRING_USER, token)
 
 
 def get_default_connection() -> NominalClient:
-    """Retrieve the default global connection to the Nominal platform.
+    """Retrieve the default connection to the Nominal platform.
 
     Raises nominal.exceptions.NominalError if no global connection has been set.
     """
-    global _default_connection
-    if _default_connection is None:
-        raise NominalError("No default connection set: initialize with `set_default_connection(base_url, token)`")
-    return _default_connection
+    token = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USER)
+    if token is None:
+        raise NominalError("No token set: initialize with `nm.set_token('eyJ...')`")
+    return NominalClient.create(_global_base_url, token)
 
 
 def upload_pandas(
