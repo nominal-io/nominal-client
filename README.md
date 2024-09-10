@@ -76,7 +76,16 @@ poetry run mypy nominal
 
 ### Formatting
 
+To check (`I` is for `isort`):
+
 ```sh
-poetry run ruff format --check nominal
+poetry run ruff format --check
 poetry run ruff check --select I
+```
+
+To fix (`I` is for `isort`):
+
+```sh
+poetry run ruff format
+poetry run ruff check --select I --fix
 ```
