@@ -241,9 +241,12 @@ class Dataset:
         dataset: BinaryIO,
         timestamp_column: str,
         timestamp_type: TimestampColumnType,
-        file_type: FileType = FileTypes.CSV,
+        file_type: tuple[str, str] | FileType = FileTypes.CSV,
     ) -> None:
-        """Append to a dataset from a file-like object."""
+        """Append to a dataset from a file-like object.
+
+        file_type: a (extension, mimetype) pair describing the type of file.
+        """
 
         if not isinstance(timestamp_type, CustomTimestampFormat):
             if timestamp_type.startswith("relative"):

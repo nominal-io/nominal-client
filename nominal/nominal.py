@@ -150,16 +150,19 @@ def upload_csv(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a .csv or .csv.gz file"""
+    """Create a dataset in the Nominal platform from a .csv or .csv.gz file."""
     path = Path(file)
     conn = get_default_connection()
+    file_type = FileType.from_path_dataset(path)
+    if file_type.extension not in (".csv", "csv.gz"):
+        raise ValueError(f"file {file} must end with '.csv' or '.csv.gz'")
     with open(path, "rb") as f:
         dataset = conn.create_dataset_from_io(
             f,
             name,
             timestamp_column=timestamp_column,
             timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
+            file_type=file_type,
             description=description,
         )
     if wait_until_complete:
@@ -179,6 +182,10 @@ def create_run(
     end: datetime | str | IntegralNanosecondsUTC,
     description: str | None = None,
 ) -> Run:
+    """Create a run in the Nominal platform.
+
+    To add a dataset to the run, use `run.add_dataset()`.
+    """
     conn = get_default_connection()
     return conn.create_run(
         name,
