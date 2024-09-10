@@ -14,6 +14,8 @@ import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
 from typing_extensions import Self  # typing.Self in 3.11+
 
+from nominal import _config
+
 from ._api.combined import attachments_api, ingest_api, scout, scout_catalog, scout_run_api, upload_api
 from ._multipart import put_multipart_upload
 from ._utils import (
@@ -369,15 +371,16 @@ class NominalClient:
     _attachment_client: attachments_api.AttachmentService = field(repr=False)
 
     @classmethod
-    def create(cls, base_url: str, token: str, trust_store_path: str | None = None) -> Self:
+    def create(cls, base_url: str, token: str | None, trust_store_path: str | None = None) -> Self:
         """Create a connection to the Nominal platform.
 
-        base_url: The URL of the Nominal API platform, e.g. https://api.gov.nominal.io/api.
-        token: An API token to authenticate with. You can grab a client token from the Nominal sandbox, e.g.
-            at https://app.gov.nominal.io/sandbox.
+        base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+        token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
         trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
             certifi's trust store is used.
         """
+        if token is None:
+            token = _config.get_token(base_url)
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         cfg = ServiceConfiguration(uris=[base_url], security=SslConfiguration(trust_store_path=trust_store_path))
 

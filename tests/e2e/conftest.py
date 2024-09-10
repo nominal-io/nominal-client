@@ -1,3 +1,6 @@
+from typing import Iterator
+from unittest import mock
+
 import pytest
 
 import nominal as nm
@@ -19,15 +22,11 @@ def base_url(pytestconfig):
     return pytestconfig.getoption("base_url")
 
 
-@pytest.fixture(scope="session")
-def client(base_url, auth_token):
-    return NominalClient.create(base_url=base_url, token=auth_token)
-
-
 @pytest.fixture(scope="session", autouse=True)
-def set_conn(base_url, auth_token):
-    nm.set_base_url(base_url)
-    nm.set_token(auth_token)
+def set_connection(base_url, auth_token) -> Iterator[None]:
+    client = NominalClient.create(base_url=base_url, token=auth_token)
+    with mock.patch("nominal.nominal.get_default_client", return_value=client):
+        yield
 
 
 @pytest.fixture(scope="session")

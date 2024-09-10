@@ -9,7 +9,6 @@ from typing_extensions import Self  # typing.Self in 3.11+
 from nominal.exceptions import NominalConfigError
 
 _DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.nominal.yml").expanduser()
-_DEFAULT_BASE_URL = "api.gov.nominal.io/api"
 
 
 class NominalConfig(pydantic.BaseModel):
@@ -37,7 +36,24 @@ class NominalConfig(pydantic.BaseModel):
         if save:
             self.to_yaml()
 
-    def get_token(self, url: str = _DEFAULT_BASE_URL) -> str:
+    def get_token(self, url: str) -> str:
+        if url.startswith("http"):
+            raise ValueError("url {url!r} must not include the http:// or https:// scheme")
         if url in self.environments:
             return self.environments[url]
         raise NominalConfigError(f"url {url!r} not found in config")
+
+
+def get_token(url: str) -> str:
+    return NominalConfig.from_yaml().get_token(_strip_scheme(url))
+
+
+def set_token(url: str, token: str) -> None:
+    cfg = NominalConfig.from_yaml()
+    cfg.set_token(_strip_scheme(url), token)
+
+
+def _strip_scheme(url: str) -> str:
+    if "://" in url:
+        return url.split("://", 1)[-1]
+    return url

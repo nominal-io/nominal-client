@@ -1,13 +1,7 @@
 import click
 import click.core
 
-from ._config import _DEFAULT_NOMINAL_CONFIG_PATH, NominalConfig
-
-
-def validate_base_url(ctx: click.core.Context, param: str, value: str) -> str:
-    if value.startswith("http"):
-        raise click.BadParameter(f"base url {value!r} must not include the http:// or https:// scheme")
-    return value
+from nominal import _config
 
 
 @click.group()
@@ -21,13 +15,12 @@ def auth() -> None:
 
 
 @auth.command()
+@click.option("-u", "--base-url", default="https://api.gov.nominal.io/api", prompt=True)
 @click.option("-t", "--token", required=True, prompt=True)
-@click.option("-u", "--base-url", default="api.gov.nominal.io/api", prompt=True, callback=validate_base_url)
 def set_token(token: str, base_url: str) -> None:
     """Update the token for a given URL in the Nominal config file."""
-    path = _DEFAULT_NOMINAL_CONFIG_PATH
-    cfg = NominalConfig.from_yaml()
-    cfg.set_token(base_url, token, save=True)
+    path = _config._DEFAULT_NOMINAL_CONFIG_PATH
+    _config.set_token(base_url, token)
     print("Successfully set token for", base_url, "in", path)
 
 

@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING, BinaryIO
 
 import dateutil.parser
 
-from ._config import NominalConfig
+from nominal import _config
+
 from ._utils import (
     FileType,
     FileTypes,
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-_DEFAULT_BASE_URL = "api.gov.nominal.io/api"
+_DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
 
 # global variable which `set_base_url()` modifies
 _global_base_url = _DEFAULT_BASE_URL
@@ -38,25 +39,19 @@ def _get_or_create_connection(base_url: str, token: str) -> NominalClient:
 def set_base_url(base_url: str) -> None:
     """Set the default Nominal platform base url.
 
-    For production environments: "api.gov.nominal.io/api".
-    For staging environments: "api-staging.gov.nominal.io/api".
-    For local development: "api.nominal.test".
+    For production environments: "https://api.gov.nominal.io/api".
+    For staging environments: "https://api-staging.gov.nominal.io/api".
+    For local development: "https://api.nominal.test".
     """
-    cfg = NominalConfig.from_yaml()
-    if base_url not in cfg.environments:
-        raise ValueError(f"no token set for url {base_url!r}")
+    _config.get_token(base_url)
 
     global _global_base_url
     _global_base_url = base_url
 
 
-def get_default_connection() -> NominalClient:
-    """Retrieve the default connection to the Nominal platform.
-
-    Raises nominal.exceptions.NominalError if no global connection has been set.
-    """
-    cfg = NominalConfig.from_yaml()
-    token = cfg.get_token(_global_base_url)
+def get_default_client() -> NominalClient:
+    """Retrieve the default client to the Nominal platform."""
+    token = _config.get_token(_global_base_url)
     return _get_or_create_connection(_global_base_url, token)
 
 
@@ -70,7 +65,7 @@ def upload_pandas(
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a pandas.DataFrame."""
-    conn = get_default_connection()
+    conn = get_default_client()
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
 
@@ -106,7 +101,7 @@ def upload_polars(
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a polars.DataFrame."""
-    conn = get_default_connection()
+    conn = get_default_client()
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
         df.write_csv(w)
@@ -141,7 +136,7 @@ def upload_csv(
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file."""
     path = Path(file)
-    conn = get_default_connection()
+    conn = get_default_client()
     file_type = FileType.from_path_dataset(path)
     if file_type.extension not in (".csv", "csv.gz"):
         raise ValueError(f"file {file} must end with '.csv' or '.csv.gz'")
@@ -161,7 +156,7 @@ def upload_csv(
 
 def get_dataset(rid: str) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID."""
-    conn = get_default_connection()
+    conn = get_default_client()
     return conn.get_dataset(rid)
 
 
@@ -175,7 +170,7 @@ def create_run(
 
     To add a dataset to the run, use `run.add_dataset()`.
     """
-    conn = get_default_connection()
+    conn = get_default_client()
     return conn.create_run(
         name,
         start=_parse_timestamp(start),
@@ -186,7 +181,7 @@ def create_run(
 
 def get_run(rid: str) -> Run:
     """Retrieve a run from the Nominal platform by its RID."""
-    conn = get_default_connection()
+    conn = get_default_client()
     return conn.get_run(rid)
 
 
@@ -207,7 +202,7 @@ def search_runs(
     """
     if all([v is None for v in (start, end, exact_name, label, property)]):
         raise ValueError("must provide one of: start, end, exact_name, label, or property")
-    conn = get_default_connection()
+    conn = get_default_client()
     runs = conn.search_runs(
         start=None if start is None else _parse_timestamp(start),
         end=None if end is None else _parse_timestamp(end),
@@ -225,7 +220,7 @@ def upload_attachment(
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
     path = Path(file)
-    conn = get_default_connection()
+    conn = get_default_client()
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:
         return conn.create_attachment_from_io(f, name, file_type, description)
@@ -233,13 +228,13 @@ def upload_attachment(
 
 def get_attachment(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
-    conn = get_default_connection()
+    conn = get_default_client()
     return conn.get_attachment(rid)
 
 
 def download_attachment(rid: str, file: Path | str) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
-    conn = get_default_connection()
+    conn = get_default_client()
     attachment = conn.get_attachment(rid)
     attachment.write(Path(file))
 

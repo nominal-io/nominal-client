@@ -3,7 +3,7 @@ from .nominal import (
     download_attachment,
     get_attachment,
     get_dataset,
-    get_default_connection,
+    get_default_client,
     get_run,
     search_runs,
     set_base_url,
@@ -16,7 +16,7 @@ from .sdk import Attachment, Dataset, NominalClient, Run
 
 __all__ = [
     "set_base_url",
-    "get_default_connection",
+    "get_default_client",
     "upload_pandas",
     "upload_polars",
     "upload_csv",

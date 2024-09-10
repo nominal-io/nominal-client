@@ -6,6 +6,7 @@ from conjure_python_client import ConjureEncoder
 
 import nominal as nm
 from nominal._api.combined.attachments_api import Attachment as _Attachment
+from nominal._config import NominalConfig
 
 
 class MockGetAttachmentResponse(requests.Response):
@@ -28,8 +29,9 @@ class MockGetAttachmentResponse(requests.Response):
         pass
 
 
+@mock.patch("nominal._config.get_token", return_value="test-token")
 @mock.patch("requests.Session.request", return_value=MockGetAttachmentResponse())
-def test_default_connection(mock_get: mock.Mock):
+def test_default_connection(mock_get: mock.Mock, token: str) -> None:
     """Test setting the connection propagates through to requests.
 
     The mock.patch above patches all calls to the .request() method on any requests.Session object.
@@ -43,18 +45,15 @@ def test_default_connection(mock_get: mock.Mock):
     This is wrapped in a try/catch so that the default connection is restored after the test completes,
     regardless if the test is successful or not.
     """
+    original_base_url = nm.nominal._global_base_url
     try:
-        test_url = str(uuid4())
-        test_token = str(uuid4())
-        nm.set_base_url(test_url)
-        nm.set_token(test_token)
+        nm.set_base_url("test-url")
         _ = nm.get_attachment("")
-
         assert mock_get.call_count == 1
         assert len(mock_get.call_args_list) == 1
         call = mock_get.call_args_list[0]
         assert call.args[0] == "GET"
-        assert call.args[1].startswith(test_url)
-        assert call.kwargs["headers"]["Authorization"].endswith(test_token)
+        assert call.args[1].startswith("test-url")
+        assert call.kwargs["headers"]["Authorization"].endswith("test-token")
     finally:
-        nm._default_connection = None
+        nm.nominal._global_base_url = original_base_url
