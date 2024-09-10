@@ -12,3 +12,7 @@ class NominalIngestFailed(NominalIngestError):
 
 class NominalMultipartUploadFailed(NominalError):
     pass
+
+
+class NominalConfigError(NominalError):
+    pass

@@ -16,13 +16,10 @@ import nominal as nm
 
 ### Setup
 
-Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on your Nominal tenant. Then, set the Nominal connection:
+Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on your Nominal tenant. Then, set the Nominal connection parameters in a terminal:
 
-```py
-nm.set_default_connection(
-    base_url='https://api.gov.nominal.io/api',
-    token='eyJ...',  # replace with your API key from /sandbox
-)
+```sh
+python3 -m nominal auth set-token
 ```
 
 ### Upload a Dataset
@@ -71,28 +68,15 @@ To run end-to-end (e2e) tests, you need to point `pytest` the e2e test directory
 poetry run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
 ```
 
-### Static analysis
+### Static typing
 
 ```sh
 poetry run mypy nominal
 ```
 
+### Formatting
 
-Install the following VSCode extensions:
-
-- Ruff
-- isort
-
-And add the following lines to `User Settings (JSON)`:
-
+```sh
+poetry run ruff format --check nominal
+poetry run ruff check --select I
 ```
-    "[python]": {
-        "editor.formatOnSave": true,
-        "editor.defaultFormatter": "charliermarsh.ruff",
-        "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit",
-        },
-    },
-```
-
-To make sure your code is linted properly on save.

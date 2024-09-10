@@ -7,9 +7,9 @@ from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
 
 import dateutil.parser
-import keyring
 
-from .exceptions import NominalError
+from ._config import NominalConfig
+
 from .sdk import Attachment, Dataset, NominalClient, Run
 from ._utils import (
     FileType,
@@ -25,11 +25,9 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-_DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
-_KEYRING_SERVICE = "nominal-python-client"
-_KEYRING_USER = "nominal-python-user"
+_DEFAULT_BASE_URL = "api.gov.nominal.io/api"
 
-# global variable which `set_base_url()` is intended to modify
+# global variable which `set_base_url()` modifies
 _global_base_url = _DEFAULT_BASE_URL
 
 
@@ -38,26 +36,19 @@ def _get_or_create_connection(base_url: str, token: str) -> NominalClient:
     return NominalClient.create(base_url, token)
 
 
-def set_base_url(base_url: str = _DEFAULT_BASE_URL) -> None:
+def set_base_url(base_url: str) -> None:
     """Set the default Nominal platform base url.
 
-    For typical production environments, the default is "https://api.gov.nominal.io/api".
-    For staging environments: "https://api-staging.gov.nominal.io/api".
-    For local development: "https://api.nominal.test".
+    For production environments: "api.gov.nominal.io/api".
+    For staging environments: "api-staging.gov.nominal.io/api".
+    For local development: "api.nominal.test".
     """
+    cfg = NominalConfig.from_yaml()
+    if base_url not in cfg.environments:
+        raise ValueError(f"no token set for url {base_url!r}")
+
     global _global_base_url
     _global_base_url = base_url
-
-
-def set_token(token: str) -> None:
-    """Set the default Nominal platform auth token.
-
-    Note that this sets the token on your system, and you don't need to set it every time you run a script.
-
-    token: An API token to authenticate with. You can grab a client token from the Nominal sandbox, e.g.
-        at https://app.gov.nominal.io/sandbox.
-    """
-    keyring.set_password(_KEYRING_SERVICE, _KEYRING_USER, token)
 
 
 def get_default_connection() -> NominalClient:
@@ -65,9 +56,8 @@ def get_default_connection() -> NominalClient:
 
     Raises nominal.exceptions.NominalError if no global connection has been set.
     """
-    token = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USER)
-    if token is None:
-        raise NominalError("No token set: initialize with `nm.set_token('eyJ...')`")
+    cfg = NominalConfig.from_yaml()
+    token = cfg.get_token(_global_base_url)
     return _get_or_create_connection(_global_base_url, token)
 
 
