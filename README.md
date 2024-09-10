@@ -14,12 +14,20 @@ python3 -m pip install nominal --upgrade
 import nominal as nm
 ```
 
-### Setup
+### Connecting to Nominal
 
 Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on your Nominal tenant. Then, set the Nominal connection parameters in a terminal:
 
 ```sh
 python3 -m nominal auth set-token
+```
+
+This sets the auth token on your system, which can be updated with the same command.
+
+By default, the library uses `https://api.gov.nominal.io/api` as the base url to the Nominal platform. Your scripts can update this with `set_base_url()`, for example to set to staging:
+
+```py
+nm.set_base_url('https://api.gov.nominal.io/api')
 ```
 
 ### Upload a Dataset
