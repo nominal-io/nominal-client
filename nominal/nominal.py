@@ -4,13 +4,14 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, BinaryIO, Literal
 
 import dateutil.parser
 
 from nominal import _config
 
 from ._utils import (
+    CustomTimestampFormat,
     FileType,
     FileTypes,
     IntegralNanosecondsUTC,
@@ -179,6 +180,45 @@ def create_run(
     )
 
 
+def create_run_csv(
+    file: Path | str,
+    name: str,
+    timestamp_column: str,
+    timestamp_type: Literal[
+        "iso_8601",
+        "epoch_days",
+        "epoch_hours",
+        "epoch_minutes",
+        "epoch_seconds",
+        "epoch_milliseconds",
+        "epoch_microseconds",
+        "epoch_nanoseconds",
+    ],
+    description: str | None = None,
+) -> Run:
+    """Create a dataset from a CSV file, and create a run based on it.
+
+    This is a convenience function that combines `upload_csv()` and `create_run()` and can only be used with absolute
+    timestamps. For relative timestamps or custom formats, use `upload_dataset()` and `create_run()` separately.
+
+    The name and description are added to the run. The dataset is created with the name "Dataset for Run: {name}".
+    The reference name for the dataset in the run is "dataset".
+
+    The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
+    column.
+    """
+    try:
+        start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, timestamp_type)
+    except ValueError as e:
+        raise ValueError(
+            "`create_run_csv()` only supports absolute timestamps: use `upload_dataset()` and `create_run()` instead"
+        ) from e
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
+    run = create_run(name, start=start, end=end, description=description)
+    run.add_dataset("dataset", dataset)
+    return run
+
+
 def get_run(rid: str) -> Run:
     """Retrieve a run from the Nominal platform by its RID."""
     conn = get_default_client()
@@ -245,3 +285,35 @@ def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNan
     if isinstance(ts, str):
         ts = dateutil.parser.parse(ts)
     return _datetime_to_integral_nanoseconds(ts)
+
+
+def _get_start_end_timestamp_csv_file(
+    file: Path | str, timestamp_column: str, timestamp_type: TimestampColumnType
+) -> tuple[IntegralNanosecondsUTC, IntegralNanosecondsUTC]:
+    import pandas as pd
+
+    df = pd.read_csv(file)
+    ts_col = df[timestamp_column]
+    if isinstance(timestamp_type, CustomTimestampFormat) or timestamp_type.startswith("relative_"):
+        raise ValueError("timestamp_type must be 'iso_8601' or 'epoch_{unit}'")
+    if timestamp_type == "iso_8601":
+        ts_col = pd.to_datetime(ts_col)
+    else:
+        _, unit = timestamp_type.split("_")
+        pd_units = {
+            "days": "D",
+            "seconds": "s",
+            "milliseconds": "ms",
+            "microseconds": "us",
+            "nanoseconds": "ns",
+        }
+        if unit == "hours":
+            unit = "seconds"
+            ts_col *= 60 * 60
+        elif unit == "minutes":
+            unit = "seconds"
+            ts_col *= 60
+        ts_col = pd.to_datetime(ts_col, unit=pd_units[unit])
+
+    start, end = ts_col.min(), ts_col.max()
+    return IntegralNanosecondsUTC(start.to_datetime64()), IntegralNanosecondsUTC(end.to_datetime64())

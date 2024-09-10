@@ -1,5 +1,6 @@
 from .nominal import (
     create_run,
+    create_run_csv,
     download_attachment,
     get_attachment,
     get_dataset,
@@ -22,6 +23,7 @@ __all__ = [
     "upload_csv",
     "get_dataset",
     "create_run",
+    "create_run_csv",
     "get_run",
     "search_runs",
     "upload_attachment",

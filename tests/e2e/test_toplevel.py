@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import BytesIO
 from unittest import mock
 from uuid import uuid4
@@ -87,6 +87,34 @@ def test_create_run():
     assert run.end == _utils._datetime_to_integral_nanoseconds(end)
     assert len(run.properties) == 0
     assert len(run.labels) == 0
+
+
+def test_create_run_csv(csv_data):
+    name = f"run-{uuid4()}"
+    desc = f"top-level test to create a run and dataset {uuid4()}"
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
+        run = nm.create_run_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
+
+    start = datetime.fromisoformat("2024-09-05T18:00:00Z")
+    end = datetime.fromisoformat("2024-09-05T18:09:00Z")
+    assert run.rid != ""
+    assert run.name == name
+    assert run.description == desc
+    assert run.start == _utils._datetime_to_integral_nanoseconds(start)
+    assert run.end == _utils._datetime_to_integral_nanoseconds(end)
+    assert len(run.properties) == 0
+    assert len(run.labels) == 0
+
+    datasets = run.list_datasets()
+    assert len(datasets) == 1
+    ref_name, dataset = datasets[0]
+    assert ref_name == "dataset"
+    assert dataset.rid != ""
+    assert dataset.name == f"Dataset for Run: {name}"
+    assert dataset.description == None
+    assert len(dataset.properties) == 0
+    assert len(dataset.labels) == 0
 
 
 def test_get_run():
