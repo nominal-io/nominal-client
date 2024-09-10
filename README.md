@@ -62,38 +62,18 @@ run.update(name='New Run Title')
 
 ## Development
 
-### Testing
+Developer workflows are ran with [`just`](https://github.com/casey/just). You can use `just -l` to list commands, and view the `justfile` for the commands (they are all very simple, and should remain that way).
 
-Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end tests in `tests/e2e`. Run unit tests with
+We use `ruff` for formatting and imports, `mypy` for static typing, and `pytest` for testing.
 
-```sh
-poetry run pytest
-```
+To run all tests and checks: `just validate`. To include e2e tests (for Nominal developers): `just validate-e2e`.
 
-To run end-to-end (e2e) tests, you need to point `pytest` the e2e test directory and specify command-line arguments for connecting to the Nominal platform to test against. Run the e2e tests with
+As a rule, all tools should be configured via pyproject.toml, and should prefer configuration over parameters for project information. For example, `poetry run mypy` should work without having to run `poetry run mypy nominal`.
+
+Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end tests in `tests/e2e`. To run end-to-end (e2e) tests, `pytest` needs to be passed the e2e test directory with command-line arguments for connecting to the Nominal platform to test against. The e2e tests can be ran manually as:
 
 ```sh
 poetry run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
 ```
 
-### Static typing
-
-```sh
-poetry run mypy nominal
-```
-
-### Formatting
-
-To check (`I` is for `isort`):
-
-```sh
-poetry run ruff format --check
-poetry run ruff check --select I
-```
-
-To fix (`I` is for `isort`):
-
-```sh
-poetry run ruff format
-poetry run ruff check --select I --fix
-```
+or simply with `just test-e2e <token>`.

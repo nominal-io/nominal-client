@@ -46,17 +46,9 @@ build-backend = "poetry.core.masonry.api"
 line-length = 120
 exclude = ["nominal/_api/*", "example.ipynb"]
 
-[tool.ruff.lint]
-select = ["ALL"]
-ignore = ["COM812", "ISC001", "UP", "D", "ANN"]
-
-[tool.isort]
-profile = "black"
-skip = ["nominal/_api"]
-src_paths = ["nominal"]
-
 [tool.mypy]
 strict = true
+packages = ["nominal"]
 
 [[tool.mypy.overrides]]
 module = "nominal._api.*"
