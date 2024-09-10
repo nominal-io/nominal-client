@@ -22,7 +22,7 @@ Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on you
 python3 -m nominal auth set-token
 ```
 
-This sets the auth token on your system, which can be updated with the same command.
+This sets the auth token on your system, which can be updated with the same command as needed.
 
 By default, the library uses `https://api.gov.nominal.io/api` as the base url to the Nominal platform. Your scripts can update this with `set_base_url()`, for example to set to staging:
 
