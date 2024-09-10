@@ -1,4 +1,5 @@
 import pytest
+
 import nominal as nm
 from nominal.sdk import NominalClient
 

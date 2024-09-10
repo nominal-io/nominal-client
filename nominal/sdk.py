@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
 import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
+from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
@@ -14,27 +14,21 @@ import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
 from typing_extensions import Self  # typing.Self in 3.11+
 
-from ._api.combined import attachments_api
-from ._api.combined import scout_catalog
-from ._api.combined import scout
-from ._api.combined import scout_run_api
-from ._api.combined import ingest_api
-from ._api.combined import upload_api
+from ._api.combined import attachments_api, ingest_api, scout, scout_catalog, scout_run_api, upload_api
 from ._multipart import put_multipart_upload
 from ._utils import (
+    CustomTimestampFormat,
     FileType,
     FileTypes,
+    IntegralNanosecondsUTC,
+    TimestampColumnType,
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_scout_run_api,
     _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
-    CustomTimestampFormat,
-    IntegralNanosecondsUTC,
-    TimestampColumnType,
     update_dataclass,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
-
 
 __all__ = [
     "NominalClient",

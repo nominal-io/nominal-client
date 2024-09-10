@@ -1,8 +1,9 @@
 from unittest import mock
 from uuid import uuid4
 
-from . import _create_random_start_end
 import nominal as nm
+
+from . import _create_random_start_end
 
 
 def test_update_dataset(csv_data):

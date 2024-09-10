@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 import logging
 import mimetypes
 import os
-from pathlib import Path
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import BinaryIO, Iterator, Literal, NamedTuple, TypeVar, Union, Iterable
-from ._api.combined import ingest_api
-from ._api.combined import scout_run_api
+from pathlib import Path
+from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar, Union
 
 from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
+
+from ._api.combined import ingest_api, scout_run_api
 
 logger = logging.getLogger(__name__)
 

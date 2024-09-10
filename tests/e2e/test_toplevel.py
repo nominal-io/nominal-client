@@ -1,10 +1,11 @@
 from datetime import timedelta
 from io import BytesIO
-from uuid import uuid4
 from unittest import mock
+from uuid import uuid4
 
 import pandas as pd
 import polars as pl
+
 import nominal as nm
 from nominal import _utils
 from nominal.nominal import _parse_timestamp

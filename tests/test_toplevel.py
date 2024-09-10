@@ -1,8 +1,9 @@
-from uuid import uuid4
 from unittest import mock
+from uuid import uuid4
 
 import requests
 from conjure_python_client import ConjureEncoder
+
 import nominal as nm
 from nominal._api.combined.attachments_api import Attachment as _Attachment
 

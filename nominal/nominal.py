@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING, BinaryIO
 import dateutil.parser
 
 from ._config import NominalConfig
-
-from .sdk import Attachment, Dataset, NominalClient, Run
 from ._utils import (
     FileType,
     FileTypes,
@@ -19,6 +17,7 @@ from ._utils import (
     _datetime_to_integral_nanoseconds,
     reader_writer,
 )
+from .sdk import Attachment, Dataset, NominalClient, Run
 
 if TYPE_CHECKING:
     import pandas as pd
