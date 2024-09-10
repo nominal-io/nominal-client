@@ -216,6 +216,8 @@ def search_runs(
     - `exact_name` is case-insensitive
     - `property` is a key-value pair, e.g. ("name", "value")
     """
+    if all([v is None for v in (start, end, exact_name, label, property)]):
+        raise ValueError("must provide one of: start, end, exact_name, label, or property")
     conn = get_default_connection()
     runs = conn.search_runs(
         start=None if start is None else _parse_timestamp(start),
