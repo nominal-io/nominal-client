@@ -6,8 +6,6 @@ authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>", "Alexan
 readme = "README.md"
 packages = [
     {include = "nominal/py.typed"},
-    {include = "nominal/**/*.py"},
-    {include = "nominal/**/*.csv"},
 ]
 include = ["README.md", "LICENSE"]
 
