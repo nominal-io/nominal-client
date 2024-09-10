@@ -21,6 +21,8 @@ keyring = "^25.0.0"
 rich = "^13.7.1"
 conjure-python-client = ">=2.8.0,<3"
 pandas = ">=2.2,<3.0"
+pydantic = "^2.9.1"
+typing-extensions = "^4.12.2"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.13.2"

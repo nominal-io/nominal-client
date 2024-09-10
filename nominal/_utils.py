@@ -5,23 +5,13 @@ import logging
 import mimetypes
 import os
 from pathlib import Path
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import BinaryIO, Iterator, Literal, NamedTuple, TypeVar, Union, Iterable
 from ._api.combined import ingest_api
 from ._api.combined import scout_run_api
 
-if sys.version_info >= (3, 11):
-    from typing import Self as Self
-else:
-    from typing_extensions import Self as Self
-
-
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as TypeAlias
-else:
-    from typing_extensions import TypeAlias as TypeAlias
+from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
 
 logger = logging.getLogger(__name__)
 

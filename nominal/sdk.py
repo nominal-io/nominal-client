@@ -12,6 +12,7 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
+from typing_extensions import Self  # typing.Self in 3.11+
 
 from ._api.combined import attachments_api
 from ._api.combined import scout_catalog
@@ -29,7 +30,6 @@ from ._utils import (
     construct_user_agent_string,
     CustomTimestampFormat,
     IntegralNanosecondsUTC,
-    Self,
     TimestampColumnType,
     update_dataclass,
 )
