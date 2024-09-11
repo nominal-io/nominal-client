@@ -21,6 +21,7 @@ conjure-python-client = ">=2.8.0,<3"
 pandas = ">=2.2,<3.0"
 pydantic = "^2.9.1"
 typing-extensions = "^4.12.2"
+click = "^8.1.7"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.13.2"
