@@ -1,8 +1,9 @@
 from typing import Sequence
+
 import click
 
-from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 from .._utils import _parse_timestamp
+from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 
 
 @click.group()

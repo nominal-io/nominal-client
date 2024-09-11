@@ -1,8 +1,9 @@
 from typing import Literal
+
 import click
 
-from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 from ..nominal import _upload_csv
+from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 
 
 @click.group()
