@@ -64,7 +64,7 @@ nm.set_base_url('https://api-staging.gov.nominal.io/api')
 
 ## Development
 
-Developer workflows are ran with [`just`](https://github.com/casey/just). You can use `just -l` to list commands, and view the `justfile` for the commands.
+Developer workflows are run with [`just`](https://github.com/casey/just). You can use `just -l` to list commands, and view the `justfile` for the commands.
 
 We use `poetry` for packaging and developing. Add a depenency with `poetry add dep`, or `poetry add --group dev dep` for a dev dependency.
 
