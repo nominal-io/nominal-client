@@ -316,4 +316,7 @@ def _get_start_end_timestamp_csv_file(
         ts_col = pd.to_datetime(ts_col, unit=pd_units[unit])
 
     start, end = ts_col.min(), ts_col.max()
-    return IntegralNanosecondsUTC(start.to_datetime64()), IntegralNanosecondsUTC(end.to_datetime64())
+    return (
+        IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
+        IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
+    )
