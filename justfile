@@ -43,3 +43,7 @@ validate: install test-unit check-all
 
 # run all tests and checks, including e2e tests
 validate-e2e token: install (test-all token) check-all
+
+# clean up poetry environments
+clean:
+    poetry env remove --all
