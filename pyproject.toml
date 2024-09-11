@@ -6,6 +6,7 @@ authors = [
     "JP <jack@nominal.io>",
     "Michael Bauer <michael@nominal.io>",
     "Alexander Reynolds <alex.reynolds@nominal.io>",
+    "Alexander Hill <alex.hill@nominal.io>",
 ]
 maintainers = ["Alexander Reynolds <alex.reynolds@nominal.io>"]
 readme = "README.md"
@@ -16,7 +17,7 @@ include = ["README.md", "LICENSE"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-requests = "^2.32.3"
+requests = "*"
 python-dateutil = "^2.9.0.post0"
 polars = "^1.4.1"
 conjure-python-client = ">=2.8.0,<3"
