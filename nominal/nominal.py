@@ -136,8 +136,23 @@ def upload_csv(
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file."""
-    path = Path(file)
     conn = get_default_client()
+    _upload_csv(
+        conn, file, name, timestamp_column, timestamp_type, description, wait_until_complete=wait_until_complete
+    )
+
+
+def _upload_csv(
+    conn: NominalClient,
+    file: Path | str,
+    name: str,
+    timestamp_column: str,
+    timestamp_type: TimestampColumnType,
+    description: str | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    path = Path(file)
     file_type = FileType.from_path_dataset(path)
     if file_type.extension not in (".csv", "csv.gz"):
         raise ValueError(f"file {file} must end with '.csv' or '.csv.gz'")
