@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from typing import Literal
 
 import click
@@ -15,8 +14,8 @@ def dataset_cmd() -> None:
 
 @dataset_cmd.command()
 @click.option("-n", "--name", required=True)
-@click.option("-f", "--file", required=True)
-@click.option("-t", "--timestamp-column", required=True)
+@click.option("-f", "--file", required=True, help="path to the CSV file to upload")
+@click.option("-t", "--timestamp-column", required=True, help="the primary timestamp column name")
 @click.option(
     "-T",
     "--timestamp-type",
@@ -33,9 +32,10 @@ def dataset_cmd() -> None:
             "epoch_nanoseconds",
         ]
     ),
+    help="interpretation the primary timestamp column",
 )
 @click.option("-d", "--desc")
-@click.option("--wait/--no-wait", default=True, help="Wait until the upload is complete.")
+@click.option("--wait/--no-wait", default=True, help="wait until the upload is complete")
 @BASE_URL_OPTION
 @TOKEN_OPTION
 def upload_csv(
@@ -67,6 +67,7 @@ def upload_csv(
 @BASE_URL_OPTION
 @TOKEN_OPTION
 def get(rid: str, base_url: str, token: str | None) -> None:
+    """fetch a dataset by its RID"""
     client = get_client(base_url, token)
     dataset = client.get_dataset(rid)
     print(dataset)

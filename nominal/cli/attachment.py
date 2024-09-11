@@ -18,6 +18,7 @@ def attachment_cmd() -> None:
 @BASE_URL_OPTION
 @TOKEN_OPTION
 def get(rid: str, base_url: str, token: str | None) -> None:
+    """get an attachment by its RID"""
     client = get_client(base_url, token)
     attachment = client.get_attachment(rid)
     print(attachment)
@@ -25,7 +26,7 @@ def get(rid: str, base_url: str, token: str | None) -> None:
 
 @attachment_cmd.command("upload")
 @click.option("-n", "--name", required=True)
-@click.option("-f", "--file", required=True)
+@click.option("-f", "--file", required=True, help="path to the file to upload")
 @click.option("-d", "--desc")
 @BASE_URL_OPTION
 @TOKEN_OPTION
@@ -46,7 +47,7 @@ def upload(
 
 @attachment_cmd.command()
 @click.option("-r", "--rid", required=True)
-@click.option("-o", "--output", required=True)
+@click.option("-o", "--output", required=True, help="full path to write the attachment to (not just the directory)")
 @BASE_URL_OPTION
 @TOKEN_OPTION
 def download(

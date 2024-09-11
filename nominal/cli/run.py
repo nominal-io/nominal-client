@@ -32,7 +32,7 @@ def create(
     base_url: str,
     token: str | None,
 ) -> None:
-    """Create a new run."""
+    """create a new run"""
     client = get_client(base_url, token)
     run = client.create_run(
         name,
@@ -54,7 +54,7 @@ def get(
     base_url: str,
     token: str | None,
 ) -> None:
-    """Get a run by its RID."""
+    """get a run by its RID"""
     client = get_client(base_url, token)
     run = client.get_run(rid)
     print(run)
