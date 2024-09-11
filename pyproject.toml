@@ -1,18 +1,16 @@
 [tool.poetry]
 name = "nominal"
-version = "1.0.0-alpha"
+version = "1.0.0-beta"
 description = "Automate Nominal workflows in Python"
 authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>", "Alexander Reynolds <alex.reynolds@nominal.io>"]
 readme = "README.md"
 packages = [
     {include = "nominal/py.typed"},
-    {include = "nominal/**/*.py"},
-    {include = "nominal/**/*.csv"},
 ]
 include = ["README.md", "LICENSE"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 requests = "^2.32.3"
 python-dateutil = "^2.9.0.post0"
 jsondiff = "^2.2.0"
@@ -20,6 +18,9 @@ polars = "^1.4.1"
 keyring = "^25.0.0"
 rich = "^13.7.1"
 conjure-python-client = ">=2.8.0,<3"
+pandas = ">=2.2,<3.0"
+pydantic = "^2.9.1"
+typing-extensions = "^4.12.2"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.13.2"
@@ -30,7 +31,9 @@ jupyterlab = "^4.2.4"
 mypy = "^1.11.2"
 jupyter = "^1.1.1"
 types-requests = "^2.32.0.20240712"
+pandas-stubs = "~2.0"
 pytest = "^8.3.2"
+types-pyyaml = "^6.0.12.20240808"
 
 [tool.distutils.bdist_wheel]
 universal = true
@@ -43,21 +46,15 @@ build-backend = "poetry.core.masonry.api"
 line-length = 120
 exclude = ["nominal/_api/*", "example.ipynb"]
 
-[tool.ruff.lint]
-select = ["ALL"]
-ignore = ["COM812", "ISC001", "UP", "D", "ANN"]
-
-[tool.isort]
-profile = "black"
-skip = ["nominal/_api"]
-src_paths = ["nominal"]
-
 [tool.mypy]
 strict = true
+packages = ["nominal"]
 
 [[tool.mypy.overrides]]
 module = "nominal._api.*"
 implicit_reexport = true
+no_implicit_optional = false
+disable_error_code = ["no-any-return", "no-untyped-def"]
 
 [tool.pytest.ini_options]
 filterwarnings = [

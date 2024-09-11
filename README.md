@@ -1,103 +1,79 @@
 # ⬖ Nominal
-Python client for Nominal test data, storage, &amp; compute
 
-🚧 WIP - API and syntax subject to change
+Python client for Nominal test data, storage, and compute.
 
 ## Install
 
-> pip3 install nominal --upgrade
+```sh
+python3 -m pip install nominal --upgrade
+```
 
 ## Usage
 
-### Setup
-
-Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on your Nominal tenant
-
 ```py
 import nominal as nm
-nm.cloud.set_token(...)
 ```
 
-### API base URL is set to prod by default
+### Connecting to Nominal
+
+Retrieve your API key from [/sandbox](https://app.gov.nominal.io/sandbox) on your Nominal tenant. Then, set the Nominal connection parameters in a terminal:
+
+```sh
+python3 -m nominal auth set-token
+```
+
+This sets the auth token on your system, which can be updated with the same command as needed.
+
+By default, the library uses `https://api.gov.nominal.io/api` as the base url to the Nominal platform. Your scripts can change the URL they use with `set_base_url()`. For example, to use the staging URL:
 
 ```py
-import nominal as nm
-nm.cloud.set_base_url('PROD') # Set to 'STAGING' for development
-nm.cloud.get_base_url()
-# 'https://api.gov.nominal.io/api'
+nm.set_base_url('https://api-staging.gov.nominal.io/api')
 ```
 
-### Upload a Dataset (4 lines)
+### Upload a Dataset
 
 ```py
-import nominal as nm
-from nominal import Ingest, Dataset
-dataset = Dataset(nm.data.penguins())
-# dataset = Ingest().read('../path/to/your/data.csv')
-dataset.upload()
+dataset = nm.upload_csv(
+    '../path/to/data.csv',
+    name='Stand A',
+    timestamp_column='timestamp',
+    timestamp_type='epoch_seconds',
+)
+print('Uploaded dataset:', dataset.rid)
 ```
 
-### Upload a Run (4 lines)
+### Create a Run
 
 ```py
-import nominal as nm
-from nominal import Run, Dataset
-r = Run(datasets=[Dataset(nm.data.penguins())])
-# r = Run(path='../path/to/your/data.csv')
-r.upload()
+run = nm.create_run(
+    name='Run A',
+    start='2024-09-09T12:35:00Z',
+    start='2024-09-09T13:18:00Z',
+)
+print("Created run:", run.rid)
 ```
 
-### Update metadata of an existing Run (4 lines)
+### Update metadata of an existing Run
 
 ```py
-from nominal import Run
-r = Run(rid = 'ri.scout.gov-staging.run.ce205f7e-9ef1-4a8b-92ae-11edc77441c6')
-r.title = 'my_new_run_title'
-r.update()
+run = nm.get_run('ri.scout.gov-staging.run.ce205f7e-9ef1-4a8b-92ae-11edc77441c6')
+run.update(name='New Run Title')
 ```
-
-### Compare changes made to a Run locally
-
-```py
-r.title = 'my_new__new_run_title'
-r.diff()
-```
-
-### Apply a Check to a Run
-
-TODO
 
 ## Development
 
-Install the following VSCode extensions:
+Developer workflows are ran with [`just`](https://github.com/casey/just). You can use `just -l` to list commands, and view the `justfile` for the commands (they are all very simple, and should remain that way).
 
-- Ruff
-- isort
+We use `ruff` for formatting and imports, `mypy` for static typing, and `pytest` for testing.
 
-And add the following lines to `User Settings (JSON)`:
+To run all tests and checks: `just validate`. To include e2e tests (for Nominal developers): `just validate-e2e`.
 
-```
-    "[python]": {
-        "editor.formatOnSave": true,
-        "editor.defaultFormatter": "charliermarsh.ruff",
-        "editor.codeActionsOnSave": {
-            "source.organizeImports": "explicit",
-        },
-    },
-```
+As a rule, all tools should be configured via pyproject.toml, and should prefer configuration over parameters for project information. For example, `poetry run mypy` should work without having to run `poetry run mypy nominal`.
 
-To make sure your code is linted properly on save.
+Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end tests in `tests/e2e`. To run end-to-end (e2e) tests, `pytest` needs to be passed the e2e test directory with command-line arguments for connecting to the Nominal platform to test against. The e2e tests can be ran manually as:
 
-## Testing
-
-Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end tests in `tests/e2e`. Run unit tests with
-
-```
-poetry run pytest
-```
-
-To run end-to-end (e2e) tests, you need to point `pytest` the e2e test directory and specify command-line arguments for connecting to the Nominal platform to test against. Run the e2e tests with
-
-```
+```sh
 poetry run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
 ```
+
+or simply with `just test-e2e <token>`.

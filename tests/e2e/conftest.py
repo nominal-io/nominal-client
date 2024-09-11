@@ -1,19 +1,10 @@
-import random
-from datetime import datetime, timedelta
-from uuid import uuid4
+from typing import Iterator
+from unittest import mock
 
 import pytest
-from nominal import _utils
+
+import nominal as nm
 from nominal.sdk import NominalClient
-
-
-def _create_random_start_end():
-    random_epoch_start = int(datetime(2020, 1, 1).timestamp())
-    random_epoch_end = int(datetime(2025, 1, 1).timestamp())
-    epoch_start = random.randint(random_epoch_start, random_epoch_end)
-    start = datetime.fromtimestamp(epoch_start)
-    end = start + timedelta(hours=1)
-    return start, end
 
 
 def pytest_addoption(parser):
@@ -31,27 +22,25 @@ def base_url(pytestconfig):
     return pytestconfig.getoption("base_url")
 
 
-@pytest.fixture(scope="session")
-def client(base_url, auth_token):
-    return NominalClient.create(base_url=base_url, token=auth_token)
+@pytest.fixture(scope="session", autouse=True)
+def set_connection(base_url, auth_token) -> Iterator[None]:
+    client = NominalClient.create(base_url=base_url, token=auth_token)
+    with mock.patch("nominal.nominal.get_default_client", return_value=client):
+        yield
 
 
 @pytest.fixture(scope="session")
-def run(client: NominalClient):
-    title = f"run-{uuid4()}"
-    desc = f"run description {uuid4()}"
-    start, end = _create_random_start_end()
-    run = client.create_run(
-        title=title,
-        description=desc,
-        start=start,
-        end=end,
-    )
-    assert len(run.rid) >= 0
-    assert run.title == title
-    assert run.description == desc
-    assert run.start == _utils._datetime_to_integral_nanoseconds(start)
-    assert run.end == _utils._datetime_to_integral_nanoseconds(end)
-    assert len(run.labels) == 0
-    assert len(run.properties) == 0
-    return run
+def csv_data():
+    return b"""\
+timestamp,temperature,humidity
+2024-09-05T18:00:00Z,20,50
+2024-09-05T18:01:00Z,21,49
+2024-09-05T18:02:00Z,22,48
+2024-09-05T18:03:00Z,23,47
+2024-09-05T18:04:00Z,24,46
+2024-09-05T18:05:00Z,25,45
+2024-09-05T18:06:00Z,26,44
+2024-09-05T18:07:00Z,27,43
+2024-09-05T18:08:00Z,28,42
+2024-09-05T18:09:00Z,29,41
+"""

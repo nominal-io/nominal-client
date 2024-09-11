@@ -1,13 +1,36 @@
-import os
+from .nominal import (
+    create_run,
+    create_run_csv,
+    download_attachment,
+    get_attachment,
+    get_dataset,
+    get_default_client,
+    get_run,
+    search_runs,
+    set_base_url,
+    upload_attachment,
+    upload_csv,
+    upload_pandas,
+    upload_polars,
+)
+from .sdk import Attachment, Dataset, NominalClient, Run
 
-# Allows:
-# import nominal as nm
-# nm.cloud ...
-# nm.data ...
-from . import cloud as cloud
-from . import data as data
-from .nominal import Dataset as Dataset
-from .nominal import Ingest as Ingest
-from .nominal import Run as Run
-
-os.environ["NOMINAL_BASE_URL"] = "https://api-staging.gov.nominal.io/api"
+__all__ = [
+    "set_base_url",
+    "get_default_client",
+    "upload_pandas",
+    "upload_polars",
+    "upload_csv",
+    "get_dataset",
+    "create_run",
+    "create_run_csv",
+    "get_run",
+    "search_runs",
+    "upload_attachment",
+    "get_attachment",
+    "download_attachment",
+    "Dataset",
+    "Run",
+    "Attachment",
+    "NominalClient",
+]
