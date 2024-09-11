@@ -40,7 +40,7 @@ fix: fix-imports fix-format
 verify: install test check
 
 # run all tests and checks, including e2e tests
-verify-e2e token: install (test-all token) check
+verify-e2e token: install check test (test-e2e token)
 
 # clean up poetry environments
 clean:

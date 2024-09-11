@@ -351,7 +351,6 @@ class Attachment:
         client: NominalClient,
         attachment: attachments_api.Attachment,
     ) -> Self:
-        print(attachment.s3_path)
         return cls(
             rid=attachment.rid,
             name=attachment.title,
