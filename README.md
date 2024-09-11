@@ -66,7 +66,7 @@ Developer workflows are ran with [`just`](https://github.com/casey/just). You ca
 
 We use `ruff` for formatting and imports, `mypy` for static typing, and `pytest` for testing.
 
-To run all tests and checks: `just validate`. To include e2e tests (for Nominal developers): `just validate-e2e`.
+To run all tests and checks: `just verify`. To include e2e tests (for Nominal developers): `just verify-e2e`.
 
 As a rule, all tools should be configured via pyproject.toml, and should prefer configuration over parameters for project information. For example, `poetry run mypy` should work without having to run `poetry run mypy nominal`.
 

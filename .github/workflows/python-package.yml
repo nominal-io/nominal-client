@@ -5,13 +5,12 @@ name: Python check and test
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,25 +18,25 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
-      with:
-        python-version: ${{ matrix.python-version }}
-    - uses: snok/install-poetry@v1
-    - uses: extractions/setup-just@v2
-    - name: Install dependencies
-      run: |
-        just install
-    - name: Check format
-      run: |
-        just check-format
-    - name: Check import order
-      run: |
-        just check-imports
-    - name: Static type check
-      run: |
-        just check-types
-    - name: Run unit tests
-      run: |
-        just test-unit
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: snok/install-poetry@v1
+      - uses: extractions/setup-just@v2
+      - name: Install dependencies
+        run: |
+          just install
+      - name: Check format
+        run: |
+          just check-format
+      - name: Check import order
+        run: |
+          just check-imports
+      - name: Static type check
+        run: |
+          just check-types
+      - name: Run unit tests
+        run: |
+          just test
