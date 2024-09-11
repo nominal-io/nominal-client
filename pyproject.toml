@@ -2,33 +2,31 @@
 name = "nominal"
 version = "1.0.0-beta"
 description = "Automate Nominal workflows in Python"
-authors = ["JP <jack@nominal.io>", "Michael Bauer <michael@nominal.io>", "Alexander Reynolds <alex.reynolds@nominal.io>"]
-readme = "README.md"
-packages = [
-    {include = "nominal/py.typed"},
+authors = [
+    "JP <jack@nominal.io>",
+    "Michael Bauer <michael@nominal.io>",
+    "Alexander Reynolds <alex.reynolds@nominal.io>",
 ]
+maintainers = ["Alexander Reynolds <alex.reynolds@nominal.io>"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://nominal.io"
+repository = "https://github.com/nominal-io/nominal-client"
 include = ["README.md", "LICENSE"]
 
 [tool.poetry.dependencies]
 python = "^3.9"
 requests = "^2.32.3"
 python-dateutil = "^2.9.0.post0"
-jsondiff = "^2.2.0"
 polars = "^1.4.1"
-keyring = "^25.0.0"
-rich = "^13.7.1"
 conjure-python-client = ">=2.8.0,<3"
 pandas = ">=2.2,<3.0"
 pydantic = "^2.9.1"
 typing-extensions = "^4.12.2"
 click = "^8.1.7"
 
-[tool.poetry.dev-dependencies]
-isort = "^5.13.2"
-ruff = "^0.4.2"
-
 [tool.poetry.group.dev.dependencies]
-jupyterlab = "^4.2.4"
+ruff = "^0.4.2"
 mypy = "^1.11.2"
 jupyter = "^1.1.1"
 types-requests = "^2.32.0.20240712"
@@ -45,7 +43,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 120
-exclude = ["nominal/_api/*", "example.ipynb"]
+exclude = ["nominal/_api/*"]
 
 [tool.mypy]
 strict = true
@@ -62,7 +60,8 @@ filterwarnings = [
     # DeprecationWarning: The 'strict' parameter is no longer needed on Python 3+. This will raise an error in urllib3 v2.1.0.
     # from conjure-python-client, in conjure_python_client/_http/requests_client.py,
     # TransportAdapter.init_poolmanager() uses urllib3.poolmanager.PoolManager(..., strict=True) which is deprecated.
-    "ignore:The 'strict' parameter is no longer needed on Python 3+."
+    "ignore:The 'strict' parameter is no longer needed on Python 3+.",
 ]
 testpaths = ["tests"]
+# make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
