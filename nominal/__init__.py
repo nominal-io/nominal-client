@@ -13,7 +13,7 @@ from .nominal import (
     upload_pandas,
     upload_polars,
 )
-from .sdk import Attachment, Dataset, NominalClient, Run
+from .core import Attachment, Dataset, NominalClient, Run
 
 __all__ = [
     "set_base_url",

@@ -17,7 +17,7 @@ from ._utils import (
     _parse_timestamp,
     reader_writer,
 )
-from .sdk import Attachment, Dataset, NominalClient, Run
+from .core import Attachment, Dataset, NominalClient, Run
 
 if TYPE_CHECKING:
     import pandas as pd
