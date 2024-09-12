@@ -341,7 +341,7 @@ class Attachment:
         `path` should be the path you want to save to, i.e. a file, not a directory.
         """
         if mkdir:
-            path.mkdir(exist_ok=True, parents=True)
+            path.parent.mkdir(exist_ok=True, parents=True)
         with open(path, "wb") as wf:
             shutil.copyfileobj(self.get_contents(), wf)
 

@@ -8,7 +8,6 @@ import polars as pl
 
 import nominal as nm
 from nominal import _utils
-from nominal.nominal import _parse_timestamp
 
 from . import _create_random_start_end
 
@@ -127,8 +126,8 @@ def test_get_run():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == _parse_timestamp(start)
-    assert run2.end == run.end == _parse_timestamp(end)
+    assert run2.start == run.start == _utils._parse_timestamp(start)
+    assert run2.end == run.end == _utils._parse_timestamp(end)
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
@@ -146,8 +145,8 @@ def test_search_runs():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == _parse_timestamp(start)
-    assert run2.end == run.end == _parse_timestamp(end)
+    assert run2.start == run.start == _utils._parse_timestamp(start)
+    assert run2.end == run.end == _utils._parse_timestamp(end)
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 

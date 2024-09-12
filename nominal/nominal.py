@@ -6,8 +6,6 @@ from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO, Literal
 
-import dateutil.parser
-
 from nominal import _config
 
 from ._utils import (
@@ -16,7 +14,7 @@ from ._utils import (
     FileTypes,
     IntegralNanosecondsUTC,
     TimestampColumnType,
-    _datetime_to_integral_nanoseconds,
+    _parse_timestamp,
     reader_writer,
 )
 from .sdk import Attachment, Dataset, NominalClient, Run
@@ -136,8 +134,23 @@ def upload_csv(
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file."""
-    path = Path(file)
     conn = get_default_client()
+    return _upload_csv(
+        conn, file, name, timestamp_column, timestamp_type, description, wait_until_complete=wait_until_complete
+    )
+
+
+def _upload_csv(
+    conn: NominalClient,
+    file: Path | str,
+    name: str,
+    timestamp_column: str,
+    timestamp_type: TimestampColumnType,
+    description: str | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    path = Path(file)
     file_type = FileType.from_path_dataset(path)
     if file_type.extension not in (".csv", "csv.gz"):
         raise ValueError(f"file {file} must end with '.csv' or '.csv.gz'")
@@ -277,14 +290,6 @@ def download_attachment(rid: str, file: Path | str) -> None:
     conn = get_default_client()
     attachment = conn.get_attachment(rid)
     attachment.write(Path(file))
-
-
-def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNanosecondsUTC:
-    if isinstance(ts, int):
-        return ts
-    if isinstance(ts, str):
-        ts = dateutil.parser.parse(ts)
-    return _datetime_to_integral_nanoseconds(ts)
 
 
 def _get_start_end_timestamp_csv_file(

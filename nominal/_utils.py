@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar, Union
 
+import dateutil.parser
 from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
 
 from ._api.combined import ingest_api, scout_run_api
@@ -100,6 +101,14 @@ def _datetime_to_integral_nanoseconds(dt: datetime) -> IntegralNanosecondsUTC:
     seconds = int(dt.timestamp())
     nanos = dt.microsecond * 1000
     return seconds * 1_000_000_000 + nanos
+
+
+def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNanosecondsUTC:
+    if isinstance(ts, int):
+        return ts
+    if isinstance(ts, str):
+        ts = dateutil.parser.parse(ts)
+    return _datetime_to_integral_nanoseconds(ts)
 
 
 def construct_user_agent_string() -> str:

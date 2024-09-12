@@ -15,6 +15,9 @@ homepage = "https://nominal.io"
 repository = "https://github.com/nominal-io/nominal-client"
 include = ["README.md", "LICENSE"]
 
+[tool.poetry.scripts]
+nom = 'nominal.cli:nom'
+
 [tool.poetry.dependencies]
 python = "^3.9"
 requests = "*"
