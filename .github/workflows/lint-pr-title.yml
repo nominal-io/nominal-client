@@ -1,4 +1,4 @@
-name: lint-pr-title
+name: Conventional commit lint
 on:
   pull_request:
     types: ["opened", "edited", "reopened", "synchronize"]
