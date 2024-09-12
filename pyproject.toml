@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nominal"
-version = "1.0.0-beta"
+version = "0.5.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     "JP <jack@nominal.io>",
