@@ -16,5 +16,4 @@ jobs:
       - uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
-          release-type: python
-          package-name: nominal
+          config-file: .github/release-please-config.json
