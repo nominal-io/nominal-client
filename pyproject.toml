@@ -3,17 +3,16 @@ name = "nominal"
 version = "0.5.0"
 description = "Automate Nominal workflows in Python"
 authors = [
-    "JP <jack@nominal.io>",
-    "Michael Bauer <michael@nominal.io>",
     "Alexander Reynolds <alex.reynolds@nominal.io>",
     "Alexander Hill <alex.hill@nominal.io>",
+    "JP <jack@nominal.io>",
+    "Michael Bauer <michael@nominal.io>",
 ]
-maintainers = ["Alexander Reynolds <alex.reynolds@nominal.io>"]
 readme = "README.md"
 license = "MIT"
 homepage = "https://nominal.io"
 repository = "https://github.com/nominal-io/nominal-client"
-include = ["README.md", "LICENSE"]
+include = ["README.md", "LICENSE", "CHANGELOG.md"]
 
 [tool.poetry.scripts]
 nom = 'nominal.cli:nom'
