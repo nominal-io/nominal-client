@@ -3,17 +3,16 @@ name = "nominal"
 version = "0.5.0"
 description = "Automate Nominal workflows in Python"
 authors = [
-    "JP <jack@nominal.io>",
-    "Michael Bauer <michael@nominal.io>",
     "Alexander Reynolds <alex.reynolds@nominal.io>",
     "Alexander Hill <alex.hill@nominal.io>",
+    "JP <jack@nominal.io>",
+    "Michael Bauer <michael@nominal.io>",
 ]
-maintainers = ["Alexander Reynolds <alex.reynolds@nominal.io>"]
 readme = "README.md"
 license = "MIT"
 homepage = "https://nominal.io"
 repository = "https://github.com/nominal-io/nominal-client"
-include = ["README.md", "LICENSE"]
+include = ["README.md", "LICENSE", "CHANGELOG.md"]
 
 [tool.poetry.scripts]
 nom = 'nominal.cli:nom'
@@ -21,14 +20,14 @@ nom = 'nominal.cli:nom'
 [tool.poetry.dependencies]
 python = "^3.9"
 requests = "*"
-python-dateutil = "^2.9.0.post0"
-polars = "^1.4.1"
+python-dateutil = "*"
+polars = "*"
 conjure-python-client = ">=2.8.0,<3"
-pandas = ">=2.2,<3.0"
-pydantic = "^2.9.1"
-typing-extensions = "^4.12.2"
-click = "^8.1.7"
-pyyaml = "^6.0.2"
+pandas = "*"
+pydantic = ">=2.0,<3"
+typing-extensions = ">=4,<5"
+click = ">=8,<9"
+pyyaml = "*"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.4.2"

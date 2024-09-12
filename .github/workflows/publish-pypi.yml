@@ -4,13 +4,11 @@ on:
     tags:
       - "v*.*.*"
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build and publish to PyPI
         uses: JRubics/poetry-publish@v2.0
         with:
-          pypi_token: ${{ secrets.TEST_PYPI_TOKEN }}
-          repository_name: "testpypi"
-          repository_url: "https://test.pypi.org/legacy/"
+          pypi_token: ${{ secrets.PYPI_TOKEN }}
