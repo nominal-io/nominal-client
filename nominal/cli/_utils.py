@@ -3,7 +3,7 @@ from __future__ import annotations
 import click
 
 from .._config import get_token
-from ..sdk import NominalClient
+from ..core import NominalClient
 
 BASE_URL_OPTION = click.option("--base-url", default="https://api.gov.nominal.io/api")
 TOKEN_OPTION = click.option("--token", help="[default: looked up in ~/.nominal.yml]")
