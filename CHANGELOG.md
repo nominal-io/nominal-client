@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.0-beta](https://github.com/nominal-io/nominal-client/compare/v0.5.0...v1.0.0-beta) (2024-09-12)
+
+
+### Miscellaneous Chores
+
+* release 1.0.0-beta ([1e5fe1a](https://github.com/nominal-io/nominal-client/commit/1e5fe1a8839ee230beeddb85c135fc4cbc768889))
+* release 1.0.0-beta ([f636885](https://github.com/nominal-io/nominal-client/commit/f6368850ad0eabff577533f162a0f94c43d3f5ac))
+
 ## 0.5.0 (2024-09-12)
 
 
