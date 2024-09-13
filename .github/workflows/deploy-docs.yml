@@ -1,7 +1,7 @@
 name: Deploy mkdocs site to Pages
 
 on:
-  push:
+  pull_request:
     branches: ["main"]
 
   # Allows you to run this workflow manually from the Actions tab
