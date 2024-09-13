@@ -230,6 +230,11 @@ class Dataset:
         update_dataclass(self, dataset, fields=self.__dataclass_fields__)
         return self
 
+    def add_csv_to_dataset(self, path: str | Path, timestamp_column: str, timestamp_type: TimestampColumnType) -> None:
+        """Append to a dataset from a csv on-disk."""
+        with open(path, "rb") as csv_file:
+            self.add_to_dataset_from_io(csv_file, timestamp_column, timestamp_type, FileTypes.CSV)
+
     def add_to_dataset_from_io(
         self,
         dataset: BinaryIO,
