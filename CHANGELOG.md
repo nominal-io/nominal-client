@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0](https://github.com/nominal-io/nominal-client/compare/v1.0.0-beta...v1.0.0) (2024-09-13)
+
+
+### Features
+
+* add docs, rename sdk submodule -&gt; core ([#32](https://github.com/nominal-io/nominal-client/issues/32)) ([77ff5e0](https://github.com/nominal-io/nominal-client/commit/77ff5e0c447190e2ac3c79ae3e25bf22c45d0d78))
+
+
+### Bug Fixes
+
+* better token error message ([#37](https://github.com/nominal-io/nominal-client/issues/37)) ([9386375](https://github.com/nominal-io/nominal-client/commit/9386375ef44dfa44a710739161c9b65b70f9e988))
+
+
+### Miscellaneous Chores
+
+* release 1.0.0 ([32724fb](https://github.com/nominal-io/nominal-client/commit/32724fb0aa453f009c8af772361bfddced3d36a6))
+
 ## [1.0.0-beta](https://github.com/nominal-io/nominal-client/compare/v0.5.0...v1.0.0-beta) (2024-09-12)
 
 
