@@ -1,18 +1,18 @@
 class NominalError(Exception):
-    pass
+    """Base class for Nominal exceptions."""
 
 
 class NominalIngestError(NominalError):
-    pass
+    """An error occurred during ingest."""
 
 
 class NominalIngestFailed(NominalIngestError):
-    pass
+    """The ingest failed."""
 
 
 class NominalMultipartUploadFailed(NominalError):
-    pass
+    """The multipart upload failed."""
 
 
 class NominalConfigError(NominalError):
-    pass
+    """An error occurred reading or writing the configuration."""
