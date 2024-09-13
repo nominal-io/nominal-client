@@ -5,7 +5,7 @@ import click
 from .. import _config
 
 
-@click.group()
+@click.group(name="auth")
 def auth_cmd() -> None:
     pass
 

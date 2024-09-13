@@ -42,6 +42,7 @@ mkdocs-material = "^9.5.34"
 mkdocstrings = "^0.26.1"
 mkdocstrings-python = "^1.11.1"
 black = "^24.8.0"
+mkdocs-click = "^0.8.1"
 
 
 [tool.distutils.bdist_wheel]

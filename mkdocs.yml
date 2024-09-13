@@ -25,6 +25,7 @@ nav:
       - High-level SDK: reference/toplevel.md
       - Core SDK: reference/core.md
       - Exceptions: reference/exceptions.md
+      - nom cli: reference/nom-cli.md
   - Development:
       - Contributing: contributing.md
   - Nominal: https://nominal.io
@@ -85,6 +86,8 @@ markdown_extensions:
   - pymdownx.tilde
   - toc:
       permalink: "¤"
+  - attr_list
+  - mkdocs-click
 
 plugins:
   - search

@@ -8,7 +8,7 @@ from .._utils import FileType
 from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 
 
-@click.group()
+@click.group(name="attachment")
 def attachment_cmd() -> None:
     pass
 

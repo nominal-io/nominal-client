@@ -8,7 +8,7 @@ from ..nominal import _upload_csv
 from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 
 
-@click.group()
+@click.group(name="dataset")
 def dataset_cmd() -> None:
     pass
 
