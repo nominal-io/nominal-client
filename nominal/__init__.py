@@ -1,3 +1,4 @@
+from .core import Attachment, Dataset, NominalClient, Run
 from .nominal import (
     create_run,
     create_run_csv,
@@ -13,7 +14,6 @@ from .nominal import (
     upload_pandas,
     upload_polars,
 )
-from .sdk import Attachment, Dataset, NominalClient, Run
 
 __all__ = [
     "set_base_url",

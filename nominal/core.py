@@ -39,8 +39,6 @@ __all__ = [
     "Attachment",
     "IntegralNanosecondsUTC",
     "CustomTimestampFormat",
-    "NominalIngestError",
-    "NominalIngestFailed",
 ]
 
 
