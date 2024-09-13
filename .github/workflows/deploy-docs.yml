@@ -31,8 +31,9 @@ jobs:
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
-      - name: Build with mkdocs
-        run: mkdocs build
+      - name: Build docs
+        run: |
+          just build-docs
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
