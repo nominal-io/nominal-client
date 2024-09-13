@@ -1,19 +1,19 @@
-# ⬖ Nominal
+# ⬖ `nominal`
 
-Python client for Nominal test data, storage, and compute.
+Nominal Python SDK for test data, storage, and compute.
 
-## Install
+### 📖 Docs
+View on github pages: [nominal-io.github.io/nominal-client/](https://nominal-io.github.io/nominal-client/).
 
+### 📦 Install
 ```sh
-python3 -m pip install nominal --upgrade
+pip install nominal
 ```
 
-## Usage
+### 💻 Usage
 
 ```py
 import nominal as nm
 ```
 
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See examples in the [documentation](https://nominal-io.github.io/nominal-client/usage/examples).
