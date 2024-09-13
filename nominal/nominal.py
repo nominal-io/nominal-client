@@ -126,14 +126,17 @@ def upload_polars(
 
 def upload_csv(
     file: Path | str,
-    name: str,
+    name: str | None,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a .csv or .csv.gz file."""
+    """Create a dataset in the Nominal platform from a .csv or .csv.gz file.
+
+    If `name` is None, the dataset is created with the name of the file.
+    """
     conn = get_default_client()
     return _upload_csv(
         conn, file, name, timestamp_column, timestamp_type, description, wait_until_complete=wait_until_complete
@@ -143,26 +146,20 @@ def upload_csv(
 def _upload_csv(
     conn: NominalClient,
     file: Path | str,
-    name: str,
+    name: str | None,
     timestamp_column: str,
     timestamp_type: TimestampColumnType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    path = Path(file)
-    file_type = FileType.from_path_dataset(path)
-    if file_type.extension not in (".csv", "csv.gz"):
-        raise ValueError(f"file {file} must end with '.csv' or '.csv.gz'")
-    with open(path, "rb") as f:
-        dataset = conn.create_dataset_from_io(
-            f,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=file_type,
-            description=description,
-        )
+    dataset = conn.create_csv_dataset(
+        file,
+        name,
+        timestamp_column=timestamp_column,
+        timestamp_type=timestamp_type,
+        description=description,
+    )
     if wait_until_complete:
         dataset.poll_until_ingestion_completed()
     return dataset
