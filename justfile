@@ -45,3 +45,7 @@ verify-e2e token: install check test (test-e2e token)
 # clean up poetry environments
 clean:
     poetry env remove --all
+
+# build docs
+build-docs:
+    poetry run mkdocs build
