@@ -3,7 +3,7 @@ import click
 from . import attachment, auth, dataset, run
 
 
-@click.group(context_settings={"show_default": True})
+@click.group(context_settings={"show_default": True, "help_option_names": ("-h", "--help")})
 def nom() -> None:
     pass
 
