@@ -484,6 +484,38 @@ class NominalClient:
         """
         return list(self._iter_search_runs(start, end, exact_name, label, property))
 
+    def create_csv_dataset(
+        self,
+        path: str | Path,
+        name: str | None,
+        timestamp_column: str,
+        timestamp_type: TimestampColumnType,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from a CSV file.
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path = Path(path)
+        if name is None:
+            name = path.name
+        with open(path, "rb") as csv_file:
+            return self.create_dataset_from_io(
+                csv_file,
+                name,
+                timestamp_column,
+                timestamp_type,
+                FileTypes.CSV,
+                description,
+                labels=labels,
+                properties=properties,
+            )
+
     def create_dataset_from_io(
         self,
         dataset: BinaryIO,
