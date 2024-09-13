@@ -41,7 +41,7 @@ class NominalConfig(pydantic.BaseModel):
             raise ValueError("url {url!r} must not include the http:// or https:// scheme")
         if url in self.environments:
             return self.environments[url]
-        raise NominalConfigError(f"url {url!r} not found in config")
+        raise NominalConfigError(f"url {url!r} not found in config: set a token with `nom auth set-token`")
 
 
 def get_token(url: str) -> str:
