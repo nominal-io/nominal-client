@@ -674,15 +674,14 @@ class NominalClient:
         response = self._video_client.get(self._auth_header, video_rid)
         return Video._from_conjure(self, response)
 
-    def _iter_get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Iterable[Video]:
-        video_rids = [_rid_from_instance_or_string(v) for v in videos]
-        request = scout_video_api.GetVideosRequest(video_rids=video_rids)
+    def _iter_get_videos(self, video_rids: Iterable[str]) -> Iterable[Video]:
+        request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
         for response in self._video_client.batch_get(self._auth_header, request).responses:
             yield Video._from_conjure(self, response)
 
     def get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Sequence[Video]:
         """Retrieve videos by video or video RID."""
-        return list(self._iter_get_videos(videos))
+        return list(self._iter_get_videos(_rid_from_instance_or_string(v) for v in videos))
 
     def get_dataset(self, dataset: Dataset | str) -> Dataset:
         """Retrieve a dataset by dataset or dataset RID."""
