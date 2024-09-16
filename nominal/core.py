@@ -671,12 +671,13 @@ class NominalClient:
     def get_video(self, video: Video | str) -> Video:
         """Retrieve a video by video or video RID."""
         video_rid = _rid_from_instance_or_string(video)
-        response = _get_video(self._auth_header, self._video_client, video_rid)
+        response = self._video_client.get(self._auth_header, video_rid)
         return Video._from_conjure(self, response)
 
     def _iter_get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Iterable[Video]:
         video_rids = [_rid_from_instance_or_string(v) for v in videos]
-        for response in _get_videos(self._auth_header, self._video_client, video_rids):
+        request = scout_video_api.GetVideosRequest(video_rids=video_rids)
+        for response in self._video_client.batch_get(self._auth_header, request).responses:
             yield Video._from_conjure(self, response)
 
     def get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Sequence[Video]:
@@ -781,22 +782,6 @@ def _get_dataset(
     if len(datasets) > 1:
         raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
     return datasets[0]
-
-
-def _get_videos(
-    auth_header: str, client: scout_video.VideoService, video_rids: Iterable[str]
-) -> Iterable[scout_video_api.Video]:
-    request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
-    yield from client.batch_get(auth_header, request).responses
-
-
-def _get_video(auth_header: str, client: scout_video.VideoService, video_rid: str) -> scout_video_api.Video:
-    videos = list(_get_videos(auth_header, client, [video_rid]))
-    if not videos:
-        raise ValueError(f"video {video_rid!r} not found")
-    if len(videos) > 1:
-        raise ValueError(f"expected exactly one dataset, got {len(videos)}")
-    return videos[0]
 
 
 def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | str) -> str:
