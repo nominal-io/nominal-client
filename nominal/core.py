@@ -378,7 +378,7 @@ class Video:
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _client: NominalClient
+    _client: NominalClient = field(repr=False)
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.

@@ -10,9 +10,7 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, Type, TypeVar, Union
 
 import dateutil.parser
-from typing_extensions import TypeAlias
-
-from nominal._api.combined import scout_video_api  # typing.TypeAlias in 3.10+
+from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
 
 from ._api.combined import ingest_api, scout_run_api
 
