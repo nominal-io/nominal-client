@@ -16,7 +16,7 @@ from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal import _config
 
-from ._api.combined import (
+from .._api.combined import (
     attachments_api,
     ingest_api,
     scout,
@@ -26,8 +26,7 @@ from ._api.combined import (
     scout_video_api,
     upload_api,
 )
-from ._multipart import put_multipart_upload
-from ._utils import (
+from .._utils import (
     CustomTimestampFormat,
     FileType,
     FileTypes,
@@ -40,7 +39,8 @@ from ._utils import (
     construct_user_agent_string,
     update_dataclass,
 )
-from .exceptions import NominalIngestError, NominalIngestFailed
+from ..exceptions import NominalIngestError, NominalIngestFailed
+from ._multipart import put_multipart_upload
 
 __all__ = [
     "NominalClient",
