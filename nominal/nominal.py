@@ -298,7 +298,7 @@ def upload_video(
     """Upload a video to Nominal from a file."""
     conn = get_default_client()
     path = Path(file)
-    file_type = FileType.from_path_dataset(path)
+    file_type = FileType.from_path(path)
     with open(file, "rb") as f:
         return conn.create_video_from_io(f, name, _parse_timestamp(start), description, file_type)
 

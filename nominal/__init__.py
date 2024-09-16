@@ -7,12 +7,14 @@ from .nominal import (
     get_dataset,
     get_default_client,
     get_run,
+    get_video,
     search_runs,
     set_base_url,
     upload_attachment,
     upload_csv,
     upload_pandas,
     upload_polars,
+    upload_video,
 )
 
 __all__ = [
@@ -29,6 +31,8 @@ __all__ = [
     "upload_attachment",
     "get_attachment",
     "download_attachment",
+    "upload_video",
+    "get_video",
     "Dataset",
     "Run",
     "Attachment",
