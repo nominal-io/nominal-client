@@ -16,7 +16,16 @@ from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal import _config
 
-from ._api.combined import attachments_api, ingest_api, scout, scout_catalog, scout_run_api, upload_api
+from ._api.combined import (
+    attachments_api,
+    ingest_api,
+    scout,
+    scout_catalog,
+    scout_run_api,
+    scout_video,
+    scout_video_api,
+    upload_api,
+)
 from ._multipart import put_multipart_upload
 from ._utils import (
     CustomTimestampFormat,
@@ -25,6 +34,7 @@ from ._utils import (
     IntegralNanosecondsUTC,
     TimestampColumnType,
     _conjure_time_to_integral_nanoseconds,
+    _flexible_time_to_conjure_ingest_api,
     _flexible_time_to_conjure_scout_run_api,
     _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
@@ -37,6 +47,7 @@ __all__ = [
     "Run",
     "Dataset",
     "Attachment",
+    "Video",
     "IntegralNanosecondsUTC",
     "CustomTimestampFormat",
 ]
@@ -350,17 +361,97 @@ class Attachment:
             shutil.copyfileobj(self.get_contents(), wf)
 
     @classmethod
-    def _from_conjure(
-        cls,
-        client: NominalClient,
-        attachment: attachments_api.Attachment,
-    ) -> Self:
+    def _from_conjure(cls, client: NominalClient, attachment: attachments_api.Attachment) -> Self:
         return cls(
             rid=attachment.rid,
             name=attachment.title,
             description=attachment.description,
             properties=MappingProxyType(attachment.properties),
             labels=tuple(attachment.labels),
+            _client=client,
+        )
+
+
+@dataclass(frozen=True)
+class Video:
+    rid: str
+    name: str
+    description: str | None
+    properties: Mapping[str, str]
+    labels: Sequence[str]
+    _client: NominalClient
+
+    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
+        """Block until video ingestion has completed.
+        This method polls Nominal for ingest status after uploading a video on an interval.
+
+        Raises:
+            NominalIngestFailed: if the ingest failed
+            NominalIngestError: if the ingest status is not known
+        """
+
+        while True:
+            progress = self._client._video_client.get_ingest_status(self._client._auth_header, self.rid)
+            if progress.type == "success":
+                return
+            elif progress.type == "inProgress":  # "type" strings are camelCase
+                pass
+            elif progress.type == "error":
+                error = progress.error
+                if error is not None:
+                    error_messages = ", ".join([e.message for e in error.errors])
+                    error_types = ", ".join([e.error_type for e in error.errors])
+                    raise NominalIngestFailed(f"ingest failed for video {self.rid!r}: {error_messages} ({error_types})")
+                raise NominalIngestError(
+                    f"ingest status type marked as 'error' but with no instance for video {self.rid!r}"
+                )
+            else:
+                raise NominalIngestError(f"unhandled ingest status {progress.type!r} for video {self.rid!r}")
+            time.sleep(interval.total_seconds())
+
+    def update(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] | None = None,
+    ) -> Self:
+        """Replace video metadata.
+        Updates the current instance, and returns it.
+
+        Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+        calling this method. E.g.:
+
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in video.labels:
+                new_labels.append(old_label)
+            video = video.update(labels=new_labels)
+        """
+        # TODO(alkasm): properties SHOULD be optional here, but they're not.
+        # For uniformity with other methods, will always "update" with current props on the client.
+        request = scout_video_api.UpdateVideoMetadataRequest(
+            description=description,
+            labels=None if labels is None else list(labels),
+            title=name,
+            properties=dict(self.properties if properties is None else properties),
+        )
+        response = self._client._video_client.update_metadata(self._client._auth_header, request, self.rid)
+
+        video = self.__class__._from_conjure(self._client, response)
+        update_dataclass(self, video, fields=self.__dataclass_fields__)
+        return self
+
+    @classmethod
+    def _from_conjure(cls, client: NominalClient, video: scout_video_api.Video) -> Self:
+        return cls(
+            rid=video.rid,
+            name=video.title,
+            description=video.description,
+            properties=MappingProxyType(video.properties),
+            labels=tuple(video.labels),
             _client=client,
         )
 
@@ -373,6 +464,7 @@ class NominalClient:
     _ingest_client: ingest_api.IngestService = field(repr=False)
     _catalog_client: scout_catalog.CatalogService = field(repr=False)
     _attachment_client: attachments_api.AttachmentService = field(repr=False)
+    _video_client: scout_video.VideoService = field(repr=False)
 
     @classmethod
     def create(cls, base_url: str, token: str | None, trust_store_path: str | None = None) -> Self:
@@ -394,6 +486,7 @@ class NominalClient:
         ingest_client = RequestsClient.create(ingest_api.IngestService, agent, cfg)
         catalog_client = RequestsClient.create(scout_catalog.CatalogService, agent, cfg)
         attachment_client = RequestsClient.create(attachments_api.AttachmentService, agent, cfg)
+        video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
@@ -402,6 +495,7 @@ class NominalClient:
             _ingest_client=ingest_client,
             _catalog_client=catalog_client,
             _attachment_client=attachment_client,
+            _video_client=video_client,
         )
 
     def create_run(
@@ -523,7 +617,7 @@ class NominalClient:
         name: str,
         timestamp_column: str,
         timestamp_type: TimestampColumnType,
-        file_type: FileType = FileTypes.CSV,
+        file_type: tuple[str, str] | FileType = FileTypes.CSV,
         description: str | None = None,
         *,
         labels: Sequence[str] = (),
@@ -569,6 +663,59 @@ class NominalClient:
         response = self._ingest_client.trigger_file_ingest(self._auth_header, request)
         return self.get_dataset(response.dataset_rid)
 
+    def create_video_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        start: datetime | IntegralNanosecondsUTC,
+        description: str | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Create a video from a file-like object.
+
+        The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        """
+        if isinstance(video, TextIOBase):
+            raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
+
+        file_type = FileType(*file_type)
+        urlsafe_name = urllib.parse.quote_plus(name)
+        filename = f"{urlsafe_name}{file_type.extension}"
+
+        s3_path = put_multipart_upload(self._auth_header, video, filename, file_type.mimetype, self._upload_client)
+        request = ingest_api.IngestVideoRequest(
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+            sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
+            timestamps=ingest_api.VideoTimestampManifest(
+                no_manifest=ingest_api.NoTimestampManifest(
+                    starting_timestamp=_flexible_time_to_conjure_ingest_api(start)
+                )
+            ),
+            description=description,
+            title=name,
+        )
+        response = self._ingest_client.ingest_video(self._auth_header, request)
+        return self.get_video(response.video_rid)
+
+    def get_video(self, video: Video | str) -> Video:
+        """Retrieve a video by video or video RID."""
+        video_rid = _rid_from_instance_or_string(video)
+        response = _get_video(self._auth_header, self._video_client, video_rid)
+        return Video._from_conjure(self, response)
+
+    def _iter_get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Iterable[Video]:
+        video_rids = [_rid_from_instance_or_string(v) for v in videos]
+        for response in _get_videos(self._auth_header, self._video_client, video_rids):
+            yield Video._from_conjure(self, response)
+
+    def get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Sequence[Video]:
+        """Retrieve videos by video or video RID."""
+        return list(self._iter_get_videos(videos))
+
     def get_dataset(self, dataset: Dataset | str) -> Dataset:
         """Retrieve a dataset by dataset or dataset RID."""
         dataset_rid = _rid_from_instance_or_string(dataset)
@@ -604,7 +751,7 @@ class NominalClient:
         self,
         attachment: BinaryIO,
         name: str,
-        file_type: FileType = FileTypes.BINARY,
+        file_type: tuple[str, str] | FileType = FileTypes.BINARY,
         description: str | None = None,
         *,
         properties: Mapping[str, str] | None = None,
@@ -669,10 +816,26 @@ def _get_dataset(
     return datasets[0]
 
 
-def _rid_from_instance_or_string(value: Attachment | Run | Dataset | str) -> str:
+def _get_videos(
+    auth_header: str, client: scout_video.VideoService, video_rids: Iterable[str]
+) -> Iterable[scout_video_api.Video]:
+    request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
+    yield from client.batch_get(auth_header, request).responses
+
+
+def _get_video(auth_header: str, client: scout_video.VideoService, video_rid: str) -> scout_video_api.Video:
+    videos = list(_get_videos(auth_header, client, [video_rid]))
+    if not videos:
+        raise ValueError(f"video {video_rid!r} not found")
+    if len(videos) > 1:
+        raise ValueError(f"expected exactly one dataset, got {len(videos)}")
+    return videos[0]
+
+
+def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | str) -> str:
     if isinstance(value, str):
         return value
-    elif isinstance(value, (Attachment, Run, Dataset)):
+    elif isinstance(value, (Attachment, Run, Dataset, Video)):
         return value.rid
     elif hasattr(value, "rid"):
         return value.rid
