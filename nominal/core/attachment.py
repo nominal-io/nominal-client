@@ -6,7 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Mapping, Sequence, cast
 
-from typing_extensions import Self  # typing.Self in 3.11+
+from typing_extensions import Self
 
 from .._api.combined import attachments_api
 from .._utils import update_dataclass

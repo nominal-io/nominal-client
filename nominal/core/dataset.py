@@ -7,9 +7,11 @@ from datetime import timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from typing_extensions import Self
+
+from nominal._api.combined import upload_api
 
 from .._api.combined import ingest_api, scout_catalog
 from .._utils import (
@@ -23,7 +25,6 @@ from .._utils import (
 from ..exceptions import NominalIngestError, NominalIngestFailed
 from ._multipart import put_multipart_upload
 from ._utils import verify_csv_path
-from .client import NominalClient
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class Dataset:
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _client: NominalClient = field(repr=False)
+    _client: _DatasetClient = field(repr=False)
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until dataset ingestion has completed.
@@ -45,7 +46,7 @@ class Dataset:
         """
 
         while True:
-            progress = self._client._catalog_client.get_ingest_progress_v2(self._client._auth_header, self.rid)
+            progress = self._client.get_ingest_progress_v2(self.rid)
             if progress.ingest_status.type == "success":
                 return
             elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
@@ -86,14 +87,7 @@ class Dataset:
                 new_labels.append(old_label)
             dataset = dataset.update(labels=new_labels)
         """
-        request = scout_catalog.UpdateDatasetMetadata(
-            description=description,
-            labels=None if labels is None else list(labels),
-            name=name,
-            properties=None if properties is None else dict(properties),
-        )
-        response = self._client._catalog_client.update_dataset_metadata(self._client._auth_header, self.rid, request)
-
+        response = self._client.update(name, description, properties, labels)
         dataset = self.__class__._from_conjure(self._client, response)
         update_dataclass(self, dataset, fields=self.__dataclass_fields__)
         return self
@@ -130,12 +124,58 @@ class Dataset:
         self.poll_until_ingestion_completed()
         urlsafe_name = urllib.parse.quote_plus(self.name)
         filename = f"{urlsafe_name}{file_type.extension}"
-        s3_path = put_multipart_upload(
-            self._client._auth_header, dataset, filename, file_type.mimetype, self._client._upload_client
+
+        return self._client.add_file(self.rid, dataset, filename, file_type.mimetype, timestamp_column, timestamp_type)
+
+    @classmethod
+    def _from_conjure(cls, client: _DatasetClient, dataset: scout_catalog.EnrichedDataset) -> Self:
+        return cls(
+            rid=dataset.rid,
+            name=dataset.name,
+            description=dataset.description,
+            properties=MappingProxyType(dataset.properties),
+            labels=tuple(dataset.labels),
+            _client=client,
         )
+
+
+@dataclass
+class _DatasetClient:
+    """Makes the API calls."""
+
+    auth_header: str
+    catalog_client: scout_catalog.CatalogService
+    ingest_client: ingest_api.IngestService
+    upload_client: upload_api.UploadService
+
+    def get_datasets(self, dataset_rids: Iterable[str]) -> Iterable[scout_catalog.EnrichedDataset]:
+        request = scout_catalog.GetDatasetsRequest(dataset_rids=list(dataset_rids))
+        yield from self.catalog_client.get_enriched_datasets(self.auth_header, request)
+
+    def get_dataset(self, dataset_rid: str) -> scout_catalog.EnrichedDataset:
+        datasets = list(self.get_datasets([dataset_rid]))
+        if not datasets:
+            raise ValueError(f"dataset {dataset_rid!r} not found")
+        if len(datasets) > 1:
+            raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
+        return datasets[0]
+
+    def get_ingest_progress_v2(self, dataset_rid: str) -> scout_catalog.IngestProgressV2:
+        return self.catalog_client.get_ingest_progress_v2(dataset_rid)
+
+    def add_file(
+        self,
+        dataset_rid: str,
+        dataset: BinaryIO,
+        filename: str,
+        mimetype: str,
+        timestamp_column: str,
+        timestamp_type: ingest_api.TimestampType,
+    ) -> ingest_api.TriggeredIngest:
+        s3_path = put_multipart_upload(self.auth_header, dataset, filename, mimetype, self.upload_client)
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
-                existing_dataset=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+                existing_dataset=ingest_api.ExistingDatasetIngestDestination(dataset_rid=dataset_rid)
             ),
             source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
             source_metadata=ingest_api.IngestSourceMetadata(
@@ -145,15 +185,20 @@ class Dataset:
                 ),
             ),
         )
-        self._client._ingest_client.trigger_file_ingest(self._client._auth_header, request)
+        return self.ingest_client.trigger_file_ingest(self.auth_header, request)
 
-    @classmethod
-    def _from_conjure(cls, client: NominalClient, dataset: scout_catalog.EnrichedDataset) -> Self:
-        return cls(
-            rid=dataset.rid,
-            name=dataset.name,
-            description=dataset.description,
-            properties=MappingProxyType(dataset.properties),
-            labels=tuple(dataset.labels),
-            _client=client,
+    def update(
+        self,
+        dataset_rid: str,
+        name: str | None,
+        description: str | None,
+        properties: Mapping[str, str] | None,
+        labels: Sequence[str] | None,
+    ) -> scout_catalog.EnrichedDataset:
+        request = scout_catalog.UpdateDatasetMetadata(
+            description=description,
+            labels=None if labels is None else list(labels),
+            name=name,
+            properties=None if properties is None else dict(properties),
         )
+        return self.catalog_client.update_dataset_metadata(self.auth_header, dataset_rid, request)

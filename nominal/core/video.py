@@ -4,14 +4,15 @@ import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from typing_extensions import Self
+
+from nominal._api.combined import scout_video
 
 from .._api.combined import scout_video_api
 from .._utils import update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed
-from .client import NominalClient
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,7 @@ class Video:
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _client: NominalClient = field(repr=False)
+    _client: _VideoClient = field(repr=False)
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -87,7 +88,7 @@ class Video:
         return self
 
     @classmethod
-    def _from_conjure(cls, client: NominalClient, video: scout_video_api.Video) -> Self:
+    def _from_conjure(cls, client: _VideoClient, video: scout_video_api.Video) -> Self:
         return cls(
             rid=video.rid,
             name=video.title,
@@ -96,3 +97,16 @@ class Video:
             labels=tuple(video.labels),
             _client=client,
         )
+
+
+@dataclass(frozen=True)
+class _VideoClient:
+    auth_header: str
+    client: scout_video.VideoService
+
+    def get_videos(self, video_rids: Iterable[str]) -> Iterable[scout_video_api.Video]:
+        request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
+        yield from self.client.batch_get(self.auth_header, request).responses
+
+    def get_video(self, video_rid: str) -> scout_video_api.Video:
+        return self.client.get(self.auth_header, video_rid)

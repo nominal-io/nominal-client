@@ -407,37 +407,3 @@ def _create_search_runs_query(
         q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
         queries.append(q)
     return scout_run_api.SearchQuery(and_=queries)
-
-
-def _get_datasets(
-    auth_header: str, client: scout_catalog.CatalogService, dataset_rids: Iterable[str]
-) -> Iterable[scout_catalog.EnrichedDataset]:
-    request = scout_catalog.GetDatasetsRequest(dataset_rids=list(dataset_rids))
-    yield from client.get_enriched_datasets(auth_header, request)
-
-
-def _get_dataset(
-    auth_header: str, client: scout_catalog.CatalogService, dataset_rid: str
-) -> scout_catalog.EnrichedDataset:
-    datasets = list(_get_datasets(auth_header, client, [dataset_rid]))
-    if not datasets:
-        raise ValueError(f"dataset {dataset_rid!r} not found")
-    if len(datasets) > 1:
-        raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
-    return datasets[0]
-
-
-def _get_videos(
-    auth_header: str, client: scout_video.VideoService, video_rids: Iterable[str]
-) -> Iterable[scout_video_api.Video]:
-    request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
-    yield from client.batch_get(auth_header, request).responses
-
-
-def _get_video(auth_header: str, client: scout_video.VideoService, video_rid: str) -> scout_video_api.Video:
-    videos = list(_get_videos(auth_header, client, [video_rid]))
-    if not videos:
-        raise ValueError(f"video {video_rid!r} not found")
-    if len(videos) > 1:
-        raise ValueError(f"expected exactly one dataset, got {len(videos)}")
-    return videos[0]
