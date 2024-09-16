@@ -5,11 +5,13 @@ import urllib.parse
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from enum import Enum
 from io import TextIOBase
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Literal, Mapping, Sequence, cast
+from typing import Any, BinaryIO, Iterable, Literal, Mapping, Optional, Sequence, cast
 
 import certifi
+import yaml
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
 
 from ._api.combined import (
@@ -345,6 +347,46 @@ class Checklist:
 
     _client: NominalClient = field(repr=False)
 
+    @staticmethod
+    def from_yaml(client: NominalClient, filePath: str) -> Checklist:
+        def remove_newlines(s: str) -> str:
+            return s.replace('\n', '')
+        def check_constructor(data: Any) -> Check:
+            data['expression'] = remove_newlines(data['expression'])
+            return Check(**data, _client=client)
+        def checklist_variable_constructor(data: Any) -> ChecklistVariable:
+            data['expression'] = remove_newlines(data['expression'])
+            return ChecklistVariable(**data, _client=client)
+        def checklist_constructor(data: Any) -> Checklist:
+            variables = [checklist_variable_constructor(var) for var in data['variables']]
+            checks = [check_constructor(chk) for chk in data['checks']]
+            return Checklist(
+                title=data['title'],
+                description=data['description'],
+                properties=data['properties'],
+                labels=data['labels'],
+                variables=variables,
+                checks=checks,
+                _client=client
+            )
+        with open(filePath, 'r') as file:
+            # use checklist_constructor to parse the file
+            checklist_dict = yaml.load(file, Loader=yaml.FullLoader)
+            my_yaml_checklist = checklist_constructor(checklist_dict['checklist'])
+            return my_yaml_checklist
+
+    @staticmethod
+    def _from_conjure(client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Checklist:
+        return Checklist(
+            title=checklist.metadata.title,
+            description=checklist.metadata.description,
+            properties=checklist.metadata.properties,
+            labels=checklist.metadata.labels,
+            variables=[ChecklistVariable._from_conjure(client, checklistVariable) for checklistVariable in checklist.checklist_variables],
+            checks=[Check._from_conjure(client, check) for check in checklist.checks],
+            _client=client,
+        )
+
     def create_checklist(self) -> bool:
         request = scout_checks_api.CreateChecklistRequest(
             commit_message="",
@@ -362,9 +404,12 @@ class Checklist:
         self._client._checklist_api_client.create(self._client._auth_header, request)
         return True
 
+Priority = Enum('Priority', ['P0', 'P1', 'P2', 'P3', 'P3'])
 @dataclass(frozen=True)
 class Check:
     title: str
+    uuid: Optional[str]
+    priority: Priority
     description: str
     expression: str
 
@@ -372,10 +417,9 @@ class Check:
 
     def _to_conjure(self) -> scout_checks_api.CreateCheckRequest:
         return scout_checks_api.CreateCheckRequest(
-            check_lineage_rid=str(uuid.uuid4()),
+            check_lineage_rid=self.uuid if self.uuid is not None else str(uuid.uuid4()),
             title=self.title,
             description=self.description,
-            # TODO
             priority=scout_checks_api.Priority.P0,
             condition=scout_checks_api.UnresolvedCheckCondition(num_ranges_v3=self._get_compute_condition()))
 
@@ -394,6 +438,49 @@ class Check:
         else:
             raise ValueError("Expression does not evaluate to a rangeSeries")
 
+    @staticmethod
+    def wirePriorityToPriority(wirePriority: scout_checks_api.Priority) -> Priority:
+        if (wirePriority == scout_checks_api.Priority.P0):
+            return Priority.P0
+        elif (wirePriority == scout_checks_api.Priority.P1):
+            return Priority.P1
+        elif (wirePriority == scout_checks_api.Priority.P2):
+            return Priority.P2
+        elif (wirePriority == scout_checks_api.Priority.P3):
+            return Priority.P3
+        elif (wirePriority == scout_checks_api.Priority.P4):
+            return Priority.P4
+        else:
+            raise ValueError("Invalid priority")
+
+
+    @staticmethod
+    def _from_conjure(client: NominalClient, wireCheck: scout_checks_api.ChecklistEntry) -> Check:
+        if (wireCheck.type != "check" or wireCheck.check is None):
+            raise ValueError("ChecklistEntry is not a check")
+        checkDefinition: scout_checks_api.Check = wireCheck.check
+        if (checkDefinition.condition is None):
+            raise ValueError("ChecklistEntry is not a check")
+        checkCondition: scout_checks_api.CheckCondition = checkDefinition.condition
+        if (checkCondition.num_ranges_v3 is None):
+            raise ValueError("ChecklistEntry is not a check")
+        preprocessed = { key: _variableLocatorToRepresentationVariable(value) for key, value in checkCondition.num_ranges_v3.variables.items() }
+        expression = client._compute_representation_client.compute_to_expression(client._auth_header, scout_compute_representation_api.CompiledNode(
+            node=scout_compute_representation_api.Node(range_series=checkCondition.num_ranges_v3.ranges),
+            context=scout_compute_representation_api.ComputeRepresentationContext(
+                variables={ key: value for key, value in preprocessed.items() if value is not None },
+                function_variables={}
+            )
+        ))
+        return Check(
+            title=checkDefinition.title,
+            uuid=checkDefinition.rid,
+            description=checkDefinition.description,
+            expression=expression,
+            _client=client,
+            priority=Priority.P0,
+        )
+
 @dataclass(frozen=True)
 class ChecklistVariable:
     name: str
@@ -411,6 +498,38 @@ class ChecklistVariable:
                     context=scout_checks_api.UnresolvedVariables(
                         sub_function_variables={},
                         variables={ key: _representationVariableToUnresolvedVariableLocator(value) for key, value in compiledNode.context.variables.items() }))))
+
+    @staticmethod
+    def _from_conjure(client: NominalClient, checklistVariable: scout_checks_api.ChecklistVariable) -> ChecklistVariable:
+        if (checklistVariable.value.compute_node is None):
+            raise ValueError("ChecklistVariable is not a compute node")
+        preprocessed = { key: _variableLocatorToRepresentationVariable(value) for key, value in checklistVariable.value.compute_node.context.variables.items() }
+        expression = client._compute_representation_client.compute_to_expression(client._auth_header, scout_compute_representation_api.CompiledNode(
+            node=ChecklistVariable._computeNodeToCompiledNode(checklistVariable.value.compute_node.series_node),
+            context=scout_compute_representation_api.ComputeRepresentationContext(
+                variables={ key: value for key, value in preprocessed.items() if value is not None },
+                function_variables={}
+            )
+        ))
+        return ChecklistVariable(
+            name=checklistVariable.name,
+            expression=expression,
+            _client=client,
+        )
+
+    @staticmethod
+    def _computeNodeToCompiledNode(node: scout_compute_api.ComputeNode) -> scout_compute_representation_api.Node:
+        class ComputeNodeVisitor(scout_compute_api.ComputeNodeVisitor):
+            def _enum(self, enum: scout_compute_api.EnumSeriesNode) -> scout_compute_representation_api.Node:
+                return scout_compute_representation_api.Node(enumerated_series=enum)
+            def _numeric(self, numeric: scout_compute_api.NumericSeriesNode) -> scout_compute_representation_api.Node:
+                return scout_compute_representation_api.Node(numeric_series=numeric)
+            def _ranges(self, ranges: scout_compute_api.RangesNode) -> scout_compute_representation_api.Node:
+                return scout_compute_representation_api.Node(range_series=ranges)
+            def _raw(self, raw: scout_compute_api.RawUntypedSeriesNode) -> Any:
+                raise ValueError("Raw nodes are not yet supported by the client library")
+        val: scout_compute_representation_api.Node = node.accept(visitor=ComputeNodeVisitor())
+        return val
 
     @staticmethod
     def _compiledNodeToComputeNode(node: scout_compute_representation_api.Node) -> scout_compute_api.ComputeNode:
@@ -515,6 +634,10 @@ class NominalClient:
         run_rid = _rid_from_instance_or_string(run)
         response = self._run_client.get_run(self._auth_header, run_rid)
         return Run._from_conjure(self, response)
+
+    def get_checklist(self, checklistRid: str) -> Checklist:
+        response = self._checklist_api_client.get(self._auth_header, checklistRid)
+        return Checklist._from_conjure(self, response)
 
     def _list_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
         while True:
@@ -657,6 +780,9 @@ class NominalClient:
         response = self._attachment_client.get(self._auth_header, attachment_rid)
         return Attachment._from_conjure(self, response)
 
+    def expression_to_compute(self, expression: str) -> scout_compute_representation_api.CompiledNode:
+        result = self._compute_representation_client.expression_to_compute(self._auth_header, expression)
+        return result
 
 def _get_datasets(
     auth_header: str, client: scout_catalog.CatalogService, dataset_rids: Iterable[str]
@@ -717,3 +843,19 @@ def _representationVariableToUnresolvedVariableLocator(variable: scout_compute_r
             return scout_checks_api.UnresolvedVariableLocator(checklist_variable=external_variable_reference)
     var: scout_checks_api.UnresolvedVariableLocator = variable.accept(visitor=VariableValueVisitor())
     return var
+def _variableLocatorToRepresentationVariable(variable: scout_checks_api.VariableLocator) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+    class VariableLocatorVisitor(scout_checks_api.VariableLocatorVisitor):
+        def _series(self, series: scout_api.ChannelLocator) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+            return scout_compute_representation_api.ComputeRepresentationVariableValue(series=scout_compute_representation_api.ChannelLocator(
+                channel=series.channel,
+                data_source_ref=series.data_source_ref))
+        def _checklist_variable(self, checklist_variable: str) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+            return scout_compute_representation_api.ComputeRepresentationVariableValue(external_variable_reference=checklist_variable)
+        def _compute_node(self, compute_node: scout_checks_api.ComputeNodeWithContext) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+            return None
+        def _function_rid(self, function_rid: str) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+            return None
+        def _timestamp(self, timestamp: scout_checks_api.TimestampLocator) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+            return None
+    val: scout_compute_representation_api.ComputeRepresentationVariableValue | None = variable.accept(visitor=VariableLocatorVisitor())
+    return val
