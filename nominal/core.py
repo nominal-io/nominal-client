@@ -359,11 +359,7 @@ class Attachment:
             shutil.copyfileobj(self.get_contents(), wf)
 
     @classmethod
-    def _from_conjure(
-        cls,
-        client: NominalClient,
-        attachment: attachments_api.Attachment,
-    ) -> Self:
+    def _from_conjure(cls, client: NominalClient, attachment: attachments_api.Attachment) -> Self:
         return cls(
             rid=attachment.rid,
             name=attachment.title,
@@ -378,7 +374,7 @@ class Attachment:
 class Video:
     rid: str
     name: str
-    description: str
+    description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
     _client: NominalClient
@@ -432,11 +428,13 @@ class Video:
                 new_labels.append(old_label)
             video = video.update(labels=new_labels)
         """
+        # TODO(alkasm): properties SHOULD be optional here, but they're not.
+        # For uniformity with other methods, will always "update" with current props on the client.
         request = scout_video_api.UpdateVideoMetadataRequest(
             description=description,
             labels=None if labels is None else list(labels),
             title=name,
-            properties=None if properties is None else dict(properties),
+            properties=dict(self.properties if properties is None else properties),
         )
         response = self._client._video_client.update_metadata(self._client._auth_header, request, self.rid)
 
@@ -672,12 +670,12 @@ class NominalClient:
     def get_video(self, video: Video | str) -> Video:
         """Retrieve a video by video or video RID."""
         video_rid = _rid_from_instance_or_string(video)
-        response = _get_video(self._auth_header, self._catalog_client, video_rid)
+        response = _get_video(self._auth_header, self._video_client, video_rid)
         return Video._from_conjure(self, response)
 
     def _iter_get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Iterable[Video]:
         video_rids = [_rid_from_instance_or_string(v) for v in videos]
-        for response in _get_videos(self._auth_header, self._catalog_client, video_rids):
+        for response in _get_videos(self._auth_header, self._video_client, video_rids):
             yield Video._from_conjure(self, response)
 
     def get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Sequence[Video]:
@@ -792,7 +790,7 @@ def _get_videos(
 
 
 def _get_video(auth_header: str, client: scout_video.VideoService, video_rid: str) -> scout_video_api.Video:
-    videos = list(_get_video(auth_header, client, [video_rid]))
+    videos = list(_get_videos(auth_header, client, [video_rid]))
     if not videos:
         raise ValueError(f"video {video_rid!r} not found")
     if len(videos) > 1:
