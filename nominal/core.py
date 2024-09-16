@@ -47,6 +47,7 @@ __all__ = [
     "Run",
     "Dataset",
     "Attachment",
+    "Video",
     "IntegralNanosecondsUTC",
     "CustomTimestampFormat",
 ]
