@@ -163,6 +163,7 @@ class FileType(NamedTuple):
             return FileTypes.PARQUET
         raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
 
+
 class FileTypes:
     CSV: FileType = FileType(".csv", "text/csv")
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
