@@ -46,7 +46,7 @@ timestamp,temperature,humidity
 2024-09-05T18:09:00Z,29,41
 """
 
-  
+
 def csv_data2():
     return b"""\
 timestamp,temperature,humidity
