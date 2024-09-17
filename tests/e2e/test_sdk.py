@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest import mock
 from uuid import uuid4
 
@@ -61,6 +62,26 @@ def test_add_dataset_to_run_and_list_datasets(csv_data):
     ref_name2, ds2 = ds_list[0]
     assert ref_name2 == ref_name
     assert ds2.rid == ds.rid
+
+
+def test_add_csv_to_dataset(csv_data, csv_data2):
+    name = f"dataset-{uuid4()}"
+    desc = f"TESTING sdk to add more data to a dataset {uuid4()}"
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
+        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
+    ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data2)):
+        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
+        ds.add_csv_to_dataset("fake_path.csv", "timestamp", "iso_8601")
+    ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
+
+    assert ds.rid != ""
+    assert ds.name == name
+    assert ds.description == desc
+    assert len(ds.properties) == 0
+    assert len(ds.labels) == 0
 
 
 def test_update_attachment(csv_data):
