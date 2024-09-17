@@ -1399,15 +1399,19 @@ name = "mkdocs-click"
 version = "0.8.1"
 description = "An MkDocs extension to generate documentation for Click command line applications"
 optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "mkdocs_click-0.8.1-py3-none-any.whl", hash = "sha256:a100ff938be63911f86465a1c21d29a669a7c51932b700fdb3daa90d13b61ee4"},
-    {file = "mkdocs_click-0.8.1.tar.gz", hash = "sha256:0a88cce04870c5d70ff63138e2418219c3c4119cc928a59c66b76eb5214edba6"},
-]
+python-versions = ">=3.8"
+files = []
+develop = false
 
 [package.dependencies]
 click = ">=8.1"
 markdown = ">=3.3"
+
+[package.source]
+type = "git"
+url = "https://github.com/alkasm/mkdocs-click"
+reference = "alkasm/keep-context-settings"
+resolved_reference = "63b9ff2fa5395685e2508596847a6a7ba19937ce"
 
 [[package]]
 name = "mkdocs-get-deps"
@@ -3247,4 +3251,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "6a5bda474bea6e9e21e407e8f4b3d996c45909b806161cb9a24e8433897fd0f3"
+content-hash = "b43a6efb217bc8aa7dfb20d2944b4ae7fee45a9902a1af19c0103c4e51ca7900"

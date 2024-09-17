@@ -241,10 +241,11 @@ class Dataset:
         update_dataclass(self, dataset, fields=self.__dataclass_fields__)
         return self
 
-    def add_csv_to_dataset(self, path: str | Path, timestamp_column: str, timestamp_type: TimestampColumnType) -> None:
+    def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: TimestampColumnType) -> None:
         """Append to a dataset from a csv on-disk."""
+        path, file_type = _verify_csv_path(path)
         with open(path, "rb") as csv_file:
-            self.add_to_dataset_from_io(csv_file, timestamp_column, timestamp_type, FileTypes.CSV)
+            self.add_to_dataset_from_io(csv_file, timestamp_column, timestamp_type, file_type)
 
     def add_to_dataset_from_io(
         self,
@@ -578,6 +579,38 @@ class NominalClient:
         """
         return list(self._iter_search_runs(start, end, exact_name, label, property))
 
+    def create_csv_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        timestamp_column: str,
+        timestamp_type: TimestampColumnType,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from a CSV file.
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path, file_type = _verify_csv_path(path)
+        if name is None:
+            name = path.name
+        with open(path, "rb") as csv_file:
+            return self.create_dataset_from_io(
+                csv_file,
+                name,
+                timestamp_column,
+                timestamp_type,
+                file_type,
+                description,
+                labels=labels,
+                properties=properties,
+            )
+
     def create_dataset_from_io(
         self,
         dataset: BinaryIO,
@@ -818,3 +851,11 @@ def _create_search_runs_query(
         q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
         queries.append(q)
     return scout_run_api.SearchQuery(and_=queries)
+
+
+def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
+    path = Path(path)
+    file_type = FileType.from_path_dataset(path)
+    if file_type.extension not in (".csv", ".csv.gz"):
+        raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
+    return path, file_type

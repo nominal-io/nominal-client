@@ -27,7 +27,7 @@ print('Uploaded dataset:', dataset.rid)
 run = nm.create_run(
     name='Run A',
     start='2024-09-09T12:35:00Z',
-    start='2024-09-09T13:18:00Z',
+    end='2024-09-09T13:18:00Z',
 )
 print("Created run:", run.rid)
 ```
