@@ -7,7 +7,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar, Union
+from typing import (BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar,
+                    Union)
 
 import dateutil.parser
 from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
@@ -154,15 +155,14 @@ class FileType(NamedTuple):
 
     @classmethod
     def from_path_dataset(cls, path: Path | str) -> FileType:
-        ext = "".join(Path(path).suffixes)
-        if ext == ".csv":
+        pathString = path if isinstance(path, str) else "".join(path.suffixes)
+        if pathString.endswith(".csv"):
             return FileTypes.CSV
-        if ext == ".csv.gz":
+        if pathString.endswith(".csv.gz"):
             return FileTypes.CSV_GZ
-        if ext == ".parquet":
+        if pathString.endswith(".parquet"):
             return FileTypes.PARQUET
         raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
-
 
 class FileTypes:
     CSV: FileType = FileType(".csv", "text/csv")
