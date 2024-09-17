@@ -72,7 +72,7 @@ class Run:
         """
         self.add_datasets({ref_name: dataset})
 
-    def add_datasets(self, datasets: dict[str, Dataset | str]) -> None:
+    def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
         """Add multiple datasets to this run.
 
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
