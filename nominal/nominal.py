@@ -17,7 +17,7 @@ from ._utils import (
     _parse_timestamp,
     reader_writer,
 )
-from .core import Attachment, Dataset, NominalClient, Run
+from .core import Attachment, Dataset, NominalClient, Run, Video
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -287,6 +287,23 @@ def download_attachment(rid: str, file: Path | str) -> None:
     conn = get_default_client()
     attachment = conn.get_attachment(rid)
     attachment.write(Path(file))
+
+
+def upload_video(
+    file: Path | str, name: str, start: datetime | str | IntegralNanosecondsUTC, description: str | None = None
+) -> Video:
+    """Upload a video to Nominal from a file."""
+    conn = get_default_client()
+    path = Path(file)
+    file_type = FileType.from_path(path)
+    with open(file, "rb") as f:
+        return conn.create_video_from_io(f, name, _parse_timestamp(start), description, file_type)
+
+
+def get_video(rid: str) -> Video:
+    """Retrieve a video from the Nominal platform by its RID."""
+    conn = get_default_client()
+    return conn.get_video(rid)
 
 
 def _get_start_end_timestamp_csv_file(
