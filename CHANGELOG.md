@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.1.0](https://github.com/nominal-io/nominal-client/compare/v1.0.0...v1.1.0) (2024-09-17)
+
+
+### Features
+
+* add bulk add datasource method to run ([#47](https://github.com/nominal-io/nominal-client/issues/47)) ([f874dda](https://github.com/nominal-io/nominal-client/commit/f874dda882fa1637662f7794ff883fd81bcc8f50))
+* add csv to dataset method ([#38](https://github.com/nominal-io/nominal-client/issues/38)) ([f28efe4](https://github.com/nominal-io/nominal-client/commit/f28efe4961d39fa2fff436f7d36726a1c4f949b3))
+* add video support ([#42](https://github.com/nominal-io/nominal-client/issues/42)) ([b09532a](https://github.com/nominal-io/nominal-client/commit/b09532ab4aac76e794ab95cdd139b67f2bf4c5d0))
+
+
+### Bug Fixes
+
+* detect .csv.gz and add helper method for initial csv creation ([#41](https://github.com/nominal-io/nominal-client/issues/41)) ([8cc307d](https://github.com/nominal-io/nominal-client/commit/8cc307d9234f913c5f5d8fa4a180641416fe2ab9))
+* file path extension check fails for paths with other "."s in them ([#45](https://github.com/nominal-io/nominal-client/issues/45)) ([9e2d735](https://github.com/nominal-io/nominal-client/commit/9e2d73555659b2f1cef2da84e091ca4efd6d1ee0))
+
+
+### Documentation
+
+* update repeated start typo for Create a Run ([#43](https://github.com/nominal-io/nominal-client/issues/43)) ([6513b96](https://github.com/nominal-io/nominal-client/commit/6513b96ccaf55334dd276c3ca58e2be7ea960fc5))
+
 ## [1.0.0](https://github.com/nominal-io/nominal-client/compare/v1.0.0-beta...v1.0.0) (2024-09-13)
 
 
