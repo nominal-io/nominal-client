@@ -7,8 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import (BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar,
-                    Union)
+from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar, Union
 
 import dateutil.parser
 from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
