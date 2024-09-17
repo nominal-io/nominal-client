@@ -154,12 +154,12 @@ class FileType(NamedTuple):
 
     @classmethod
     def from_path_dataset(cls, path: Path | str) -> FileType:
-        pathString = path if isinstance(path, str) else "".join(path.suffixes)
-        if pathString.endswith(".csv"):
+        path_string = str(path) if isinstance(path, Path) else path
+        if path_string.endswith(".csv"):
             return FileTypes.CSV
-        if pathString.endswith(".csv.gz"):
+        if path_string.endswith(".csv.gz"):
             return FileTypes.CSV_GZ
-        if pathString.endswith(".parquet"):
+        if path_string.endswith(".parquet"):
             return FileTypes.PARQUET
         raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
 
