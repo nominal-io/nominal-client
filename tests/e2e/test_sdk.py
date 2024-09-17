@@ -73,7 +73,6 @@ def test_add_csv_to_dataset(csv_data, csv_data2):
     ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data2)):
-        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
         ds.add_csv_to_dataset("fake_path.csv", "timestamp", "iso_8601")
     ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
 
