@@ -70,15 +70,7 @@ class Run:
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
         """
-        # TODO(alkasm): support series tags & offset
-        data_sources = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(dataset=_rid_from_instance_or_string(dataset)),
-                series_tags={},
-                offset=None,
-            )
-        }
-        self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
+        self.add_datasets({ref_name: dataset})
 
     def add_datasets(self, datasets: dict[str, Dataset | str]) -> None:
         """Add multiple datasets to this run.
