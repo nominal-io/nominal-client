@@ -153,7 +153,7 @@ def test_search_runs():
 
 def test_upload_attachment(csv_data):
     at_title = f"attachment-{uuid4()}"
-    at_desc = f"top-level test to add a attachment to a run {uuid4()}"
+    at_desc = f"top-level test to upload an attachment {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_title, at_desc)
@@ -167,7 +167,7 @@ def test_upload_attachment(csv_data):
 
 def test_get_attachment(csv_data):
     at_title = f"attachment-{uuid4()}"
-    at_desc = f"top-level test to add a attachment to a run {uuid4()}"
+    at_desc = f"top-level test to get an attachment {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_title, at_desc)
@@ -182,7 +182,7 @@ def test_get_attachment(csv_data):
 
 def test_download_attachment(csv_data):
     at_title = f"attachment-{uuid4()}"
-    at_desc = f"top-level test to add a attachment to a run {uuid4()}"
+    at_desc = f"top-level test to download an attachment {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_title, at_desc)
@@ -191,3 +191,35 @@ def test_download_attachment(csv_data):
         with mock.patch("builtins.open", return_value=w):
             nm.download_attachment(at.rid, "fake_path.csv")
             assert r.read() == csv_data
+
+
+def test_upload_video(mp4_data):
+    title = f"video-{uuid4()}"
+    desc = f"top-level test to ingest a video {uuid4()}"
+    start, _ = _create_random_start_end()
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=mp4_data)):
+        v = nm.upload_video("fake_path.mp4", title, start, desc)
+    v.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
+
+    assert v.rid != ""
+    assert v.name == title
+    assert v.description == desc
+    assert len(v.properties) == 0
+    assert len(v.labels) == 0
+
+
+def test_get_video(mp4_data):
+    title = f"video-{uuid4()}"
+    desc = f"top-level test to get a video {uuid4()}"
+    start, _ = _create_random_start_end()
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=mp4_data)):
+        v = nm.upload_video("fake_path.mp4", title, start, desc)
+    v2 = nm.get_video(v.rid)
+
+    assert v2.rid == v.rid != ""
+    assert v2.name == v.name == title
+    assert v2.description == v.description == desc
+    assert v2.properties == v.properties == {}
+    assert v2.labels == v.labels == ()

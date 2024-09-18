@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Iterator
 from unittest import mock
 
@@ -44,3 +45,30 @@ timestamp,temperature,humidity
 2024-09-05T18:08:00Z,28,42
 2024-09-05T18:09:00Z,29,41
 """
+
+
+def csv_data2():
+    return b"""\
+timestamp,temperature,humidity
+2024-09-05T18:10:00Z,30,40
+2024-09-05T18:11:00Z,31,39
+2024-09-05T18:12:00Z,32,38
+2024-09-05T18:13:00Z,33,37
+2024-09-05T18:14:00Z,34,36
+2024-09-05T18:15:00Z,35,35
+2024-09-05T18:16:00Z,36,34
+2024-09-05T18:17:00Z,37,33
+2024-09-05T18:18:00Z,38,32
+2024-09-05T18:19:00Z,39,31
+"""
+
+
+@pytest.fixture(scope="session")
+def mp4_data():
+    """From chromium tests: https://github.com/chromium/chromium/blob/main/media/test/data/bear-1280x720.mp4
+
+    To download:
+        curl https://raw.githubusercontent.com/chromium/chromium/main/media/test/data/bear-1280x720.mp4 -o data/bear-1280x720.mp4
+    """
+    path = Path(__file__).parent / "data/bear-1280x720.mp4"
+    return open(path, "rb").read()
