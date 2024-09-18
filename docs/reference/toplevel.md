@@ -6,6 +6,7 @@
       - "!Dataset"
       - "!NominalClient"
       - "!Run"
+      - "!Video"
 
 <!--
   Eventually we can use `summary` over `filters` when it moves from Sponsors only to GA:

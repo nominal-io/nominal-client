@@ -33,6 +33,7 @@ __all__ = [
     "download_attachment",
     "upload_video",
     "get_video",
+    # classes: add a filter to "hide" these in docs/reference/toplevel.md
     "Dataset",
     "Run",
     "Attachment",
