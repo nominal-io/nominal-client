@@ -4,20 +4,29 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Literal
+from typing import TYPE_CHECKING, BinaryIO, Literal, Mapping, Sequence
 
 from nominal import _config
 
 from ._utils import (
     CustomTimestampFormat,
     FileType,
+    Priority,
     FileTypes,
     IntegralNanosecondsUTC,
     TimestampColumnType,
     _parse_timestamp,
     reader_writer,
 )
-from .core import Attachment, Dataset, NominalClient, Run
+from .core import (
+    Attachment, 
+    Dataset, 
+    NominalClient, 
+    Run,
+    Checklist,
+    Check,
+    ChecklistVariable
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -322,3 +331,45 @@ def _get_start_end_timestamp_csv_file(
         IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
         IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
     )
+
+def create_check(
+    title: str,
+    priority: Priority,
+    description: str,
+    expression: str
+) -> Check:
+    conn = get_default_client()
+    return conn.create_check(title, priority, description, expression)
+
+def create_checklist_variable(
+    name: str,
+    expression: str
+) -> ChecklistVariable:
+    conn = get_default_client()
+    return conn.create_checklist_variable(name, expression)
+
+def create_checklist(
+    assignee_email: str,
+    title: str,
+    checks: Sequence[Check],
+    checklist_variables: Sequence[ChecklistVariable],
+    commit_message: str | None = None,
+    description: str | None = None,
+    properties: Mapping[str, str] | None = None,
+    labels: Sequence[str] = (),
+    is_published: bool = True,
+) -> Checklist:
+    conn = get_default_client()
+    return conn.create_checklist(assignee_email, title, checks, checklist_variables, commit_message, description, properties, labels, is_published)
+
+def create_checklist_from_yaml(
+    file_path: str
+) -> Checklist:
+    conn = get_default_client()
+    return conn.create_checklist_from_yaml(file_path)
+
+def get_checklist(
+    checklist_rid: str
+) -> Checklist:
+    conn = get_default_client()
+    return conn.get_checklist(checklist_rid)

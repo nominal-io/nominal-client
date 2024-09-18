@@ -1,5 +1,6 @@
 # coding=utf-8
 __all__ = [
+    'api',
     'attachments_api',
     'authentication',
     'authentication_api',
@@ -44,7 +45,6 @@ __all__ = [
     'scout_plotting',
     'scout_rids_api',
     'scout_run_api',
-    'scout_series',
     'scout_template_api',
     'scout_units_api',
     'scout_versioning_api',
@@ -66,5 +66,5 @@ __all__ = [
 
 __conjure_generator_version__ = "4.9.0"
 
-__version__ = "0.407.0+3.ga82f7fe"
+__version__ = "0.418.0+4.g701c222"
 

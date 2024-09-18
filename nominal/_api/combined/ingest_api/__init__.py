@@ -14,7 +14,6 @@ from .._impl import (
     ingest_api_DeprecatedNewDataSourceVisitor as DeprecatedNewDataSourceVisitor,
     ingest_api_DeprecatedTimestampMetadata as DeprecatedTimestampMetadata,
     ingest_api_DeprecatedTriggerIngest as DeprecatedTriggerIngest,
-    ingest_api_Duration as Duration,
     ingest_api_EpochTimestamp as EpochTimestamp,
     ingest_api_ErrorResult as ErrorResult,
     ingest_api_ErrorType as ErrorType,

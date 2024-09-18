@@ -18,6 +18,8 @@ from .._impl import (
     scout_run_api_Duration as Duration,
     scout_run_api_GetEventsForRunPage as GetEventsForRunPage,
     scout_run_api_GetRunByIdRequest as GetRunByIdRequest,
+    scout_run_api_GetRunsByAssetRequest as GetRunsByAssetRequest,
+    scout_run_api_GetRunsByAssetResponse as GetRunsByAssetResponse,
     scout_run_api_Label as Label,
     scout_run_api_Link as Link,
     scout_run_api_LogSetRid as LogSetRid,

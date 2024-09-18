@@ -6,6 +6,7 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar, Union
 
@@ -47,6 +48,8 @@ TimestampColumnType: TypeAlias = Union[
     ],
     CustomTimestampFormat,
 ]
+
+Priority = Enum("Priority", ["P0", "P1", "P2", "P3", "P3"])
 
 
 def _timestamp_type_to_conjure_ingest_api(

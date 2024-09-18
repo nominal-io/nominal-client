@@ -9,7 +9,6 @@ from .._impl import (
     storage_writer_api_RecordsBatch as RecordsBatch,
     storage_writer_api_StringPoint as StringPoint,
     storage_writer_api_TelegrafMetric as TelegrafMetric,
-    storage_writer_api_Timestamp as Timestamp,
     storage_writer_api_WriteBatchesRequest as WriteBatchesRequest,
     storage_writer_api_WriteTelegrafBatchesRequest as WriteTelegrafBatchesRequest,
 )

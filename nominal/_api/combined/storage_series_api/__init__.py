@@ -8,7 +8,5 @@ from .._impl import (
     storage_series_api_NominalSeriesService as NominalSeriesService,
     storage_series_api_SearchSeriesRequest as SearchSeriesRequest,
     storage_series_api_SearchSeriesResponse as SearchSeriesResponse,
-    storage_series_api_TagName as TagName,
-    storage_series_api_TagValue as TagValue,
 )
 
