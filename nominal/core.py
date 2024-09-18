@@ -54,13 +54,10 @@ __all__ = [
     "Run",
     "Dataset",
     "Attachment",
-<<<<<<< HEAD
     "Checklist",
     "Check",
     "ChecklistVariable",
-=======
     "Video",
->>>>>>> origin/main
     "IntegralNanosecondsUTC",
     "CustomTimestampFormat",
 ]
