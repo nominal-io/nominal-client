@@ -11,7 +11,6 @@ from nominal import _config
 from ._utils import (
     CustomTimestampFormat,
     FileType,
-    Priority,
     FileTypes,
     IntegralNanosecondsUTC,
     TimestampColumnType,
@@ -24,8 +23,8 @@ from .core import (
     NominalClient, 
     Run,
     Checklist,
-    Check,
-    ChecklistVariable,
+    CreateCheck,
+    CreateChecklistVariable,
     Video
 )
 
@@ -350,27 +349,12 @@ def _get_start_end_timestamp_csv_file(
         IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
     )
 
-def create_check(
-    title: str,
-    priority: Priority,
-    description: str,
-    expression: str
-) -> Check:
-    conn = get_default_client()
-    return conn.create_check(title, priority, description, expression)
-
-def create_checklist_variable(
-    name: str,
-    expression: str
-) -> ChecklistVariable:
-    conn = get_default_client()
-    return conn.create_checklist_variable(name, expression)
-
 def create_checklist(
     assignee_email: str,
     title: str,
-    checks: Sequence[Check],
-    checklist_variables: Sequence[ChecklistVariable],
+    checks: Sequence[CreateCheck],
+    checklist_variables: Sequence[CreateChecklistVariable],
+    default_ref_name: str | None = None,
     commit_message: str | None = None,
     description: str | None = None,
     properties: Mapping[str, str] | None = None,
@@ -378,7 +362,18 @@ def create_checklist(
     is_published: bool = True,
 ) -> Checklist:
     conn = get_default_client()
-    return conn.create_checklist(assignee_email, title, checks, checklist_variables, commit_message, description, properties, labels, is_published)
+    return conn.create_checklist(
+        assignee_email, 
+        title, 
+        checks, 
+        checklist_variables, 
+        default_ref_name, 
+        commit_message, 
+        description, 
+        properties, 
+        labels, 
+        is_published
+    )
 
 def create_checklist_from_yaml(
     file_path: str

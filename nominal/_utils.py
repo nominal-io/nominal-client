@@ -6,14 +6,13 @@ import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from enum import Enum
 from pathlib import Path
 from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, Type, TypeVar, Union
 
 import dateutil.parser
 from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
 
-from ._api.combined import ingest_api, scout_run_api
+from ._api.combined import ingest_api, scout_run_api, scout_checks_api
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,19 @@ TimestampColumnType: TypeAlias = Union[
     CustomTimestampFormat,
 ]
 
-Priority = Enum("Priority", ["P0", "P1", "P2", "P3", "P3"])
+Priority = Literal["P0", "P1", "P2", "P3", "P4"]
+    
+def _priority_to_conjure_priority(priority: Priority) -> scout_checks_api.Priority:
+    if priority == "P0":
+        return scout_checks_api.Priority.P0
+    elif priority == "P1":
+        return scout_checks_api.Priority.P1
+    elif priority == "P2":
+        return scout_checks_api.Priority.P2
+    elif priority == "P3":
+        return scout_checks_api.Priority.P3
+    elif priority == "P4":
+        return scout_checks_api.Priority.P4
 
 
 def _timestamp_type_to_conjure_ingest_api(
