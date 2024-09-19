@@ -995,6 +995,7 @@ class NominalClient:
         )
 
         response = self._checklist_api_client.create(self._auth_header, request)
+        # TODO(ritwikdixit): remove the need for an extraneous network request
         return Checklist._from_conjure(self, response)
         
 
