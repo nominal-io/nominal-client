@@ -724,10 +724,9 @@ class NominalClient:
         response = self._run_client.create_run(self._auth_header, request)
         return Run._from_conjure(self, response)
 
-    def get_run(self, run: Run | str) -> Run:
-        """Retrieve a run by run or run RID."""
-        run_rid = _rid_from_instance_or_string(run)
-        response = self._run_client.get_run(self._auth_header, run_rid)
+    def get_run(self, rid: str) -> Run:
+        """Retrieve a run by its RID."""
+        response = self._run_client.get_run(self._auth_header, rid)
         return Run._from_conjure(self, response)
 
     def _search_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
@@ -900,35 +899,32 @@ class NominalClient:
         response = self._ingest_client.ingest_video(self._auth_header, request)
         return self.get_video(response.video_rid)
 
-    def get_video(self, video: Video | str) -> Video:
-        """Retrieve a video by video or video RID."""
-        video_rid = _rid_from_instance_or_string(video)
-        response = self._video_client.get(self._auth_header, video_rid)
+    def get_video(self, rid: str) -> Video:
+        """Retrieve a video by its RID."""
+        response = self._video_client.get(self._auth_header, rid)
         return Video._from_conjure(self, response)
 
-    def _iter_get_videos(self, video_rids: Iterable[str]) -> Iterable[Video]:
-        request = scout_video_api.GetVideosRequest(video_rids=list(video_rids))
+    def _iter_get_videos(self, rids: Iterable[str]) -> Iterable[Video]:
+        request = scout_video_api.GetVideosRequest(video_rids=list(rids))
         for response in self._video_client.batch_get(self._auth_header, request).responses:
             yield Video._from_conjure(self, response)
 
-    def get_videos(self, videos: Iterable[Video] | Iterable[str]) -> Sequence[Video]:
-        """Retrieve videos by video or video RID."""
-        return list(self._iter_get_videos(_rid_from_instance_or_string(v) for v in videos))
+    def get_videos(self, rids: Iterable[str]) -> Sequence[Video]:
+        """Retrieve videos by their RID."""
+        return list(self._iter_get_videos(rids))
 
-    def get_dataset(self, dataset: Dataset | str) -> Dataset:
-        """Retrieve a dataset by dataset or dataset RID."""
-        dataset_rid = _rid_from_instance_or_string(dataset)
-        response = _get_dataset(self._auth_header, self._catalog_client, dataset_rid)
+    def get_dataset(self, rid: str) -> Dataset:
+        """Retrieve a dataset by its RID."""
+        response = _get_dataset(self._auth_header, self._catalog_client, rid)
         return Dataset._from_conjure(self, response)
 
-    def _iter_get_datasets(self, datasets: Iterable[Dataset] | Iterable[str]) -> Iterable[Dataset]:
-        dataset_rids = (_rid_from_instance_or_string(ds) for ds in datasets)
-        for ds in _get_datasets(self._auth_header, self._catalog_client, dataset_rids):
+    def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
+        for ds in _get_datasets(self._auth_header, self._catalog_client, rids):
             yield Dataset._from_conjure(self, ds)
 
-    def get_datasets(self, datasets: Iterable[Dataset] | Iterable[str]) -> Sequence[Dataset]:
-        """Retrieve datasets by dataset or dataset RID."""
-        return list(self._iter_get_datasets(datasets))
+    def get_datasets(self, rids: Iterable[str]) -> Sequence[Dataset]:
+        """Retrieve datasets by their RIDs."""
+        return list(self._iter_get_datasets(rids))
 
     def _search_datasets(self) -> Iterable[Dataset]:
         # TODO(alkasm): search filters
@@ -1069,21 +1065,20 @@ class NominalClient:
         response = self._attachment_client.create(self._auth_header, request)
         return Attachment._from_conjure(self, response)
 
-    def get_attachment(self, attachment: Attachment | str) -> Attachment:
-        """Retrieve an attachment by attachment or attachment RID."""
-        attachment_rid = _rid_from_instance_or_string(attachment)
-        response = self._attachment_client.get(self._auth_header, attachment_rid)
+    def get_attachment(self, rid: str) -> Attachment:
+        """Retrieve an attachment by its RID."""
+        response = self._attachment_client.get(self._auth_header, rid)
         return Attachment._from_conjure(self, response)
 
-    def _iter_get_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> Iterable[Attachment]:
-        rids = [_rid_from_instance_or_string(a) for a in attachments]
-        request = attachments_api.GetAttachmentsRequest(attachment_rids=rids)
+    def _iter_get_attachments(self, rids: Iterable[str]) -> Iterable[Attachment]:
+        request = attachments_api.GetAttachmentsRequest(attachment_rids=list(rids))
         response = self._attachment_client.get_batch(self._auth_header, request)
         for a in response.response:
             yield Attachment._from_conjure(self, a)
 
-    def get_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> Sequence[Attachment]:
-        return list(self._iter_get_attachments(attachments))
+    def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
+        """Retrive attachments by their RIDs."""
+        return list(self._iter_get_attachments(rids))
 
 
 def _get_datasets(
