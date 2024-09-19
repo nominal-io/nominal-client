@@ -334,9 +334,26 @@ class Checklist:
     checks: Sequence[Check]
     _client: NominalClient = field(repr=False)
 
+    # we do this afterward to batch the request
+    def _resolve_expressions(self) -> None:
+        variable_expressions = self._client._compute_representation_client.batch_compute_to_expression(
+            self._client._auth_header,
+            {var.name: var.compute_graph for var in self.variables}
+        )
+        check_expressions = self._client._compute_representation_client.batch_compute_to_expression(
+            self._client._auth_header,
+            {check.rid : check.compute_graph for check in self.checks}
+        )
+
+        for checklist_variable in self.variables:
+            checklist_variable.set_expression(variable_expressions[checklist_variable.name])
+        for check in self.checks:
+            check.set_expression(check_expressions[check.rid])
+
+
     @staticmethod
     def _from_conjure(client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Checklist:
-        return Checklist(
+        checklist = Checklist(
             rid=checklist.rid,
             title=checklist.metadata.title,
             description=checklist.metadata.description,
@@ -349,6 +366,8 @@ class Checklist:
             checks=[Check._from_conjure(client, check) for check in checklist.checks],
             _client=client,
         )
+        Checklist._resolve_expressions(checklist)
+        return checklist
     
 
 class CreateCheck(TypedDict):
@@ -359,14 +378,19 @@ class CreateCheck(TypedDict):
 
 
 # TODO(ritwikdixit): add support for more fields i.e. lineage
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class Check:
     rid: str
     title: str
     priority: Priority
     description: str
-    expression: str
+    compute_graph: scout_compute_representation_api.CompiledNode
+    expression: str | None
     _client: NominalClient = field(repr=False)
+
+    def set_expression(self, expression: str) -> Self:
+        self.expression = expression
+        return self
 
     @staticmethod
     def _from_conjure(client: NominalClient, wireCheck: scout_checks_api.ChecklistEntry) -> Check:
@@ -385,21 +409,20 @@ class Check:
             key: _variableLocatorToRepresentationVariable(value)
             for key, value in checkCondition.num_ranges_v3.variables.items()
         }
-        expression = client._compute_representation_client.compute_to_expression(
-            client._auth_header,
-            scout_compute_representation_api.CompiledNode(
-                node=scout_compute_representation_api.Node(range_series=checkCondition.num_ranges_v3.ranges),
-                context=scout_compute_representation_api.ComputeRepresentationContext(
-                    variables={key: value for key, value in preprocessed.items() if value is not None},
-                    function_variables={},
-                ),
+
+        compute_graph =scout_compute_representation_api.CompiledNode(
+            node=scout_compute_representation_api.Node(range_series=checkCondition.num_ranges_v3.ranges),
+            context=scout_compute_representation_api.ComputeRepresentationContext(
+                variables={key: value for key, value in preprocessed.items() if value is not None},
+                function_variables={},
             ),
         )
         return Check(
             rid=checkDefinition.rid,
             title=checkDefinition.title,
             description=checkDefinition.description,
-            expression=expression,
+            expression=None,
+            compute_graph=compute_graph,
             _client=client,
             priority=checkDefinition.priority,
         )
@@ -411,11 +434,16 @@ class CreateChecklistVariable(TypedDict):
     expression: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class ChecklistVariable:
     name: str
-    expression: str
+    compute_graph: scout_compute_representation_api.CompiledNode
+    expression: str | None
     _client: NominalClient = field(repr=False)
+
+    def set_expression(self, expression: str) -> Self:
+        self.expression = expression
+        return self
 
     @staticmethod
     def _from_conjure(
@@ -427,19 +455,19 @@ class ChecklistVariable:
             key: _variableLocatorToRepresentationVariable(value)
             for key, value in checklistVariable.value.compute_node.context.variables.items()
         }
-        expression = client._compute_representation_client.compute_to_expression(
-            client._auth_header,
-            scout_compute_representation_api.CompiledNode(
-                node=ChecklistVariable._computeNodeToCompiledNode(checklistVariable.value.compute_node.series_node),
-                context=scout_compute_representation_api.ComputeRepresentationContext(
-                    variables={key: value for key, value in preprocessed.items() if value is not None},
-                    function_variables={},
-                ),
+
+        compute_graph = scout_compute_representation_api.CompiledNode(
+            node=ChecklistVariable._computeNodeToCompiledNode(checklistVariable.value.compute_node.series_node),
+            context=scout_compute_representation_api.ComputeRepresentationContext(
+                variables={key: value for key, value in preprocessed.items() if value is not None},
+                function_variables={},
             ),
         )
+        
         return ChecklistVariable(
             name=checklistVariable.name,
-            expression=expression,
+            compute_graph=compute_graph,
+            expression=None,
             _client=client,
         )
 
@@ -636,7 +664,7 @@ class NominalClient:
         base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
         token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
         trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
-            certifi"s trust store is used.
+            certifi's trust store is used.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -972,6 +1000,7 @@ class NominalClient:
 
         response = self._checklist_api_client.create(self._auth_header, request)
         return Checklist._from_conjure(self, response)
+        
 
     def create_checklist_from_yaml(self, filePath: str) -> Checklist:
         def remove_newlines(s: str) -> str:
@@ -1250,7 +1279,6 @@ def _batch_create_check_to_conjure(
         default_ref_name: str | None = None
     ) -> Sequence[scout_checks_api.CreateCheckRequest]:
 
-    # pre-compute all the compute graphs.
     conditions_dict = _batch_get_compute_condition(
         [create_check["expression"] for create_check in create_checks],
         auth_header,
