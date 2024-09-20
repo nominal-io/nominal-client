@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from pydantic import BaseModel, Field, field_validator
-from typing import Any, BinaryIO, Iterable, Mapping, Sequence, cast, TypedDict
+from pydantic import BaseModel, Field, PrivateAttr
+from typing import Any, BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 import yaml
@@ -48,8 +48,8 @@ from ._utils import (
     _compiled_node_to_compute_node,
     _conjure_checklist_variable_to_name_graph__pair,
     _conjure_check_to_check_definition_graph_pair,
-    _variable_locator_to_representation_variable,
     _representation_variable_to_unresolved_variable_locator,
+    _remove_newlines,
     _priority_to_conjure_priority,
     construct_user_agent_string,
     update_dataclass,
@@ -329,39 +329,102 @@ class Dataset:
 
 
 @dataclass(frozen=True)
-class CreateChecklistVariable(TypedDict):
+class CreateChecklistVariable(BaseModel):
     name: str
     expression: str
 
 
 @dataclass(frozen=True)
-class CreateCheck(TypedDict):
-    title: str
+class CreateCheck(BaseModel):
+    name: str
     priority: Priority
-    description: str | None
     expression: str
+    description: str | None
 
 
 class ChecklistBuilder(BaseModel):
     name: str
     assignee_email: str
-    checklist_variables: list[CreateChecklistVariable] = []
-    checks: list[CreateCheck] = []
+    checklist_variables: Sequence[CreateChecklistVariable] = Field(default_factory=list)
+    checks: Sequence[CreateCheck] = Field(default_factory=list)
     default_ref_name: str | None = None
     commit_message: str | None = None
     description: str | None = None
-    properties: dict[str, str] | None = None
-    labels: list[str] = []
-    is_published: bool = True
+    properties: Mapping[str, str] | None = None
+    labels: Sequence[str] = Field(default_factory=list)
+    _client: NominalClient = PrivateAttr()
 
-    '''
-    yaml safe load
-    remove fields from nominal interface, add to update metadata
-    integrate two way with yaml
+    class Config:
+        arbitrary_types_allowed = True
     
-    '''
+    def add_metadata(
+        self,
+        properties: dict[str, str] | None = None,
+        labels: list[str] | None = None,
+    ) -> Self:
+        self.properties = properties
+        self.labels = labels
+        return self
+    
+    def add_check(
+        self, 
+        name: str,
+        priority: Priority,
+        expression: str,
+        description: str | None = None
+    ) -> Self:
+        self.checks.append(
+            CreateCheck(
+                name=name,
+                priority=priority,
+                expression=expression,
+                description=description
+            )
+        )
+        return self
+    
+    def add_checklist_variable(self, name: str, expression: str) -> Self:
+        self.checklist_variables.append(
+            CreateChecklistVariable(
+                name=name,
+                expression=expression
+            )
+        )
+        return self
+    
 
+    def build_and_publish(self, commit_message: str | None = None) -> Checklist:
+        conjure_checklist_variables = _batch_create_checklist_variable_to_conjure(
+            self.checklist_variables, 
+            self._client._auth_header, 
+            self._client._compute_representation_client, 
+            self.default_ref_name
+        )
+
+        conjure_checks = _batch_create_check_to_conjure(
+            self.checks, 
+            self._client._auth_header, 
+            self._client._compute_representation_client, 
+            self.default_ref_name
+        )
     
+        request = scout_checks_api.CreateChecklistRequest(
+            commit_message=commit_message if commit_message is not None else "",
+            assignee_rid=self._client._get_user_rid_from_email(self.assignee_email),
+            title=self.name,
+            description=self.description if self.description is not None else "",
+            # TODO(ritwikdixit): support functions
+            functions={},
+            properties={} if self.properties is None else dict(self.properties),
+            labels=[] if self.labels is None else list(self.labels),
+            checks=conjure_checks,
+            checklist_variables=conjure_checklist_variables,
+            #TODO(ritwikdixit): support checklist VCS
+            is_published=True,
+        )
+
+        response = self._client._checklist_api_client.create(self._client._auth_header, request)
+        return Checklist._from_conjure(self._client, response)
 
 
 # TODO(ritwikdixit): add support for more Checklist metadata and versioning
@@ -372,30 +435,34 @@ class Checklist:
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
-    variables: Sequence[ChecklistVariable]
+    checklist_variables: Sequence[ChecklistVariable]
     checks: Sequence[Check]
     _client: NominalClient = field(repr=False)
 
     @staticmethod
-    def _from_conjure(client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Checklist:    
+    def _from_conjure(client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Checklist:
+
+        # TODO(ritwikdixit): support draft checklists with VCS
+        if not checklist.metadata.is_published:
+            raise ValueError("cannot get a checklist that has not been published")
         
         variable_name_to_graph_map = { variable_name: compute_graph for variable_name, compute_graph in (_conjure_checklist_variable_to_name_graph__pair(checklistVariable)
             for checklistVariable in checklist.checklist_variables)
         }
-
-        check_definition_to_graph_map = { check_definition: compute_graph for check_definition, compute_graph in (_conjure_check_to_check_definition_graph_pair(check)
+        check_rid_to_graph_and_def_map = { check_definition.rid: (check_definition, compute_graph) for check_definition, compute_graph in (_conjure_check_to_check_definition_graph_pair(check)
             for check in checklist.checks)
         }
 
+        # # TODO(ritwikdixit): remove the need for these extraneous network requests
         variable_names_to_expressions = client._compute_representation_client.batch_compute_to_expression(
             client._auth_header,
             variable_name_to_graph_map
         )
-
         check_rids_to_expressions = client._compute_representation_client.batch_compute_to_expression(
             client._auth_header,
-            {check_def.rid : graph for check_def, graph in check_definition_to_graph_map}
+            {check_rid : graph for check_rid, (_, graph) in check_rid_to_graph_and_def_map.items()}
         )
+        check_rids_to_definitions = {check_rid: check_def for check_rid, (check_def, _) in check_rid_to_graph_and_def_map.items()}
 
         checklist = Checklist(
             rid=checklist.rid,
@@ -403,7 +470,7 @@ class Checklist:
             description=checklist.metadata.description,
             properties=checklist.metadata.properties,
             labels=checklist.metadata.labels,
-            variables=[
+            checklist_variables=[
                 ChecklistVariable(
                     name=checklist_variable_name,
                     expression=expression,
@@ -413,13 +480,13 @@ class Checklist:
             ],
             checks=[
                 Check(
-                    rid=check_definition.rid,
+                    rid=check_rid,
                     name=check_definition.title,
                     description=check_definition.description,
-                    expression=check_rids_to_expressions[check_definition.rid],
+                    expression=check_rids_to_expressions[check_rid],
                     _client=client,
                     priority=check_definition.priority,
-                ) for check_definition in check_definition_to_graph_map
+                ) for check_rid, check_definition in check_rids_to_definitions.items()
             ],
             _client=client,
         )
@@ -910,77 +977,7 @@ class NominalClient:
         if len(response.results) > 1:
             raise ValueError(f"found multiple users with email {user_email}")
         return response.results[0].rid
-
-    def create_checklist(
-        self,
-        name: str,
-        checks: Sequence[CreateCheck],
-        checklist_variables: Sequence[CreateChecklistVariable],
-        assignee_email: str,
-        default_ref_name: str | None = None,
-        commit_message: str | None = None,
-        description: str | None = None,
-        properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] = (),
-        is_published: bool = True,
-    ) -> Checklist:
-        
-        conjure_checklist_variables = _batch_create_checklist_variable_to_conjure(
-            checklist_variables, self._auth_header, self._compute_representation_client, default_ref_name
-        )
-
-        conjure_checks = _batch_create_check_to_conjure(
-            checks, self._auth_header, self._compute_representation_client, default_ref_name
-        )
     
-        request = scout_checks_api.CreateChecklistRequest(
-            commit_message=commit_message if commit_message is not None else "",
-            assignee_rid=self._get_user_rid_from_email(assignee_email),
-            title=name,
-            description=description,
-            # TODO(ritwikdixit): support functions
-            functions={},
-            properties={} if properties is None else dict(properties),
-            labels=list(labels),
-            checks=conjure_checks,
-            checklist_variables=conjure_checklist_variables,
-            is_published=is_published,
-        )
-
-        response = self._checklist_api_client.create(self._auth_header, request)
-        # TODO(ritwikdixit): remove the need for an extraneous network request
-        return Checklist._from_conjure(self, response)
-        
-
-    def create_checklist_from_yaml(self, filePath: str) -> Checklist:
-        def remove_newlines(s: str) -> str:
-            return s.replace("\n", "")
-
-        def check_constructor(data: Mapping[str, str]) -> CreateCheck:
-            data["expression"] = remove_newlines(data["expression"])
-            return CreateCheck(**data)
-
-        def checklist_variable_constructor(data: Mapping[str, str]) -> CreateChecklistVariable:
-            data["expression"] = remove_newlines(data["expression"])
-            return CreateChecklistVariable(**data)
-
-        with open(filePath, "r") as file:
-            checklist_dict = yaml.load(file, Loader=yaml.FullLoader)
-            data = checklist_dict["checklist"]
-            return self.create_checklist(
-                title=data["title"],
-                assignee_email=data["assignee_email"],
-                checklist_variables=[checklist_variable_constructor(var) for var in data["variables"]],
-                checks=[check_constructor(chk) for chk in data["checks"]],
-
-                description=data.get("description", None),
-                properties=data.get("properties", None),
-                labels=data.get("labels", None),
-                commit_message=data.get("commit_message", None),
-                default_ref_name=data.get("default_ref_name", None),
-                is_published=data.get("is_published", True)
-            )
-
     def get_checklist(self, checklistRid: str) -> Checklist:
         response = self._checklist_api_client.get(self._auth_header, checklistRid)
         return Checklist._from_conjure(self, response)
@@ -1033,6 +1030,35 @@ class NominalClient:
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""
         return list(self._iter_get_attachments(rids))
+
+
+def _create_checklist_builder_from_yaml(checklist_config_path: str, client: NominalClient) -> ChecklistBuilder:
+    with open(checklist_config_path, "r") as file:
+        checklist_dict = yaml.safe_load(file)
+        data = checklist_dict["checklist"]
+        
+        checklist_builder = ChecklistBuilder(
+            name=data["name"],
+            assignee_email=data["assignee_email"],
+            description=data.get("description"),
+            default_ref_name=data.get("default_ref_name"),
+        ).add_metadata(
+            properties=data.get("properties"),
+            labels=data.get("labels"),
+        )
+        checklist_builder._client = client
+
+        if "variables" in data:
+            for variable_dict in data["variables"]:
+                variable_dict["expression"] = _remove_newlines(variable_dict["expression"])
+                checklist_builder.add_checklist_variable(**variable_dict)
+
+        if "checks" in data:
+            for check_dict in data["checks"]:
+                check_dict["expression"] = _remove_newlines(check_dict["expression"])
+                checklist_builder.add_check(**check_dict)
+
+        return checklist_builder
 
 
 def _get_datasets(
@@ -1150,7 +1176,7 @@ def _batch_create_check_to_conjure(
     ) -> Sequence[scout_checks_api.CreateCheckRequest]:
 
     conditions_dict = _batch_get_compute_condition(
-        [create_check["expression"] for create_check in create_checks],
+        [create_check.expression for create_check in create_checks],
         auth_header,
         client,
         default_ref_name
@@ -1159,10 +1185,10 @@ def _batch_create_check_to_conjure(
     def _create_check_request(create_check: CreateCheck):
         return scout_checks_api.CreateChecklistEntryRequest(
             scout_checks_api.CreateCheckRequest(
-                title=create_check["title"],
-                description=create_check["description"] if create_check.get("description") is not None else "",
-                priority=_priority_to_conjure_priority(create_check["priority"]),
-                condition=conditions_dict[create_check["expression"]]
+                title=create_check.name,
+                description=create_check.description if create_check.description is not None else "",
+                priority=_priority_to_conjure_priority(create_check.priority),
+                condition=conditions_dict[create_check.expression]
             )
         )
     
@@ -1178,14 +1204,14 @@ def _batch_create_checklist_variable_to_conjure(
     
     response_dict = client.batch_expression_to_compute(
         auth_header, scout_compute_representation_api.BatchExpressionToComputeRequest(
-            expressions=[create_checklist_variable["expression"] for create_checklist_variable in create_checklist_variables],
+            expressions=[create_checklist_variable.expression for create_checklist_variable in create_checklist_variables],
             default_ref_name=default_ref_name
         )
     )
         
     def _create_unresolved_checklist_variable(name: str, compiledNode: scout_compute_representation_api.CompiledNode):
         return scout_checks_api.UnresolvedChecklistVariable(
-            name=name,
+            name=create_checklist_variable.name,
             value=scout_checks_api.UnresolvedVariableLocator(
                 compute_node=scout_checks_api.UnresolvedComputeNodeWithContext(
                     series_node=_compiled_node_to_compute_node(compiledNode.node),
@@ -1202,11 +1228,11 @@ def _batch_create_checklist_variable_to_conjure(
     
     unresolved_checklist_variables = []
     for create_checklist_variable in create_checklist_variables:
-        response = response_dict[create_checklist_variable["expression"]]
+        response = response_dict[create_checklist_variable.expression]
         if response.error is not None:
             raise ValueError(f"error translating expression to compute: {response.error}")
         elif response.success is not None:
-            unresolved_checklist_variables.append(_create_unresolved_checklist_variable(create_checklist_variable["name"], response.success.node))
+            unresolved_checklist_variables.append(_create_unresolved_checklist_variable(create_checklist_variable.name, response.success.node))
         else:
             raise ValueError("expression toCompute Response is not a success or error")
 

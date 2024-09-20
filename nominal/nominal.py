@@ -23,9 +23,9 @@ from .core import (
     NominalClient, 
     Run,
     Checklist,
-    CreateCheck,
-    CreateChecklistVariable,
-    Video
+    ChecklistBuilder,
+    Video,
+    _create_checklist_builder_from_yaml
 )
 
 if TYPE_CHECKING:
@@ -349,37 +349,29 @@ def _get_start_end_timestamp_csv_file(
         IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
     )
 
-def create_checklist(
-    assignee_email: str,
-    title: str,
-    checks: Sequence[CreateCheck],
-    checklist_variables: Sequence[CreateChecklistVariable],
-    default_ref_name: str | None = None,
-    commit_message: str | None = None,
-    description: str | None = None,
-    properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] = (),
-    is_published: bool = True,
-) -> Checklist:
-    conn = get_default_client()
-    return conn.create_checklist(
-        assignee_email, 
-        title, 
-        checks, 
-        checklist_variables, 
-        default_ref_name, 
-        commit_message, 
-        description, 
-        properties, 
-        labels, 
-        is_published
-    )
 
-def create_checklist_from_yaml(
-    file_path: str
-) -> Checklist:
+def draft_checklist(
+    name: str,
+    assignee_email: str,
+    description: str | None = None,
+    default_ref_name: str | None = None,
+) -> ChecklistBuilder:
+    builder = ChecklistBuilder(
+        name=name,
+        assignee_email=assignee_email,
+        description=description,
+        default_ref_name=default_ref_name,
+    )
+    builder._client = get_default_client()
+    return builder
+
+
+def draft_checklist_from_yaml(
+    checklist_config_path: str
+) -> ChecklistBuilder:
     conn = get_default_client()
-    return conn.create_checklist_from_yaml(file_path)
+    return _create_checklist_builder_from_yaml(checklist_config_path, conn)
+
 
 def get_checklist(
     checklist_rid: str

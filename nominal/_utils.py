@@ -216,16 +216,16 @@ def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
 
 def _compute_node_to_compiled_node(node: scout_compute_api.ComputeNode) -> scout_compute_representation_api.Node:
     class ComputeNodeVisitor(scout_compute_api.ComputeNodeVisitor):
-        def _enum(enum: scout_compute_api.EnumSeriesNode) -> scout_compute_representation_api.Node:
+        def _enum(self, enum: scout_compute_api.EnumSeriesNode) -> scout_compute_representation_api.Node:
             return scout_compute_representation_api.Node(enumerated_series=enum)
 
-        def _numeric(numeric: scout_compute_api.NumericSeriesNode) -> scout_compute_representation_api.Node:
+        def _numeric(self,numeric: scout_compute_api.NumericSeriesNode) -> scout_compute_representation_api.Node:
             return scout_compute_representation_api.Node(numeric_series=numeric)
 
-        def _ranges(ranges: scout_compute_api.RangesNode) -> scout_compute_representation_api.Node:
+        def _ranges(self, ranges: scout_compute_api.RangesNode) -> scout_compute_representation_api.Node:
             return scout_compute_representation_api.Node(range_series=ranges)
 
-        def _raw(raw: scout_compute_api.RawUntypedSeriesNode):
+        def _raw(self,raw: scout_compute_api.RawUntypedSeriesNode):
             raise ValueError("Raw nodes are not yet supported by the client library")
 
     val: scout_compute_representation_api.Node = node.accept(visitor=ComputeNodeVisitor())
@@ -379,3 +379,6 @@ def _variable_locator_to_representation_variable(
         visitor=VariableLocatorVisitor()
     )
     return val
+
+def _remove_newlines(s: str) -> str:
+    return s.replace("\n", "")
