@@ -13,11 +13,11 @@ from ._utils import (
     FileType,
     FileTypes,
     IntegralNanosecondsUTC,
-    TimestampColumnType,
     _parse_timestamp,
     reader_writer,
 )
 from .core import Attachment, Dataset, NominalClient, Run, Video
+from . import timedomain
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -58,13 +58,14 @@ def upload_pandas(
     df: pd.DataFrame,
     name: str,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: timedomain._AnyTimeDomain,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a pandas.DataFrame."""
     conn = get_default_client()
+    time_domain = timedomain._make_typed_time_domain(timestamp_type)
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
 
@@ -80,7 +81,7 @@ def upload_pandas(
             reader,
             name,
             timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
+            timestamp_type=time_domain,
             file_type=FileTypes.CSV,
             description=description,
         )
@@ -94,13 +95,14 @@ def upload_polars(
     df: pl.DataFrame,
     name: str,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: timedomain._AnyTimeDomain,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a polars.DataFrame."""
     conn = get_default_client()
+    time_domain = timedomain._make_typed_time_domain(timestamp_type)
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
         df.write_csv(w)
@@ -114,7 +116,7 @@ def upload_polars(
             reader,
             name,
             timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
+            timestamp_type=time_domain,
             file_type=FileTypes.CSV,
             description=description,
         )
@@ -128,7 +130,7 @@ def upload_csv(
     file: Path | str,
     name: str | None,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: timedomain._AnyTimeDomain,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
@@ -148,16 +150,17 @@ def _upload_csv(
     file: Path | str,
     name: str | None,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: timedomain._AnyTimeDomain,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
+    time_domain = timedomain._make_typed_time_domain(timestamp_type)
     dataset = conn.create_csv_dataset(
         file,
         name,
         timestamp_column=timestamp_column,
-        timestamp_type=timestamp_type,
+        timestamp_type=time_domain,
         description=description,
     )
     if wait_until_complete:
@@ -194,16 +197,7 @@ def create_run_csv(
     file: Path | str,
     name: str,
     timestamp_column: str,
-    timestamp_type: Literal[
-        "iso_8601",
-        "epoch_days",
-        "epoch_hours",
-        "epoch_minutes",
-        "epoch_seconds",
-        "epoch_milliseconds",
-        "epoch_microseconds",
-        "epoch_nanoseconds",
-    ],
+    timestamp_type: timedomain._LiteralAbsolute | timedomain.Iso8601 | timedomain.Epoch,
     description: str | None = None,
 ) -> Run:
     """Create a dataset from a CSV file, and create a run based on it.
@@ -217,6 +211,8 @@ def create_run_csv(
     The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
     column.
     """
+    ...
+    raise RuntimeError("fix this")
     try:
         start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, timestamp_type)
     except ValueError as e:
@@ -307,7 +303,7 @@ def get_video(rid: str) -> Video:
 
 
 def _get_start_end_timestamp_csv_file(
-    file: Path | str, timestamp_column: str, timestamp_type: TimestampColumnType
+    file: Path | str, timestamp_column: str, timestamp_type: timedomain._AnyTimeDomain
 ) -> tuple[IntegralNanosecondsUTC, IntegralNanosecondsUTC]:
     import pandas as pd
 
