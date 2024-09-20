@@ -1,3 +1,4 @@
+import gzip
 from pathlib import Path
 from typing import Iterator
 from unittest import mock
@@ -47,6 +48,7 @@ timestamp,temperature,humidity
 """
 
 
+@pytest.fixture(scope="session")
 def csv_data2():
     return b"""\
 timestamp,temperature,humidity
@@ -61,6 +63,11 @@ timestamp,temperature,humidity
 2024-09-05T18:18:00Z,38,32
 2024-09-05T18:19:00Z,39,31
 """
+
+
+@pytest.fixture(scope="session")
+def csv_gz_data(csv_data):
+    return gzip.compress(csv_data)
 
 
 @pytest.fixture(scope="session")

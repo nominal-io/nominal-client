@@ -27,6 +27,21 @@ def test_upload_csv(csv_data):
     assert len(ds.labels) == 0
 
 
+def test_upload_csv_gz(csv_gz_data):
+    name = f"dataset-{uuid4()}"
+    desc = f"top-level test to create a dataset from a gzipped csv {uuid4()}"
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=csv_gz_data)):
+        ds = nm.upload_csv("fake_path.csv.gz", name, "timestamp", "iso_8601", desc)
+    ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
+
+    assert ds.rid != ""
+    assert ds.name == name
+    assert ds.description == desc
+    assert len(ds.properties) == 0
+    assert len(ds.labels) == 0
+
+
 def test_upload_pandas(csv_data):
     name = f"dataset-{uuid4()}"
     desc = f"top-level test to create a dataset from pandas {uuid4()}"
