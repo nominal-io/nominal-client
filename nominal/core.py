@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
+from pydantic import BaseModel, Field, field_validator
 from typing import Any, BinaryIO, Iterable, Mapping, Sequence, cast, TypedDict
 
 import certifi
@@ -325,6 +326,42 @@ class Dataset:
             labels=tuple(dataset.labels),
             _client=client,
         )
+
+
+@dataclass(frozen=True)
+class CreateChecklistVariable(TypedDict):
+    name: str
+    expression: str
+
+
+@dataclass(frozen=True)
+class CreateCheck(TypedDict):
+    title: str
+    priority: Priority
+    description: str | None
+    expression: str
+
+
+class ChecklistBuilder(BaseModel):
+    name: str
+    assignee_email: str
+    checklist_variables: list[CreateChecklistVariable] = []
+    checks: list[CreateCheck] = []
+    default_ref_name: str | None = None
+    commit_message: str | None = None
+    description: str | None = None
+    properties: dict[str, str] | None = None
+    labels: list[str] = []
+    is_published: bool = True
+
+    '''
+    yaml safe load
+    remove fields from nominal interface, add to update metadata
+    integrate two way with yaml
+    
+    '''
+
+    
 
 
 # TODO(ritwikdixit): add support for more Checklist metadata and versioning
