@@ -9,7 +9,7 @@ from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
 from pydantic import BaseModel, Field, PrivateAttr
-from typing import Any, BinaryIO, Iterable, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 import yaml
@@ -23,7 +23,6 @@ from ._api.combined import (
     authentication_api,
     ingest_api,
     scout,
-    scout_api,
     scout_catalog,
     scout_checks_api,
     scout_compute_api,
@@ -1154,7 +1153,7 @@ def _batch_get_compute_condition(
                 )
             )
         else:
-            raise ValueError("expression does not evaluate to a rangeSeries")
+            raise ValueError("expression does not evaluate to a range_series")
         
     condition_dict = {}
     for expression, response in response_dict.items():
@@ -1163,7 +1162,7 @@ def _batch_get_compute_condition(
         elif response.success is not None:
             condition_dict[expression] = _get_compute_condition_for_compiled_node(response.success.node)
         else:
-            raise ValueError("expression toCompute Response is not a success or error")
+            raise ValueError("expression_to_compute response is not a success or error")
     
     return condition_dict
 
@@ -1234,6 +1233,6 @@ def _batch_create_checklist_variable_to_conjure(
         elif response.success is not None:
             unresolved_checklist_variables.append(_create_unresolved_checklist_variable(create_checklist_variable.name, response.success.node))
         else:
-            raise ValueError("expression toCompute Response is not a success or error")
+            raise ValueError("expression_to_compute response is not a success or error")
 
     return unresolved_checklist_variables

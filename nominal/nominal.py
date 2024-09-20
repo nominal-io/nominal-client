@@ -4,7 +4,7 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Literal, Mapping, Sequence
+from typing import TYPE_CHECKING, BinaryIO, Literal
 
 from nominal import _config
 
