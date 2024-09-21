@@ -33,10 +33,15 @@ __all__ = [
     "download_attachment",
     "upload_video",
     "get_video",
+    "draft_checklist",
+    "draft_checklist_from_yaml",
+    "get_checklist",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
     "Dataset",
     "Run",
     "Attachment",
     "NominalClient",
     "Video",
+    "Checklist",
+    "ChecklistBuilder",
 ]
