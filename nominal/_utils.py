@@ -13,12 +13,13 @@ import dateutil.parser
 from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
 
 from ._api.combined import (
+    api,
     ingest_api,
-    scout_run_api,
+    scout_api,
     scout_checks_api,
     scout_compute_api,
     scout_compute_representation_api,
-    scout_api,
+    scout_run_api,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,21 @@ def _priority_to_conjure_priority(priority: Priority) -> scout_checks_api.Priori
         return scout_checks_api.Priority.P3
     elif priority == "P4":
         return scout_checks_api.Priority.P4
+    else:
+        raise ValueError(f"invalid priority: {priority}")
+
+
+def _conjure_priority_to_priority(priority: scout_checks_api.Priority) -> Priority:
+    if priority == scout_checks_api.Priority.P0:
+        return "P0"
+    elif priority == scout_checks_api.Priority.P1:
+        return "P1"
+    elif priority == scout_checks_api.Priority.P2:
+        return "P2"
+    elif priority == scout_checks_api.Priority.P3:
+        return "P3"
+    elif priority == scout_checks_api.Priority.P4:
+        return "P4"
     else:
         raise ValueError(f"invalid priority: {priority}")
 
@@ -226,7 +242,7 @@ def _compute_node_to_compiled_node(node: scout_compute_api.ComputeNode) -> scout
         def _ranges(self, ranges: scout_compute_api.RangesNode) -> scout_compute_representation_api.Node:
             return scout_compute_representation_api.Node(range_series=ranges)
 
-        def _raw(self, raw: scout_compute_api.RawUntypedSeriesNode):
+        def _raw(self, raw: scout_compute_api.RawUntypedSeriesNode) -> scout_compute_representation_api.Node:
             raise ValueError("Raw nodes are not yet supported by the client library")
 
     val: scout_compute_representation_api.Node = node.accept(visitor=ComputeNodeVisitor())
@@ -317,7 +333,7 @@ def _representation_variable_to_unresolved_variable_locator(
         def _string_set(self, _string_set: list[str]) -> scout_checks_api.UnresolvedVariableLocator:
             raise ValueError("string set variables are not yet supported by the client library")
 
-        def _timestamp(self, _timestamp: scout_compute_api.Timestamp) -> scout_checks_api.UnresolvedVariableLocator:
+        def _timestamp(self, _timestamp: api.Timestamp) -> scout_checks_api.UnresolvedVariableLocator:
             raise ValueError("timestamp variables are not yet supported by the client library")
 
         def _function_rid(self, function_rid: str) -> scout_checks_api.UnresolvedVariableLocator:

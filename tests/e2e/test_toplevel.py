@@ -253,3 +253,72 @@ def test_get_video(mp4_data):
     assert v2.description == v.description == desc
     assert v2.properties == v.properties == {}
     assert v2.labels == v.labels == ()
+
+
+def test_create_checklist():
+    name = f"checklist-{uuid4()}"
+    desc = f"top-level test to create a checklist {uuid4()}"
+    assignee_email = "captain@nominal.io"
+    builder = nm.draft_checklist(name, assignee_email, desc)
+    builder.add_check(name="Check 1", priority="P1", description="Description of check 1", expression="1")
+    builder.add_checklist_variable(name="Variable 1", expression="10")
+    checklist = builder.build_and_publish()
+
+    assert checklist.rid != ""
+    assert checklist.name == name
+    assert checklist.description == desc
+
+    # Assert checklist variable details
+    assert len(checklist.checklist_variables) == 1
+    variable = checklist.checklist_variables[0]
+    assert variable.name == "Variable 1"
+    assert variable.expression == "10"
+
+    # Assert check details
+    assert len(checklist.checks) == 1
+    check = checklist.checks[0]
+    assert check.name == "Check 1"
+    assert check.priority == "P1"
+    assert check.description == "Description of check 1"
+    assert check.expression == "1"
+
+
+def test_get_checklist():
+    # Create a checklist
+    name = f"checklist-{uuid4()}"
+    desc = f"top-level test to create & get a checklist {uuid4()}"
+    assignee_email = "captain@nominal.io"
+
+    # Draft and create the checklist
+    builder = nm.draft_checklist(name, assignee_email, desc)
+    builder.add_checklist_variable(name="Variable 1", expression="10")
+    builder.add_check(name="Check 1", priority="P1", description="Description of check 1", expression="1")
+    checklist = builder.build_and_publish()
+
+    # Get the checklist using get_checklist
+    retrieved_checklist = nm.get_checklist(checklist.rid)
+
+    # Assert that the retrieved checklist matches the created one
+    assert retrieved_checklist.rid == checklist.rid
+    assert retrieved_checklist.name == name
+    assert retrieved_checklist.description == desc
+    assert retrieved_checklist.assignee_email == assignee_email
+
+    # Assert checklist variable details
+    assert len(retrieved_checklist.checklist_variables) == 1
+    variable = retrieved_checklist.checklist_variables[0]
+    assert variable.name == "Variable 1"
+    assert variable.expression == "10"
+
+    # Assert check details
+    assert len(retrieved_checklist.checks) == 1
+    check = retrieved_checklist.checks[0]
+    assert check.name == "Check 1"
+    assert check.priority == "P1"
+    assert check.description == "Description of check 1"
+    assert check.expression == "1"
+
+
+def test_create_checklist_from_yaml():
+    # TODO(ritwikdixit): Add test for this
+    pass

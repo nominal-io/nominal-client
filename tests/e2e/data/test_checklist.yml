@@ -1,0 +1,12 @@
+checklist:
+  name: "Yaml Checklist"
+  description: "Test"
+  assignee_email: "captain@nominal.io"
+  checklist_variables:
+    - name: "Variable 1"
+      expression: "10"
+  checks:
+    - name: "Check 1"
+      priority: "P1"
+      expression: "1"
+      description: "Description of check 1"

@@ -19,11 +19,11 @@ from ._utils import (
 )
 from .core import (
     Attachment,
+    Checklist,
+    ChecklistBuilder,
     Dataset,
     NominalClient,
     Run,
-    Checklist,
-    ChecklistBuilder,
     Video,
     _create_checklist_builder_from_yaml,
 )

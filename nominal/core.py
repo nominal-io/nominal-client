@@ -8,12 +8,12 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from pydantic import BaseModel, Field, PrivateAttr
 from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 import yaml
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
+from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal import _config
@@ -40,16 +40,17 @@ from ._utils import (
     IntegralNanosecondsUTC,
     Priority,
     TimestampColumnType,
+    _compiled_node_to_compute_node,
+    _conjure_check_to_check_definition_graph_pair,
+    _conjure_checklist_variable_to_name_graph__pair,
+    _conjure_priority_to_priority,
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_ingest_api,
     _flexible_time_to_conjure_scout_run_api,
-    _timestamp_type_to_conjure_ingest_api,
-    _compiled_node_to_compute_node,
-    _conjure_checklist_variable_to_name_graph__pair,
-    _conjure_check_to_check_definition_graph_pair,
-    _representation_variable_to_unresolved_variable_locator,
-    _remove_newlines,
     _priority_to_conjure_priority,
+    _remove_newlines,
+    _representation_variable_to_unresolved_variable_locator,
+    _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
     update_dataclass,
 )
@@ -344,8 +345,8 @@ class CreateCheck(BaseModel):
 class ChecklistBuilder(BaseModel):
     name: str
     assignee_email: str
-    checklist_variables: Sequence[CreateChecklistVariable] = Field(default_factory=list)
-    checks: Sequence[CreateCheck] = Field(default_factory=list)
+    checklist_variables: list[CreateChecklistVariable] = Field(default_factory=list)
+    checks: list[CreateCheck] = Field(default_factory=list)
     default_ref_name: str | None = None
     commit_message: str | None = None
     description: str | None = None
@@ -358,11 +359,13 @@ class ChecklistBuilder(BaseModel):
 
     def add_metadata(
         self,
-        properties: dict[str, str] | None = None,
-        labels: list[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] | None = None,
     ) -> Self:
-        self.properties = properties
-        self.labels = labels
+        if properties is not None:
+            self.properties = properties
+        if labels is not None:
+            self.labels = labels
         return self
 
     def add_check(self, name: str, priority: Priority, expression: str, description: str | None = None) -> Self:
@@ -447,7 +450,7 @@ class Checklist:
             check_rid: check_def for check_rid, (check_def, _) in check_rid_to_graph_and_def_map.items()
         }
 
-        checklist = Checklist(
+        return Checklist(
             rid=checklist.rid,
             name=checklist.metadata.title,
             description=checklist.metadata.description,
@@ -468,13 +471,12 @@ class Checklist:
                     description=check_definition.description,
                     expression=check_rids_to_expressions[check_rid],
                     _client=client,
-                    priority=check_definition.priority,
+                    priority=_conjure_priority_to_priority(check_definition.priority),
                 )
                 for check_rid, check_definition in check_rids_to_definitions.items()
             ],
             _client=client,
         )
-        return checklist
 
 
 # TODO(ritwikdixit): add support for more fields i.e. lineage
@@ -1107,11 +1109,11 @@ def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
 
 
 def _batch_get_compute_condition(
-    expressions: Sequence[str],
+    expressions: list[str],
     auth_header: str,
     client: scout_compute_representation_api.ComputeRepresentationService,
     default_ref_name: str | None = None,
-) -> Mapping[str, scout_checks_api.UnresolvedNumRangesConditionV3]:
+) -> dict[str, scout_checks_api.UnresolvedCheckCondition]:
     response_dict = client.batch_expression_to_compute(
         auth_header,
         scout_compute_representation_api.BatchExpressionToComputeRequest(
@@ -1119,7 +1121,9 @@ def _batch_get_compute_condition(
         ),
     )
 
-    def _get_compute_condition_for_compiled_node(compiledNode: scout_compute_representation_api.CompiledNode):
+    def _get_compute_condition_for_compiled_node(
+        compiledNode: scout_compute_representation_api.CompiledNode,
+    ) -> scout_checks_api.UnresolvedCheckCondition:
         if compiledNode.node.type == "rangeSeries" and compiledNode.node.range_series is not None:
             return scout_checks_api.UnresolvedCheckCondition(
                 num_ranges_v3=scout_checks_api.UnresolvedNumRangesConditionV3(
@@ -1154,12 +1158,12 @@ def _batch_create_check_to_conjure(
     auth_header: str,
     client: scout_compute_representation_api.ComputeRepresentationService,
     default_ref_name: str | None = None,
-) -> Sequence[scout_checks_api.CreateCheckRequest]:
+) -> list[scout_checks_api.CreateChecklistEntryRequest]:
     conditions_dict = _batch_get_compute_condition(
         [create_check.expression for create_check in create_checks], auth_header, client, default_ref_name
     )
 
-    def _create_check_request(create_check: CreateCheck):
+    def _create_check_request(create_check: CreateCheck) -> scout_checks_api.CreateChecklistEntryRequest:
         return scout_checks_api.CreateChecklistEntryRequest(
             scout_checks_api.CreateCheckRequest(
                 title=create_check.name,
@@ -1177,7 +1181,7 @@ def _batch_create_checklist_variable_to_conjure(
     auth_header: str,
     client: scout_compute_representation_api.ComputeRepresentationService,
     default_ref_name: str | None = None,
-) -> Sequence[scout_checks_api.UnresolvedChecklistVariable]:
+) -> list[scout_checks_api.UnresolvedChecklistVariable]:
     response_dict = client.batch_expression_to_compute(
         auth_header,
         scout_compute_representation_api.BatchExpressionToComputeRequest(
@@ -1188,7 +1192,9 @@ def _batch_create_checklist_variable_to_conjure(
         ),
     )
 
-    def _create_unresolved_checklist_variable(name: str, compiledNode: scout_compute_representation_api.CompiledNode):
+    def _create_unresolved_checklist_variable(
+        compiledNode: scout_compute_representation_api.CompiledNode,
+    ) -> scout_checks_api.UnresolvedChecklistVariable:
         return scout_checks_api.UnresolvedChecklistVariable(
             name=create_checklist_variable.name,
             value=scout_checks_api.UnresolvedVariableLocator(
@@ -1211,9 +1217,7 @@ def _batch_create_checklist_variable_to_conjure(
         if response.error is not None:
             raise ValueError(f"error translating expression to compute: {response.error}")
         elif response.success is not None:
-            unresolved_checklist_variables.append(
-                _create_unresolved_checklist_variable(create_checklist_variable.name, response.success.node)
-            )
+            unresolved_checklist_variables.append(_create_unresolved_checklist_variable(response.success.node))
         else:
             raise ValueError("expression_to_compute response is not a success or error")
 
