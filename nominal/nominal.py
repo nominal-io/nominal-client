@@ -18,14 +18,14 @@ from ._utils import (
     reader_writer,
 )
 from .core import (
-    Attachment, 
-    Dataset, 
-    NominalClient, 
+    Attachment,
+    Dataset,
+    NominalClient,
     Run,
     Checklist,
     ChecklistBuilder,
     Video,
-    _create_checklist_builder_from_yaml
+    _create_checklist_builder_from_yaml,
 )
 
 if TYPE_CHECKING:
@@ -366,15 +366,11 @@ def draft_checklist(
     return builder
 
 
-def draft_checklist_from_yaml(
-    checklist_config_path: str
-) -> ChecklistBuilder:
+def draft_checklist_from_yaml(checklist_config_path: str) -> ChecklistBuilder:
     conn = get_default_client()
     return _create_checklist_builder_from_yaml(checklist_config_path, conn)
 
 
-def get_checklist(
-    checklist_rid: str
-) -> Checklist:
+def get_checklist(checklist_rid: str) -> Checklist:
     conn = get_default_client()
     return conn.get_checklist(checklist_rid)

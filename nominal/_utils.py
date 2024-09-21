@@ -13,12 +13,12 @@ import dateutil.parser
 from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
 
 from ._api.combined import (
-    ingest_api, 
-    scout_run_api, 
-    scout_checks_api, 
-    scout_compute_api, 
+    ingest_api,
+    scout_run_api,
+    scout_checks_api,
+    scout_compute_api,
     scout_compute_representation_api,
-    scout_api
+    scout_api,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,8 @@ TimestampColumnType: TypeAlias = Union[
 ]
 
 Priority = Literal["P0", "P1", "P2", "P3", "P4"]
-    
+
+
 def _priority_to_conjure_priority(priority: Priority) -> scout_checks_api.Priority:
     if priority == "P0":
         return scout_checks_api.Priority.P0
@@ -219,13 +220,13 @@ def _compute_node_to_compiled_node(node: scout_compute_api.ComputeNode) -> scout
         def _enum(self, enum: scout_compute_api.EnumSeriesNode) -> scout_compute_representation_api.Node:
             return scout_compute_representation_api.Node(enumerated_series=enum)
 
-        def _numeric(self,numeric: scout_compute_api.NumericSeriesNode) -> scout_compute_representation_api.Node:
+        def _numeric(self, numeric: scout_compute_api.NumericSeriesNode) -> scout_compute_representation_api.Node:
             return scout_compute_representation_api.Node(numeric_series=numeric)
 
         def _ranges(self, ranges: scout_compute_api.RangesNode) -> scout_compute_representation_api.Node:
             return scout_compute_representation_api.Node(range_series=ranges)
 
-        def _raw(self,raw: scout_compute_api.RawUntypedSeriesNode):
+        def _raw(self, raw: scout_compute_api.RawUntypedSeriesNode):
             raise ValueError("Raw nodes are not yet supported by the client library")
 
     val: scout_compute_representation_api.Node = node.accept(visitor=ComputeNodeVisitor())
@@ -239,9 +240,7 @@ def _compiled_node_to_compute_node(node: scout_compute_representation_api.Node) 
         ) -> scout_compute_api.ComputeNode:
             return scout_compute_api.ComputeNode(enum=enumerated_series)
 
-        def _numeric_series(
-            self, numeric_series: scout_compute_api.NumericSeriesNode
-        ) -> scout_compute_api.ComputeNode:
+        def _numeric_series(self, numeric_series: scout_compute_api.NumericSeriesNode) -> scout_compute_api.ComputeNode:
             return scout_compute_api.ComputeNode(numeric=numeric_series)
 
         def _range_series(self, range_series: scout_compute_api.RangesNode) -> scout_compute_api.ComputeNode:
@@ -252,13 +251,13 @@ def _compiled_node_to_compute_node(node: scout_compute_representation_api.Node) 
 
 
 def _conjure_checklist_variable_to_name_graph__pair(
-    checklist_variable: scout_checks_api.ChecklistVariable
+    checklist_variable: scout_checks_api.ChecklistVariable,
 ) -> tuple[str, scout_compute_representation_api.CompiledNode]:
     if checklist_variable.value.compute_node is None:
         raise ValueError("checklist variable is not a compute node")
     preprocessed = {
         key: _variable_locator_to_representation_variable(value)
-    for key, value in checklist_variable.value.compute_node.context.variables.items()
+        for key, value in checklist_variable.value.compute_node.context.variables.items()
     }
 
     compute_graph = scout_compute_representation_api.CompiledNode(
@@ -273,25 +272,25 @@ def _conjure_checklist_variable_to_name_graph__pair(
 
 
 def _conjure_check_to_check_definition_graph_pair(
-    conjure_check: scout_checks_api.ChecklistEntry
+    conjure_check: scout_checks_api.ChecklistEntry,
 ) -> tuple[scout_checks_api.Check, scout_compute_representation_api.CompiledNode]:
     if conjure_check.type != "check" or conjure_check.check is None:
         raise ValueError("checklist entry is not a check")
-        
+
     check_definition: scout_checks_api.Check = conjure_check.check
     if check_definition.condition is None:
         raise ValueError("check does not have a condition")
-    
+
     check_condition: scout_checks_api.CheckCondition = check_definition.condition
     if check_condition.num_ranges_v3 is None:
         raise ValueError("check condition does not evaluate to a valid set of ranges")
-    
+
     preprocessed = {
         key: _variable_locator_to_representation_variable(value)
         for key, value in check_condition.num_ranges_v3.variables.items()
     }
 
-    compute_graph =scout_compute_representation_api.CompiledNode(
+    compute_graph = scout_compute_representation_api.CompiledNode(
         node=scout_compute_representation_api.Node(range_series=check_condition.num_ranges_v3.ranges),
         context=scout_compute_representation_api.ComputeRepresentationContext(
             variables={key: value for key, value in preprocessed.items() if value is not None},
@@ -379,6 +378,7 @@ def _variable_locator_to_representation_variable(
         visitor=VariableLocatorVisitor()
     )
     return val
+
 
 def _remove_newlines(s: str) -> str:
     return s.replace("\n", "")
