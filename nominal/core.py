@@ -447,7 +447,7 @@ class PaginatedLogs:
     def get_logs(self) -> Sequence[Log]:
         return self.logs
 
-    def load_next_page(self) -> PaginatedLogs | None:
+    def load_next_page(self) -> PaginatedLogs:
         request = datasource_logset_api.SearchLogsRequest(
             page_size=self.page_size,
             page_token=self.next_page_token,
