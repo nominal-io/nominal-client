@@ -17,7 +17,7 @@ from ._utils import (
     _parse_timestamp,
     reader_writer,
 )
-from .core import Attachment, Dataset, NominalClient, Run, Video
+from .core import Attachment, Dataset, NominalClient, Run, Video, LogSet, TimestampType
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -280,6 +280,19 @@ def get_attachment(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_attachment(rid)
+
+def get_log_set(rid: str) -> LogSet:
+    """Retrieve a log set from the Nominal platform by its RID."""
+    conn = get_default_client()
+    return conn.get_log_set(rid)
+
+def create_log_set(
+    name: str, 
+    timestamp_type: TimestampType, 
+    description: str | None = None, 
+    ) -> LogSet:
+    conn = get_default_client()
+    return conn.create_log_set(name, timestamp_type, description)
 
 
 def download_attachment(rid: str, file: Path | str) -> None:

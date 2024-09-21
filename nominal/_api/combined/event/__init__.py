@@ -6,6 +6,5 @@ from .._impl import (
     event_EventService as EventService,
     event_EventType as EventType,
     event_GetEvents as GetEvents,
-    event_Timestamp as Timestamp,
 )
 

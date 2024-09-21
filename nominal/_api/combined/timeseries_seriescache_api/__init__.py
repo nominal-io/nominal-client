@@ -19,6 +19,5 @@ from .._impl import (
     timeseries_seriescache_api_Resolution as Resolution,
     timeseries_seriescache_api_S3Handle as S3Handle,
     timeseries_seriescache_api_S3Path as S3Path,
-    timeseries_seriescache_api_Timestamp as Timestamp,
 )
 

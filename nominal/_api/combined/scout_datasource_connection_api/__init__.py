@@ -42,8 +42,6 @@ from .._impl import (
     scout_datasource_connection_api_SecretName as SecretName,
     scout_datasource_connection_api_SecretRid as SecretRid,
     scout_datasource_connection_api_TableName as TableName,
-    scout_datasource_connection_api_TagName as TagName,
-    scout_datasource_connection_api_TagValue as TagValue,
     scout_datasource_connection_api_TemporalUnit as TemporalUnit,
     scout_datasource_connection_api_TimescaleConnectionDetails as TimescaleConnectionDetails,
     scout_datasource_connection_api_TimescaleScrapingFilter as TimescaleScrapingFilter,

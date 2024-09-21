@@ -199,7 +199,6 @@ from .._impl import (
     scout_compute_api_TimeBucketedGeoPlot as TimeBucketedGeoPlot,
     scout_compute_api_TimeDifferenceSeriesNode as TimeDifferenceSeriesNode,
     scout_compute_api_TimeUnit as TimeUnit,
-    scout_compute_api_Timestamp as Timestamp,
     scout_compute_api_TimestampConstant as TimestampConstant,
     scout_compute_api_TimestampConstantVisitor as TimestampConstantVisitor,
     scout_compute_api_UnaryArithmeticOperation as UnaryArithmeticOperation,
