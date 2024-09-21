@@ -5,7 +5,6 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from dateutil import parser
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
@@ -13,18 +12,19 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
+from dateutil import parser
 from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal import _config
 
 from ._api.combined import (
     attachments_api,
+    datasource,
+    datasource_logset,
+    datasource_logset_api,
     ingest_api,
     scout,
     scout_catalog,
-    datasource_logset,
-    datasource_logset_api,
-    datasource,
     scout_run_api,
     scout_video,
     scout_video_api,
@@ -41,9 +41,9 @@ from ._utils import (
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_ingest_api,
     _flexible_time_to_conjure_scout_run_api,
-    _timestamp_type_to_conjure_ingest_api,
     _flexible_time_to_global_conjure_api,
     _global_conjure_api_to_integral_nanoseconds,
+    _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
     update_dataclass,
 )
@@ -92,14 +92,14 @@ class Run:
         """
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(log_set==_rid_from_instance_or_string(log_set)),
+                data_source=scout_run_api.DataSource(log_set == _rid_from_instance_or_string(log_set)),
                 series_tags={},
                 offset=None,
             )
             for ref_name, log_set in log_sets.items()
         }
         self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
-    
+
     def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
         """Add multiple datasets to this run.
 
@@ -361,36 +361,33 @@ class LogSet:
             logs=[log._to_conjure() for log in logs],
         )
         response = self._client._logset_client.attach_logs_and_finalize(
-            auth_header = self._client._auth_header,
-            log_set_rid = self.rid,
-            request = request
+            auth_header=self._client._auth_header, log_set_rid=self.rid, request=request
         )
         log_set_metadata = self.__class__._from_conjure(self._client, response)
         update_dataclass(self, log_set_metadata, fields=self.__dataclass_fields__)
         return self
 
     def get_logs_paginated(
-            self,
-            page_size: int | None = None,
-        ) -> PaginatedLogs:
+        self,
+        page_size: int | None = None,
+    ) -> PaginatedLogs:
         """
         Get logs within this log set. Paginated, maximum page size is 10000, defauls to maximum.
         """
         response = self._client._logset_client.search_logs(
             self._client._auth_header,
-            log_set_rid = self.rid,
-            request = datasource_logset_api.SearchLogsRequest(page_size = page_size),
+            log_set_rid=self.rid,
+            request=datasource_logset_api.SearchLogsRequest(page_size=page_size),
         )
         return PaginatedLogs(
-            logs = [Log._from_conjure(log) for log in response.logs],
-            page_size = page_size,
+            logs=[Log._from_conjure(log) for log in response.logs],
+            page_size=page_size,
             next_page_token=response.next_page_token,
-            client=self._client
+            client=self._client,
         )
-    
+
     @classmethod
     def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
-
         timestamp_type = None
         if log_set_metadata.timestamp_type == datasource.TimestampType.ABSOLUTE:
             timestamp_type_enum = "absolute"
@@ -398,7 +395,7 @@ class LogSet:
             timestamp_type_enum = "relative"
         else:
             raise ValueError(f"unsupported timestamp type: {timestamp_type}")
-    
+
         return cls(
             rid=log_set_metadata.rid,
             created_by=log_set_metadata.created_by,
@@ -411,7 +408,7 @@ class LogSet:
             description=log_set_metadata.description,
             _client=client,
         )
-    
+
 
 @dataclass(frozen=True)
 class Log:
@@ -422,10 +419,10 @@ class Log:
     def _to_conjure(self) -> datasource_logset_api.Log:
         properties = {} if not self.properties else dict(self.properties)
         return datasource_logset_api.Log(
-            time = _flexible_time_to_global_conjure_api(self.time),
-            body = datasource_logset_api.LogBody(
-                basic = datasource_logset_api.BasicLogBody(
-                    properties = properties,
+            time=_flexible_time_to_global_conjure_api(self.time),
+            body=datasource_logset_api.LogBody(
+                basic=datasource_logset_api.BasicLogBody(
+                    properties=properties,
                     message=self.body,
                 ),
             ),
@@ -434,11 +431,11 @@ class Log:
     @classmethod
     def _from_conjure(cls, log: datasource_logset_api.Log) -> Self:
         return cls(
-            time = _global_conjure_api_to_integral_nanoseconds(log.time),
-            body = log.body.basic.message,
-            properties = MappingProxyType(log.body.basic.properties),
+            time=_global_conjure_api_to_integral_nanoseconds(log.time),
+            body=log.body.basic.message,
+            properties=MappingProxyType(log.body.basic.properties),
         )
-            
+
 
 @dataclass(frozen=True)
 class PaginatedLogs:
@@ -452,19 +449,19 @@ class PaginatedLogs:
 
     def load_next_page(self) -> PaginatedLogs | None:
         request = datasource_logset_api.SearchLogsRequest(
-            page_size = self.page_size,
-            page_token = self.next_page_token,
+            page_size=self.page_size,
+            page_token=self.next_page_token,
         )
         response = self._client._logset_client.search_logs(
             self._client._auth_header,
-            log_set_rid = self.rid,
-            request = request,
+            log_set_rid=self.rid,
+            request=request,
         )
         return PaginatedLogs(
-            logs = [Log._from_conjure(log) for log in response.logs],
-            page_size = self.page_size,
+            logs=[Log._from_conjure(log) for log in response.logs],
+            page_size=self.page_size,
             next_page_token=response.next_page_token,
-            client=self._client
+            client=self._client,
         )
 
 
@@ -868,7 +865,7 @@ class NominalClient:
         )
         response = self._ingest_client.ingest_video(self._auth_header, request)
         return self.get_video(response.video_rid)
-    
+
     def create_log_set(
         self,
         name: str,
@@ -916,7 +913,7 @@ class NominalClient:
         """Retrieve a dataset by its RID."""
         response = _get_dataset(self._auth_header, self._catalog_client, rid)
         return Dataset._from_conjure(self, response)
-    
+
     def get_log_set(self, log_set_rid: str) -> LogSet:
         """
         Retrieve a LogSet along with its metadata given its RID.

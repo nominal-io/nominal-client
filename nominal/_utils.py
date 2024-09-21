@@ -12,7 +12,7 @@ from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, Type, Type
 import dateutil.parser
 from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
 
-from ._api.combined import ingest_api, scout_run_api, api
+from ._api.combined import api, ingest_api, scout_run_api
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +48,19 @@ TimestampColumnType: TypeAlias = Union[
     CustomTimestampFormat,
 ]
 
+
 def _flexible_time_to_global_conjure_api(
     timestamp: datetime | IntegralNanosecondsUTC,
 ) -> api.Timestamp:
     seconds, nanos = _flexible_time_to_seconds_nanos(timestamp)
     return api.Timestamp(seconds=seconds, nanos=nanos)
 
+
 def _global_conjure_api_to_integral_nanoseconds(
     timestamp: api.Timestamp,
 ) -> IntegralNanosecondsUTC:
     return timestamp.seconds * 1_000_000_000 + timestamp.nanos
+
 
 def _timestamp_type_to_conjure_ingest_api(
     ts_type: TimestampColumnType,
@@ -199,5 +202,6 @@ def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
     finally:
         w.close()
         r.close()
+
 
 TimestampType: TypeAlias = Literal["absolute", "relative"]
