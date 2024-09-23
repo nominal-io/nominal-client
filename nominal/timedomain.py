@@ -73,6 +73,7 @@ _LiteralRelativeDeprecated: TypeAlias = Literal[
 ]
 
 TypedTimeDomain: TypeAlias = Iso8601 | Epoch | Relative | Custom
+_AbsoluteTimeDomain: TypeAlias = Iso8601 | Epoch | Custom | _LiteralAbsolute
 _AnyTimeDomain: TypeAlias = TypedTimeDomain | _LiteralAbsolute | _LiteralRelativeDeprecated
 
 

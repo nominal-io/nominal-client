@@ -6,6 +6,7 @@ import click
 
 from ..nominal import _upload_csv
 from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
+from ..timedomain import _LiteralAbsolute
 
 
 @click.group(name="dataset")
@@ -43,16 +44,7 @@ def upload_csv(
     name: str,
     file: str,
     timestamp_column: str,
-    timestamp_type: Literal[
-        "iso_8601",
-        "epoch_days",
-        "epoch_hours",
-        "epoch_minutes",
-        "epoch_seconds",
-        "epoch_milliseconds",
-        "epoch_microseconds",
-        "epoch_nanoseconds",
-    ],
+    timestamp_type: _LiteralAbsolute,
     desc: str | None,
     wait: bool,
     base_url: str,

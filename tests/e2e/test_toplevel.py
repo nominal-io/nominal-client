@@ -7,7 +7,7 @@ import pandas as pd
 import polars as pl
 
 import nominal as nm
-from nominal import _utils
+from nominal import _timeutils
 
 from . import _create_random_start_end
 
@@ -112,8 +112,8 @@ def test_create_run():
     assert run.rid != ""
     assert run.name == name
     assert run.description == desc
-    assert run.start == _utils._datetime_to_integral_nanoseconds(start)
-    assert run.end == _utils._datetime_to_integral_nanoseconds(end)
+    assert run.start == _timeutils._datetime_to_integral_nanoseconds(start)
+    assert run.end == _timeutils._datetime_to_integral_nanoseconds(end)
     assert len(run.properties) == 0
     assert len(run.labels) == 0
 
@@ -130,8 +130,8 @@ def test_create_run_csv(csv_data):
     assert run.rid != ""
     assert run.name == name
     assert run.description == desc
-    assert run.start == _utils._datetime_to_integral_nanoseconds(start)
-    assert run.end == _utils._datetime_to_integral_nanoseconds(end)
+    assert run.start == _timeutils._datetime_to_integral_nanoseconds(start)
+    assert run.end == _timeutils._datetime_to_integral_nanoseconds(end)
     assert len(run.properties) == 0
     assert len(run.labels) == 0
 
@@ -156,8 +156,8 @@ def test_get_run():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == _utils._parse_timestamp(start)
-    assert run2.end == run.end == _utils._parse_timestamp(end)
+    assert run2.start == run.start == _timeutils._parse_timestamp(start)
+    assert run2.end == run.end == _timeutils._parse_timestamp(end)
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
@@ -175,8 +175,8 @@ def test_search_runs():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == _utils._parse_timestamp(start)
-    assert run2.end == run.end == _utils._parse_timestamp(end)
+    assert run2.start == run.start == _timeutils._parse_timestamp(start)
+    assert run2.end == run.end == _timeutils._parse_timestamp(end)
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
@@ -217,7 +217,7 @@ def test_download_attachment(csv_data):
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_title, at_desc)
 
-    with _utils.reader_writer() as (r, w):
+    with _timeutils.reader_writer() as (r, w):
         with mock.patch("builtins.open", return_value=w):
             nm.download_attachment(at.rid, "fake_path.csv")
             assert r.read() == csv_data

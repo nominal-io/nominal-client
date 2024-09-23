@@ -15,6 +15,7 @@ from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfi
 from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal import _config
+from .timedomain import TypedTimeDomain, _to_conjure_ingest_api
 
 from ._api.combined import (
     attachments_api,
@@ -27,19 +28,14 @@ from ._api.combined import (
     upload_api,
 )
 from ._multipart import put_multipart_upload
-from ._utils import (
+from ._timeutils import (
     CustomTimestampFormat,
-    FileType,
-    FileTypes,
     IntegralNanosecondsUTC,
-    TimestampColumnType,
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_ingest_api,
     _flexible_time_to_conjure_scout_run_api,
-    _timestamp_type_to_conjure_ingest_api,
-    construct_user_agent_string,
-    update_dataclass,
 )
+from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed
 
 __all__ = [
@@ -250,7 +246,7 @@ class Dataset:
         update_dataclass(self, dataset, fields=self.__dataclass_fields__)
         return self
 
-    def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: TimestampColumnType) -> None:
+    def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: TypedTimeDomain) -> None:
         """Append to a dataset from a csv on-disk."""
         path, file_type = _verify_csv_path(path)
         with open(path, "rb") as csv_file:
@@ -260,19 +256,13 @@ class Dataset:
         self,
         dataset: BinaryIO,
         timestamp_column: str,
-        timestamp_type: TimestampColumnType,
+        timestamp_type: TypedTimeDomain,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
     ) -> None:
         """Append to a dataset from a file-like object.
 
         file_type: a (extension, mimetype) pair describing the type of file.
         """
-
-        if not isinstance(timestamp_type, CustomTimestampFormat):
-            if timestamp_type.startswith("relative"):
-                raise ValueError(
-                    "multifile datasets with relative timestamps are not yet supported by the client library"
-                )
 
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
@@ -293,7 +283,7 @@ class Dataset:
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_type),
+                    timestamp_type=_to_conjure_ingest_api(timestamp_type),
                 ),
             ),
         )
@@ -592,7 +582,7 @@ class NominalClient:
         path: Path | str,
         name: str | None,
         timestamp_column: str,
-        timestamp_type: TimestampColumnType,
+        timestamp_type: TypedTimeDomain,
         description: str | None = None,
         *,
         labels: Sequence[str] = (),
@@ -624,7 +614,7 @@ class NominalClient:
         dataset: BinaryIO,
         name: str,
         timestamp_column: str,
-        timestamp_type: TimestampColumnType,
+        timestamp_type: TypedTimeDomain,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
         description: str | None = None,
         *,
@@ -664,7 +654,7 @@ class NominalClient:
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_type),
+                    timestamp_type=_to_conjure_ingest_api(timestamp_type),
                 ),
             ),
         )

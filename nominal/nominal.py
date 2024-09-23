@@ -4,18 +4,12 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Literal
+from typing import TYPE_CHECKING, BinaryIO
 
 from nominal import _config
 
-from ._utils import (
-    CustomTimestampFormat,
-    FileType,
-    FileTypes,
-    IntegralNanosecondsUTC,
-    _parse_timestamp,
-    reader_writer,
-)
+from ._timeutils import CustomTimestampFormat, IntegralNanosecondsUTC, _parse_timestamp
+from ._utils import FileType, FileTypes, reader_writer
 from .core import Attachment, Dataset, NominalClient, Run, Video
 from . import timedomain
 
@@ -212,14 +206,13 @@ def create_run_csv(
     column.
     """
     ...
-    raise RuntimeError("fix this")
-    try:
-        start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, timestamp_type)
-    except ValueError as e:
+    typed_timestamp_type = timedomain._make_typed_time_domain(timestamp_type)
+    if not isinstance(typed_timestamp_type, (timedomain.Iso8601, timedomain.Epoch)):
         raise ValueError(
-            "`create_run_csv()` only supports absolute timestamps: use `upload_dataset()` and `create_run()` instead"
-        ) from e
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
+            "`create_run_csv()` only supports iso8601 or epoch timestamps: use `upload_dataset()` and `create_run()` instead"
+        )
+    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, typed_timestamp_type)
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, typed_timestamp_type)
     run = create_run(name, start=start, end=end, description=description)
     run.add_dataset("dataset", dataset)
     return run
@@ -303,32 +296,33 @@ def get_video(rid: str) -> Video:
 
 
 def _get_start_end_timestamp_csv_file(
-    file: Path | str, timestamp_column: str, timestamp_type: timedomain._AnyTimeDomain
+    file: Path | str,
+    timestamp_column: str,
+    timestamp_type: timedomain.Iso8601 | timedomain.Epoch,
 ) -> tuple[IntegralNanosecondsUTC, IntegralNanosecondsUTC]:
     import pandas as pd
 
     df = pd.read_csv(file)
     ts_col = df[timestamp_column]
-    if isinstance(timestamp_type, CustomTimestampFormat) or timestamp_type.startswith("relative_"):
-        raise ValueError("timestamp_type must be 'iso_8601' or 'epoch_{unit}'")
-    if timestamp_type == "iso_8601":
+
+    if isinstance(timestamp_type, timedomain.Iso8601):
         ts_col = pd.to_datetime(ts_col)
-    else:
-        _, unit = timestamp_type.split("_")
-        pd_units = {
-            "days": "D",
+    elif isinstance(timestamp_type, timedomain.Epoch):
+        pd_units: dict[timedomain._LiteralTimeUnit, str] = {
+            "hours": "s",  # hours are not supported by pandas
+            "minutes": "s",  # minutes are not supported by pandas
             "seconds": "s",
             "milliseconds": "ms",
             "microseconds": "us",
             "nanoseconds": "ns",
         }
-        if unit == "hours":
-            unit = "seconds"
+        if timestamp_type.unit == "hours":
             ts_col *= 60 * 60
-        elif unit == "minutes":
-            unit = "seconds"
+        elif timestamp_type.unit == "minutes":
             ts_col *= 60
-        ts_col = pd.to_datetime(ts_col, unit=pd_units[unit])
+        ts_col = pd.to_datetime(ts_col, unit=pd_units[timestamp_type.unit])
+    else:
+        raise ValueError(f"unhandled timestamp type {timestamp_type}")
 
     start, end = ts_col.min(), ts_col.max()
     return (
