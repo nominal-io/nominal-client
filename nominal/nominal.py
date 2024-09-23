@@ -17,7 +17,7 @@ from ._utils import (
     _parse_timestamp,
     reader_writer,
 )
-from .core import Attachment, Dataset, LogSet, NominalClient, Run, TimestampType, Video
+from .core import Attachment, Dataset, LogSet, NominalClient, Run, Video
 
 if TYPE_CHECKING:
     import pandas as pd
