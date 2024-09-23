@@ -205,7 +205,6 @@ def create_run_csv(
     The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
     column.
     """
-    ...
     typed_timestamp_type = timedomain._make_typed_time_domain(timestamp_type)
     if not isinstance(typed_timestamp_type, (timedomain.Iso8601, timedomain.Epoch)):
         raise ValueError(
