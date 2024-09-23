@@ -28,7 +28,6 @@ from ._api.combined import (
 )
 from ._multipart import put_multipart_upload
 from ._timeutils import (
-    CustomTimestampFormat,
     IntegralNanosecondsUTC,
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_ingest_api,
@@ -45,7 +44,6 @@ __all__ = [
     "Attachment",
     "Video",
     "IntegralNanosecondsUTC",
-    "CustomTimestampFormat",
 ]
 
 

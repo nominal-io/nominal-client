@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from nominal import _config
 
 from . import timedomain
-from ._timeutils import CustomTimestampFormat, IntegralNanosecondsUTC, _parse_timestamp
+from ._timeutils import IntegralNanosecondsUTC, _parse_timestamp
 from ._utils import FileType, FileTypes, reader_writer
 from .core import Attachment, Dataset, NominalClient, Run, Video
 

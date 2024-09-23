@@ -11,9 +11,8 @@ from typing import Literal, Mapping
 import numpy as np
 from typing_extensions import TypeAlias
 
-from nominal._api.combined import ingest_api
-
-IntegralNanosecondsUTC: TypeAlias = int
+from ._api.combined import ingest_api
+from ._timeutils import IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)

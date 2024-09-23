@@ -1,44 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal, Union
 
 import dateutil.parser
-from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
 
 from ._api.combined import ingest_api, scout_run_api
 
 IntegralNanosecondsUTC = int
-
-
-@dataclass
-class CustomTimestampFormat:
-    format: str
-    default_year: int = 0
-
-
-# Using Union rather than the "|" operator due to https://github.com/python/mypy/issues/11665.
-TimestampColumnType: TypeAlias = Union[
-    Literal[
-        "iso_8601",
-        "epoch_days",
-        "epoch_hours",
-        "epoch_minutes",
-        "epoch_seconds",
-        "epoch_milliseconds",
-        "epoch_microseconds",
-        "epoch_nanoseconds",
-        "relative_days",
-        "relative_hours",
-        "relative_minutes",
-        "relative_seconds",
-        "relative_milliseconds",
-        "relative_microseconds",
-        "relative_nanoseconds",
-    ],
-    CustomTimestampFormat,
-]
 
 
 def _flexible_time_to_conjure_scout_run_api(timestamp: datetime | IntegralNanosecondsUTC) -> scout_run_api.UtcTimestamp:
