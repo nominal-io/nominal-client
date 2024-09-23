@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
+from datetime import datetime
 from types import MappingProxyType
 from typing import Literal, Mapping
 import warnings
+import numpy as np
 from typing_extensions import TypeAlias
 from nominal._api.combined import ingest_api
 
@@ -24,10 +26,8 @@ class Epoch:
 @dataclass(frozen=True)
 class Relative:
     unit: _LiteralTimeUnit
-    offset: int
-    """The time offset from the beginning of a data collection."""
-    offset_units: _LiteralTimeUnit | None = None
-    """The units of the offset. If None, assumes the same units as the relative timestamp `unit`."""
+    start: datetime | IntegralNanosecondsUTC
+    """The starting time to which all relatives times are relative to."""
 
 
 @dataclass(frozen=True)
@@ -84,8 +84,8 @@ def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
     if domain.startswith("relative_"):
         warnings.warn(
             "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: use `nm.timedomain.Relative` instead. "
-            "for example: instead of 'relative_seconds', `use nm.timedomain.Relative('seconds', offset=0)`. ",
-            "until this is removed, we implicitly assume offset=0.",
+            "for example: instead of 'relative_seconds', `use nm.timedomain.Relative('seconds', offset=0)`. "
+            "until this is removed, we implicitly assume offset=None.",
             UserWarning,
         )
     if domain not in _str_to_type:
@@ -94,18 +94,39 @@ def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
 
 
 def _to_conjure_ingest_api(domain: TypedTimeDomain) -> ingest_api.TimestampType:
+    """
+    Note: datetimes are serialized a ISO-8601 strings, with up-to nanosecond precision. Ref:
+    - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
+    - https://github.com/palantir/conjure/pull/1643
+    """
+
     if isinstance(domain, Iso8601):
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
     if isinstance(domain, Epoch):
-        epoch = ingest_api.EpochTimestamp(time_unit=domain.unit)
+        epoch = ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(domain.unit))
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=epoch))
     if isinstance(domain, Custom):
         fmt = ingest_api.CustomTimestamp(format=domain.format, default_year=domain.default_year)
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(custom_format=fmt))
     if isinstance(domain, Relative):
-        relative = ingest_api.RelativeTimestamp(time_unit=domain.unit, offset=domain.offset)
+        relative = ingest_api.RelativeTimestamp(
+            time_unit=_time_unit_to_conjure(domain.unit), offset=_flexible_to_iso8601(domain.start)
+        )
         return ingest_api.TimestampType(relative=relative)
     raise TypeError(f"invalid time domain type: {type(domain)}")
+
+
+def _flexible_to_iso8601(ts: datetime | IntegralNanosecondsUTC) -> str:
+    """datetime.datetime objects are only microsecond-precise, so we use numpy's datetime64[ns] for nanosecond precision."""
+    if isinstance(ts, datetime):
+        return ts.isoformat()
+    if isinstance(ts, int):
+        return str(np.datetime64(ts, "ns"))
+    raise TypeError(f"timestamp {ts} must be a datetime or an integer")
+
+
+def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> ingest_api.TimeUnit:
+    return ingest_api.TimeUnit[unit.upper()]
 
 
 _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | Epoch | Relative] = MappingProxyType(
