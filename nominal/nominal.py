@@ -288,15 +288,6 @@ def get_log_set(rid: str) -> LogSet:
     return conn.get_log_set(rid)
 
 
-def create_log_set(
-    name: str,
-    timestamp_type: TimestampType,
-    description: str | None = None,
-) -> LogSet:
-    conn = get_default_client()
-    return conn.create_log_set(name, timestamp_type, description)
-
-
 def download_attachment(rid: str, file: Path | str) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
     conn = get_default_client()

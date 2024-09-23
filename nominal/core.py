@@ -12,7 +12,6 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
-from dateutil import parser
 from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal import _config
@@ -36,12 +35,13 @@ from ._utils import (
     FileType,
     FileTypes,
     IntegralNanosecondsUTC,
+    LogTimestampType,
     TimestampColumnType,
-    TimestampType,
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_ingest_api,
     _flexible_time_to_conjure_scout_run_api,
     _flexible_time_to_global_conjure_api,
+    _flexible_time_to_integral_nanoseconds,
     _global_conjure_api_to_integral_nanoseconds,
     _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
@@ -342,69 +342,38 @@ class Dataset:
 @dataclass(frozen=True)
 class LogSet:
     rid: str
-    created_by: str
     name: str
-    created_at: datetime
-    updated_at: datetime
-    log_count: int
-    timestamp_type: TimestampType
-    origin_metadata: Mapping[str, str]
+    timestamp_type: LogTimestampType
     description: str | None
     _client: NominalClient = field(repr=False)
 
-    def add_logs_and_finalize(self, logs: list[Log]) -> Self:
-        """
-        Attaches a list of logs to this log set and finalizes it. A logset is not considered readable
-        until it has been finalized. Once finalized, the logset is immutable.
-        """
-        request = datasource_logset_api.AttachLogsAndFinalizeRequest(
-            logs=[log._to_conjure() for log in logs],
-        )
-        response = self._client._logset_client.attach_logs_and_finalize(
-            auth_header=self._client._auth_header, log_set_rid=self.rid, request=request
-        )
-        log_set_metadata = self.__class__._from_conjure(self._client, response)
-        update_dataclass(self, log_set_metadata, fields=self.__dataclass_fields__)
-        return self
+    def _list_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
+        request = datasource_logset_api.SearchLogsRequest()
+        while True:
+            response = self._client._logset_client.search_logs(
+                self._client._auth_header,
+                log_set_rid=self.rid,
+                request=request,
+            )
+            yield from response.logs
+            if response.next_page_token is None:
+                break
+            request = datasource_logset_api.SearchLogsRequest(page_token=response.next_page_token)
 
-    def get_logs_paginated(
-        self,
-        page_size: int | None = None,
-    ) -> PaginatedLogs:
+    def list_logs(self) -> Iterable[Log]:
         """
-        Get logs within this log set. Paginated, maximum page size is 10000, defauls to maximum.
+        Get logs within this log set.
         """
-        response = self._client._logset_client.search_logs(
-            self._client._auth_header,
-            log_set_rid=self.rid,
-            request=datasource_logset_api.SearchLogsRequest(page_size=page_size),
-        )
-        return PaginatedLogs(
-            logs=[Log._from_conjure(log) for log in response.logs],
-            page_size=page_size,
-            next_page_token=response.next_page_token,
-            client=self._client,
-        )
+        # TODO: different name?
+        for log in self._list_logs_paginated():
+            yield Log._from_conjure(log)
 
     @classmethod
     def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
-        timestamp_type = None
-        if log_set_metadata.timestamp_type == datasource.TimestampType.ABSOLUTE:
-            timestamp_type_enum = "absolute"
-        elif timestamp_type_enum == datasource.TimestampType.RELATIVE:
-            timestamp_type_enum = "relative"
-        else:
-            raise ValueError(f"unsupported timestamp type: {timestamp_type}")
-
         return cls(
             rid=log_set_metadata.rid,
-            created_by=log_set_metadata.created_by,
             name=log_set_metadata.name,
-            created_at=parser.parse(log_set_metadata.created_at),
-            updated_at=parser.parse(log_set_metadata.updated_at),
-            log_count=log_set_metadata.log_count,
-            timestamp_type=timestamp_type,
-            origin_metadata=MappingProxyType(log_set_metadata.origin_metadata),
+            timestamp_type=_log_timestamp_type_from_conjure(log_set_metadata.timestamp_type),
             description=log_set_metadata.description,
             _client=client,
         )
@@ -412,19 +381,15 @@ class LogSet:
 
 @dataclass(frozen=True)
 class Log:
-    time: datetime | IntegralNanosecondsUTC
+    time: IntegralNanosecondsUTC
     body: str
-    properties: Mapping[str, str] | None = None
 
     def _to_conjure(self) -> datasource_logset_api.Log:
-        properties = {} if not self.properties else dict(self.properties)
+        # TODO: do we need to support properties? can we leave it out on the client?
         return datasource_logset_api.Log(
             time=_flexible_time_to_global_conjure_api(self.time),
             body=datasource_logset_api.LogBody(
-                basic=datasource_logset_api.BasicLogBody(
-                    properties=properties,
-                    message=self.body,
-                ),
+                basic=datasource_logset_api.BasicLogBody(message=self.body, properties={}),
             ),
         )
 
@@ -433,35 +398,6 @@ class Log:
         return cls(
             time=_global_conjure_api_to_integral_nanoseconds(log.time),
             body=log.body.basic.message,
-            properties=MappingProxyType(log.body.basic.properties),
-        )
-
-
-@dataclass(frozen=True)
-class PaginatedLogs:
-    logs: Sequence[Log]
-    page_size: int
-    next_page_token: str | None = None
-    _client: NominalClient = field(repr=False)
-
-    def get_logs(self) -> Sequence[Log]:
-        return self.logs
-
-    def load_next_page(self) -> PaginatedLogs:
-        request = datasource_logset_api.SearchLogsRequest(
-            page_size=self.page_size,
-            page_token=self.next_page_token,
-        )
-        response = self._client._logset_client.search_logs(
-            self._client._auth_header,
-            log_set_rid=self.rid,
-            request=request,
-        )
-        return PaginatedLogs(
-            logs=[Log._from_conjure(log) for log in response.logs],
-            page_size=self.page_size,
-            next_page_token=response.next_page_token,
-            client=self._client,
         )
 
 
@@ -869,30 +805,30 @@ class NominalClient:
     def create_log_set(
         self,
         name: str,
-        timestamp_type: TimestampType,
+        logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
+        timestamp_type: LogTimestampType = "absolute",  # TODO: ideate on this a bit
         description: str | None = None,
-        origin_metadata: Mapping[str, str] = MappingProxyType({}),
     ) -> LogSet:
         """
         Creates a log set, to which logs can be attached using `attach-and-finalize`. The logs within a logset are
         not searchable until the logset is finalized.
-        Timestamp type must be a string equal to either 'ABSOLUTE' or 'RELATIVE'.
+        Timestamp type must be a string equal to either 'absolute' or 'relative'.
         """
-        timestamp_type_enum = None
-        if timestamp_type == "absolute":
-            timestamp_type_enum = datasource.TimestampType.ABSOLUTE
-        elif timestamp_type_enum == "relative":
-            timestamp_type_enum = datasource.TimestampType.RELATIVE
-        else:
-            raise TypeError(f"timestamp type {timestamp_type} must be one of [RELATIVE, ABSOLUTE]")
-
         request = datasource_logset_api.CreateLogSetRequest(
             name=name,
             description=description,
-            origin_metadata=None if origin_metadata is None else dict(origin_metadata),
-            timestamp_type=timestamp_type_enum.to_conjure(),
+            origin_metadata={},
+            timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
         )
+        # we need to create the logset, then attach logs and finalize it
         response = self._logset_client.create(self._auth_header, request)
+        return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
+
+    def _attach_logs_and_finalize(self, rid: str, logs: Iterable[datasource_logset_api.Log]) -> LogSet:
+        request = datasource_logset_api.AttachLogsAndFinalizeRequest(logs=list(logs))
+        response = self._logset_client.attach_logs_and_finalize(
+            auth_header=self._auth_header, log_set_rid=rid, request=request
+        )
         return LogSet._from_conjure(self, response)
 
     def get_video(self, rid: str) -> Video:
@@ -1015,7 +951,7 @@ def _get_dataset(
 
 def _get_log_set(
     auth_header: str, client: datasource_logset.LogSetService, log_set_rid: str
-) -> datasource_logset.LogSet:
+) -> datasource_logset_api.LogSetMetadata:
     return client.get_log_set_metadata(auth_header, log_set_rid)
 
 
@@ -1062,3 +998,30 @@ def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
     if file_type.extension not in (".csv", ".csv.gz"):
         raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
     return path, file_type
+
+
+def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:
+    if log_timestamp_type == "absolute":
+        return datasource.TimestampType.ABSOLUTE
+    elif log_timestamp_type == "relative":
+        return datasource.TimestampType.RELATIVE
+    raise ValueError(f"timestamp type {log_timestamp_type} must be 'relative' or 'absolute'")
+
+
+def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampType) -> LogTimestampType:
+    if log_timestamp_type == datasource.TimestampType.ABSOLUTE:
+        return "absolute"
+    elif log_timestamp_type == datasource.TimestampType.RELATIVE:
+        return "relative"
+    raise ValueError(f"unhandled timestamp type {log_timestamp_type}")
+
+
+def _logs_to_conjure(
+    logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
+) -> Iterable[datasource_logset_api.Log]:
+    for log in logs:
+        if isinstance(log, Log):
+            yield log._to_conjure()
+        elif isinstance(log, tuple):
+            ts, body = log
+            yield Log(time=_flexible_time_to_integral_nanoseconds(ts), body=body, properties={})._to_conjure()

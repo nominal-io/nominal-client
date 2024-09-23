@@ -106,6 +106,13 @@ def _flexible_time_to_seconds_nanos(
     raise TypeError(f"expected {datetime} or {IntegralNanosecondsUTC}, got {type(timestamp)}")
 
 
+def _flexible_time_to_integral_nanoseconds(
+    timestamp: datetime | IntegralNanosecondsUTC,
+) -> IntegralNanosecondsUTC:
+    seconds, nanos = _flexible_time_to_seconds_nanos(timestamp)
+    return seconds * 1_000_000_000 + nanos
+
+
 def _conjure_time_to_integral_nanoseconds(ts: scout_run_api.UtcTimestamp) -> IntegralNanosecondsUTC:
     return ts.seconds_since_epoch * 1_000_000_000 + (ts.offset_nanoseconds or 0)
 
@@ -204,4 +211,4 @@ def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
         r.close()
 
 
-TimestampType: TypeAlias = Literal["absolute", "relative"]
+LogTimestampType: TypeAlias = Literal["absolute", "relative"]
