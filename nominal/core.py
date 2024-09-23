@@ -362,7 +362,7 @@ class LogSet:
             yield from response.logs
             if response.next_page_token is None:
                 break
-            request = datasource_logset_api.SearchLogsRequest(page_token=response.next_page_token)
+            request = datasource_logset_api.SearchLogsRequest(token=response.next_page_token)
 
     def stream_logs(self) -> Iterable[Log]:
         """
@@ -371,7 +371,7 @@ class LogSet:
         for log in self._stream_logs_paginated():
             yield Log._from_conjure(log)
 
-    def __iter__(self) -> Iterator[Log]:
+    def __iter__(self) -> Iterable[Log]:
         """
         Allow iteration over logs in the LogSet.
         """
@@ -404,6 +404,8 @@ class Log:
 
     @classmethod
     def _from_conjure(cls, log: datasource_logset_api.Log) -> Self:
+        if log.body.basic is None:
+            raise ValueError("log body is empty")
         return cls(
             time=_global_conjure_api_to_integral_nanoseconds(log.time),
             body=log.body.basic.message,
@@ -964,7 +966,7 @@ def _get_log_set(
     return client.get_log_set_metadata(auth_header, log_set_rid)
 
 
-def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | str) -> str:
+def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | LogSet | str) -> str:
     if isinstance(value, str):
         return value
     elif isinstance(value, (Attachment, Run, Dataset, Video)):
