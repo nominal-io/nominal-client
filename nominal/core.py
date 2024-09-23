@@ -371,12 +371,6 @@ class LogSet:
         for log in self._stream_logs_paginated():
             yield Log._from_conjure(log)
 
-    def __iter__(self) -> Iterable[Log]:
-        """
-        Allow iteration over logs in the LogSet.
-        """
-        return self.stream_logs()
-
     @classmethod
     def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
         return cls(
@@ -390,13 +384,13 @@ class LogSet:
 
 @dataclass(frozen=True)
 class Log:
-    time: IntegralNanosecondsUTC
+    timestamp: IntegralNanosecondsUTC
     body: str
 
     def _to_conjure(self) -> datasource_logset_api.Log:
         # TODO: do we need to support properties? can we leave it out on the client?
         return datasource_logset_api.Log(
-            time=_flexible_time_to_global_conjure_api(self.time),
+            time=_flexible_time_to_global_conjure_api(self.timestamp),
             body=datasource_logset_api.LogBody(
                 basic=datasource_logset_api.BasicLogBody(message=self.body, properties={}),
             ),
@@ -407,7 +401,7 @@ class Log:
         if log.body.basic is None:
             raise ValueError("log body is empty")
         return cls(
-            time=_global_conjure_api_to_integral_nanoseconds(log.time),
+            timestamp=_global_conjure_api_to_integral_nanoseconds(log.time),
             body=log.body.basic.message,
         )
 
@@ -1035,4 +1029,4 @@ def _logs_to_conjure(
             yield log._to_conjure()
         elif isinstance(log, tuple):
             ts, body = log
-            yield Log(time=_flexible_time_to_integral_nanoseconds(ts), body=body)._to_conjure()
+            yield Log(timestamp=_flexible_time_to_integral_nanoseconds(ts), body=body)._to_conjure()
