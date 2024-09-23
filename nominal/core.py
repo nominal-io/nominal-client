@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Iterator, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -83,16 +83,20 @@ class Run:
     def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
         """
         Add a log set to this run.
+
+        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
         """
         self.add_log_sets({ref_name: log_set})
 
     def add_log_sets(self, log_sets: Mapping[str, LogSet | str]) -> None:
         """
         Add multiple log sets to this run.
+
+        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
         """
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(log_set == _rid_from_instance_or_string(log_set)),
+                data_source=scout_run_api.DataSource(log_set=_rid_from_instance_or_string(log_set)),
                 series_tags={},
                 offset=None,
             )
@@ -347,7 +351,7 @@ class LogSet:
     description: str | None
     _client: NominalClient = field(repr=False)
 
-    def _list_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
+    def _stream_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
         request = datasource_logset_api.SearchLogsRequest()
         while True:
             response = self._client._logset_client.search_logs(
@@ -360,13 +364,18 @@ class LogSet:
                 break
             request = datasource_logset_api.SearchLogsRequest(page_token=response.next_page_token)
 
-    def list_logs(self) -> Iterable[Log]:
+    def stream_logs(self) -> Iterable[Log]:
         """
         Get logs within this log set.
         """
-        # TODO: different name?
-        for log in self._list_logs_paginated():
+        for log in self._stream_logs_paginated():
             yield Log._from_conjure(log)
+
+    def __iter__(self) -> Iterator[Log]:
+        """
+        Allow iteration over logs in the LogSet.
+        """
+        return self.stream_logs()
 
     @classmethod
     def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
@@ -1024,4 +1033,4 @@ def _logs_to_conjure(
             yield log._to_conjure()
         elif isinstance(log, tuple):
             ts, body = log
-            yield Log(time=_flexible_time_to_integral_nanoseconds(ts), body=body, properties={})._to_conjure()
+            yield Log(time=_flexible_time_to_integral_nanoseconds(ts), body=body)._to_conjure()
