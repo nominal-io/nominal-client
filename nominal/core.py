@@ -15,7 +15,6 @@ from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfi
 from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal import _config
-from .timedomain import TypedTimeDomain, _to_conjure_ingest_api
 
 from ._api.combined import (
     attachments_api,
@@ -37,6 +36,7 @@ from ._timeutils import (
 )
 from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed
+from .timedomain import TypedTimeDomain, _to_conjure_ingest_api
 
 __all__ = [
     "NominalClient",

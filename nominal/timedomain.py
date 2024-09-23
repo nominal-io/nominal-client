@@ -1,13 +1,16 @@
 """ """
 
 from __future__ import annotations
+
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
 from typing import Literal, Mapping
-import warnings
+
 import numpy as np
 from typing_extensions import TypeAlias
+
 from nominal._api.combined import ingest_api
 
 IntegralNanosecondsUTC: TypeAlias = int

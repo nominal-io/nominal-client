@@ -5,8 +5,8 @@ from typing import Literal
 import click
 
 from ..nominal import _upload_csv
-from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 from ..timedomain import _LiteralAbsolute
+from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 
 
 @click.group(name="dataset")
