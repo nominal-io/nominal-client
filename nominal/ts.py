@@ -5,11 +5,11 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import MappingProxyType
-from typing import Literal, Mapping, NamedTuple, Self, Union
+from typing import Literal, Mapping, NamedTuple, Union
 
 import dateutil.parser
 import numpy as np
-from typing_extensions import TypeAlias
+from typing_extensions import TypeAlias, Self
 
 from ._api.combined import ingest_api, scout_run_api
 
