@@ -205,13 +205,13 @@ def create_run_csv(
     The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
     column.
     """
-    typed_timestamp_type = ts._make_typed_time_domain(timestamp_type)
-    if not isinstance(typed_timestamp_type, (ts.Iso8601, ts.Epoch)):
+    time_domain = ts._make_typed_time_domain(timestamp_type)
+    if not isinstance(time_domain, (ts.Iso8601, ts.Epoch)):
         raise ValueError(
             "`create_run_csv()` only supports iso8601 or epoch timestamps: use `upload_dataset()` and `create_run()` instead"
         )
-    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, typed_timestamp_type)
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, typed_timestamp_type)
+    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, time_domain)
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, time_domain)
     run = create_run(name, start=start, end=end, description=description)
     run.add_dataset("dataset", dataset)
     return run
