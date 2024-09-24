@@ -181,8 +181,8 @@ def create_run(
     conn = get_default_client()
     return conn.create_run(
         name,
-        start=_SecondsNanos.from_flexible(start).to_integral_nanoseconds(),
-        end=_SecondsNanos.from_flexible(end).to_integral_nanoseconds(),
+        start=_SecondsNanos.from_flexible(start).to_ns(),
+        end=_SecondsNanos.from_flexible(end).to_ns(),
         description=description,
     )
 
@@ -242,8 +242,8 @@ def search_runs(
         raise ValueError("must provide one of: start, end, exact_name, label, or property")
     conn = get_default_client()
     runs = conn.search_runs(
-        start=None if start is None else _SecondsNanos.from_flexible(start).to_integral_nanoseconds(),
-        end=None if end is None else _SecondsNanos.from_flexible(end).to_integral_nanoseconds(),
+        start=None if start is None else _SecondsNanos.from_flexible(start).to_ns(),
+        end=None if end is None else _SecondsNanos.from_flexible(end).to_ns(),
         exact_name=exact_name,
         label=label,
         property=property,
@@ -285,9 +285,7 @@ def upload_video(
     path = Path(file)
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
-        return conn.create_video_from_io(
-            f, name, _SecondsNanos.from_flexible(start).to_integral_nanoseconds(), description, file_type
-        )
+        return conn.create_video_from_io(f, name, _SecondsNanos.from_flexible(start).to_ns(), description, file_type)
 
 
 def get_video(rid: str) -> Video:

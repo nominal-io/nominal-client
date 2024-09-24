@@ -208,9 +208,9 @@ class _SecondsNanos(NamedTuple):
         - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
         - https://github.com/palantir/conjure/pull/1643
         """
-        return str(np.datetime64(self.to_integral_nanoseconds(), "ns")) + "Z"
+        return str(np.datetime64(self.to_ns(), "ns")) + "Z"
 
-    def to_integral_nanoseconds(self) -> IntegralNanosecondsUTC:
+    def to_ns(self) -> IntegralNanosecondsUTC:
         return self.seconds * 1_000_000_000 + self.nanos
 
     @classmethod

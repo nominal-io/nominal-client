@@ -159,8 +159,8 @@ class Run:
             description=run.description,
             properties=MappingProxyType(run.properties),
             labels=tuple(run.labels),
-            start=_SecondsNanos.from_scout_run_api(run.start_time).to_integral_nanoseconds(),
-            end=(_SecondsNanos.from_scout_run_api(run.end_time).to_integral_nanoseconds() if run.end_time else None),
+            start=_SecondsNanos.from_scout_run_api(run.start_time).to_ns(),
+            end=(_SecondsNanos.from_scout_run_api(run.end_time).to_ns() if run.end_time else None),
             _client=nominal_client,
         )
 
