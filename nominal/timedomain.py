@@ -1,5 +1,3 @@
-""" """
-
 from __future__ import annotations
 
 import warnings
@@ -74,12 +72,12 @@ _LiteralRelativeDeprecated: TypeAlias = Literal[
     "relative_hours",
 ]
 
-TypedTimeDomain: TypeAlias = Iso8601 | Epoch | Relative | Custom
+TypedTimeDomain: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
 _AnyTimeDomain: TypeAlias = Union[TypedTimeDomain, _LiteralAbsolute, _LiteralRelativeDeprecated]
 
 
 def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
-    if isinstance(domain, TypedTimeDomain):
+    if isinstance(domain, (Iso8601, Epoch, Relative, Custom)):
         return domain
     if not isinstance(domain, str):
         raise TypeError(f"timestamp type {domain} must be a string or an instance of one of: {TypedTimeDomain}")
