@@ -153,7 +153,7 @@ def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
     if not isinstance(domain, str):
         raise TypeError(f"timestamp type {domain} must be a string or an instance of one of: {TypedTimeDomain}")
     if domain.startswith("relative_"):
-        # until this is completely removed, we implicitly assume offset=None in the APIs
+        # until this is completely removed, we implicitly assume offset=1970-01-01 in the APIs
         warnings.warn(
             "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: use `nm.timedomain.Relative` instead. "
             "for example: instead of 'relative_seconds', use `nm.timedomain.Relative('seconds', start=datetime.now())`. ",
