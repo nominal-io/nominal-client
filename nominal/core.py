@@ -42,7 +42,6 @@ __all__ = [
     "Dataset",
     "Attachment",
     "Video",
-    "IntegralNanosecondsUTC",
 ]
 
 
