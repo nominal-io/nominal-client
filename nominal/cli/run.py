@@ -4,7 +4,7 @@ from typing import Sequence
 
 import click
 
-from .._timeutils import SecondsNanos
+from ..ts import _SecondsNanos
 from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 
 
@@ -36,8 +36,8 @@ def create(
     client = get_client(base_url, token)
     run = client.create_run(
         name,
-        SecondsNanos.from_flexible(start).to_integral_nanoseconds(),
-        SecondsNanos.from_flexible(end).to_integral_nanoseconds(),
+        _SecondsNanos.from_flexible(start).to_integral_nanoseconds(),
+        _SecondsNanos.from_flexible(end).to_integral_nanoseconds(),
         desc,
         properties=dict(properties),
         labels=labels,

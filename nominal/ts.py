@@ -3,14 +3,16 @@ from __future__ import annotations
 import abc
 import warnings
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from types import MappingProxyType
-from typing import Literal, Mapping, Union
+from typing import Literal, Mapping, NamedTuple, Self, Union
 
+import dateutil.parser
+import numpy as np
 from typing_extensions import TypeAlias
 
-from ._api.combined import ingest_api
-from ._timeutils import IntegralNanosecondsUTC, SecondsNanos
+from ._api.combined import ingest_api, scout_run_api
+from ._timeutils import IntegralNanosecondsUTC
 
 __all__ = [
     "Iso8601",
@@ -65,7 +67,7 @@ class Relative(_ConjureTimestampDomain):
         - https://github.com/palantir/conjure/pull/1643
         """
         relative = ingest_api.RelativeTimestamp(
-            time_unit=_time_unit_to_conjure(self.unit), offset=SecondsNanos.from_flexible(self.start).to_iso8601()
+            time_unit=_time_unit_to_conjure(self.unit), offset=_SecondsNanos.from_flexible(self.start).to_iso8601()
         )
         return ingest_api.TimestampType(relative=relative)
 
@@ -158,3 +160,45 @@ _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | E
         "relative_hours": Relative("hours", start=0),
     }
 )
+
+
+class _SecondsNanos(NamedTuple):
+    seconds: int
+    nanos: int
+
+    def to_scout_run_api(self) -> scout_run_api.UtcTimestamp:
+        return scout_run_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
+
+    def to_ingest_api(self) -> ingest_api.UtcTimestamp:
+        return ingest_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
+
+    def to_iso8601(self) -> str:
+        """datetime.datetime objects are only microsecond-precise, so we use numpy's datetime64[ns] for nanosecond precision."""
+        return str(np.datetime64(self.to_integral_nanoseconds(), "ns")) + "Z"
+
+    def to_integral_nanoseconds(self) -> IntegralNanosecondsUTC:
+        return self.seconds * 1_000_000_000 + self.nanos
+
+    @classmethod
+    def from_scout_run_api(cls, ts: scout_run_api.UtcTimestamp) -> Self:
+        return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds or 0)
+
+    @classmethod
+    def from_datetime(cls, dt: datetime) -> Self:
+        dt = dt.astimezone(timezone.utc)
+        seconds = int(dt.timestamp())
+        nanos = dt.microsecond * 1000
+        return cls(seconds, nanos)
+
+    @classmethod
+    def from_integral_nanoseconds(cls, ts: IntegralNanosecondsUTC) -> Self:
+        seconds, nanos = divmod(ts, 1_000_000_000)
+        return cls(seconds, nanos)
+
+    @classmethod
+    def from_flexible(cls, ts: str | datetime | IntegralNanosecondsUTC) -> Self:
+        if isinstance(ts, int):
+            return cls.from_integral_nanoseconds(ts)
+        if isinstance(ts, str):
+            ts = dateutil.parser.parse(ts)
+        return cls.from_datetime(ts)

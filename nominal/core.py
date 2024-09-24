@@ -27,10 +27,9 @@ from ._api.combined import (
     upload_api,
 )
 from ._multipart import put_multipart_upload
-from ._timeutils import SecondsNanos
 from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed
-from .ts import IntegralNanosecondsUTC, TypedTimeDomain
+from .ts import IntegralNanosecondsUTC, _SecondsNanos, TypedTimeDomain
 
 __all__ = [
     "NominalClient",
@@ -160,8 +159,8 @@ class Run:
             description=run.description,
             properties=MappingProxyType(run.properties),
             labels=tuple(run.labels),
-            start=SecondsNanos.from_scout_run_api(run.start_time).to_integral_nanoseconds(),
-            end=(SecondsNanos.from_scout_run_api(run.end_time).to_integral_nanoseconds() if run.end_time else None),
+            start=_SecondsNanos.from_scout_run_api(run.start_time).to_integral_nanoseconds(),
+            end=(_SecondsNanos.from_scout_run_api(run.end_time).to_integral_nanoseconds() if run.end_time else None),
             _client=nominal_client,
         )
 
@@ -509,9 +508,9 @@ class NominalClient:
             labels=list(labels),
             links=[],
             properties={} if properties is None else dict(properties),
-            start_time=SecondsNanos.from_flexible(start).to_scout_run_api(),
+            start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
-            end_time=SecondsNanos.from_flexible(end).to_scout_run_api(),
+            end_time=_SecondsNanos.from_flexible(end).to_scout_run_api(),
         )
         response = self._run_client.create_run(self._auth_header, request)
         return Run._from_conjure(self, response)
@@ -682,7 +681,7 @@ class NominalClient:
             sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
             timestamps=ingest_api.VideoTimestampManifest(
                 no_manifest=ingest_api.NoTimestampManifest(
-                    starting_timestamp=SecondsNanos.from_flexible(start).to_ingest_api()
+                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
                 )
             ),
             description=description,
@@ -821,10 +820,10 @@ def _create_search_runs_query(
 ) -> scout_run_api.SearchQuery:
     queries = []
     if start is not None:
-        q = scout_run_api.SearchQuery(start_time_inclusive=SecondsNanos.from_flexible(start).to_scout_run_api())
+        q = scout_run_api.SearchQuery(start_time_inclusive=_SecondsNanos.from_flexible(start).to_scout_run_api())
         queries.append(q)
     if end is not None:
-        q = scout_run_api.SearchQuery(end_time_inclusive=SecondsNanos.from_flexible(end).to_scout_run_api())
+        q = scout_run_api.SearchQuery(end_time_inclusive=_SecondsNanos.from_flexible(end).to_scout_run_api())
         queries.append(q)
     if exact_name is not None:
         q = scout_run_api.SearchQuery(exact_match=exact_name)

@@ -9,10 +9,9 @@ from typing import TYPE_CHECKING, BinaryIO
 from nominal import _config
 
 from . import ts
-from ._timeutils import SecondsNanos
 from ._utils import FileType, FileTypes, reader_writer
 from .core import Attachment, Dataset, NominalClient, Run, Video
-from .ts import IntegralNanosecondsUTC
+from .ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -182,8 +181,8 @@ def create_run(
     conn = get_default_client()
     return conn.create_run(
         name,
-        start=SecondsNanos.from_flexible(start).to_integral_nanoseconds(),
-        end=SecondsNanos.from_flexible(end).to_integral_nanoseconds(),
+        start=_SecondsNanos.from_flexible(start).to_integral_nanoseconds(),
+        end=_SecondsNanos.from_flexible(end).to_integral_nanoseconds(),
         description=description,
     )
 
@@ -243,8 +242,8 @@ def search_runs(
         raise ValueError("must provide one of: start, end, exact_name, label, or property")
     conn = get_default_client()
     runs = conn.search_runs(
-        start=None if start is None else SecondsNanos.from_flexible(start).to_integral_nanoseconds(),
-        end=None if end is None else SecondsNanos.from_flexible(end).to_integral_nanoseconds(),
+        start=None if start is None else _SecondsNanos.from_flexible(start).to_integral_nanoseconds(),
+        end=None if end is None else _SecondsNanos.from_flexible(end).to_integral_nanoseconds(),
         exact_name=exact_name,
         label=label,
         property=property,
@@ -287,7 +286,7 @@ def upload_video(
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
         return conn.create_video_from_io(
-            f, name, SecondsNanos.from_flexible(start).to_integral_nanoseconds(), description, file_type
+            f, name, _SecondsNanos.from_flexible(start).to_integral_nanoseconds(), description, file_type
         )
 
 

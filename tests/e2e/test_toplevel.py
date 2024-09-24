@@ -7,6 +7,7 @@ import pandas as pd
 import polars as pl
 
 import nominal as nm
+import nominal.ts
 from nominal import _timeutils, _utils
 
 from . import _create_random_start_end
@@ -176,8 +177,8 @@ def test_search_runs():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == _timeutils.SecondsNanos(start).to_integral_nanoseconds()
-    assert run2.end == run.end == _timeutils.SecondsNanos(end).to_integral_nanoseconds()
+    assert run2.start == run.start == nominal.ts._SecondsNanos(start).to_integral_nanoseconds()
+    assert run2.end == run.end == nominal.ts._SecondsNanos(end).to_integral_nanoseconds()
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
