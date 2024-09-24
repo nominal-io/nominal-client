@@ -1,4 +1,4 @@
-from .core import Attachment, Dataset, NominalClient, Run, Video
+from .core import Attachment, Dataset, Log, LogSet, NominalClient, Run, Video
 from .nominal import (
     create_run,
     create_run_csv,
@@ -41,4 +41,6 @@ __all__ = [
     "Attachment",
     "NominalClient",
     "Video",
+    "LogSet",
+    "Log",
 ]
