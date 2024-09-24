@@ -11,7 +11,25 @@ from typing_extensions import TypeAlias
 from nominal._timeutils import _flexible_to_iso8601
 
 from ._api.combined import ingest_api
-from ._timeutils import IntegralNanosecondsUTC
+
+__all__ = [
+    "Iso8601",
+    "Epoch",
+    "Relative",
+    "Custom",
+    "ISO_8601",
+    "EPOCH_NANOSECONDS",
+    "EPOCH_MICROSECONDS",
+    "EPOCH_MILLISECONDS",
+    "EPOCH_SECONDS",
+    "EPOCH_MINUTES",
+    "EPOCH_HOURS",
+    "TypedTimeDomain",
+    "IntegralNanosecondsUTC",
+]
+
+
+IntegralNanosecondsUTC = int
 
 
 @dataclass(frozen=True)

@@ -5,9 +5,8 @@ from datetime import datetime, timezone
 import dateutil.parser
 import numpy as np
 
+from .ts import IntegralNanosecondsUTC
 from ._api.combined import ingest_api, scout_run_api
-
-IntegralNanosecondsUTC = int
 
 
 def _flexible_time_to_conjure_scout_run_api(timestamp: datetime | IntegralNanosecondsUTC) -> scout_run_api.UtcTimestamp:

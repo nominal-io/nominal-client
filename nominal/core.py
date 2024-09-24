@@ -28,14 +28,13 @@ from ._api.combined import (
 )
 from ._multipart import put_multipart_upload
 from ._timeutils import (
-    IntegralNanosecondsUTC,
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_ingest_api,
     _flexible_time_to_conjure_scout_run_api,
 )
 from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed
-from .ts import TypedTimeDomain, _time_domain_to_conjure_ingest_api
+from .ts import IntegralNanosecondsUTC, TypedTimeDomain, _time_domain_to_conjure_ingest_api
 
 __all__ = [
     "NominalClient",
