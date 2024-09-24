@@ -25,7 +25,7 @@ __all__ = [
     "EPOCH_SECONDS",
     "EPOCH_MINUTES",
     "EPOCH_HOURS",
-    "TypedTimeDomain",
+    "TypedTimestampType",
     "IntegralNanosecondsUTC",
 ]
 
@@ -33,14 +33,14 @@ IntegralNanosecondsUTC: TypeAlias = int
 """A timestamp in nanoseconds since the Unix epoch, UTC."""
 
 
-class _ConjureTimestampDomain(abc.ABC):
+class _ConjureTimestampType(abc.ABC):
     @abc.abstractmethod
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         pass
 
 
 @dataclass(frozen=True)
-class Iso8601(_ConjureTimestampDomain):
+class Iso8601(_ConjureTimestampType):
     """ISO 8601 timestamp format, e.g. '2021-01-01T00:00:00Z' or '2021-01-01T00:00:00.123+00:00'.
     The time zone must be specified.
     """
@@ -50,7 +50,7 @@ class Iso8601(_ConjureTimestampDomain):
 
 
 @dataclass(frozen=True)
-class Epoch(_ConjureTimestampDomain):
+class Epoch(_ConjureTimestampType):
     """An absolute timestamp in numeric format representing time since some epoch.
     The timestamp can be integral or floating point, e.g. 1612137600.123 for 2021-02-01T00:00:00.123Z.
     """
@@ -63,7 +63,7 @@ class Epoch(_ConjureTimestampDomain):
 
 
 @dataclass(frozen=True)
-class Relative(_ConjureTimestampDomain):
+class Relative(_ConjureTimestampType):
     """A relative timestamp in numeric format representing time since some start time.
     The relative timestamp can be integral or floating point, e.g. 12.123 for 12 seconds and 123 milliseconds after start.
     The start time is absolute timestamp format representing time since some epoch.
@@ -87,7 +87,7 @@ class Relative(_ConjureTimestampDomain):
 
 
 @dataclass(frozen=True)
-class Custom(_ConjureTimestampDomain):
+class Custom(_ConjureTimestampType):
     """A custom timestamp format. The custom timestamps are expected to be absolute timestamps.
 
     The format string should be in the format of the `DateTimeFormatter` class in Java.
@@ -140,28 +140,28 @@ _LiteralRelativeDeprecated: TypeAlias = Literal[
     "relative_hours",
 ]
 
-TypedTimeDomain: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
-"""Strongly typed time domain types."""
+TypedTimestampType: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
+"""Strongly typed timestamp types."""
 
-_AnyTimeDomain: TypeAlias = Union[TypedTimeDomain, _LiteralAbsolute, _LiteralRelativeDeprecated]
-"""All allowable time domain types, including string representations."""
+_AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute, _LiteralRelativeDeprecated]
+"""All allowable timestamp types, including string representations."""
 
 
-def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
-    if isinstance(domain, (Iso8601, Epoch, Relative, Custom)):
-        return domain
-    if not isinstance(domain, str):
-        raise TypeError(f"timestamp type {domain} must be a string or an instance of one of: {TypedTimeDomain}")
-    if domain.startswith("relative_"):
+def _make_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
+    if isinstance(type_, (Iso8601, Epoch, Relative, Custom)):
+        return type_
+    if not isinstance(type_, str):
+        raise TypeError(f"timestamp type {type_} must be a string or an instance of one of: {TypedTimestampType}")
+    if type_.startswith("relative_"):
         # until this is completely removed, we implicitly assume offset=1970-01-01 in the APIs
         warnings.warn(
-            "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: use `nm.timedomain.Relative` instead. "
-            "for example: instead of 'relative_seconds', use `nm.timedomain.Relative('seconds', start=datetime.now())`. ",
+            "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: use `nm.ts.Relative` instead. "
+            "for example: instead of 'relative_seconds', use `nm.ts.Relative('seconds', start=datetime.now())`. ",
             UserWarning,
         )
-    if domain not in _str_to_type:
-        raise ValueError(f"string time domains must be one of: {_str_to_type.keys()}")
-    return _str_to_type[domain]
+    if type_ not in _str_to_type:
+        raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
+    return _str_to_type[type_]
 
 
 def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> ingest_api.TimeUnit:

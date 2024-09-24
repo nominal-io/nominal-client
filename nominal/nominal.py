@@ -52,14 +52,14 @@ def upload_pandas(
     df: pd.DataFrame,
     name: str,
     timestamp_column: str,
-    timestamp_type: ts._AnyTimeDomain,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a pandas.DataFrame."""
     conn = get_default_client()
-    time_domain = ts._make_typed_time_domain(timestamp_type)
+    time_domain = ts._make_typed_timestamp_type(timestamp_type)
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
 
@@ -89,14 +89,14 @@ def upload_polars(
     df: pl.DataFrame,
     name: str,
     timestamp_column: str,
-    timestamp_type: ts._AnyTimeDomain,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a polars.DataFrame."""
     conn = get_default_client()
-    time_domain = ts._make_typed_time_domain(timestamp_type)
+    time_domain = ts._make_typed_timestamp_type(timestamp_type)
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
         df.write_csv(w)
@@ -124,7 +124,7 @@ def upload_csv(
     file: Path | str,
     name: str | None,
     timestamp_column: str,
-    timestamp_type: ts._AnyTimeDomain,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
@@ -144,12 +144,12 @@ def _upload_csv(
     file: Path | str,
     name: str | None,
     timestamp_column: str,
-    timestamp_type: ts._AnyTimeDomain,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    time_domain = ts._make_typed_time_domain(timestamp_type)
+    time_domain = ts._make_typed_timestamp_type(timestamp_type)
     dataset = conn.create_csv_dataset(
         file,
         name,
@@ -205,7 +205,7 @@ def create_run_csv(
     The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
     column.
     """
-    time_domain = ts._make_typed_time_domain(timestamp_type)
+    time_domain = ts._make_typed_timestamp_type(timestamp_type)
     if not isinstance(time_domain, (ts.Iso8601, ts.Epoch)):
         raise ValueError(
             "`create_run_csv()` only supports iso8601 or epoch timestamps: use `upload_dataset()` and `create_run()` instead"
