@@ -147,7 +147,7 @@ _AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute, _Lite
 """All allowable timestamp types, including string representations."""
 
 
-def _make_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
+def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if isinstance(type_, (Iso8601, Epoch, Relative, Custom)):
         return type_
     if not isinstance(type_, str):

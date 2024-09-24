@@ -29,7 +29,7 @@ from ._api.combined import (
 from ._multipart import put_multipart_upload
 from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed
-from .ts import IntegralNanosecondsUTC, TypedTimestampType, _SecondsNanos
+from .ts import IntegralNanosecondsUTC, _AnyTimestampType, _to_typed_timestamp_type, _SecondsNanos
 
 __all__ = [
     "NominalClient",
@@ -237,7 +237,7 @@ class Dataset:
         update_dataclass(self, dataset, fields=self.__dataclass_fields__)
         return self
 
-    def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: TypedTimestampType) -> None:
+    def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
         path, file_type = _verify_csv_path(path)
         with open(path, "rb") as csv_file:
@@ -247,7 +247,7 @@ class Dataset:
         self,
         dataset: BinaryIO,
         timestamp_column: str,
-        timestamp_type: TypedTimestampType,
+        timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
     ) -> None:
         """Append to a dataset from a file-like object.
@@ -274,7 +274,7 @@ class Dataset:
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=timestamp_type._to_conjure_ingest_api(),
+                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                 ),
             ),
         )
@@ -573,7 +573,7 @@ class NominalClient:
         path: Path | str,
         name: str | None,
         timestamp_column: str,
-        timestamp_type: TypedTimestampType,
+        timestamp_type: _AnyTimestampType,
         description: str | None = None,
         *,
         labels: Sequence[str] = (),
@@ -605,7 +605,7 @@ class NominalClient:
         dataset: BinaryIO,
         name: str,
         timestamp_column: str,
-        timestamp_type: TypedTimestampType,
+        timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
         description: str | None = None,
         *,
@@ -645,7 +645,7 @@ class NominalClient:
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=timestamp_type._to_conjure_ingest_api(),
+                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                 ),
             ),
         )

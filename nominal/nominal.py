@@ -59,7 +59,6 @@ def upload_pandas(
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a pandas.DataFrame."""
     conn = get_default_client()
-    time_domain = ts._make_typed_timestamp_type(timestamp_type)
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
 
@@ -75,7 +74,7 @@ def upload_pandas(
             reader,
             name,
             timestamp_column=timestamp_column,
-            timestamp_type=time_domain,
+            timestamp_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
         )
@@ -96,7 +95,6 @@ def upload_polars(
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a polars.DataFrame."""
     conn = get_default_client()
-    time_domain = ts._make_typed_timestamp_type(timestamp_type)
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
         df.write_csv(w)
@@ -110,7 +108,7 @@ def upload_polars(
             reader,
             name,
             timestamp_column=timestamp_column,
-            timestamp_type=time_domain,
+            timestamp_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
         )
@@ -149,12 +147,11 @@ def _upload_csv(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    time_domain = ts._make_typed_timestamp_type(timestamp_type)
     dataset = conn.create_csv_dataset(
         file,
         name,
         timestamp_column=timestamp_column,
-        timestamp_type=time_domain,
+        timestamp_type=timestamp_type,
         description=description,
     )
     if wait_until_complete:
@@ -205,13 +202,13 @@ def create_run_csv(
     The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
     column.
     """
-    time_domain = ts._make_typed_timestamp_type(timestamp_type)
-    if not isinstance(time_domain, (ts.Iso8601, ts.Epoch)):
+    ts_type = ts._to_typed_timestamp_type(timestamp_type)
+    if not isinstance(ts_type, (ts.Iso8601, ts.Epoch)):
         raise ValueError(
             "`create_run_csv()` only supports iso8601 or epoch timestamps: use `upload_dataset()` and `create_run()` instead"
         )
-    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, time_domain)
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, time_domain)
+    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, ts_type)
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, ts_type)
     run = create_run(name, start=start, end=end, description=description)
     run.add_dataset("dataset", dataset)
     return run
