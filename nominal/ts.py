@@ -10,7 +10,7 @@ from typing import Literal, Mapping, Union
 from typing_extensions import TypeAlias
 
 from ._api.combined import ingest_api
-from ._timeutils import IntegralNanosecondsUTC, _flexible_time_to_iso8601
+from ._timeutils import IntegralNanosecondsUTC, SecondsNanos
 
 __all__ = [
     "Iso8601",
@@ -65,7 +65,7 @@ class Relative(_ConjureTimestampDomain):
         - https://github.com/palantir/conjure/pull/1643
         """
         relative = ingest_api.RelativeTimestamp(
-            time_unit=_time_unit_to_conjure(self.unit), offset=_flexible_time_to_iso8601(self.start)
+            time_unit=_time_unit_to_conjure(self.unit), offset=SecondsNanos.from_flexible(self.start).to_iso8601()
         )
         return ingest_api.TimestampType(relative=relative)
 

@@ -176,8 +176,8 @@ def test_search_runs():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == _timeutils._parse_timestamp(start)
-    assert run2.end == run.end == _timeutils._parse_timestamp(end)
+    assert run2.start == run.start == _timeutils.SecondsNanos(start).to_integral_nanoseconds()
+    assert run2.end == run.end == _timeutils.SecondsNanos(end).to_integral_nanoseconds()
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 

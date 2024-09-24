@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import TypeAlias
+from typing import NamedTuple, TypeAlias
 
 import dateutil.parser
 import numpy as np
+from typing_extensions import Self
 
 from ._api.combined import ingest_api, scout_run_api
 
@@ -12,57 +13,43 @@ from ._api.combined import ingest_api, scout_run_api
 IntegralNanosecondsUTC: TypeAlias = int
 
 
-def _flexible_time_to_conjure_scout_run_api(timestamp: datetime | IntegralNanosecondsUTC) -> scout_run_api.UtcTimestamp:
-    seconds, nanos = _flexible_time_to_seconds_nanos(timestamp)
-    return scout_run_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
+class SecondsNanos(NamedTuple):
+    seconds: int
+    nanos: int
 
+    def to_scout_run_api(self) -> scout_run_api.UtcTimestamp:
+        return scout_run_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
 
-def _flexible_time_to_conjure_ingest_api(
-    timestamp: datetime | IntegralNanosecondsUTC,
-) -> ingest_api.UtcTimestamp:
-    seconds, nanos = _flexible_time_to_seconds_nanos(timestamp)
-    return ingest_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
+    def to_ingest_api(self) -> ingest_api.UtcTimestamp:
+        return ingest_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
 
+    def to_iso8601(self) -> str:
+        """datetime.datetime objects are only microsecond-precise, so we use numpy's datetime64[ns] for nanosecond precision."""
+        return str(np.datetime64(self.to_integral_nanoseconds(), "ns")) + "Z"
 
-def _flexible_time_to_seconds_nanos(
-    timestamp: datetime | IntegralNanosecondsUTC,
-) -> tuple[int, int]:
-    if isinstance(timestamp, datetime):
-        return _datetime_to_seconds_nanos(timestamp)
-    elif isinstance(timestamp, IntegralNanosecondsUTC):
-        return divmod(timestamp, 1_000_000_000)
-    raise TypeError(f"expected {datetime} or {IntegralNanosecondsUTC}, got {type(timestamp)}")
+    def to_integral_nanoseconds(self) -> IntegralNanosecondsUTC:
+        return self.seconds * 1_000_000_000 + self.nanos
 
+    @classmethod
+    def from_scout_run_api(cls, ts: scout_run_api.UtcTimestamp) -> Self:
+        return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds or 0)
 
-def _conjure_time_to_integral_nanoseconds(ts: scout_run_api.UtcTimestamp) -> IntegralNanosecondsUTC:
-    return ts.seconds_since_epoch * 1_000_000_000 + (ts.offset_nanoseconds or 0)
+    @classmethod
+    def from_datetime(cls, dt: datetime) -> Self:
+        dt = dt.astimezone(timezone.utc)
+        seconds = int(dt.timestamp())
+        nanos = dt.microsecond * 1000
+        return cls(seconds, nanos)
 
+    @classmethod
+    def from_integral_nanoseconds(cls, ts: IntegralNanosecondsUTC) -> Self:
+        seconds, nanos = divmod(ts, 1_000_000_000)
+        return cls(seconds, nanos)
 
-def _datetime_to_seconds_nanos(dt: datetime) -> tuple[int, int]:
-    dt = dt.astimezone(timezone.utc)
-    seconds = int(dt.timestamp())
-    nanos = dt.microsecond * 1000
-    return seconds, nanos
-
-
-def _datetime_to_integral_nanoseconds(dt: datetime) -> IntegralNanosecondsUTC:
-    seconds, nanos = _datetime_to_seconds_nanos(dt)
-    return seconds * 1_000_000_000 + nanos
-
-
-def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNanosecondsUTC:
-    if isinstance(ts, int):
-        return ts
-    if isinstance(ts, str):
-        ts = dateutil.parser.parse(ts)
-    return _datetime_to_integral_nanoseconds(ts)
-
-
-def _flexible_time_to_iso8601(ts: datetime | IntegralNanosecondsUTC) -> str:
-    """datetime.datetime objects are only microsecond-precise, so we use numpy's datetime64[ns] for nanosecond precision."""
-    if isinstance(ts, datetime):
-        return ts.astimezone(tz=timezone.utc).isoformat()
-    if isinstance(ts, int):
-        # np.datetime64[ns] assumes UTC
-        return str(np.datetime64(ts, "ns")) + "Z"
-    raise TypeError(f"timestamp {ts} must be a datetime or an integer")
+    @classmethod
+    def from_flexible(cls, ts: str | datetime | IntegralNanosecondsUTC) -> Self:
+        if isinstance(ts, int):
+            return cls.from_integral_nanoseconds(ts)
+        if isinstance(ts, str):
+            ts = dateutil.parser.parse(ts)
+        return cls.from_datetime(ts)
