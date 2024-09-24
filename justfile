@@ -12,7 +12,10 @@ test-e2e token:
 
 # check static typing
 check-types:
-    poetry run mypy
+    poetry run mypy --python-version 3.12
+    poetry run mypy --python-version 3.11
+    poetry run mypy --python-version 3.10
+    poetry run mypy --python-version 3.9
 
 # check code formatting | fix with `just fix-format`
 check-format:

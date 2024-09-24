@@ -9,7 +9,7 @@ from typing import Literal, Mapping, NamedTuple, Union
 
 import dateutil.parser
 import numpy as np
-from typing_extensions import TypeAlias, Self
+from typing_extensions import Self, TypeAlias
 
 from ._api.combined import ingest_api, scout_run_api
 
