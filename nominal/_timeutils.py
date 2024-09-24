@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TypeAlias
 
 import dateutil.parser
 import numpy as np
 
 from ._api.combined import ingest_api, scout_run_api
-from .ts import IntegralNanosecondsUTC
+
+# defined here rather than ts.py to avoid circular imports
+IntegralNanosecondsUTC: TypeAlias = int
 
 
 def _flexible_time_to_conjure_scout_run_api(timestamp: datetime | IntegralNanosecondsUTC) -> scout_run_api.UtcTimestamp:

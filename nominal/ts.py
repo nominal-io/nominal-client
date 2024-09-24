@@ -8,9 +8,8 @@ from typing import Literal, Mapping, Union
 
 from typing_extensions import TypeAlias
 
-from nominal._timeutils import _flexible_to_iso8601
-
 from ._api.combined import ingest_api
+from ._timeutils import IntegralNanosecondsUTC, _flexible_to_iso8601
 
 __all__ = [
     "Iso8601",
@@ -27,9 +26,6 @@ __all__ = [
     "TypedTimeDomain",
     "IntegralNanosecondsUTC",
 ]
-
-
-IntegralNanosecondsUTC = int
 
 
 @dataclass(frozen=True)
