@@ -85,7 +85,7 @@ def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
         # until this is completely removed, we implicitly assume offset=None in the APIs
         warnings.warn(
             "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: use `nm.timedomain.Relative` instead. "
-            "for example: instead of 'relative_seconds', `use nm.timedomain.Relative('seconds', start=datetime.now())`. ",
+            "for example: instead of 'relative_seconds', use `nm.timedomain.Relative('seconds', start=datetime.now())`. ",
             UserWarning,
         )
     if domain not in _str_to_type:
@@ -112,6 +112,7 @@ def _to_conjure_ingest_api(domain: TypedTimeDomain) -> ingest_api.TimestampType:
         relative = ingest_api.RelativeTimestamp(
             time_unit=_time_unit_to_conjure(domain.unit), offset=_flexible_to_iso8601(domain.start)
         )
+        print(relative)
         return ingest_api.TimestampType(relative=relative)
     raise TypeError(f"invalid time domain type: {type(domain)}")
 
