@@ -58,7 +58,7 @@ def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNan
     return _datetime_to_integral_nanoseconds(ts)
 
 
-def _flexible_to_iso8601(ts: datetime | IntegralNanosecondsUTC) -> str:
+def _flexible_time_to_iso8601(ts: datetime | IntegralNanosecondsUTC) -> str:
     """datetime.datetime objects are only microsecond-precise, so we use numpy's datetime64[ns] for nanosecond precision."""
     if isinstance(ts, datetime):
         return ts.astimezone(tz=timezone.utc).isoformat()
