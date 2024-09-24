@@ -87,7 +87,7 @@ def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
     if domain.startswith("relative_"):
         warnings.warn(
             "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: use `nm.timedomain.Relative` instead. "
-            "for example: instead of 'relative_seconds', `use nm.timedomain.Relative('seconds', offset=0)`. "
+            "for example: instead of 'relative_seconds', `use nm.timedomain.Relative('seconds', start=datetime.now())`. "
             "until this is removed, we implicitly assume offset=None.",
             UserWarning,
         )
