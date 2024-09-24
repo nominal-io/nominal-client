@@ -7,12 +7,12 @@ from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
 
 from nominal import _config
-from .ts import IntegralNanosecondsUTC
 
 from . import ts
 from ._timeutils import _parse_timestamp
 from ._utils import FileType, FileTypes, reader_writer
 from .core import Attachment, Dataset, NominalClient, Run, Video
+from .ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
     import pandas as pd
