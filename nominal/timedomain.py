@@ -6,7 +6,7 @@ import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import Literal, Mapping
+from typing import Literal, Mapping, Union
 
 import numpy as np
 from typing_extensions import TypeAlias
@@ -75,8 +75,7 @@ _LiteralRelativeDeprecated: TypeAlias = Literal[
 ]
 
 TypedTimeDomain: TypeAlias = Iso8601 | Epoch | Relative | Custom
-_AbsoluteTimeDomain: TypeAlias = Iso8601 | Epoch | Custom | _LiteralAbsolute
-_AnyTimeDomain: TypeAlias = TypedTimeDomain | _LiteralAbsolute | _LiteralRelativeDeprecated
+_AnyTimeDomain: TypeAlias = Union[TypedTimeDomain, _LiteralAbsolute, _LiteralRelativeDeprecated]
 
 
 def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
