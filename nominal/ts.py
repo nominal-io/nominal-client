@@ -12,7 +12,6 @@ import numpy as np
 from typing_extensions import TypeAlias
 
 from ._api.combined import ingest_api, scout_run_api
-from ._timeutils import IntegralNanosecondsUTC
 
 __all__ = [
     "Iso8601",
@@ -29,6 +28,8 @@ __all__ = [
     "TypedTimeDomain",
     "IntegralNanosecondsUTC",
 ]
+
+IntegralNanosecondsUTC: TypeAlias = int
 
 
 class _ConjureTimestampDomain(abc.ABC):

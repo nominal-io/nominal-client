@@ -29,7 +29,7 @@ from ._api.combined import (
 from ._multipart import put_multipart_upload
 from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed
-from .ts import IntegralNanosecondsUTC, _SecondsNanos, TypedTimeDomain
+from .ts import IntegralNanosecondsUTC, TypedTimeDomain, _SecondsNanos
 
 __all__ = [
     "NominalClient",
