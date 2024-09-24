@@ -113,8 +113,8 @@ def test_create_run():
     assert run.rid != ""
     assert run.name == name
     assert run.description == desc
-    assert run.start == nm.ts._SecondsNanos.from_datetime(start).to_ns()
-    assert run.end == nm.ts._SecondsNanos.from_datetime(end).to_ns()
+    assert run.start == nm.ts._SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert run.end == nm.ts._SecondsNanos.from_datetime(end).to_nanoseconds()
     assert len(run.properties) == 0
     assert len(run.labels) == 0
 
@@ -131,8 +131,8 @@ def test_create_run_csv(csv_data):
     assert run.rid != ""
     assert run.name == name
     assert run.description == desc
-    assert run.start == nm.ts._SecondsNanos.from_datetime(start).to_ns()
-    assert run.end == nm.ts._SecondsNanos.from_datetime(end).to_ns()
+    assert run.start == nm.ts._SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert run.end == nm.ts._SecondsNanos.from_datetime(end).to_nanoseconds()
     assert len(run.properties) == 0
     assert len(run.labels) == 0
 
@@ -157,8 +157,8 @@ def test_get_run():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == nm.ts._SecondsNanos.from_flexible(start).to_ns()
-    assert run2.end == run.end == nm.ts._SecondsNanos.from_flexible(end).to_ns()
+    assert run2.start == run.start == nm.ts._SecondsNanos.from_flexible(start).to_nanoseconds()
+    assert run2.end == run.end == nm.ts._SecondsNanos.from_flexible(end).to_nanoseconds()
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
@@ -176,8 +176,8 @@ def test_search_runs():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == nm.ts._SecondsNanos.from_datetime(start).to_ns()
-    assert run2.end == run.end == nm.ts._SecondsNanos.from_datetime(end).to_ns()
+    assert run2.start == run.start == nm.ts._SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert run2.end == run.end == nm.ts._SecondsNanos.from_datetime(end).to_nanoseconds()
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 

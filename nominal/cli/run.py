@@ -36,8 +36,8 @@ def create(
     client = get_client(base_url, token)
     run = client.create_run(
         name,
-        _SecondsNanos.from_flexible(start).to_ns(),
-        _SecondsNanos.from_flexible(end).to_ns(),
+        _SecondsNanos.from_flexible(start).to_nanoseconds(),
+        _SecondsNanos.from_flexible(end).to_nanoseconds(),
         desc,
         properties=dict(properties),
         labels=labels,

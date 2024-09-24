@@ -208,9 +208,9 @@ class _SecondsNanos(NamedTuple):
         - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
         - https://github.com/palantir/conjure/pull/1643
         """
-        return str(np.datetime64(self.to_ns(), "ns")) + "Z"
+        return str(np.datetime64(self.to_nanoseconds(), "ns")) + "Z"
 
-    def to_ns(self) -> IntegralNanosecondsUTC:
+    def to_nanoseconds(self) -> IntegralNanosecondsUTC:
         return self.seconds * 1_000_000_000 + self.nanos
 
     @classmethod
@@ -225,14 +225,14 @@ class _SecondsNanos(NamedTuple):
         return cls(seconds, nanos)
 
     @classmethod
-    def from_integral_nanoseconds(cls, ts: IntegralNanosecondsUTC) -> Self:
+    def from_nanoseconds(cls, ts: IntegralNanosecondsUTC) -> Self:
         seconds, nanos = divmod(ts, 1_000_000_000)
         return cls(seconds, nanos)
 
     @classmethod
     def from_flexible(cls, ts: str | datetime | IntegralNanosecondsUTC) -> Self:
         if isinstance(ts, int):
-            return cls.from_integral_nanoseconds(ts)
+            return cls.from_nanoseconds(ts)
         if isinstance(ts, str):
             ts = dateutil.parser.parse(ts)
         return cls.from_datetime(ts)
