@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from types import MappingProxyType
 from typing import Literal, Mapping, Union
 
@@ -112,7 +112,6 @@ def _to_conjure_ingest_api(domain: TypedTimeDomain) -> ingest_api.TimestampType:
         relative = ingest_api.RelativeTimestamp(
             time_unit=_time_unit_to_conjure(domain.unit), offset=_flexible_to_iso8601(domain.start)
         )
-        print(relative)
         return ingest_api.TimestampType(relative=relative)
     raise TypeError(f"invalid time domain type: {type(domain)}")
 
@@ -120,9 +119,10 @@ def _to_conjure_ingest_api(domain: TypedTimeDomain) -> ingest_api.TimestampType:
 def _flexible_to_iso8601(ts: datetime | IntegralNanosecondsUTC) -> str:
     """datetime.datetime objects are only microsecond-precise, so we use numpy's datetime64[ns] for nanosecond precision."""
     if isinstance(ts, datetime):
-        return ts.isoformat()
+        return ts.astimezone(tz=timezone.utc).isoformat()
     if isinstance(ts, int):
-        return str(np.datetime64(ts, "ns"))
+        # np.datetime64[ns] assumes UTC
+        return str(np.datetime64(ts, "ns")) + "Z"
     raise TypeError(f"timestamp {ts} must be a datetime or an integer")
 
 
