@@ -69,11 +69,11 @@ def test_add_csv_to_dataset(csv_data, csv_data2):
     desc = f"TESTING sdk to add more data to a dataset {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "timestamp", nm.timedomain.ISO_8601, desc)
+        ds = nm.upload_csv("fake_path.csv", name, "timestamp", nm.ts.ISO_8601, desc)
     ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data2)):
-        ds.add_csv_to_dataset("fake_path.csv", "timestamp", nm.timedomain.ISO_8601)
+        ds.add_csv_to_dataset("fake_path.csv", "timestamp", nm.ts.ISO_8601)
     ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
 
     assert ds.rid != ""

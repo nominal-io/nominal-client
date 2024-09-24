@@ -1,4 +1,4 @@
-from . import timedomain
+from . import ts
 from .core import Attachment, Dataset, NominalClient, Run, Video
 from .nominal import (
     create_run,

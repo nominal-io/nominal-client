@@ -5,7 +5,7 @@ from typing import Literal
 import click
 
 from ..nominal import _upload_csv
-from ..timedomain import _LiteralAbsolute
+from ..ts import _LiteralAbsolute
 from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
 
 

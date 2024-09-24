@@ -48,7 +48,7 @@ def test_upload_csv_relative_timestamp(csv_data):
     start, _ = _create_random_start_end()
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "relative_minutes", nm.timedomain.Relative("minutes", start), desc)
+        ds = nm.upload_csv("fake_path.csv", name, "relative_minutes", nm.ts.Relative("minutes", start), desc)
     ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
 
     assert ds.rid != ""
