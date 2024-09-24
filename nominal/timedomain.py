@@ -94,7 +94,7 @@ def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
     return _str_to_type[domain]
 
 
-def _to_conjure_ingest_api(domain: TypedTimeDomain) -> ingest_api.TimestampType:
+def _time_domain_to_conjure_ingest_api(domain: TypedTimeDomain) -> ingest_api.TimestampType:
     """
     Note: datetimes are serialized a ISO-8601 strings, with up-to nanosecond precision. Ref:
     - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
