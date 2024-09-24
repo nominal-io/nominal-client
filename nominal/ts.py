@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import warnings
 from dataclasses import dataclass
 from datetime import datetime
@@ -28,27 +29,55 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
-class Iso8601:
-    pass
+class _ConjureTimestampDomain(abc.ABC):
+    @abc.abstractmethod
+    def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
+        pass
 
 
 @dataclass(frozen=True)
-class Epoch:
+class Iso8601(_ConjureTimestampDomain):
+    def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
+        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
+
+
+@dataclass(frozen=True)
+class Epoch(_ConjureTimestampDomain):
     unit: _LiteralTimeUnit
 
+    def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
+        epoch = ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit))
+        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=epoch))
+
 
 @dataclass(frozen=True)
-class Relative:
+class Relative(_ConjureTimestampDomain):
     unit: _LiteralTimeUnit
     start: datetime | IntegralNanosecondsUTC
     """The starting time to which all relatives times are relative to."""
 
+    def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
+        """
+        Note: The offset is a conjure datetime. They are serialized as ISO-8601 strings, with up-to nanosecond precision.
+        The Python type for the field is just a str.
+        Ref:
+        - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
+        - https://github.com/palantir/conjure/pull/1643
+        """
+        relative = ingest_api.RelativeTimestamp(
+            time_unit=_time_unit_to_conjure(self.unit), offset=_flexible_to_iso8601(self.start)
+        )
+        return ingest_api.TimestampType(relative=relative)
+
 
 @dataclass(frozen=True)
-class Custom:
+class Custom(_ConjureTimestampDomain):
     format: str
     default_year: int | None = None
+
+    def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
+        fmt = ingest_api.CustomTimestamp(format=self.format, default_year=self.default_year)
+        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(custom_format=fmt))
 
 
 ISO_8601 = Iso8601()
@@ -106,29 +135,6 @@ def _make_typed_time_domain(domain: _AnyTimeDomain) -> TypedTimeDomain:
     if domain not in _str_to_type:
         raise ValueError(f"string time domains must be one of: {_str_to_type.keys()}")
     return _str_to_type[domain]
-
-
-def _time_domain_to_conjure_ingest_api(domain: TypedTimeDomain) -> ingest_api.TimestampType:
-    """
-    Note: datetimes are serialized a ISO-8601 strings, with up-to nanosecond precision. Ref:
-    - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
-    - https://github.com/palantir/conjure/pull/1643
-    """
-
-    if isinstance(domain, Iso8601):
-        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
-    if isinstance(domain, Epoch):
-        epoch = ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(domain.unit))
-        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=epoch))
-    if isinstance(domain, Custom):
-        fmt = ingest_api.CustomTimestamp(format=domain.format, default_year=domain.default_year)
-        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(custom_format=fmt))
-    if isinstance(domain, Relative):
-        relative = ingest_api.RelativeTimestamp(
-            time_unit=_time_unit_to_conjure(domain.unit), offset=_flexible_to_iso8601(domain.start)
-        )
-        return ingest_api.TimestampType(relative=relative)
-    raise TypeError(f"invalid time domain type: {type(domain)}")
 
 
 def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> ingest_api.TimeUnit:

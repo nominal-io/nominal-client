@@ -34,7 +34,7 @@ from ._timeutils import (
 )
 from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed
-from .ts import IntegralNanosecondsUTC, TypedTimeDomain, _time_domain_to_conjure_ingest_api
+from .ts import IntegralNanosecondsUTC, TypedTimeDomain
 
 __all__ = [
     "NominalClient",
@@ -280,7 +280,7 @@ class Dataset:
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=_time_domain_to_conjure_ingest_api(timestamp_type),
+                    timestamp_type=timestamp_type._to_conjure_ingest_api(),
                 ),
             ),
         )
@@ -651,7 +651,7 @@ class NominalClient:
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=_time_domain_to_conjure_ingest_api(timestamp_type),
+                    timestamp_type=timestamp_type._to_conjure_ingest_api(),
                 ),
             ),
         )
