@@ -29,6 +29,7 @@ __all__ = [
     "EPOCH_HOURS",
     "TypedTimestampType",
     "IntegralNanosecondsUTC",
+    "LogTimestampType",
 ]
 
 IntegralNanosecondsUTC: TypeAlias = int
