@@ -365,9 +365,7 @@ class LogSet:
             request = datasource_logset_api.SearchLogsRequest(token=response.next_page_token)
 
     def stream_logs(self) -> Iterable[Log]:
-        """
-        Get logs within this log set.
-        """
+        """Iterate over the logs."""
         for log in self._stream_logs_paginated():
             yield Log._from_conjure(log)
 
@@ -822,7 +820,6 @@ class NominalClient:
             origin_metadata={},
             timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
         )
-        # we need to create the logset, then attach logs and finalize it
         response = self._logset_client.create(self._auth_header, request)
         return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
 
