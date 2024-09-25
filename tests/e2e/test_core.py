@@ -3,7 +3,6 @@ from unittest import mock
 from uuid import uuid4
 
 import nominal as nm
-from nominal._utils import _datetime_to_integral_nanoseconds
 
 from . import _create_random_start_end
 
@@ -133,7 +132,10 @@ def test_create_get_log_set(client: nm.NominalClient):
     name = f"logset-{uuid4()}"
     desc = f"core test to create & get a log set {uuid4()}"
     start, _ = _create_random_start_end()
-    logs = [(_datetime_to_integral_nanoseconds(start + timedelta(seconds=i)), f"Log message {i}") for i in range(5)]
+    logs = [
+        (nm.ts._SecondsNanos.from_datetime(start + timedelta(seconds=i)).to_nanoseconds(), f"Log message {i}")
+        for i in range(5)
+    ]
 
     logset = client.create_log_set(name, logs, "absolute", desc)
     logset2 = nm.get_log_set(logset.rid)
