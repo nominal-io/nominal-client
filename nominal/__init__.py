@@ -1,5 +1,5 @@
 from . import ts
-from .core import Attachment, Dataset, NominalClient, Run, Video
+from .core import Attachment, Dataset, Log, LogSet, NominalClient, Run, Video
 from .nominal import (
     create_run,
     create_run_csv,
@@ -7,6 +7,7 @@ from .nominal import (
     get_attachment,
     get_dataset,
     get_default_client,
+    get_log_set,
     get_run,
     get_video,
     search_runs,
@@ -26,6 +27,7 @@ __all__ = [
     "get_attachment",
     "get_dataset",
     "get_default_client",
+    "get_log_set",
     "get_run",
     "get_video",
     "search_runs",
@@ -41,4 +43,6 @@ __all__ = [
     "NominalClient",
     "Run",
     "Video",
+    "LogSet",
+    "Log",
 ]

@@ -1,15 +1,42 @@
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 import mimetypes
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO, Iterable, Iterator, NamedTuple, TypeVar
+from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar, Union
+
+from typing_extensions import TypeAlias
+
+from .ts import IntegralNanosecondsUTC  # typing.TypeAlias in 3.10+
+
+from ._api.combined import api, ingest_api, scout_run_api
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+def _flexible_time_to_global_conjure_api(
+    timestamp: datetime | IntegralNanosecondsUTC,
+) -> api.Timestamp:
+    seconds, nanos = _flexible_time_to_seconds_nanos(timestamp)
+    return api.Timestamp(seconds=seconds, nanos=nanos)
+
+
+def _global_conjure_api_to_integral_nanoseconds(
+    timestamp: api.Timestamp,
+) -> IntegralNanosecondsUTC:
+    return timestamp.seconds * 1_000_000_000 + timestamp.nanos
+
+
+def _flexible_time_to_integral_nanoseconds(
+    timestamp: datetime | IntegralNanosecondsUTC,
+) -> IntegralNanosecondsUTC:
+    seconds, nanos = _flexible_time_to_seconds_nanos(timestamp)
+    return seconds * 1_000_000_000 + nanos
 
 
 def construct_user_agent_string() -> str:
@@ -84,3 +111,6 @@ def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
     finally:
         w.close()
         r.close()
+
+
+LogTimestampType: TypeAlias = Literal["absolute", "relative"]

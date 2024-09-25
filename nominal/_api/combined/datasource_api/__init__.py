@@ -15,6 +15,8 @@ from .._impl import (
     datasource_api_LogicalSeriesRid as LogicalSeriesRid,
     datasource_api_SearchChannelsRequest as SearchChannelsRequest,
     datasource_api_SearchChannelsResponse as SearchChannelsResponse,
+    datasource_api_SearchFilteredChannelsRequest as SearchFilteredChannelsRequest,
+    datasource_api_SearchFilteredChannelsResponse as SearchFilteredChannelsResponse,
     datasource_api_SearchHierarchicalChannelsRequest as SearchHierarchicalChannelsRequest,
     datasource_api_SearchHierarchicalChannelsResponse as SearchHierarchicalChannelsResponse,
     datasource_api_SeriesArchetypeRid as SeriesArchetypeRid,

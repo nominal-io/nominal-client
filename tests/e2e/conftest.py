@@ -24,9 +24,13 @@ def base_url(pytestconfig):
     return pytestconfig.getoption("base_url")
 
 
+@pytest.fixture(scope="session")
+def client(base_url, auth_token) -> Iterator[None]:
+    return NominalClient.create(base_url=base_url, token=auth_token)
+
+
 @pytest.fixture(scope="session", autouse=True)
-def set_connection(base_url, auth_token) -> Iterator[None]:
-    client = NominalClient.create(base_url=base_url, token=auth_token)
+def set_connection(client) -> Iterator[None]:
     with mock.patch("nominal.nominal.get_default_client", return_value=client):
         yield
 

@@ -1,5 +1,6 @@
 # coding=utf-8
 from .._impl import (
+    scout_checklistexecution_api_AssetStreamConfiguration as AssetStreamConfiguration,
     scout_checklistexecution_api_BatchChecklistLiveStatusRequest as BatchChecklistLiveStatusRequest,
     scout_checklistexecution_api_BatchChecklistLiveStatusResponse as BatchChecklistLiveStatusResponse,
     scout_checklistexecution_api_CheckLiveStatusResponse as CheckLiveStatusResponse,
@@ -14,7 +15,6 @@ from .._impl import (
     scout_checklistexecution_api_ComputedResult as ComputedResult,
     scout_checklistexecution_api_Computing as Computing,
     scout_checklistexecution_api_ExecuteChecklistForAssetsRequest as ExecuteChecklistForAssetsRequest,
-    scout_checklistexecution_api_ExecuteChecklistForAssetsResponse as ExecuteChecklistForAssetsResponse,
     scout_checklistexecution_api_Fail as Fail,
     scout_checklistexecution_api_FailedToResolve as FailedToResolve,
     scout_checklistexecution_api_Failure as Failure,
@@ -24,5 +24,7 @@ from .._impl import (
     scout_checklistexecution_api_NotComputable as NotComputable,
     scout_checklistexecution_api_NotComputed as NotComputed,
     scout_checklistexecution_api_Pass as Pass,
+    scout_checklistexecution_api_StopStreamingChecklistForAssetsRequest as StopStreamingChecklistForAssetsRequest,
+    scout_checklistexecution_api_StreamingChecklistInfo as StreamingChecklistInfo,
 )
 

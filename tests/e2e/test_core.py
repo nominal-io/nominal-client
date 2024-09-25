@@ -3,13 +3,14 @@ from unittest import mock
 from uuid import uuid4
 
 import nominal as nm
+from nominal._utils import _datetime_to_integral_nanoseconds
 
 from . import _create_random_start_end
 
 
 def test_update_dataset(csv_data):
     name = f"dataset-{uuid4()}"
-    desc = f"sdk to update a dataset {uuid4()}"
+    desc = f"core test to update a dataset {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
@@ -27,7 +28,7 @@ def test_update_dataset(csv_data):
 
 def test_update_run():
     title = f"run-{uuid4()}"
-    desc = f"sdk to update a run {uuid4()}"
+    desc = f"core test to update a run {uuid4()}"
     start, end = _create_random_start_end()
     run = nm.create_run(title, start, end, desc)
     new_name = title + "-updated"
@@ -44,13 +45,13 @@ def test_update_run():
 
 def test_add_dataset_to_run_and_list_datasets(csv_data):
     ds_name = f"dataset-{uuid4()}"
-    ds_desc = f"sdk to add a dataset to a run {uuid4()}"
+    ds_desc = f"core test to add a dataset to a run {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         ds = nm.upload_csv("fake_path.csv", ds_name, "timestamp", "iso_8601", ds_desc)
 
     title = f"run-{uuid4()}"
-    desc = f"sdk to add a dataset to a run {uuid4()}"
+    desc = f"core test to add a dataset to a run {uuid4()}"
     start, end = _create_random_start_end()
     run = nm.create_run(title, start, end, desc)
 
@@ -66,7 +67,7 @@ def test_add_dataset_to_run_and_list_datasets(csv_data):
 
 def test_add_csv_to_dataset(csv_data, csv_data2):
     name = f"dataset-{uuid4()}"
-    desc = f"TESTING sdk to add more data to a dataset {uuid4()}"
+    desc = f"TESTING core test to add more data to a dataset {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         ds = nm.upload_csv("fake_path.csv", name, "timestamp", nm.ts.ISO_8601, desc)
@@ -85,7 +86,7 @@ def test_add_csv_to_dataset(csv_data, csv_data2):
 
 def test_update_attachment(csv_data):
     at_name = f"attachment-{uuid4()}"
-    at_desc = f"sdk to add a attachment to a run {uuid4()}"
+    at_desc = f"core test to add a attachment to a run {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_name, at_desc)
@@ -104,13 +105,13 @@ def test_update_attachment(csv_data):
 
 def test_add_attachment_to_run_and_list_attachments(csv_data):
     at_name = f"attachment-{uuid4()}"
-    at_desc = f"sdk to add a attachment to a run {uuid4()}"
+    at_desc = f"core test to add a attachment to a run {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_name, at_desc)
 
     title = f"run-{uuid4()}"
-    desc = f"sdk to add a attachment to a run {uuid4()}"
+    desc = f"core test to add a attachment to a run {uuid4()}"
     start, end = _create_random_start_end()
     run = nm.create_run(title, start, end, desc)
 
@@ -126,3 +127,21 @@ def test_add_attachment_to_run_and_list_attachments(csv_data):
     assert at2.properties == at.properties == {}
     assert at2.labels == at.labels == ()
     assert at2.get_contents().read() == at.get_contents().read() == csv_data
+
+
+def test_create_get_log_set(client: nm.NominalClient):
+    name = f"logset-{uuid4()}"
+    desc = f"core test to create & get a log set {uuid4()}"
+    start, _ = _create_random_start_end()
+    logs = [(_datetime_to_integral_nanoseconds(start + timedelta(seconds=i)), f"Log message {i}") for i in range(5)]
+
+    logset = client.create_log_set(name, logs, "absolute", desc)
+    logset2 = nm.get_log_set(logset.rid)
+    assert logset2.rid == logset.rid != ""
+    assert logset2.name == logset.name == name
+    assert logset2.description == logset.description == desc
+    assert logset2.timestamp_type == logset.timestamp_type == "absolute"
+
+    retrieved_logs = [(log.timestamp, log.body) for log in logset2.stream_logs()]
+    assert len(retrieved_logs) == 5
+    assert retrieved_logs == logs

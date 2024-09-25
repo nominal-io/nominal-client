@@ -10,7 +10,7 @@ from nominal import _config
 
 from . import ts
 from ._utils import FileType, FileTypes, reader_writer
-from .core import Attachment, Dataset, NominalClient, Run, Video
+from .core import Attachment, Dataset, LogSet, NominalClient, Run, Video
 from .ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -265,6 +265,12 @@ def get_attachment(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_attachment(rid)
+
+
+def get_log_set(rid: str) -> LogSet:
+    """Retrieve a log set from the Nominal platform by its RID."""
+    conn = get_default_client()
+    return conn.get_log_set(rid)
 
 
 def download_attachment(rid: str, file: Path | str) -> None:
