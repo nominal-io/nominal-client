@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/nominal-io/nominal-client/compare/v1.1.0...v1.2.0) (2024-09-25)
+
+
+### Features
+
+* all get* methods to use only RIDs ([#46](https://github.com/nominal-io/nominal-client/issues/46)) ([0a7abca](https://github.com/nominal-io/nominal-client/commit/0a7abca422966ad8d699e11992bee734e2519e93))
+* support log sets ([#53](https://github.com/nominal-io/nominal-client/issues/53)) ([cb1cda3](https://github.com/nominal-io/nominal-client/commit/cb1cda3900c08f27cdf8ba8368ddd658b5630a23))
+
 ## [1.1.0](https://github.com/nominal-io/nominal-client/compare/v1.0.0...v1.1.0) (2024-09-17)
 
 
