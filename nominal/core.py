@@ -399,7 +399,7 @@ class Log:
     @classmethod
     def _from_conjure(cls, log: datasource_logset_api.Log) -> Self:
         if log.body.basic is None:
-            raise RuntimeError("log body is empty")
+            raise RuntimeError(f"unhandled log body type: expected 'basic' but got {log.body.type!r}")
         return cls(timestamp=_global_conjure_api_to_integral_nanoseconds(log.time), body=log.body.basic.message)
 
 
