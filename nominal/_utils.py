@@ -10,7 +10,7 @@ from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar, U
 
 from typing_extensions import TypeAlias
 
-from .ts import IntegralNanosecondsUTC  # typing.TypeAlias in 3.10+
+from .ts import IntegralNanosecondsUTC
 
 from ._api.combined import api, ingest_api, scout_run_api
 
