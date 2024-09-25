@@ -3,8 +3,6 @@ from .._impl import (
     scout_comparisonnotebook_api_AggregationType as AggregationType,
     scout_comparisonnotebook_api_AggregationTypeVisitor as AggregationTypeVisitor,
     scout_comparisonnotebook_api_ChannelVariable as ChannelVariable,
-    scout_comparisonnotebook_api_ChartDefinition as ChartDefinition,
-    scout_comparisonnotebook_api_ChartDefinitionVisitor as ChartDefinitionVisitor,
     scout_comparisonnotebook_api_ComparisonChannelVariableMap as ComparisonChannelVariableMap,
     scout_comparisonnotebook_api_ComparisonChartDefinitionMap as ComparisonChartDefinitionMap,
     scout_comparisonnotebook_api_ComparisonTableColumn as ComparisonTableColumn,
@@ -14,6 +12,7 @@ from .._impl import (
     scout_comparisonnotebook_api_ComparisonTableDefinitionV1 as ComparisonTableDefinitionV1,
     scout_comparisonnotebook_api_ComparisonTableDefinitionVisitor as ComparisonTableDefinitionVisitor,
     scout_comparisonnotebook_api_ComparisonTableVisualizationOptions as ComparisonTableVisualizationOptions,
+    scout_comparisonnotebook_api_ComparisonVizDefinitionMap as ComparisonVizDefinitionMap,
     scout_comparisonnotebook_api_ComparisonWorkbookContent as ComparisonWorkbookContent,
     scout_comparisonnotebook_api_ComparisonWorkbookContext as ComparisonWorkbookContext,
     scout_comparisonnotebook_api_ComparisonWorkbookVariableDataScope as ComparisonWorkbookVariableDataScope,
@@ -30,5 +29,7 @@ from .._impl import (
     scout_comparisonnotebook_api_VariableLocatorVisitor as VariableLocatorVisitor,
     scout_comparisonnotebook_api_VariableName as VariableName,
     scout_comparisonnotebook_api_VariableWithAggregation as VariableWithAggregation,
+    scout_comparisonnotebook_api_VizDefinition as VizDefinition,
+    scout_comparisonnotebook_api_VizDefinitionVisitor as VizDefinitionVisitor,
 )
 

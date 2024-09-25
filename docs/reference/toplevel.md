@@ -7,6 +7,8 @@
       - "!NominalClient"
       - "!Run"
       - "!Video"
+      - "!Log"
+      - "!LogSet"
 
 <!--
   Eventually we can use `summary` over `filters` when it moves from Sponsors only to GA:

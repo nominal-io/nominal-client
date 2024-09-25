@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Iterator, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -18,6 +18,9 @@ from nominal import _config
 
 from ._api.combined import (
     attachments_api,
+    datasource,
+    datasource_logset,
+    datasource_logset_api,
     ingest_api,
     scout,
     scout_catalog,
@@ -32,10 +35,14 @@ from ._utils import (
     FileType,
     FileTypes,
     IntegralNanosecondsUTC,
+    LogTimestampType,
     TimestampColumnType,
     _conjure_time_to_integral_nanoseconds,
     _flexible_time_to_conjure_ingest_api,
     _flexible_time_to_conjure_scout_run_api,
+    _flexible_time_to_global_conjure_api,
+    _flexible_time_to_integral_nanoseconds,
+    _global_conjure_api_to_integral_nanoseconds,
     _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
     update_dataclass,
@@ -46,6 +53,7 @@ __all__ = [
     "NominalClient",
     "Run",
     "Dataset",
+    "LogSet",
     "Attachment",
     "Video",
     "IntegralNanosecondsUTC",
@@ -71,6 +79,30 @@ class Run:
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
         """
         self.add_datasets({ref_name: dataset})
+
+    def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
+        """
+        Add a log set to this run.
+
+        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
+        """
+        self.add_log_sets({ref_name: log_set})
+
+    def add_log_sets(self, log_sets: Mapping[str, LogSet | str]) -> None:
+        """
+        Add multiple log sets to this run.
+
+        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
+        """
+        data_sources = {
+            ref_name: scout_run_api.CreateRunDataSource(
+                data_source=scout_run_api.DataSource(log_set=_rid_from_instance_or_string(log_set)),
+                series_tags={},
+                offset=None,
+            )
+            for ref_name, log_set in log_sets.items()
+        }
+        self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
 
     def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
         """Add multiple datasets to this run.
@@ -312,6 +344,63 @@ class Dataset:
 
 
 @dataclass(frozen=True)
+class LogSet:
+    rid: str
+    name: str
+    timestamp_type: LogTimestampType
+    description: str | None
+    _client: NominalClient = field(repr=False)
+
+    def _stream_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
+        request = datasource_logset_api.SearchLogsRequest()
+        while True:
+            response = self._client._logset_client.search_logs(
+                self._client._auth_header,
+                log_set_rid=self.rid,
+                request=request,
+            )
+            yield from response.logs
+            if response.next_page_token is None:
+                break
+            request = datasource_logset_api.SearchLogsRequest(token=response.next_page_token)
+
+    def stream_logs(self) -> Iterable[Log]:
+        """Iterate over the logs."""
+        for log in self._stream_logs_paginated():
+            yield Log._from_conjure(log)
+
+    @classmethod
+    def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
+        return cls(
+            rid=log_set_metadata.rid,
+            name=log_set_metadata.name,
+            timestamp_type=_log_timestamp_type_from_conjure(log_set_metadata.timestamp_type),
+            description=log_set_metadata.description,
+            _client=client,
+        )
+
+
+@dataclass(frozen=True)
+class Log:
+    timestamp: IntegralNanosecondsUTC
+    body: str
+
+    def _to_conjure(self) -> datasource_logset_api.Log:
+        return datasource_logset_api.Log(
+            time=_flexible_time_to_global_conjure_api(self.timestamp),
+            body=datasource_logset_api.LogBody(
+                basic=datasource_logset_api.BasicLogBody(message=self.body, properties={}),
+            ),
+        )
+
+    @classmethod
+    def _from_conjure(cls, log: datasource_logset_api.Log) -> Self:
+        if log.body.basic is None:
+            raise RuntimeError(f"unhandled log body type: expected 'basic' but got {log.body.type!r}")
+        return cls(timestamp=_global_conjure_api_to_integral_nanoseconds(log.time), body=log.body.basic.message)
+
+
+@dataclass(frozen=True)
 class Attachment:
     rid: str
     name: str
@@ -474,6 +563,7 @@ class NominalClient:
     _catalog_client: scout_catalog.CatalogService = field(repr=False)
     _attachment_client: attachments_api.AttachmentService = field(repr=False)
     _video_client: scout_video.VideoService = field(repr=False)
+    _logset_client: datasource_logset.LogSetService = field(repr=False)
 
     @classmethod
     def create(cls, base_url: str, token: str | None, trust_store_path: str | None = None) -> Self:
@@ -496,6 +586,7 @@ class NominalClient:
         catalog_client = RequestsClient.create(scout_catalog.CatalogService, agent, cfg)
         attachment_client = RequestsClient.create(attachments_api.AttachmentService, agent, cfg)
         video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
+        logset_client = RequestsClient.create(datasource_logset.LogSetService, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
@@ -505,6 +596,7 @@ class NominalClient:
             _catalog_client=catalog_client,
             _attachment_client=attachment_client,
             _video_client=video_client,
+            _logset_client=logset_client,
         )
 
     def create_run(
@@ -709,6 +801,34 @@ class NominalClient:
         response = self._ingest_client.ingest_video(self._auth_header, request)
         return self.get_video(response.video_rid)
 
+    def create_log_set(
+        self,
+        name: str,
+        logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
+        timestamp_type: LogTimestampType = "absolute",
+        description: str | None = None,
+    ) -> LogSet:
+        """Create an immutable log set with the given logs.
+
+        The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
+        or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
+        """
+        request = datasource_logset_api.CreateLogSetRequest(
+            name=name,
+            description=description,
+            origin_metadata={},
+            timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
+        )
+        response = self._logset_client.create(self._auth_header, request)
+        return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
+
+    def _attach_logs_and_finalize(self, rid: str, logs: Iterable[datasource_logset_api.Log]) -> LogSet:
+        request = datasource_logset_api.AttachLogsAndFinalizeRequest(logs=list(logs))
+        response = self._logset_client.attach_logs_and_finalize(
+            auth_header=self._auth_header, log_set_rid=rid, request=request
+        )
+        return LogSet._from_conjure(self, response)
+
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""
         response = self._video_client.get(self._auth_header, rid)
@@ -727,6 +847,11 @@ class NominalClient:
         """Retrieve a dataset by its RID."""
         response = _get_dataset(self._auth_header, self._catalog_client, rid)
         return Dataset._from_conjure(self, response)
+
+    def get_log_set(self, log_set_rid: str) -> LogSet:
+        """Retrieve a log set along with its metadata given its RID."""
+        response = _get_log_set(self._auth_header, self._logset_client, log_set_rid)
+        return LogSet._from_conjure(self, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
         for ds in _get_datasets(self._auth_header, self._catalog_client, rids):
@@ -820,7 +945,13 @@ def _get_dataset(
     return datasets[0]
 
 
-def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | str) -> str:
+def _get_log_set(
+    auth_header: str, client: datasource_logset.LogSetService, log_set_rid: str
+) -> datasource_logset_api.LogSetMetadata:
+    return client.get_log_set_metadata(auth_header, log_set_rid)
+
+
+def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | LogSet | str) -> str:
     if isinstance(value, str):
         return value
     elif isinstance(value, (Attachment, Run, Dataset, Video)):
@@ -863,3 +994,30 @@ def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
     if file_type.extension not in (".csv", ".csv.gz"):
         raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
     return path, file_type
+
+
+def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:
+    if log_timestamp_type == "absolute":
+        return datasource.TimestampType.ABSOLUTE
+    elif log_timestamp_type == "relative":
+        return datasource.TimestampType.RELATIVE
+    raise ValueError(f"timestamp type {log_timestamp_type} must be 'relative' or 'absolute'")
+
+
+def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampType) -> LogTimestampType:
+    if log_timestamp_type == datasource.TimestampType.ABSOLUTE:
+        return "absolute"
+    elif log_timestamp_type == datasource.TimestampType.RELATIVE:
+        return "relative"
+    raise ValueError(f"unhandled timestamp type {log_timestamp_type}")
+
+
+def _logs_to_conjure(
+    logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
+) -> Iterable[datasource_logset_api.Log]:
+    for log in logs:
+        if isinstance(log, Log):
+            yield log._to_conjure()
+        elif isinstance(log, tuple):
+            ts, body = log
+            yield Log(timestamp=_flexible_time_to_integral_nanoseconds(ts), body=body)._to_conjure()

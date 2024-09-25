@@ -37,7 +37,6 @@ from .._impl import (
     scout_video_api_SortField as SortField,
     scout_video_api_SortOptions as SortOptions,
     scout_video_api_SuccessIngestStatus as SuccessIngestStatus,
-    scout_video_api_Timestamp as Timestamp,
     scout_video_api_TimestampMappings as TimestampMappings,
     scout_video_api_Token as Token,
     scout_video_api_UpdateIngestStatus as UpdateIngestStatus,

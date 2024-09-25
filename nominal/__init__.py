@@ -1,4 +1,4 @@
-from .core import Attachment, Dataset, NominalClient, Run, Video
+from .core import Attachment, Dataset, Log, LogSet, NominalClient, Run, Video
 from .nominal import (
     create_run,
     create_run_csv,
@@ -6,6 +6,7 @@ from .nominal import (
     get_attachment,
     get_dataset,
     get_default_client,
+    get_log_set,
     get_run,
     get_video,
     search_runs,
@@ -24,6 +25,7 @@ __all__ = [
     "upload_polars",
     "upload_csv",
     "get_dataset",
+    "get_log_set",
     "create_run",
     "create_run_csv",
     "get_run",
@@ -39,4 +41,6 @@ __all__ = [
     "Attachment",
     "NominalClient",
     "Video",
+    "LogSet",
+    "Log",
 ]

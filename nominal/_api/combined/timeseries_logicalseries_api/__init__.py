@@ -42,8 +42,6 @@ from .._impl import (
     timeseries_logicalseries_api_SchemaName as SchemaName,
     timeseries_logicalseries_api_SeriesDataType as SeriesDataType,
     timeseries_logicalseries_api_TableName as TableName,
-    timeseries_logicalseries_api_TagName as TagName,
-    timeseries_logicalseries_api_TagValue as TagValue,
     timeseries_logicalseries_api_TimescaleDbLocator as TimescaleDbLocator,
     timeseries_logicalseries_api_TimescaleType as TimescaleType,
     timeseries_logicalseries_api_TimestreamLocator as TimestreamLocator,
