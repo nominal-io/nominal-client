@@ -8,11 +8,11 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Iterator, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
-from typing_extensions import Self  # typing.Self in 3.11+
+from typing_extensions import Self
 
 from nominal import _config
 
@@ -31,19 +31,8 @@ from ._api.combined import (
 )
 from ._multipart import put_multipart_upload
 from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
-from ._utils import (
-    FileType,
-    FileTypes,
-    IntegralNanosecondsUTC,
-    LogTimestampType,
-    _flexible_time_to_global_conjure_api,
-    _flexible_time_to_integral_nanoseconds,
-    _global_conjure_api_to_integral_nanoseconds,
-    construct_user_agent_string,
-    update_dataclass,
-)
 from .exceptions import NominalIngestError, NominalIngestFailed
-from .ts import IntegralNanosecondsUTC, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
+from .ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 
 __all__ = [
     "NominalClient",
@@ -75,16 +64,14 @@ class Run:
         self.add_datasets({ref_name: dataset})
 
     def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
-        """
-        Add a log set to this run.
+        """Add a log set to this run.
 
         Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
         """
         self.add_log_sets({ref_name: log_set})
 
     def add_log_sets(self, log_sets: Mapping[str, LogSet | str]) -> None:
-        """
-        Add multiple log sets to this run.
+        """Add multiple log sets to this run.
 
         Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
         """
@@ -375,7 +362,7 @@ class Log:
 
     def _to_conjure(self) -> datasource_logset_api.Log:
         return datasource_logset_api.Log(
-            time=_flexible_time_to_global_conjure_api(self.timestamp),
+            time=_SecondsNanos.from_nanoseconds(self.timestamp).to_api(),
             body=datasource_logset_api.LogBody(
                 basic=datasource_logset_api.BasicLogBody(message=self.body, properties={}),
             ),
@@ -385,7 +372,7 @@ class Log:
     def _from_conjure(cls, log: datasource_logset_api.Log) -> Self:
         if log.body.basic is None:
             raise RuntimeError(f"unhandled log body type: expected 'basic' but got {log.body.type!r}")
-        return cls(timestamp=_global_conjure_api_to_integral_nanoseconds(log.time), body=log.body.basic.message)
+        return cls(timestamp=_SecondsNanos.from_api(log.time).to_nanoseconds(), body=log.body.basic.message)
 
 
 @dataclass(frozen=True)
@@ -1008,4 +995,4 @@ def _logs_to_conjure(
             yield log._to_conjure()
         elif isinstance(log, tuple):
             ts, body = log
-            yield Log(timestamp=_flexible_time_to_integral_nanoseconds(ts), body=body)._to_conjure()
+            yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()

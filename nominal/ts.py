@@ -11,6 +11,8 @@ import dateutil.parser
 import numpy as np
 from typing_extensions import Self, TypeAlias
 
+from nominal._api.combined import api
+
 from ._api.combined import ingest_api, scout_run_api
 
 __all__ = [
@@ -31,6 +33,8 @@ __all__ = [
 
 IntegralNanosecondsUTC: TypeAlias = int
 """A timestamp in nanoseconds since the Unix epoch, UTC."""
+
+LogTimestampType: TypeAlias = Literal["absolute", "relative"]
 
 
 class _ConjureTimestampType(abc.ABC):
@@ -202,6 +206,9 @@ class _SecondsNanos(NamedTuple):
     def to_ingest_api(self) -> ingest_api.UtcTimestamp:
         return ingest_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
 
+    def to_api(self) -> api.Timestamp:
+        return api.Timestamp(seconds=self.seconds, nanos=self.nanos)
+
     def to_iso8601(self) -> str:
         """datetime.datetime is only microsecond-precise, so we use np.datetime64[ns] to get nanosecond-precision for printing.
         Note that nanosecond precision is the maximum allowable for conjure datetime fields.
@@ -216,6 +223,11 @@ class _SecondsNanos(NamedTuple):
     @classmethod
     def from_scout_run_api(cls, ts: scout_run_api.UtcTimestamp) -> Self:
         return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds or 0)
+
+    @classmethod
+    def from_api(cls, timestamp: api.Timestamp) -> Self:
+        # TODO(alkasm): warn on pico-second precision loss
+        return cls(timestamp.seconds, timestamp.nanos)
 
     @classmethod
     def from_datetime(cls, dt: datetime) -> Self:
