@@ -386,7 +386,6 @@ class Log:
     body: str
 
     def _to_conjure(self) -> datasource_logset_api.Log:
-        # TODO: do we need to support properties? can we leave it out on the client?
         return datasource_logset_api.Log(
             time=_flexible_time_to_global_conjure_api(self.timestamp),
             body=datasource_logset_api.LogBody(

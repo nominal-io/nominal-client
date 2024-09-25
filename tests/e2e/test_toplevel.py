@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from io import BytesIO
 from unittest import mock
 from uuid import uuid4
@@ -253,28 +253,3 @@ def test_get_video(mp4_data):
     assert v2.description == v.description == desc
     assert v2.properties == v.properties == {}
     assert v2.labels == v.labels == ()
-
-
-def test_get_log_set():
-    name = f"logset-{uuid4()}"
-    desc = f"top-level test to create & get a log set {uuid4()}"
-    base_time = datetime.now(timezone.utc)
-    logs = [(base_time - timedelta(seconds=i), f"Log message {i}") for i in range(5)]
-
-    client = nm.get_default_client()
-
-    logset = client.create_log_set(name, logs, "absolute", desc)
-
-    logset2 = nm.get_log_set(logset.rid)
-    assert logset2.rid == logset.rid != ""
-    assert logset2.name == logset.name == name
-    assert logset2.description == logset.description == desc
-    assert logset2.timestamp_type == logset.timestamp_type == "absolute"
-
-    retrieved_logs = list(logset2)
-    assert len(retrieved_logs) == 5
-    for i, log in enumerate(retrieved_logs):
-        assert isinstance(log, nm.Log)
-        assert log.body == f"Log message {i}"
-        expected_time = _utils._datetime_to_integral_nanoseconds(base_time - timedelta(seconds=i))
-        assert log.time == expected_time

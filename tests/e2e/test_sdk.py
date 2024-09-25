@@ -1,8 +1,9 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 from uuid import uuid4
 
 import nominal as nm
+from nominal._utils import _datetime_to_integral_nanoseconds
 
 from . import _create_random_start_end
 
@@ -126,3 +127,21 @@ def test_add_attachment_to_run_and_list_attachments(csv_data):
     assert at2.properties == at.properties == {}
     assert at2.labels == at.labels == ()
     assert at2.get_contents().read() == at.get_contents().read() == csv_data
+
+
+def test_create_get_log_set(client: nm.NominalClient):
+    name = f"logset-{uuid4()}"
+    desc = f"top-level test to create & get a log set {uuid4()}"
+    start, _ = _create_random_start_end()
+    logs = [(_datetime_to_integral_nanoseconds(start + timedelta(seconds=i)), f"Log message {i}") for i in range(5)]
+
+    logset = client.create_log_set(name, logs, "absolute", desc)
+    logset2 = nm.get_log_set(logset.rid)
+    assert logset2.rid == logset.rid != ""
+    assert logset2.name == logset.name == name
+    assert logset2.description == logset.description == desc
+    assert logset2.timestamp_type == logset.timestamp_type == "absolute"
+
+    retrieved_logs = [(log.timestamp, log.body) for log in logset2.stream_logs()]
+    assert len(retrieved_logs) == 5
+    assert retrieved_logs == logs
