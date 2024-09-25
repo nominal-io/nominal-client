@@ -131,7 +131,7 @@ def test_add_attachment_to_run_and_list_attachments(csv_data):
 
 def test_create_get_log_set(client: nm.NominalClient):
     name = f"logset-{uuid4()}"
-    desc = f"sdk test to create & get a log set {uuid4()}"
+    desc = f"core test to create & get a log set {uuid4()}"
     start, _ = _create_random_start_end()
     logs = [(_datetime_to_integral_nanoseconds(start + timedelta(seconds=i)), f"Log message {i}") for i in range(5)]
 
