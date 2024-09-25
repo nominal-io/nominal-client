@@ -1,7 +1,8 @@
-from datetime import datetime
 import time
+from datetime import datetime
 
 import pytest
+
 import nominal as nm
 
 
