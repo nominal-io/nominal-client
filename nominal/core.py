@@ -812,8 +812,8 @@ class NominalClient:
         description: str | None = None,
     ) -> LogSet:
         """Create an immutable log set with the given logs.
-        
-        The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log` 
+
+        The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
         or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
         """
         request = datasource_logset_api.CreateLogSetRequest(
