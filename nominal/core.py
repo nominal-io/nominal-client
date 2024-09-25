@@ -811,10 +811,10 @@ class NominalClient:
         timestamp_type: LogTimestampType = "absolute",
         description: str | None = None,
     ) -> LogSet:
-        """
-        Creates a log set, to which logs can be attached using `attach-and-finalize`. The logs within a logset are
-        not searchable until the logset is finalized.
-        Timestamp type must be a string equal to either 'absolute' or 'relative'.
+        """Create an immutable log set with the given logs.
+        
+        The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log` 
+        or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
         """
         request = datasource_logset_api.CreateLogSetRequest(
             name=name,
@@ -853,9 +853,7 @@ class NominalClient:
         return Dataset._from_conjure(self, response)
 
     def get_log_set(self, log_set_rid: str) -> LogSet:
-        """
-        Retrieve a LogSet along with its metadata given its RID.
-        """
+        """Retrieve a log set along with its metadata given its RID."""
         response = _get_log_set(self._auth_header, self._logset_client, log_set_rid)
         return LogSet._from_conjure(self, response)
 
