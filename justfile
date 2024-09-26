@@ -48,4 +48,4 @@ clean:
 
 # build docs
 build-docs:
-    poetry run mkdocs build
+    poetry run python docs/generate.py
