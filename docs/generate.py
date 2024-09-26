@@ -40,16 +40,13 @@ config["group_by_category"] = True
 config["show_object_full_path"] = False
 config["line_length"] = LyingLineLength(72)
 config["show_submodules"] = False
-# some of the summary sections would be nice, but the links don't work in fern:
+# some of the summary sections would be nice, but the links don't necessarily work outside of mkdocs:
 # griffe will generate links like .#nominal.core.Run.add_dataset,
-# but in fern the markdown headings generate links like #nominalcorerunadd_dataset.
+# but other md -> html frameworks may generate links like #nominalcorerunadd_dataset.
 config["summary"] = False
 
-# copy the configs each time because they get mutated, which prevents reuse.
+# we deepcopy the configs each time because they get mutated, which prevents reuse.
 output = Path(__file__).parent / "reference"
 griffe2md.main.write_package_docs("nominal", config=deepcopy(config), output=str(output / "toplevel.md"))
 griffe2md.main.write_package_docs("nominal.core", config=deepcopy(config), output=str(output / "core.md"))
 griffe2md.main.write_package_docs("nominal.exceptions", config=deepcopy(config), output=str(output / "exceptions.md"))
-
-# TODO(alkasm): figure out the custom css needed in fern to indent/nest things correctly
-# shaun suggested selecting based on heading, and selecting "next sibling element" to get the divs after the headings
