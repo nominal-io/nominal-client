@@ -1,0 +1,33 @@
+name: Build docs
+
+on:
+  push:
+    branches: ["main"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.12"
+      - uses: snok/install-poetry@v1
+      - uses: extractions/setup-just@v2
+      - name: Install dependencies
+        run: |
+          just install
+      - name: Build docs
+        run: |
+          just build-docs
