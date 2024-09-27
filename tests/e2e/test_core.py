@@ -31,16 +31,36 @@ def test_update_run():
     desc = f"core test to update a run {uuid4()}"
     start, end = _create_random_start_end()
     run = nm.create_run(title, start, end, desc)
+
+    assert run.name == title
+    assert run.description == desc
+    assert len(run.properties) == 0
+    assert len(run.labels) == 0
+    assert run.start == _datetime_to_integral_nanoseconds(start)
+    assert run.end == _datetime_to_integral_nanoseconds(end)
+
     new_name = title + "-updated"
     new_desc = desc + "-updated"
     new_props = {"key": "value"}
     new_labels = ["label"]
-    run.update(name=new_name, description=new_desc, properties=new_props, labels=new_labels)
+    new_start = start + timedelta(seconds=1)
+    new_end = end - timedelta(seconds=1)
+
+    run.update(
+        name=new_name,
+        description=new_desc,
+        properties=new_props,
+        labels=new_labels,
+        start=new_start,
+        end=new_end,
+    )
 
     assert run.name == new_name
     assert run.description == new_desc
     assert run.properties == new_props
     assert run.labels == tuple(new_labels)
+    assert run.start == _utils._datetime_to_integral_nanoseconds(new_start)
+    assert run.end == _utils._datetime_to_integral_nanoseconds(new_end)
 
 
 def test_add_dataset_to_run_and_list_datasets(csv_data):
