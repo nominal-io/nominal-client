@@ -19,7 +19,7 @@ class NominalIngestMultiError(NominalError):
     def __init__(self, rids_to_errors: Mapping[str, NominalIngestError]) -> None:
         self.errors = rids_to_errors
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{len(self.errors)} errors occurred during ingest: {self.errors}"
 
 
