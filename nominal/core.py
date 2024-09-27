@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Iterator, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -47,7 +47,7 @@ from ._utils import (
     construct_user_agent_string,
     update_dataclass,
 )
-from .exceptions import NominalIngestError, NominalIngestFailed
+from .exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 
 __all__ = [
     "NominalClient",
@@ -1025,3 +1025,22 @@ def _logs_to_conjure(
         elif isinstance(log, tuple):
             ts, body = log
             yield Log(timestamp=_flexible_time_to_integral_nanoseconds(ts), body=body)._to_conjure()
+
+
+def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
+    """Block until all dataset ingestions have completed (succeeded or failed).
+
+    This method polls Nominal for ingest status on each of the datasets on an interval.
+    No specific ordering is guaranteed, but all datasets will be checked at least once.
+
+    Raises:
+        NominalIngestMultiError: if any of the datasets failed to ingest
+    """
+    errors = {}
+    for dataset in datasets:
+        try:
+            dataset.poll_until_ingestion_completed(interval=interval)
+        except NominalIngestError as e:
+            errors[dataset.rid] = e
+    if errors:
+        raise NominalIngestMultiError(errors)
