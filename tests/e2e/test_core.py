@@ -59,8 +59,8 @@ def test_update_run():
     assert run.description == new_desc
     assert run.properties == new_props
     assert run.labels == tuple(new_labels)
-    assert run.start == _utils._datetime_to_integral_nanoseconds(new_start)
-    assert run.end == _utils._datetime_to_integral_nanoseconds(new_end)
+    assert run.start == _datetime_to_integral_nanoseconds(new_start)
+    assert run.end == _datetime_to_integral_nanoseconds(new_end)
 
 
 def test_add_dataset_to_run_and_list_datasets(csv_data):
