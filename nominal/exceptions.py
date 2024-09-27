@@ -1,4 +1,4 @@
-from typing import Mapping, Sequence
+from typing import Mapping
 
 
 class NominalError(Exception):
