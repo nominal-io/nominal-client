@@ -239,7 +239,7 @@ def search_runs(
     *,
     start: str | datetime | IntegralNanosecondsUTC | None = None,
     end: str | datetime | IntegralNanosecondsUTC | None = None,
-    exact_name: str | None = None,
+    name_substring: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
 ) -> list[Run]:
@@ -247,16 +247,16 @@ def search_runs(
 
     Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
     - `start` and `end` times are both inclusive
-    - `exact_name` is case-insensitive
+    - `name_substring`: search for a (case-insensitive) substring in the name
     - `property` is a key-value pair, e.g. ("name", "value")
     """
-    if all([v is None for v in (start, end, exact_name, label, property)]):
-        raise ValueError("must provide one of: start, end, exact_name, label, or property")
+    if all([v is None for v in (start, end, name_substring, label, property)]):
+        raise ValueError("must provide one of: start, end, name_substring, label, or property")
     conn = get_default_client()
     runs = conn.search_runs(
         start=None if start is None else _parse_timestamp(start),
         end=None if end is None else _parse_timestamp(end),
-        exact_name=exact_name,
+        name_substring=name_substring,
         label=label,
         property=property,
     )
