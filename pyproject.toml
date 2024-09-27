@@ -42,7 +42,7 @@ mkdocs-material = "^9.5.34"
 mkdocstrings = "^0.26.1"
 mkdocstrings-python = "^1.11.1"
 black = "^24.8.0"
-mkdocs-click = {git = "https://github.com/alkasm/mkdocs-click", rev = "alkasm/keep-context-settings"}
+mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", rev = "alkasm/keep-context-settings" }
 jupyterlab = "^4.2.5"
 
 
@@ -69,6 +69,7 @@ disable_error_code = ["no-any-return", "no-untyped-def"]
 
 [tool.pytest.ini_options]
 filterwarnings = [
+    "error", # transform all warnings into errors, except ignore: ones.
     # DeprecationWarning: The 'strict' parameter is no longer needed on Python 3+. This will raise an error in urllib3 v2.1.0.
     # from conjure-python-client, in conjure_python_client/_http/requests_client.py,
     # TransportAdapter.init_poolmanager() uses urllib3.poolmanager.PoolManager(..., strict=True) which is deprecated.

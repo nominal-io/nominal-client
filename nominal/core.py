@@ -45,6 +45,7 @@ from ._utils import (
     _global_conjure_api_to_integral_nanoseconds,
     _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
+    deprecate_keyword_argument,
     update_dataclass,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
@@ -652,13 +653,13 @@ class NominalClient:
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        exact_name: str | None = None,
+        name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
-            query=_create_search_runs_query(start, end, exact_name, label, property),
+            query=_create_search_runs_query(start, end, name_substring, label, property),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
@@ -667,21 +668,22 @@ class NominalClient:
         for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self, run)
 
+    @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        exact_name: str | None = None,
+        name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
         - `start` and `end` times are both inclusive
-        - `exact_name` is case-insensitive
+        - `name_substring`: search for a (case-insensitive) substring in the name
         - `property` is a key-value pair, e.g. ("name", "value")
         """
-        return list(self._iter_search_runs(start, end, exact_name, label, property))
+        return list(self._iter_search_runs(start, end, name_substring, label, property))
 
     def create_csv_dataset(
         self,
@@ -968,7 +970,7 @@ def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | Log
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
     end: datetime | IntegralNanosecondsUTC | None = None,
-    exact_name: str | None = None,
+    name_substring: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
 ) -> scout_run_api.SearchQuery:
@@ -979,8 +981,8 @@ def _create_search_runs_query(
     if end is not None:
         q = scout_run_api.SearchQuery(end_time_inclusive=_flexible_time_to_conjure_scout_run_api(end))
         queries.append(q)
-    if exact_name is not None:
-        q = scout_run_api.SearchQuery(exact_match=exact_name)
+    if name_substring is not None:
+        q = scout_run_api.SearchQuery(exact_match=name_substring)
         queries.append(q)
     if label is not None:
         q = scout_run_api.SearchQuery(label=label)
