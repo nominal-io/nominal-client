@@ -6,6 +6,6 @@ import nominal as nm
 
 ## modules
 
-- [`nominal`](./toplevel.md)
-- [`nominal.core`](./core.md)
-- [`nominal.exceptions`](./exceptions.md)
+- [`nominal`](./toplevel)
+- [`nominal.core`](./core)
+- [`nominal.exceptions`](./exceptions)
