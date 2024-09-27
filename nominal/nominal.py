@@ -15,6 +15,7 @@ from ._utils import (
     IntegralNanosecondsUTC,
     TimestampColumnType,
     _parse_timestamp,
+    deprecate_keyword_argument,
     reader_writer,
 )
 from .core import Attachment, Dataset, LogSet, NominalClient, Run, Video
@@ -235,6 +236,7 @@ def get_run(rid: str) -> Run:
     return conn.get_run(rid)
 
 
+@deprecate_keyword_argument("name_substring", "exact_name")
 def search_runs(
     *,
     start: str | datetime | IntegralNanosecondsUTC | None = None,

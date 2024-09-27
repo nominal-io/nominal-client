@@ -45,6 +45,7 @@ from ._utils import (
     _global_conjure_api_to_integral_nanoseconds,
     _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
+    deprecate_keyword_argument,
     update_dataclass,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
@@ -667,6 +668,7 @@ class NominalClient:
         for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self, run)
 
+    @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
