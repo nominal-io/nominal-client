@@ -169,6 +169,8 @@ class Run:
         self,
         *,
         name: str | None = None,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        end: datetime | IntegralNanosecondsUTC | None = None,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
@@ -189,6 +191,8 @@ class Run:
             description=description,
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
+            start_time=None if start is None else _flexible_time_to_conjure_scout_run_api(start),
+            end_time=None if end is None else _flexible_time_to_conjure_scout_run_api(end),
             title=name,
         )
         response = self._client._run_client.update_run(self._client._auth_header, request, self.rid)
