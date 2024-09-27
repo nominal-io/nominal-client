@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Iterator, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -1023,7 +1023,7 @@ def _logs_to_conjure(
             yield Log(timestamp=_flexible_time_to_integral_nanoseconds(ts), body=body)._to_conjure()
 
 
-def wait_for_ingestion(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
+def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
     """Block until all dataset ingestions have completed (succeeded or failed).
 
     This method polls Nominal for ingest status on each of the datasets on an interval.
