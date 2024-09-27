@@ -17,7 +17,7 @@ from ._utils import (
     _parse_timestamp,
     reader_writer,
 )
-from .core import Attachment, Dataset, LogSet, NominalClient, Run, Video
+from .core import Attachment, Dataset, LogSet, NominalClient, Run, Video, poll_until_ingestion_completed
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -63,7 +63,12 @@ def upload_pandas(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a pandas.DataFrame."""
+    """Create a dataset in the Nominal platform from a pandas.DataFrame.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
     conn = get_default_client()
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
@@ -99,7 +104,12 @@ def upload_polars(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a polars.DataFrame."""
+    """Create a dataset in the Nominal platform from a polars.DataFrame.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
     conn = get_default_client()
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
@@ -136,6 +146,10 @@ def upload_csv(
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file.
 
     If `name` is None, the dataset is created with the name of the file.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
     conn = get_default_client()
     return _upload_csv(
@@ -310,6 +324,15 @@ def get_video(rid: str) -> Video:
     """Retrieve a video from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_video(rid)
+
+
+def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
+    """Wait until all datasets have completed ingestion.
+
+    If you are uploading multiple datasets, consider setting wait_until_complete=False in the upload functions and call
+    this function after uploading all the datasets to wait until ingestion completes. This allows for parallel ingestion.
+    """
+    poll_until_ingestion_completed(datasets)
 
 
 def _get_start_end_timestamp_csv_file(
