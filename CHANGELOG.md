@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/nominal-io/nominal-client/compare/v1.2.0...v1.3.0) (2024-09-27)
+
+
+### Features
+
+* add function to poll ingestion status for multiple datasets ([#58](https://github.com/nominal-io/nominal-client/issues/58)) ([a6327e2](https://github.com/nominal-io/nominal-client/commit/a6327e2c69c9c7d626c78a91ca4d01c31651cddf))
+* add start/end to Run.update() ([#55](https://github.com/nominal-io/nominal-client/issues/55)) ([98c4adb](https://github.com/nominal-io/nominal-client/commit/98c4adb0505ad033d78245a40fe234711a583912))
+
+
+### Bug Fixes
+
+* search_runs parameter rename: exact_name -&gt; name_substring ([#59](https://github.com/nominal-io/nominal-client/issues/59)) ([f2f2b7d](https://github.com/nominal-io/nominal-client/commit/f2f2b7dc994787df980b594886a8172f5eb8e4c9))
+
 ## [1.2.0](https://github.com/nominal-io/nominal-client/compare/v1.1.0...v1.2.0) (2024-09-25)
 
 
