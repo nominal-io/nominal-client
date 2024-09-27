@@ -3,7 +3,6 @@ from unittest import mock
 from uuid import uuid4
 
 import nominal as nm
-from nominal import _utils
 from nominal._utils import _datetime_to_integral_nanoseconds
 
 from . import _create_random_start_end
@@ -37,8 +36,8 @@ def test_update_run():
     assert run.description == desc
     assert len(run.properties) == 0
     assert len(run.labels) == 0
-    assert run.start == _utils._datetime_to_integral_nanoseconds(start)
-    assert run.end == _utils._datetime_to_integral_nanoseconds(end)
+    assert run.start == _datetime_to_integral_nanoseconds(start)
+    assert run.end == _datetime_to_integral_nanoseconds(end)
 
     new_name = title + "-updated"
     new_desc = desc + "-updated"
