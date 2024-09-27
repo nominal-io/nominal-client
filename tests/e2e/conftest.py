@@ -82,4 +82,5 @@ def mp4_data():
         curl https://raw.githubusercontent.com/chromium/chromium/main/media/test/data/bear-1280x720.mp4 -o data/bear-1280x720.mp4
     """
     path = Path(__file__).parent / "data/bear-1280x720.mp4"
-    return open(path, "rb").read()
+    with open(path, "rb") as f:
+        return f.read()
