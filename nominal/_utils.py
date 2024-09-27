@@ -7,10 +7,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import BinaryIO, Callable, Iterable, Iterator, Literal, NamedTuple, ParamSpec, TypeVar, Union
+from typing import BinaryIO, Callable, Iterable, Iterator, Literal, NamedTuple, TypeVar, Union
 
 import dateutil.parser
-from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
+from typing_extensions import TypeAlias, ParamSpec
 
 from ._api.combined import api, ingest_api, scout_run_api
 
