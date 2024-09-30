@@ -5,7 +5,9 @@ import mimetypes
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO, Iterable, Iterator, NamedTuple, TypeVar
+from typing import BinaryIO, Callable, Iterable, Iterator, Literal, NamedTuple, TypeVar
+
+from typing_extensions import ParamSpec, TypeAlias
 
 logger = logging.getLogger(__name__)
 
@@ -84,3 +86,28 @@ def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
     finally:
         w.close()
         r.close()
+
+
+LogTimestampType: TypeAlias = Literal["absolute", "relative"]
+
+
+Param = ParamSpec("Param")
+
+
+def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
+    def _deprecate_keyword_argument_decorator(f: Callable[Param, T]) -> Callable[Param, T]:
+        def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
+            if old_name in kwargs:
+                import warnings
+
+                warnings.warn(
+                    f"The '{old_name}' keyword argument is deprecated and will be removed in a future version, use '{new_name}' instead.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                kwargs[new_name] = kwargs.pop(old_name)
+            return f(*args, **kwargs)
+
+        return wrapper
+
+    return _deprecate_keyword_argument_decorator

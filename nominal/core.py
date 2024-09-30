@@ -30,8 +30,15 @@ from ._api.combined import (
     upload_api,
 )
 from ._multipart import put_multipart_upload
-from ._utils import FileType, FileTypes, construct_user_agent_string, update_dataclass
-from .exceptions import NominalIngestError, NominalIngestFailed
+from ._utils import (
+    FileType,
+    FileTypes,
+    LogTimestampType,
+    construct_user_agent_string,
+    deprecate_keyword_argument,
+    update_dataclass,
+)
+from .exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from .ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 
 __all__ = [
@@ -150,6 +157,8 @@ class Run:
         self,
         *,
         name: str | None = None,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        end: datetime | IntegralNanosecondsUTC | None = None,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
@@ -170,6 +179,8 @@ class Run:
             description=description,
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
+            start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
+            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
         )
         response = self._client._run_client.update_run(self._client._auth_header, request, self.rid)
@@ -623,13 +634,13 @@ class NominalClient:
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        exact_name: str | None = None,
+        name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
-            query=_create_search_runs_query(start, end, exact_name, label, property),
+            query=_create_search_runs_query(start, end, name_substring, label, property),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
@@ -638,21 +649,22 @@ class NominalClient:
         for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self, run)
 
+    @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        exact_name: str | None = None,
+        name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
         - `start` and `end` times are both inclusive
-        - `exact_name` is case-insensitive
+        - `name_substring`: search for a (case-insensitive) substring in the name
         - `property` is a key-value pair, e.g. ("name", "value")
         """
-        return list(self._iter_search_runs(start, end, exact_name, label, property))
+        return list(self._iter_search_runs(start, end, name_substring, label, property))
 
     def create_csv_dataset(
         self,
@@ -939,7 +951,7 @@ def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | Log
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
     end: datetime | IntegralNanosecondsUTC | None = None,
-    exact_name: str | None = None,
+    name_substring: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
 ) -> scout_run_api.SearchQuery:
@@ -950,8 +962,8 @@ def _create_search_runs_query(
     if end is not None:
         q = scout_run_api.SearchQuery(end_time_inclusive=_SecondsNanos.from_flexible(end).to_scout_run_api())
         queries.append(q)
-    if exact_name is not None:
-        q = scout_run_api.SearchQuery(exact_match=exact_name)
+    if name_substring is not None:
+        q = scout_run_api.SearchQuery(exact_match=name_substring)
         queries.append(q)
     if label is not None:
         q = scout_run_api.SearchQuery(label=label)
@@ -996,3 +1008,22 @@ def _logs_to_conjure(
         elif isinstance(log, tuple):
             ts, body = log
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
+
+
+def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
+    """Block until all dataset ingestions have completed (succeeded or failed).
+
+    This method polls Nominal for ingest status on each of the datasets on an interval.
+    No specific ordering is guaranteed, but all datasets will be checked at least once.
+
+    Raises:
+        NominalIngestMultiError: if any of the datasets failed to ingest
+    """
+    errors = {}
+    for dataset in datasets:
+        try:
+            dataset.poll_until_ingestion_completed(interval=interval)
+        except NominalIngestError as e:
+            errors[dataset.rid] = e
+    if errors:
+        raise NominalIngestMultiError(errors)
