@@ -1,8 +1,7 @@
-"""Timestamp types for Nominal.
-
-The `nominal.ts` module provides timestamp format specifications and utilities.
+"""The `nominal.ts` module provides timestamp format specifications and utilities.
 
 When you _upload_ a dataset to nominal, the dataset may have timestamps in a variety of formats. For example:
+
 - ISO 8601 strings like '2021-01-31T19:00:00Z'
 - Epoch timestamps in floating-point seconds since epoch like 1612137600.123
 - Epoch timestamps in integer nanoseconds since epoch like 1612137600123000000
@@ -12,10 +11,9 @@ When you _upload_ a dataset to nominal, the dataset may have timestamps in a var
 All of these may also have different interpretations of the units, epoch, time zone, etc.
 
 To simplify common usages while allowing for the full flexibility of the Nominal platform,
-the client library typically allows you to specify timestamp formats in typeful representations
-as well as simple strings for the common/unparameterized cases.
+the client library allows you to specify timestamp formats with simple strings and more complex typeful representations.
 
-Wherever you can specify a timestamp format (typically the `timestamp_type` parameter), any of the following can be used:
+Wherever you can specify a timestamp format (typically the `timestamp_type` parameter), these are all examples of valid formats:
 
 ```python
 "iso_8601"
@@ -26,27 +24,22 @@ Wherever you can specify a timestamp format (typically the `timestamp_type` para
 "epoch_minutes"
 "epoch_hours"
 nm.ts.Iso8601()
-nm.ts.Epoch("nanoseconds")
 nm.ts.Epoch("microseconds")
-nm.ts.Epoch("milliseconds")
 nm.ts.Epoch("seconds")
-nm.ts.Epoch("minutes")
 nm.ts.Epoch("hours")
 nm.ts.Relative("nanoseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-nm.ts.Relative("microseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
 nm.ts.Relative("milliseconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
 nm.ts.Relative("seconds", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
 nm.ts.Relative("minutes", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
-nm.ts.Relative("hours", start=datetime.fromisoformat("2021-01-31T19:00:00Z"))
 nm.ts.Custom(r"yyyy-MM-dd[T]hh:mm:ss")
-nm.ts.Custom(r"MM-dd[T]hh:mm:ss", default_year=2024)
+nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
 ```
 
-The strings "iso_8601" and "epoch_{unit}" are the simplest forms to specify. The `nm.ts.Iso8601()` and `nm.ts.Epoch("{unit}")` classes are the typeful representations of these formats.
+The strings `"iso_8601"` and `"epoch_{unit}"` are equivalent to using the types `nm.ts.Iso8601()` and `nm.ts.Epoch("{unit}")`.
 
-Relative and custom formats require additional parameters, and so they don't have as simple of a string representation.
+Relative and custom formats require additional parameters, so they can't be specified with a string.
 Relative timestamps require a start time that they are relative to, e.g. `nm.ts.Relative("{unit}", start=start_time)`.
-Custom timestamp formats require a format string compatible with the `DateTimeFormatter` class in Java: see https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns.
+Custom timestamp formats require a format string compatible with the `DateTimeFormatter` class in Java: see [java docs](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns).
 
 ## Examples
 
@@ -54,7 +47,7 @@ All of the examples use the same data (timestamp and value) expressed with diffe
 
 ### ISO 8601
 
-Nominal requires ISO 8601 timestamps to include the time zone, e.g. '2021-01-31T19:00:00Z' or '2021-01-31T19:00:00.123+00:00'. For example:
+Nominal requires ISO 8601 timestamps to include the time zone, e.g. `'2021-01-31T19:00:00Z'` or `'2021-01-31T19:00:00.123+00:00'`. For example:
 
 ```csv
 temperature,timestamp
@@ -76,7 +69,7 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 
 ### Epoch timestamps
 
-Nominal supports epoch timestamps in various units, e.g. seconds, milliseconds, nanoseconds, etc. Additionally, the types can be integers or floating-point numbers.
+Nominal supports epoch timestamps in different units: hours, minutes, seconds, milliseconds, microseconds, and nanoseconds. The values can be integers or floating-point numbers.
 
 #### Floating-point seconds since epoch
 
@@ -120,8 +113,8 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 
 ### Relative timestamps
 
-Similar to epoch timestamps, Nominal supports relative timestamps in various units, e.g. seconds, milliseconds, nanoseconds, etc and can be integers or floating-point numbers.
-Relative timestamps must be relative to a specified start time.
+Similar to epoch timestamps, Nominal supports relative timestamps in the same units: hours, minutes, seconds, milliseconds, microseconds, and nanoseconds, and can be integer or floating-point values.
+Relative timestamps are _relative to_ a specified start time.
 
 ```csv
 temperature,timestamp
@@ -143,9 +136,11 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 
 ### Custom Format
 
+Nominal supports custom timestamp formats. The format string should be in the format of the `DateTimeFormatter` class in Java: see [java docs](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns).
+
 #### Customized ctime
 
-This is an example of a custom time format--the output is like `ctime()`, except with microsecond precision added.
+This time format is similar to the string format from `ctime()`, except with microsecond precision added.
 
 ```csv
 temperature,timestamp
@@ -167,7 +162,7 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 
 #### IRIG time code
 
-IRIG time codes come in a variety of formats. A common format specifies a relative timestamp from the beginning of the year, expressed in days:hours:minutes:seconds.milliseconds.
+IRIG time codes come in a variety of formats. A common IRIG format specifies a relative timestamp from the beginning of the year, expressed in `days:hours:minutes:seconds.ms`.
 
 ```csv
 temperature,timestamp
@@ -223,7 +218,7 @@ __all__ = [
 ]
 
 IntegralNanosecondsUTC: TypeAlias = int
-"""A timestamp in nanoseconds since the Unix epoch, UTC."""
+"""Alias for an `int` used in the code for documentation purposes. This value is a timestamp in nanoseconds since the Unix epoch, UTC."""
 
 LogTimestampType: TypeAlias = Literal["absolute", "relative"]
 
@@ -292,7 +287,7 @@ class Custom(_ConjureTimestampType):
     format: str
     """Must be in the format of the `DateTimeFormatter` class in Java."""
     default_year: int | None = None
-    """Accepted as an optional field for cases like IRIG time format, where the year is not present."""
+    """Accepted as an optional field for cases like IRIG time codes, where the year is not present."""
 
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         fmt = ingest_api.CustomTimestamp(format=self.format, default_year=self.default_year)
@@ -337,10 +332,10 @@ _LiteralRelativeDeprecated: TypeAlias = Literal[
 ]
 
 TypedTimestampType: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
-"""Strongly typed timestamp types."""
+"""Type alias for all of the strongly typed timestamp types."""
 
 _AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute, _LiteralRelativeDeprecated]
-"""All allowable timestamp types, including string representations."""
+"""Type alias for all of the allowable timestamp types, including string representations."""
 
 
 def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
