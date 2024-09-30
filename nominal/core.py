@@ -30,14 +30,7 @@ from ._api.combined import (
     upload_api,
 )
 from ._multipart import put_multipart_upload
-from ._utils import (
-    FileType,
-    FileTypes,
-    LogTimestampType,
-    construct_user_agent_string,
-    deprecate_keyword_argument,
-    update_dataclass,
-)
+from ._utils import FileType, FileTypes, construct_user_agent_string, deprecate_keyword_argument, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from .ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 

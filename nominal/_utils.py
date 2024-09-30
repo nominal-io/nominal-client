@@ -88,9 +88,6 @@ def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
         r.close()
 
 
-LogTimestampType: TypeAlias = Literal["absolute", "relative"]
-
-
 Param = ParamSpec("Param")
 
 
