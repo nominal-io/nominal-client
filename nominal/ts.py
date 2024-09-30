@@ -96,6 +96,7 @@ class Custom(_ConjureTimestampType):
     """A custom timestamp format. The custom timestamps are expected to be absolute timestamps.
 
     The format string should be in the format of the `DateTimeFormatter` class in Java.
+    Ref: https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns
     """
 
     format: str
