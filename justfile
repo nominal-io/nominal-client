@@ -12,6 +12,10 @@ test-e2e token:
 
 # check static typing
 check-types:
+    poetry run mypy
+
+# check static typing across all supported python versions
+check-types-all:
     poetry run mypy --python-version 3.12
     poetry run mypy --python-version 3.11
     poetry run mypy --python-version 3.10
