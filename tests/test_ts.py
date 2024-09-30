@@ -31,9 +31,9 @@ def test_time_conversions(t: nm.ts._SecondsNanos):
     assert t.nanos == t.to_ingest_api().offset_nanoseconds
     # no from_ingest_api method
 
-    assert t == t.from_flexible(t.to_iso8601())
     assert t == t.from_flexible(t.to_nanoseconds())
 
     # datetime objects don't have nanosecond precision
     assert t.seconds == int(dateutil.parser.parse(t.to_iso8601()).timestamp())
     assert t.seconds == t.from_flexible(dateutil.parser.parse(t.to_iso8601())).seconds
+    assert t.seconds == t.from_flexible(t.to_iso8601()).seconds
