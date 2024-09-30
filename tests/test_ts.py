@@ -1,6 +1,7 @@
 import time
 from datetime import datetime
 
+import dateutil.parser
 import pytest
 
 import nominal as nm
@@ -34,5 +35,5 @@ def test_time_conversions(t: nm.ts._SecondsNanos):
     assert t == t.from_flexible(t.to_nanoseconds())
 
     # datetime objects don't have nanosecond precision
-    assert t.seconds == int(datetime.fromisoformat(t.to_iso8601()).timestamp())
-    assert t.seconds == t.from_flexible(datetime.fromisoformat(t.to_iso8601())).seconds
+    assert t.seconds == int(dateutil.parser.parse(t.to_iso8601()).timestamp())
+    assert t.seconds == t.from_flexible(dateutil.parser.parse(t.to_iso8601())).seconds
