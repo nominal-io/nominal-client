@@ -368,12 +368,23 @@ def _get_start_end_timestamp_csv_file(
     )
 
 
-def draft_checklist(
+def checklist_builder(
     name: str,
     assignee_email: str,
     description: str = "",
     default_ref_name: str | None = None,
 ) -> ChecklistBuilder:
+    """Create a checklist builder to add checks and variables, and publish the checklist to Nominal.
+
+    Example:
+    ```python
+    cb = checklist_builder("My Checklist", "user@nominal.io")
+    cb.add_check("tautological check", "2 > 1")
+    cb.add_variable("x", "1")
+    checklist = cb.build_and_publish(commit_message="adding a checklist")
+    print("published checklist:", checklist.rid)
+    ```
+    """
     conn = get_default_client()
     return Checklist.builder(
         client=conn,
