@@ -387,7 +387,6 @@ def checklist_builder(
     """
     conn = get_default_client()
     return conn.checklist_builder(
-        client=conn,
         name=name,
         assignee_email=assignee_email,
         description=description,

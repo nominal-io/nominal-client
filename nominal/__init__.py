@@ -1,10 +1,10 @@
 from . import ts
 from .core import Attachment, Check, Checklist, ChecklistBuilder, Dataset, Log, LogSet, NominalClient, Run, Video
 from .nominal import (
+    checklist_builder,
     create_run,
     create_run_csv,
     download_attachment,
-    draft_checklist,
     get_attachment,
     get_checklist,
     get_dataset,
@@ -25,7 +25,7 @@ __all__ = [
     "ts",
     "create_run",
     "create_run_csv",
-    "draft_checklist",
+    "checklist_builder",
     "download_attachment",
     "get_attachment",
     "get_checklist",
