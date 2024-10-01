@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, BinaryIO
 
 from nominal import _config
 
+from . import ts
 from ._utils import (
-    reader_writer,
     FileType,
     FileTypes,
     deprecate_keyword_argument,
@@ -24,11 +24,9 @@ from .core import (
     NominalClient,
     Run,
     Video,
-    poll_until_ingestion_completed,
     _create_checklist_builder_from_yaml,
+    poll_until_ingestion_completed,
 )
-from . import ts
-
 
 if TYPE_CHECKING:
     import pandas as pd

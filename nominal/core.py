@@ -48,10 +48,9 @@ from ._utils import (
     _remove_newlines,
     _representation_variable_to_unresolved_variable_locator,
     construct_user_agent_string,
+    deprecate_keyword_argument,
     update_dataclass,
 )
-from .exceptions import NominalIngestError, NominalIngestFailed
-from ._utils import FileType, FileTypes, construct_user_agent_string, deprecate_keyword_argument, update_dataclass
 from .exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from .ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 
@@ -437,8 +436,8 @@ class Checklist:
     checks: Sequence[Check]
     _client: NominalClient = field(repr=False)
 
-    @staticmethod
-    def _from_conjure(client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Checklist:
+    @classmethod
+    def _from_conjure(cls, client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Self:
         # TODO(ritwikdixit): support draft checklists with VCS
         if not checklist.metadata.is_published:
             raise ValueError("cannot get a checklist that has not been published")
@@ -468,7 +467,7 @@ class Checklist:
             check_rid: check_def for check_rid, (check_def, _) in check_rid_to_graph_and_def_map.items()
         }
 
-        return Checklist(
+        return cls(
             rid=checklist.rid,
             name=checklist.metadata.title,
             description=checklist.metadata.description,
@@ -493,9 +492,11 @@ class Checklist:
                 )
                 for check_rid, check_definition in check_rids_to_definitions.items()
             ],
+            _client=client,
         )
 
 
+@dataclass(frozen=True)
 class LogSet:
     rid: str
     name: str
