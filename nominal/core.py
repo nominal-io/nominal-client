@@ -898,6 +898,25 @@ class NominalClient:
         response = self._checklist_api_client.get(self._auth_header, rid)
         return Checklist._from_conjure(self, response)
 
+    def checklist_builder(
+        self,
+        name: str,
+        assignee_email: str,
+        description: str = "",
+        default_ref_name: str | None = None,
+    ) -> ChecklistBuilder:
+        return ChecklistBuilder(
+            name=name,
+            assignee_email=assignee_email,
+            description=description,
+            _default_ref_name=default_ref_name,
+            _variables=[],
+            _checks=[],
+            _properties={},
+            _labels=[],
+            _client=self,
+        )
+
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,

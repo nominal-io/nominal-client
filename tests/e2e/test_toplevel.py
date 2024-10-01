@@ -292,7 +292,7 @@ def test_create_checklist():
     builder = nm.draft_checklist(name, assignee_email, desc)
     builder.add_check(name="Check 1", priority=1, description="Description of check 1", expression="10 > 5")
     builder.add_variable(name="Variable 1", expression="10")
-    checklist = builder.build_and_publish()
+    checklist = builder.publish()
 
     assert checklist.rid != ""
     assert checklist.name == name
@@ -323,7 +323,7 @@ def test_get_checklist():
     builder = nm.draft_checklist(name, assignee_email, desc)
     builder.add_variable(name="Variable 1", expression="10")
     builder.add_check(name="Check 1", priority=1, description="Description of check 1", expression="10 > 5")
-    checklist = builder.build_and_publish()
+    checklist = builder.publish()
 
     # Get the checklist using get_checklist
     retrieved_checklist = nm.get_checklist(checklist.rid)

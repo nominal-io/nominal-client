@@ -66,7 +66,7 @@ class ChecklistBuilder:
         self._variables.append(_CreateChecklistVariable(name=name, expression=expression))
         return self
 
-    def build_and_publish(self, commit_message: str | None = None) -> Checklist:
+    def publish(self, commit_message: str | None = None) -> Checklist:
         conjure_variables = _batch_create_variable_to_conjure(
             self._variables,
             self._client._auth_header,
@@ -107,26 +107,6 @@ class Checklist:
     checklist_variables: Sequence[ChecklistVariable]
     checks: Sequence[Check]
     _client: NominalClient = field(repr=False)
-
-    @staticmethod
-    def builder(
-        client: NominalClient,
-        name: str,
-        assignee_email: str,
-        description: str = "",
-        default_ref_name: str | None = None,
-    ) -> ChecklistBuilder:
-        return ChecklistBuilder(
-            name=name,
-            assignee_email=assignee_email,
-            description=description,
-            _default_ref_name=default_ref_name,
-            _variables=[],
-            _checks=[],
-            _properties={},
-            _labels=[],
-            _client=client,
-        )
 
     @classmethod
     def _from_conjure(cls, client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Self:

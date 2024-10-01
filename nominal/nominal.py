@@ -381,12 +381,12 @@ def checklist_builder(
     cb = checklist_builder("My Checklist", "user@nominal.io")
     cb.add_check("tautological check", "2 > 1")
     cb.add_variable("x", "1")
-    checklist = cb.build_and_publish(commit_message="adding a checklist")
+    checklist = cb.publish(commit_message="adding a checklist")
     print("published checklist:", checklist.rid)
     ```
     """
     conn = get_default_client()
-    return Checklist.builder(
+    return conn.checklist_builder(
         client=conn,
         name=name,
         assignee_email=assignee_email,
