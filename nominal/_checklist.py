@@ -212,53 +212,18 @@ def _conjure_priority_to_priority(priority: scout_checks_api.Priority) -> Priori
     raise ValueError(f"unknown priority '{priority}', expected one of {_priority_to_conjure_map.values()}")
 
 
-def _compute_node_to_compiled_node(node: scout_compute_api.ComputeNode) -> scout_compute_representation_api.Node:
-    class ComputeNodeVisitor(scout_compute_api.ComputeNodeVisitor):
-        def _enum(self, enum: scout_compute_api.EnumSeriesNode) -> scout_compute_representation_api.Node:
-            return scout_compute_representation_api.Node(enumerated_series=enum)
-
-        def _numeric(self, numeric: scout_compute_api.NumericSeriesNode) -> scout_compute_representation_api.Node:
-            return scout_compute_representation_api.Node(numeric_series=numeric)
-
-        def _ranges(self, ranges: scout_compute_api.RangesNode) -> scout_compute_representation_api.Node:
-            return scout_compute_representation_api.Node(range_series=ranges)
-
-        def _raw(self, raw: scout_compute_api.RawUntypedSeriesNode) -> scout_compute_representation_api.Node:
-            raise ValueError("Raw nodes are not yet supported by the client library")
-
-    val: scout_compute_representation_api.Node = node.accept(visitor=ComputeNodeVisitor())
-    return val
-
-
-def _compiled_node_to_compute_node(node: scout_compute_representation_api.Node) -> scout_compute_api.ComputeNode:
-    class NodeVisitor(scout_compute_representation_api.NodeVisitor):
-        def _enumerated_series(
-            self, enumerated_series: scout_compute_api.EnumSeriesNode
-        ) -> scout_compute_api.ComputeNode:
-            return scout_compute_api.ComputeNode(enum=enumerated_series)
-
-        def _numeric_series(self, numeric_series: scout_compute_api.NumericSeriesNode) -> scout_compute_api.ComputeNode:
-            return scout_compute_api.ComputeNode(numeric=numeric_series)
-
-        def _range_series(self, range_series: scout_compute_api.RangesNode) -> scout_compute_api.ComputeNode:
-            return scout_compute_api.ComputeNode(ranges=range_series)
-
-    val: scout_compute_api.ComputeNode = node.accept(visitor=NodeVisitor())
-    return val
-
-
 def _conjure_checklist_variable_to_name_graph__pair(
     checklist_variable: scout_checks_api.ChecklistVariable,
 ) -> tuple[str, scout_compute_representation_api.CompiledNode]:
     if checklist_variable.value.compute_node is None:
         raise ValueError("checklist variable is not a compute node")
     preprocessed = {
-        key: _variable_locator_to_representation_variable(value)
+        key: value.accept(visitor=_VariableLocatorVisitor())
         for key, value in checklist_variable.value.compute_node.context.variables.items()
     }
 
     compute_graph = scout_compute_representation_api.CompiledNode(
-        node=_compute_node_to_compiled_node(checklist_variable.value.compute_node.series_node),
+        node=checklist_variable.value.compute_node.series_node.accept(visitor=_ComputeNodeVisitor()),
         context=scout_compute_representation_api.ComputeRepresentationContext(
             variables={key: value for key, value in preprocessed.items() if value is not None},
             function_variables={},
@@ -283,7 +248,7 @@ def _conjure_check_to_check_definition_graph_pair(
         raise ValueError("check condition does not evaluate to a valid set of ranges")
 
     preprocessed = {
-        key: _variable_locator_to_representation_variable(value)
+        key: value.accept(visitor=_VariableLocatorVisitor())
         for key, value in check_condition.num_ranges_v3.variables.items()
     }
 
@@ -296,85 +261,6 @@ def _conjure_check_to_check_definition_graph_pair(
     )
 
     return check_definition, compute_graph
-
-
-def _representation_variable_to_unresolved_variable_locator(
-    variable: scout_compute_representation_api.ComputeRepresentationVariableValue,
-) -> scout_checks_api.UnresolvedVariableLocator:
-    class VariableValueVisitor(scout_compute_representation_api.ComputeRepresentationVariableValueVisitor):
-        def _double(self, _double: float) -> scout_checks_api.UnresolvedVariableLocator:
-            raise ValueError("double variables are not yet supported by the client library")
-
-        def _duration(self, _duration: scout_run_api.Duration) -> scout_checks_api.UnresolvedVariableLocator:
-            raise ValueError("Duration variables are not yet supported by the client library")
-
-        def _integer(self, _integer: int) -> scout_checks_api.UnresolvedVariableLocator:
-            raise ValueError("integer variables are not yet supported by the client library")
-
-        def _string_set(self, _string_set: list[str]) -> scout_checks_api.UnresolvedVariableLocator:
-            raise ValueError("string set variables are not yet supported by the client library")
-
-        def _timestamp(self, _timestamp: api.Timestamp) -> scout_checks_api.UnresolvedVariableLocator:
-            raise ValueError("timestamp variables are not yet supported by the client library")
-
-        def _function_rid(self, function_rid: str) -> scout_checks_api.UnresolvedVariableLocator:
-            raise ValueError("functions are not yet supported by the client library")
-
-        def _series(
-            self, series: scout_compute_representation_api.ChannelLocator
-        ) -> scout_checks_api.UnresolvedVariableLocator:
-            return scout_checks_api.UnresolvedVariableLocator(
-                series=scout_api.ChannelLocator(channel=series.channel, data_source_ref=series.data_source_ref, tags={})
-            )
-
-        def _external_variable_reference(
-            self, external_variable_reference: str
-        ) -> scout_checks_api.UnresolvedVariableLocator:
-            return scout_checks_api.UnresolvedVariableLocator(checklist_variable=external_variable_reference)
-
-    var: scout_checks_api.UnresolvedVariableLocator = variable.accept(visitor=VariableValueVisitor())
-    return var
-
-
-def _variable_locator_to_representation_variable(
-    variable: scout_checks_api.VariableLocator,
-) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
-    class VariableLocatorVisitor(scout_checks_api.VariableLocatorVisitor):
-        def _series(
-            self, series: scout_api.ChannelLocator
-        ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
-            return scout_compute_representation_api.ComputeRepresentationVariableValue(
-                series=scout_compute_representation_api.ChannelLocator(
-                    channel=series.channel, data_source_ref=series.data_source_ref
-                )
-            )
-
-        def _checklist_variable(
-            self, checklist_variable: str
-        ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
-            return scout_compute_representation_api.ComputeRepresentationVariableValue(
-                external_variable_reference=checklist_variable
-            )
-
-        def _compute_node(
-            self, compute_node: scout_checks_api.ComputeNodeWithContext
-        ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
-            return None
-
-        def _function_rid(
-            self, function_rid: str
-        ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
-            return None
-
-        def _timestamp(
-            self, timestamp: scout_checks_api.TimestampLocator
-        ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
-            return None
-
-    val: scout_compute_representation_api.ComputeRepresentationVariableValue | None = variable.accept(
-        visitor=VariableLocatorVisitor()
-    )
-    return val
 
 
 def _remove_newlines(s: str) -> str:
@@ -434,7 +320,7 @@ def _batch_get_compute_condition(
                     threshold=0,
                     ranges=compiledNode.node.range_series,
                     variables={
-                        key: _representation_variable_to_unresolved_variable_locator(value)
+                        key: value.accept(visitor=_VariableValueVisitor())
                         for key, value in compiledNode.context.variables.items()
                     },
                     function_variables={},
@@ -501,11 +387,11 @@ def _batch_create_checklist_variable_to_conjure(
             name=create_checklist_variable.name,
             value=scout_checks_api.UnresolvedVariableLocator(
                 compute_node=scout_checks_api.UnresolvedComputeNodeWithContext(
-                    series_node=_compiled_node_to_compute_node(compiledNode.node),
+                    series_node=compiledNode.node.accept(visitor=_NodeVisitor()),
                     context=scout_checks_api.UnresolvedVariables(
                         sub_function_variables={},
                         variables={
-                            key: _representation_variable_to_unresolved_variable_locator(value)
+                            key: value.accept(visitor=_VariableValueVisitor())
                             for key, value in compiledNode.context.variables.items()
                         },
                     ),
@@ -524,3 +410,93 @@ def _batch_create_checklist_variable_to_conjure(
             raise ValueError("expression_to_compute response is not a success or error")
 
     return unresolved_checklist_variables
+
+
+class _ComputeNodeVisitor(scout_compute_api.ComputeNodeVisitor):
+    def _enum(self, enum: scout_compute_api.EnumSeriesNode) -> scout_compute_representation_api.Node:
+        return scout_compute_representation_api.Node(enumerated_series=enum)
+
+    def _numeric(self, numeric: scout_compute_api.NumericSeriesNode) -> scout_compute_representation_api.Node:
+        return scout_compute_representation_api.Node(numeric_series=numeric)
+
+    def _ranges(self, ranges: scout_compute_api.RangesNode) -> scout_compute_representation_api.Node:
+        return scout_compute_representation_api.Node(range_series=ranges)
+
+    def _raw(self, raw: scout_compute_api.RawUntypedSeriesNode) -> scout_compute_representation_api.Node:
+        raise ValueError("Raw nodes are not yet supported by the client library")
+
+
+class _NodeVisitor(scout_compute_representation_api.NodeVisitor):
+    def _enumerated_series(self, enumerated_series: scout_compute_api.EnumSeriesNode) -> scout_compute_api.ComputeNode:
+        return scout_compute_api.ComputeNode(enum=enumerated_series)
+
+    def _numeric_series(self, numeric_series: scout_compute_api.NumericSeriesNode) -> scout_compute_api.ComputeNode:
+        return scout_compute_api.ComputeNode(numeric=numeric_series)
+
+    def _range_series(self, range_series: scout_compute_api.RangesNode) -> scout_compute_api.ComputeNode:
+        return scout_compute_api.ComputeNode(ranges=range_series)
+
+
+class _VariableValueVisitor(scout_compute_representation_api.ComputeRepresentationVariableValueVisitor):
+    def _double(self, _double: float) -> scout_checks_api.UnresolvedVariableLocator:
+        raise ValueError("double variables are not yet supported by the client library")
+
+    def _duration(self, _duration: scout_run_api.Duration) -> scout_checks_api.UnresolvedVariableLocator:
+        raise ValueError("Duration variables are not yet supported by the client library")
+
+    def _integer(self, _integer: int) -> scout_checks_api.UnresolvedVariableLocator:
+        raise ValueError("integer variables are not yet supported by the client library")
+
+    def _string_set(self, _string_set: list[str]) -> scout_checks_api.UnresolvedVariableLocator:
+        raise ValueError("string set variables are not yet supported by the client library")
+
+    def _timestamp(self, _timestamp: api.Timestamp) -> scout_checks_api.UnresolvedVariableLocator:
+        raise ValueError("timestamp variables are not yet supported by the client library")
+
+    def _function_rid(self, function_rid: str) -> scout_checks_api.UnresolvedVariableLocator:
+        raise ValueError("functions are not yet supported by the client library")
+
+    def _series(
+        self, series: scout_compute_representation_api.ChannelLocator
+    ) -> scout_checks_api.UnresolvedVariableLocator:
+        return scout_checks_api.UnresolvedVariableLocator(
+            series=scout_api.ChannelLocator(channel=series.channel, data_source_ref=series.data_source_ref, tags={})
+        )
+
+    def _external_variable_reference(
+        self, external_variable_reference: str
+    ) -> scout_checks_api.UnresolvedVariableLocator:
+        return scout_checks_api.UnresolvedVariableLocator(checklist_variable=external_variable_reference)
+
+
+class _VariableLocatorVisitor(scout_checks_api.VariableLocatorVisitor):
+    def _series(
+        self, series: scout_api.ChannelLocator
+    ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+        return scout_compute_representation_api.ComputeRepresentationVariableValue(
+            series=scout_compute_representation_api.ChannelLocator(
+                channel=series.channel, data_source_ref=series.data_source_ref
+            )
+        )
+
+    def _checklist_variable(
+        self, checklist_variable: str
+    ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+        return scout_compute_representation_api.ComputeRepresentationVariableValue(
+            external_variable_reference=checklist_variable
+        )
+
+    def _compute_node(
+        self, compute_node: scout_checks_api.ComputeNodeWithContext
+    ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+        return None
+
+    def _function_rid(
+        self, function_rid: str
+    ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+        return None
+
+    def _timestamp(
+        self, timestamp: scout_checks_api.TimestampLocator
+    ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
+        return None
