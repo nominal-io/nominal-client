@@ -23,6 +23,7 @@ nav:
       - Examples: usage/examples.md
   - Reference:
       - High-level SDK: reference/toplevel.md
+      - Timestamps: reference/ts.md
       - Core SDK: reference/core.md
       - Exceptions: reference/exceptions.md
       - nom cli: reference/nom-cli.md

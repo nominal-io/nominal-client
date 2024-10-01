@@ -46,9 +46,10 @@ def test_upload_csv_gz(csv_gz_data):
 def test_upload_csv_relative_timestamp(csv_data):
     name = f"dataset-{uuid4()}"
     desc = f"top-level test to create a dataset with relative timestamps {uuid4()}"
+    start, _ = _create_random_start_end()
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "relative_minutes", "relative_minutes", desc)
+        ds = nm.upload_csv("fake_path.csv", name, "relative_minutes", nm.ts.Relative("minutes", start), desc)
     ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
 
     assert ds.rid != ""
@@ -113,8 +114,8 @@ def test_create_run():
     assert run.rid != ""
     assert run.name == name
     assert run.description == desc
-    assert run.start == _utils._datetime_to_integral_nanoseconds(start)
-    assert run.end == _utils._datetime_to_integral_nanoseconds(end)
+    assert run.start == nm.ts._SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert run.end == nm.ts._SecondsNanos.from_datetime(end).to_nanoseconds()
     assert len(run.properties) == 0
     assert len(run.labels) == 0
 
@@ -131,8 +132,8 @@ def test_create_run_csv(csv_data):
     assert run.rid != ""
     assert run.name == name
     assert run.description == desc
-    assert run.start == _utils._datetime_to_integral_nanoseconds(start)
-    assert run.end == _utils._datetime_to_integral_nanoseconds(end)
+    assert run.start == nm.ts._SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert run.end == nm.ts._SecondsNanos.from_datetime(end).to_nanoseconds()
     assert len(run.properties) == 0
     assert len(run.labels) == 0
 
@@ -157,8 +158,8 @@ def test_get_run():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == _utils._parse_timestamp(start)
-    assert run2.end == run.end == _utils._parse_timestamp(end)
+    assert run2.start == run.start == nm.ts._SecondsNanos.from_flexible(start).to_nanoseconds()
+    assert run2.end == run.end == nm.ts._SecondsNanos.from_flexible(end).to_nanoseconds()
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
@@ -176,8 +177,8 @@ def test_search_runs():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == _utils._parse_timestamp(start)
-    assert run2.end == run.end == _utils._parse_timestamp(end)
+    assert run2.start == run.start == nm.ts._SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert run2.end == run.end == nm.ts._SecondsNanos.from_datetime(end).to_nanoseconds()
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 

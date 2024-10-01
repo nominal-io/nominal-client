@@ -4,21 +4,14 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Literal
+from typing import TYPE_CHECKING, BinaryIO
 
 from nominal import _config
 
-from ._utils import (
-    CustomTimestampFormat,
-    FileType,
-    FileTypes,
-    IntegralNanosecondsUTC,
-    TimestampColumnType,
-    _parse_timestamp,
-    deprecate_keyword_argument,
-    reader_writer,
-)
+from . import ts
+from ._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
 from .core import Attachment, Dataset, LogSet, NominalClient, Run, Video, poll_until_ingestion_completed
+from .ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -59,7 +52,7 @@ def upload_pandas(
     df: pd.DataFrame,
     name: str,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
@@ -100,7 +93,7 @@ def upload_polars(
     df: pl.DataFrame,
     name: str,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
@@ -139,7 +132,7 @@ def upload_csv(
     file: Path | str,
     name: str | None,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
@@ -163,7 +156,7 @@ def _upload_csv(
     file: Path | str,
     name: str | None,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
@@ -199,8 +192,8 @@ def create_run(
     conn = get_default_client()
     return conn.create_run(
         name,
-        start=_parse_timestamp(start),
-        end=_parse_timestamp(end),
+        start=_SecondsNanos.from_flexible(start).to_nanoseconds(),
+        end=_SecondsNanos.from_flexible(end).to_nanoseconds(),
         description=description,
     )
 
@@ -209,16 +202,7 @@ def create_run_csv(
     file: Path | str,
     name: str,
     timestamp_column: str,
-    timestamp_type: Literal[
-        "iso_8601",
-        "epoch_days",
-        "epoch_hours",
-        "epoch_minutes",
-        "epoch_seconds",
-        "epoch_milliseconds",
-        "epoch_microseconds",
-        "epoch_nanoseconds",
-    ],
+    timestamp_type: ts._LiteralAbsolute | ts.Iso8601 | ts.Epoch,
     description: str | None = None,
 ) -> Run:
     """Create a dataset from a CSV file, and create a run based on it.
@@ -232,13 +216,13 @@ def create_run_csv(
     The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
     column.
     """
-    try:
-        start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, timestamp_type)
-    except ValueError as e:
+    ts_type = ts._to_typed_timestamp_type(timestamp_type)
+    if not isinstance(ts_type, (ts.Iso8601, ts.Epoch)):
         raise ValueError(
-            "`create_run_csv()` only supports absolute timestamps: use `upload_dataset()` and `create_run()` instead"
-        ) from e
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
+            "`create_run_csv()` only supports iso8601 or epoch timestamps: use `upload_dataset()` and `create_run()` instead"
+        )
+    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, ts_type)
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, ts_type)
     run = create_run(name, start=start, end=end, description=description)
     run.add_dataset("dataset", dataset)
     return run
@@ -270,8 +254,8 @@ def search_runs(
         raise ValueError("must provide one of: start, end, name_substring, label, or property")
     conn = get_default_client()
     runs = conn.search_runs(
-        start=None if start is None else _parse_timestamp(start),
-        end=None if end is None else _parse_timestamp(end),
+        start=None if start is None else _SecondsNanos.from_flexible(start).to_nanoseconds(),
+        end=None if end is None else _SecondsNanos.from_flexible(end).to_nanoseconds(),
         name_substring=name_substring,
         label=label,
         property=property,
@@ -319,7 +303,9 @@ def upload_video(
     path = Path(file)
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
-        return conn.create_video_from_io(f, name, _parse_timestamp(start), description, file_type)
+        return conn.create_video_from_io(
+            f, name, _SecondsNanos.from_flexible(start).to_nanoseconds(), description, file_type
+        )
 
 
 def get_video(rid: str) -> Video:
@@ -338,32 +324,33 @@ def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
 
 
 def _get_start_end_timestamp_csv_file(
-    file: Path | str, timestamp_column: str, timestamp_type: TimestampColumnType
+    file: Path | str,
+    timestamp_column: str,
+    timestamp_type: ts.Iso8601 | ts.Epoch,
 ) -> tuple[IntegralNanosecondsUTC, IntegralNanosecondsUTC]:
     import pandas as pd
 
     df = pd.read_csv(file)
     ts_col = df[timestamp_column]
-    if isinstance(timestamp_type, CustomTimestampFormat) or timestamp_type.startswith("relative_"):
-        raise ValueError("timestamp_type must be 'iso_8601' or 'epoch_{unit}'")
-    if timestamp_type == "iso_8601":
+
+    if isinstance(timestamp_type, ts.Iso8601):
         ts_col = pd.to_datetime(ts_col)
-    else:
-        _, unit = timestamp_type.split("_")
-        pd_units = {
-            "days": "D",
+    elif isinstance(timestamp_type, ts.Epoch):
+        pd_units: dict[ts._LiteralTimeUnit, str] = {
+            "hours": "s",  # hours are not supported by pandas
+            "minutes": "s",  # minutes are not supported by pandas
             "seconds": "s",
             "milliseconds": "ms",
             "microseconds": "us",
             "nanoseconds": "ns",
         }
-        if unit == "hours":
-            unit = "seconds"
+        if timestamp_type.unit == "hours":
             ts_col *= 60 * 60
-        elif unit == "minutes":
-            unit = "seconds"
+        elif timestamp_type.unit == "minutes":
             ts_col *= 60
-        ts_col = pd.to_datetime(ts_col, unit=pd_units[unit])
+        ts_col = pd.to_datetime(ts_col, unit=pd_units[timestamp_type.unit])
+    else:
+        raise ValueError(f"unhandled timestamp type {timestamp_type}")
 
     start, end = ts_col.min(), ts_col.max()
     return (

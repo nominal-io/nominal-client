@@ -14,6 +14,13 @@ test-e2e token:
 check-types:
     poetry run mypy
 
+# check static typing across all supported python versions
+check-types-all:
+    poetry run mypy --python-version 3.12
+    poetry run mypy --python-version 3.11
+    poetry run mypy --python-version 3.10
+    poetry run mypy --python-version 3.9
+
 # check code formatting | fix with `just fix-format`
 check-format:
     poetry run ruff format --check

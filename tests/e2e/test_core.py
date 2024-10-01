@@ -3,7 +3,7 @@ from unittest import mock
 from uuid import uuid4
 
 import nominal as nm
-from nominal._utils import _datetime_to_integral_nanoseconds
+from nominal.ts import _SecondsNanos
 
 from . import _create_random_start_end
 
@@ -36,8 +36,8 @@ def test_update_run():
     assert run.description == desc
     assert len(run.properties) == 0
     assert len(run.labels) == 0
-    assert run.start == _datetime_to_integral_nanoseconds(start)
-    assert run.end == _datetime_to_integral_nanoseconds(end)
+    assert run.start == _SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert run.end == _SecondsNanos.from_datetime(end).to_nanoseconds()
 
     new_name = title + "-updated"
     new_desc = desc + "-updated"
@@ -59,8 +59,8 @@ def test_update_run():
     assert run.description == new_desc
     assert run.properties == new_props
     assert run.labels == tuple(new_labels)
-    assert run.start == _datetime_to_integral_nanoseconds(new_start)
-    assert run.end == _datetime_to_integral_nanoseconds(new_end)
+    assert run.start == _SecondsNanos.from_datetime(new_start).to_nanoseconds()
+    assert run.end == _SecondsNanos.from_datetime(new_end).to_nanoseconds()
 
 
 def test_add_dataset_to_run_and_list_datasets(csv_data):
@@ -90,11 +90,11 @@ def test_add_csv_to_dataset(csv_data, csv_data2):
     desc = f"TESTING core test to add more data to a dataset {uuid4()}"
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
+        ds = nm.upload_csv("fake_path.csv", name, "timestamp", nm.ts.ISO_8601, desc)
     ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
 
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data2)):
-        ds.add_csv_to_dataset("fake_path.csv", "timestamp", "iso_8601")
+        ds.add_csv_to_dataset("fake_path.csv", "timestamp", nm.ts.ISO_8601)
     ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
 
     assert ds.rid != ""
@@ -153,7 +153,10 @@ def test_create_get_log_set(client: nm.NominalClient):
     name = f"logset-{uuid4()}"
     desc = f"core test to create & get a log set {uuid4()}"
     start, _ = _create_random_start_end()
-    logs = [(_datetime_to_integral_nanoseconds(start + timedelta(seconds=i)), f"Log message {i}") for i in range(5)]
+    logs = [
+        (nm.ts._SecondsNanos.from_datetime(start + timedelta(seconds=i)).to_nanoseconds(), f"Log message {i}")
+        for i in range(5)
+    ]
 
     logset = client.create_log_set(name, logs, "absolute", desc)
     logset2 = nm.get_log_set(logset.rid)
