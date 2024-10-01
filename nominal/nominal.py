@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from nominal import _config
 
 from . import ts
-from ._checklist import _create_checklist_builder_from_yaml
+from ._checklist import _ChecklistModel
 from ._utils import (
     FileType,
     FileTypes,
@@ -18,7 +18,6 @@ from ._utils import (
 )
 from .core import (
     Attachment,
-    Check,
     Checklist,
     ChecklistBuilder,
     Dataset,
@@ -391,9 +390,15 @@ def draft_checklist(
     )
 
 
-def draft_checklist_from_yaml(checklist_config_path: str) -> ChecklistBuilder:
+def draft_checklist_from_yaml(
+    path: Path | str,
+    name: str,
+    assignee_email: str,
+    description: str = "",
+    default_ref_name: str | None = None,
+) -> ChecklistBuilder:
     conn = get_default_client()
-    return _create_checklist_builder_from_yaml(checklist_config_path, conn)
+    return _ChecklistModel.from_yaml(path).to_builder(conn, name, assignee_email, description, default_ref_name)
 
 
 def get_checklist(checklist_rid: str) -> Checklist:
