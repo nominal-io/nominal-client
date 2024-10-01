@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Mapping, Sequence
 
-import yaml
-from pydantic import BaseModel, Field, PrivateAttr
 from typing_extensions import Self
 
-from nominal._api.combined import (
+from ._api.combined import (
     api,
     scout_api,
     scout_checks_api,
@@ -486,50 +483,3 @@ class _VariableLocatorVisitor(scout_checks_api.VariableLocatorVisitor):
         self, timestamp: scout_checks_api.TimestampLocator
     ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
         return None
-
-
-class _CheckModel(BaseModel):
-    name: str
-    expression: str
-    priority: Priority
-    description: str
-
-
-class _ChecklistVariableModel(BaseModel):
-    name: str
-    expression: str
-
-
-class _ChecklistModel(BaseModel):
-    # TODO(alkasm): need name, email, etc in the YAML version? or would that all be in code?
-    checks: list[_CheckModel] = Field(default_factory=list)
-    checklist_variables: list[_ChecklistVariableModel] = Field(default_factory=list)
-
-    @classmethod
-    def from_yaml(cls, path: Path | str) -> _ChecklistModel:
-        with open(path, "r") as file:
-            d = yaml.safe_load(file)
-            return cls.model_validate(d)
-
-    def to_builder(
-        self,
-        client: NominalClient,
-        name: str,
-        assignee_email: str,
-        description: str = "",
-        default_ref_name: str | None = None,
-    ) -> ChecklistBuilder:
-        builder = ChecklistBuilder.create(
-            client,
-            name,
-            assignee_email,
-            description=description,
-            default_ref_name=default_ref_name,
-        )
-
-        for check in self.checks:
-            builder.add_check(check.name, check.expression, check.priority, check.description)
-        for variable in self.checklist_variables:
-            builder.add_variable(variable.name, variable.expression)
-
-        return builder
