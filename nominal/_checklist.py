@@ -297,7 +297,7 @@ def _get_compute_condition_for_compiled_node(
                 function_variables={},
             )
         )
-    raise ValueError("expression does not evaluate to a range_series")
+    raise ValueError(f"only range_series nodes are currently supported, got {node.node!r}")
 
 
 def _batch_get_compute_condition(

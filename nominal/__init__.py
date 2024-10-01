@@ -1,10 +1,12 @@
 from . import ts
-from .core import Attachment, Dataset, Log, LogSet, NominalClient, Run, Video
+from .core import Attachment, Check, Checklist, ChecklistBuilder, Dataset, Log, LogSet, NominalClient, Run, Video
 from .nominal import (
     create_run,
     create_run_csv,
+    draft_checklist,
     download_attachment,
     get_attachment,
+    get_checklist,
     get_dataset,
     get_default_client,
     get_log_set,
@@ -23,8 +25,10 @@ __all__ = [
     "ts",
     "create_run",
     "create_run_csv",
+    "draft_checklist",
     "download_attachment",
     "get_attachment",
+    "get_checklist",
     "get_dataset",
     "get_default_client",
     "get_log_set",
@@ -39,6 +43,9 @@ __all__ = [
     "upload_video",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
     "Attachment",
+    "Check",
+    "Checklist",
+    "ChecklistBuilder",
     "Dataset",
     "NominalClient",
     "Run",

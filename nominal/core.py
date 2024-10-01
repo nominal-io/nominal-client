@@ -889,13 +889,13 @@ class NominalClient:
         )
         response = self._authentication_client.search_users_v2(self._auth_header, request)
         if len(response.results) == 0:
-            raise ValueError(f"user {user_email} not found")
+            raise ValueError(f"user {user_email!r} not found")
         if len(response.results) > 1:
-            raise ValueError(f"found multiple users with email {user_email}")
+            raise ValueError(f"found multiple users with email {user_email!r}")
         return response.results[0].rid
 
-    def get_checklist(self, checklistRid: str) -> Checklist:
-        response = self._checklist_api_client.get(self._auth_header, checklistRid)
+    def get_checklist(self, rid: str) -> Checklist:
+        response = self._checklist_api_client.get(self._auth_header, rid)
         return Checklist._from_conjure(self, response)
 
     def create_attachment_from_io(
