@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from nominal import _config
 
 from . import ts
+from ._checklist import _create_checklist_builder_from_yaml
 from ._utils import (
     FileType,
     FileTypes,
@@ -17,6 +18,7 @@ from ._utils import (
 )
 from .core import (
     Attachment,
+    Check,
     Checklist,
     ChecklistBuilder,
     Dataset,
@@ -24,7 +26,6 @@ from .core import (
     NominalClient,
     Run,
     Video,
-    _create_checklist_builder_from_yaml,
     poll_until_ingestion_completed,
 )
 
