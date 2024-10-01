@@ -24,9 +24,13 @@ def base_url(pytestconfig):
     return pytestconfig.getoption("base_url")
 
 
+@pytest.fixture(scope="session")
+def client(base_url, auth_token) -> Iterator[None]:
+    return NominalClient.create(base_url=base_url, token=auth_token)
+
+
 @pytest.fixture(scope="session", autouse=True)
-def set_connection(base_url, auth_token) -> Iterator[None]:
-    client = NominalClient.create(base_url=base_url, token=auth_token)
+def set_connection(client) -> Iterator[None]:
     with mock.patch("nominal.nominal.get_default_client", return_value=client):
         yield
 
@@ -78,4 +82,5 @@ def mp4_data():
         curl https://raw.githubusercontent.com/chromium/chromium/main/media/test/data/bear-1280x720.mp4 -o data/bear-1280x720.mp4
     """
     path = Path(__file__).parent / "data/bear-1280x720.mp4"
-    return open(path, "rb").read()
+    with open(path, "rb") as f:
+        return f.read()

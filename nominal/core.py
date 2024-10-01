@@ -14,13 +14,16 @@ import certifi
 import yaml
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
 from pydantic import BaseModel, Field, PrivateAttr
-from typing_extensions import Self  # typing.Self in 3.11+
+from typing_extensions import Self
 
 from nominal import _config
 
 from ._api.combined import (
     attachments_api,
     authentication_api,
+    datasource,
+    datasource_logset,
+    datasource_logset_api,
     ingest_api,
     scout,
     scout_catalog,
@@ -34,39 +37,34 @@ from ._api.combined import (
 )
 from ._multipart import put_multipart_upload
 from ._utils import (
-    CustomTimestampFormat,
     FileType,
     FileTypes,
-    IntegralNanosecondsUTC,
     Priority,
-    TimestampColumnType,
     _compiled_node_to_compute_node,
     _conjure_check_to_check_definition_graph_pair,
     _conjure_checklist_variable_to_name_graph__pair,
     _conjure_priority_to_priority,
-    _conjure_time_to_integral_nanoseconds,
-    _flexible_time_to_conjure_ingest_api,
-    _flexible_time_to_conjure_scout_run_api,
     _priority_to_conjure_priority,
     _remove_newlines,
     _representation_variable_to_unresolved_variable_locator,
-    _timestamp_type_to_conjure_ingest_api,
     construct_user_agent_string,
     update_dataclass,
 )
 from .exceptions import NominalIngestError, NominalIngestFailed
+from ._utils import FileType, FileTypes, construct_user_agent_string, deprecate_keyword_argument, update_dataclass
+from .exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
+from .ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 
 __all__ = [
     "NominalClient",
     "Run",
     "Dataset",
+    "LogSet",
     "Attachment",
     "Checklist",
     "Check",
     "ChecklistVariable",
     "Video",
-    "IntegralNanosecondsUTC",
-    "CustomTimestampFormat",
 ]
 
 
@@ -88,6 +86,28 @@ class Run:
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
         """
         self.add_datasets({ref_name: dataset})
+
+    def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
+        """Add a log set to this run.
+
+        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
+        """
+        self.add_log_sets({ref_name: log_set})
+
+    def add_log_sets(self, log_sets: Mapping[str, LogSet | str]) -> None:
+        """Add multiple log sets to this run.
+
+        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
+        """
+        data_sources = {
+            ref_name: scout_run_api.CreateRunDataSource(
+                data_source=scout_run_api.DataSource(log_set=_rid_from_instance_or_string(log_set)),
+                series_tags={},
+                offset=None,
+            )
+            for ref_name, log_set in log_sets.items()
+        }
+        self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
 
     def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
         """Add multiple datasets to this run.
@@ -154,6 +174,8 @@ class Run:
         self,
         *,
         name: str | None = None,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        end: datetime | IntegralNanosecondsUTC | None = None,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
@@ -174,6 +196,8 @@ class Run:
             description=description,
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
+            start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
+            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
         )
         response = self._client._run_client.update_run(self._client._auth_header, request, self.rid)
@@ -189,8 +213,8 @@ class Run:
             description=run.description,
             properties=MappingProxyType(run.properties),
             labels=tuple(run.labels),
-            start=_conjure_time_to_integral_nanoseconds(run.start_time),
-            end=(_conjure_time_to_integral_nanoseconds(run.end_time) if run.end_time else None),
+            start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
+            end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             _client=nominal_client,
         )
 
@@ -267,7 +291,7 @@ class Dataset:
         update_dataclass(self, dataset, fields=self.__dataclass_fields__)
         return self
 
-    def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: TimestampColumnType) -> None:
+    def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
         path, file_type = _verify_csv_path(path)
         with open(path, "rb") as csv_file:
@@ -277,19 +301,13 @@ class Dataset:
         self,
         dataset: BinaryIO,
         timestamp_column: str,
-        timestamp_type: TimestampColumnType,
+        timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
     ) -> None:
         """Append to a dataset from a file-like object.
 
         file_type: a (extension, mimetype) pair describing the type of file.
         """
-
-        if not isinstance(timestamp_type, CustomTimestampFormat):
-            if timestamp_type.startswith("relative"):
-                raise ValueError(
-                    "multifile datasets with relative timestamps are not yet supported by the client library"
-                )
 
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
@@ -310,7 +328,7 @@ class Dataset:
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_type),
+                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                 ),
             ),
         )
@@ -475,6 +493,41 @@ class Checklist:
                 )
                 for check_rid, check_definition in check_rids_to_definitions.items()
             ],
+        )
+
+
+class LogSet:
+    rid: str
+    name: str
+    timestamp_type: LogTimestampType
+    description: str | None
+    _client: NominalClient = field(repr=False)
+
+    def _stream_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
+        request = datasource_logset_api.SearchLogsRequest()
+        while True:
+            response = self._client._logset_client.search_logs(
+                self._client._auth_header,
+                log_set_rid=self.rid,
+                request=request,
+            )
+            yield from response.logs
+            if response.next_page_token is None:
+                break
+            request = datasource_logset_api.SearchLogsRequest(token=response.next_page_token)
+
+    def stream_logs(self) -> Iterable[Log]:
+        """Iterate over the logs."""
+        for log in self._stream_logs_paginated():
+            yield Log._from_conjure(log)
+
+    @classmethod
+    def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
+        return cls(
+            rid=log_set_metadata.rid,
+            name=log_set_metadata.name,
+            timestamp_type=_log_timestamp_type_from_conjure(log_set_metadata.timestamp_type),
+            description=log_set_metadata.description,
             _client=client,
         )
 
@@ -495,6 +548,26 @@ class ChecklistVariable:
     name: str
     expression: str
     _client: NominalClient = field(repr=False)
+
+
+@dataclass(frozen=True)
+class Log:
+    timestamp: IntegralNanosecondsUTC
+    body: str
+
+    def _to_conjure(self) -> datasource_logset_api.Log:
+        return datasource_logset_api.Log(
+            time=_SecondsNanos.from_nanoseconds(self.timestamp).to_api(),
+            body=datasource_logset_api.LogBody(
+                basic=datasource_logset_api.BasicLogBody(message=self.body, properties={}),
+            ),
+        )
+
+    @classmethod
+    def _from_conjure(cls, log: datasource_logset_api.Log) -> Self:
+        if log.body.basic is None:
+            raise RuntimeError(f"unhandled log body type: expected 'basic' but got {log.body.type!r}")
+        return cls(timestamp=_SecondsNanos.from_api(log.time).to_nanoseconds(), body=log.body.basic.message)
 
 
 @dataclass(frozen=True)
@@ -663,6 +736,7 @@ class NominalClient:
     _compute_representation_client: scout_compute_representation_api.ComputeRepresentationService = field(repr=False)
     _checklist_api_client: scout_checks_api.ChecklistService = field(repr=False)
     _video_client: scout_video.VideoService = field(repr=False)
+    _logset_client: datasource_logset.LogSetService = field(repr=False)
 
     @classmethod
     def create(cls, base_url: str, token: str | None, trust_store_path: str | None = None) -> Self:
@@ -690,6 +764,7 @@ class NominalClient:
         checklist_api_client = RequestsClient.create(scout_checks_api.ChecklistService, agent, cfg)
         authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
         video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
+        logset_client = RequestsClient.create(datasource_logset.LogSetService, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
@@ -702,6 +777,7 @@ class NominalClient:
             _checklist_api_client=checklist_api_client,
             _authentication_client=authentication_client,
             _video_client=video_client,
+            _logset_client=logset_client,
         )
 
     def create_run(
@@ -724,9 +800,9 @@ class NominalClient:
             labels=list(labels),
             links=[],
             properties={} if properties is None else dict(properties),
-            start_time=_flexible_time_to_conjure_scout_run_api(start),
+            start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
-            end_time=_flexible_time_to_conjure_scout_run_api(end),
+            end_time=_SecondsNanos.from_flexible(end).to_scout_run_api(),
         )
         response = self._run_client.create_run(self._auth_header, request)
         return Run._from_conjure(self, response)
@@ -753,13 +829,13 @@ class NominalClient:
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        exact_name: str | None = None,
+        name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
-            query=_create_search_runs_query(start, end, exact_name, label, property),
+            query=_create_search_runs_query(start, end, name_substring, label, property),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
@@ -768,28 +844,29 @@ class NominalClient:
         for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self, run)
 
+    @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        exact_name: str | None = None,
+        name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
         - `start` and `end` times are both inclusive
-        - `exact_name` is case-insensitive
+        - `name_substring`: search for a (case-insensitive) substring in the name
         - `property` is a key-value pair, e.g. ("name", "value")
         """
-        return list(self._iter_search_runs(start, end, exact_name, label, property))
+        return list(self._iter_search_runs(start, end, name_substring, label, property))
 
     def create_csv_dataset(
         self,
         path: Path | str,
         name: str | None,
         timestamp_column: str,
-        timestamp_type: TimestampColumnType,
+        timestamp_type: _AnyTimestampType,
         description: str | None = None,
         *,
         labels: Sequence[str] = (),
@@ -821,7 +898,7 @@ class NominalClient:
         dataset: BinaryIO,
         name: str,
         timestamp_column: str,
-        timestamp_type: TimestampColumnType,
+        timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
         description: str | None = None,
         *,
@@ -861,7 +938,7 @@ class NominalClient:
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=_timestamp_type_to_conjure_ingest_api(timestamp_type),
+                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                 ),
             ),
         )
@@ -897,7 +974,7 @@ class NominalClient:
             sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
             timestamps=ingest_api.VideoTimestampManifest(
                 no_manifest=ingest_api.NoTimestampManifest(
-                    starting_timestamp=_flexible_time_to_conjure_ingest_api(start)
+                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
                 )
             ),
             description=description,
@@ -905,6 +982,34 @@ class NominalClient:
         )
         response = self._ingest_client.ingest_video(self._auth_header, request)
         return self.get_video(response.video_rid)
+
+    def create_log_set(
+        self,
+        name: str,
+        logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
+        timestamp_type: LogTimestampType = "absolute",
+        description: str | None = None,
+    ) -> LogSet:
+        """Create an immutable log set with the given logs.
+
+        The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
+        or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
+        """
+        request = datasource_logset_api.CreateLogSetRequest(
+            name=name,
+            description=description,
+            origin_metadata={},
+            timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
+        )
+        response = self._logset_client.create(self._auth_header, request)
+        return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
+
+    def _attach_logs_and_finalize(self, rid: str, logs: Iterable[datasource_logset_api.Log]) -> LogSet:
+        request = datasource_logset_api.AttachLogsAndFinalizeRequest(logs=list(logs))
+        response = self._logset_client.attach_logs_and_finalize(
+            auth_header=self._auth_header, log_set_rid=rid, request=request
+        )
+        return LogSet._from_conjure(self, response)
 
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""
@@ -924,6 +1029,11 @@ class NominalClient:
         """Retrieve a dataset by its RID."""
         response = _get_dataset(self._auth_header, self._catalog_client, rid)
         return Dataset._from_conjure(self, response)
+
+    def get_log_set(self, log_set_rid: str) -> LogSet:
+        """Retrieve a log set along with its metadata given its RID."""
+        response = _get_log_set(self._auth_header, self._logset_client, log_set_rid)
+        return LogSet._from_conjure(self, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
         for ds in _get_datasets(self._auth_header, self._catalog_client, rids):
@@ -1063,7 +1173,13 @@ def _get_dataset(
     return datasets[0]
 
 
-def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | str) -> str:
+def _get_log_set(
+    auth_header: str, client: datasource_logset.LogSetService, log_set_rid: str
+) -> datasource_logset_api.LogSetMetadata:
+    return client.get_log_set_metadata(auth_header, log_set_rid)
+
+
+def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | LogSet | str) -> str:
     if isinstance(value, str):
         return value
     elif isinstance(value, (Attachment, Run, Dataset, Video)):
@@ -1076,19 +1192,19 @@ def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | str
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
     end: datetime | IntegralNanosecondsUTC | None = None,
-    exact_name: str | None = None,
+    name_substring: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
 ) -> scout_run_api.SearchQuery:
     queries = []
     if start is not None:
-        q = scout_run_api.SearchQuery(start_time_inclusive=_flexible_time_to_conjure_scout_run_api(start))
+        q = scout_run_api.SearchQuery(start_time_inclusive=_SecondsNanos.from_flexible(start).to_scout_run_api())
         queries.append(q)
     if end is not None:
-        q = scout_run_api.SearchQuery(end_time_inclusive=_flexible_time_to_conjure_scout_run_api(end))
+        q = scout_run_api.SearchQuery(end_time_inclusive=_SecondsNanos.from_flexible(end).to_scout_run_api())
         queries.append(q)
-    if exact_name is not None:
-        q = scout_run_api.SearchQuery(exact_match=exact_name)
+    if name_substring is not None:
+        q = scout_run_api.SearchQuery(exact_match=name_substring)
         queries.append(q)
     if label is not None:
         q = scout_run_api.SearchQuery(label=label)
@@ -1222,3 +1338,49 @@ def _batch_create_checklist_variable_to_conjure(
             raise ValueError("expression_to_compute response is not a success or error")
 
     return unresolved_checklist_variables
+
+
+def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:
+    if log_timestamp_type == "absolute":
+        return datasource.TimestampType.ABSOLUTE
+    elif log_timestamp_type == "relative":
+        return datasource.TimestampType.RELATIVE
+    raise ValueError(f"timestamp type {log_timestamp_type} must be 'relative' or 'absolute'")
+
+
+def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampType) -> LogTimestampType:
+    if log_timestamp_type == datasource.TimestampType.ABSOLUTE:
+        return "absolute"
+    elif log_timestamp_type == datasource.TimestampType.RELATIVE:
+        return "relative"
+    raise ValueError(f"unhandled timestamp type {log_timestamp_type}")
+
+
+def _logs_to_conjure(
+    logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
+) -> Iterable[datasource_logset_api.Log]:
+    for log in logs:
+        if isinstance(log, Log):
+            yield log._to_conjure()
+        elif isinstance(log, tuple):
+            ts, body = log
+            yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
+
+
+def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
+    """Block until all dataset ingestions have completed (succeeded or failed).
+
+    This method polls Nominal for ingest status on each of the datasets on an interval.
+    No specific ordering is guaranteed, but all datasets will be checked at least once.
+
+    Raises:
+        NominalIngestMultiError: if any of the datasets failed to ingest
+    """
+    errors = {}
+    for dataset in datasets:
+        try:
+            dataset.poll_until_ingestion_completed(interval=interval)
+        except NominalIngestError as e:
+            errors[dataset.rid] = e
+    if errors:
+        raise NominalIngestMultiError(errors)

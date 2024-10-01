@@ -4,17 +4,13 @@ import logging
 import mimetypes
 import os
 from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import BinaryIO, Iterable, Iterator, Literal, NamedTuple, TypeVar, Union
+from typing import BinaryIO, Callable, Iterable, Iterator, Literal, NamedTuple, TypeVar
 
-import dateutil.parser
-from typing_extensions import TypeAlias  # typing.TypeAlias in 3.10+
+from typing_extensions import ParamSpec
 
-from ._api.combined import (
+from nominal._api.combined import (
     api,
-    ingest_api,
     scout_api,
     scout_checks_api,
     scout_compute_api,
@@ -24,137 +20,7 @@ from ._api.combined import (
 
 logger = logging.getLogger(__name__)
 
-IntegralNanosecondsUTC = int
 T = TypeVar("T")
-
-
-@dataclass
-class CustomTimestampFormat:
-    format: str
-    default_year: int = 0
-
-
-# Using Union rather than the "|" operator due to https://github.com/python/mypy/issues/11665.
-TimestampColumnType: TypeAlias = Union[
-    Literal[
-        "iso_8601",
-        "epoch_days",
-        "epoch_hours",
-        "epoch_minutes",
-        "epoch_seconds",
-        "epoch_milliseconds",
-        "epoch_microseconds",
-        "epoch_nanoseconds",
-        "relative_days",
-        "relative_hours",
-        "relative_minutes",
-        "relative_seconds",
-        "relative_milliseconds",
-        "relative_microseconds",
-        "relative_nanoseconds",
-    ],
-    CustomTimestampFormat,
-]
-
-Priority = Literal["P0", "P1", "P2", "P3", "P4"]
-
-
-def _priority_to_conjure_priority(priority: Priority) -> scout_checks_api.Priority:
-    if priority == "P0":
-        return scout_checks_api.Priority.P0
-    elif priority == "P1":
-        return scout_checks_api.Priority.P1
-    elif priority == "P2":
-        return scout_checks_api.Priority.P2
-    elif priority == "P3":
-        return scout_checks_api.Priority.P3
-    elif priority == "P4":
-        return scout_checks_api.Priority.P4
-    else:
-        raise ValueError(f"invalid priority: {priority}")
-
-
-def _conjure_priority_to_priority(priority: scout_checks_api.Priority) -> Priority:
-    if priority == scout_checks_api.Priority.P0:
-        return "P0"
-    elif priority == scout_checks_api.Priority.P1:
-        return "P1"
-    elif priority == scout_checks_api.Priority.P2:
-        return "P2"
-    elif priority == scout_checks_api.Priority.P3:
-        return "P3"
-    elif priority == scout_checks_api.Priority.P4:
-        return "P4"
-    else:
-        raise ValueError(f"invalid priority: {priority}")
-
-
-def _timestamp_type_to_conjure_ingest_api(
-    ts_type: TimestampColumnType,
-) -> ingest_api.TimestampType:
-    if isinstance(ts_type, CustomTimestampFormat):
-        return ingest_api.TimestampType(
-            absolute=ingest_api.AbsoluteTimestamp(
-                custom_format=ingest_api.CustomTimestamp(format=ts_type.format, default_year=ts_type.default_year)
-            )
-        )
-    elif ts_type == "iso_8601":
-        return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(iso8601=ingest_api.Iso8601Timestamp()))
-    relation, unit = ts_type.split("_", 1)
-    time_unit = ingest_api.TimeUnit[unit.upper()]
-    if relation == "epoch":
-        return ingest_api.TimestampType(
-            absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=ingest_api.EpochTimestamp(time_unit=time_unit))
-        )
-    elif relation == "relative":
-        return ingest_api.TimestampType(relative=ingest_api.RelativeTimestamp(time_unit=time_unit))
-    raise ValueError(f"invalid timestamp type: {ts_type}")
-
-
-def _flexible_time_to_conjure_scout_run_api(timestamp: datetime | IntegralNanosecondsUTC) -> scout_run_api.UtcTimestamp:
-    seconds, nanos = _flexible_time_to_seconds_nanos(timestamp)
-    return scout_run_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
-
-
-def _flexible_time_to_conjure_ingest_api(
-    timestamp: datetime | IntegralNanosecondsUTC,
-) -> ingest_api.UtcTimestamp:
-    seconds, nanos = _flexible_time_to_seconds_nanos(timestamp)
-    return ingest_api.UtcTimestamp(seconds_since_epoch=seconds, offset_nanoseconds=nanos)
-
-
-def _flexible_time_to_seconds_nanos(
-    timestamp: datetime | IntegralNanosecondsUTC,
-) -> tuple[int, int]:
-    if isinstance(timestamp, datetime):
-        return _datetime_to_seconds_nanos(timestamp)
-    elif isinstance(timestamp, IntegralNanosecondsUTC):
-        return divmod(timestamp, 1_000_000_000)
-    raise TypeError(f"expected {datetime} or {IntegralNanosecondsUTC}, got {type(timestamp)}")
-
-
-def _conjure_time_to_integral_nanoseconds(ts: scout_run_api.UtcTimestamp) -> IntegralNanosecondsUTC:
-    return ts.seconds_since_epoch * 1_000_000_000 + (ts.offset_nanoseconds or 0)
-
-
-def _datetime_to_seconds_nanos(dt: datetime) -> tuple[int, int]:
-    dt = dt.astimezone(timezone.utc)
-    seconds = int(dt.timestamp())
-    nanos = dt.microsecond * 1000
-    return seconds, nanos
-
-
-def _datetime_to_integral_nanoseconds(dt: datetime) -> IntegralNanosecondsUTC:
-    seconds, nanos = _datetime_to_seconds_nanos(dt)
-    return seconds * 1_000_000_000 + nanos
-
-
-def _parse_timestamp(ts: str | datetime | IntegralNanosecondsUTC) -> IntegralNanosecondsUTC:
-    if isinstance(ts, int):
-        return ts
-    if isinstance(ts, str):
-        ts = dateutil.parser.parse(ts)
-    return _datetime_to_integral_nanoseconds(ts)
 
 
 def construct_user_agent_string() -> str:
@@ -229,6 +95,39 @@ def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
     finally:
         w.close()
         r.close()
+
+
+Priority = Literal["P0", "P1", "P2", "P3", "P4"]
+
+
+def _priority_to_conjure_priority(priority: Priority) -> scout_checks_api.Priority:
+    if priority == "P0":
+        return scout_checks_api.Priority.P0
+    elif priority == "P1":
+        return scout_checks_api.Priority.P1
+    elif priority == "P2":
+        return scout_checks_api.Priority.P2
+    elif priority == "P3":
+        return scout_checks_api.Priority.P3
+    elif priority == "P4":
+        return scout_checks_api.Priority.P4
+    else:
+        raise ValueError(f"invalid priority: {priority}")
+
+
+def _conjure_priority_to_priority(priority: scout_checks_api.Priority) -> Priority:
+    if priority == scout_checks_api.Priority.P0:
+        return "P0"
+    elif priority == scout_checks_api.Priority.P1:
+        return "P1"
+    elif priority == scout_checks_api.Priority.P2:
+        return "P2"
+    elif priority == scout_checks_api.Priority.P3:
+        return "P3"
+    elif priority == scout_checks_api.Priority.P4:
+        return "P4"
+    else:
+        raise ValueError(f"invalid priority: {priority}")
 
 
 def _compute_node_to_compiled_node(node: scout_compute_api.ComputeNode) -> scout_compute_representation_api.Node:
@@ -398,3 +297,25 @@ def _variable_locator_to_representation_variable(
 
 def _remove_newlines(s: str) -> str:
     return s.replace("\n", "")
+
+
+Param = ParamSpec("Param")
+
+
+def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
+    def _deprecate_keyword_argument_decorator(f: Callable[Param, T]) -> Callable[Param, T]:
+        def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
+            if old_name in kwargs:
+                import warnings
+
+                warnings.warn(
+                    f"The '{old_name}' keyword argument is deprecated and will be removed in a future version, use '{new_name}' instead.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                kwargs[new_name] = kwargs.pop(old_name)
+            return f(*args, **kwargs)
+
+        return wrapper
+
+    return _deprecate_keyword_argument_decorator

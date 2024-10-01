@@ -4,17 +4,15 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Literal
+from typing import TYPE_CHECKING, BinaryIO
 
 from nominal import _config
 
 from ._utils import (
-    CustomTimestampFormat,
+    reader_writer,
     FileType,
     FileTypes,
-    IntegralNanosecondsUTC,
-    TimestampColumnType,
-    _parse_timestamp,
+    deprecate_keyword_argument,
     reader_writer,
 )
 from .core import (
@@ -22,11 +20,15 @@ from .core import (
     Checklist,
     ChecklistBuilder,
     Dataset,
+    LogSet,
     NominalClient,
     Run,
     Video,
+    poll_until_ingestion_completed,
     _create_checklist_builder_from_yaml,
 )
+from . import ts
+
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -67,12 +69,17 @@ def upload_pandas(
     df: pd.DataFrame,
     name: str,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a pandas.DataFrame."""
+    """Create a dataset in the Nominal platform from a pandas.DataFrame.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
     conn = get_default_client()
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
@@ -103,12 +110,17 @@ def upload_polars(
     df: pl.DataFrame,
     name: str,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a polars.DataFrame."""
+    """Create a dataset in the Nominal platform from a polars.DataFrame.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
     conn = get_default_client()
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
@@ -137,7 +149,7 @@ def upload_csv(
     file: Path | str,
     name: str | None,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
@@ -145,6 +157,10 @@ def upload_csv(
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file.
 
     If `name` is None, the dataset is created with the name of the file.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
     conn = get_default_client()
     return _upload_csv(
@@ -157,7 +173,7 @@ def _upload_csv(
     file: Path | str,
     name: str | None,
     timestamp_column: str,
-    timestamp_type: TimestampColumnType,
+    timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
@@ -182,8 +198,8 @@ def get_dataset(rid: str) -> Dataset:
 
 def create_run(
     name: str,
-    start: datetime | str | IntegralNanosecondsUTC,
-    end: datetime | str | IntegralNanosecondsUTC,
+    start: datetime | str | ts.IntegralNanosecondsUTC,
+    end: datetime | str | ts.IntegralNanosecondsUTC,
     description: str | None = None,
 ) -> Run:
     """Create a run in the Nominal platform.
@@ -193,8 +209,8 @@ def create_run(
     conn = get_default_client()
     return conn.create_run(
         name,
-        start=_parse_timestamp(start),
-        end=_parse_timestamp(end),
+        start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
+        end=ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         description=description,
     )
 
@@ -203,16 +219,7 @@ def create_run_csv(
     file: Path | str,
     name: str,
     timestamp_column: str,
-    timestamp_type: Literal[
-        "iso_8601",
-        "epoch_days",
-        "epoch_hours",
-        "epoch_minutes",
-        "epoch_seconds",
-        "epoch_milliseconds",
-        "epoch_microseconds",
-        "epoch_nanoseconds",
-    ],
+    timestamp_type: ts._LiteralAbsolute | ts.Iso8601 | ts.Epoch,
     description: str | None = None,
 ) -> Run:
     """Create a dataset from a CSV file, and create a run based on it.
@@ -226,13 +233,13 @@ def create_run_csv(
     The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
     column.
     """
-    try:
-        start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, timestamp_type)
-    except ValueError as e:
+    ts_type = ts._to_typed_timestamp_type(timestamp_type)
+    if not isinstance(ts_type, (ts.Iso8601, ts.Epoch)):
         raise ValueError(
-            "`create_run_csv()` only supports absolute timestamps: use `upload_dataset()` and `create_run()` instead"
-        ) from e
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
+            "`create_run_csv()` only supports iso8601 or epoch timestamps: use `upload_dataset()` and `create_run()` instead"
+        )
+    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, ts_type)
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, ts_type)
     run = create_run(name, start=start, end=end, description=description)
     run.add_dataset("dataset", dataset)
     return run
@@ -244,11 +251,12 @@ def get_run(rid: str) -> Run:
     return conn.get_run(rid)
 
 
+@deprecate_keyword_argument("name_substring", "exact_name")
 def search_runs(
     *,
-    start: str | datetime | IntegralNanosecondsUTC | None = None,
-    end: str | datetime | IntegralNanosecondsUTC | None = None,
-    exact_name: str | None = None,
+    start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
+    end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
+    name_substring: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
 ) -> list[Run]:
@@ -256,16 +264,16 @@ def search_runs(
 
     Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
     - `start` and `end` times are both inclusive
-    - `exact_name` is case-insensitive
+    - `name_substring`: search for a (case-insensitive) substring in the name
     - `property` is a key-value pair, e.g. ("name", "value")
     """
-    if all([v is None for v in (start, end, exact_name, label, property)]):
-        raise ValueError("must provide one of: start, end, exact_name, label, or property")
+    if all([v is None for v in (start, end, name_substring, label, property)]):
+        raise ValueError("must provide one of: start, end, name_substring, label, or property")
     conn = get_default_client()
     runs = conn.search_runs(
-        start=None if start is None else _parse_timestamp(start),
-        end=None if end is None else _parse_timestamp(end),
-        exact_name=exact_name,
+        start=None if start is None else ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
+        end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
+        name_substring=name_substring,
         label=label,
         property=property,
     )
@@ -291,6 +299,12 @@ def get_attachment(rid: str) -> Attachment:
     return conn.get_attachment(rid)
 
 
+def get_log_set(rid: str) -> LogSet:
+    """Retrieve a log set from the Nominal platform by its RID."""
+    conn = get_default_client()
+    return conn.get_log_set(rid)
+
+
 def download_attachment(rid: str, file: Path | str) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
     conn = get_default_client()
@@ -299,14 +313,16 @@ def download_attachment(rid: str, file: Path | str) -> None:
 
 
 def upload_video(
-    file: Path | str, name: str, start: datetime | str | IntegralNanosecondsUTC, description: str | None = None
+    file: Path | str, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
 ) -> Video:
     """Upload a video to Nominal from a file."""
     conn = get_default_client()
     path = Path(file)
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
-        return conn.create_video_from_io(f, name, _parse_timestamp(start), description, file_type)
+        return conn.create_video_from_io(
+            f, name, ts._SecondsNanos.from_flexible(start).to_nanoseconds(), description, file_type
+        )
 
 
 def get_video(rid: str) -> Video:
@@ -315,38 +331,48 @@ def get_video(rid: str) -> Video:
     return conn.get_video(rid)
 
 
+def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
+    """Wait until all datasets have completed ingestion.
+
+    If you are uploading multiple datasets, consider setting wait_until_complete=False in the upload functions and call
+    this function after uploading all the datasets to wait until ingestion completes. This allows for parallel ingestion.
+    """
+    poll_until_ingestion_completed(datasets)
+
+
 def _get_start_end_timestamp_csv_file(
-    file: Path | str, timestamp_column: str, timestamp_type: TimestampColumnType
-) -> tuple[IntegralNanosecondsUTC, IntegralNanosecondsUTC]:
+    file: Path | str,
+    timestamp_column: str,
+    timestamp_type: ts.Iso8601 | ts.Epoch,
+) -> tuple[ts.IntegralNanosecondsUTC, ts.IntegralNanosecondsUTC]:
     import pandas as pd
 
     df = pd.read_csv(file)
     ts_col = df[timestamp_column]
-    if isinstance(timestamp_type, CustomTimestampFormat) or timestamp_type.startswith("relative_"):
-        raise ValueError("timestamp_type must be 'iso_8601' or 'epoch_{unit}'")
-    if timestamp_type == "iso_8601":
+
+    if isinstance(timestamp_type, ts.Iso8601):
         ts_col = pd.to_datetime(ts_col)
-    else:
-        _, unit = timestamp_type.split("_")
-        pd_units = {
-            "days": "D",
+    elif isinstance(timestamp_type, ts.Epoch):
+        pd_units: dict[ts._LiteralTimeUnit, str] = {
+            "hours": "s",  # hours are not supported by pandas
+            "minutes": "s",  # minutes are not supported by pandas
             "seconds": "s",
             "milliseconds": "ms",
             "microseconds": "us",
             "nanoseconds": "ns",
         }
-        if unit == "hours":
-            unit = "seconds"
+        if timestamp_type.unit == "hours":
             ts_col *= 60 * 60
-        elif unit == "minutes":
-            unit = "seconds"
+        elif timestamp_type.unit == "minutes":
             ts_col *= 60
-        ts_col = pd.to_datetime(ts_col, unit=pd_units[unit])
+        ts_col = pd.to_datetime(ts_col, unit=pd_units[timestamp_type.unit])
+    else:
+        raise ValueError(f"unhandled timestamp type {timestamp_type}")
 
     start, end = ts_col.min(), ts_col.max()
     return (
-        IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
-        IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
+        ts.IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
+        ts.IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
     )
 
 

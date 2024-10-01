@@ -1,4 +1,5 @@
-from .core import Attachment, Dataset, NominalClient, Run, Video
+from . import ts
+from .core import Attachment, Dataset, Log, LogSet, NominalClient, Run, Video
 from .nominal import (
     create_run,
     create_run_csv,
@@ -6,6 +7,7 @@ from .nominal import (
     get_attachment,
     get_dataset,
     get_default_client,
+    get_log_set,
     get_run,
     get_video,
     search_runs,
@@ -18,30 +20,29 @@ from .nominal import (
 )
 
 __all__ = [
-    "set_base_url",
-    "get_default_client",
-    "upload_pandas",
-    "upload_polars",
-    "upload_csv",
-    "get_dataset",
+    "ts",
     "create_run",
     "create_run_csv",
-    "get_run",
-    "search_runs",
-    "upload_attachment",
-    "get_attachment",
     "download_attachment",
-    "upload_video",
+    "get_attachment",
+    "get_dataset",
+    "get_default_client",
+    "get_log_set",
+    "get_run",
     "get_video",
-    "draft_checklist",
-    "draft_checklist_from_yaml",
-    "get_checklist",
+    "search_runs",
+    "set_base_url",
+    "upload_attachment",
+    "upload_csv",
+    "upload_pandas",
+    "upload_polars",
+    "upload_video",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
-    "Dataset",
-    "Run",
     "Attachment",
+    "Dataset",
     "NominalClient",
+    "Run",
     "Video",
-    "Checklist",
-    "ChecklistBuilder",
+    "LogSet",
+    "Log",
 ]
