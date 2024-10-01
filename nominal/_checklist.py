@@ -39,76 +39,93 @@ class ChecklistVariable:
     _client: NominalClient = field(repr=False)
 
 
-class _CreateChecklistVariable(BaseModel):
+@dataclass(frozen=True)
+class _CreateChecklistVariable:
     name: str
     expression: str
 
 
-class _CreateCheck(BaseModel):
+@dataclass(frozen=True)
+class _CreateCheck:
     name: str
+    expression: str
     priority: Priority
-    expression: str
-    description: str | None
+    description: str
 
 
-class ChecklistBuilder(BaseModel):
+@dataclass(frozen=True)
+class ChecklistBuilder:
     name: str
     assignee_email: str
-    checklist_variables: list[_CreateChecklistVariable] = Field(default_factory=list)
-    checks: list[_CreateCheck] = Field(default_factory=list)
-    default_ref_name: str | None = None
-    commit_message: str | None = None
-    description: str | None = None
-    properties: Mapping[str, str] | None = None
-    labels: Sequence[str] = Field(default_factory=list)
-    _client: NominalClient = PrivateAttr()
+    description: str
+    _default_ref_name: str | None
+    # note that the ChecklistBuilder is immutable, but the lists/dicts it contains are mutable
+    _variables: list[_CreateChecklistVariable]
+    _checks: list[_CreateCheck]
+    _properties: dict[str, str]
+    _labels: list[str]
+    _client: NominalClient = field(repr=False)
 
-    class Config:
-        arbitrary_types_allowed = True
+    @classmethod
+    def create(
+        cls,
+        client: NominalClient,
+        name: str,
+        assignee_email: str,
+        description: str = "",
+        default_ref_name: str | None = None,
+    ) -> ChecklistBuilder:
+        return cls(
+            name=name,
+            assignee_email=assignee_email,
+            description=description,
+            _default_ref_name=default_ref_name,
+            _variables=[],
+            _checks=[],
+            _properties={},
+            _labels=[],
+            _client=client,
+        )
 
-    def add_metadata(
-        self,
-        properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] | None = None,
-    ) -> Self:
-        if properties is not None:
-            self.properties = properties
-        if labels is not None:
-            self.labels = labels
+    def add_properties(self, properties: Mapping[str, str]) -> Self:
+        self._properties.update(properties)
         return self
 
-    # TODO(alkasm): reorder args
-    def add_check(self, name: str, expression: str, priority: Priority = 2, description: str | None = None) -> Self:
-        self.checks.append(_CreateCheck(name=name, priority=priority, expression=expression, description=description))
+    def add_labels(self, labels: Sequence[str]) -> Self:
+        self._labels.extend(labels)
         return self
 
-    def add_checklist_variable(self, name: str, expression: str) -> Self:
-        self.checklist_variables.append(_CreateChecklistVariable(name=name, expression=expression))
+    def add_check(self, name: str, expression: str, priority: Priority = 2, description: str = "") -> Self:
+        self._checks.append(_CreateCheck(name=name, expression=expression, priority=priority, description=description))
+        return self
+
+    def add_variable(self, name: str, expression: str) -> Self:
+        self._variables.append(_CreateChecklistVariable(name=name, expression=expression))
         return self
 
     def build_and_publish(self, commit_message: str | None = None) -> Checklist:
-        conjure_checklist_variables = _batch_create_checklist_variable_to_conjure(
-            self.checklist_variables,
+        conjure_variables = _batch_create_variable_to_conjure(
+            self._variables,
             self._client._auth_header,
             self._client._compute_representation_client,
-            self.default_ref_name,
+            self._default_ref_name,
         )
 
         conjure_checks = _batch_create_check_to_conjure(
-            self.checks, self._client._auth_header, self._client._compute_representation_client, self.default_ref_name
+            self._checks, self._client._auth_header, self._client._compute_representation_client, self._default_ref_name
         )
 
         request = scout_checks_api.CreateChecklistRequest(
             commit_message=commit_message if commit_message is not None else "",
             assignee_rid=self._client._get_user_rid_from_email(self.assignee_email),
             title=self.name,
-            description=self.description if self.description is not None else "",
+            description=self.description,
             # TODO(ritwikdixit): support functions
             functions={},
-            properties={} if self.properties is None else dict(self.properties),
-            labels=[] if self.labels is None else list(self.labels),
+            properties=self._properties,
+            labels=self._labels,
             checks=conjure_checks,
-            checklist_variables=conjure_checklist_variables,
+            checklist_variables=conjure_variables,
             # TODO(ritwikdixit): support checklist VCS
             is_published=True,
         )
@@ -117,7 +134,6 @@ class ChecklistBuilder(BaseModel):
         return Checklist._from_conjure(self._client, response)
 
 
-# TODO(ritwikdixit): add support for more Checklist metadata and versioning
 @dataclass(frozen=True)
 class Checklist:
     rid: str
@@ -272,28 +288,51 @@ def _create_checklist_builder_from_yaml(checklist_config_path: str, client: Nomi
         checklist_dict = yaml.safe_load(file)
         data = checklist_dict["checklist"]
 
-        checklist_builder = ChecklistBuilder(
-            name=data["name"],
-            assignee_email=data["assignee_email"],
-            description=data.get("description"),
-            default_ref_name=data.get("default_ref_name"),
-        ).add_metadata(
-            properties=data.get("properties"),
-            labels=data.get("labels"),
+        builder = (
+            ChecklistBuilder.create(
+                client,
+                data["name"],
+                data["assignee_email"],
+                description=data.get("description") or "",
+                default_ref_name=data.get("default_ref_name"),
+            )
+            .add_properties(data.get("properties"))
+            .add_labels(labels=data.get("labels"))
         )
-        checklist_builder._client = client
 
         if "variables" in data:
-            for variable_dict in data["variables"]:
-                variable_dict["expression"] = _remove_newlines(variable_dict["expression"])
-                checklist_builder.add_checklist_variable(**variable_dict)
+            for variable in data["variables"]:
+                builder.add_variable(variable["name"], _remove_newlines(variable["expression"]))
 
         if "checks" in data:
-            for check_dict in data["checks"]:
-                check_dict["expression"] = _remove_newlines(check_dict["expression"])
-                checklist_builder.add_check(**check_dict)
+            for check in data["checks"]:
+                builder.add_check(
+                    check["name"],
+                    _remove_newlines(check["expression"]),
+                    check.get("priority", 2),
+                    check.get("description") or "",
+                )
 
-        return checklist_builder
+        return builder
+
+
+def _get_compute_condition_for_compiled_node(
+    node: scout_compute_representation_api.CompiledNode,
+) -> scout_checks_api.UnresolvedCheckCondition:
+    if node.node.type == "rangeSeries" and node.node.range_series is not None:
+        return scout_checks_api.UnresolvedCheckCondition(
+            num_ranges_v3=scout_checks_api.UnresolvedNumRangesConditionV3(
+                function_spec={},
+                operator=scout_compute_api.ThresholdOperator.GREATER_THAN,
+                threshold=0,
+                ranges=node.node.range_series,
+                variables={
+                    key: value.accept(visitor=_VariableValueVisitor()) for key, value in node.context.variables.items()
+                },
+                function_variables={},
+            )
+        )
+    raise ValueError("expression does not evaluate to a range_series")
 
 
 def _batch_get_compute_condition(
@@ -302,35 +341,15 @@ def _batch_get_compute_condition(
     client: scout_compute_representation_api.ComputeRepresentationService,
     default_ref_name: str | None = None,
 ) -> dict[str, scout_checks_api.UnresolvedCheckCondition]:
-    response_dict = client.batch_expression_to_compute(
+    responses = client.batch_expression_to_compute(
         auth_header,
         scout_compute_representation_api.BatchExpressionToComputeRequest(
             expressions=expressions, default_ref_name=default_ref_name
         ),
     )
 
-    def _get_compute_condition_for_compiled_node(
-        compiledNode: scout_compute_representation_api.CompiledNode,
-    ) -> scout_checks_api.UnresolvedCheckCondition:
-        if compiledNode.node.type == "rangeSeries" and compiledNode.node.range_series is not None:
-            return scout_checks_api.UnresolvedCheckCondition(
-                num_ranges_v3=scout_checks_api.UnresolvedNumRangesConditionV3(
-                    function_spec={},
-                    operator=scout_compute_api.ThresholdOperator.GREATER_THAN,
-                    threshold=0,
-                    ranges=compiledNode.node.range_series,
-                    variables={
-                        key: value.accept(visitor=_VariableValueVisitor())
-                        for key, value in compiledNode.context.variables.items()
-                    },
-                    function_variables={},
-                )
-            )
-        else:
-            raise ValueError("expression does not evaluate to a range_series")
-
     condition_dict = {}
-    for expression, response in response_dict.items():
+    for expression, response in responses.items():
         if response.error is not None:
             raise ValueError(f"error translating expression to compute: {response.error}")
         elif response.success is not None:
@@ -347,69 +366,68 @@ def _batch_create_check_to_conjure(
     client: scout_compute_representation_api.ComputeRepresentationService,
     default_ref_name: str | None = None,
 ) -> list[scout_checks_api.CreateChecklistEntryRequest]:
-    conditions_dict = _batch_get_compute_condition(
+    conditions = _batch_get_compute_condition(
         [create_check.expression for create_check in create_checks], auth_header, client, default_ref_name
     )
-
-    def _create_check_request(create_check: _CreateCheck) -> scout_checks_api.CreateChecklistEntryRequest:
-        return scout_checks_api.CreateChecklistEntryRequest(
+    return [
+        scout_checks_api.CreateChecklistEntryRequest(
             scout_checks_api.CreateCheckRequest(
-                title=create_check.name,
-                description=create_check.description if create_check.description is not None else "",
-                priority=_priority_to_conjure_priority(create_check.priority),
-                condition=conditions_dict[create_check.expression],
+                title=check.name,
+                description=check.description,
+                priority=_priority_to_conjure_priority(check.priority),
+                condition=conditions[check.expression],
             )
         )
+        for check in create_checks
+    ]
 
-    return [_create_check_request(create_check) for create_check in create_checks]
+
+def _create_unresolved_checklist_variable(
+    variable: _CreateChecklistVariable,
+    node: scout_compute_representation_api.CompiledNode,
+) -> scout_checks_api.UnresolvedChecklistVariable:
+    return scout_checks_api.UnresolvedChecklistVariable(
+        name=variable.name,
+        value=scout_checks_api.UnresolvedVariableLocator(
+            compute_node=scout_checks_api.UnresolvedComputeNodeWithContext(
+                series_node=node.node.accept(visitor=_NodeVisitor()),
+                context=scout_checks_api.UnresolvedVariables(
+                    sub_function_variables={},
+                    variables={
+                        key: value.accept(visitor=_VariableValueVisitor())
+                        for key, value in node.context.variables.items()
+                    },
+                ),
+            )
+        ),
+    )
 
 
-def _batch_create_checklist_variable_to_conjure(
-    create_checklist_variables: Sequence[_CreateChecklistVariable],
+def _batch_create_variable_to_conjure(
+    variables: Sequence[_CreateChecklistVariable],
     auth_header: str,
     client: scout_compute_representation_api.ComputeRepresentationService,
-    default_ref_name: str | None = None,
+    default_ref_name: str | None,
 ) -> list[scout_checks_api.UnresolvedChecklistVariable]:
-    response_dict = client.batch_expression_to_compute(
+    responses = client.batch_expression_to_compute(
         auth_header,
         scout_compute_representation_api.BatchExpressionToComputeRequest(
-            expressions=[
-                create_checklist_variable.expression for create_checklist_variable in create_checklist_variables
-            ],
+            expressions=[variable.expression for variable in variables],
             default_ref_name=default_ref_name,
         ),
     )
 
-    def _create_unresolved_checklist_variable(
-        compiledNode: scout_compute_representation_api.CompiledNode,
-    ) -> scout_checks_api.UnresolvedChecklistVariable:
-        return scout_checks_api.UnresolvedChecklistVariable(
-            name=create_checklist_variable.name,
-            value=scout_checks_api.UnresolvedVariableLocator(
-                compute_node=scout_checks_api.UnresolvedComputeNodeWithContext(
-                    series_node=compiledNode.node.accept(visitor=_NodeVisitor()),
-                    context=scout_checks_api.UnresolvedVariables(
-                        sub_function_variables={},
-                        variables={
-                            key: value.accept(visitor=_VariableValueVisitor())
-                            for key, value in compiledNode.context.variables.items()
-                        },
-                    ),
-                )
-            ),
-        )
-
-    unresolved_checklist_variables = []
-    for create_checklist_variable in create_checklist_variables:
-        response = response_dict[create_checklist_variable.expression]
+    unresolved_variables = []
+    for variable in variables:
+        response = responses[variable.expression]
         if response.error is not None:
             raise ValueError(f"error translating expression to compute: {response.error}")
         elif response.success is not None:
-            unresolved_checklist_variables.append(_create_unresolved_checklist_variable(response.success.node))
+            unresolved_variables.append(_create_unresolved_checklist_variable(variable, response.success.node))
         else:
             raise ValueError("expression_to_compute response is not a success or error")
 
-    return unresolved_checklist_variables
+    return unresolved_variables
 
 
 class _ComputeNodeVisitor(scout_compute_api.ComputeNodeVisitor):

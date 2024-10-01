@@ -378,17 +378,17 @@ def _get_start_end_timestamp_csv_file(
 def draft_checklist(
     name: str,
     assignee_email: str,
-    description: str | None = None,
+    description: str = "",
     default_ref_name: str | None = None,
 ) -> ChecklistBuilder:
-    builder = ChecklistBuilder(
+    conn = get_default_client()
+    return ChecklistBuilder.create(
+        client=conn,
         name=name,
         assignee_email=assignee_email,
         description=description,
         default_ref_name=default_ref_name,
     )
-    builder._client = get_default_client()
-    return builder
 
 
 def draft_checklist_from_yaml(checklist_config_path: str) -> ChecklistBuilder:
