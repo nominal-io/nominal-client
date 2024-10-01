@@ -78,7 +78,7 @@ class ChecklistBuilder(BaseModel):
         return self
 
     # TODO(alkasm): reorder args
-    def add_check(self, name: str, priority: Priority, expression: str, description: str | None = None) -> Self:
+    def add_check(self, name: str, expression: str, priority: Priority = 2, description: str | None = None) -> Self:
         self.checks.append(_CreateCheck(name=name, priority=priority, expression=expression, description=description))
         return self
 
@@ -189,37 +189,27 @@ class Checklist:
         )
 
 
-Priority = Literal["P0", "P1", "P2", "P3", "P4"]
+Priority = Literal[0, 1, 2, 3, 4]
+_priority_to_conjure_map: dict[Priority, scout_checks_api.Priority] = {
+    0: scout_checks_api.Priority.P0,
+    1: scout_checks_api.Priority.P1,
+    2: scout_checks_api.Priority.P2,
+    3: scout_checks_api.Priority.P3,
+    4: scout_checks_api.Priority.P4,
+}
 
 
 def _priority_to_conjure_priority(priority: Priority) -> scout_checks_api.Priority:
-    if priority == "P0":
-        return scout_checks_api.Priority.P0
-    elif priority == "P1":
-        return scout_checks_api.Priority.P1
-    elif priority == "P2":
-        return scout_checks_api.Priority.P2
-    elif priority == "P3":
-        return scout_checks_api.Priority.P3
-    elif priority == "P4":
-        return scout_checks_api.Priority.P4
-    else:
-        raise ValueError(f"invalid priority: {priority}")
+    if priority in _priority_to_conjure_map:
+        return _priority_to_conjure_map[priority]
+    raise ValueError(f"unknown priority {priority}, expected one of {_priority_to_conjure_map.keys()}")
 
 
 def _conjure_priority_to_priority(priority: scout_checks_api.Priority) -> Priority:
-    if priority == scout_checks_api.Priority.P0:
-        return "P0"
-    elif priority == scout_checks_api.Priority.P1:
-        return "P1"
-    elif priority == scout_checks_api.Priority.P2:
-        return "P2"
-    elif priority == scout_checks_api.Priority.P3:
-        return "P3"
-    elif priority == scout_checks_api.Priority.P4:
-        return "P4"
-    else:
-        raise ValueError(f"invalid priority: {priority}")
+    inverted_map = {v: k for k, v in _priority_to_conjure_map.items()}
+    if priority in inverted_map:
+        return inverted_map[priority]
+    raise ValueError(f"unknown priority '{priority}', expected one of {_priority_to_conjure_map.values()}")
 
 
 def _compute_node_to_compiled_node(node: scout_compute_api.ComputeNode) -> scout_compute_representation_api.Node:
