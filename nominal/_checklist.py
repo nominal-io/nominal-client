@@ -38,20 +38,6 @@ class ChecklistVariable:
 
 
 @dataclass(frozen=True)
-class _CreateChecklistVariable:
-    name: str
-    expression: str
-
-
-@dataclass(frozen=True)
-class _CreateCheck:
-    name: str
-    expression: str
-    priority: Priority
-    description: str
-
-
-@dataclass(frozen=True)
 class ChecklistBuilder:
     name: str
     assignee_email: str
@@ -63,27 +49,6 @@ class ChecklistBuilder:
     _properties: dict[str, str]
     _labels: list[str]
     _client: NominalClient = field(repr=False)
-
-    @classmethod
-    def create(
-        cls,
-        client: NominalClient,
-        name: str,
-        assignee_email: str,
-        description: str = "",
-        default_ref_name: str | None = None,
-    ) -> ChecklistBuilder:
-        return cls(
-            name=name,
-            assignee_email=assignee_email,
-            description=description,
-            _default_ref_name=default_ref_name,
-            _variables=[],
-            _checks=[],
-            _properties={},
-            _labels=[],
-            _client=client,
-        )
 
     def add_properties(self, properties: Mapping[str, str]) -> Self:
         self._properties.update(properties)
@@ -142,6 +107,26 @@ class Checklist:
     checklist_variables: Sequence[ChecklistVariable]
     checks: Sequence[Check]
     _client: NominalClient = field(repr=False)
+
+    @staticmethod
+    def builder(
+        client: NominalClient,
+        name: str,
+        assignee_email: str,
+        description: str = "",
+        default_ref_name: str | None = None,
+    ) -> ChecklistBuilder:
+        return ChecklistBuilder(
+            name=name,
+            assignee_email=assignee_email,
+            description=description,
+            _default_ref_name=default_ref_name,
+            _variables=[],
+            _checks=[],
+            _properties={},
+            _labels=[],
+            _client=client,
+        )
 
     @classmethod
     def _from_conjure(cls, client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Self:
@@ -204,6 +189,22 @@ class Checklist:
 
 
 Priority = Literal[0, 1, 2, 3, 4]
+
+
+@dataclass(frozen=True)
+class _CreateChecklistVariable:
+    name: str
+    expression: str
+
+
+@dataclass(frozen=True)
+class _CreateCheck:
+    name: str
+    expression: str
+    priority: Priority
+    description: str
+
+
 _priority_to_conjure_map: dict[Priority, scout_checks_api.Priority] = {
     0: scout_checks_api.Priority.P0,
     1: scout_checks_api.Priority.P1,

@@ -9,12 +9,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from nominal import _config
 
 from . import ts
-from ._utils import (
-    FileType,
-    FileTypes,
-    deprecate_keyword_argument,
-    reader_writer,
-)
+from ._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
 from .core import (
     Attachment,
     Checklist,
@@ -380,7 +375,7 @@ def draft_checklist(
     default_ref_name: str | None = None,
 ) -> ChecklistBuilder:
     conn = get_default_client()
-    return ChecklistBuilder.create(
+    return Checklist.builder(
         client=conn,
         name=name,
         assignee_email=assignee_email,
