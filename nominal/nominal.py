@@ -48,7 +48,7 @@ def get_default_client() -> NominalClient:
     return _get_or_create_connection(_global_base_url, token)
 
 
-def get_user() -> NominalUser:
+def get_user() -> User:
     """Retrieve the user associated with the default client."""
     conn = get_default_client()
     return conn.get_user()
