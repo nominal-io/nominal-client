@@ -591,7 +591,7 @@ class NominalClient:
 
     def get_user(self) -> NominalUser:
         response = self._authentication_client.get_my_profile(self._auth_header)
-        return NominalUser(rid=response.rid, display_name=response.display_name, email=response.email)
+        return User(rid=response.rid, display_name=response.display_name, email=response.email)
 
     def create_run(
         self,
