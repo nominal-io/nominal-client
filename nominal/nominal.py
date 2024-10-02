@@ -378,7 +378,7 @@ def checklist_builder(
 
     Example:
     ```python
-    cb = checklist_builder("My Checklist", "user@nominal.io")
+    cb = nm.checklist_builder("My Checklist", "user@nominal.io")
     cb.add_check("tautological check", "2 > 1")
     cb.add_variable("x", "1")
     checklist = cb.publish(commit_message="adding a checklist")
