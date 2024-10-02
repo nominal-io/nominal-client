@@ -42,6 +42,7 @@ __all__ = [
     "Dataset",
     "NominalClient",
     "Run",
+    "User",
     "Video",
     "LogSet",
     "Log",

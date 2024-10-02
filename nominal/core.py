@@ -18,6 +18,7 @@ from nominal import _config
 
 from ._api.combined import (
     attachments_api,
+    authentication_api,
     datasource,
     datasource_logset,
     datasource_logset_api,
@@ -42,6 +43,13 @@ __all__ = [
     "Attachment",
     "Video",
 ]
+
+
+@dataclass(frozen=True)
+class User:
+    rid: str
+    display_name: str
+    email: str
 
 
 @dataclass(frozen=True)
@@ -543,6 +551,7 @@ class NominalClient:
     _attachment_client: attachments_api.AttachmentService = field(repr=False)
     _video_client: scout_video.VideoService = field(repr=False)
     _logset_client: datasource_logset.LogSetService = field(repr=False)
+    _authentication_client: authentication_api.AuthenticationServiceV2 = field(repr=False)
 
     @classmethod
     def create(cls, base_url: str, token: str | None, trust_store_path: str | None = None) -> Self:
@@ -566,6 +575,7 @@ class NominalClient:
         attachment_client = RequestsClient.create(attachments_api.AttachmentService, agent, cfg)
         video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
         logset_client = RequestsClient.create(datasource_logset.LogSetService, agent, cfg)
+        authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
@@ -576,7 +586,13 @@ class NominalClient:
             _attachment_client=attachment_client,
             _video_client=video_client,
             _logset_client=logset_client,
+            _authentication_client=authentication_client,
         )
+
+    def get_user(self) -> User:
+        """Retrieve the user associated with this client."""
+        response = self._authentication_client.get_my_profile(self._auth_header)
+        return User(rid=response.rid, display_name=response.display_name, email=response.email)
 
     def create_run(
         self,
