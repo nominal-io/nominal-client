@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/nominal-io/nominal-client/compare/v1.3.0...v1.4.0) (2024-10-02)
+
+
+### Features
+
+* cleanup & simplify timestamp handling ([#54](https://github.com/nominal-io/nominal-client/issues/54)) ([2211070](https://github.com/nominal-io/nominal-client/commit/2211070fc3c93a781a36298451cdb106a4e7ed2e))
+* get current user ([#62](https://github.com/nominal-io/nominal-client/issues/62)) ([44c3270](https://github.com/nominal-io/nominal-client/commit/44c327006cb7254fa6db1f14bca06299f46dbb60))
+
 ## [1.3.0](https://github.com/nominal-io/nominal-client/compare/v1.2.0...v1.3.0) (2024-09-27)
 
 
