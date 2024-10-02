@@ -590,6 +590,7 @@ class NominalClient:
         )
 
     def get_user(self) -> User:
+        """Retrieve the user associated with this client."""
         response = self._authentication_client.get_my_profile(self._auth_header)
         return User(rid=response.rid, display_name=response.display_name, email=response.email)
 
