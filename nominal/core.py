@@ -18,6 +18,7 @@ from nominal import _config
 
 from ._api.combined import (
     attachments_api,
+    authentication_api,
     datasource,
     datasource_logset,
     datasource_logset_api,
@@ -25,7 +26,6 @@ from ._api.combined import (
     scout,
     scout_catalog,
     scout_run_api,
-    authentication_api,
     scout_video,
     scout_video_api,
     upload_api,
