@@ -46,7 +46,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class NominalUser:
+class User:
     rid: str
     display_name: str
     email: str
