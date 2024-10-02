@@ -10,7 +10,7 @@ from nominal import _config
 
 from . import ts
 from ._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
-from .core import Attachment, Dataset, LogSet, NominalClient, User, Run, Video, poll_until_ingestion_completed
+from .core import Attachment, Dataset, LogSet, NominalClient, Run, User, Video, poll_until_ingestion_completed
 from .ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
