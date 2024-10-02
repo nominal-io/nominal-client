@@ -10,7 +10,7 @@ from nominal import _config
 
 from . import ts
 from ._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
-from .core import Attachment, Dataset, LogSet, NominalClient, Run, Video, poll_until_ingestion_completed
+from .core import Attachment, Dataset, LogSet, NominalClient, NominalUser, Run, Video, poll_until_ingestion_completed
 from .ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -47,6 +47,10 @@ def get_default_client() -> NominalClient:
     token = _config.get_token(_global_base_url)
     return _get_or_create_connection(_global_base_url, token)
 
+def get_user() -> NominalUser:
+    """Retrieve the user associated with the default client."""
+    conn = get_default_client()
+    return conn.get_user()
 
 def upload_pandas(
     df: pd.DataFrame,
