@@ -51,6 +51,7 @@ class NominalUser:
     display_name: str
     email: str
 
+
 @dataclass(frozen=True)
 class Run:
     rid: str

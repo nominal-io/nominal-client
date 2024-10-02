@@ -47,10 +47,12 @@ def get_default_client() -> NominalClient:
     token = _config.get_token(_global_base_url)
     return _get_or_create_connection(_global_base_url, token)
 
+
 def get_user() -> NominalUser:
     """Retrieve the user associated with the default client."""
     conn = get_default_client()
     return conn.get_user()
+
 
 def upload_pandas(
     df: pd.DataFrame,
