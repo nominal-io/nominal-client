@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/nominal-io/nominal-client/compare/v1.4.0...v1.4.1) (2024-10-03)
+
+
+### Bug Fixes
+
+* change default connection timeout to 30s (up from 10s) ([#63](https://github.com/nominal-io/nominal-client/issues/63)) ([19531dd](https://github.com/nominal-io/nominal-client/commit/19531dd8b83563ca870269dba60b61368f27c28b))
+
 ## [1.4.0](https://github.com/nominal-io/nominal-client/compare/v1.3.0...v1.4.0) (2024-10-02)
 
 
