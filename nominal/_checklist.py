@@ -40,7 +40,7 @@ class ChecklistVariable:
 @dataclass(frozen=True)
 class ChecklistBuilder:
     name: str
-    assignee_email: str
+    assignee_rid: str
     description: str
     _default_ref_name: str | None
     # note that the ChecklistBuilder is immutable, but the lists/dicts it contains are mutable
@@ -80,7 +80,7 @@ class ChecklistBuilder:
 
         request = scout_checks_api.CreateChecklistRequest(
             commit_message=commit_message if commit_message is not None else "",
-            assignee_rid=self._client._get_user_rid_from_email(self.assignee_email),
+            assignee_rid=self.assignee_rid,
             title=self.name,
             description=self.description,
             # TODO(ritwikdixit): support functions

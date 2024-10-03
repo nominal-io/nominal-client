@@ -920,14 +920,20 @@ class NominalClient:
     def checklist_builder(
         self,
         name: str,
-        assignee_email: str,
         description: str = "",
+        assignee_email: str | None = None,
+        assignee_rid: str | None = None,
         default_ref_name: str | None = None,
     ) -> ChecklistBuilder:
+        """Creates a checklist builder.
+
+        You can provide one of `assignee_email` or `assignee_rid`. If neither are provided, the rid for the user
+        executing the script will be used as the assignee. If both are provided, a ValueError is raised.
+        """
         return ChecklistBuilder(
             name=name,
-            assignee_email=assignee_email,
             description=description,
+            assignee_rid=_get_assignee_rid(self, assignee_email, assignee_rid),
             _default_ref_name=default_ref_name,
             _variables=[],
             _checks=[],
@@ -1080,6 +1086,16 @@ def _logs_to_conjure(
         elif isinstance(log, tuple):
             ts, body = log
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
+
+
+def _get_assignee_rid(client: NominalClient, assignee_email: str | None, assignee_rid: str | None) -> str:
+    if assignee_email is not None and assignee_rid is not None:
+        raise ValueError("only one of assignee_email or assignee_rid should be provided")
+    if assignee_email is not None:
+        return client._get_user_rid_from_email(assignee_email)
+    if assignee_rid is not None:
+        return assignee_rid
+    return client.get_user().rid
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
