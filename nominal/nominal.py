@@ -385,11 +385,22 @@ def checklist_builder(
 
     Example:
     ```python
-    cb = nm.checklist_builder("My Checklist", "user@nominal.io")
-    cb.add_check("tautological check", "2 > 1")
-    cb.add_variable("x", "1")
-    checklist = cb.publish(commit_message="adding a checklist")
-    print("published checklist:", checklist.rid)
+    builder = nm.checklist_builder(
+        name="Programmatically created checklist",
+        assignee_email="captain@nominal.io",
+        description="Python client checklist builder example",
+        default_ref_name="Reduced_"
+    )
+    builder.add_variable(
+        name="b",
+        expression="derivative(numericChannel(channelName = 'Cycle_Time'))"
+    )
+    builder.add_check(
+        name="derivative of cycle time is too high",
+        priority=2,
+        expression="numericSeriesRef('b') > 0.05"
+    )
+    checklist = builder.publish()
     ```
     """
     conn = get_default_client()
