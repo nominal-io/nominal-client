@@ -387,20 +387,11 @@ def checklist_builder(
 
     Example:
     ```python
-    builder = nm.checklist_builder(
-        name="Programmatically created checklist",
-        assignee_email="captain@nominal.io",
-        description="Python client checklist builder example",
-        default_ref_name="Reduced_"
-    )
-    builder.add_variable(
-        name="b",
-        expression="derivative(numericChannel(channelName = 'Cycle_Time'))"
-    )
+    builder = nm.checklist_builder("Programmatically created checklist")
     builder.add_check(
         name="derivative of cycle time is too high",
         priority=2,
-        expression="numericSeriesRef('b') > 0.05"
+        expression="derivative(numericChannel(channelName = 'Cycle_Time', refName = 'manufacturing')) > 0.05",
     )
     checklist = builder.publish()
     ```
