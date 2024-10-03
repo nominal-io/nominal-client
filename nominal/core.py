@@ -554,7 +554,9 @@ class NominalClient:
     _authentication_client: authentication_api.AuthenticationServiceV2 = field(repr=False)
 
     @classmethod
-    def create(cls, base_url: str, token: str | None, trust_store_path: str | None = None) -> Self:
+    def create(
+        cls, base_url: str, token: str | None, trust_store_path: str | None = None, connect_timeout: float = 30
+    ) -> Self:
         """Create a connection to the Nominal platform.
 
         base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
@@ -565,7 +567,11 @@ class NominalClient:
         if token is None:
             token = _config.get_token(base_url)
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
-        cfg = ServiceConfiguration(uris=[base_url], security=SslConfiguration(trust_store_path=trust_store_path))
+        cfg = ServiceConfiguration(
+            uris=[base_url],
+            security=SslConfiguration(trust_store_path=trust_store_path),
+            connect_timeout=connect_timeout,
+        )
 
         agent = construct_user_agent_string()
         run_client = RequestsClient.create(scout.RunService, agent, cfg)
