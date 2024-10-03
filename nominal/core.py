@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Optional, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -28,6 +28,7 @@ from ._api.combined import (
     scout_checks_api,
     scout_compute_representation_api,
     scout_run_api,
+    scout_units_api,
     scout_video,
     scout_video_api,
     upload_api,
@@ -566,6 +567,7 @@ class NominalClient:
     _checklist_api_client: scout_checks_api.ChecklistService = field(repr=False)
     _video_client: scout_video.VideoService = field(repr=False)
     _logset_client: datasource_logset.LogSetService = field(repr=False)
+    _units_client: scout_units_api.UnitsService = field(repr=False)
 
     @classmethod
     def create(
@@ -601,6 +603,7 @@ class NominalClient:
         video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
         logset_client = RequestsClient.create(datasource_logset.LogSetService, agent, cfg)
         authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
+        unit_client = RequestsClient.create(scout_units_api.UnitsService, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
@@ -614,6 +617,7 @@ class NominalClient:
             _authentication_client=authentication_client,
             _video_client=video_client,
             _logset_client=logset_client,
+            _units_client=unit_client,
         )
 
     def get_user(self) -> User:
@@ -990,6 +994,19 @@ class NominalClient:
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""
         return list(self._iter_get_attachments(rids))
+
+    def get_all_units(self) -> Sequence[scout_units_api.Unit]:
+        """Retrieve list of all allowable units"""
+        response = self._units_client.get_all_units(self._auth_header)
+        return [unit for units in response.units_by_property.values() for unit in units]
+
+    def get_unit(self, unit_symbol: str) -> Optional[scout_units_api.Unit]:
+        """Get details of the given unit symbol, or none if invalid"""
+        return self._units_client.get_unit(self._auth_header, unit_symbol)
+
+    def get_commensurable_units(self, unit_symbol: str) -> Sequence[scout_units_api.Unit]:
+        """Get the list of units that are commensurable (convertible to/from) the given unit symbol"""
+        return self._units_client.get_commensurable_units(self._auth_header, unit_symbol)
 
 
 def _get_datasets(
