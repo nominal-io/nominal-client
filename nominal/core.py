@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Optional, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
@@ -1000,7 +1000,7 @@ class NominalClient:
         response = self._units_client.get_all_units(self._auth_header)
         return [unit for units in response.units_by_property.values() for unit in units]
 
-    def get_unit(self, unit_symbol: str) -> Optional[scout_units_api.Unit]:
+    def get_unit(self, unit_symbol: str) -> scout_units_api.Unit | None:
         """Get details of the given unit symbol, or none if invalid"""
         return self._units_client.get_unit(self._auth_header, unit_symbol)
 
