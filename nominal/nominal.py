@@ -18,6 +18,7 @@ from .core import (
     LogSet,
     NominalClient,
     Run,
+    User,
     Video,
     poll_until_ingestion_completed,
 )
@@ -55,6 +56,12 @@ def get_default_client() -> NominalClient:
     """Retrieve the default client to the Nominal platform."""
     token = _config.get_token(_global_base_url)
     return _get_or_create_connection(_global_base_url, token)
+
+
+def get_user() -> User:
+    """Retrieve the user associated with the default client."""
+    conn = get_default_client()
+    return conn.get_user()
 
 
 def upload_pandas(

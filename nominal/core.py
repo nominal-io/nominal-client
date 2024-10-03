@@ -58,6 +58,13 @@ __all__ = [
 
 
 @dataclass(frozen=True)
+class User:
+    rid: str
+    display_name: str
+    email: str
+
+
+@dataclass(frozen=True)
 class Run:
     rid: str
     name: str
@@ -561,7 +568,9 @@ class NominalClient:
     _logset_client: datasource_logset.LogSetService = field(repr=False)
 
     @classmethod
-    def create(cls, base_url: str, token: str | None, trust_store_path: str | None = None) -> Self:
+    def create(
+        cls, base_url: str, token: str | None, trust_store_path: str | None = None, connect_timeout: float = 30
+    ) -> Self:
         """Create a connection to the Nominal platform.
 
         base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
@@ -572,7 +581,11 @@ class NominalClient:
         if token is None:
             token = _config.get_token(base_url)
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
-        cfg = ServiceConfiguration(uris=[base_url], security=SslConfiguration(trust_store_path=trust_store_path))
+        cfg = ServiceConfiguration(
+            uris=[base_url],
+            security=SslConfiguration(trust_store_path=trust_store_path),
+            connect_timeout=connect_timeout,
+        )
 
         agent = construct_user_agent_string()
         run_client = RequestsClient.create(scout.RunService, agent, cfg)
@@ -587,6 +600,7 @@ class NominalClient:
         authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
         video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
         logset_client = RequestsClient.create(datasource_logset.LogSetService, agent, cfg)
+        authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
         auth_header = f"Bearer {token}"
         return cls(
             _auth_header=auth_header,
@@ -601,6 +615,11 @@ class NominalClient:
             _video_client=video_client,
             _logset_client=logset_client,
         )
+
+    def get_user(self) -> User:
+        """Retrieve the user associated with this client."""
+        response = self._authentication_client.get_my_profile(self._auth_header)
+        return User(rid=response.rid, display_name=response.display_name, email=response.email)
 
     def create_run(
         self,
