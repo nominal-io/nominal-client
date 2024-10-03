@@ -377,11 +377,13 @@ def _get_start_end_timestamp_csv_file(
 
 def checklist_builder(
     name: str,
-    assignee_email: str,
     description: str = "",
+    assignee_email: str | None = None,
     default_ref_name: str | None = None,
 ) -> ChecklistBuilder:
     """Create a checklist builder to add checks and variables, and publish the checklist to Nominal.
+
+    If assignee_email is None, the checklist is assigned to the user executing the code.
 
     Example:
     ```python
@@ -406,8 +408,8 @@ def checklist_builder(
     conn = get_default_client()
     return conn.checklist_builder(
         name=name,
-        assignee_email=assignee_email,
         description=description,
+        assignee_email=assignee_email,
         default_ref_name=default_ref_name,
     )
 
