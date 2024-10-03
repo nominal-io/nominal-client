@@ -10,8 +10,18 @@ from nominal import _config
 
 from . import ts
 from ._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
-from .core import Attachment, Dataset, LogSet, NominalClient, Run, User, Video, poll_until_ingestion_completed
-from .ts import IntegralNanosecondsUTC, _SecondsNanos
+from .core import (
+    Attachment,
+    Checklist,
+    ChecklistBuilder,
+    Dataset,
+    LogSet,
+    NominalClient,
+    Run,
+    User,
+    Video,
+    poll_until_ingestion_completed,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -187,8 +197,8 @@ def get_dataset(rid: str) -> Dataset:
 
 def create_run(
     name: str,
-    start: datetime | str | IntegralNanosecondsUTC,
-    end: datetime | str | IntegralNanosecondsUTC,
+    start: datetime | str | ts.IntegralNanosecondsUTC,
+    end: datetime | str | ts.IntegralNanosecondsUTC,
     description: str | None = None,
 ) -> Run:
     """Create a run in the Nominal platform.
@@ -198,8 +208,8 @@ def create_run(
     conn = get_default_client()
     return conn.create_run(
         name,
-        start=_SecondsNanos.from_flexible(start).to_nanoseconds(),
-        end=_SecondsNanos.from_flexible(end).to_nanoseconds(),
+        start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
+        end=ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         description=description,
     )
 
@@ -243,8 +253,8 @@ def get_run(rid: str) -> Run:
 @deprecate_keyword_argument("name_substring", "exact_name")
 def search_runs(
     *,
-    start: str | datetime | IntegralNanosecondsUTC | None = None,
-    end: str | datetime | IntegralNanosecondsUTC | None = None,
+    start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
+    end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
@@ -260,8 +270,8 @@ def search_runs(
         raise ValueError("must provide one of: start, end, name_substring, label, or property")
     conn = get_default_client()
     runs = conn.search_runs(
-        start=None if start is None else _SecondsNanos.from_flexible(start).to_nanoseconds(),
-        end=None if end is None else _SecondsNanos.from_flexible(end).to_nanoseconds(),
+        start=None if start is None else ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
+        end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         name_substring=name_substring,
         label=label,
         property=property,
@@ -302,7 +312,7 @@ def download_attachment(rid: str, file: Path | str) -> None:
 
 
 def upload_video(
-    file: Path | str, name: str, start: datetime | str | IntegralNanosecondsUTC, description: str | None = None
+    file: Path | str, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
 ) -> Video:
     """Upload a video to Nominal from a file."""
     conn = get_default_client()
@@ -310,7 +320,7 @@ def upload_video(
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
         return conn.create_video_from_io(
-            f, name, _SecondsNanos.from_flexible(start).to_nanoseconds(), description, file_type
+            f, name, ts._SecondsNanos.from_flexible(start).to_nanoseconds(), description, file_type
         )
 
 
@@ -333,7 +343,7 @@ def _get_start_end_timestamp_csv_file(
     file: Path | str,
     timestamp_column: str,
     timestamp_type: ts.Iso8601 | ts.Epoch,
-) -> tuple[IntegralNanosecondsUTC, IntegralNanosecondsUTC]:
+) -> tuple[ts.IntegralNanosecondsUTC, ts.IntegralNanosecondsUTC]:
     import pandas as pd
 
     df = pd.read_csv(file)
@@ -360,6 +370,41 @@ def _get_start_end_timestamp_csv_file(
 
     start, end = ts_col.min(), ts_col.max()
     return (
-        IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
-        IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
+        ts.IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
+        ts.IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
     )
+
+
+def checklist_builder(
+    name: str,
+    description: str = "",
+    assignee_email: str | None = None,
+    default_ref_name: str | None = None,
+) -> ChecklistBuilder:
+    """Create a checklist builder to add checks and variables, and publish the checklist to Nominal.
+
+    If assignee_email is None, the checklist is assigned to the user executing the code.
+
+    Example:
+    ```python
+    builder = nm.checklist_builder("Programmatically created checklist")
+    builder.add_check(
+        name="derivative of cycle time is too high",
+        priority=2,
+        expression="derivative(numericChannel(channelName = 'Cycle_Time', refName = 'manufacturing')) > 0.05",
+    )
+    checklist = builder.publish()
+    ```
+    """
+    conn = get_default_client()
+    return conn.checklist_builder(
+        name=name,
+        description=description,
+        assignee_email=assignee_email,
+        default_ref_name=default_ref_name,
+    )
+
+
+def get_checklist(checklist_rid: str) -> Checklist:
+    conn = get_default_client()
+    return conn.get_checklist(checklist_rid)

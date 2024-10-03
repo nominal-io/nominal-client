@@ -5,9 +5,9 @@ import mimetypes
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO, Callable, Iterable, Iterator, Literal, NamedTuple, TypeVar
+from typing import BinaryIO, Callable, Iterable, Iterator, NamedTuple, TypeVar
 
-from typing_extensions import ParamSpec, TypeAlias
+from typing_extensions import ParamSpec
 
 logger = logging.getLogger(__name__)
 

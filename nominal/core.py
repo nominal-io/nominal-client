@@ -25,22 +25,34 @@ from ._api.combined import (
     ingest_api,
     scout,
     scout_catalog,
+    scout_checks_api,
+    scout_compute_representation_api,
     scout_run_api,
     scout_video,
     scout_video_api,
     upload_api,
 )
+from ._checklist import Check, Checklist, ChecklistBuilder
 from ._multipart import put_multipart_upload
-from ._utils import FileType, FileTypes, construct_user_agent_string, deprecate_keyword_argument, update_dataclass
+from ._utils import (
+    FileType,
+    FileTypes,
+    construct_user_agent_string,
+    deprecate_keyword_argument,
+    update_dataclass,
+)
 from .exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from .ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 
 __all__ = [
-    "NominalClient",
-    "Run",
+    "Attachment",
+    "Check",
+    "Checklist",
+    "ChecklistBuilder",
     "Dataset",
     "LogSet",
-    "Attachment",
+    "NominalClient",
+    "Run",
     "Video",
 ]
 
@@ -546,12 +558,14 @@ class NominalClient:
     _auth_header: str = field(repr=False)
     _run_client: scout.RunService = field(repr=False)
     _upload_client: upload_api.UploadService = field(repr=False)
+    _authentication_client: authentication_api.AuthenticationServiceV2 = field(repr=False)
     _ingest_client: ingest_api.IngestService = field(repr=False)
     _catalog_client: scout_catalog.CatalogService = field(repr=False)
     _attachment_client: attachments_api.AttachmentService = field(repr=False)
+    _compute_representation_client: scout_compute_representation_api.ComputeRepresentationService = field(repr=False)
+    _checklist_api_client: scout_checks_api.ChecklistService = field(repr=False)
     _video_client: scout_video.VideoService = field(repr=False)
     _logset_client: datasource_logset.LogSetService = field(repr=False)
-    _authentication_client: authentication_api.AuthenticationServiceV2 = field(repr=False)
 
     @classmethod
     def create(
@@ -579,6 +593,11 @@ class NominalClient:
         ingest_client = RequestsClient.create(ingest_api.IngestService, agent, cfg)
         catalog_client = RequestsClient.create(scout_catalog.CatalogService, agent, cfg)
         attachment_client = RequestsClient.create(attachments_api.AttachmentService, agent, cfg)
+        compute_representation_client = RequestsClient.create(
+            scout_compute_representation_api.ComputeRepresentationService, agent, cfg
+        )
+        checklist_api_client = RequestsClient.create(scout_checks_api.ChecklistService, agent, cfg)
+        authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
         video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
         logset_client = RequestsClient.create(datasource_logset.LogSetService, agent, cfg)
         authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
@@ -590,9 +609,11 @@ class NominalClient:
             _ingest_client=ingest_client,
             _catalog_client=catalog_client,
             _attachment_client=attachment_client,
+            _compute_representation_client=compute_representation_client,
+            _checklist_api_client=checklist_api_client,
+            _authentication_client=authentication_client,
             _video_client=video_client,
             _logset_client=logset_client,
-            _authentication_client=authentication_client,
         )
 
     def get_user(self) -> User:
@@ -879,6 +900,48 @@ class NominalClient:
         for ds in response.results:
             yield Dataset._from_conjure(self, ds)
 
+    def _get_user_rid_from_email(self, user_email: str) -> str:
+        request = authentication_api.SearchUsersRequest(
+            query=authentication_api.SearchUsersQuery(
+                exact_match=user_email,
+            )
+        )
+        response = self._authentication_client.search_users_v2(self._auth_header, request)
+        if len(response.results) == 0:
+            raise ValueError(f"user {user_email!r} not found")
+        if len(response.results) > 1:
+            raise ValueError(f"found multiple users with email {user_email!r}")
+        return response.results[0].rid
+
+    def get_checklist(self, rid: str) -> Checklist:
+        response = self._checklist_api_client.get(self._auth_header, rid)
+        return Checklist._from_conjure(self, response)
+
+    def checklist_builder(
+        self,
+        name: str,
+        description: str = "",
+        assignee_email: str | None = None,
+        assignee_rid: str | None = None,
+        default_ref_name: str | None = None,
+    ) -> ChecklistBuilder:
+        """Creates a checklist builder.
+
+        You can provide one of `assignee_email` or `assignee_rid`. If neither are provided, the rid for the user
+        executing the script will be used as the assignee. If both are provided, a ValueError is raised.
+        """
+        return ChecklistBuilder(
+            name=name,
+            description=description,
+            assignee_rid=_get_assignee_rid(self, assignee_email, assignee_rid),
+            _default_ref_name=default_ref_name,
+            _variables=[],
+            _checks=[],
+            _properties={},
+            _labels=[],
+            _client=self,
+        )
+
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,
@@ -1023,6 +1086,16 @@ def _logs_to_conjure(
         elif isinstance(log, tuple):
             ts, body = log
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
+
+
+def _get_assignee_rid(client: NominalClient, assignee_email: str | None, assignee_rid: str | None) -> str:
+    if assignee_email is not None and assignee_rid is not None:
+        raise ValueError("only one of assignee_email or assignee_rid should be provided")
+    if assignee_email is not None:
+        return client._get_user_rid_from_email(assignee_email)
+    if assignee_rid is not None:
+        return assignee_rid
+    return client.get_user().rid
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
