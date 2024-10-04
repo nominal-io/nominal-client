@@ -12,7 +12,7 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 from typing_extensions import Self
 
 from .._api.combined import ingest_api, scout_catalog
-from .._multipart import put_multipart_upload
+from ._multipart import put_multipart_upload
 from .._utils import FileType, FileTypes, update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from ..ts import _AnyTimestampType, _to_typed_timestamp_type

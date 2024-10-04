@@ -24,7 +24,7 @@ from .._api.combined import (
     scout_units_api,
     scout_video_api,
 )
-from .._multipart import put_multipart_upload
+from ._multipart import put_multipart_upload
 from .._utils import (
     FileType,
     FileTypes,
