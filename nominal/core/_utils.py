@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Iterable, Protocol, TypeVar, runtime_checkable
 
 from .._utils import logger
