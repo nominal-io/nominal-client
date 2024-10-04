@@ -16,7 +16,6 @@ from .._api.combined import (
     datasource_logset_api,
     ingest_api,
     scout_catalog,
-    scout_video_api,
 )
 from .._checklist import Check, Checklist, ChecklistBuilder
 from .._multipart import put_multipart_upload
@@ -26,6 +25,7 @@ from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _S
 from .attachment import Attachment
 from .client import NominalClient
 from .run import Run
+from .user import User
 from .video import Video
 
 __all__ = [
@@ -37,15 +37,9 @@ __all__ = [
     "LogSet",
     "NominalClient",
     "Run",
+    "User",
     "Video",
 ]
-
-
-@dataclass(frozen=True)
-class User:
-    rid: str
-    display_name: str
-    email: str
 
 
 @dataclass(frozen=True)
