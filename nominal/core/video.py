@@ -11,10 +11,8 @@ from typing_extensions import Self
 from .._api.combined import scout_video_api
 from .._utils import update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed
+from ._client import _ClientBunch
 from ._utils import HasRid
-
-if TYPE_CHECKING:
-    from .client import NominalClient
 
 
 @dataclass(frozen=True)
@@ -24,7 +22,7 @@ class Video(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _client: NominalClient = field(repr=False)
+    _clients: _ClientBunch = field(repr=False)
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -36,7 +34,7 @@ class Video(HasRid):
         """
 
         while True:
-            progress = self._client._video_client.get_ingest_status(self._client._auth_header, self.rid)
+            progress = self._clients.video.get_ingest_status(self._clients.auth_header, self.rid)
             if progress.type == "success":
                 return
             elif progress.type == "inProgress":  # "type" strings are camelCase
@@ -83,19 +81,19 @@ class Video(HasRid):
             title=name,
             properties=dict(self.properties if properties is None else properties),
         )
-        response = self._client._video_client.update_metadata(self._client._auth_header, request, self.rid)
+        response = self._clients.video.update_metadata(self._clients.auth_header, request, self.rid)
 
-        video = self.__class__._from_conjure(self._client, response)
+        video = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, video, fields=self.__dataclass_fields__)
         return self
 
     @classmethod
-    def _from_conjure(cls, client: NominalClient, video: scout_video_api.Video) -> Self:
+    def _from_conjure(cls, clients: _ClientBunch, video: scout_video_api.Video) -> Self:
         return cls(
             rid=video.rid,
             name=video.title,
             description=video.description,
             properties=MappingProxyType(video.properties),
             labels=tuple(video.labels),
-            _client=client,
+            _clients=clients,
         )

@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Iterable
+from typing import Iterable
 
 from typing_extensions import Self
 
-from .._api.combined import datasource, datasource_logset_api
+from .._api.combined import datasource, datasource_logset, datasource_logset_api
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
+from ._client import _ClientBunch
 from ._utils import HasRid
-
-if TYPE_CHECKING:
-    from .client import NominalClient
 
 
 @dataclass(frozen=True)
@@ -19,13 +17,13 @@ class LogSet(HasRid):
     name: str
     timestamp_type: LogTimestampType
     description: str | None
-    _client: NominalClient = field(repr=False)
+    _clients: _ClientBunch = field(repr=False)
 
     def _stream_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
         request = datasource_logset_api.SearchLogsRequest()
         while True:
-            response = self._client._logset_client.search_logs(
-                self._client._auth_header,
+            response = self._clients.logset.search_logs(
+                self._clients.auth_header,
                 log_set_rid=self.rid,
                 request=request,
             )
@@ -40,13 +38,13 @@ class LogSet(HasRid):
             yield Log._from_conjure(log)
 
     @classmethod
-    def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
+    def _from_conjure(cls, clients: _ClientBunch, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
         return cls(
             rid=log_set_metadata.rid,
             name=log_set_metadata.name,
             timestamp_type=_log_timestamp_type_from_conjure(log_set_metadata.timestamp_type),
             description=log_set_metadata.description,
-            _client=client,
+            _clients=clients,
         )
 
 
@@ -76,3 +74,9 @@ def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampTyp
     elif log_timestamp_type == datasource.TimestampType.RELATIVE:
         return "relative"
     raise ValueError(f"unhandled timestamp type {log_timestamp_type}")
+
+
+def _get_log_set(
+    auth_header: str, client: datasource_logset.LogSetService, log_set_rid: str
+) -> datasource_logset_api.LogSetMetadata:
+    return client.get_log_set_metadata(auth_header, log_set_rid)

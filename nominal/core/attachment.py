@@ -4,16 +4,14 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, BinaryIO, Mapping, Sequence, cast
+from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence, cast
 
 from typing_extensions import Self
 
 from .._api.combined import attachments_api
 from .._utils import update_dataclass
+from ._client import _ClientBunch
 from ._utils import HasRid
-
-if TYPE_CHECKING:
-    from .client import NominalClient
 
 
 @dataclass(frozen=True)
@@ -23,7 +21,7 @@ class Attachment(HasRid):
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _client: NominalClient = field(repr=False)
+    _clients: _ClientBunch = field(repr=False)
 
     def update(
         self,
@@ -50,8 +48,8 @@ class Attachment(HasRid):
             properties=None if properties is None else dict(properties),
             title=name,
         )
-        response = self._client._attachment_client.update(self._client._auth_header, request, self.rid)
-        attachment = self.__class__._from_conjure(self._client, response)
+        response = self._clients.attachment.update(self._clients.auth_header, request, self.rid)
+        attachment = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, attachment, fields=self.__dataclass_fields__)
         return self
 
@@ -59,7 +57,7 @@ class Attachment(HasRid):
         """Retrieve the contents of this attachment.
         Returns a file-like object in binary mode for reading.
         """
-        response = self._client._attachment_client.get_content(self._client._auth_header, self.rid)
+        response = self._clients.attachment.get_content(self._clients.auth_header, self.rid)
         # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
         # this acts like a file-like object in binary-mode.
         return cast(BinaryIO, response)
@@ -75,12 +73,19 @@ class Attachment(HasRid):
             shutil.copyfileobj(self.get_contents(), wf)
 
     @classmethod
-    def _from_conjure(cls, client: NominalClient, attachment: attachments_api.Attachment) -> Self:
+    def _from_conjure(cls, clients: _ClientBunch, attachment: attachments_api.Attachment) -> Self:
         return cls(
             rid=attachment.rid,
             name=attachment.title,
             description=attachment.description,
             properties=MappingProxyType(attachment.properties),
             labels=tuple(attachment.labels),
-            _client=client,
+            _clients=clients,
         )
+
+
+def _iter_get_attachments(clients: _ClientBunch, rids: Iterable[str]) -> Iterable[Attachment]:
+    request = attachments_api.GetAttachmentsRequest(attachment_rids=list(rids))
+    response = clients.attachment.get_batch(clients.auth_header, request)
+    for a in response.response:
+        yield Attachment._from_conjure(clients, a)

@@ -10,13 +10,11 @@ from typing_extensions import Self
 from .._api.combined import scout_run_api
 from .._utils import update_dataclass
 from ..ts import IntegralNanosecondsUTC, _SecondsNanos
+from ._client import _ClientBunch
 from ._utils import HasRid, rid_from_instance_or_string
-from .attachment import Attachment
-from .dataset import Dataset
+from .attachment import Attachment, _iter_get_attachments
+from .dataset import Dataset, _get_datasets
 from .log import LogSet
-
-if TYPE_CHECKING:
-    from .client import NominalClient
 
 
 @dataclass(frozen=True)
@@ -28,7 +26,7 @@ class Run(HasRid):
     labels: Sequence[str]
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
-    _client: NominalClient = field(repr=False)
+    _clients: _ClientBunch = field(repr=False)
 
     def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
         """Add a dataset to this run.
@@ -58,7 +56,7 @@ class Run(HasRid):
             )
             for ref_name, log_set in log_sets.items()
         }
-        self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
+        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
 
     def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
         """Add multiple datasets to this run.
@@ -75,16 +73,19 @@ class Run(HasRid):
             )
             for ref_name, dataset in datasets.items()
         }
-        self._client._run_client.add_data_sources_to_run(self._client._auth_header, data_sources, self.rid)
+        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
 
     def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
-        run = self._client._run_client.get_run(self._client._auth_header, self.rid)
+        run = self._clients.run.get_run(self._clients.auth_header, self.rid)
         dataset_rids_by_ref_name = {}
         for ref_name, source in run.data_sources.items():
             if source.data_source.type == "dataset":
                 dataset_rid = cast(str, source.data_source.dataset)
                 dataset_rids_by_ref_name[ref_name] = dataset_rid
-        datasets_by_rids = {ds.rid: ds for ds in self._client.get_datasets(dataset_rids_by_ref_name.values())}
+        datasets_by_rids = {
+            ds.rid: Dataset._from_conjure(self._clients, ds)
+            for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, dataset_rids_by_ref_name.values())
+        }
         for ref_name, rid in dataset_rids_by_ref_name.items():
             dataset = datasets_by_rids[rid]
             yield (ref_name, dataset)
@@ -102,7 +103,7 @@ class Run(HasRid):
         """
         rids = [rid_from_instance_or_string(a) for a in attachments]
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
-        self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
+        self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this run.
@@ -112,11 +113,11 @@ class Run(HasRid):
         """
         rids = [rid_from_instance_or_string(a) for a in attachments]
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
-        self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
+        self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
-        run = self._client._run_client.get_run(self._client._auth_header, self.rid)
-        return self._client.get_attachments(run.attachments)
+        run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        return _iter_get_attachments(self._clients, run.attachments)
 
     def list_attachments(self) -> Sequence[Attachment]:
         return list(self._iter_list_attachments())
@@ -151,13 +152,13 @@ class Run(HasRid):
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
         )
-        response = self._client._run_client.update_run(self._client._auth_header, request, self.rid)
-        run = self.__class__._from_conjure(self._client, response)
+        response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
+        run = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, run, fields=self.__dataclass_fields__)
         return self
 
     @classmethod
-    def _from_conjure(cls, nominal_client: NominalClient, run: scout_run_api.Run) -> Self:
+    def _from_conjure(cls, clients: _ClientBunch, run: scout_run_api.Run) -> Self:
         return cls(
             rid=run.rid,
             name=run.title,
@@ -166,5 +167,5 @@ class Run(HasRid):
             labels=tuple(run.labels),
             start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
-            _client=nominal_client,
+            _clients=clients,
         )

@@ -7,7 +7,7 @@ from datetime import timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from typing_extensions import Self
 
@@ -16,10 +16,8 @@ from .._multipart import put_multipart_upload
 from .._utils import FileType, FileTypes, update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from ..ts import _AnyTimestampType, _to_typed_timestamp_type
+from ._client import _ClientBunch
 from ._utils import HasRid
-
-if TYPE_CHECKING:
-    from .client import NominalClient
 
 
 @dataclass(frozen=True)
@@ -29,7 +27,7 @@ class Dataset(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _client: NominalClient = field(repr=False)
+    _clients: _ClientBunch = field(repr=False)
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until dataset ingestion has completed.
@@ -41,7 +39,7 @@ class Dataset(HasRid):
         """
 
         while True:
-            progress = self._client._catalog_client.get_ingest_progress_v2(self._client._auth_header, self.rid)
+            progress = self._clients.catalog.get_ingest_progress_v2(self._clients.auth_header, self.rid)
             if progress.ingest_status.type == "success":
                 return
             elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
@@ -88,9 +86,9 @@ class Dataset(HasRid):
             name=name,
             properties=None if properties is None else dict(properties),
         )
-        response = self._client._catalog_client.update_dataset_metadata(self._client._auth_header, self.rid, request)
+        response = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
 
-        dataset = self.__class__._from_conjure(self._client, response)
+        dataset = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, dataset, fields=self.__dataclass_fields__)
         return self
 
@@ -121,7 +119,7 @@ class Dataset(HasRid):
         urlsafe_name = urllib.parse.quote_plus(self.name)
         filename = f"{urlsafe_name}{file_type.extension}"
         s3_path = put_multipart_upload(
-            self._client._auth_header, dataset, filename, file_type.mimetype, self._client._upload_client
+            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
         )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
@@ -135,17 +133,17 @@ class Dataset(HasRid):
                 ),
             ),
         )
-        self._client._ingest_client.trigger_file_ingest(self._client._auth_header, request)
+        self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
 
     @classmethod
-    def _from_conjure(cls, client: NominalClient, dataset: scout_catalog.EnrichedDataset) -> Self:
+    def _from_conjure(cls, clients: _ClientBunch, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
             rid=dataset.rid,
             name=dataset.name,
             description=dataset.description,
             properties=MappingProxyType(dataset.properties),
             labels=tuple(dataset.labels),
-            _client=client,
+            _clients=clients,
         )
 
 
@@ -174,3 +172,21 @@ def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timede
             errors[dataset.rid] = e
     if errors:
         raise NominalIngestMultiError(errors)
+
+
+def _get_datasets(
+    auth_header: str, client: scout_catalog.CatalogService, dataset_rids: Iterable[str]
+) -> Iterable[scout_catalog.EnrichedDataset]:
+    request = scout_catalog.GetDatasetsRequest(dataset_rids=list(dataset_rids))
+    yield from client.get_enriched_datasets(auth_header, request)
+
+
+def _get_dataset(
+    auth_header: str, client: scout_catalog.CatalogService, dataset_rid: str
+) -> scout_catalog.EnrichedDataset:
+    datasets = list(_get_datasets(auth_header, client, [dataset_rid]))
+    if not datasets:
+        raise ValueError(f"dataset {dataset_rid!r} not found")
+    if len(datasets) > 1:
+        raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
+    return datasets[0]

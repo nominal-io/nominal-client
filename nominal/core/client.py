@@ -8,26 +8,21 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
-from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
+from conjure_python_client import ServiceConfiguration, SslConfiguration
 from typing_extensions import Self
+
+from nominal.core.user import _get_user, _get_user_rid_from_email
 
 from .. import _config
 from .._api.combined import (
     attachments_api,
-    authentication_api,
     datasource,
-    datasource_logset,
     datasource_logset_api,
     ingest_api,
-    scout,
     scout_catalog,
-    scout_checks_api,
-    scout_compute_representation_api,
     scout_run_api,
     scout_units_api,
-    scout_video,
     scout_video_api,
-    upload_api,
 )
 from .._multipart import put_multipart_upload
 from .._utils import (
@@ -37,11 +32,12 @@ from .._utils import (
     deprecate_keyword_argument,
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
+from ._client import _ClientBunch
 from ._utils import rid_from_instance_or_string
-from .attachment import Attachment
+from .attachment import Attachment, _iter_get_attachments
 from .checklist import Checklist, ChecklistBuilder
-from .dataset import Dataset
-from .log import Log, LogSet
+from .dataset import Dataset, _get_dataset, _get_datasets
+from .log import Log, LogSet, _get_log_set
 from .run import Run
 from .user import User
 from .video import Video
@@ -49,18 +45,7 @@ from .video import Video
 
 @dataclass(frozen=True)
 class NominalClient:
-    _auth_header: str = field(repr=False)
-    _run_client: scout.RunService = field(repr=False)
-    _upload_client: upload_api.UploadService = field(repr=False)
-    _authentication_client: authentication_api.AuthenticationServiceV2 = field(repr=False)
-    _ingest_client: ingest_api.IngestService = field(repr=False)
-    _catalog_client: scout_catalog.CatalogService = field(repr=False)
-    _attachment_client: attachments_api.AttachmentService = field(repr=False)
-    _compute_representation_client: scout_compute_representation_api.ComputeRepresentationService = field(repr=False)
-    _checklist_api_client: scout_checks_api.ChecklistService = field(repr=False)
-    _video_client: scout_video.VideoService = field(repr=False)
-    _logset_client: datasource_logset.LogSetService = field(repr=False)
-    _units_client: scout_units_api.UnitsService = field(repr=False)
+    _clients: _ClientBunch = field(repr=False)
 
     @classmethod
     def create(
@@ -81,42 +66,12 @@ class NominalClient:
             security=SslConfiguration(trust_store_path=trust_store_path),
             connect_timeout=connect_timeout,
         )
-
         agent = construct_user_agent_string()
-        run_client = RequestsClient.create(scout.RunService, agent, cfg)
-        upload_client = RequestsClient.create(upload_api.UploadService, agent, cfg)
-        ingest_client = RequestsClient.create(ingest_api.IngestService, agent, cfg)
-        catalog_client = RequestsClient.create(scout_catalog.CatalogService, agent, cfg)
-        attachment_client = RequestsClient.create(attachments_api.AttachmentService, agent, cfg)
-        compute_representation_client = RequestsClient.create(
-            scout_compute_representation_api.ComputeRepresentationService, agent, cfg
-        )
-        checklist_api_client = RequestsClient.create(scout_checks_api.ChecklistService, agent, cfg)
-        authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
-        video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
-        logset_client = RequestsClient.create(datasource_logset.LogSetService, agent, cfg)
-        authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
-        unit_client = RequestsClient.create(scout_units_api.UnitsService, agent, cfg)
-        auth_header = f"Bearer {token}"
-        return cls(
-            _auth_header=auth_header,
-            _run_client=run_client,
-            _upload_client=upload_client,
-            _ingest_client=ingest_client,
-            _catalog_client=catalog_client,
-            _attachment_client=attachment_client,
-            _compute_representation_client=compute_representation_client,
-            _checklist_api_client=checklist_api_client,
-            _authentication_client=authentication_client,
-            _video_client=video_client,
-            _logset_client=logset_client,
-            _units_client=unit_client,
-        )
+        return cls(_clients=_ClientBunch.from_config(cfg, agent, token))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
-        response = self._authentication_client.get_my_profile(self._auth_header)
-        return User(rid=response.rid, display_name=response.display_name, email=response.email)
+        return _get_user(self._clients)
 
     def create_run(
         self,
@@ -142,17 +97,17 @@ class NominalClient:
             title=name,
             end_time=_SecondsNanos.from_flexible(end).to_scout_run_api(),
         )
-        response = self._run_client.create_run(self._auth_header, request)
-        return Run._from_conjure(self, response)
+        response = self._clients.run.create_run(self._clients.auth_header, request)
+        return Run._from_conjure(self._clients, response)
 
     def get_run(self, rid: str) -> Run:
         """Retrieve a run by its RID."""
-        response = self._run_client.get_run(self._auth_header, rid)
-        return Run._from_conjure(self, response)
+        response = self._clients.run.get_run(self._clients.auth_header, rid)
+        return Run._from_conjure(self._clients, response)
 
     def _search_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
         while True:
-            response = self._run_client.search_runs(self._auth_header, request)
+            response = self._clients.run.search_runs(self._clients.auth_header, request)
             yield from response.results
             if response.next_page_token is None:
                 break
@@ -180,7 +135,7 @@ class NominalClient:
             ),
         )
         for run in self._search_runs_paginated(request):
-            yield Run._from_conjure(self, run)
+            yield Run._from_conjure(self._clients, run)
 
     @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
@@ -261,7 +216,9 @@ class NominalClient:
         urlsafe_name = urllib.parse.quote_plus(name)
         filename = f"{urlsafe_name}{file_type.extension}"
 
-        s3_path = put_multipart_upload(self._auth_header, dataset, filename, file_type.mimetype, self._upload_client)
+        s3_path = put_multipart_upload(
+            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
+        )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
                 new_dataset=ingest_api.NewDatasetIngestDestination(
@@ -280,7 +237,7 @@ class NominalClient:
                 ),
             ),
         )
-        response = self._ingest_client.trigger_file_ingest(self._auth_header, request)
+        response = self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
         return self.get_dataset(response.dataset_rid)
 
     def create_video_from_io(
@@ -305,7 +262,9 @@ class NominalClient:
         urlsafe_name = urllib.parse.quote_plus(name)
         filename = f"{urlsafe_name}{file_type.extension}"
 
-        s3_path = put_multipart_upload(self._auth_header, video, filename, file_type.mimetype, self._upload_client)
+        s3_path = put_multipart_upload(
+            self._clients.auth_header, video, filename, file_type.mimetype, self._clients.upload
+        )
         request = ingest_api.IngestVideoRequest(
             labels=list(labels),
             properties={} if properties is None else dict(properties),
@@ -318,7 +277,7 @@ class NominalClient:
             description=description,
             title=name,
         )
-        response = self._ingest_client.ingest_video(self._auth_header, request)
+        response = self._clients.ingest.ingest_video(self._clients.auth_header, request)
         return self.get_video(response.video_rid)
 
     def create_log_set(
@@ -339,25 +298,25 @@ class NominalClient:
             origin_metadata={},
             timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
         )
-        response = self._logset_client.create(self._auth_header, request)
+        response = self._clients.logset.create(self._clients.auth_header, request)
         return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
 
     def _attach_logs_and_finalize(self, rid: str, logs: Iterable[datasource_logset_api.Log]) -> LogSet:
         request = datasource_logset_api.AttachLogsAndFinalizeRequest(logs=list(logs))
-        response = self._logset_client.attach_logs_and_finalize(
-            auth_header=self._auth_header, log_set_rid=rid, request=request
+        response = self._clients.logset.attach_logs_and_finalize(
+            auth_header=self._clients.auth_header, log_set_rid=rid, request=request
         )
-        return LogSet._from_conjure(self, response)
+        return LogSet._from_conjure(self._clients, response)
 
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""
-        response = self._video_client.get(self._auth_header, rid)
-        return Video._from_conjure(self, response)
+        response = self._clients.video.get(self._clients.auth_header, rid)
+        return Video._from_conjure(self._clients, response)
 
     def _iter_get_videos(self, rids: Iterable[str]) -> Iterable[Video]:
         request = scout_video_api.GetVideosRequest(video_rids=list(rids))
-        for response in self._video_client.batch_get(self._auth_header, request).responses:
-            yield Video._from_conjure(self, response)
+        for response in self._clients.video.batch_get(self._clients.auth_header, request).responses:
+            yield Video._from_conjure(self._clients, response)
 
     def get_videos(self, rids: Iterable[str]) -> Sequence[Video]:
         """Retrieve videos by their RID."""
@@ -365,17 +324,17 @@ class NominalClient:
 
     def get_dataset(self, rid: str) -> Dataset:
         """Retrieve a dataset by its RID."""
-        response = _get_dataset(self._auth_header, self._catalog_client, rid)
-        return Dataset._from_conjure(self, response)
+        response = _get_dataset(self._clients.auth_header, self._clients.catalog, rid)
+        return Dataset._from_conjure(self._clients, response)
 
     def get_log_set(self, log_set_rid: str) -> LogSet:
         """Retrieve a log set along with its metadata given its RID."""
-        response = _get_log_set(self._auth_header, self._logset_client, log_set_rid)
-        return LogSet._from_conjure(self, response)
+        response = _get_log_set(self._clients.auth_header, self._clients.logset, log_set_rid)
+        return LogSet._from_conjure(self._clients, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
-        for ds in _get_datasets(self._auth_header, self._catalog_client, rids):
-            yield Dataset._from_conjure(self, ds)
+        for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, rids):
+            yield Dataset._from_conjure(self._clients, ds)
 
     def get_datasets(self, rids: Iterable[str]) -> Sequence[Dataset]:
         """Retrieve datasets by their RIDs."""
@@ -393,26 +352,13 @@ class NominalClient:
             ),
             sort_options=scout_catalog.SortOptions(field=scout_catalog.SortField.INGEST_DATE, is_descending=True),
         )
-        response = self._catalog_client.search_datasets(self._auth_header, request)
+        response = self._clients.catalog.search_datasets(self._clients.auth_header, request)
         for ds in response.results:
-            yield Dataset._from_conjure(self, ds)
-
-    def _get_user_rid_from_email(self, user_email: str) -> str:
-        request = authentication_api.SearchUsersRequest(
-            query=authentication_api.SearchUsersQuery(
-                exact_match=user_email,
-            )
-        )
-        response = self._authentication_client.search_users_v2(self._auth_header, request)
-        if len(response.results) == 0:
-            raise ValueError(f"user {user_email!r} not found")
-        if len(response.results) > 1:
-            raise ValueError(f"found multiple users with email {user_email!r}")
-        return response.results[0].rid
+            yield Dataset._from_conjure(self._clients, ds)
 
     def get_checklist(self, rid: str) -> Checklist:
-        response = self._checklist_api_client.get(self._auth_header, rid)
-        return Checklist._from_conjure(self, response)
+        response = self._clients.checklist.get(self._clients.auth_header, rid)
+        return Checklist._from_conjure(self._clients, response)
 
     def checklist_builder(
         self,
@@ -430,13 +376,13 @@ class NominalClient:
         return ChecklistBuilder(
             name=name,
             description=description,
-            assignee_rid=_get_assignee_rid(self, assignee_email, assignee_rid),
+            assignee_rid=_get_assignee_rid(self._clients, assignee_email, assignee_rid),
             _default_ref_name=default_ref_name,
             _variables=[],
             _checks=[],
             _properties={},
             _labels=[],
-            _client=self,
+            _clients=self._clients,
         )
 
     def create_attachment_from_io(
@@ -462,7 +408,9 @@ class NominalClient:
         urlsafe_name = urllib.parse.quote_plus(name)
         filename = f"{urlsafe_name}{file_type.extension}"
 
-        s3_path = put_multipart_upload(self._auth_header, attachment, filename, file_type.mimetype, self._upload_client)
+        s3_path = put_multipart_upload(
+            self._clients.auth_header, attachment, filename, file_type.mimetype, self._clients.upload
+        )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
             labels=list(labels),
@@ -470,60 +418,30 @@ class NominalClient:
             s3_path=s3_path,
             title=name,
         )
-        response = self._attachment_client.create(self._auth_header, request)
-        return Attachment._from_conjure(self, response)
+        response = self._clients.attachment.create(self._clients.auth_header, request)
+        return Attachment._from_conjure(self._clients, response)
 
     def get_attachment(self, rid: str) -> Attachment:
         """Retrieve an attachment by its RID."""
-        response = self._attachment_client.get(self._auth_header, rid)
-        return Attachment._from_conjure(self, response)
-
-    def _iter_get_attachments(self, rids: Iterable[str]) -> Iterable[Attachment]:
-        request = attachments_api.GetAttachmentsRequest(attachment_rids=list(rids))
-        response = self._attachment_client.get_batch(self._auth_header, request)
-        for a in response.response:
-            yield Attachment._from_conjure(self, a)
+        response = self._clients.attachment.get(self._clients.auth_header, rid)
+        return Attachment._from_conjure(self._clients, response)
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""
-        return list(self._iter_get_attachments(rids))
+        return list(_iter_get_attachments(self._clients, rids))
 
     def get_all_units(self) -> Sequence[scout_units_api.Unit]:
         """Retrieve list of all allowable units"""
-        response = self._units_client.get_all_units(self._auth_header)
+        response = self._clients.units.get_all_units(self._clients.auth_header)
         return [unit for units in response.units_by_property.values() for unit in units]
 
     def get_unit(self, unit_symbol: str) -> scout_units_api.Unit | None:
         """Get details of the given unit symbol, or none if invalid"""
-        return self._units_client.get_unit(self._auth_header, unit_symbol)
+        return self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
 
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[scout_units_api.Unit]:
         """Get the list of units that are commensurable (convertible to/from) the given unit symbol"""
-        return self._units_client.get_commensurable_units(self._auth_header, unit_symbol)
-
-
-def _get_datasets(
-    auth_header: str, client: scout_catalog.CatalogService, dataset_rids: Iterable[str]
-) -> Iterable[scout_catalog.EnrichedDataset]:
-    request = scout_catalog.GetDatasetsRequest(dataset_rids=list(dataset_rids))
-    yield from client.get_enriched_datasets(auth_header, request)
-
-
-def _get_dataset(
-    auth_header: str, client: scout_catalog.CatalogService, dataset_rid: str
-) -> scout_catalog.EnrichedDataset:
-    datasets = list(_get_datasets(auth_header, client, [dataset_rid]))
-    if not datasets:
-        raise ValueError(f"dataset {dataset_rid!r} not found")
-    if len(datasets) > 1:
-        raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
-    return datasets[0]
-
-
-def _get_log_set(
-    auth_header: str, client: datasource_logset.LogSetService, log_set_rid: str
-) -> datasource_logset_api.LogSetMetadata:
-    return client.get_log_set_metadata(auth_header, log_set_rid)
+        return self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
 
 
 def _create_search_runs_query(
@@ -580,11 +498,11 @@ def _logs_to_conjure(
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
 
 
-def _get_assignee_rid(client: NominalClient, assignee_email: str | None, assignee_rid: str | None) -> str:
+def _get_assignee_rid(clients: _ClientBunch, assignee_email: str | None, assignee_rid: str | None) -> str:
     if assignee_email is not None and assignee_rid is not None:
         raise ValueError("only one of assignee_email or assignee_rid should be provided")
     if assignee_email is not None:
-        return client._get_user_rid_from_email(assignee_email)
+        return _get_user_rid_from_email(clients, assignee_email)
     if assignee_rid is not None:
         return assignee_rid
-    return client.get_user().rid
+    return _get_user(clients).rid
