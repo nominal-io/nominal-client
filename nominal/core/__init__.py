@@ -16,7 +16,7 @@ from typing_extensions import Self
 
 from nominal import _config
 
-from ._api.combined import (
+from .._api.combined import (
     attachments_api,
     authentication_api,
     datasource,
@@ -33,17 +33,17 @@ from ._api.combined import (
     scout_video_api,
     upload_api,
 )
-from ._checklist import Check, Checklist, ChecklistBuilder
-from ._multipart import put_multipart_upload
-from ._utils import (
+from .._checklist import Check, Checklist, ChecklistBuilder
+from .._multipart import put_multipart_upload
+from .._utils import (
     FileType,
     FileTypes,
     construct_user_agent_string,
     deprecate_keyword_argument,
     update_dataclass,
 )
-from .exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
-from .ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
+from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
+from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 
 __all__ = [
     "Attachment",
