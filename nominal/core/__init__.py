@@ -11,19 +11,15 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from typing_extensions import Self
 
-from .._api.combined import (
-    datasource,
-    datasource_logset_api,
-    ingest_api,
-    scout_catalog,
-)
+from .._api.combined import ingest_api, scout_catalog
 from .._checklist import Check, Checklist, ChecklistBuilder
 from .._multipart import put_multipart_upload
 from .._utils import FileType, FileTypes, update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
-from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
+from ..ts import _AnyTimestampType, _to_typed_timestamp_type
 from .attachment import Attachment
 from .client import NominalClient
+from .log import Log, LogSet
 from .run import Run
 from .user import User
 from .video import Video
@@ -34,6 +30,7 @@ __all__ = [
     "Checklist",
     "ChecklistBuilder",
     "Dataset",
+    "Log",
     "LogSet",
     "NominalClient",
     "Run",
@@ -169,63 +166,6 @@ class Dataset:
         )
 
 
-@dataclass(frozen=True)
-class LogSet:
-    rid: str
-    name: str
-    timestamp_type: LogTimestampType
-    description: str | None
-    _client: NominalClient = field(repr=False)
-
-    def _stream_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
-        request = datasource_logset_api.SearchLogsRequest()
-        while True:
-            response = self._client._logset_client.search_logs(
-                self._client._auth_header,
-                log_set_rid=self.rid,
-                request=request,
-            )
-            yield from response.logs
-            if response.next_page_token is None:
-                break
-            request = datasource_logset_api.SearchLogsRequest(token=response.next_page_token)
-
-    def stream_logs(self) -> Iterable[Log]:
-        """Iterate over the logs."""
-        for log in self._stream_logs_paginated():
-            yield Log._from_conjure(log)
-
-    @classmethod
-    def _from_conjure(cls, client: NominalClient, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
-        return cls(
-            rid=log_set_metadata.rid,
-            name=log_set_metadata.name,
-            timestamp_type=_log_timestamp_type_from_conjure(log_set_metadata.timestamp_type),
-            description=log_set_metadata.description,
-            _client=client,
-        )
-
-
-@dataclass(frozen=True)
-class Log:
-    timestamp: IntegralNanosecondsUTC
-    body: str
-
-    def _to_conjure(self) -> datasource_logset_api.Log:
-        return datasource_logset_api.Log(
-            time=_SecondsNanos.from_nanoseconds(self.timestamp).to_api(),
-            body=datasource_logset_api.LogBody(
-                basic=datasource_logset_api.BasicLogBody(message=self.body, properties={}),
-            ),
-        )
-
-    @classmethod
-    def _from_conjure(cls, log: datasource_logset_api.Log) -> Self:
-        if log.body.basic is None:
-            raise RuntimeError(f"unhandled log body type: expected 'basic' but got {log.body.type!r}")
-        return cls(timestamp=_SecondsNanos.from_api(log.time).to_nanoseconds(), body=log.body.basic.message)
-
-
 def _get_datasets(
     auth_header: str, client: scout_catalog.CatalogService, dataset_rids: Iterable[str]
 ) -> Iterable[scout_catalog.EnrichedDataset]:
@@ -239,14 +179,6 @@ def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
     if file_type.extension not in (".csv", ".csv.gz"):
         raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
     return path, file_type
-
-
-def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampType) -> LogTimestampType:
-    if log_timestamp_type == datasource.TimestampType.ABSOLUTE:
-        return "absolute"
-    elif log_timestamp_type == datasource.TimestampType.RELATIVE:
-        return "relative"
-    raise ValueError(f"unhandled timestamp type {log_timestamp_type}")
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
