@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal, Mapping, Sequence
 
 from typing_extensions import Self
 
-from ._api.combined import (
+from .._api.combined import (
     api,
     scout_api,
     scout_checks_api,
@@ -16,7 +16,7 @@ from ._api.combined import (
 
 if TYPE_CHECKING:
     # prevent circular imports
-    from .core import NominalClient
+    from . import NominalClient
 
 
 # TODO(ritwikdixit): add support for more fields i.e. lineage

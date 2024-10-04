@@ -30,7 +30,6 @@ from .._api.combined import (
     scout_video_api,
     upload_api,
 )
-from .._checklist import Checklist, ChecklistBuilder
 from .._multipart import put_multipart_upload
 from .._utils import (
     FileType,
@@ -39,6 +38,7 @@ from .._utils import (
     deprecate_keyword_argument,
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
+from .checklist import Checklist, ChecklistBuilder
 
 if TYPE_CHECKING:
     # prevent circular imports

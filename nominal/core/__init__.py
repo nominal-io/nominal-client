@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .._checklist import Check, Checklist, ChecklistBuilder
 from .attachment import Attachment
+from .checklist import Check, Checklist, ChecklistBuilder
 from .client import NominalClient
 from .dataset import Dataset, poll_until_ingestion_completed
 from .log import Log, LogSet
