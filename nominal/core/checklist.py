@@ -15,8 +15,7 @@ from .._api.combined import (
 )
 
 if TYPE_CHECKING:
-    # prevent circular imports
-    from . import NominalClient
+    from .client import NominalClient
 
 
 # TODO(ritwikdixit): add support for more fields i.e. lineage

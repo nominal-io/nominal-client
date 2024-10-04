@@ -1,13 +1,11 @@
-from __future__ import annotations
-
 from .attachment import Attachment
 from .checklist import Check, Checklist, ChecklistBuilder
-from .client import NominalClient
 from .dataset import Dataset, poll_until_ingestion_completed
 from .log import Log, LogSet
 from .run import Run
 from .user import User
 from .video import Video
+from .client import NominalClient
 
 __all__ = [
     "Attachment",

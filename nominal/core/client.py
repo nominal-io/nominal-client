@@ -13,6 +13,12 @@ from typing_extensions import Self
 
 from nominal import _config
 
+from .attachment import Attachment
+from .dataset import Dataset
+from .log import Log, LogSet
+from .run import Run
+from .video import Video
+
 from .._api.combined import (
     attachments_api,
     authentication_api,
@@ -39,10 +45,6 @@ from .._utils import (
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 from .checklist import Checklist, ChecklistBuilder
-
-if TYPE_CHECKING:
-    # prevent circular imports
-    from . import Attachment, Dataset, Log, LogSet, Run, User, Video
 
 
 @dataclass(frozen=True)

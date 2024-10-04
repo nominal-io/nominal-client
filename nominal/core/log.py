@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from typing_extensions import Self
 
 from .._api.combined import datasource, datasource_logset_api
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
-from .client import NominalClient
+
+if TYPE_CHECKING:
+    from .client import NominalClient
 
 
 @dataclass(frozen=True)

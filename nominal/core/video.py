@@ -4,14 +4,16 @@ import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 from typing_extensions import Self
 
 from .._api.combined import scout_video_api
 from .._utils import update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed
-from .client import NominalClient
+
+if TYPE_CHECKING:
+    from .client import NominalClient
 
 
 @dataclass(frozen=True)

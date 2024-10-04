@@ -7,12 +7,18 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Sequence, cast
 
 from typing_extensions import Self
 
+from .attachment import Attachment
+from .dataset import Dataset
+from .log import LogSet
+from .video import Video
+
 from .._api.combined import scout_run_api
 from .._utils import update_dataclass
 from ..ts import IntegralNanosecondsUTC, _SecondsNanos
 
+
 if TYPE_CHECKING:
-    from . import Attachment, Dataset, LogSet, NominalClient, Video
+    from .client import NominalClient
 
 
 @dataclass(frozen=True)

@@ -4,13 +4,15 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Mapping, Sequence, cast
+from typing import TYPE_CHECKING, BinaryIO, Mapping, Sequence, cast
 
 from typing_extensions import Self
 
 from .._api.combined import attachments_api
 from .._utils import update_dataclass
-from .client import NominalClient
+
+if TYPE_CHECKING:
+    from .client import NominalClient
 
 
 @dataclass(frozen=True)

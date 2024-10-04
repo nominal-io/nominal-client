@@ -7,7 +7,7 @@ from datetime import timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
 from typing_extensions import Self
 
@@ -16,7 +16,9 @@ from .._multipart import put_multipart_upload
 from .._utils import FileType, FileTypes, update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from ..ts import _AnyTimestampType, _to_typed_timestamp_type
-from .client import NominalClient
+
+if TYPE_CHECKING:
+    from .client import NominalClient
 
 
 @dataclass(frozen=True)
