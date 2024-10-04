@@ -7,7 +7,7 @@ from typing_extensions import Self
 
 from .._api.combined import datasource, datasource_logset, datasource_logset_api
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
-from ._client import _ClientBunch
+from ._clientsbunch import ClientsBunch
 from ._utils import HasRid
 
 
@@ -17,7 +17,7 @@ class LogSet(HasRid):
     name: str
     timestamp_type: LogTimestampType
     description: str | None
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     def _stream_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
         request = datasource_logset_api.SearchLogsRequest()
@@ -38,7 +38,7 @@ class LogSet(HasRid):
             yield Log._from_conjure(log)
 
     @classmethod
-    def _from_conjure(cls, clients: _ClientBunch, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
+    def _from_conjure(cls, clients: ClientsBunch, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
         return cls(
             rid=log_set_metadata.rid,
             name=log_set_metadata.name,

@@ -10,7 +10,7 @@ from typing_extensions import Self
 
 from .._api.combined import scout_video_api
 from ..exceptions import NominalIngestError, NominalIngestFailed
-from ._client import _ClientBunch
+from ._clientsbunch import ClientsBunch
 from ._utils import HasRid, update_dataclass
 
 
@@ -21,7 +21,7 @@ class Video(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -87,7 +87,7 @@ class Video(HasRid):
         return self
 
     @classmethod
-    def _from_conjure(cls, clients: _ClientBunch, video: scout_video_api.Video) -> Self:
+    def _from_conjure(cls, clients: ClientsBunch, video: scout_video_api.Video) -> Self:
         return cls(
             rid=video.rid,
             name=video.title,

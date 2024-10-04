@@ -21,7 +21,7 @@ from .._api.combined import (
 
 
 @dataclass(frozen=True)
-class _ClientBunch:
+class ClientsBunch:
     auth_header: str
     run: scout.RunService
     upload: upload_api.UploadService

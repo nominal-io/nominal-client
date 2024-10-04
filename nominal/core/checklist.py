@@ -13,7 +13,7 @@ from .._api.combined import (
     scout_compute_representation_api,
     scout_run_api,
 )
-from ._client import _ClientBunch
+from ._clientsbunch import ClientsBunch
 from ._utils import HasRid
 
 
@@ -25,7 +25,7 @@ class Check(HasRid):
     expression: str
     priority: Priority
     description: str
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ class ChecklistBuilder:
     _checks: list[_CreateCheck]
     _properties: dict[str, str]
     _labels: list[str]
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     def add_properties(self, properties: Mapping[str, str]) -> Self:
         self._properties.update(properties)
@@ -106,10 +106,10 @@ class Checklist(HasRid):
     labels: Sequence[str]
     checklist_variables: Sequence[ChecklistVariable]
     checks: Sequence[Check]
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     @classmethod
-    def _from_conjure(cls, clients: _ClientBunch, checklist: scout_checks_api.VersionedChecklist) -> Self:
+    def _from_conjure(cls, clients: ClientsBunch, checklist: scout_checks_api.VersionedChecklist) -> Self:
         # TODO(ritwikdixit): support draft checklists with VCS
         if not checklist.metadata.is_published:
             raise ValueError("cannot get a checklist that has not been published")

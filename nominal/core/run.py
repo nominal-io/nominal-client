@@ -9,7 +9,7 @@ from typing_extensions import Self
 
 from .._api.combined import scout_run_api
 from ..ts import IntegralNanosecondsUTC, _SecondsNanos
-from ._client import _ClientBunch
+from ._clientsbunch import ClientsBunch
 from ._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from .attachment import Attachment, _iter_get_attachments
 from .dataset import Dataset, _get_datasets
@@ -25,7 +25,7 @@ class Run(HasRid):
     labels: Sequence[str]
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
         """Add a dataset to this run.
@@ -157,7 +157,7 @@ class Run(HasRid):
         return self
 
     @classmethod
-    def _from_conjure(cls, clients: _ClientBunch, run: scout_run_api.Run) -> Self:
+    def _from_conjure(cls, clients: ClientsBunch, run: scout_run_api.Run) -> Self:
         return cls(
             rid=run.rid,
             name=run.title,

@@ -9,7 +9,7 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 from typing_extensions import Self
 
 from .._api.combined import attachments_api
-from ._client import _ClientBunch
+from ._clientsbunch import ClientsBunch
 from ._utils import HasRid, update_dataclass
 
 
@@ -20,7 +20,7 @@ class Attachment(HasRid):
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     def update(
         self,
@@ -72,7 +72,7 @@ class Attachment(HasRid):
             shutil.copyfileobj(self.get_contents(), wf)
 
     @classmethod
-    def _from_conjure(cls, clients: _ClientBunch, attachment: attachments_api.Attachment) -> Self:
+    def _from_conjure(cls, clients: ClientsBunch, attachment: attachments_api.Attachment) -> Self:
         return cls(
             rid=attachment.rid,
             name=attachment.title,
@@ -83,7 +83,7 @@ class Attachment(HasRid):
         )
 
 
-def _iter_get_attachments(clients: _ClientBunch, rids: Iterable[str]) -> Iterable[Attachment]:
+def _iter_get_attachments(clients: ClientsBunch, rids: Iterable[str]) -> Iterable[Attachment]:
     request = attachments_api.GetAttachmentsRequest(attachment_rids=list(rids))
     response = clients.attachment.get_batch(clients.auth_header, request)
     for a in response.response:

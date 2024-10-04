@@ -15,7 +15,7 @@ from .._api.combined import ingest_api, scout_catalog
 from .._utils import FileType, FileTypes
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from ..ts import _AnyTimestampType, _to_typed_timestamp_type
-from ._client import _ClientBunch
+from ._clientsbunch import ClientsBunch
 from ._multipart import put_multipart_upload
 from ._utils import HasRid, update_dataclass
 
@@ -27,7 +27,7 @@ class Dataset(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until dataset ingestion has completed.
@@ -136,7 +136,7 @@ class Dataset(HasRid):
         self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
 
     @classmethod
-    def _from_conjure(cls, clients: _ClientBunch, dataset: scout_catalog.EnrichedDataset) -> Self:
+    def _from_conjure(cls, clients: ClientsBunch, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
             rid=dataset.rid,
             name=dataset.name,

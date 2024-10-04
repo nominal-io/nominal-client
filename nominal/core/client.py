@@ -30,7 +30,7 @@ from .._utils import (
     deprecate_keyword_argument,
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
-from ._client import _ClientBunch
+from ._clientsbunch import ClientsBunch
 from ._multipart import put_multipart_upload
 from ._utils import construct_user_agent_string, rid_from_instance_or_string
 from .attachment import Attachment, _iter_get_attachments
@@ -44,7 +44,7 @@ from .video import Video
 
 @dataclass(frozen=True)
 class NominalClient:
-    _clients: _ClientBunch = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     @classmethod
     def create(
@@ -66,7 +66,7 @@ class NominalClient:
             connect_timeout=connect_timeout,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=_ClientBunch.from_config(cfg, agent, token))
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
@@ -497,7 +497,7 @@ def _logs_to_conjure(
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
 
 
-def _get_assignee_rid(clients: _ClientBunch, assignee_email: str | None, assignee_rid: str | None) -> str:
+def _get_assignee_rid(clients: ClientsBunch, assignee_email: str | None, assignee_rid: str | None) -> str:
     if assignee_email is not None and assignee_rid is not None:
         raise ValueError("only one of assignee_email or assignee_rid should be provided")
     if assignee_email is not None:
