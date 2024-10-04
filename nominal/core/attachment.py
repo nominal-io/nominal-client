@@ -10,13 +10,14 @@ from typing_extensions import Self
 
 from .._api.combined import attachments_api
 from .._utils import update_dataclass
+from ._utils import HasRid
 
 if TYPE_CHECKING:
     from .client import NominalClient
 
 
 @dataclass(frozen=True)
-class Attachment:
+class Attachment(HasRid):
     rid: str
     name: str
     description: str

@@ -11,13 +11,14 @@ from typing_extensions import Self
 from .._api.combined import scout_video_api
 from .._utils import update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed
+from ._utils import HasRid
 
 if TYPE_CHECKING:
     from .client import NominalClient
 
 
 @dataclass(frozen=True)
-class Video:
+class Video(HasRid):
     rid: str
     name: str
     description: str | None

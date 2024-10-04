@@ -7,22 +7,20 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Sequence, cast
 
 from typing_extensions import Self
 
-from .attachment import Attachment
-from .dataset import Dataset
-from .log import LogSet
-from .video import Video
-
 from .._api.combined import scout_run_api
 from .._utils import update_dataclass
 from ..ts import IntegralNanosecondsUTC, _SecondsNanos
-
+from ._utils import HasRid, rid_from_instance_or_string
+from .attachment import Attachment
+from .dataset import Dataset
+from .log import LogSet
 
 if TYPE_CHECKING:
     from .client import NominalClient
 
 
 @dataclass(frozen=True)
-class Run:
+class Run(HasRid):
     rid: str
     name: str
     description: str
@@ -54,7 +52,7 @@ class Run:
         """
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(log_set=_rid_from_instance_or_string(log_set)),
+                data_source=scout_run_api.DataSource(log_set=rid_from_instance_or_string(log_set)),
                 series_tags={},
                 offset=None,
             )
@@ -71,7 +69,7 @@ class Run:
         # TODO(alkasm): support series tags & offset
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(dataset=_rid_from_instance_or_string(dataset)),
+                data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
                 series_tags={},
                 offset=None,
             )
@@ -102,7 +100,7 @@ class Run:
 
         `attachments` can be `Attachment` instances, or attachment RIDs.
         """
-        rids = [_rid_from_instance_or_string(a) for a in attachments]
+        rids = [rid_from_instance_or_string(a) for a in attachments]
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
         self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
 
@@ -112,7 +110,7 @@ class Run:
 
         `attachments` can be `Attachment` instances, or attachment RIDs.
         """
-        rids = [_rid_from_instance_or_string(a) for a in attachments]
+        rids = [rid_from_instance_or_string(a) for a in attachments]
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._client._run_client.update_run_attachment(self._client._auth_header, request, self.rid)
 
@@ -170,13 +168,3 @@ class Run:
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             _client=nominal_client,
         )
-
-
-def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | LogSet | str) -> str:
-    from . import Attachment, Dataset, LogSet, Run, Video
-
-    if isinstance(value, str):
-        return value
-    elif isinstance(value, (Attachment, Dataset, LogSet, Run, Video)):
-        return value.rid
-    raise TypeError("{value!r} is not a string nor supported instance")

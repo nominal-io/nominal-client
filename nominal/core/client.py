@@ -5,20 +5,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from io import TextIOBase
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
 from conjure_python_client import RequestsClient, ServiceConfiguration, SslConfiguration
 from typing_extensions import Self
 
-from nominal import _config
-
-from .attachment import Attachment
-from .dataset import Dataset
-from .log import Log, LogSet
-from .run import Run
-from .video import Video
-
+from .. import _config
 from .._api.combined import (
     attachments_api,
     authentication_api,
@@ -44,7 +37,14 @@ from .._utils import (
     deprecate_keyword_argument,
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
+from ._utils import rid_from_instance_or_string
+from .attachment import Attachment
 from .checklist import Checklist, ChecklistBuilder
+from .dataset import Dataset
+from .log import Log, LogSet
+from .run import Run
+from .user import User
+from .video import Video
 
 
 @dataclass(frozen=True)
@@ -132,7 +132,7 @@ class NominalClient:
         """Create a run."""
         # TODO(alkasm): support links
         request = scout_run_api.CreateRunRequest(
-            attachments=[_rid_from_instance_or_string(a) for a in attachments],
+            attachments=[rid_from_instance_or_string(a) for a in attachments],
             data_sources={},
             description=description or "",
             labels=list(labels),
@@ -588,13 +588,3 @@ def _get_assignee_rid(client: NominalClient, assignee_email: str | None, assigne
     if assignee_rid is not None:
         return assignee_rid
     return client.get_user().rid
-
-
-def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | LogSet | str) -> str:
-    from . import Attachment, Dataset, LogSet, Run, Video
-
-    if isinstance(value, str):
-        return value
-    elif isinstance(value, (Attachment, Dataset, LogSet, Run, Video)):
-        return value.rid
-    raise TypeError("{value!r} is not a string nor supported instance")

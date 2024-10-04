@@ -7,13 +7,14 @@ from typing_extensions import Self
 
 from .._api.combined import datasource, datasource_logset_api
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
+from ._utils import HasRid
 
 if TYPE_CHECKING:
     from .client import NominalClient
 
 
 @dataclass(frozen=True)
-class LogSet:
+class LogSet(HasRid):
     rid: str
     name: str
     timestamp_type: LogTimestampType

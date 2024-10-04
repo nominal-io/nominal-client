@@ -13,6 +13,7 @@ from .._api.combined import (
     scout_compute_representation_api,
     scout_run_api,
 )
+from ._utils import HasRid
 
 if TYPE_CHECKING:
     from .client import NominalClient
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 
 # TODO(ritwikdixit): add support for more fields i.e. lineage
 @dataclass(frozen=True)
-class Check:
+class Check(HasRid):
     rid: str
     name: str
     expression: str
@@ -33,7 +34,6 @@ class Check:
 class ChecklistVariable:
     name: str
     expression: str
-    _client: NominalClient = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -97,7 +97,7 @@ class ChecklistBuilder:
 
 
 @dataclass(frozen=True)
-class Checklist:
+class Checklist(HasRid):
     rid: str
     name: str
     description: str
@@ -148,7 +148,6 @@ class Checklist:
                 ChecklistVariable(
                     name=checklist_variable_name,
                     expression=expression,
-                    _client=client,
                 )
                 for checklist_variable_name, expression in variable_names_to_expressions.items()
             ],
