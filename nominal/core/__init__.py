@@ -26,6 +26,7 @@ from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _S
 from .attachment import Attachment
 from .client import NominalClient
 from .run import Run
+from .video import Video
 
 __all__ = [
     "Attachment",
@@ -229,90 +230,6 @@ class Log:
         if log.body.basic is None:
             raise RuntimeError(f"unhandled log body type: expected 'basic' but got {log.body.type!r}")
         return cls(timestamp=_SecondsNanos.from_api(log.time).to_nanoseconds(), body=log.body.basic.message)
-
-
-@dataclass(frozen=True)
-class Video:
-    rid: str
-    name: str
-    description: str | None
-    properties: Mapping[str, str]
-    labels: Sequence[str]
-    _client: NominalClient = field(repr=False)
-
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
-        """Block until video ingestion has completed.
-        This method polls Nominal for ingest status after uploading a video on an interval.
-
-        Raises:
-            NominalIngestFailed: if the ingest failed
-            NominalIngestError: if the ingest status is not known
-        """
-
-        while True:
-            progress = self._client._video_client.get_ingest_status(self._client._auth_header, self.rid)
-            if progress.type == "success":
-                return
-            elif progress.type == "inProgress":  # "type" strings are camelCase
-                pass
-            elif progress.type == "error":
-                error = progress.error
-                if error is not None:
-                    error_messages = ", ".join([e.message for e in error.errors])
-                    error_types = ", ".join([e.error_type for e in error.errors])
-                    raise NominalIngestFailed(f"ingest failed for video {self.rid!r}: {error_messages} ({error_types})")
-                raise NominalIngestError(
-                    f"ingest status type marked as 'error' but with no instance for video {self.rid!r}"
-                )
-            else:
-                raise NominalIngestError(f"unhandled ingest status {progress.type!r} for video {self.rid!r}")
-            time.sleep(interval.total_seconds())
-
-    def update(
-        self,
-        *,
-        name: str | None = None,
-        description: str | None = None,
-        properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] | None = None,
-    ) -> Self:
-        """Replace video metadata.
-        Updates the current instance, and returns it.
-
-        Only the metadata passed in will be replaced, the rest will remain untouched.
-
-        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
-        calling this method. E.g.:
-
-            new_labels = ["new-label-a", "new-label-b"]
-            for old_label in video.labels:
-                new_labels.append(old_label)
-            video = video.update(labels=new_labels)
-        """
-        # TODO(alkasm): properties SHOULD be optional here, but they're not.
-        # For uniformity with other methods, will always "update" with current props on the client.
-        request = scout_video_api.UpdateVideoMetadataRequest(
-            description=description,
-            labels=None if labels is None else list(labels),
-            title=name,
-            properties=dict(self.properties if properties is None else properties),
-        )
-        response = self._client._video_client.update_metadata(self._client._auth_header, request, self.rid)
-
-        video = self.__class__._from_conjure(self._client, response)
-        update_dataclass(self, video, fields=self.__dataclass_fields__)
-        return self
-
-    @classmethod
-    def _from_conjure(cls, client: NominalClient, video: scout_video_api.Video) -> Self:
-        return cls(
-            rid=video.rid,
-            name=video.title,
-            description=video.description,
-            properties=MappingProxyType(video.properties),
-            labels=tuple(video.labels),
-            _client=client,
-        )
 
 
 def _get_datasets(
