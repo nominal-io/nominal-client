@@ -24,16 +24,15 @@ from .._api.combined import (
     scout_units_api,
     scout_video_api,
 )
-from ._multipart import put_multipart_upload
 from .._utils import (
     FileType,
     FileTypes,
-    construct_user_agent_string,
     deprecate_keyword_argument,
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 from ._client import _ClientBunch
-from ._utils import rid_from_instance_or_string
+from ._multipart import put_multipart_upload
+from ._utils import construct_user_agent_string, rid_from_instance_or_string
 from .attachment import Attachment, _iter_get_attachments
 from .checklist import Checklist, ChecklistBuilder
 from .dataset import Dataset, _get_dataset, _get_datasets

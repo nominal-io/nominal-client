@@ -5,42 +5,15 @@ import mimetypes
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO, Callable, Iterable, Iterator, NamedTuple, TypeVar
+from typing import BinaryIO, Callable, Iterator, NamedTuple, TypeVar
 
 from typing_extensions import ParamSpec
 
 logger = logging.getLogger(__name__)
 
+
+Param = ParamSpec("Param")
 T = TypeVar("T")
-
-
-def construct_user_agent_string() -> str:
-    """Constructs a user-agent string with system & Python metadata.
-    E.g.: nominal-python/1.0.0b0 (macOS-14.4-arm64-arm-64bit) cpython/3.12.4
-    """
-    import importlib.metadata
-    import platform
-    import sys
-
-    try:
-        v = importlib.metadata.version("nominal")
-        p = platform.platform()
-        impl = sys.implementation
-        py = platform.python_version()
-        return f"nominal-python/{v} ({p}) {impl.name}/{py}"
-    except Exception as e:
-        # I believe all of the above are cross-platform, but just in-case...
-        logger.error("failed to construct user-agent string", exc_info=e)
-        return "nominal-python/unknown"
-
-
-def update_dataclass(self: T, other: T, fields: Iterable[str]) -> None:
-    """Update dataclass attributes, copying from `other` into `self`.
-
-    Uses __dict__ to update `self` to update frozen dataclasses.
-    """
-    for field in fields:
-        self.__dict__[field] = getattr(other, field)
 
 
 class FileType(NamedTuple):
@@ -86,9 +59,6 @@ def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
     finally:
         w.close()
         r.close()
-
-
-Param = ParamSpec("Param")
 
 
 def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callable[Param, T]], Callable[Param, T]]:

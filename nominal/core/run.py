@@ -8,10 +8,9 @@ from typing import Iterable, Mapping, Sequence, cast
 from typing_extensions import Self
 
 from .._api.combined import scout_run_api
-from .._utils import update_dataclass
 from ..ts import IntegralNanosecondsUTC, _SecondsNanos
 from ._client import _ClientBunch
-from ._utils import HasRid, rid_from_instance_or_string
+from ._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from .attachment import Attachment, _iter_get_attachments
 from .dataset import Dataset, _get_datasets
 from .log import LogSet

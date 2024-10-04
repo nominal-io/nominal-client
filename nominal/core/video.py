@@ -9,10 +9,9 @@ from typing import Mapping, Sequence
 from typing_extensions import Self
 
 from .._api.combined import scout_video_api
-from .._utils import update_dataclass
 from ..exceptions import NominalIngestError, NominalIngestFailed
 from ._client import _ClientBunch
-from ._utils import HasRid
+from ._utils import HasRid, update_dataclass
 
 
 @dataclass(frozen=True)

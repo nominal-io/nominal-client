@@ -12,12 +12,12 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 from typing_extensions import Self
 
 from .._api.combined import ingest_api, scout_catalog
-from ._multipart import put_multipart_upload
-from .._utils import FileType, FileTypes, update_dataclass
+from .._utils import FileType, FileTypes
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from ..ts import _AnyTimestampType, _to_typed_timestamp_type
 from ._client import _ClientBunch
-from ._utils import HasRid
+from ._multipart import put_multipart_upload
+from ._utils import HasRid, update_dataclass
 
 
 @dataclass(frozen=True)
