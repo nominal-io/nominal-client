@@ -11,8 +11,6 @@ import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from typing_extensions import Self
 
-from nominal.core.user import _get_user, _get_user_rid_from_email
-
 from .. import _config
 from .._api.combined import (
     attachments_api,
@@ -38,7 +36,7 @@ from .checklist import Checklist, ChecklistBuilder
 from .dataset import Dataset, _get_dataset, _get_datasets
 from .log import Log, LogSet, _get_log_set
 from .run import Run
-from .user import User
+from .user import User, _get_user, _get_user_with_fallback
 from .video import Video
 
 
@@ -70,7 +68,7 @@ class NominalClient:
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
-        return _get_user(self._clients)
+        return _get_user(self._clients.auth_header, self._clients.authentication)
 
     def create_run(
         self,
@@ -375,7 +373,9 @@ class NominalClient:
         return ChecklistBuilder(
             name=name,
             description=description,
-            assignee_rid=_get_assignee_rid(self._clients, assignee_email, assignee_rid),
+            assignee_rid=_get_user_with_fallback(
+                self._clients.auth_header, self._clients.authentication, assignee_email, assignee_rid
+            ),
             _default_ref_name=default_ref_name,
             _variables=[],
             _checks=[],
@@ -495,13 +495,3 @@ def _logs_to_conjure(
         elif isinstance(log, tuple):
             ts, body = log
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
-
-
-def _get_assignee_rid(clients: ClientsBunch, assignee_email: str | None, assignee_rid: str | None) -> str:
-    if assignee_email is not None and assignee_rid is not None:
-        raise ValueError("only one of assignee_email or assignee_rid should be provided")
-    if assignee_email is not None:
-        return _get_user_rid_from_email(clients, assignee_email)
-    if assignee_rid is not None:
-        return assignee_rid
-    return _get_user(clients).rid
