@@ -289,7 +289,7 @@ def test_create_checklist():
     name = f"checklist-{uuid4()}"
     desc = f"top-level test to create a checklist {uuid4()}"
     assignee_email = "demo@nominal.io"
-    builder = nm.draft_checklist(name, assignee_email, desc)
+    builder = nm.checklist_builder(name, assignee_email, desc)
     builder.add_check(name="Check 1", priority=1, description="Description of check 1", expression="10 > 5")
     builder.add_variable(name="Variable 1", expression="10")
     checklist = builder.publish()
@@ -320,7 +320,7 @@ def test_get_checklist():
     assignee_email = "demo@nominal.io"
 
     # Draft and create the checklist
-    builder = nm.draft_checklist(name, assignee_email, desc)
+    builder = nm.checklist_builder(name, assignee_email, desc)
     builder.add_variable(name="Variable 1", expression="10")
     builder.add_check(name="Check 1", priority=1, description="Description of check 1", expression="10 > 5")
     checklist = builder.publish()
