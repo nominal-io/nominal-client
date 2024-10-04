@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Iterable, Mapping, Sequence, cast
+from typing import Iterable, Mapping, Sequence, cast
 
 from typing_extensions import Self
 

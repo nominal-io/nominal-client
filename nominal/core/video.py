@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Mapping, Sequence
+from typing import Mapping, Sequence
 
 from typing_extensions import Self
 

@@ -4,7 +4,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 from typing_extensions import Self
 

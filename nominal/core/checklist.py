@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Mapping, Sequence
+from typing import Literal, Mapping, Sequence
 
 from typing_extensions import Self
 
