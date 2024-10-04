@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from io import TextIOBase
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
@@ -38,7 +38,6 @@ from .._utils import (
     construct_user_agent_string,
     deprecate_keyword_argument,
 )
-from ..exceptions import NominalIngestError, NominalIngestMultiError
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 
 if TYPE_CHECKING:
@@ -525,16 +524,6 @@ def _get_log_set(
     return client.get_log_set_metadata(auth_header, log_set_rid)
 
 
-def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | LogSet | str) -> str:
-    if isinstance(value, str):
-        return value
-    elif isinstance(value, (Attachment, Run, Dataset, Video)):
-        return value.rid
-    elif hasattr(value, "rid"):
-        return value.rid
-    raise TypeError("{value!r} is not a string nor has the attribute 'rid'")
-
-
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
     end: datetime | IntegralNanosecondsUTC | None = None,
@@ -597,3 +586,13 @@ def _get_assignee_rid(client: NominalClient, assignee_email: str | None, assigne
     if assignee_rid is not None:
         return assignee_rid
     return client.get_user().rid
+
+
+def _rid_from_instance_or_string(value: Attachment | Run | Dataset | Video | LogSet | str) -> str:
+    from . import Attachment, Dataset, LogSet, Run, Video
+
+    if isinstance(value, str):
+        return value
+    elif isinstance(value, (Attachment, Dataset, LogSet, Run, Video)):
+        return value.rid
+    raise TypeError("{value!r} is not a string nor supported instance")
