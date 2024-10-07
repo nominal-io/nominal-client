@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import importlib.metadata
+import platform
+import sys
 from typing import Iterable, Protocol, TypeVar, runtime_checkable
 
 from .._utils import logger
@@ -33,10 +36,6 @@ def construct_user_agent_string() -> str:
     """Constructs a user-agent string with system & Python metadata.
     E.g.: nominal-python/1.0.0b0 (macOS-14.4-arm64-arm-64bit) cpython/3.12.4
     """
-    import importlib.metadata
-    import platform
-    import sys
-
     try:
         v = importlib.metadata.version("nominal")
         p = platform.platform()
