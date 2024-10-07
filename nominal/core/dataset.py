@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 import urllib.parse
 from dataclasses import dataclass, field
@@ -19,6 +20,9 @@ from ._clientsbunch import ClientsBunch
 from ._conjure_utils import _available_units
 from ._multipart import put_multipart_upload
 from ._utils import HasRid, update_dataclass
+from .channel import Channel
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -136,12 +140,12 @@ class Dataset(HasRid):
         )
         self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
 
-    def get_channel_metadata(
+    def get_channel(
         self,
-        exact_match: list[str] | None = None,
+        exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
-        channel_names: Sequence[str] | None = None,
-    ) -> Iterable[datasource_api.ChannelMetadata]:
+        channel_names: Sequence[str] = (),
+    ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this dataset.
         NOTE: Provided channels may also be associated with other datasets-- use with caution.
         Args:
@@ -153,14 +157,11 @@ class Dataset(HasRid):
         Yields:
             Yields a sequence of channel metadata objects which match the provided query parameters
         """
-        if exact_match is None:
-            exact_match = []
-
         next_page_token = None
         while True:
             query = datasource_api.SearchChannelsRequest(
                 data_sources=[self.rid],
-                exact_match=exact_match,
+                exact_match=list(exact_match),
                 fuzzy_search_text=fuzzy_search_text,
                 previously_selected_channels={},
                 next_page_token=next_page_token,
@@ -169,20 +170,22 @@ class Dataset(HasRid):
             )
             response = self._clients.datasource.search_channels(self._clients.auth_header, query)
             for channel_metadata in response.results:
-                if channel_names is not None and not channel_metadata.name in channel_names:
+                # If user is explicitly filtering to a list of channel names,
+                # ignore any channel names that weren't specified
+                if channel_names and not channel_metadata.name in channel_names:
                     continue
 
-                yield channel_metadata
+                yield Channel._from_conjure(channel_metadata)
 
             if response.next_page_token is None:
                 break
             else:
                 next_page_token = response.next_page_token
 
-    def set_channel_units(self, channel_to_unit_map: Mapping[str, str]) -> None:
+    def set_channel_units(self, channels_to_units: Mapping[str, str | None]) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
         Args:
-            channel_to_unit_map: A mapping of channel names to unit symbols.
+            channels_to_units: A mapping of channel names to unit symbols.
                 NOTE: any existing units may be cleared from a channel by providing None as a symbol.
         Raises:
             ValueError: Unsupported unit symbol provided
@@ -190,30 +193,37 @@ class Dataset(HasRid):
         """
 
         # Get the set of all available unit symbols
-        available_units = set(_available_units(self._clients))
+        # NOTE: weird lambda to escape mypy type validation
+        all_units = sorted(_available_units(self._clients), key=lambda unit: unit.name if unit.name else "")
+        supported_symbols = set([unit.symbol for unit in all_units])
 
         # Validate that all user provided unit symbols are valid
-        for channel_name, unit_symbol in channel_to_unit_map.items():
+        for channel_name, unit_symbol in channels_to_units.items():
+            # User is clearing the unit for this channel-- don't validate
             if unit_symbol is None:
                 continue
 
-            if unit_symbol not in available_units:
+            if unit_symbol not in supported_symbols:
+                unit_elements = [f"{unit.symbol} ({unit.name})" for unit in all_units]
                 raise ValueError(
-                    f"User provided unit {unit_symbol} for channel {channel_name} does not resolve to a unit recognized by nominal."
+                    f"""Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit recognized by nominal.
+
+Valid (supported) Units [symbol (name)]:
+\t - {'\n\t - '.join(unit_elements)}"""
                 )
 
         # Get metadata (specifically, RIDs) for all requested channels
         found_channels = {
-            channel.name: channel
-            for channel in self.get_channel_metadata(channel_names=list(channel_to_unit_map.keys()))
+            channel.name: channel for channel in self.get_channel(channel_names=list(channels_to_units.keys()))
         }
 
         # For each channel / unit combination, create an update request to set the series's unit
         # to that symbol
         update_requests = []
-        for channel_name, unit in channel_to_unit_map.items():
+        for channel_name, unit in channels_to_units.items():
             # No data uploaded to channel yet ...
             if channel_name not in found_channels:
+                logger.info("Not setting unit for channel %s-- no data uploaded for channel!", channel_name)
                 continue
 
             if unit is None:
@@ -222,14 +232,8 @@ class Dataset(HasRid):
                 unit_update = timeseries_logicalseries_api.UnitUpdate(unit=unit)
 
             channel = found_channels[channel_name]
-
-            # If there is no logical series RID for the channel, skip it
-            if channel.series_rid.logical_series is None:
-                continue
-
             channel_request = timeseries_logicalseries_api.UpdateLogicalSeries(
-                logical_series_rid=channel.series_rid.logical_series,
-                description=channel.description,
+                logical_series_rid=channel.rid,
                 unit_update=unit_update,
             )
             update_requests.append(channel_request)

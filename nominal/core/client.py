@@ -34,6 +34,7 @@ from ._conjure_utils import _available_units
 from ._multipart import put_multipart_upload
 from ._utils import construct_user_agent_string, rid_from_instance_or_string
 from .attachment import Attachment, _iter_get_attachments
+from .channel import Channel
 from .checklist import Checklist, ChecklistBuilder
 from .dataset import Dataset, _get_dataset, _get_datasets
 from .log import Log, LogSet, _get_log_set
@@ -443,7 +444,7 @@ class NominalClient:
         """Get the list of units that are commensurable (convertible to/from) the given unit symbol"""
         return self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
 
-    def get_logical_series(self, rid: str) -> timeseries_logicalseries_api.LogicalSeries:
+    def get_channel(self, rid: str) -> Channel:
         """Get metadata for a given logical series by looking up its rid
         Args:
             rid: Identifier for the logical series to look up
@@ -453,21 +454,19 @@ class NominalClient:
             conjure_python_client.ConjureHTTPError: An error occurred while looking up the logical series.
                 This typically occurs when there is no such logical series for the given RID.
         """
-        return self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
+        return Channel._from_conjure(self._clients.logical_series.get_logical_series(self._clients.auth_header, rid))
 
-    def set_series_units(
-        self, rids_to_types: Mapping[str, str | None]
-    ) -> Sequence[timeseries_logicalseries_api.LogicalSeries]:
-        """Sets the units for a set of series based on user-provided unit symbols
+    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Sequence[Channel]:
+        """Sets the units for a set of channels based on user-provided unit symbols
         Args:
-            rids_to_types: Mapping of logical series RIDs -> unit symbols (e.g. 'm/s').
-                Providing `None` as the unit symbol clears any existing units for the series.
+            rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
+                NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
         Returns:
-            A sequence of metadata for all updated logical series
+            A sequence of metadata for all updated channels
         Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the series.
+            conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the channel.
                 This typically occurs when either the units are invalid, or there are no
-                series with the given RIDs present.
+                channels with the given RIDs present.
         """
         series_updates = []
         for rid, series_type in rids_to_types.items():
@@ -485,7 +484,7 @@ class NominalClient:
 
         request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
         response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
-        return response.responses
+        return [Channel._from_conjure(resp) for resp in response.responses]
 
 
 def _create_search_runs_query(
