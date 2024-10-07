@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/nominal-io/nominal-client/compare/v1.4.1...v1.5.0) (2024-10-07)
+
+
+### Features
+
+* add access to the units endpoint to the python client ([#65](https://github.com/nominal-io/nominal-client/issues/65)) ([06d3962](https://github.com/nominal-io/nominal-client/commit/06d39626c1f5aa6bc9166775daaf1b55c963533e))
+* checklist support ([#61](https://github.com/nominal-io/nominal-client/issues/61)) ([f9105d9](https://github.com/nominal-io/nominal-client/commit/f9105d9ced054cae535a95d0aa0bf19f4cdf801e))
+
 ## [1.4.1](https://github.com/nominal-io/nominal-client/compare/v1.4.0...v1.4.1) (2024-10-03)
 
 
