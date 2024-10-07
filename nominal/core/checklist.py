@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Mapping, Sequence
+from typing import Literal, Mapping, Sequence
 
 from typing_extensions import Self
 
-from ._api.combined import (
+from .._api.combined import (
     api,
     scout_api,
     scout_checks_api,
@@ -13,28 +13,25 @@ from ._api.combined import (
     scout_compute_representation_api,
     scout_run_api,
 )
-
-if TYPE_CHECKING:
-    # prevent circular imports
-    from .core import NominalClient
+from ._clientsbunch import ClientsBunch
+from ._utils import HasRid
 
 
 # TODO(ritwikdixit): add support for more fields i.e. lineage
 @dataclass(frozen=True)
-class Check:
+class Check(HasRid):
     rid: str
     name: str
     expression: str
     priority: Priority
     description: str
-    _client: NominalClient = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
 
 @dataclass(frozen=True)
 class ChecklistVariable:
     name: str
     expression: str
-    _client: NominalClient = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -48,7 +45,7 @@ class ChecklistBuilder:
     _checks: list[_CreateCheck]
     _properties: dict[str, str]
     _labels: list[str]
-    _client: NominalClient = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     def add_properties(self, properties: Mapping[str, str]) -> Self:
         self._properties.update(properties)
@@ -69,13 +66,16 @@ class ChecklistBuilder:
     def publish(self, commit_message: str | None = None) -> Checklist:
         conjure_variables = _batch_create_variable_to_conjure(
             self._variables,
-            self._client._auth_header,
-            self._client._compute_representation_client,
+            self._clients.auth_header,
+            self._clients.compute_representation,
             self._default_ref_name,
         )
 
         conjure_checks = _batch_create_check_to_conjure(
-            self._checks, self._client._auth_header, self._client._compute_representation_client, self._default_ref_name
+            self._checks,
+            self._clients.auth_header,
+            self._clients.compute_representation,
+            self._default_ref_name,
         )
 
         request = scout_checks_api.CreateChecklistRequest(
@@ -93,12 +93,12 @@ class ChecklistBuilder:
             is_published=True,
         )
 
-        response = self._client._checklist_api_client.create(self._client._auth_header, request)
-        return Checklist._from_conjure(self._client, response)
+        response = self._clients.checklist.create(self._clients.auth_header, request)
+        return Checklist._from_conjure(self._clients, response)
 
 
 @dataclass(frozen=True)
-class Checklist:
+class Checklist(HasRid):
     rid: str
     name: str
     description: str
@@ -106,10 +106,10 @@ class Checklist:
     labels: Sequence[str]
     checklist_variables: Sequence[ChecklistVariable]
     checks: Sequence[Check]
-    _client: NominalClient = field(repr=False)
+    _clients: ClientsBunch = field(repr=False)
 
     @classmethod
-    def _from_conjure(cls, client: NominalClient, checklist: scout_checks_api.VersionedChecklist) -> Self:
+    def _from_conjure(cls, clients: ClientsBunch, checklist: scout_checks_api.VersionedChecklist) -> Self:
         # TODO(ritwikdixit): support draft checklists with VCS
         if not checklist.metadata.is_published:
             raise ValueError("cannot get a checklist that has not been published")
@@ -117,7 +117,7 @@ class Checklist:
         variable_name_to_graph_map = {
             variable_name: compute_graph
             for variable_name, compute_graph in (
-                _conjure_checklist_variable_to_name_graph__pair(checklistVariable)
+                _conjure_checklist_variable_to_name_graph_pair(checklistVariable)
                 for checklistVariable in checklist.checklist_variables
             )
         }
@@ -129,11 +129,11 @@ class Checklist:
         }
 
         # # TODO(ritwikdixit): remove the need for these extraneous network requests
-        variable_names_to_expressions = client._compute_representation_client.batch_compute_to_expression(
-            client._auth_header, variable_name_to_graph_map
+        variable_names_to_expressions = clients.compute_representation.batch_compute_to_expression(
+            clients.auth_header, variable_name_to_graph_map
         )
-        check_rids_to_expressions = client._compute_representation_client.batch_compute_to_expression(
-            client._auth_header, {check_rid: graph for check_rid, (_, graph) in check_rid_to_graph_and_def_map.items()}
+        check_rids_to_expressions = clients.compute_representation.batch_compute_to_expression(
+            clients.auth_header, {check_rid: graph for check_rid, (_, graph) in check_rid_to_graph_and_def_map.items()}
         )
         check_rids_to_definitions = {
             check_rid: check_def for check_rid, (check_def, _) in check_rid_to_graph_and_def_map.items()
@@ -149,7 +149,6 @@ class Checklist:
                 ChecklistVariable(
                     name=checklist_variable_name,
                     expression=expression,
-                    _client=client,
                 )
                 for checklist_variable_name, expression in variable_names_to_expressions.items()
             ],
@@ -159,12 +158,12 @@ class Checklist:
                     name=check_definition.title,
                     description=check_definition.description,
                     expression=check_rids_to_expressions[check_rid],
-                    _client=client,
+                    _clients=clients,
                     priority=_conjure_priority_to_priority(check_definition.priority),
                 )
                 for check_rid, check_definition in check_rids_to_definitions.items()
             ],
-            _client=client,
+            _clients=clients,
         )
 
 
@@ -207,7 +206,7 @@ def _conjure_priority_to_priority(priority: scout_checks_api.Priority) -> Priori
     raise ValueError(f"unknown priority '{priority}', expected one of {_priority_to_conjure_map.values()}")
 
 
-def _conjure_checklist_variable_to_name_graph__pair(
+def _conjure_checklist_variable_to_name_graph_pair(
     checklist_variable: scout_checks_api.ChecklistVariable,
 ) -> tuple[str, scout_compute_representation_api.CompiledNode]:
     if checklist_variable.value.compute_node is None:

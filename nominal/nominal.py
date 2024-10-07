@@ -6,9 +6,7 @@ from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
 
-from nominal import _config
-
-from . import ts
+from . import _config, ts
 from ._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
 from .core import (
     Attachment,
