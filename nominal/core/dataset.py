@@ -140,7 +140,7 @@ class Dataset(HasRid):
         )
         self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
 
-    def get_channel(
+    def get_channels(
         self,
         exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
@@ -215,7 +215,7 @@ Valid (supported) Units [symbol (name)]:
 
         # Get metadata (specifically, RIDs) for all requested channels
         found_channels = {
-            channel.name: channel for channel in self.get_channel(channel_names=list(channels_to_units.keys()))
+            channel.name: channel for channel in self.get_channels(channel_names=list(channels_to_units.keys()))
         }
 
         # For each channel / unit combination, create an update request to set the series's unit
