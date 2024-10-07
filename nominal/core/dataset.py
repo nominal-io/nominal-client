@@ -205,11 +205,12 @@ class Dataset(HasRid):
 
             if unit_symbol not in supported_symbols:
                 unit_elements = [f"{unit.symbol} ({unit.name})" for unit in all_units]
+                unit_listing = "\n\t - ".join(unit_elements)
                 raise ValueError(
                     f"""Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit recognized by nominal.
 
 Valid (supported) Units [symbol (name)]:
-\t - {'\n\t - '.join(unit_elements)}"""
+\t - {unit_listing}"""
                 )
 
         # Get metadata (specifically, RIDs) for all requested channels
