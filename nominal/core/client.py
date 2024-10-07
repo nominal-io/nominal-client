@@ -21,6 +21,7 @@ from .._api.combined import (
     scout_run_api,
     scout_units_api,
     scout_video_api,
+    timeseries_logicalseries_api,
 )
 from .._utils import (
     FileType,
@@ -29,6 +30,7 @@ from .._utils import (
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 from ._clientsbunch import ClientsBunch
+from ._conjure_utils import _available_units
 from ._multipart import put_multipart_upload
 from ._utils import construct_user_agent_string, rid_from_instance_or_string
 from .attachment import Attachment, _iter_get_attachments
@@ -431,8 +433,7 @@ class NominalClient:
 
     def get_all_units(self) -> Sequence[scout_units_api.Unit]:
         """Retrieve list of all allowable units"""
-        response = self._clients.units.get_all_units(self._clients.auth_header)
-        return [unit for units in response.units_by_property.values() for unit in units]
+        return _available_units(self._clients)
 
     def get_unit(self, unit_symbol: str) -> scout_units_api.Unit | None:
         """Get details of the given unit symbol, or none if invalid"""
@@ -441,6 +442,50 @@ class NominalClient:
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[scout_units_api.Unit]:
         """Get the list of units that are commensurable (convertible to/from) the given unit symbol"""
         return self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
+
+    def get_logical_series(self, rid: str) -> timeseries_logicalseries_api.LogicalSeries:
+        """Get metadata for a given logical series by looking up its rid
+        Args:
+            rid: Identifier for the logical series to look up
+        Returns:
+            Resolved metadata for the requested logical series
+        Raises:
+            conjure_python_client.ConjureHTTPError: An error occurred while looking up the logical series.
+                This typically occurs when there is no such logical series for the given RID.
+        """
+        return self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
+
+    def set_series_units(
+        self, rids_to_types: Mapping[str, str | None]
+    ) -> Sequence[timeseries_logicalseries_api.LogicalSeries]:
+        """Sets the units for a set of series based on user-provided unit symbols
+        Args:
+            rids_to_types: Mapping of logical series RIDs -> unit symbols (e.g. 'm/s').
+                Providing `None` as the unit symbol clears any existing units for the series.
+        Returns:
+            A sequence of metadata for all updated logical series
+        Raises:
+            conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the series.
+                This typically occurs when either the units are invalid, or there are no
+                series with the given RIDs present.
+        """
+        series_updates = []
+        for rid, series_type in rids_to_types.items():
+            if series_type is None:
+                unit_update = timeseries_logicalseries_api.UnitUpdate(clear_unit=timeseries_logicalseries_api.Empty())
+            else:
+                unit_update = timeseries_logicalseries_api.UnitUpdate(unit=series_type)
+
+            series_updates.append(
+                timeseries_logicalseries_api.UpdateLogicalSeries(
+                    logical_series_rid=rid,
+                    unit_update=unit_update,
+                )
+            )
+
+        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
+        response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
+        return response.responses
 
 
 def _create_search_runs_query(
