@@ -17,7 +17,7 @@ def rid_from_instance_or_string(value: HasRid | str) -> str:
         return value
     elif isinstance(value, HasRid):
         return value.rid
-    raise TypeError("{value!r} is not a string nor an instance with a 'rid' attribute")
+    raise TypeError(f"{value!r} is not a string nor an instance with a 'rid' attribute")
 
 
 def update_dataclass(self: T, other: T, fields: Iterable[str]) -> None:
