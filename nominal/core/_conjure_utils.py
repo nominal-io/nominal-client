@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Sequence
 
 from .._api.combined import scout_units_api, timeseries_logicalseries_api
