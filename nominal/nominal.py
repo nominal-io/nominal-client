@@ -160,31 +160,14 @@ def upload_csv(
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
     conn = get_default_client()
-    return _upload_csv(
-        conn, file, name, timestamp_column, timestamp_type, description, wait_until_complete=wait_until_complete
-    )
-
-
-def _upload_csv(
-    conn: NominalClient,
-    file: Path | str,
-    name: str | None,
-    timestamp_column: str,
-    timestamp_type: ts._AnyTimestampType,
-    description: str | None = None,
-    *,
-    wait_until_complete: bool = True,
-) -> Dataset:
-    dataset = conn.create_csv_dataset(
+    return conn.create_csv_dataset(
         file,
         name,
         timestamp_column=timestamp_column,
         timestamp_type=timestamp_type,
         description=description,
+        poll_until_completed=wait_until_complete,
     )
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
-    return dataset
 
 
 def get_dataset(rid: str) -> Dataset:

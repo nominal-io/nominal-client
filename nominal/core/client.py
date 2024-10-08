@@ -161,6 +161,7 @@ class NominalClient:
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         description: str | None = None,
+        poll_until_completed: bool = False,
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
@@ -182,6 +183,7 @@ class NominalClient:
                 timestamp_type,
                 file_type,
                 description,
+                poll_until_completed=poll_until_completed,
                 labels=labels,
                 properties=properties,
             )
@@ -194,6 +196,7 @@ class NominalClient:
         timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
         description: str | None = None,
+        poll_until_completed: bool = False,
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
@@ -238,7 +241,12 @@ class NominalClient:
             ),
         )
         response = self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
-        return self.get_dataset(response.dataset_rid)
+        created_dataset = self.get_dataset(response.dataset_rid)
+
+        if poll_until_completed:
+            created_dataset.poll_until_ingestion_completed()
+
+        return created_dataset
 
     def create_video_from_io(
         self,
