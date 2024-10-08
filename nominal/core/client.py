@@ -30,7 +30,7 @@ from .._utils import (
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 from ._clientsbunch import ClientsBunch
-from ._conjure_utils import _available_units
+from ._conjure_utils import _available_units, _build_unit_update
 from ._multipart import put_multipart_upload
 from ._utils import construct_user_agent_string, rid_from_instance_or_string
 from .attachment import Attachment, _iter_get_attachments
@@ -470,15 +470,10 @@ class NominalClient:
         """
         series_updates = []
         for rid, series_type in rids_to_types.items():
-            if series_type is None:
-                unit_update = timeseries_logicalseries_api.UnitUpdate(clear_unit=timeseries_logicalseries_api.Empty())
-            else:
-                unit_update = timeseries_logicalseries_api.UnitUpdate(unit=series_type)
-
             series_updates.append(
                 timeseries_logicalseries_api.UpdateLogicalSeries(
                     logical_series_rid=rid,
-                    unit_update=unit_update,
+                    unit_update=_build_unit_update(series_type),
                 )
             )
 
