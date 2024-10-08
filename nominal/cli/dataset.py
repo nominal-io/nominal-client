@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections
 import pathlib
-from typing import Literal, Sequence
+from typing import Mapping, Sequence
 
 import click
 import tabulate
@@ -72,40 +72,62 @@ def get(rid: str, base_url: str, token: str | None) -> None:
 @dataset_cmd.command("summarize")
 @click.option("-r", "--rid", required=True, multiple=True, help="RID(s) of the dataset(s) to summarize")
 @click.option(
-    "-c",
-    "--csv",
-    type=click.Path(exists=False, dir_okay=False, resolve_path=True, path_type=pathlib.Path),
-    help="If provided, a path to write the description to as a CSV",
+    "--show-rids/--no-show-rids",
+    default=False,
+    show_default=True,
+    help="If provided, show channel / dataset RIDs as part of tabulated output",
 )
-@click.option("--show-rids", is_flag=True, help="If provided, show channel / dataset RIDs as part of tabulated output")
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, resolve_path=True, path_type=pathlib.Path),
+    help="If provided, a path to write the output to as a file",
+)
+@click.option(
+    "-f",
+    "--format",
+    type=click.Choice(["csv", "table"], case_sensitive=True),
+    default="table",
+    show_default=True,
+    help="Output data format to represent the data as",
+)
 @BASE_URL_OPTION
 @TOKEN_OPTION
-def summarize(rid: Sequence[str], csv: pathlib.Path | None, show_rids: bool, base_url: str, token: str | None) -> None:
+def summarize(
+    base_url: str, token: str | None, rid: Sequence[str], show_rids: bool, output: pathlib.Path | None, format: str
+) -> None:
     """Summarize the dataset(s) by their schema (column names, types, and RIDs)"""
 
     client = get_client(base_url, token)
-    datasets = {dataset.name: dataset for dataset in client.get_datasets(rid)}
 
     data = collections.defaultdict(list)
-    for dataset_name, dataset in datasets.items():
+    for dataset in client.get_datasets(rid):
         dataset_metadata = dataset.get_channels()
         for metadata in dataset_metadata:
             data["channel name"].append(metadata.name)
             data["channel unit"].append(metadata.unit if metadata.unit else "")
-            data["dataset_name"].append(dataset_name)
+            data["dataset_name"].append(dataset.name)
 
             if show_rids:
                 data["channel rid"].append(metadata.rid)
                 data["dataset rid"].append(dataset.rid)
 
-    if csv is None:
-        click.echo(tabulate.tabulate(data, headers=list(data.keys()), tablefmt="pretty"))
-    else:
-        # Performing import within method to prevent users from having a long load-up time for other
-        # endpoints while importing pandas
-        import pandas as pd
+    output_str = _dataset_data_to_string(data, format)
 
-        click.secho(f"Writing dataset(s) metadata to {csv}", fg="cyan")
-        csv.parent.mkdir(parents=True, exist_ok=True)
-        df = pd.DataFrame(data)
-        df.to_csv(csv, index=False)
+    if output is None:
+        click.echo(output_str)
+    else:
+        click.secho(f"Writing dataset(s) metadata to {output}", fg="cyan")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(output_str)
+
+
+def _dataset_data_to_string(table_data: Mapping[str, list[str]], format: str) -> str:
+    import pandas as pd
+
+    if format == "csv":
+        return pd.DataFrame(table_data).to_csv(index=False)
+    elif format == "table":
+        return tabulate.tabulate(table_data, headers=list(table_data.keys()))
+    else:
+        raise ValueError(f"Expected format to be one of csv or table, received {format}")
