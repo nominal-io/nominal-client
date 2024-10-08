@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import collections
+import logging
 import pathlib
-from typing import Literal, Sequence
+from typing import Sequence
 
 import click
 import tabulate
 
-from ..nominal import _upload_csv
+from ..core.client import NominalClient
 from ..ts import _LiteralAbsolute
-from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
+from .util import client_options, global_options
+
+logger = logging.getLogger(__name__)
 
 
 @click.group(name="dataset")
@@ -41,8 +44,8 @@ def dataset_cmd() -> None:
 )
 @click.option("-d", "--desc")
 @click.option("--wait/--no-wait", default=True, help="wait until the upload is complete")
-@BASE_URL_OPTION
-@TOKEN_OPTION
+@client_options
+@global_options
 def upload_csv(
     name: str,
     file: str,
@@ -50,23 +53,28 @@ def upload_csv(
     timestamp_type: _LiteralAbsolute,
     desc: str | None,
     wait: bool,
-    base_url: str,
-    token: str | None,
+    client: NominalClient,
 ) -> None:
-    client = get_client(base_url, token)
-    dataset = _upload_csv(client, file, name, timestamp_column, timestamp_type, desc, wait_until_complete=wait)
-    print(dataset)
+    """Upload a local CSV file to Nominal, create and ingest the data into a dataset, and print the details of the newly created dataset to the user."""
+    dataset = client.create_csv_dataset(
+        file,
+        name,
+        timestamp_column=timestamp_column,
+        timestamp_type=timestamp_type,
+        description=desc,
+        poll_until_completed=wait,
+    )
+    click.echo(dataset)
 
 
 @dataset_cmd.command("get")
 @click.option("-r", "--rid", required=True)
-@BASE_URL_OPTION
-@TOKEN_OPTION
-def get(rid: str, base_url: str, token: str | None) -> None:
+@client_options
+@global_options
+def get(rid: str, client: NominalClient) -> None:
     """fetch a dataset by its RID"""
-    client = get_client(base_url, token)
     dataset = client.get_dataset(rid)
-    print(dataset)
+    click.echo(dataset)
 
 
 @dataset_cmd.command("summarize")
@@ -78,14 +86,11 @@ def get(rid: str, base_url: str, token: str | None) -> None:
     help="If provided, a path to write the description to as a CSV",
 )
 @click.option("--show-rids", is_flag=True, help="If provided, show channel / dataset RIDs as part of tabulated output")
-@BASE_URL_OPTION
-@TOKEN_OPTION
-def summarize(rid: Sequence[str], csv: pathlib.Path | None, show_rids: bool, base_url: str, token: str | None) -> None:
+@client_options
+@global_options
+def summarize(rid: Sequence[str], csv: pathlib.Path | None, show_rids: bool, client: NominalClient) -> None:
     """Summarize the dataset(s) by their schema (column names, types, and RIDs)"""
-
-    client = get_client(base_url, token)
     datasets = {dataset.name: dataset for dataset in client.get_datasets(rid)}
-
     data = collections.defaultdict(list)
     for dataset_name, dataset in datasets.items():
         dataset_metadata = dataset.get_channels()
