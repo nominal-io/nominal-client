@@ -17,4 +17,3 @@ jobs:
         with:
           token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
           release-type: python
-          package-name: nominal
