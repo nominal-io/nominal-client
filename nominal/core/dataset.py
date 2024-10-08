@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 import urllib.parse
 from dataclasses import dataclass, field
@@ -11,13 +12,17 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from typing_extensions import Self
 
-from .._api.combined import ingest_api, scout_catalog
+from .._api.combined import datasource_api, ingest_api, scout_catalog, timeseries_logicalseries_api
 from .._utils import FileType, FileTypes
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from ..ts import _AnyTimestampType, _to_typed_timestamp_type
 from ._clientsbunch import ClientsBunch
+from ._conjure_utils import _available_units, _build_unit_update
 from ._multipart import put_multipart_upload
 from ._utils import HasRid, update_dataclass
+from .channel import Channel
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -134,6 +139,97 @@ class Dataset(HasRid):
             ),
         )
         self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
+
+    def get_channels(
+        self,
+        exact_match: Sequence[str] = (),
+        fuzzy_search_text: str = "",
+    ) -> Iterable[Channel]:
+        """Look up the metadata for all matching channels associated with this dataset.
+        NOTE: Provided channels may also be associated with other datasets-- use with caution.
+        Args:
+            exact_match: Filter the returned channels to those whose names match all provided strings (case insensitive).
+                For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
+                whereas a channel named 'engine_turbine_flowrate' would not!
+            fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+        Yields:
+            Yields a sequence of channel metadata objects which match the provided query parameters
+        """
+        next_page_token = None
+        while True:
+            query = datasource_api.SearchChannelsRequest(
+                data_sources=[self.rid],
+                exact_match=list(exact_match),
+                fuzzy_search_text=fuzzy_search_text,
+                previously_selected_channels={},
+                next_page_token=next_page_token,
+                page_size=None,
+                prefix=None,
+            )
+            response = self._clients.datasource.search_channels(self._clients.auth_header, query)
+            for channel_metadata in response.results:
+                yield Channel._from_conjure(channel_metadata)
+
+            if response.next_page_token is None:
+                break
+            else:
+                next_page_token = response.next_page_token
+
+    def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
+        """Set units for channels based on a provided mapping of channel names to units.
+        Args:
+            channels_to_units: A mapping of channel names to unit symbols.
+                NOTE: any existing units may be cleared from a channel by providing None as a symbol.
+            validate_schema: If true, raise a ValueError if non-existant channel names are provided in `channels_to_units`
+        Raises:
+            ValueError: Unsupported unit symbol provided
+            conjure_python_client.ConjureHTTPError: Error completing requests.
+        """
+
+        # Get the set of all available unit symbols
+        # NOTE: weird lambda to escape mypy type validation
+        all_units = sorted(_available_units(self._clients), key=lambda unit: unit.name if unit.name else "")
+        supported_symbols = set([unit.symbol for unit in all_units])
+
+        # Validate that all user provided unit symbols are valid
+        for channel_name, unit_symbol in channels_to_units.items():
+            # User is clearing the unit for this channel-- don't validate
+            if unit_symbol is None:
+                continue
+
+            if unit_symbol not in supported_symbols:
+                raise ValueError(
+                    f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit recognized by nominal."
+                    "For more information on valid symbols, see https://ucum.org/ucum"
+                )
+
+        # Get metadata (specifically, RIDs) for all requested channels
+        found_channels = {channel.name: channel for channel in self.get_channels() if channel.name in channels_to_units}
+
+        # For each channel / unit combination, create an update request to set the series's unit
+        # to that symbol
+        update_requests = []
+        for channel_name, unit in channels_to_units.items():
+            # No data uploaded to channel yet ...
+            if channel_name not in found_channels:
+                if validate_schema:
+                    raise ValueError(
+                        f"Unable to set unit for {channel_name} to {unit_symbol}: no data uploaded for channel"
+                    )
+                else:
+                    logger.info("Not setting unit for channel %s: no data uploaded for channel", channel_name)
+                    continue
+
+            channel = found_channels[channel_name]
+            channel_request = timeseries_logicalseries_api.UpdateLogicalSeries(
+                logical_series_rid=channel.rid,
+                unit_update=_build_unit_update(unit),
+            )
+            update_requests.append(channel_request)
+
+        # Set units in database
+        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(update_requests)
+        self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
 
     @classmethod
     def _from_conjure(cls, clients: ClientsBunch, dataset: scout_catalog.EnrichedDataset) -> Self:

@@ -14,8 +14,10 @@ from .._api.combined import (
     scout_catalog,
     scout_checks_api,
     scout_compute_representation_api,
+    scout_datasource,
     scout_units_api,
     scout_video,
+    timeseries_logicalseries_api,
     upload_api,
 )
 
@@ -34,6 +36,8 @@ class ClientsBunch:
     video: scout_video.VideoService
     logset: datasource_logset.LogSetService
     units: scout_units_api.UnitsService
+    datasource: scout_datasource.DataSourceService
+    logical_series: timeseries_logicalseries_api.LogicalSeriesService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -49,8 +53,10 @@ class ClientsBunch:
         authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
         video_client = RequestsClient.create(scout_video.VideoService, agent, cfg)
         logset_client = RequestsClient.create(datasource_logset.LogSetService, agent, cfg)
-        authentication_client = RequestsClient.create(authentication_api.AuthenticationServiceV2, agent, cfg)
         unit_client = RequestsClient.create(scout_units_api.UnitsService, agent, cfg)
+        datasource_client = RequestsClient.create(scout_datasource.DataSourceService, agent, cfg)
+        logical_series_client = RequestsClient.create(timeseries_logicalseries_api.LogicalSeriesService, agent, cfg)
+
         auth_header = f"Bearer {token}"
         return cls(
             auth_header=auth_header,
@@ -65,4 +71,6 @@ class ClientsBunch:
             video=video_client,
             logset=logset_client,
             units=unit_client,
+            datasource=datasource_client,
+            logical_series=logical_series_client,
         )
