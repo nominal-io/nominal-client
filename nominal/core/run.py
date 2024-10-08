@@ -120,6 +120,12 @@ class Run(HasRid):
 
     def list_attachments(self) -> Sequence[Attachment]:
         return list(self._iter_list_attachments())
+    
+    def archive(self) -> None:
+        """Archive this run.
+        Archived runs are not deleted, but are hidden from the UI.
+        """
+        self._clients.run.archive_run(self._clients.auth_header, self.rid)
 
     def update(
         self,
