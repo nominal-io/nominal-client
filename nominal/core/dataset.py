@@ -17,7 +17,7 @@ from .._utils import FileType, FileTypes
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from ..ts import _AnyTimestampType, _to_typed_timestamp_type
 from ._clientsbunch import ClientsBunch
-from ._conjure_utils import _available_units
+from ._conjure_utils import _available_units, _build_unit_update
 from ._multipart import put_multipart_upload
 from ._utils import HasRid, update_dataclass
 from .channel import Channel
@@ -144,7 +144,6 @@ class Dataset(HasRid):
         self,
         exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
-        channel_names: Sequence[str] = (),
     ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this dataset.
         NOTE: Provided channels may also be associated with other datasets-- use with caution.
@@ -153,7 +152,6 @@ class Dataset(HasRid):
                 For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
                 whereas a channel named 'engine_turbine_flowrate' would not!
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
-            channel_names: Filter the returned channels to those whose names exactly match the provided sequence of channel names (case sensitive).
         Yields:
             Yields a sequence of channel metadata objects which match the provided query parameters
         """
@@ -170,11 +168,6 @@ class Dataset(HasRid):
             )
             response = self._clients.datasource.search_channels(self._clients.auth_header, query)
             for channel_metadata in response.results:
-                # If user is explicitly filtering to a list of channel names,
-                # ignore any channel names that weren't specified
-                if channel_names and not channel_metadata.name in channel_names:
-                    continue
-
                 yield Channel._from_conjure(channel_metadata)
 
             if response.next_page_token is None:
@@ -182,11 +175,12 @@ class Dataset(HasRid):
             else:
                 next_page_token = response.next_page_token
 
-    def set_channel_units(self, channels_to_units: Mapping[str, str | None]) -> None:
+    def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
         Args:
             channels_to_units: A mapping of channel names to unit symbols.
                 NOTE: any existing units may be cleared from a channel by providing None as a symbol.
+            validate_schema: If true, raise a ValueError if non-existant channel names are provided in `channels_to_units`
         Raises:
             ValueError: Unsupported unit symbol provided
             conjure_python_client.ConjureHTTPError: Error completing requests.
@@ -204,19 +198,13 @@ class Dataset(HasRid):
                 continue
 
             if unit_symbol not in supported_symbols:
-                unit_elements = [f"{unit.symbol} ({unit.name})" for unit in all_units]
-                unit_listing = "\n\t - ".join(unit_elements)
                 raise ValueError(
-                    f"""Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit recognized by nominal.
-
-Valid (supported) Units [symbol (name)]:
-\t - {unit_listing}"""
+                    f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit recognized by nominal."
+                    "For more information on valid symbols, see https://ucum.org/ucum"
                 )
 
         # Get metadata (specifically, RIDs) for all requested channels
-        found_channels = {
-            channel.name: channel for channel in self.get_channels(channel_names=list(channels_to_units.keys()))
-        }
+        found_channels = {channel.name: channel for channel in self.get_channels() if channel.name in channels_to_units}
 
         # For each channel / unit combination, create an update request to set the series's unit
         # to that symbol
@@ -224,18 +212,18 @@ Valid (supported) Units [symbol (name)]:
         for channel_name, unit in channels_to_units.items():
             # No data uploaded to channel yet ...
             if channel_name not in found_channels:
-                logger.info("Not setting unit for channel %s-- no data uploaded for channel!", channel_name)
-                continue
-
-            if unit is None:
-                unit_update = timeseries_logicalseries_api.UnitUpdate(clear_unit=timeseries_logicalseries_api.Empty())
-            else:
-                unit_update = timeseries_logicalseries_api.UnitUpdate(unit=unit)
+                if validate_schema:
+                    raise ValueError(
+                        f"Unable to set unit for {channel_name} to {unit_symbol}: no data uploaded for channel"
+                    )
+                else:
+                    logger.info("Not setting unit for channel %s: no data uploaded for channel", channel_name)
+                    continue
 
             channel = found_channels[channel_name]
             channel_request = timeseries_logicalseries_api.UpdateLogicalSeries(
                 logical_series_rid=channel.rid,
-                unit_update=unit_update,
+                unit_update=_build_unit_update(unit),
             )
             update_requests.append(channel_request)
 

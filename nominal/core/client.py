@@ -445,14 +445,14 @@ class NominalClient:
         return self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
 
     def get_channel(self, rid: str) -> Channel:
-        """Get metadata for a given logical series by looking up its rid
+        """Get metadata for a given channel by looking up its rid
         Args:
-            rid: Identifier for the logical series to look up
+            rid: Identifier for the channel to look up
         Returns:
-            Resolved metadata for the requested logical series
+            Resolved metadata for the requested channel
         Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while looking up the logical series.
-                This typically occurs when there is no such logical series for the given RID.
+            conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
+                This typically occurs when there is no such channel for the given RID.
         """
         return Channel._from_conjure(self._clients.logical_series.get_logical_series(self._clients.auth_header, rid))
 

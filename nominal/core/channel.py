@@ -54,7 +54,7 @@ class Channel(HasRid):
             else channel.series_rid.logical_series
         )
         if channel_rid is None:
-            raise ValueError(f"Cannot create ChannelMetadata for channel {channel.name}-- no defined RID!")
+            raise ValueError(f"Cannot create ChannelMetadata for channel {channel.name}: no defined RID")
 
         channel_unit = channel.unit.symbol if channel.unit else None
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
