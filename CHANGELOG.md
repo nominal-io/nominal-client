@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/nominal-io/nominal-client/compare/v1.6.0...v1.6.1) (2024-10-09)
+
+
+### Chores
+
+* add package-name to config ([#76](https://github.com/nominal-io/nominal-client/issues/76)) ([40c616a](https://github.com/nominal-io/nominal-client/commit/40c616ae9ec079e985d13c4fbd54a2792b9b193d))
+
 ## [1.6.0](https://github.com/nominal-io/nominal-client/compare/v1.5.0...v1.6.0) (2024-10-09)
 
 
