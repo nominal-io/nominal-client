@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0](https://github.com/nominal-io/nominal-client/compare/v1.6.1...v1.7.0) (2024-10-09)
+
+
+### Features
+
+* add CLI endpoint to summarize an existing dataset ([#70](https://github.com/nominal-io/nominal-client/issues/70)) ([4ebb203](https://github.com/nominal-io/nominal-client/commit/4ebb20384c5c4e845cf3a0a8067cdb4dacdf9f54))
+
+
+### Bug Fixes
+
+* revert to prior release please config ([#78](https://github.com/nominal-io/nominal-client/issues/78)) ([48fac13](https://github.com/nominal-io/nominal-client/commit/48fac131dc7dd360965aa0108fa7fb31b26c4845))
+
 ## [1.6.1](https://github.com/nominal-io/nominal-client/compare/v1.6.0...v1.6.1) (2024-10-09)
 
 
