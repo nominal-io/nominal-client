@@ -8,7 +8,7 @@ from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal.exceptions import NominalConfigError
 
-_DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.nominal.yml").expanduser()
+_DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.nominal.yml").expanduser().resolve()
 
 
 class NominalConfig(pydantic.BaseModel):
@@ -44,8 +44,8 @@ class NominalConfig(pydantic.BaseModel):
         raise NominalConfigError(f"url {url!r} not found in config: set a token with `nom auth set-token`")
 
 
-def get_token(url: str) -> str:
-    return NominalConfig.from_yaml().get_token(_strip_scheme(url))
+def get_token(url: str, config_path: Path = _DEFAULT_NOMINAL_CONFIG_PATH) -> str:
+    return NominalConfig.from_yaml(path=config_path).get_token(_strip_scheme(url))
 
 
 def set_token(url: str, token: str) -> None:
