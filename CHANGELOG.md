@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/nominal-io/nominal-client/compare/v1.5.0...v1.6.0) (2024-10-09)
+
+
+### Features
+
+* allow users to get channel metadata and set channel types from SDK ([#68](https://github.com/nominal-io/nominal-client/issues/68)) ([04c915b](https://github.com/nominal-io/nominal-client/commit/04c915b58c349cf851f0129b33c74102437f8f90))
+
+
+### Bug Fixes
+
+* remove component from release please tag ([#75](https://github.com/nominal-io/nominal-client/issues/75)) ([3bb709c](https://github.com/nominal-io/nominal-client/commit/3bb709c785bd62cf34d4716cfebfbc329386e0b9))
+* update release please config ([#73](https://github.com/nominal-io/nominal-client/issues/73)) ([ed5a5f4](https://github.com/nominal-io/nominal-client/commit/ed5a5f4ceb1a407492b4a3bedcb7864df3f27710))
+
 ## [1.5.0](https://github.com/nominal-io/nominal-client/compare/v1.4.1...v1.5.0) (2024-10-07)
 
 
