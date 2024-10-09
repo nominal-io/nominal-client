@@ -4,7 +4,8 @@
   "include-component-in-tag": false,
   "packages": {
     ".": {
-      "component": "nominal"
+      "component": "nominal",
+      "package-name": "nominal"
     }
   },
   "plugins": [],
