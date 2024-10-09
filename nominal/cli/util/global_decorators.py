@@ -7,12 +7,13 @@ import pdb
 import typing
 
 import click
+import typing_extensions
 
 from ..._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
 from ...core.client import NominalClient
 from .click_log_handler import install_log_handler
 
-Param = typing.ParamSpec("Param")
+Param = typing_extensions.ParamSpec("Param")
 T = typing.TypeVar("T")
 
 
