@@ -1,8 +1,12 @@
 from datetime import timedelta
+from io import BytesIO
 from unittest import mock
 from uuid import uuid4
 
+import pandas as pd
+
 import nominal as nm
+from nominal.core.channel import ChannelDataType
 from nominal.ts import _SecondsNanos
 
 from . import _create_random_start_end
@@ -168,3 +172,40 @@ def test_create_get_log_set(client: nm.NominalClient):
     retrieved_logs = [(log.timestamp, log.body) for log in logset2.stream_logs()]
     assert len(retrieved_logs) == 5
     assert retrieved_logs == logs
+
+
+def test_get_channel(csv_data):
+    name = f"dataset-{uuid4()}"
+    desc = f"core test to get a channel of data {uuid4()}"
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
+        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
+    ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
+
+    c = ds.get_channel("temperature")
+    assert c.rid != ""
+    assert c.name == "temperature"
+    assert c.data_source == ds.rid
+    assert c.data_type == ChannelDataType.DOUBLE
+    assert c.unit is None
+    assert c.description is None
+
+
+def test_get_channel_pandas(csv_data):
+    name = f"dataset-{uuid4()}"
+    desc = f"core test to get a channel of data {uuid4()}"
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
+        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
+    ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
+
+    c = ds.get_channel("temperature")
+    s = c.to_pandas()
+    assert s.name == c.name == "temperature"
+    assert s.index.name == "timestamp"
+    assert s.dtype == "float64"
+
+    df = pd.read_csv(
+        BytesIO(csv_data), parse_dates=["timestamp"], index_col="timestamp", dtype={"temperature": "float64"}
+    )
+    assert s.equals(df["temperature"])
