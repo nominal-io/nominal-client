@@ -140,6 +140,12 @@ class Dataset(HasRid):
         )
         self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
 
+    def get_channel(self, name: str) -> Channel:
+        for channel in self.get_channels(exact_match=[name]):
+            if channel.name == name:
+                return channel
+        raise ValueError(f"channel {name!r} not found in dataset {self.rid!r}")
+
     def get_channels(
         self,
         exact_match: Sequence[str] = (),
