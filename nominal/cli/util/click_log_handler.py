@@ -38,15 +38,14 @@ class ClickLogHandler(logging.StreamHandler[typing.TextIO]):
         super().__init__(stream)
 
         self._no_color = no_color
-        
+
     def format(self, record: logging.LogRecord) -> str:
-        """ Add colors when formatting log records
-        """
-        
+        """Add colors when formatting log records"""
+
         msg = super().format(record)
         if not self._no_color:
             msg = click.style(msg, fg=self.LEVEL_TO_COLOR_MAP.get(record.levelno, "white"))
-            
+
         return msg
 
 
