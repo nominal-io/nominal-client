@@ -8,7 +8,6 @@ import pandas as pd
 from typing_extensions import Self
 
 from .._api.combined import (
-    api,
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
