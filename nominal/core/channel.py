@@ -2,23 +2,20 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from typing import BinaryIO, cast
+from typing import Any, BinaryIO, cast
 
 import pandas as pd
 from typing_extensions import Self
 
-from ..ts import _SecondsNanos
-
-from ._clientsbunch import ClientsBunch
-
 from .._api.combined import (
-    datasource_api,
-    timeseries_logicalseries_api,
-    scout_compute_api,
-    timeseries_logicalseries_api,
-    scout_dataexport_api,
     api,
+    datasource_api,
+    scout_compute_api,
+    scout_dataexport_api,
+    timeseries_logicalseries_api,
 )
+from ..ts import _SecondsNanos
+from ._clientsbunch import ClientsBunch
 from ._utils import HasRid
 
 # long max is 9,223,372,036,854,775,807, backend converts to long nanoseconds, so this is the last valid timestamp
@@ -54,7 +51,7 @@ class Channel(HasRid):
     description: str | None
     _clients: ClientsBunch = field(repr=False)
 
-    def to_pandas(self) -> pd.Series:
+    def to_pandas(self) -> pd.Series[Any]:
         body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, self.rid, self.name)
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
         return df[self.name]
@@ -106,7 +103,7 @@ def _get_series_values_csv(
                 channels=[
                     scout_dataexport_api.TimeDomainChannel(
                         column_name=name,
-                        compute_node=scout_compute_api.ComputeNode(
+                        compute_node=scout_compute_api.SeriesNode(
                             raw=scout_compute_api.RawUntypedSeriesNode(name=name)
                         ),
                     ),
