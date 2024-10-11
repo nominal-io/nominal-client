@@ -68,9 +68,11 @@ def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
     """Create a dataset in the Nominal platform from a tsdms file."""
     path = Path(file)
     with TdmsFile.open(path) as tdms_file:
-        df = tdms_file.as_dataframe(time_index=True,absolute_time=True,scaled_data=True)
+        df = tdms_file.as_dataframe(time_index=True, absolute_time=True, scaled_data=True)
         # from r"/'group'/'group'/'channel'" to "group.group.channel"
-        df.columns = [".".join(re.findall(r"'(.*?)'", col)) for col in df.columns if len(re.findall(r"'(.*?)'", col)) > 0]
+        df.columns = [
+            ".".join(re.findall(r"'(.*?)'", col)) for col in df.columns if len(re.findall(r"'(.*?)'", col)) > 0
+        ]
 
         df.index.set_names("time", level=None, inplace=True)
         df.reset_index(inplace=True)
