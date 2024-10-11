@@ -168,7 +168,7 @@ class Dataset(HasRid):
             )
             response = self._clients.datasource.search_channels(self._clients.auth_header, query)
             for channel_metadata in response.results:
-                yield Channel._from_conjure(channel_metadata)
+                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
 
             if response.next_page_token is None:
                 break
