@@ -38,24 +38,16 @@ class ClickLogHandler(logging.StreamHandler[typing.TextIO]):
         super().__init__(stream)
 
         self._no_color = no_color
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """Render a log record into a stylized string and print to the configured TextIO
-        output stream of the log handler.
+        
+    def format(self, record: logging.LogRecord) -> str:
+        """ Add colors when formatting log records
         """
-        try:
-            msg = self.format(record)
-            if not self._no_color:
-                msg = click.style(msg, fg=self.LEVEL_TO_COLOR_MAP.get(record.levelno, "white"))
-
-            stream = self.stream
-            # issue 35046: merged two stream.writes into one.
-            stream.write(msg + self.terminator)
-            self.flush()
-        except RecursionError:  # See issue 36272
-            raise
-        except Exception:
-            self.handleError(record)
+        
+        msg = super().format(record)
+        if not self._no_color:
+            msg = click.style(msg, fg=self.LEVEL_TO_COLOR_MAP.get(record.levelno, "white"))
+            
+        return msg
 
 
 def install_log_handler(level: int = logging.WARNING, no_color: bool = False) -> None:
