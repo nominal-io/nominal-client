@@ -6,8 +6,6 @@ from functools import partial
 from conjure_python_client import RequestsClient, ServiceConfiguration
 from typing_extensions import Self
 
-from nominal._api.combined import scout_dataexport_api
-
 from .._api.combined import (
     attachments_api,
     authentication_api,
@@ -17,6 +15,7 @@ from .._api.combined import (
     scout_catalog,
     scout_checks_api,
     scout_compute_representation_api,
+    scout_dataexport_api,
     scout_datasource,
     scout_units_api,
     scout_video,
