@@ -52,6 +52,18 @@ class Channel(HasRid):
     _clients: ClientsBunch = field(repr=False)
 
     def to_pandas(self) -> pd.Series[Any]:
+        """Retrieve the channel data as a pandas.Series.
+
+        The index of the series is the timestamp of the data.
+        The index name is "timestamp" and the series name is the channel name.
+
+        Example:
+        ```
+        s = channel.to_pandas()
+        print(s.name, "mean:", s.mean())
+        ```
+
+        """
         body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, self.rid, self.name)
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
         return df[self.name]
