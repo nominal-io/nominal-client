@@ -101,6 +101,4 @@ def get_channel(rid: str, name: str) -> pd.DataFrame:
         ),
         # compression=scout_dataexport_api.CompressionFormat.GZIP,
     )
-    datastr = export_client.export_channel_data(bearer_token, request).data.decode()
-    records = [row.split(",") for row in datastr.split("\n")]
-    return pd.DataFrame(records[1:], columns=records[0])
+    return pd.read_csv(export_client.export_channel_data(bearer_token, request))
