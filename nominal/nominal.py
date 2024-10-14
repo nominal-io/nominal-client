@@ -65,7 +65,7 @@ def get_user() -> User:
 
 
 def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
-    """Create a dataset in the Nominal platform from a tsdms file."""
+    """Create a dataset in the Nominal platform from a tdms file."""
     path = Path(file)
     with TdmsFile.open(path) as tdms_file:
         df = tdms_file.as_dataframe(time_index=True, absolute_time=True, scaled_data=True)
