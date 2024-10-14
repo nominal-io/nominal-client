@@ -4,8 +4,9 @@ from typing import Sequence
 
 import click
 
+from ..core.client import NominalClient
 from ..ts import _SecondsNanos
-from ._utils import BASE_URL_OPTION, TOKEN_OPTION, get_client
+from .util.global_decorators import client_options, global_options
 
 
 @click.group(name="run")
@@ -20,8 +21,8 @@ def run_cmd() -> None:
 @click.option("-d", "--desc")
 @click.option("properties", "--property", type=(str, str), multiple=True)
 @click.option("labels", "--label", type=str, multiple=True)
-@BASE_URL_OPTION
-@TOKEN_OPTION
+@client_options
+@global_options
 def create(
     name: str,
     start: str,
@@ -29,11 +30,9 @@ def create(
     desc: str | None,
     properties: Sequence[tuple[str, str]],
     labels: Sequence[str],
-    base_url: str,
-    token: str | None,
+    client: NominalClient,
 ) -> None:
     """create a new run"""
-    client = get_client(base_url, token)
     run = client.create_run(
         name,
         _SecondsNanos.from_flexible(start).to_nanoseconds(),
@@ -42,19 +41,17 @@ def create(
         properties=dict(properties),
         labels=labels,
     )
-    print(run)
+    click.echo(run)
 
 
 @run_cmd.command()
 @click.option("-r", "--rid", required=True)
-@BASE_URL_OPTION
-@TOKEN_OPTION
+@client_options
+@global_options
 def get(
     rid: str,
-    base_url: str,
-    token: str | None,
+    client: NominalClient,
 ) -> None:
     """get a run by its RID"""
-    client = get_client(base_url, token)
     run = client.get_run(rid)
-    print(run)
+    click.echo(run)
