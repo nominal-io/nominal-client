@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
-from nptdms import TdmsFile
+from nptdms import TdmsFile, TdmsChannel, TdmsGroup
+import pandas as pd
 import re
 
 from . import _config, ts
@@ -68,16 +70,28 @@ def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
     """Create a dataset in the Nominal platform from a tdms file."""
     path = Path(file)
     with TdmsFile.open(path) as tdms_file:
-        df = tdms_file.as_dataframe(time_index=True, absolute_time=True, scaled_data=True)
-        # from r"/'group'/'group'/'channel'" to "group.group.channel"
-        df.columns = [
-            ".".join(re.findall(r"'(.*?)'", col)) for col in df.columns if len(re.findall(r"'(.*?)'", col)) > 0
-        ]
+        channels_to_export: OrderedDict[str, TdmsChannel] = OrderedDict()
+        group: TdmsGroup
+        for group in tdms_file.groups():
+            channel: TdmsChannel
+            for channel in group.channels():
+                # making the time track
+                if ("wf_increment" in channel.properties) and ("wf_start_time" in channel.properties):
+                    channels_to_export[f"{channel.group_name.replace(" ", "_")}.{channel.name.replace(" ", "_")}"] = (
+                        channel
+                    )
 
-        df = df.index.set_names("time", level=None)
-        df = df.reset_index()
-        # time starts as datetime64[ns]
+        column_data = [
+            (column_name, channel[:], channel.time_track(absolute_time=True, accuracy="ns"))
+            for column_name, channel in channels_to_export.items()
+        ]
+        dataframe_dict = {column_name: pd.Series(data=data, index=index) for column_name, data, index in column_data}
+
+        df = pd.DataFrame.from_dict(dataframe_dict)
+        df.index = df.index.set_names("time", level=None, inplace=False)
+        df = df.reset_index(inplace=False)
         df["time"] = df["time"].astype("int64")
+
         return upload_pandas(
             df=df,
             name=path.with_suffix(".csv").name,
