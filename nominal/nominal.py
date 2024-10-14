@@ -74,8 +74,8 @@ def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
             ".".join(re.findall(r"'(.*?)'", col)) for col in df.columns if len(re.findall(r"'(.*?)'", col)) > 0
         ]
 
-        df.index.set_names("time", level=None, inplace=True)
-        df.reset_index(inplace=True)
+        df = df.index.set_names("time", level=None)
+        df = df.reset_index()
         # time starts as datetime64[ns]
         df["time"] = df["time"].astype("int64")
         return upload_pandas(
