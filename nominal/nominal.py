@@ -66,7 +66,7 @@ def get_user() -> User:
 def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
     """Create a dataset in the Nominal platform from a tdms file."""
     import pandas as pd
-    from nptdms import TdmsFile, TdmsChannel, TdmsGroup
+    from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 
     path = Path(file)
     with TdmsFile.open(path) as tdms_file:

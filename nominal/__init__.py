@@ -17,8 +17,8 @@ from .nominal import (
     upload_attachment,
     upload_csv,
     upload_pandas,
-    upload_tdms,
     upload_polars,
+    upload_tdms,
     upload_video,
 )
 
@@ -40,8 +40,8 @@ __all__ = [
     "upload_attachment",
     "upload_csv",
     "upload_pandas",
-    "upload_tdms",
     "upload_polars",
+    "upload_tdms",
     "upload_video",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
     "Attachment",
