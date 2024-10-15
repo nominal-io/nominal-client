@@ -77,9 +77,8 @@ def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
             for channel in group.channels():
                 # making the time track
                 if ("wf_increment" in channel.properties) and ("wf_start_time" in channel.properties):
-                    channels_to_export[f"{channel.group_name.replace(" ", "_")}.{channel.name.replace(" ", "_")}"] = (
-                        channel
-                    )
+                    channel_name = f"{channel.group_name.replace(" ", "_")}.{channel.name.replace(" ", "_")}"
+                    channels_to_export[channel_name] = channel
 
         column_data = [
             (column_name, channel[:], channel.time_track(absolute_time=True, accuracy="ns"))
