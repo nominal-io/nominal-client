@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.7.0](https://github.com/nominal-io/nominal-client/compare/v1.6.1...v1.7.0) (2024-10-15)
+
+
+### Features
+
+* add CLI endpoint to summarize an existing dataset ([#70](https://github.com/nominal-io/nominal-client/issues/70)) ([4ebb203](https://github.com/nominal-io/nominal-client/commit/4ebb20384c5c4e845cf3a0a8067cdb4dacdf9f54))
+* expose set_token ([#84](https://github.com/nominal-io/nominal-client/issues/84)) ([9b12674](https://github.com/nominal-io/nominal-client/commit/9b126740e4e5c8a5a26a6901d16f0ca0a36d1fb5))
+* get channel data as a pandas series ([#81](https://github.com/nominal-io/nominal-client/issues/81)) ([e38d4b0](https://github.com/nominal-io/nominal-client/commit/e38d4b05773e49c5925ac3c7020f0826855b3603))
+* implement global options / decorators for client + debug + logging within CLI ([#71](https://github.com/nominal-io/nominal-client/issues/71)) ([1424957](https://github.com/nominal-io/nominal-client/commit/1424957f92563d9277d89c675e70219d67532589))
+* native tdms support ([#80](https://github.com/nominal-io/nominal-client/issues/80)) ([867cd1b](https://github.com/nominal-io/nominal-client/commit/867cd1b80ce9cf215b4c15a8ab7cf88991807cec))
+
+
+### Bug Fixes
+
+* revert to prior release please config ([#78](https://github.com/nominal-io/nominal-client/issues/78)) ([48fac13](https://github.com/nominal-io/nominal-client/commit/48fac131dc7dd360965aa0108fa7fb31b26c4845))
+
 ## [1.6.1](https://github.com/nominal-io/nominal-client/compare/v1.6.0...v1.6.1) (2024-10-09)
 
 
