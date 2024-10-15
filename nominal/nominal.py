@@ -75,16 +75,15 @@ def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
         for group in tdms_file.groups():
             channel: TdmsChannel
             for channel in group.channels():
-                # making the time track
+                # some channels may not have the required properties to construct a time track
                 if ("wf_increment" in channel.properties) and ("wf_start_time" in channel.properties):
                     channel_name = f"{channel.group_name.replace(' ', '_')}.{channel.name.replace(' ', '_')}"
                     channels_to_export[channel_name] = channel
 
-        column_data = [
-            (column_name, channel[:], channel.time_track(absolute_time=True, accuracy="ns"))
-            for column_name, channel in channels_to_export.items()
-        ]
-        dataframe_dict = {column_name: pd.Series(data=data, index=index) for column_name, data, index in column_data}
+        dataframe_dict = {
+            channel_name: pd.Series(data=channel[:], index=channel.time_track(absolute_time=True, accuracy="ns"))
+            for channel_name, channel in channels_to_export.items()
+        }
 
         df = pd.DataFrame.from_dict(dataframe_dict)
         df.index = df.index.set_names("time", level=None, inplace=False)
