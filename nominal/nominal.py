@@ -78,8 +78,8 @@ def upload_tdms(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    import pandas as pd
     import numpy as np
+    import pandas as pd
     from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 
     path = Path(file)
