@@ -50,6 +50,14 @@ def set_base_url(base_url: str) -> None:
     _global_base_url = base_url
 
 
+def set_token(base_url: str, token: str) -> None:
+    """Set the default token to be used in association with a given base url.
+
+    Use in conjunction with `set_base_url()`.
+    """
+    _config.set_token(base_url, token)
+
+
 def get_default_client() -> NominalClient:
     """Retrieve the default client to the Nominal platform."""
     token = _config.get_token(_global_base_url)

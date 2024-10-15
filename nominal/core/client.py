@@ -454,7 +454,9 @@ class NominalClient:
             conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
                 This typically occurs when there is no such channel for the given RID.
         """
-        return Channel._from_conjure(self._clients.logical_series.get_logical_series(self._clients.auth_header, rid))
+        return Channel._from_conjure_logicalseries_api(
+            self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
+        )
 
     def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Sequence[Channel]:
         """Sets the units for a set of channels based on user-provided unit symbols
@@ -479,7 +481,7 @@ class NominalClient:
 
         request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
         response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
-        return [Channel._from_conjure(resp) for resp in response.responses]
+        return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
 
 
 def _create_search_runs_query(
