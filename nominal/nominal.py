@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 from datetime import datetime
 from functools import cache
 from pathlib import Path
@@ -85,7 +84,7 @@ def upload_tdms(
     path = Path(file)
     with TdmsFile.open(path) as tdms_file:
         # identify channels to extract
-        channels_to_export: OrderedDict[str, TdmsChannel] = OrderedDict()
+        channels_to_export: dict[str, TdmsChannel] = {}
         group: TdmsGroup
         for group in tdms_file.groups():
             channel: TdmsChannel
@@ -97,15 +96,17 @@ def upload_tdms(
 
         df = pd.DataFrame.from_dict(
             {
-                channel_name: pd.Series(data=channel[:], index=channel.time_track(absolute_time=True, accuracy="ns"))
+                channel_name: pd.Series(
+                    data=channel.read_data(), index=channel.time_track(absolute_time=True, accuracy="ns")
+                )
                 for channel_name, channel in channels_to_export.items()
             }
         )
 
         # format for nominal upload
         time_column = "time_ns"
-        df.index = df.index.set_names(time_column, level=None, inplace=False)
-        df = df.reset_index(inplace=False)
+        df.index = df.index.set_names(time_column, level=None)
+        df = df.reset_index()
         df[time_column] = df[time_column].astype(np.int64)
 
         return upload_pandas(
