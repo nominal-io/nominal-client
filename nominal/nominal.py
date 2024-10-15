@@ -63,14 +63,28 @@ def get_user() -> User:
     return conn.get_user()
 
 
-def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
-    """Create a dataset in the Nominal platform from a tdms file."""
+def upload_tdms(
+    file: Path | str, name: str | None = None, description: str | None = None, *, wait_until_complete: bool = True
+) -> Dataset:
+    """Create a dataset in the Nominal platform from a tdms file.
+
+    TDMS channel properties must have both a `wf_increment` and `wf_start_time` property to be included in the dataset.
+
+    Channels will be named as f"{group_name}.{channel_name}" with spaces replaced with underscores.
+
+    If `name` is None, the dataset is created with the name of the file with a .csv suffix.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
     import pandas as pd
     import numpy as np
     from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 
     path = Path(file)
     with TdmsFile.open(path) as tdms_file:
+        # identify channels to extract
         channels_to_export: OrderedDict[str, TdmsChannel] = OrderedDict()
         group: TdmsGroup
         for group in tdms_file.groups():
@@ -96,7 +110,8 @@ def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
 
         return upload_pandas(
             df=df,
-            name=path.with_suffix(".csv").name,
+            name=name if name is not None else path.with_suffix(".csv").name,
+            description=description,
             timestamp_column=time_column,
             timestamp_type=ts.EPOCH_NANOSECONDS,
             wait_until_complete=wait_until_complete,
