@@ -66,6 +66,7 @@ def get_user() -> User:
 def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
     """Create a dataset in the Nominal platform from a tdms file."""
     import pandas as pd
+    import numpy as np
     from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 
     path = Path(file)
@@ -84,16 +85,18 @@ def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
             channel_name: pd.Series(data=channel[:], index=channel.time_track(absolute_time=True, accuracy="ns"))
             for channel_name, channel in channels_to_export.items()
         }
-
         df = pd.DataFrame.from_dict(dataframe_dict)
-        df.index = df.index.set_names("time", level=None, inplace=False)
+
+        # format for nominal upload
+        time_column = "time_ns"
+        df.index = df.index.set_names(time_column, level=None, inplace=False)
         df = df.reset_index(inplace=False)
-        df["time"] = df["time"].astype("int64")
+        df[time_column] = df[time_column].astype(np.int64)
 
         return upload_pandas(
             df=df,
             name=path.with_suffix(".csv").name,
-            timestamp_column="time",
+            timestamp_column=time_column,
             timestamp_type=ts.EPOCH_NANOSECONDS,
             wait_until_complete=wait_until_complete,
         )
