@@ -81,11 +81,12 @@ def upload_tdms(file: Path | str, wait_until_complete: bool = True) -> Dataset:
                     channel_name = f"{channel.group_name.replace(' ', '_')}.{channel.name.replace(' ', '_')}"
                     channels_to_export[channel_name] = channel
 
-        dataframe_dict = {
-            channel_name: pd.Series(data=channel[:], index=channel.time_track(absolute_time=True, accuracy="ns"))
-            for channel_name, channel in channels_to_export.items()
-        }
-        df = pd.DataFrame.from_dict(dataframe_dict)
+        df = pd.DataFrame.from_dict(
+            {
+                channel_name: pd.Series(data=channel[:], index=channel.time_track(absolute_time=True, accuracy="ns"))
+                for channel_name, channel in channels_to_export.items()
+            }
+        )
 
         # format for nominal upload
         time_column = "time_ns"
