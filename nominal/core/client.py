@@ -39,6 +39,7 @@ from .checklist import Checklist, ChecklistBuilder
 from .dataset import Dataset, _get_dataset, _get_datasets
 from .log import Log, LogSet, _get_log_set
 from .run import Run
+from .unit import Unit
 from .user import User, _get_user, _get_user_with_fallback
 from .video import Video
 
@@ -432,17 +433,29 @@ class NominalClient:
         """Retrive attachments by their RIDs."""
         return list(_iter_get_attachments(self._clients, rids))
 
-    def get_all_units(self) -> Sequence[scout_units_api.Unit]:
-        """Retrieve list of all allowable units"""
+    def get_all_units(self) -> Sequence[Unit]:
+        """Retrieve list of metadata for all supported units within Nominal"""
         return _available_units(self._clients)
 
-    def get_unit(self, unit_symbol: str) -> scout_units_api.Unit | None:
-        """Get details of the given unit symbol, or none if invalid"""
-        return self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
+    def get_unit(self, unit_symbol: str) -> Unit | None:
+        """Get details of the given unit symbol, or none if invalid
+        Args:
+            unit_symbol: Symbol of the unit to get metadata for.
+                NOTE: This currently requires that units are formatted as laid out in
+                      the latest UCUM standards (see https://ucum.org/ucum)
+        Returns:
+            Rendered Unit metadata if the symbol is valid and supported by Nominal, or None
+            if no such unit symbol matches.
+        """
+        api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
+        return None if api_unit is None else Unit._from_conjure(api_unit)
 
-    def get_commensurable_units(self, unit_symbol: str) -> Sequence[scout_units_api.Unit]:
-        """Get the list of units that are commensurable (convertible to/from) the given unit symbol"""
-        return self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
+    def get_commensurable_units(self, unit_symbol: str) -> Sequence[Unit]:
+        """Get the list of units that are commensurable (convertible to/from) the given unit symbol."""
+        return [
+            Unit._from_conjure(unit)
+            for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
+        ]
 
     def get_channel(self, rid: str) -> Channel:
         """Get metadata for a given channel by looking up its rid
