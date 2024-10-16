@@ -6,7 +6,7 @@ import typing
 import click
 
 
-class ClickLogHandler(logging.StreamHandler[typing.TextIO]):
+class ClickLogHandler(logging.StreamHandler):  # type: ignore[type-arg]
     """Logging stream handler that routes and styles log messages through click
     instead of directly routing to stderr.
 
