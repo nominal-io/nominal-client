@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/nominal-io/nominal-client/compare/v1.7.0...v1.7.1) (2024-10-16)
+
+
+### Bug Fixes
+
+* remove subscript type specification for inheritance, not supported in &lt;=3.10 ([#86](https://github.com/nominal-io/nominal-client/issues/86)) ([10e7304](https://github.com/nominal-io/nominal-client/commit/10e73044ce555447526f8c10687c258b6b9872de))
+
 ## [1.7.0](https://github.com/nominal-io/nominal-client/compare/v1.6.1...v1.7.0) (2024-10-15)
 
 
