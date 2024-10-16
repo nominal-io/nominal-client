@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass, field
 from typing import Any, BinaryIO, cast
+import sys
 
 import pandas as pd
 from typing_extensions import Self
@@ -19,8 +20,8 @@ from ._utils import HasRid
 
 # long max is 9,223,372,036,854,775,807, backend converts to long nanoseconds, so this is the last valid timestamp
 # that can be represented in the API. (2262-04-11 19:47:16.854775807)
-_MIN_TIMESTAMP = _SecondsNanos(seconds=0, nanos=0).to_api()
-_MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807).to_api()
+_MIN_TIMESTAMP = _SecondsNanos.from_nanoseconds(0).to_api()
+_MAX_TIMESTAMP = _SecondsNanos.from_nanoseconds(sys.maxsize * 1e-9).to_api()
 
 
 class ChannelDataType(enum.Enum):
