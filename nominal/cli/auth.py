@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import warnings
+
 import click
+import requests
 
 from .. import _config
 from .util.global_decorators import global_options
@@ -9,6 +12,22 @@ from .util.global_decorators import global_options
 @click.group(name="auth")
 def auth_cmd() -> None:
     pass
+
+
+def _validate_token_url(token: str, base_url: str) -> None:
+    """Ensure the user sets a valid configuration before letting them import the client."""
+    token_link = "https://app.gov.nominal.io/settings/user?tab=tokens"
+    r = requests.get(f"{base_url}/openapi", headers={"Authorization": f"Bearer {token}"})
+    if r.status_code == 401:
+        raise ValueError(
+            f"Your authorization token seems to be incorrect. Please recreate one here: {token_link}"
+        ) from None
+    if r.status_code == 404:
+        raise ValueError(f"Your base_url is not correct. Ensure it points to the API and not the app.") from None
+    if r.status_code != 200:
+        raise ValueError(
+            f"There is a misconfiguration between your base_url and token. Ensure you use the API url, and create a new token: {token_link}"
+        ) from None
 
 
 @auth_cmd.command()
@@ -20,5 +39,6 @@ def auth_cmd() -> None:
 def set_token(token: str, base_url: str) -> None:
     """update the token for a given URL in the Nominal config file"""
     path = _config._DEFAULT_NOMINAL_CONFIG_PATH
+    _validate_token_url(token, base_url)
     _config.set_token(base_url, token)
     click.secho(f"Successfully set token for '{base_url}' in {path}", fg="green")
