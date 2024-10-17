@@ -86,7 +86,7 @@ class ClientsBunch:
         if expiry_s is None:
             raise ValueError("Expected expiry to be present in auth token, but not present")
 
-        return datetime.datetime.fromtimestamp(expiry_s, datetime.UTC)
+        return datetime.datetime.fromtimestamp(expiry_s, datetime.timezone.utc)
 
     def auth_valid(self) -> bool:
         """Validates that authentication tokens are valid and we can successfully hit the nominal API."""
