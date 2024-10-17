@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import dataclasses
+from dataclasses import dataclass
 
 from typing_extensions import Self
 
 from .._api.combined import datasource_api, scout_asset_api, scout_run_api, scout_units_api
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclass(frozen=True)
 class Unit:
-    """Plain python wrapper to encapsulate the unit data coming from various places in the Conjure Spec.
+    """Combination of the name and symbol of a unit within the supported systems of measurement.
 
     This is primarily used when setting or retrieving the units of a channel within a dataset.
     """
