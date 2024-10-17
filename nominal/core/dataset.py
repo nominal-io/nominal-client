@@ -174,6 +174,10 @@ class Dataset(HasRid):
             )
             response = self._clients.datasource.search_channels(self._clients.auth_header, query)
             for channel_metadata in response.results:
+                # Skip series archetypes for now-- they aren't handled by the rest of the SDK in a graceful manner
+                if channel_metadata.series_rid.logical_series is None:
+                    continue
+
                 yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
 
             if response.next_page_token is None:
