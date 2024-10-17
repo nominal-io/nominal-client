@@ -17,10 +17,10 @@ from .._utils import FileType, FileTypes
 from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from ..ts import _AnyTimestampType, _to_typed_timestamp_type
 from ._clientsbunch import ClientsBunch
-from ._conjure_utils import _available_units, _build_unit_update
 from ._multipart import put_multipart_upload
 from ._utils import HasRid, update_dataclass
-from .channel import Channel
+from .channel import ArchetypeChannel, Channel, LogicalChannel
+from .unit import _available_units, _build_unit_update
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ class Dataset(HasRid):
             )
             response = self._clients.datasource.search_channels(self._clients.auth_header, query)
             for channel_metadata in response.results:
-                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
+                yield Channel._from_conjure(self._clients, channel_metadata)
 
             if response.next_page_token is None:
                 break
@@ -212,7 +212,7 @@ class Dataset(HasRid):
 
         # For each channel / unit combination, create an update request to set the series's unit
         # to that symbol
-        update_requests = []
+        logical_update_requests = []
         for channel_name, unit in channels_to_units.items():
             # No data uploaded to channel yet ...
             if channel_name not in found_channels:
@@ -225,15 +225,20 @@ class Dataset(HasRid):
                     continue
 
             channel = found_channels[channel_name]
-            channel_request = timeseries_logicalseries_api.UpdateLogicalSeries(
-                logical_series_rid=channel.rid,
-                unit_update=_build_unit_update(unit),
-            )
-            update_requests.append(channel_request)
+            if isinstance(channel, ArchetypeChannel):
+                channel.set_unit(unit)
+            else:
+                logical_update_requests.append(
+                    timeseries_logicalseries_api.UpdateLogicalSeries(
+                        logical_series_rid=channel.rid,
+                        unit_update=_build_unit_update(unit),
+                    )
+                )
 
-        # Set units in database
-        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(update_requests)
-        self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
+        # Set units in database for logical series in a batch instead of per-channel
+        if logical_update_requests:
+            request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(logical_update_requests)
+            self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
 
     @classmethod
     def _from_conjure(cls, clients: ClientsBunch, dataset: scout_catalog.EnrichedDataset) -> Self:

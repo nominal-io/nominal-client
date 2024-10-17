@@ -17,5 +17,6 @@ from .._impl import (
     timeseries_archetype_api_TimestreamLocatorTemplate as TimestreamLocatorTemplate,
     timeseries_archetype_api_UpdateSeriesArchetypeMetadataRequest as UpdateSeriesArchetypeMetadataRequest,
     timeseries_archetype_api_VisualCrossingLocatorTemplate as VisualCrossingLocatorTemplate,
-)
+    timeseries_archetype_SeriesArchetypeService as SeriesArchetypeService,
+)   
 

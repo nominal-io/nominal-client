@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import abc
 import enum
 from dataclasses import dataclass, field
-from typing import Any, BinaryIO, cast
+from typing import Any, BinaryIO, Self, cast
 
 import pandas as pd
 from typing_extensions import Self
@@ -11,11 +12,13 @@ from .._api.combined import (
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
+    timeseries_archetype_api,
     timeseries_logicalseries_api,
 )
 from ..ts import _SecondsNanos
 from ._clientsbunch import ClientsBunch
 from ._utils import HasRid
+from .unit import Unit, _build_unit_update
 
 # long max is 9,223,372,036,854,775,807, backend converts to long nanoseconds, so this is the last valid timestamp
 # that can be represented in the API. (2262-04-11 19:47:16.854775807)
@@ -39,7 +42,7 @@ class ChannelDataType(enum.Enum):
 
 
 @dataclass
-class Channel(HasRid):
+class Channel(HasRid, abc.ABC):
     """Metadata for working with channels."""
 
     rid: str
@@ -49,6 +52,14 @@ class Channel(HasRid):
     unit: str | None
     description: str | None
     _clients: ClientsBunch = field(repr=False)
+
+    @abc.abstractmethod
+    def set_unit(self, unit_symbol: str | Unit | None) -> None:
+        """Set the unit for the data contained within the channel
+
+        Args:
+            unit_symbol: Symbol of the unit to set for the channel's data
+        """
 
     def to_pandas(self) -> pd.Series[Any]:
         """Retrieve the channel data as a pandas.Series.
@@ -67,17 +78,34 @@ class Channel(HasRid):
         return df[self.name]
 
     @classmethod
-    def _from_conjure_datasource_api(cls, clients: ClientsBunch, channel: datasource_api.ChannelMetadata) -> Self:
-        channel_rid = (
-            channel.series_rid.series_archetype
-            if channel.series_rid.series_archetype
-            else channel.series_rid.logical_series
-        )
-        if channel_rid is None:
-            raise ValueError(f"Cannot create ChannelMetadata for channel {channel.name}: no defined RID")
+    def _from_conjure(cls, clients: ClientsBunch, channel: datasource_api.ChannelMetadata) -> "Channel":
+        """Instantiate a concrete channel given a channel's metadata"""
 
+        if channel.series_rid.logical_series is None:
+            return ArchetypeChannel._from_conjure(clients, channel)
+        else:
+            return LogicalChannel._from_conjure(clients, channel)
+
+
+class LogicalChannel(Channel):
+    def set_unit(self, unit_symbol: str | Unit | None) -> None:
+        update = _build_unit_update(unit_symbol)
+        series_request = timeseries_logicalseries_api.UpdateLogicalSeries(
+            logical_series_rid=self.rid,
+            unit_update=update,
+        )
+        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest([series_request])
+        self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
+
+    @classmethod
+    def _from_conjure(cls, clients: ClientsBunch, channel: datasource_api.ChannelMetadata) -> Self:
+        channel_rid = channel.series_rid.logical_series
         channel_unit = channel.unit.symbol if channel.unit else None
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
+
+        if channel_rid is None:
+            raise ValueError("Cannot create a LogicalChannel from channel metadata: channel has no logical RID")
+
         return cls(
             rid=channel_rid,
             name=channel.name,
@@ -88,17 +116,28 @@ class Channel(HasRid):
             _clients=clients,
         )
 
+
+class ArchetypeChannel(Channel):
+    def set_unit(self, unit_symbol: str | Unit | None) -> None:
+        unit_update = _build_unit_update(unit_symbol)
+        request = timeseries_archetype_api.UpdateSeriesArchetypeMetadataRequest(unit_update=unit_update)
+        self._clients.archetype_series.update_metadata(self._clients.auth_header, request=request, rid=self.rid)
+
     @classmethod
-    def _from_conjure_logicalseries_api(
-        cls, clients: ClientsBunch, series: timeseries_logicalseries_api.LogicalSeries
-    ) -> Self:
-        channel_data_type = ChannelDataType._from_conjure(series.series_data_type) if series.series_data_type else None
+    def _from_conjure(cls, clients: ClientsBunch, channel: datasource_api.ChannelMetadata) -> Self:
+        channel_rid = channel.series_rid.series_archetype
+        channel_unit = channel.unit.symbol if channel.unit else None
+        channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
+
+        if channel_rid is None:
+            raise ValueError("Cannot create a LogicalChannel from channel metadata: channel has no logical RID")
+
         return cls(
-            rid=series.rid,
-            name=series.channel,
-            data_source=series.data_source_rid,
-            unit=series.unit,
-            description=series.description,
+            rid=channel_rid,
+            name=channel.name,
+            data_source=channel.data_source,
+            unit=channel_unit,
+            description=channel.description,
             data_type=channel_data_type,
             _clients=clients,
         )

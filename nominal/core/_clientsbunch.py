@@ -19,6 +19,7 @@ from .._api.combined import (
     scout_datasource,
     scout_units_api,
     scout_video,
+    timeseries_archetype_api,
     timeseries_logicalseries_api,
     upload_api,
 )
@@ -29,6 +30,7 @@ class ClientsBunch:
     auth_header: str
 
     attachment: attachments_api.AttachmentService
+    archetype_series: timeseries_archetype_api.SeriesArchetypeService
     authentication: authentication_api.AuthenticationServiceV2
     catalog: scout_catalog.CatalogService
     checklist: scout_checks_api.ChecklistService
@@ -50,6 +52,7 @@ class ClientsBunch:
         return cls(
             auth_header=f"Bearer {token}",
             attachment=client_factory(attachments_api.AttachmentService),
+            archetype_series=client_factory(timeseries_archetype_api.SeriesArchetypeService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
             catalog=client_factory(scout_catalog.CatalogService),
             checklist=client_factory(scout_checks_api.ChecklistService),

@@ -30,7 +30,6 @@ from .._utils import (
 )
 from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 from ._clientsbunch import ClientsBunch
-from ._conjure_utils import _available_units, _build_unit_update
 from ._multipart import put_multipart_upload
 from ._utils import construct_user_agent_string, rid_from_instance_or_string
 from .attachment import Attachment, _iter_get_attachments
@@ -39,7 +38,7 @@ from .checklist import Checklist, ChecklistBuilder
 from .dataset import Dataset, _get_dataset, _get_datasets
 from .log import Log, LogSet, _get_log_set
 from .run import Run
-from .unit import Unit
+from .unit import Unit, _available_units, _build_unit_update, _get_unit
 from .user import User, _get_user, _get_user_with_fallback
 from .video import Video
 
@@ -447,8 +446,7 @@ class NominalClient:
             Rendered Unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
         """
-        api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
-        return None if api_unit is None else Unit._from_conjure(api_unit)
+        return _get_unit(self._clients, unit_symbol)
 
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[Unit]:
         """Get the list of units that are commensurable (convertible to/from) the given unit symbol."""
@@ -456,45 +454,6 @@ class NominalClient:
             Unit._from_conjure(unit)
             for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
         ]
-
-    def get_channel(self, rid: str) -> Channel:
-        """Get metadata for a given channel by looking up its rid
-        Args:
-            rid: Identifier for the channel to look up
-        Returns:
-            Resolved metadata for the requested channel
-        Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
-                This typically occurs when there is no such channel for the given RID.
-        """
-        return Channel._from_conjure_logicalseries_api(
-            self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
-        )
-
-    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Sequence[Channel]:
-        """Sets the units for a set of channels based on user-provided unit symbols
-        Args:
-            rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
-                NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
-        Returns:
-            A sequence of metadata for all updated channels
-        Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the channel.
-                This typically occurs when either the units are invalid, or there are no
-                channels with the given RIDs present.
-        """
-        series_updates = []
-        for rid, series_type in rids_to_types.items():
-            series_updates.append(
-                timeseries_logicalseries_api.UpdateLogicalSeries(
-                    logical_series_rid=rid,
-                    unit_update=_build_unit_update(series_type),
-                )
-            )
-
-        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
-        response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
-        return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
 
 
 def _create_search_runs_query(
