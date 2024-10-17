@@ -80,12 +80,12 @@ class Channel(HasRid, abc.ABC):
         """Instantiate a concrete channel given a channel's metadata"""
 
         if channel.series_rid.logical_series is None:
-            return ArchetypeChannel._from_conjure(clients, channel)
+            return _ArchetypeChannel._from_conjure(clients, channel)
         else:
-            return LogicalChannel._from_conjure(clients, channel)
+            return _LogicalChannel._from_conjure(clients, channel)
 
 
-class LogicalChannel(Channel):
+class _LogicalChannel(Channel):
     def set_unit(self, unit_symbol: str | Unit | None) -> None:
         update = _build_unit_update(unit_symbol)
         series_request = timeseries_logicalseries_api.UpdateLogicalSeries(
@@ -107,7 +107,7 @@ class LogicalChannel(Channel):
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
 
         if channel_rid is None:
-            raise ValueError("Cannot create a LogicalChannel from channel metadata: channel has no logical RID")
+            raise ValueError("Cannot create a _LogicalChannel from channel metadata: channel has no logical RID")
 
         return cls(
             rid=channel_rid,
@@ -120,7 +120,7 @@ class LogicalChannel(Channel):
         )
 
 
-class ArchetypeChannel(Channel):
+class _ArchetypeChannel(Channel):
     def set_unit(self, unit_symbol: str | Unit | None) -> None:
         unit_update = _build_unit_update(unit_symbol)
         request = timeseries_archetype_api.UpdateSeriesArchetypeMetadataRequest(unit_update=unit_update)
@@ -136,7 +136,7 @@ class ArchetypeChannel(Channel):
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
 
         if channel_rid is None:
-            raise ValueError("Cannot create a LogicalChannel from channel metadata: channel has no logical RID")
+            raise ValueError("Cannot create a _LogicalChannel from channel metadata: channel has no logical RID")
 
         return cls(
             rid=channel_rid,

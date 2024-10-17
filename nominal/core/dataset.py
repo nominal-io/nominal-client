@@ -19,7 +19,7 @@ from ..ts import _AnyTimestampType, _to_typed_timestamp_type
 from ._clientsbunch import ClientsBunch
 from ._multipart import put_multipart_upload
 from ._utils import HasRid, update_dataclass
-from .channel import ArchetypeChannel, Channel, LogicalChannel
+from .channel import Channel, _ArchetypeChannel, _LogicalChannel
 from .unit import _available_units, _build_unit_update
 
 logger = logging.getLogger(__name__)
@@ -225,7 +225,7 @@ class Dataset(HasRid):
                     continue
 
             channel = found_channels[channel_name]
-            if isinstance(channel, ArchetypeChannel):
+            if isinstance(channel, _ArchetypeChannel):
                 channel.set_unit(unit)
             else:
                 logical_update_requests.append(
