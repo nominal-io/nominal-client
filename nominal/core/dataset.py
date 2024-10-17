@@ -193,9 +193,7 @@ class Dataset(HasRid):
         """
 
         # Get the set of all available unit symbols
-        # NOTE: weird lambda to escape mypy type validation
-        all_units = sorted(_available_units(self._clients), key=lambda unit: unit.name if unit.name else "")
-        supported_symbols = set([unit.symbol for unit in all_units])
+        supported_symbols = set([unit.symbol for unit in _available_units(self._clients)])
 
         # Validate that all user provided unit symbols are valid
         for channel_name, unit_symbol in channels_to_units.items():
