@@ -14,12 +14,13 @@ class Unit:
     This is primarily used when setting or retrieving the units of a channel within a dataset.
     """
 
-    # Plain english name of the unit (e.g. 'coulomb')
     name: str
+    """Plain english name of the unit (e.g. 'coulomb')"""
 
-    # Abbreviated symbol for the unit (e.g. 'C')
-    # See: https://ucum.org/ucum
     symbol: str
+    """ Abbreviated symbol for the unit (e.g. 'C')
+    See: https://ucum.org/ucum
+    """
 
     @classmethod
     def _from_conjure(
