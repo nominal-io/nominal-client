@@ -61,6 +61,7 @@ class Channel(HasRid, abc.ABC):
             unit_symbol: Symbol of the unit to set for the channel's data
         """
 
+    @abc.abstractmethod
     def to_pandas(self) -> pd.Series[Any]:
         """Retrieve the channel data as a pandas.Series.
 
@@ -73,9 +74,6 @@ class Channel(HasRid, abc.ABC):
         print(s.name, "mean:", s.mean())
         ```
         """
-        body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, self.rid, self.name)
-        df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
-        return df[self.name]
 
     @classmethod
     def _from_conjure(cls, clients: ClientsBunch, channel: datasource_api.ChannelMetadata) -> "Channel":
@@ -96,6 +94,11 @@ class LogicalChannel(Channel):
         )
         request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest([series_request])
         self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
+
+    def to_pandas(self) -> pd.Series[Any]:
+        body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, self.rid, self.name)
+        df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
+        return df[self.name]
 
     @classmethod
     def _from_conjure(cls, clients: ClientsBunch, channel: datasource_api.ChannelMetadata) -> Self:
@@ -122,6 +125,9 @@ class ArchetypeChannel(Channel):
         unit_update = _build_unit_update(unit_symbol)
         request = timeseries_archetype_api.UpdateSeriesArchetypeMetadataRequest(unit_update=unit_update)
         self._clients.archetype_series.update_metadata(self._clients.auth_header, request=request, rid=self.rid)
+
+    def to_pandas(self) -> pd.Series[Any]:
+        raise NotImplementedError("Exporting data from a archetype channel is not yet supported.")
 
     @classmethod
     def _from_conjure(cls, clients: ClientsBunch, channel: datasource_api.ChannelMetadata) -> Self:
