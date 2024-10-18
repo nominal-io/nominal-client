@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/nominal-io/nominal-client/compare/v1.7.1...v1.8.0) (2024-10-18)
+
+
+### Features
+
+* hide archetype series from channel abstraction ([#91](https://github.com/nominal-io/nominal-client/issues/91)) ([37f768b](https://github.com/nominal-io/nominal-client/commit/37f768b2ef1a39eead1c5ea5117211f8f8ac09e9))
+* wrap various unit types within the Conjure spec within a single Unit abstraction ([#85](https://github.com/nominal-io/nominal-client/issues/85)) ([ff6f015](https://github.com/nominal-io/nominal-client/commit/ff6f015bfba7a95617985763df1df4871eb8baee))
+
 ## [1.7.1](https://github.com/nominal-io/nominal-client/compare/v1.7.0...v1.7.1) (2024-10-16)
 
 
