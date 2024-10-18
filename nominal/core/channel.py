@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import enum
 from dataclasses import dataclass, field
 from typing import Any, BinaryIO, cast
@@ -8,12 +9,13 @@ import pandas as pd
 from typing_extensions import Self
 
 from .._api.combined import (
+    api,
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
     timeseries_logicalseries_api,
 )
-from ..ts import _SecondsNanos
+from ..ts import _SecondsNanos, IntegralNanosecondsUTC
 from ._clientsbunch import ClientsBunch
 from ._utils import HasRid
 
@@ -50,7 +52,11 @@ class Channel(HasRid):
     description: str | None
     _clients: ClientsBunch = field(repr=False)
 
-    def to_pandas(self) -> pd.Series[Any]:
+    def to_pandas(
+        self,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        end: datetime | IntegralNanosecondsUTC | None = None,
+    ) -> pd.Series[Any]:
         """Retrieve the channel data as a pandas.Series.
 
         The index of the series is the timestamp of the data.
@@ -62,7 +68,11 @@ class Channel(HasRid):
         print(s.name, "mean:", s.mean())
         ```
         """
-        body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, self.rid, self.name)
+        start_time = _MIN_TIMESTAMP if start is None else _SecondsNanos.from_flexible(start).to_api()
+        end_time = _MAX_TIMESTAMP if end is None else _SecondsNanos.from_flexible(end).to_api()
+        body = _get_series_values_csv(
+            self._clients.auth_header, self._clients.dataexport, self.rid, self.name, start_time, end_time
+        )
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
         return df[self.name]
 
@@ -101,7 +111,12 @@ class Channel(HasRid):
 
 
 def _get_series_values_csv(
-    auth_header: str, client: scout_dataexport_api.DataExportService, rid: str, name: str
+    auth_header: str,
+    client: scout_dataexport_api.DataExportService,
+    rid: str,
+    name: str,
+    start: api.Timestamp,
+    end: api.Timestamp,
 ) -> BinaryIO:
     request = scout_dataexport_api.ExportDataRequest(
         channels=scout_dataexport_api.ExportChannels(
@@ -123,8 +138,8 @@ def _get_series_values_csv(
                 ),
             )
         ),
-        start_time=_MIN_TIMESTAMP,
-        end_time=_MAX_TIMESTAMP,
+        start_time=start,
+        end_time=end,
         context=scout_compute_api.Context(
             function_variables={},
             variables={name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid))},
