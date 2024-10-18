@@ -90,10 +90,14 @@ class Connection(HasRid):
         channel_names = [channel.name for channel in self._get_series_achetypes_paginated()]
         return self._resolve_archetypes_to_channels(channel_names)
 
-    def get_channel(self, name: str, tags: dict[str, str]) -> Channel:
+    def get_channel(self, name: str, tags: dict[str, str] | None = None) -> Channel:
         """Retrieve a channel with the given name and tags."""
         req = timeseries_logicalseries_api.BatchResolveSeriesRequest(
-            requests=[timeseries_logicalseries_api.ResolveSeriesRequest(datasource=self.rid, name=name, tags=tags)]
+            requests=[
+                timeseries_logicalseries_api.ResolveSeriesRequest(
+                    datasource=self.rid, name=name, tags={} if tags is None else tags
+                )
+            ]
         )
         resp = self._clients.logical_series.resolve_batch(self._clients.auth_header, req)
         if len(resp.series) == 0:
