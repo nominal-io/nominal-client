@@ -19,7 +19,6 @@ from .._api.combined import (
     ingest_api,
     scout_catalog,
     scout_run_api,
-    scout_units_api,
     scout_video_api,
     timeseries_logicalseries_api,
 )
@@ -36,6 +35,7 @@ from ._utils import construct_user_agent_string, rid_from_instance_or_string
 from .attachment import Attachment, _iter_get_attachments
 from .channel import Channel
 from .checklist import Checklist, ChecklistBuilder
+from .connection import Connection
 from .dataset import Dataset, _get_dataset, _get_datasets
 from .log import Log, LogSet, _get_log_set
 from .run import Run
@@ -495,6 +495,11 @@ class NominalClient:
         request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
         response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
         return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
+
+    def get_connection(self, rid: str) -> Connection:
+        """Retrieve a connection by its RID."""
+        response = self._clients.connection.get_connection(self._clients.auth_header, rid)
+        return Connection._from_conjure(self._clients, response)
 
 
 def _create_search_runs_query(
