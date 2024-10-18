@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
 import enum
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, BinaryIO, cast
 
 import pandas as pd
@@ -15,7 +15,7 @@ from .._api.combined import (
     scout_dataexport_api,
     timeseries_logicalseries_api,
 )
-from ..ts import _SecondsNanos, IntegralNanosecondsUTC
+from ..ts import IntegralNanosecondsUTC, _SecondsNanos
 from ._clientsbunch import ClientsBunch
 from ._utils import HasRid
 

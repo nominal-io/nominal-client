@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import itertools
 import logging
+from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Sequence
 
 from nominal._api.combined import datasource_api, timeseries_logicalseries_api, timeseries_seriescache_api
 
-from .channel import Channel
-
 from .._api.combined import scout_datasource_connection_api
 from ._clientsbunch import ClientsBunch
 from ._utils import HasRid
+from .channel import Channel
 
 
 @dataclass(frozen=True)
