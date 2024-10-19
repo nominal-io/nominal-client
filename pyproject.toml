@@ -48,6 +48,11 @@ black = "^24.8.0"
 mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", rev = "alkasm/keep-context-settings" }
 jupyterlab = "^4.2.5"
 
+# hdf5 extras
+h5py = { version = ">=3.0", optional = true }
+
+[tool.poetry.extras]
+hdf5 = ["h5py"]
 
 [tool.distutils.bdist_wheel]
 universal = true
