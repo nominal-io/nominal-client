@@ -5,7 +5,7 @@ from typing import Literal, Mapping, Sequence
 
 from typing_extensions import Self
 
-from .._api.combined import (
+from nominal._api.combined import (
     api,
     scout_api,
     scout_checks_api,
@@ -13,8 +13,8 @@ from .._api.combined import (
     scout_compute_representation_api,
     scout_run_api,
 )
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._utils import HasRid
 
 
 # TODO(ritwikdixit): add support for more fields i.e. lineage

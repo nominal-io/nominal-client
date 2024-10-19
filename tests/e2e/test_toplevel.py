@@ -9,8 +9,7 @@ import pytest
 
 import nominal as nm
 from nominal import _utils
-
-from . import _create_random_start_end
+from tests.e2e import _create_random_start_end
 
 
 def test_upload_csv(csv_data):

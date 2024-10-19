@@ -5,7 +5,7 @@ import platform
 import sys
 from typing import Iterable, Protocol, TypeVar, runtime_checkable
 
-from .._utils import logger
+from nominal._utils import logger
 
 T = TypeVar("T")
 
