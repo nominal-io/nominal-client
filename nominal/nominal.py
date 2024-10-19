@@ -50,6 +50,14 @@ def set_base_url(base_url: str) -> None:
     _global_base_url = base_url
 
 
+def set_token(base_url: str, token: str) -> None:
+    """Set the default token to be used in association with a given base url.
+
+    Use in conjunction with `set_base_url()`.
+    """
+    _config.set_token(base_url, token)
+
+
 def get_default_client() -> NominalClient:
     """Retrieve the default client to the Nominal platform."""
     token = _config.get_token(_global_base_url)
@@ -60,6 +68,63 @@ def get_user() -> User:
     """Retrieve the user associated with the default client."""
     conn = get_default_client()
     return conn.get_user()
+
+
+def upload_tdms(
+    file: Path | str, name: str | None = None, description: str | None = None, *, wait_until_complete: bool = True
+) -> Dataset:
+    """Create a dataset in the Nominal platform from a tdms file.
+
+    TDMS channel properties must have both a `wf_increment` and `wf_start_time` property to be included in the dataset.
+
+    Channels will be named as f"{group_name}.{channel_name}" with spaces replaced with underscores.
+
+    If `name` is None, the dataset is created with the name of the file with a .csv suffix.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
+    import numpy as np
+    import pandas as pd
+    from nptdms import TdmsChannel, TdmsFile, TdmsGroup
+
+    path = Path(file)
+    with TdmsFile.open(path) as tdms_file:
+        # identify channels to extract
+        channels_to_export: dict[str, TdmsChannel] = {}
+        group: TdmsGroup
+        for group in tdms_file.groups():
+            channel: TdmsChannel
+            for channel in group.channels():
+                # some channels may not have the required properties to construct a time track
+                if ("wf_increment" in channel.properties) and ("wf_start_time" in channel.properties):
+                    channel_name = f"{channel.group_name.replace(' ', '_')}.{channel.name.replace(' ', '_')}"
+                    channels_to_export[channel_name] = channel
+
+        df = pd.DataFrame.from_dict(
+            {
+                channel_name: pd.Series(
+                    data=channel.read_data(), index=channel.time_track(absolute_time=True, accuracy="ns")
+                )
+                for channel_name, channel in channels_to_export.items()
+            }
+        )
+
+        # format for nominal upload
+        time_column = "time_ns"
+        df.index = df.index.set_names(time_column, level=None)
+        df = df.reset_index()
+        df[time_column] = df[time_column].astype(np.int64)
+
+        return upload_pandas(
+            df=df,
+            name=name if name is not None else path.with_suffix(".csv").name,
+            description=description,
+            timestamp_column=time_column,
+            timestamp_type=ts.EPOCH_NANOSECONDS,
+            wait_until_complete=wait_until_complete,
+        )
 
 
 def upload_pandas(

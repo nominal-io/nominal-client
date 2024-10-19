@@ -14,10 +14,12 @@ from .nominal import (
     get_video,
     search_runs,
     set_base_url,
+    set_token,
     upload_attachment,
     upload_csv,
     upload_pandas,
     upload_polars,
+    upload_tdms,
     upload_video,
 )
 
@@ -36,10 +38,12 @@ __all__ = [
     "get_video",
     "search_runs",
     "set_base_url",
+    "set_token",
     "upload_attachment",
     "upload_csv",
     "upload_pandas",
     "upload_polars",
+    "upload_tdms",
     "upload_video",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
     "Attachment",

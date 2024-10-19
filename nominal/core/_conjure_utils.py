@@ -4,12 +4,13 @@ from typing import Sequence
 
 from .._api.combined import scout_units_api, timeseries_logicalseries_api
 from ._clientsbunch import ClientsBunch
+from .unit import Unit
 
 
-def _available_units(clients: ClientsBunch) -> Sequence[scout_units_api.Unit]:
+def _available_units(clients: ClientsBunch) -> Sequence[Unit]:
     """Retrieve the list of all allowable units within Nominal"""
     response = clients.units.get_all_units(clients.auth_header)
-    return [unit for units in response.units_by_property.values() for unit in units]
+    return [Unit._from_conjure(unit) for units in response.units_by_property.values() for unit in units]
 
 
 def _build_unit_update(symbol: str | None) -> timeseries_logicalseries_api.UnitUpdate:

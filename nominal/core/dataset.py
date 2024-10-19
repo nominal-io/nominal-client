@@ -140,6 +140,12 @@ class Dataset(HasRid):
         )
         self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
 
+    def get_channel(self, name: str) -> Channel:
+        for channel in self.get_channels(exact_match=[name]):
+            if channel.name == name:
+                return channel
+        raise ValueError(f"channel {name!r} not found in dataset {self.rid!r}")
+
     def get_channels(
         self,
         exact_match: Sequence[str] = (),
@@ -168,7 +174,11 @@ class Dataset(HasRid):
             )
             response = self._clients.datasource.search_channels(self._clients.auth_header, query)
             for channel_metadata in response.results:
-                yield Channel._from_conjure(channel_metadata)
+                # Skip series archetypes for now-- they aren't handled by the rest of the SDK in a graceful manner
+                if channel_metadata.series_rid.logical_series is None:
+                    continue
+
+                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
 
             if response.next_page_token is None:
                 break
@@ -187,9 +197,7 @@ class Dataset(HasRid):
         """
 
         # Get the set of all available unit symbols
-        # NOTE: weird lambda to escape mypy type validation
-        all_units = sorted(_available_units(self._clients), key=lambda unit: unit.name if unit.name else "")
-        supported_symbols = set([unit.symbol for unit in all_units])
+        supported_symbols = set([unit.symbol for unit in _available_units(self._clients)])
 
         # Validate that all user provided unit symbols are valid
         for channel_name, unit_symbol in channels_to_units.items():

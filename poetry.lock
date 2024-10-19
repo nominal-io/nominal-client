@@ -1705,6 +1705,24 @@ jupyter-server = ">=1.8,<3"
 test = ["pytest", "pytest-console-scripts", "pytest-jupyter", "pytest-tornasync"]
 
 [[package]]
+name = "nptdms"
+version = "1.9.0"
+description = "Cross-platform, NumPy based module for reading TDMS files produced by LabView"
+optional = false
+python-versions = "*"
+files = [
+    {file = "npTDMS-1.9.0.tar.gz", hash = "sha256:0e65c237e9d50b9b8e162b9c34171353a5ea05f4019c99c3e8ebc00722361cbc"},
+]
+
+[package.dependencies]
+numpy = "*"
+
+[package.extras]
+hdf = ["h5py (>=2.10.0)"]
+pandas = ["pandas", "pyarrow"]
+test = ["hypothesis", "pytest (>=3.1.0)", "pytest-benchmark", "scipy", "thermocouples_reference"]
+
+[[package]]
 name = "numpy"
 version = "2.0.2"
 description = "Fundamental package for array computing in Python"
@@ -3276,4 +3294,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "82ea4c8cd63e5d9bffed64498213f788b8f8dccd24d63c4fb854a57768f2fbd1"
+content-hash = "fb35252df7d2abef6847b1fd903d56b68e0e590abf49c6073944adcbd647f503"
