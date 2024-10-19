@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import timedelta
 from io import TextIOBase
@@ -10,6 +11,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
+import pandas as pd
+from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from .._api.combined import datasource_api, ingest_api, scout_catalog, timeseries_logicalseries_api
@@ -184,6 +187,41 @@ class Dataset(HasRid):
                 break
             else:
                 next_page_token = response.next_page_token
+
+    def to_pandas(self, channel_exact_match: Sequence[str] = (), channel_fuzzy_search_text: str = "") -> pd.DataFrame:
+        """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
+        Args:
+            channel_exact_match: Filter the returned channels to those whose names match all provided strings (case insensitive).
+                For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
+                whereas a channel named 'engine_turbine_flowrate' would not!
+            channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+        Returns:
+            A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected channels.
+
+        Example:
+        ```
+        import nominal as nm
+
+        rid = "..." # Taken from the UI or via the SDK
+        dataset = nm.get_dataset(rid)
+        s = dataset.to_pandas()
+        print("index:", s.index, "index mean:", s.index.mean())
+        ```
+        """
+        # We concurrently download all channels for faster performance
+        futures = []
+        seriess = []
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            for channel in self.get_channels(channel_exact_match, channel_fuzzy_search_text):
+                futures.append(pool.submit(channel.to_pandas))
+            if not futures:
+                raise ValueError("No channels were found given the provided filters")
+            with tqdm(total=len(futures)) as progress:
+                for future in as_completed(futures):
+                    seriess.append(future.result())
+                    progress.update(1)
+                    print("SERIES", seriess)
+        return pd.concat(seriess, axis=1)
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
