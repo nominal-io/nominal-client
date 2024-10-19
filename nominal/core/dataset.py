@@ -220,7 +220,6 @@ class Dataset(HasRid):
                 for future in as_completed(futures):
                     seriess.append(future.result())
                     progress.update(1)
-                    print("SERIES", seriess)
         return pd.concat(seriess, axis=1)
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
