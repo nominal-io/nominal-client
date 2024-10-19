@@ -12,7 +12,6 @@ from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import pandas as pd
-from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from .._api.combined import datasource_api, ingest_api, scout_catalog, timeseries_logicalseries_api
@@ -216,10 +215,8 @@ class Dataset(HasRid):
                 futures.append(pool.submit(channel.to_pandas))
             if not futures:
                 raise ValueError("No channels were found given the provided filters")
-            with tqdm(total=len(futures)) as progress:
-                for future in as_completed(futures):
-                    seriess.append(future.result())
-                    progress.update(1)
+            for future in as_completed(futures):
+                seriess.append(future.result())
         return pd.concat(seriess, axis=1)
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
