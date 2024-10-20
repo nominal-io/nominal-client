@@ -205,3 +205,20 @@ def test_get_channel_pandas(csv_data):
         BytesIO(csv_data), parse_dates=["timestamp"], index_col="timestamp", dtype={"temperature": "float64"}
     )
     assert s.equals(df["temperature"])
+
+
+def test_get_dataset_pandas(csv_data):
+    name = f"dataset-{uuid4()}"
+    desc = f"core test to get the dataset {uuid4()}"
+
+    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
+        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
+
+    expected_data = pd.read_csv(BytesIO(csv_data), index_col="timestamp", parse_dates=["timestamp"])
+    for col in expected_data.columns:
+        expected_data[col] = expected_data[col].astype(float)
+    df = ds.to_pandas()
+    df_sorted = df.reindex(expected_data.columns, axis=1)
+    pd.testing.assert_frame_equal(df_sorted, expected_data)
+    df2 = ds.to_pandas(channel_exact_match=["relative", "minutes"])
+    pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])

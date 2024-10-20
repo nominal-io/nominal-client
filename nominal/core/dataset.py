@@ -10,6 +10,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
+import pandas as pd
 from typing_extensions import Self
 
 from nominal._api.combined import datasource_api, ingest_api, scout_catalog, timeseries_logicalseries_api
@@ -18,7 +19,7 @@ from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import put_multipart_upload
 from nominal.core._utils import HasRid, update_dataclass
-from nominal.core.channel import Channel
+from nominal.core.channel import Channel, _get_series_values_csv
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import _AnyTimestampType, _to_typed_timestamp_type
 
@@ -184,6 +185,31 @@ class Dataset(HasRid):
                 break
             else:
                 next_page_token = response.next_page_token
+
+    def to_pandas(self, channel_exact_match: Sequence[str] = (), channel_fuzzy_search_text: str = "") -> pd.DataFrame:
+        """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
+        Args:
+            channel_exact_match: Filter the returned channels to those whose names match all provided strings (case insensitive).
+                For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
+                whereas a channel named 'engine_turbine_flowrate' would not!
+            channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+        Returns:
+            A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected channels.
+
+        Example:
+        ```
+        import nominal as nm
+
+        rid = "..." # Taken from the UI or via the SDK
+        dataset = nm.get_dataset(rid)
+        s = dataset.to_pandas()
+        print("index:", s.index, "index mean:", s.index.mean())
+        ```
+        """
+        rid_name = {ch.rid: ch.name for ch in self.get_channels(channel_exact_match, channel_fuzzy_search_text)}
+        body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, rid_name)
+        df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
+        return df
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
