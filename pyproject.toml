@@ -47,6 +47,7 @@ mkdocstrings-python = "^1.11.1"
 black = "^24.8.0"
 mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", rev = "alkasm/keep-context-settings" }
 jupyterlab = "^4.2.5"
+pytest-cov = "^5.0.0"
 
 
 [tool.distutils.bdist_wheel]

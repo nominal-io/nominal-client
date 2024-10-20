@@ -4,7 +4,7 @@ install:
 
 # run unit tests
 test:
-    poetry run pytest
+    poetry run pytest --cov=nominal --cov-branch --cov-report=html --cov-report=term --cov-config=.coveragerc
 
 # run e2e tests | token: auth token for api.nominal.test
 test-e2e token:
