@@ -19,7 +19,7 @@ def attachment_cmd() -> None:
 @client_options
 @global_options
 def get(rid: str, client: NominalClient) -> None:
-    """get an attachment by its RID"""
+    """Get an attachment by its RID"""
     attachment = client.get_attachment(rid)
     click.echo(attachment)
 

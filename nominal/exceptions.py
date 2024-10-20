@@ -12,8 +12,10 @@ class NominalIngestError(NominalError):
 class NominalIngestMultiError(NominalError):
     """Error(s) occurred during ingest.
 
-    Attributes:
+    Attributes
+    ----------
         errors: A mapping of dataset RIDs to the errors that occurred during ingest.
+
     """
 
     def __init__(self, rids_to_errors: Mapping[str, NominalIngestError]) -> None:

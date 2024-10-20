@@ -57,10 +57,12 @@ class Channel(HasRid):
         The index name is "timestamp" and the series name is the channel name.
 
         Example:
+        -------
         ```
         s = channel.to_pandas()
         print(s.name, "mean:", s.mean())
         ```
+
         """
         body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, {self.rid: self.name})
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")

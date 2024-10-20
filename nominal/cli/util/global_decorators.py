@@ -28,7 +28,6 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
 
     NOTE: this must be invoked prior to any log messages being routed through a logger from the logging module.
     """
-
     verbosity_option = click.option(
         "-v",
         "--verbose",
