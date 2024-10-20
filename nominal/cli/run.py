@@ -4,9 +4,9 @@ from typing import Sequence
 
 import click
 
-from ..core.client import NominalClient
-from ..ts import _SecondsNanos
-from .util.global_decorators import client_options, global_options
+from nominal.cli.util.global_decorators import client_options, global_options
+from nominal.core.client import NominalClient
+from nominal.ts import _SecondsNanos
 
 
 @click.group(name="run")

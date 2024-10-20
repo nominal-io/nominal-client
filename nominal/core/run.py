@@ -7,13 +7,13 @@ from typing import Iterable, Mapping, Sequence, cast
 
 from typing_extensions import Self
 
-from .._api.combined import scout_run_api
-from ..ts import IntegralNanosecondsUTC, _SecondsNanos
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid, rid_from_instance_or_string, update_dataclass
-from .attachment import Attachment, _iter_get_attachments
-from .dataset import Dataset, _get_datasets
-from .log import LogSet
+from nominal._api.combined import scout_run_api
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
+from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.log import LogSet
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)

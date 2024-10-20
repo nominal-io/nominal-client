@@ -4,9 +4,9 @@ from pathlib import Path
 
 import click
 
-from .._utils import FileType
-from ..core.client import NominalClient
-from .util.global_decorators import client_options, global_options
+from nominal._utils import FileType
+from nominal.cli.util.global_decorators import client_options, global_options
+from nominal.core.client import NominalClient
 
 
 @click.group(name="attachment")

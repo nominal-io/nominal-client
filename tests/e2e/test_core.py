@@ -8,8 +8,7 @@ import pandas as pd
 import nominal as nm
 from nominal.core.channel import ChannelDataType
 from nominal.ts import _SecondsNanos
-
-from . import _create_random_start_end
+from tests.e2e import _create_random_start_end
 
 
 def test_update_dataset(csv_data):
