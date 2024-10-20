@@ -5,7 +5,6 @@ from unittest import mock
 
 import pytest
 
-import nominal as nm
 from nominal.core import NominalClient
 
 

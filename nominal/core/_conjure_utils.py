@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from nominal._api.combined import scout_units_api, timeseries_logicalseries_api
+from nominal._api.combined import timeseries_logicalseries_api
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core.unit import Unit
 

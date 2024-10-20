@@ -19,7 +19,6 @@ from nominal._api.combined import (
     ingest_api,
     scout_catalog,
     scout_run_api,
-    scout_units_api,
     scout_video_api,
     timeseries_logicalseries_api,
 )
