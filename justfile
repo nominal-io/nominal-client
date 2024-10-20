@@ -27,14 +27,14 @@ check-format:
 
 # check import ordering | fix with `just fix-imports`
 check-imports:
-    poetry run ruff check --select I --select F401
+    poetry run ruff check
 
 # run all static analysis checks
 check: check-format check-types check-imports
 
 # fixes out-of-order imports (note: mutates the code)
 fix-imports:
-    poetry run ruff check --select I --select F401 --fix
+    poetry run ruff check --fix
 
 # fixes code formatting (note: mutates the code)
 fix-format:

@@ -60,6 +60,27 @@ build-backend = "poetry.core.masonry.api"
 line-length = 120
 exclude = ["nominal/_api/*"]
 
+[tool.ruff.lint]
+# Include rules for: pyFlakes, pycodestyle (Err/Warn), pyDocstyle, Isort, Flake8-FIXme, PyLinT, NumPY, debugger
+# See rules and codes: https://docs.astral.sh/ruff/rules/
+select = ["F", "E", "W", "D", "I001", "FIX", "PL", "NPY", "T100"]
+extend-select = ["D417"]  # no missing arguments
+ignore = [
+    "FIX002",  # Ignore TODOs
+    "D203",    # one-blank-line-before-class
+    "D205",    # 1 blank line between summary and description
+    "D213",    # multiline-summary-docs
+    "D103",    # missing-class-docstring
+    "D102",    # missing-public-method-docstring
+    "D101",    # missing-public-class-docstring
+    "D100",    # missing-module-docstring 
+    "D104",    # missing-package-docstring
+    "D400",    # doc line ends in period
+    "D415",    # doc line ends in punctuation
+    "D401",    # imperative mood
+    "PLW0603", # globals
+]
+
 [tool.mypy]
 strict = true
 packages = ["nominal"]

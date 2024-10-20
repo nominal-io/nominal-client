@@ -39,11 +39,12 @@ class Dataset(HasRid):
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
-        Raises:
+        Raises
+        ------
             NominalIngestFailed: if the ingest failed
             NominalIngestError: if the ingest status is not known
-        """
 
+        """
         while True:
             progress = self._clients.catalog.get_ingest_progress_v2(self._clients.auth_header, self.rid)
             if progress.ingest_status.type == "success":
@@ -115,7 +116,6 @@ class Dataset(HasRid):
 
         file_type: a (extension, mimetype) pair describing the type of file.
         """
-
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
@@ -154,13 +154,18 @@ class Dataset(HasRid):
     ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this dataset.
         NOTE: Provided channels may also be associated with other datasets-- use with caution.
+
         Args:
+        ----
             exact_match: Filter the returned channels to those whose names match all provided strings (case insensitive).
                 For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
                 whereas a channel named 'engine_turbine_flowrate' would not!
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+
         Yields:
+        ------
             Yields a sequence of channel metadata objects which match the provided query parameters
+
         """
         next_page_token = None
         while True:
@@ -188,15 +193,20 @@ class Dataset(HasRid):
 
     def to_pandas(self, channel_exact_match: Sequence[str] = (), channel_fuzzy_search_text: str = "") -> pd.DataFrame:
         """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
+
         Args:
+        ----
             channel_exact_match: Filter the returned channels to those whose names match all provided strings (case insensitive).
                 For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
                 whereas a channel named 'engine_turbine_flowrate' would not!
             channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+
         Returns:
+        -------
             A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected channels.
 
         Example:
+        -------
         ```
         import nominal as nm
 
@@ -205,6 +215,7 @@ class Dataset(HasRid):
         s = dataset.to_pandas()
         print("index:", s.index, "index mean:", s.index.mean())
         ```
+
         """
         rid_name = {ch.rid: ch.name for ch in self.get_channels(channel_exact_match, channel_fuzzy_search_text)}
         body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, rid_name)
@@ -213,15 +224,17 @@ class Dataset(HasRid):
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
+
         Args:
+        ----
             channels_to_units: A mapping of channel names to unit symbols.
                 NOTE: any existing units may be cleared from a channel by providing None as a symbol.
             validate_schema: If true, raise a ValueError if non-existant channel names are provided in `channels_to_units`
         Raises:
             ValueError: Unsupported unit symbol provided
             conjure_python_client.ConjureHTTPError: Error completing requests.
-        """
 
+        """
         # Get the set of all available unit symbols
         supported_symbols = set([unit.symbol for unit in _available_units(self._clients)])
 
@@ -291,8 +304,10 @@ def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timede
     This method polls Nominal for ingest status on each of the datasets on an interval.
     No specific ordering is guaranteed, but all datasets will be checked at least once.
 
-    Raises:
+    Raises
+    ------
         NominalIngestMultiError: if any of the datasets failed to ingest
+
     """
     errors = {}
     for dataset in datasets:

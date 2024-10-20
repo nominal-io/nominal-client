@@ -64,7 +64,6 @@ def put_multipart_upload(
 
     Ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
     """
-
     # muiltithreaded multipart upload:
     # - create a worker thread pool and a queue for all threads to share
     # - initialize the upload, getting the object key and upload id

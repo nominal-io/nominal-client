@@ -76,7 +76,7 @@ def upload_csv(
 @client_options
 @global_options
 def get(rid: str, client: NominalClient) -> None:
-    """fetch a dataset by its RID"""
+    """Fetch a dataset by its RID"""
     dataset = client.get_dataset(rid)
     click.echo(dataset)
 

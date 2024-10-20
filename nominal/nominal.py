@@ -449,6 +449,7 @@ def checklist_builder(
     If assignee_email is None, the checklist is assigned to the user executing the code.
 
     Example:
+    -------
     ```python
     builder = nm.checklist_builder("Programmatically created checklist")
     builder.add_check(
@@ -458,6 +459,7 @@ def checklist_builder(
     )
     checklist = builder.publish()
     ```
+
     """
     conn = get_default_client()
     return conn.checklist_builder(
