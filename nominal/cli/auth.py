@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import warnings
-
 import click
-import requests
 from conjure_python_client import ConjureHTTPError
 
 from nominal import NominalClient, _config
