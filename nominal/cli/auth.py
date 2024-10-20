@@ -4,10 +4,10 @@ import warnings
 
 import click
 import requests
+from conjure_python_client import ConjureHTTPError
 
-from .. import _config
-from ..nominal import get_user
-from .util.global_decorators import global_options
+from nominal import NominalClient, _config
+from nominal.cli.util.global_decorators import global_options
 
 
 @click.group(name="auth")
@@ -18,14 +18,18 @@ def auth_cmd() -> None:
 def _validate_token_url(token: str, base_url: str) -> None:
     """Ensure the user sets a valid configuration before letting them import the client."""
     token_link = "https://app.gov.nominal.io/settings/user?tab=tokens"
-    r = requests.get(f"{base_url}/openapi", headers={"Authorization": f"Bearer {token}"})
+    status_code = 200
     err_msg = ""
-    if r.status_code == 401:
+    try:
+        NominalClient.create(base_url, token).get_user()
+    except ConjureHTTPError as err:
+        status_code = err.response.status_code
+    if status_code == 401:
         err_msg = f"Your authorization token seems to be incorrect. Please recreate one here: {token_link}"
-    elif r.status_code == 404:
+    elif status_code == 404:
         err_msg = f"Your base_url is not correct. Ensure it points to the API and not the app."
-    elif r.status_code != 200:
-        err_msg = f"There is a misconfiguration between your base_url and token. Ensure you use the API url, and create a new token: {token_link} {r.status_code}"
+    elif status_code != 200:
+        err_msg = f"There is a misconfiguration between your base_url and token. Ensure you use the API url, and create a new token: {token_link} {status_code}"
     if err_msg:
         click.secho(err_msg, err=True, fg="red")
         raise click.ClickException("Failed to authenticate. See above for details")

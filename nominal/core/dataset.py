@@ -12,15 +12,15 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from typing_extensions import Self
 
-from .._api.combined import datasource_api, ingest_api, scout_catalog, timeseries_logicalseries_api
-from .._utils import FileType, FileTypes
-from ..exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
-from ..ts import _AnyTimestampType, _to_typed_timestamp_type
-from ._clientsbunch import ClientsBunch
-from ._conjure_utils import _available_units, _build_unit_update
-from ._multipart import put_multipart_upload
-from ._utils import HasRid, update_dataclass
-from .channel import Channel
+from nominal._api.combined import datasource_api, ingest_api, scout_catalog, timeseries_logicalseries_api
+from nominal._utils import FileType, FileTypes
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._conjure_utils import _available_units, _build_unit_update
+from nominal.core._multipart import put_multipart_upload
+from nominal.core._utils import HasRid, update_dataclass
+from nominal.core.channel import Channel
+from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
+from nominal.ts import _AnyTimestampType, _to_typed_timestamp_type
 
 logger = logging.getLogger(__name__)
 

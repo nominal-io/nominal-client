@@ -6,9 +6,9 @@ from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
 
-from . import _config, ts
-from ._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
-from .core import (
+from nominal import _config, ts
+from nominal._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
+from nominal.core import (
     Attachment,
     Checklist,
     ChecklistBuilder,

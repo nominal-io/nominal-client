@@ -8,9 +8,9 @@ from typing import Mapping, Sequence
 import click
 import tabulate
 
-from ..core.client import NominalClient
-from ..ts import _LiteralAbsolute
-from .util.global_decorators import client_options, global_options
+from nominal.cli.util.global_decorators import client_options, global_options
+from nominal.core.client import NominalClient
+from nominal.ts import _LiteralAbsolute
 
 logger = logging.getLogger(__name__)
 
