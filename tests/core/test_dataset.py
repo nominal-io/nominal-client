@@ -5,11 +5,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal._api.combined.timeseries_logicalseries_api import BatchUpdateLogicalSeriesRequest
-from nominal.core._conjure_utils import _build_unit_update
-from nominal.core.channel import Channel, _get_series_values_csv
+from nominal.core.channel import Channel
 from nominal.core.dataset import Dataset
 from nominal.core.unit import Unit
-from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
+from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
 UNITS = [
     Unit(name="coulomb", symbol="C"),
