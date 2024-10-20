@@ -62,7 +62,7 @@ class Channel(HasRid):
         print(s.name, "mean:", s.mean())
         ```
         """
-        body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, self.rid, self.name)
+        body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, {self.rid: self.name})
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
         return df[self.name]
 
@@ -101,7 +101,7 @@ class Channel(HasRid):
 
 
 def _get_series_values_csv(
-    auth_header: str, client: scout_dataexport_api.DataExportService, rid: str, name: str
+    auth_header: str, client: scout_dataexport_api.DataExportService, rid_name: dict[str, str]
 ) -> BinaryIO:
     request = scout_dataexport_api.ExportDataRequest(
         channels=scout_dataexport_api.ExportChannels(
@@ -112,7 +112,8 @@ def _get_series_values_csv(
                         compute_node=scout_compute_api.SeriesNode(
                             raw=scout_compute_api.RawUntypedSeriesNode(name=name)
                         ),
-                    ),
+                    )
+                    for name in rid_name.values()
                 ],
                 merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
                     # only one series will be returned, so no need to merge
@@ -127,7 +128,10 @@ def _get_series_values_csv(
         end_time=_MAX_TIMESTAMP,
         context=scout_compute_api.Context(
             function_variables={},
-            variables={name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid))},
+            variables={
+                name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid))
+                for rid, name in rid_name.items()
+            },
         ),
         format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
         resolution=scout_dataexport_api.ResolutionOption(
