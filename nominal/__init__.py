@@ -1,6 +1,6 @@
-from . import ts
-from .core import Attachment, Check, Checklist, ChecklistBuilder, Dataset, Log, LogSet, NominalClient, Run, Video
-from .nominal import (
+from nominal import ts
+from nominal.core import Attachment, Check, Checklist, ChecklistBuilder, Dataset, Log, LogSet, NominalClient, Run, Video
+from nominal.nominal import (
     checklist_builder,
     create_run,
     create_run_csv,

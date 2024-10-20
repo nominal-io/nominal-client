@@ -9,9 +9,9 @@ import typing
 import click
 import typing_extensions
 
-from ..._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
-from ...core.client import NominalClient
-from .click_log_handler import install_log_handler
+from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
+from nominal.cli.util.click_log_handler import install_log_handler
+from nominal.core.client import NominalClient
 
 Param = typing_extensions.ParamSpec("Param")
 T = typing.TypeVar("T")

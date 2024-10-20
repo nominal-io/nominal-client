@@ -1,6 +1,6 @@
 import click
 
-from . import attachment, auth, dataset, run
+from nominal.cli import attachment, auth, dataset, run
 
 
 @click.group(context_settings={"show_default": True, "help_option_names": ("-h", "--help")})

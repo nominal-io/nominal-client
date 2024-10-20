@@ -8,10 +8,10 @@ from typing import Mapping, Sequence
 
 from typing_extensions import Self
 
-from .._api.combined import scout_video_api
-from ..exceptions import NominalIngestError, NominalIngestFailed
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid, update_dataclass
+from nominal._api.combined import scout_video_api
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._utils import HasRid, update_dataclass
+from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
 
 @dataclass(frozen=True)

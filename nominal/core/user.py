@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .._api.combined import authentication_api
-from ._utils import HasRid
+from nominal._api.combined import authentication_api
+from nominal.core._utils import HasRid
 
 
 @dataclass(frozen=True)

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import click
 
-from .. import _config
-from .util.global_decorators import global_options
+from nominal import _config
+from nominal.cli.util.global_decorators import global_options
 
 
 @click.group(name="auth")

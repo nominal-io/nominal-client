@@ -7,15 +7,15 @@ from typing import Any, BinaryIO, cast
 import pandas as pd
 from typing_extensions import Self
 
-from .._api.combined import (
+from nominal._api.combined import (
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
     timeseries_logicalseries_api,
 )
-from ..ts import _SecondsNanos
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._utils import HasRid
+from nominal.ts import _SecondsNanos
 
 # long max is 9,223,372,036,854,775,807, backend converts to long nanoseconds, so this is the last valid timestamp
 # that can be represented in the API. (2262-04-11 19:47:16.854775807)
