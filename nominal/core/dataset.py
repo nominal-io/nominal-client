@@ -20,7 +20,7 @@ from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import put_multipart_upload
 from nominal.core._utils import HasRid, update_dataclass
-from nominal.core.channel import Channel
+from nominal.core.channel import Channel, _get_series_values_csv
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import _AnyTimestampType, _to_typed_timestamp_type
 
@@ -207,17 +207,10 @@ class Dataset(HasRid):
         print("index:", s.index, "index mean:", s.index.mean())
         ```
         """
-        # We concurrently download all channels for faster performance
-        futures = []
-        seriess = []
-        with ThreadPoolExecutor(max_workers=5) as pool:
-            for channel in self.get_channels(channel_exact_match, channel_fuzzy_search_text):
-                futures.append(pool.submit(channel.to_pandas))
-            if not futures:
-                raise ValueError("No channels were found given the provided filters")
-            for future in as_completed(futures):
-                seriess.append(future.result())
-        return pd.concat(seriess, axis=1)
+        rid_name = {ch.rid: ch.name for ch in self.get_channels(channel_exact_match, channel_fuzzy_search_text)}
+        body = _get_series_values_csv(self._clients.auth_header, self._clients.dataexport, rid_name)
+        df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
+        return df
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.

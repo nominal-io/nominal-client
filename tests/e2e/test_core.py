@@ -214,11 +214,11 @@ def test_get_dataset_pandas(csv_data):
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
 
-    expected_data = pd.read_csv(BytesIO(csv_data), index_col="timestamp")
-    expected_data.index = pd.to_datetime(expected_data.index)
+    expected_data = pd.read_csv(BytesIO(csv_data), index_col="timestamp", parse_dates=["timestamp"])
     for col in expected_data.columns:
         expected_data[col] = expected_data[col].astype(float)
     df = ds.to_pandas()
-    pd.testing.assert_frame_equal(df, expected_data)
+    df_sorted = df.reindex(expected_data.columns, axis=1)
+    pd.testing.assert_frame_equal(df_sorted, expected_data)
     df2 = ds.to_pandas(channel_exact_match=["relative", "minutes"])
     pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])
