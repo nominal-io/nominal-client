@@ -5,12 +5,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Sequence
 
-from nominal._api.combined import datasource_api, timeseries_logicalseries_api
-
-from .._api.combined import scout_datasource_connection_api
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid
-from .channel import Channel
+from nominal._api.combined import datasource_api, scout_datasource_connection_api, timeseries_logicalseries_api
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._utils import HasRid
+from nominal.core.channel import Channel
 
 
 @dataclass(frozen=True)
