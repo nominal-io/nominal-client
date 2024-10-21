@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import partial
+from typing import Protocol
 
 from conjure_python_client import RequestsClient, ServiceConfiguration
 from typing_extensions import Self
@@ -64,3 +65,8 @@ class ClientsBunch:
             upload=client_factory(upload_api.UploadService),
             video=client_factory(scout_video.VideoService),
         )
+
+
+class HasAuthHeader(Protocol):
+    @property
+    def auth_header(self) -> str: ...

@@ -4,12 +4,12 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 
 from typing_extensions import Self
 
 from nominal._api.combined import attachments_api
-from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, update_dataclass
 
 
@@ -20,7 +20,11 @@ class Attachment(HasRid):
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasAuthHeader, Protocol):
+        @property
+        def attachment(self) -> attachments_api.AttachmentService: ...
 
     def update(
         self,
@@ -72,7 +76,7 @@ class Attachment(HasRid):
             shutil.copyfileobj(self.get_contents(), wf)
 
     @classmethod
-    def _from_conjure(cls, clients: ClientsBunch, attachment: attachments_api.Attachment) -> Self:
+    def _from_conjure(cls, clients: _Clients, attachment: attachments_api.Attachment) -> Self:
         return cls(
             rid=attachment.rid,
             name=attachment.title,
@@ -83,8 +87,9 @@ class Attachment(HasRid):
         )
 
 
-def _iter_get_attachments(clients: ClientsBunch, rids: Iterable[str]) -> Iterable[Attachment]:
+def _iter_get_attachments(
+    auth_header: str, client: attachments_api.AttachmentService, rids: Iterable[str]
+) -> Iterable[attachments_api.Attachment]:
     request = attachments_api.GetAttachmentsRequest(attachment_rids=list(rids))
-    response = clients.attachment.get_batch(clients.auth_header, request)
-    for a in response.response:
-        yield Attachment._from_conjure(clients, a)
+    response = client.get_batch(auth_header, request)
+    yield from response.response

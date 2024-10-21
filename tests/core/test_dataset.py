@@ -63,7 +63,7 @@ def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: M
     channels_to_units = {"channel1": "mol", "channel2": "kg", "channel3": None}
     mock_dataset.set_channel_units(channels_to_units)
 
-    mock_available_units.assert_called_once_with(mock_dataset._clients)
+    mock_available_units.assert_called_once_with(mock_dataset._clients.auth_header, mock_dataset._clients.units)
     mock_get_channels.assert_called_once()
 
     batch_request = mock_dataset._clients.logical_series.batch_update_logical_series.call_args[0][1]

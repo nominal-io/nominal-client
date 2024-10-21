@@ -4,12 +4,12 @@ import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Mapping, Protocol, Sequence
 
 from typing_extensions import Self
 
-from nominal._api.combined import scout_video_api
-from nominal.core._clientsbunch import ClientsBunch
+from nominal._api.combined import scout_video, scout_video_api
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
@@ -21,7 +21,11 @@ class Video(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasAuthHeader, Protocol):
+        @property
+        def video(self) -> scout_video.VideoService: ...
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -87,7 +91,7 @@ class Video(HasRid):
         return self
 
     @classmethod
-    def _from_conjure(cls, clients: ClientsBunch, video: scout_video_api.Video) -> Self:
+    def _from_conjure(cls, clients: _Clients, video: scout_video_api.Video) -> Self:
         return cls(
             rid=video.rid,
             name=video.title,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Mapping, Sequence
+from typing import Literal, Mapping, Protocol, Sequence
 
 from typing_extensions import Self
 
@@ -13,7 +13,7 @@ from nominal._api.combined import (
     scout_compute_representation_api,
     scout_run_api,
 )
-from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 
 
@@ -25,7 +25,6 @@ class Check(HasRid):
     expression: str
     priority: Priority
     description: str
-    _clients: ClientsBunch = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -45,7 +44,7 @@ class ChecklistBuilder:
     _checks: list[_CreateCheck]
     _properties: dict[str, str]
     _labels: list[str]
-    _clients: ClientsBunch = field(repr=False)
+    _clients: Checklist._Clients = field(repr=False)
 
     def add_properties(self, properties: Mapping[str, str]) -> Self:
         self._properties.update(properties)
@@ -106,10 +105,16 @@ class Checklist(HasRid):
     labels: Sequence[str]
     checklist_variables: Sequence[ChecklistVariable]
     checks: Sequence[Check]
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasAuthHeader, Protocol):
+        @property
+        def checklist(self) -> scout_checks_api.ChecklistService: ...
+        @property
+        def compute_representation(self) -> scout_compute_representation_api.ComputeRepresentationService: ...
 
     @classmethod
-    def _from_conjure(cls, clients: ClientsBunch, checklist: scout_checks_api.VersionedChecklist) -> Self:
+    def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
         # TODO(ritwikdixit): support draft checklists with VCS
         if not checklist.metadata.is_published:
             raise ValueError("cannot get a checklist that has not been published")
@@ -158,7 +163,6 @@ class Checklist(HasRid):
                     name=check_definition.title,
                     description=check_definition.description,
                     expression=check_rids_to_expressions[check_rid],
-                    _clients=clients,
                     priority=_conjure_priority_to_priority(check_definition.priority),
                 )
                 for check_rid, check_definition in check_rids_to_definitions.items()
