@@ -233,7 +233,7 @@ class Dataset(HasRid):
 
             if unit_symbol not in supported_symbols:
                 raise ValueError(
-                    f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit recognized by nominal."
+                    f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit recognized by nominal. "
                     "For more information on valid symbols, see https://ucum.org/ucum"
                 )
 
@@ -261,6 +261,8 @@ class Dataset(HasRid):
             )
             update_requests.append(channel_request)
 
+        if not update_requests:
+            return
         # Set units in database
         request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(update_requests)
         self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
