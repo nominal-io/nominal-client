@@ -47,7 +47,7 @@ class Connection(HasRid):
                 exact_match=[],
                 fuzzy_search_text="",
                 previously_selected_channels={},
-                page_token=response.next_page_token,
+                next_page_token=response.next_page_token,
             )
 
     def _resolve_archetypes_to_channels(self, channel_names: Sequence[str]) -> Iterable[Channel]:
@@ -75,10 +75,12 @@ class Connection(HasRid):
             ]
         )
         resp = self._clients.logical_series.resolve_batch(self._clients.auth_header, req)
+        # TODO(alkasm): is there a batch get_logical_series ?
         for resolved_series in resp.series:
             if resolved_series.type == "error" and resolved_series.error is not None:
                 raise RuntimeError(f"error resolving series: {resolved_series.error}")
-            # TODO(alkasm): is there a batch get_logical_series ?
+            elif resolved_series.rid is None:
+                raise RuntimeError(f"error resolving series for series {resolved_series}: no rid returned")
             series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
             yield Channel._from_conjure_logicalseries_api(self._clients, series)
 
@@ -105,6 +107,8 @@ class Connection(HasRid):
         resolved_series = resp.series[0]
         if resolved_series.type == "error" and resolved_series.error is not None:
             raise RuntimeError(f"error resolving series: {resolved_series.error}")
+        elif resolved_series.rid is None:
+            raise RuntimeError(f"error resolving series for series {resolved_series}: no rid returned")
         series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
         return Channel._from_conjure_logicalseries_api(self._clients, series)
 

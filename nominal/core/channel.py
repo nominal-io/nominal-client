@@ -17,12 +17,7 @@ from nominal._api.combined import (
 )
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._utils import HasRid
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
-
-# long max is 9,223,372,036,854,775,807, backend converts to long nanoseconds, so this is the last valid timestamp
-# that can be represented in the API. (2262-04-11 19:47:16.854775807)
-_MIN_TIMESTAMP = _SecondsNanos(seconds=0, nanos=0).to_api()
-_MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807).to_api()
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos, _MIN_TIMESTAMP, _MAX_TIMESTAMP
 
 
 class ChannelDataType(enum.Enum):
@@ -68,10 +63,10 @@ class Channel(HasRid):
         print(s.name, "mean:", s.mean())
         ```
         """
-        start_time = _MIN_TIMESTAMP if start is None else _SecondsNanos.from_flexible(start).to_api()
-        end_time = _MAX_TIMESTAMP if end is None else _SecondsNanos.from_flexible(end).to_api()
+        start_time = _MIN_TIMESTAMP.to_api() if start is None else _SecondsNanos.from_flexible(start).to_api()
+        end_time = _MAX_TIMESTAMP.to_api() if end is None else _SecondsNanos.from_flexible(end).to_api()
         body = _get_series_values_csv(
-            self._clients.auth_header, self._clients.dataexport, self.rid, self.name, start_time, end_time
+            self._clients.auth_header, self._clients.dataexport, {self.rid: self.name}, start_time, end_time
         )
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
         return df[self.name]
@@ -113,8 +108,7 @@ class Channel(HasRid):
 def _get_series_values_csv(
     auth_header: str,
     client: scout_dataexport_api.DataExportService,
-    rid: str,
-    name: str,
+    rid_to_name: dict[str, str],
     start: api.Timestamp,
     end: api.Timestamp,
 ) -> BinaryIO:
@@ -128,7 +122,7 @@ def _get_series_values_csv(
                             raw=scout_compute_api.RawUntypedSeriesNode(name=name)
                         ),
                     )
-                    for name in rid_name.values()
+                    for name in rid_to_name.values()
                 ],
                 merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
                     # only one series will be returned, so no need to merge
@@ -145,7 +139,7 @@ def _get_series_values_csv(
             function_variables={},
             variables={
                 name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid))
-                for rid, name in rid_name.items()
+                for rid, name in rid_to_name.items()
             },
         ),
         format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
