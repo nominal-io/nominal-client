@@ -17,7 +17,7 @@ from nominal._api.combined import (
 )
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._utils import HasRid
-from nominal.ts import _SecondsNanos, IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 # long max is 9,223,372,036,854,775,807, backend converts to long nanoseconds, so this is the last valid timestamp
 # that can be represented in the API. (2262-04-11 19:47:16.854775807)
