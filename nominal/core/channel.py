@@ -17,7 +17,7 @@ from nominal._api.combined import (
 )
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._utils import HasRid
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos, _MIN_TIMESTAMP, _MAX_TIMESTAMP
+from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 
 class ChannelDataType(enum.Enum):
