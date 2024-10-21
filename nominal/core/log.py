@@ -5,10 +5,10 @@ from typing import Iterable
 
 from typing_extensions import Self
 
-from .._api.combined import datasource, datasource_logset, datasource_logset_api
-from ..ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid
+from nominal._api.combined import datasource, datasource_logset, datasource_logset_api
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._utils import HasRid
+from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
 
 
 @dataclass(frozen=True)

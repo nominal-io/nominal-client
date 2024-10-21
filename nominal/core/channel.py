@@ -8,16 +8,16 @@ from typing import Any, BinaryIO, cast
 import pandas as pd
 from typing_extensions import Self
 
-from .._api.combined import (
+from nominal._api.combined import (
     api,
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
     timeseries_logicalseries_api,
 )
-from ..ts import IntegralNanosecondsUTC, _SecondsNanos
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._utils import HasRid
+from nominal.ts import _SecondsNanos, IntegralNanosecondsUTC
 
 # long max is 9,223,372,036,854,775,807, backend converts to long nanoseconds, so this is the last valid timestamp
 # that can be represented in the API. (2262-04-11 19:47:16.854775807)
@@ -127,7 +127,8 @@ def _get_series_values_csv(
                         compute_node=scout_compute_api.SeriesNode(
                             raw=scout_compute_api.RawUntypedSeriesNode(name=name)
                         ),
-                    ),
+                    )
+                    for name in rid_name.values()
                 ],
                 merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
                     # only one series will be returned, so no need to merge
@@ -142,7 +143,10 @@ def _get_series_values_csv(
         end_time=end,
         context=scout_compute_api.Context(
             function_variables={},
-            variables={name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid))},
+            variables={
+                name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid))
+                for rid, name in rid_name.items()
+            },
         ),
         format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
         resolution=scout_dataexport_api.ResolutionOption(

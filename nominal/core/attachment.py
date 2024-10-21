@@ -8,9 +8,9 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 from typing_extensions import Self
 
-from .._api.combined import attachments_api
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid, update_dataclass
+from nominal._api.combined import attachments_api
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._utils import HasRid, update_dataclass
 
 
 @dataclass(frozen=True)

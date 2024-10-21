@@ -11,8 +11,8 @@ import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from typing_extensions import Self
 
-from .. import _config
-from .._api.combined import (
+from nominal import _config
+from nominal._api.combined import (
     attachments_api,
     datasource,
     datasource_logset_api,
@@ -22,26 +22,32 @@ from .._api.combined import (
     scout_video_api,
     timeseries_logicalseries_api,
 )
-from .._utils import (
+from nominal._utils import (
     FileType,
     FileTypes,
     deprecate_keyword_argument,
 )
-from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
-from ._clientsbunch import ClientsBunch
-from ._conjure_utils import _available_units, _build_unit_update
-from ._multipart import put_multipart_upload
-from ._utils import construct_user_agent_string, rid_from_instance_or_string
-from .attachment import Attachment, _iter_get_attachments
-from .channel import Channel
-from .checklist import Checklist, ChecklistBuilder
-from .connection import Connection
-from .dataset import Dataset, _get_dataset, _get_datasets
-from .log import Log, LogSet, _get_log_set
-from .run import Run
-from .unit import Unit
-from .user import User, _get_user, _get_user_with_fallback
-from .video import Video
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._conjure_utils import _available_units, _build_unit_update
+from nominal.core._multipart import put_multipart_upload
+from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.channel import Channel
+from nominal.core.checklist import Checklist, ChecklistBuilder
+from nominal.core.connection import Connection
+from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
+from nominal.core.log import Log, LogSet, _get_log_set
+from nominal.core.run import Run
+from nominal.core.unit import Unit
+from nominal.core.user import User, _get_user, _get_user_with_fallback
+from nominal.core.video import Video
+from nominal.ts import (
+    IntegralNanosecondsUTC,
+    LogTimestampType,
+    _AnyTimestampType,
+    _SecondsNanos,
+    _to_typed_timestamp_type,
+)
 
 
 @dataclass(frozen=True)

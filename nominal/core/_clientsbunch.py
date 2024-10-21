@@ -6,7 +6,7 @@ from functools import partial
 from conjure_python_client import RequestsClient, ServiceConfiguration
 from typing_extensions import Self
 
-from .._api.combined import (
+from nominal._api.combined import (
     attachments_api,
     authentication_api,
     datasource_logset,
