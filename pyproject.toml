@@ -87,3 +87,4 @@ filterwarnings = [
 testpaths = ["tests"]
 # make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
+addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"

@@ -1,12 +1,24 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 from conjure_python_client import ConjureHTTPError
 from requests import HTTPError
 
 from nominal.cli.auth import set_token
 
-runner = CliRunner()
+
+@pytest.fixture()
+def runner():
+    yield CliRunner()
+
+
+@pytest.fixture()
+def mock_client():
+    with patch("nominal.NominalClient.create") as mock_create:
+        mock_client = MagicMock()
+        mock_create.return_value = mock_client
+        yield mock_client
 
 
 def mock_conjure_http_error(status_code):
@@ -17,10 +29,7 @@ def mock_conjure_http_error(status_code):
     return ConjureHTTPError(mock_http_error)
 
 
-@patch("nominal.NominalClient.create")
-def test_invalid_token(mock_create: MagicMock):
-    mock_client = MagicMock()
-    mock_create.return_value = mock_client
+def test_invalid_token(mock_client: MagicMock, runner: CliRunner):
     mock_client.get_user.side_effect = mock_conjure_http_error(401)
 
     result = runner.invoke(set_token, ["-t", "invalid-token", "-u", "https://api.gov.nominal.io/api"])
@@ -29,10 +38,7 @@ def test_invalid_token(mock_create: MagicMock):
     assert result.exit_code == 1
 
 
-@patch("nominal.NominalClient.create")
-def test_invalid_url(mock_create: MagicMock):
-    mock_client = MagicMock()
-    mock_create.return_value = mock_client
+def test_invalid_url(mock_client: MagicMock, runner: CliRunner):
     mock_client.get_user.side_effect = mock_conjure_http_error(404)
 
     result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://invalid-url"])
@@ -41,10 +47,7 @@ def test_invalid_url(mock_create: MagicMock):
     assert result.exit_code == 1
 
 
-@patch("nominal.NominalClient.create")
-def test_bad_request(mock_create: MagicMock):
-    mock_client = MagicMock()
-    mock_create.return_value = mock_client
+def test_bad_request(mock_client: MagicMock, runner: CliRunner):
     mock_client.get_user.side_effect = mock_conjure_http_error(500)
 
     result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://api.gov.nominal.io/api"])
@@ -53,10 +56,7 @@ def test_bad_request(mock_create: MagicMock):
     assert result.exit_code == 1
 
 
-@patch("nominal.NominalClient.create")
-def test_good_request(mock_create: MagicMock):
-    mock_client = MagicMock()
-    mock_create.return_value = mock_client
+def test_good_request(mock_client: MagicMock, runner: CliRunner):
     mock_client.get_user.return_value = {}
 
     result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://api.gov.nominal.io/api"])
