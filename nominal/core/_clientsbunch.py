@@ -17,6 +17,7 @@ from nominal._api.combined import (
     scout_compute_representation_api,
     scout_dataexport_api,
     scout_datasource,
+    scout_datasource_connection,
     scout_units_api,
     scout_video,
     timeseries_logicalseries_api,
@@ -33,6 +34,7 @@ class ClientsBunch:
     catalog: scout_catalog.CatalogService
     checklist: scout_checks_api.ChecklistService
     compute_representation: scout_compute_representation_api.ComputeRepresentationService
+    connection: scout_datasource_connection.ConnectionService
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
@@ -54,6 +56,7 @@ class ClientsBunch:
             catalog=client_factory(scout_catalog.CatalogService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             compute_representation=client_factory(scout_compute_representation_api.ComputeRepresentationService),
+            connection=client_factory(scout_datasource_connection.ConnectionService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),

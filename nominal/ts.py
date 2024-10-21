@@ -433,3 +433,11 @@ class _SecondsNanos(NamedTuple):
         if isinstance(ts, str):
             ts = dateutil.parser.parse(ts)
         return cls.from_datetime(ts)
+
+
+_MIN_TIMESTAMP = _SecondsNanos(seconds=0, nanos=0)
+_MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807)
+"""
+The maximum valid timestamp that can be represented in the APIs: 2262-04-11 19:47:16.854775807.
+The backend converts to long nanoseconds, and the maximum long (int64) value is 9,223,372,036,854,775,807.
+"""
