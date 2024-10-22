@@ -274,6 +274,15 @@ class Dataset(HasRid):
         request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(update_requests)
         self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
 
+    def set_channel_prefix_tree(self, delimiter: str = ".") -> None:
+        """Index channels hierarchically by a given delimiter.
+
+        Primarily, the result of this operation is to prompt the frontend to represent channels
+        in a tree-like manner that allows folding channels by common roots.
+        """
+        request = datasource_api.IndexChannelPrefixTreeRequest(self.rid, delimiter=delimiter)
+        self._clients.datasource.index_channel_prefix_tree(self._clients.auth_header, request)
+
     @classmethod
     def _from_conjure(cls, clients: ClientsBunch, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
