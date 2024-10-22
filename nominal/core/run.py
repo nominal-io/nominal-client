@@ -156,6 +156,7 @@ class Run(HasRid):
             start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
+            assets=[],
         )
         response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._clients, response)
