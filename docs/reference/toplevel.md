@@ -3,9 +3,11 @@
       filters:
       - "!^_" # default filter
       - "!Attachment"
+      - "!Channel"
       - "!Check"
       - "!Checklist"
       - "!ChecklistBuilder"
+      - "!Connection"
       - "!Dataset"
       - "!NominalClient"
       - "!Run"
