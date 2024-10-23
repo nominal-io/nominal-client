@@ -20,6 +20,7 @@ from nominal._api.combined import (
     scout_catalog,
     scout_dataexport_api,
     scout_datasource,
+    timeseries_logicalseries,
     timeseries_logicalseries_api,
     upload_api,
 )
@@ -54,7 +55,7 @@ class Dataset(HasRid):
         @property
         def ingest(self) -> ingest_api.IngestService: ...
         @property
-        def logical_series(self) -> timeseries_logicalseries_api.LogicalSeriesService: ...
+        def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
         def upload(self) -> upload_api.UploadService: ...
         @property

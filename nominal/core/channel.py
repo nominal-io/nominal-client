@@ -13,6 +13,7 @@ from nominal._api.combined import (
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
+    timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
 from nominal.core._clientsbunch import HasAuthHeader
@@ -51,7 +52,7 @@ class Channel(HasRid):
         @property
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
-        def logical_series(self) -> timeseries_logicalseries_api.LogicalSeriesService: ...
+        def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
 
     def to_pandas(
         self,
