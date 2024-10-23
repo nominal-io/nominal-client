@@ -1,5 +1,18 @@
 from nominal import ts
-from nominal.core import Attachment, Check, Checklist, ChecklistBuilder, Dataset, Log, LogSet, NominalClient, Run, Video
+from nominal.core import (
+    Attachment,
+    Channel,
+    Check,
+    Checklist,
+    ChecklistBuilder,
+    Connection,
+    Dataset,
+    Log,
+    LogSet,
+    NominalClient,
+    Run,
+    Video,
+)
 from nominal.nominal import (
     checklist_builder,
     create_run,
@@ -47,9 +60,11 @@ __all__ = [
     "upload_video",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
     "Attachment",
+    "Channel",
     "Check",
     "Checklist",
     "ChecklistBuilder",
+    "Connection",
     "Dataset",
     "NominalClient",
     "Run",

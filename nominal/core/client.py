@@ -34,6 +34,7 @@ from nominal.core._utils import construct_user_agent_string, rid_from_instance_o
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
+from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
@@ -102,6 +103,7 @@ class NominalClient:
             start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
             end_time=_SecondsNanos.from_flexible(end).to_scout_run_api(),
+            assets=[],
         )
         response = self._clients.run.create_run(self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)
@@ -503,6 +505,11 @@ class NominalClient:
         request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
         response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
         return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
+
+    def get_connection(self, rid: str) -> Connection:
+        """Retrieve a connection by its RID."""
+        response = self._clients.connection.get_connection(self._clients.auth_header, rid)
+        return Connection._from_conjure(self._clients, response)
 
 
 def _create_search_runs_query(

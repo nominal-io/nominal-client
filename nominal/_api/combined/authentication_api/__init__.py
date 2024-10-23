@@ -8,7 +8,6 @@ from .._impl import (
     authentication_api_SearchUsersQuery as SearchUsersQuery,
     authentication_api_SearchUsersQueryVisitor as SearchUsersQueryVisitor,
     authentication_api_SearchUsersRequest as SearchUsersRequest,
-    authentication_api_SearchUsersResponse as SearchUsersResponse,
     authentication_api_SearchUsersResponseV2 as SearchUsersResponseV2,
     authentication_api_SortBy as SortBy,
     authentication_api_SortByField as SortByField,

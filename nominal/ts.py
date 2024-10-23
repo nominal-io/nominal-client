@@ -353,8 +353,8 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     return _str_to_type[type_]
 
 
-def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> ingest_api.TimeUnit:
-    return ingest_api.TimeUnit[unit.upper()]
+def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
+    return api.TimeUnit[unit.upper()]
 
 
 _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | Epoch | Relative] = MappingProxyType(
@@ -433,3 +433,11 @@ class _SecondsNanos(NamedTuple):
         if isinstance(ts, str):
             ts = dateutil.parser.parse(ts)
         return cls.from_datetime(ts)
+
+
+_MIN_TIMESTAMP = _SecondsNanos(seconds=0, nanos=0)
+_MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807)
+"""
+The maximum valid timestamp that can be represented in the APIs: 2262-04-11 19:47:16.854775807.
+The backend converts to long nanoseconds, and the maximum long (int64) value is 9,223,372,036,854,775,807.
+"""

@@ -2,6 +2,7 @@
 from .._impl import (
     scout_run_api_AllRunsPropertiesAndLabelsResponse as AllRunsPropertiesAndLabelsResponse,
     scout_run_api_ChannelMetadata as ChannelMetadata,
+    scout_run_api_CheckAlertStatesFilter as CheckAlertStatesFilter,
     scout_run_api_ConnectionRid as ConnectionRid,
     scout_run_api_CreateOrUpdateRunRequest as CreateOrUpdateRunRequest,
     scout_run_api_CreateRunDataSource as CreateRunDataSource,
