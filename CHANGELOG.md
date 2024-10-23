@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0](https://github.com/nominal-io/nominal-client/compare/v1.8.0...v1.9.0) (2024-10-23)
+
+
+### Features
+
+* add Channel and Connection to top level ([#100](https://github.com/nominal-io/nominal-client/issues/100)) ([353e5f7](https://github.com/nominal-io/nominal-client/commit/353e5f7fa95e1ba0df820c3def904d147d7c40d8))
+* expose index_channel_prefix_tree for datasets ([#102](https://github.com/nominal-io/nominal-client/issues/102)) ([bd963ad](https://github.com/nominal-io/nominal-client/commit/bd963ad9b0d96cc1ca3c646b03028d4185ee2415))
+
+
+### Bug Fixes
+
+* value in enum classes check for python &lt; 3.12 ([#104](https://github.com/nominal-io/nominal-client/issues/104)) ([2fc4d8f](https://github.com/nominal-io/nominal-client/commit/2fc4d8fd514a236fd00284d717987ae11a57de28))
+
 ## [1.8.0](https://github.com/nominal-io/nominal-client/compare/v1.7.1...v1.8.0) (2024-10-21)
 
 
