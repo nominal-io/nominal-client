@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, BinaryIO, cast
+from typing import Any, BinaryIO, Protocol, cast
 
 import pandas as pd
 from typing_extensions import Self
@@ -13,9 +13,10 @@ from nominal._api.combined import (
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
+    timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
-from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
@@ -45,7 +46,13 @@ class Channel(HasRid):
     data_type: ChannelDataType | None
     unit: str | None
     description: str | None
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasAuthHeader, Protocol):
+        @property
+        def dataexport(self) -> scout_dataexport_api.DataExportService: ...
+        @property
+        def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
 
     def to_pandas(
         self,
@@ -72,7 +79,7 @@ class Channel(HasRid):
         return df[self.name]
 
     @classmethod
-    def _from_conjure_datasource_api(cls, clients: ClientsBunch, channel: datasource_api.ChannelMetadata) -> Self:
+    def _from_conjure_datasource_api(cls, clients: _Clients, channel: datasource_api.ChannelMetadata) -> Self:
         # NOTE: intentionally ignoring archetype RID as it does not correspond to a Channel in the same way that a logical series does
         if channel.series_rid.logical_series is None:
             raise ValueError(f"Cannot create ChannelMetadata for channel {channel.name}: no defined RID")
@@ -91,7 +98,7 @@ class Channel(HasRid):
 
     @classmethod
     def _from_conjure_logicalseries_api(
-        cls, clients: ClientsBunch, series: timeseries_logicalseries_api.LogicalSeries
+        cls, clients: _Clients, series: timeseries_logicalseries_api.LogicalSeries
     ) -> Self:
         channel_data_type = ChannelDataType._from_conjure(series.series_data_type) if series.series_data_type else None
         return cls(

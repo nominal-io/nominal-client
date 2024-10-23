@@ -438,11 +438,14 @@ class NominalClient:
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""
-        return list(_iter_get_attachments(self._clients, rids))
+        return [
+            Attachment._from_conjure(self._clients, a)
+            for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, rids)
+        ]
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""
-        return _available_units(self._clients)
+        return _available_units(self._clients.auth_header, self._clients.units)
 
     def get_unit(self, unit_symbol: str) -> Unit | None:
         """Get details of the given unit symbol, or none if invalid

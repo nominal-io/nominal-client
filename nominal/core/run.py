@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
-from typing import Iterable, Mapping, Sequence, cast
+from typing import Iterable, Mapping, Protocol, Sequence, cast
 
 from typing_extensions import Self
 
-from nominal._api.combined import scout_run_api
-from nominal.core._clientsbunch import ClientsBunch
+from nominal._api.combined import attachments_api, scout, scout_catalog, scout_run_api
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.dataset import Dataset, _get_datasets
@@ -25,7 +25,15 @@ class Run(HasRid):
     labels: Sequence[str]
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(Dataset._Clients, Attachment._Clients, HasAuthHeader, Protocol):
+        @property
+        def attachment(self) -> attachments_api.AttachmentService: ...
+        @property
+        def catalog(self) -> scout_catalog.CatalogService: ...
+        @property
+        def run(self) -> scout.RunService: ...
 
     def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
         """Add a dataset to this run.
@@ -116,7 +124,8 @@ class Run(HasRid):
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._clients.run.get_run(self._clients.auth_header, self.rid)
-        return _iter_get_attachments(self._clients, run.attachments)
+        for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, run.attachments):
+            yield Attachment._from_conjure(self._clients, a)
 
     def list_attachments(self) -> Sequence[Attachment]:
         return list(self._iter_list_attachments())
@@ -164,7 +173,7 @@ class Run(HasRid):
         return self
 
     @classmethod
-    def _from_conjure(cls, clients: ClientsBunch, run: scout_run_api.Run) -> Self:
+    def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:
         return cls(
             rid=run.rid,
             name=run.title,
