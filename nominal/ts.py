@@ -353,8 +353,8 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     return _str_to_type[type_]
 
 
-def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> ingest_api.TimeUnit:
-    return ingest_api.TimeUnit[unit.upper()]
+def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
+    return api.TimeUnit[unit.upper()]
 
 
 _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | Epoch | Relative] = MappingProxyType(

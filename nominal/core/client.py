@@ -103,6 +103,7 @@ class NominalClient:
             start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
             end_time=_SecondsNanos.from_flexible(end).to_scout_run_api(),
+            assets=[],
         )
         response = self._clients.run.create_run(self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)

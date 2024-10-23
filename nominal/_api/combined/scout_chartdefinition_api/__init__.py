@@ -5,6 +5,7 @@ from .._impl import (
     scout_chartdefinition_api_AxisId as AxisId,
     scout_chartdefinition_api_AxisPosition as AxisPosition,
     scout_chartdefinition_api_AxisRange as AxisRange,
+    scout_chartdefinition_api_AxisScaleType as AxisScaleType,
     scout_chartdefinition_api_AxisThresholdGroup as AxisThresholdGroup,
     scout_chartdefinition_api_AxisThresholdGroupVisitor as AxisThresholdGroupVisitor,
     scout_chartdefinition_api_AxisThresholdVisualization as AxisThresholdVisualization,
@@ -76,8 +77,6 @@ from .._impl import (
     scout_chartdefinition_api_VideoVizDefinitionVisitor as VideoVizDefinitionVisitor,
     scout_chartdefinition_api_VizDefinition as VizDefinition,
     scout_chartdefinition_api_VizDefinitionVisitor as VizDefinitionVisitor,
-    scout_chartdefinition_api_VizId as VizId,
-    scout_chartdefinition_api_WorkbookChartDefinitionMap as WorkbookChartDefinitionMap,
     scout_chartdefinition_api_WorkbookVizDefinitionMap as WorkbookVizDefinitionMap,
 )
 
