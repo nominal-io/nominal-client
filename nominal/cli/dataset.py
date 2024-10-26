@@ -55,7 +55,9 @@ def upload_csv(
     wait: bool,
     client: NominalClient,
 ) -> None:
-    """Upload a local CSV file to Nominal, create and ingest the data into a dataset, and print the details of the newly created dataset to the user."""
+    """Upload a local CSV file to Nominal, create and ingest the data into a dataset, and print the details of
+    the newly created dataset to the user.
+    """
     dataset = client.create_csv_dataset(
         file,
         name,
@@ -76,7 +78,7 @@ def upload_csv(
 @client_options
 @global_options
 def get(rid: str, client: NominalClient) -> None:
-    """fetch a dataset by its RID"""
+    """Fetch a dataset by its RID"""
     dataset = client.get_dataset(rid)
     click.echo(dataset)
 

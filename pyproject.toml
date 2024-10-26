@@ -62,6 +62,43 @@ line-length = 120
 exclude = ["nominal/_api/*"]
 include = ["nominal/**/*.py", "tests/**/*.py"]
 
+[tool.ruff.lint.pylint]
+max-args = 10
+
+[tool.ruff.lint]
+# See rules and codes: https://docs.astral.sh/ruff/rules/
+select = [
+    "F",    # pyFlakes
+    "E",    # pycodestyle (Err)
+    "W",    # pycodestyle (Warn)
+    "D",    # pyDocstyle
+    "I001", # Isort
+    "FIX",  # Flake8-FIXme
+    "PL",   # PyLinT
+    "NPY",  # NumPY
+    "T100"  # debugger
+]
+
+extend-select = [
+    "D417"  # no missing arguments
+]  
+ignore = [
+    "FIX002",  # Ignore TODOs
+    "D203",    # one-blank-line-before-class
+    "D205",    # 1 blank line between summary and description
+    "D213",    # multiline-summary-docs
+    "D103",    # missing-class-docstring
+    "D102",    # missing-public-method-docstring
+    "D101",    # missing-public-class-docstring
+    "D100",    # missing-module-docstring 
+    "D104",    # missing-package-docstring
+    "D400",    # doc line ends in period
+    "D415",    # doc line ends in punctuation
+    "D401",    # imperative mood
+    "PLW0603", # globals
+    "PLR2004",  # magic values
+]
+
 [tool.mypy]
 strict = true
 packages = ["nominal"]

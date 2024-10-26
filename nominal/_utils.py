@@ -68,7 +68,10 @@ def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callab
                 import warnings
 
                 warnings.warn(
-                    f"The '{old_name}' keyword argument is deprecated and will be removed in a future version, use '{new_name}' instead.",
+                    (
+                        f"The '{old_name}' keyword argument is deprecated and will be removed in a "
+                        f"future version, use '{new_name}' instead."
+                    ),
                     UserWarning,
                     stacklevel=2,
                 )

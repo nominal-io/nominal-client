@@ -19,7 +19,7 @@ def attachment_cmd() -> None:
 @client_options
 @global_options
 def get(rid: str, client: NominalClient) -> None:
-    """get an attachment by its RID"""
+    """Get an attachment by its RID"""
     attachment = client.get_attachment(rid)
     click.echo(attachment)
 
@@ -31,7 +31,9 @@ def get(rid: str, client: NominalClient) -> None:
 @client_options
 @global_options
 def upload(name: str, file: str, desc: str | None, client: NominalClient) -> None:
-    """Upload an attachment from a local file with a given name and description and display the details of the newly created attachment to the user."""
+    """Upload attachment from a local file with a given name and description and display the details of the newly
+    created attachment to the user.
+    """
     path = Path(file)
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:
