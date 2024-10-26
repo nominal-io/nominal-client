@@ -31,7 +31,6 @@ from .._impl import (
     timeseries_logicalseries_api_LocatorVisitor as LocatorVisitor,
     timeseries_logicalseries_api_LogicalSeries as LogicalSeries,
     timeseries_logicalseries_api_LogicalSeriesRid as LogicalSeriesRid,
-    timeseries_logicalseries_LogicalSeriesService as LogicalSeriesService,
     timeseries_logicalseries_api_MeasureName as MeasureName,
     timeseries_logicalseries_api_MeasurementName as MeasurementName,
     timeseries_logicalseries_api_NominalLocator as NominalLocator,

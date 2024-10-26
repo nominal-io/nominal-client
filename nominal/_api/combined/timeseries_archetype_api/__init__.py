@@ -1,7 +1,6 @@
 # coding=utf-8
 from .._impl import (
     timeseries_archetype_api_BatchCreateSeriesArchetypeRequest as BatchCreateSeriesArchetypeRequest,
-    timeseries_archetype_api_BatchCreateSeriesArchetypeResponse as BatchCreateSeriesArchetypeResponse,
     timeseries_archetype_api_BatchGetSeriesArchetypeRequest as BatchGetSeriesArchetypeRequest,
     timeseries_archetype_api_BatchGetSeriesArchetypeResponse as BatchGetSeriesArchetypeResponse,
     timeseries_archetype_api_CreateSeriesArchetypeRequest as CreateSeriesArchetypeRequest,

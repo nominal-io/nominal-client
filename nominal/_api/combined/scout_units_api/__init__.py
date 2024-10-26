@@ -7,6 +7,5 @@ from .._impl import (
     scout_units_api_UnitProperty as UnitProperty,
     scout_units_api_UnitSymbol as UnitSymbol,
     scout_units_api_UnitSystem as UnitSystem,
-    scout_UnitsService as UnitsService,
 )
 

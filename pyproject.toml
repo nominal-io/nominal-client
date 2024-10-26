@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nominal"
-version = "1.7.1"
+version = "1.9.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     "Alexander Reynolds <alex.reynolds@nominal.io>",
@@ -47,6 +47,7 @@ mkdocstrings-python = "^1.11.1"
 black = "^24.8.0"
 mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", rev = "alkasm/keep-context-settings" }
 jupyterlab = "^4.2.5"
+pytest-cov = "^5.0.0"
 
 
 [tool.distutils.bdist_wheel]
@@ -59,6 +60,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 line-length = 120
 exclude = ["nominal/_api/*"]
+include = ["nominal/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint]
 # Include rules for: pyFlakes, pycodestyle (Err/Warn), pyDocstyle, Isort, Flake8-FIXme, PyLinT, NumPY, debugger
@@ -106,3 +108,4 @@ filterwarnings = [
 testpaths = ["tests"]
 # make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
+addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"
