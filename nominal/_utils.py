@@ -47,6 +47,7 @@ class FileTypes:
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
     MP4: FileType = FileType(".mp4", "video/mp4")
     BINARY: FileType = FileType("", "application/octet-stream")
+    MCAP: FileType = FileType(".mcap", "application/octet-stream")
 
 
 @contextmanager

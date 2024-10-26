@@ -518,7 +518,7 @@ class NominalClient:
         topic: str,
         name: str,
         description: str | None = None,
-        file_type: tuple[str, str] | FileType = FileTypes.BINARY,
+        file_type: tuple[str, str] | FileType = FileTypes.MCAP,
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
