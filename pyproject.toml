@@ -62,11 +62,26 @@ line-length = 120
 exclude = ["nominal/_api/*"]
 include = ["nominal/**/*.py", "tests/**/*.py"]
 
+[tool.ruff.lint.pylint]
+max-args = 10
+
 [tool.ruff.lint]
-# Include rules for: pyFlakes, pycodestyle (Err/Warn), pyDocstyle, Isort, Flake8-FIXme, PyLinT, NumPY, debugger
 # See rules and codes: https://docs.astral.sh/ruff/rules/
-select = ["F", "E", "W", "D", "I001", "FIX", "PL", "NPY", "T100"]
-extend-select = ["D417"]  # no missing arguments
+select = [
+    "F",    # pyFlakes
+    "E",    # pycodestyle (Err)
+    "W",    # pycodestyle (Warn)
+    "D",    # pyDocstyle
+    "I001", # Isort
+    "FIX",  # Flake8-FIXme
+    "PL",   # PyLinT
+    "NPY",  # NumPY
+    "T100"  # debugger
+]
+
+extend-select = [
+    "D417"  # no missing arguments
+]  
 ignore = [
     "FIX002",  # Ignore TODOs
     "D203",    # one-blank-line-before-class
@@ -81,6 +96,7 @@ ignore = [
     "D415",    # doc line ends in punctuation
     "D401",    # imperative mood
     "PLW0603", # globals
+    "PLR2004",  # magic values
 ]
 
 [tool.mypy]

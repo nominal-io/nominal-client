@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import logging
 import pathlib
-import pdb
+import pdb  # noqa: T100
 import typing
 
 import click
@@ -93,10 +93,11 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     NominalClient into commands based on user-provided flags containing the base API url and a path to a configuration
     file containing an API Access Key.
 
-    This will add two options, --base-url and --token, which perform the two aforementioned configurations before spawning
-    a NominalClient.
+    This will add two options, --base-url and --token, which perform the two aforementioned configurations before
+    spawning a NominalClient.
 
-    NOTE: any click command utilizing this decorator MUST accept a key-value argument pair named client of type NominalClient.
+    NOTE: any click command utilizing this decorator MUST accept a key-value argument pair named client of type
+        NominalClient.
     """
     url_option = click.option(
         "--base-url",
@@ -113,7 +114,10 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     )
     token_option = click.option(
         "--token",
-        help="API Access token to use when creating the nominal client. If provided, takes precedence over --token-path and --base-url",
+        help=(
+            "API Access token to use when creating the nominal client. "
+            "If provided, takes precedence over --token-path and --base-url"
+        ),
     )
 
     @functools.wraps(func)

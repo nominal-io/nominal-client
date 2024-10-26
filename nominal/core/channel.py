@@ -82,7 +82,8 @@ class Channel(HasRid):
 
     @classmethod
     def _from_conjure_datasource_api(cls, clients: _Clients, channel: datasource_api.ChannelMetadata) -> Self:
-        # NOTE: intentionally ignoring archetype RID as it does not correspond to a Channel in the same way that a logical series does
+        # NOTE: intentionally ignoring archetype RID as it does not correspond to a Channel in the same way that a
+        #   logical series does
         if channel.series_rid.logical_series is None:
             raise ValueError(f"Cannot create ChannelMetadata for channel {channel.name}: no defined RID")
 

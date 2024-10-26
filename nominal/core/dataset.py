@@ -183,7 +183,8 @@ class Dataset(HasRid):
 
         Args:
         ----
-            exact_match: Filter the returned channels to those whose names match all provided strings (case insensitive).
+            exact_match: Filter the returned channels to those whose names match all provided strings
+                (case insensitive).
                 For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
                 whereas a channel named 'engine_turbine_flowrate' would not!
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
@@ -222,14 +223,17 @@ class Dataset(HasRid):
 
         Args:
         ----
-            channel_exact_match: Filter the returned channels to those whose names match all provided strings (case insensitive).
+            channel_exact_match: Filter the returned channels to those whose names match all provided strings
+                (case insensitive).
                 For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
                 whereas a channel named 'engine_turbine_flowrate' would not!
-            channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+            channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided
+                string.
 
         Returns:
         -------
-            A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected channels.
+            A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected
+                channels.
 
         Example:
         -------
@@ -262,8 +266,11 @@ class Dataset(HasRid):
         ----
             channels_to_units: A mapping of channel names to unit symbols.
                 NOTE: any existing units may be cleared from a channel by providing None as a symbol.
-            validate_schema: If true, raise a ValueError if non-existant channel names are provided in `channels_to_units`
+            validate_schema: If true, raises a ValueError if non-existent channel names are provided in
+                `channels_to_units`. Default is False.
+
         Raises:
+        ------
             ValueError: Unsupported unit symbol provided
             conjure_python_client.ConjureHTTPError: Error completing requests.
 
@@ -281,8 +288,8 @@ class Dataset(HasRid):
 
             if unit_symbol not in supported_symbols:
                 raise ValueError(
-                    f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit recognized by nominal. "
-                    "For more information on valid symbols, see https://ucum.org/ucum"
+                    f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit "
+                    "recognized by nominal. For more information on valid symbols, see https://ucum.org/ucum"
                 )
 
         # Get metadata (specifically, RIDs) for all requested channels

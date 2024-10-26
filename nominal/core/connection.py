@@ -51,9 +51,9 @@ class Connection(HasRid):
             )
 
     def _resolve_archetypes_to_channels(self, channel_names: Sequence[str]) -> Iterable[Channel]:
-        """Given archetype names ("shirts", "sweaters") and existing tag values ({color: [red, green], size: [S, M, L]}),
-        resolve all possible combinations of archetype names and tag values to logical series. We will try to resolve
-        the following logical series:
+        """Given archetype names ("shirts", "sweaters") and existing tag values
+        ({color: [red, green], size: [S, M, L]}), resolve all possible combinations of archetype names and tag values
+        to logical series. We will try to resolve the following logical series:
             * shirts, {color: red, size: S}
             * shirts, {color: red, size: M}
             * shirts, {color: red, size: L}
@@ -114,5 +114,6 @@ class Connection(HasRid):
 
 
 def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
-    # {color: [red, green], size: [S, M, L]} -> [{color: red, size: S}, {color: red, size: M}, ..., {color: green, size: L}]
+    # {color: [red, green], size: [S, M, L]} -> [{color: red, size: S}, {color: red, size: M}, ...,
+    #                                            {color: green, size: L}]
     return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]
