@@ -18,6 +18,7 @@ from .._impl import (
     scout_video_api_IngestError as IngestError,
     scout_video_api_IngestStatus as IngestStatus,
     scout_video_api_Label as Label,
+    scout_video_api_McapTimestampManifest as McapTimestampManifest,
     scout_video_api_NoTimestampManifest as NoTimestampManifest,
     scout_video_api_Property as Property,
     scout_video_api_PropertyName as PropertyName,

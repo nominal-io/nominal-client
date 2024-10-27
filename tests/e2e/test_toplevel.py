@@ -9,8 +9,7 @@ import pytest
 
 import nominal as nm
 from nominal import _utils
-
-from . import _create_random_start_end
+from tests.e2e import _create_random_start_end
 
 
 def test_upload_csv(csv_data):
@@ -143,7 +142,7 @@ def test_create_run_csv(csv_data):
     assert ref_name == "dataset"
     assert dataset.rid != ""
     assert dataset.name == f"Dataset for Run: {name}"
-    assert dataset.description == None
+    assert dataset.description is None
     assert len(dataset.properties) == 0
     assert len(dataset.labels) == 0
 

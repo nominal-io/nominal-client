@@ -8,8 +8,8 @@ from typing import BinaryIO, Iterable
 
 import requests
 
-from .._api.combined import ingest_api, upload_api
-from ..exceptions import NominalMultipartUploadFailed
+from nominal._api.combined import ingest_api, upload_api
+from nominal.exceptions import NominalMultipartUploadFailed
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,6 @@ def put_multipart_upload(
 
     Ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
     """
-
     # muiltithreaded multipart upload:
     # - create a worker thread pool and a queue for all threads to share
     # - initialize the upload, getting the object key and upload id

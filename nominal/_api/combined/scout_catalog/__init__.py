@@ -55,7 +55,6 @@ from .._impl import (
     scout_catalog_SortField as SortField,
     scout_catalog_SortOptions as SortOptions,
     scout_catalog_SuccessResult as SuccessResult,
-    scout_catalog_TimeUnit as TimeUnit,
     scout_catalog_TimestampMetadata as TimestampMetadata,
     scout_catalog_TimestampType as TimestampType,
     scout_catalog_TimestampTypeVisitor as TimestampTypeVisitor,

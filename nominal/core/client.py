@@ -11,37 +11,43 @@ import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from typing_extensions import Self
 
-from .. import _config
-from .._api.combined import (
+from nominal import _config
+from nominal._api.combined import (
     attachments_api,
     datasource,
     datasource_logset_api,
     ingest_api,
     scout_catalog,
     scout_run_api,
-    scout_units_api,
     scout_video_api,
     timeseries_logicalseries_api,
 )
-from .._utils import (
+from nominal._utils import (
     FileType,
     FileTypes,
     deprecate_keyword_argument,
 )
-from ..ts import IntegralNanosecondsUTC, LogTimestampType, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
-from ._clientsbunch import ClientsBunch
-from ._conjure_utils import _available_units, _build_unit_update
-from ._multipart import put_multipart_upload
-from ._utils import construct_user_agent_string, rid_from_instance_or_string
-from .attachment import Attachment, _iter_get_attachments
-from .channel import Channel
-from .checklist import Checklist, ChecklistBuilder
-from .dataset import Dataset, _get_dataset, _get_datasets
-from .log import Log, LogSet, _get_log_set
-from .run import Run
-from .unit import Unit
-from .user import User, _get_user, _get_user_with_fallback
-from .video import Video
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._conjure_utils import _available_units, _build_unit_update
+from nominal.core._multipart import put_multipart_upload
+from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.channel import Channel
+from nominal.core.checklist import Checklist, ChecklistBuilder
+from nominal.core.connection import Connection
+from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
+from nominal.core.log import Log, LogSet, _get_log_set
+from nominal.core.run import Run
+from nominal.core.unit import Unit
+from nominal.core.user import User, _get_user, _get_user_with_fallback
+from nominal.core.video import Video
+from nominal.ts import (
+    IntegralNanosecondsUTC,
+    LogTimestampType,
+    _AnyTimestampType,
+    _SecondsNanos,
+    _to_typed_timestamp_type,
+)
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,7 @@ class NominalClient:
             start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
             end_time=_SecondsNanos.from_flexible(end).to_scout_run_api(),
+            assets=[],
         )
         response = self._clients.run.create_run(self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)
@@ -402,7 +409,6 @@ class NominalClient:
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
         """
-
         # TODO(alkasm): create attachment from file/path
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
@@ -431,11 +437,14 @@ class NominalClient:
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""
-        return list(_iter_get_attachments(self._clients, rids))
+        return [
+            Attachment._from_conjure(self._clients, a)
+            for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, rids)
+        ]
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""
-        return _available_units(self._clients)
+        return _available_units(self._clients.auth_header, self._clients.units)
 
     def get_unit(self, unit_symbol: str) -> Unit | None:
         """Get details of the given unit symbol, or none if invalid
@@ -443,9 +452,12 @@ class NominalClient:
             unit_symbol: Symbol of the unit to get metadata for.
                 NOTE: This currently requires that units are formatted as laid out in
                       the latest UCUM standards (see https://ucum.org/ucum)
-        Returns:
+
+        Returns
+        -------
             Rendered Unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
+
         """
         api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
         return None if api_unit is None else Unit._from_conjure(api_unit)
@@ -476,12 +488,15 @@ class NominalClient:
         Args:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
                 NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
-        Returns:
+
+        Returns
+        -------
             A sequence of metadata for all updated channels
         Raises:
             conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the channel.
                 This typically occurs when either the units are invalid, or there are no
                 channels with the given RIDs present.
+
         """
         series_updates = []
         for rid, series_type in rids_to_types.items():
@@ -495,6 +510,11 @@ class NominalClient:
         request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
         response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
         return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
+
+    def get_connection(self, rid: str) -> Connection:
+        """Retrieve a connection by its RID."""
+        response = self._clients.connection.get_connection(self._clients.auth_header, rid)
+        return Connection._from_conjure(self._clients, response)
 
 
 def _create_search_runs_query(

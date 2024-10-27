@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .._api.combined import authentication_api
-from ._utils import HasRid
+from nominal._api.combined import authentication_api
+from nominal.core._utils import HasRid
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,8 @@ def _get_user_with_fallback(
 ) -> str:
     """Get the user RID for the user, falling back to the current user if not provided.
 
-    If both user_email and user_rid are provided, raise a ValueError."""
+    If both user_email and user_rid are provided, raise a ValueError.
+    """
     if user_email is not None and user_rid is not None:
         raise ValueError("only one of user_email or user_rid should be provided")
     if user_email is not None:

@@ -4,14 +4,14 @@ import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Mapping, Protocol, Sequence
 
 from typing_extensions import Self
 
-from .._api.combined import scout_video_api
-from ..exceptions import NominalIngestError, NominalIngestFailed
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid, update_dataclass
+from nominal._api.combined import scout_video, scout_video_api
+from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._utils import HasRid, update_dataclass
+from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
 
 @dataclass(frozen=True)
@@ -21,17 +21,22 @@ class Video(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasAuthHeader, Protocol):
+        @property
+        def video(self) -> scout_video.VideoService: ...
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
         This method polls Nominal for ingest status after uploading a video on an interval.
 
-        Raises:
+        Raises
+        ------
             NominalIngestFailed: if the ingest failed
             NominalIngestError: if the ingest status is not known
-        """
 
+        """
         while True:
             progress = self._clients.video.get_ingest_status(self._clients.auth_header, self.rid)
             if progress.type == "success":
@@ -87,7 +92,7 @@ class Video(HasRid):
         return self
 
     @classmethod
-    def _from_conjure(cls, clients: ClientsBunch, video: scout_video_api.Video) -> Self:
+    def _from_conjure(cls, clients: _Clients, video: scout_video_api.Video) -> Self:
         return cls(
             rid=video.rid,
             name=video.title,

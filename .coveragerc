@@ -1,0 +1,7 @@
+[run]
+omit =
+    tests/*
+    *__init__*
+    nominal/_api/*
+    nominal/__main__.py
+    

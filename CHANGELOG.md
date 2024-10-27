@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.9.0](https://github.com/nominal-io/nominal-client/compare/v1.8.0...v1.9.0) (2024-10-23)
+
+
+### Features
+
+* add Channel and Connection to top level ([#100](https://github.com/nominal-io/nominal-client/issues/100)) ([353e5f7](https://github.com/nominal-io/nominal-client/commit/353e5f7fa95e1ba0df820c3def904d147d7c40d8))
+* expose index_channel_prefix_tree for datasets ([#102](https://github.com/nominal-io/nominal-client/issues/102)) ([bd963ad](https://github.com/nominal-io/nominal-client/commit/bd963ad9b0d96cc1ca3c646b03028d4185ee2415))
+
+
+### Bug Fixes
+
+* value in enum classes check for python &lt; 3.12 ([#104](https://github.com/nominal-io/nominal-client/issues/104)) ([2fc4d8f](https://github.com/nominal-io/nominal-client/commit/2fc4d8fd514a236fd00284d717987ae11a57de28))
+
+## [1.8.0](https://github.com/nominal-io/nominal-client/compare/v1.7.1...v1.8.0) (2024-10-21)
+
+
+### Features
+
+* add connections ([#92](https://github.com/nominal-io/nominal-client/issues/92)) ([a8940b0](https://github.com/nominal-io/nominal-client/commit/a8940b0aabc66b5052198259cb01ac6bcb664196))
+* download dataset ([#93](https://github.com/nominal-io/nominal-client/issues/93)) ([76f8748](https://github.com/nominal-io/nominal-client/commit/76f8748b216041f5cef03b773ff3e1f2a6be708b))
+* hide archetype series from channel abstraction ([#91](https://github.com/nominal-io/nominal-client/issues/91)) ([37f768b](https://github.com/nominal-io/nominal-client/commit/37f768b2ef1a39eead1c5ea5117211f8f8ac09e9))
+* validate login flow for new users ([#82](https://github.com/nominal-io/nominal-client/issues/82)) ([930367a](https://github.com/nominal-io/nominal-client/commit/930367aa7de5a9169a873e2cb2844c5de2096902))
+* wrap various unit types within the Conjure spec within a single Unit abstraction ([#85](https://github.com/nominal-io/nominal-client/issues/85)) ([ff6f015](https://github.com/nominal-io/nominal-client/commit/ff6f015bfba7a95617985763df1df4871eb8baee))
+
+
+### Bug Fixes
+
+* early return in set_units, add coverage + unit tests ([#97](https://github.com/nominal-io/nominal-client/issues/97)) ([874e8dc](https://github.com/nominal-io/nominal-client/commit/874e8dc7b4ae971abdb5d0fe828531d7a692646d))
+
 ## [1.7.1](https://github.com/nominal-io/nominal-client/compare/v1.7.0...v1.7.1) (2024-10-16)
 
 

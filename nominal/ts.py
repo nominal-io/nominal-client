@@ -13,7 +13,8 @@ All of these may also have different interpretations of the units, epoch, time z
 To simplify common usages while allowing for the full flexibility of the Nominal platform,
 the client library allows you to specify timestamp formats with simple strings and more complex typeful representations.
 
-Wherever you can specify a timestamp format (typically the `timestamp_type` parameter), these are all examples of valid formats:
+Wherever you can specify a timestamp format (typically the `timestamp_type` parameter), these are all examples of
+valid formats:
 
 ```python
 "iso_8601"
@@ -35,19 +36,23 @@ nm.ts.Custom(r"yyyy-MM-dd[T]hh:mm:ss")
 nm.ts.Custom(r"DDD:HH:mm:ss.SSSSSS", default_year=2024)
 ```
 
-The strings `"iso_8601"` and `"epoch_{unit}"` are equivalent to using the types `nm.ts.Iso8601()` and `nm.ts.Epoch("{unit}")`.
+The strings `"iso_8601"` and `"epoch_{unit}"` are equivalent to using the types `nm.ts.Iso8601()` and
+`nm.ts.Epoch("{unit}")`.
 
 Relative and custom formats require additional parameters, so they can't be specified with a string.
 Relative timestamps require a start time that they are relative to, e.g. `nm.ts.Relative("{unit}", start=start_time)`.
-Custom timestamp formats require a format string compatible with the `DateTimeFormatter` class in Java: see [java docs](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns).
+Custom timestamp formats require a format string compatible with the `DateTimeFormatter` class in Java: see java
+[docs](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns).
 
 ## Examples
 
-All of the examples use the same data (timestamp and value) expressed with different timestamp formats, and showcase how to upload them to Nominal.
+All of the examples use the same data (timestamp and value) expressed with different timestamp formats,
+and showcase how to upload them to Nominal.
 
 ### ISO 8601
 
-Nominal requires ISO 8601 timestamps to include the time zone, e.g. `'2021-01-31T19:00:00Z'` or `'2021-01-31T19:00:00.123+00:00'`. For example:
+Nominal requires ISO 8601 timestamps to include the time zone, e.g. `'2021-01-31T19:00:00Z'` or
+`'2021-01-31T19:00:00.123+00:00'`. For example:
 
 ```csv
 temperature,timestamp
@@ -69,7 +74,9 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 
 ### Epoch timestamps
 
-Nominal supports epoch timestamps in different units: hours, minutes, seconds, milliseconds, microseconds, and nanoseconds. The values can be integers or floating-point numbers.
+Nominal supports epoch timestamps in different units:
+hours, minutes, seconds, milliseconds, microseconds, and nanoseconds.
+The values can be integers or floating-point numbers.
 
 #### Floating-point seconds since epoch
 
@@ -113,7 +120,8 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 
 ### Relative timestamps
 
-Similar to epoch timestamps, Nominal supports relative timestamps in the same units: hours, minutes, seconds, milliseconds, microseconds, and nanoseconds, and can be integer or floating-point values.
+Similar to epoch timestamps, Nominal supports relative timestamps in the same units:
+hours, minutes, seconds, milliseconds, microseconds, and nanoseconds, and can be integer or floating-point values.
 Relative timestamps are _relative to_ a specified start time.
 
 ```csv
@@ -136,7 +144,9 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 
 ### Custom Format
 
-Nominal supports custom timestamp formats. The format string should be in the format of the `DateTimeFormatter` class in Java: see [java docs](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns).
+Nominal supports custom timestamp formats. The format string should be in the format of the `DateTimeFormatter`
+class in Java: see java
+[docs](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/format/DateTimeFormatter.html#patterns).
 
 #### Customized ctime
 
@@ -162,7 +172,8 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 
 #### IRIG time code
 
-IRIG time codes come in a variety of formats. A common IRIG format specifies a relative timestamp from the beginning of the year, expressed in `days:hours:minutes:seconds.ms`.
+IRIG time codes come in a variety of formats. A common IRIG format specifies a relative timestamp from the
+beginning of the year, expressed in `days:hours:minutes:seconds.ms`.
 
 ```csv
 temperature,timestamp
@@ -196,9 +207,7 @@ import dateutil.parser
 import numpy as np
 from typing_extensions import Self, TypeAlias
 
-from nominal._api.combined import api
-
-from ._api.combined import ingest_api, scout_run_api
+from nominal._api.combined import api, ingest_api, scout_run_api
 
 __all__ = [
     "Iso8601",
@@ -218,7 +227,8 @@ __all__ = [
 ]
 
 IntegralNanosecondsUTC: TypeAlias = int
-"""Alias for an `int` used in the code for documentation purposes. This value is a timestamp in nanoseconds since the Unix epoch, UTC."""
+"""Alias for an `int` used in the code for documentation purposes.
+This value is a timestamp in nanoseconds since the Unix epoch, UTC."""
 
 LogTimestampType: TypeAlias = Literal["absolute", "relative"]
 
@@ -255,7 +265,7 @@ class Epoch(_ConjureTimestampType):
 @dataclass(frozen=True)
 class Relative(_ConjureTimestampType):
     """A relative timestamp in numeric format representing time since some start time.
-    The relative timestamp can be integral or floating point, e.g. 12.123 for 12 seconds and 123 milliseconds after start.
+    The relative timestamp can be integral or floating point, e.g. 12.123 for 12 seconds and 123 ms after start.
     The start time is absolute timestamp format representing time since some epoch.
     """
 
@@ -264,7 +274,7 @@ class Relative(_ConjureTimestampType):
     """The starting time to which all relatives times are relative to."""
 
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
-        """Note: The offset is a conjure datetime. They are serialized as ISO-8601 strings, with up-to nanosecond precision.
+        """Note: The offset is a conjure datetime. They are serialized as ISO-8601 strings, with up-to nanosecond prec.
         The Python type for the field is just a str.
         Ref:
         - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
@@ -346,7 +356,8 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if type_.startswith("relative_"):
         # until this is completely removed, we implicitly assume offset=1970-01-01 in the APIs
         warnings.warn(
-            "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: use `nm.ts.Relative` instead. "
+            "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: "
+            "use `nm.ts.Relative` instead. "
             "for example: instead of 'relative_seconds', use `nm.ts.Relative('seconds', start=datetime.now())`. ",
             UserWarning,
         )
@@ -355,8 +366,8 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     return _str_to_type[type_]
 
 
-def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> ingest_api.TimeUnit:
-    return ingest_api.TimeUnit[unit.upper()]
+def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
+    return api.TimeUnit[unit.upper()]
 
 
 _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | Epoch | Relative] = MappingProxyType(
@@ -397,8 +408,8 @@ class _SecondsNanos(NamedTuple):
         return api.Timestamp(seconds=self.seconds, nanos=self.nanos)
 
     def to_iso8601(self) -> str:
-        """datetime.datetime is only microsecond-precise, so we use np.datetime64[ns] to get nanosecond-precision for printing.
-        Note that nanosecond precision is the maximum allowable for conjure datetime fields.
+        """datetime.datetime is only microsecond-precise, so we use np.datetime64[ns] to get nanosecond-precision for
+        printing. Note that nanosecond precision is the maximum allowable for conjure datetime fields.
         - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
         - https://github.com/palantir/conjure/pull/1643
         """
@@ -435,3 +446,11 @@ class _SecondsNanos(NamedTuple):
         if isinstance(ts, str):
             ts = dateutil.parser.parse(ts)
         return cls.from_datetime(ts)
+
+
+_MIN_TIMESTAMP = _SecondsNanos(seconds=0, nanos=0)
+_MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807)
+"""
+The maximum valid timestamp that can be represented in the APIs: 2262-04-11 19:47:16.854775807.
+The backend converts to long nanoseconds, and the maximum long (int64) value is 9,223,372,036,854,775,807.
+"""

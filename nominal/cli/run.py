@@ -4,9 +4,9 @@ from typing import Sequence
 
 import click
 
-from ..core.client import NominalClient
-from ..ts import _SecondsNanos
-from .util.global_decorators import client_options, global_options
+from nominal.cli.util.global_decorators import client_options, global_options
+from nominal.core.client import NominalClient
+from nominal.ts import _SecondsNanos
 
 
 @click.group(name="run")
@@ -32,7 +32,7 @@ def create(
     labels: Sequence[str],
     client: NominalClient,
 ) -> None:
-    """create a new run"""
+    """Create a new run"""
     run = client.create_run(
         name,
         _SecondsNanos.from_flexible(start).to_nanoseconds(),
@@ -52,6 +52,6 @@ def get(
     rid: str,
     client: NominalClient,
 ) -> None:
-    """get a run by its RID"""
+    """Get a run by its RID"""
     run = client.get_run(rid)
     click.echo(run)

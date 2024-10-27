@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Iterable, Protocol
 
 from typing_extensions import Self
 
-from .._api.combined import datasource, datasource_logset, datasource_logset_api
-from ..ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
-from ._clientsbunch import ClientsBunch
-from ._utils import HasRid
+from nominal._api.combined import datasource, datasource_logset, datasource_logset_api
+from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._utils import HasRid
+from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,11 @@ class LogSet(HasRid):
     name: str
     timestamp_type: LogTimestampType
     description: str | None
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasAuthHeader, Protocol):
+        @property
+        def logset(self) -> datasource_logset.LogSetService: ...
 
     def _stream_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
         request = datasource_logset_api.SearchLogsRequest()
@@ -38,7 +42,7 @@ class LogSet(HasRid):
             yield Log._from_conjure(log)
 
     @classmethod
-    def _from_conjure(cls, clients: ClientsBunch, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
+    def _from_conjure(cls, clients: _Clients, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
         return cls(
             rid=log_set_metadata.rid,
             name=log_set_metadata.name,

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import click
 
-from .._utils import FileType
-from ..core.client import NominalClient
-from .util.global_decorators import client_options, global_options
+from nominal._utils import FileType
+from nominal.cli.util.global_decorators import client_options, global_options
+from nominal.core.client import NominalClient
 
 
 @click.group(name="attachment")
@@ -19,7 +19,7 @@ def attachment_cmd() -> None:
 @client_options
 @global_options
 def get(rid: str, client: NominalClient) -> None:
-    """get an attachment by its RID"""
+    """Get an attachment by its RID"""
     attachment = client.get_attachment(rid)
     click.echo(attachment)
 
@@ -31,7 +31,9 @@ def get(rid: str, client: NominalClient) -> None:
 @client_options
 @global_options
 def upload(name: str, file: str, desc: str | None, client: NominalClient) -> None:
-    """Upload an attachment from a local file with a given name and description and display the details of the newly created attachment to the user."""
+    """Upload attachment from a local file with a given name and description and display the details of the newly
+    created attachment to the user.
+    """
     path = Path(file)
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:

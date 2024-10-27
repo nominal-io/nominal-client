@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from typing_extensions import Self
 
-from .._api.combined import datasource_api, scout_asset_api, scout_run_api, scout_units_api
+from nominal._api.combined import datasource_api, scout_asset_api, scout_run_api, scout_units_api
 
 
 @dataclass(frozen=True)

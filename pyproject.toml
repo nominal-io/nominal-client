@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nominal"
-version = "1.7.1"
+version = "1.9.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     "Alexander Reynolds <alex.reynolds@nominal.io>",
@@ -47,6 +47,7 @@ mkdocstrings-python = "^1.11.1"
 black = "^24.8.0"
 mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", rev = "alkasm/keep-context-settings" }
 jupyterlab = "^4.2.5"
+pytest-cov = "^5.0.0"
 
 # hdf5 extras
 h5py = { version = ">=3.0", optional = true }
@@ -65,6 +66,44 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 line-length = 120
 exclude = ["nominal/_api/*"]
+include = ["nominal/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+
+[tool.ruff.lint]
+# See rules and codes: https://docs.astral.sh/ruff/rules/
+select = [
+    "F",    # pyFlakes
+    "E",    # pycodestyle (Err)
+    "W",    # pycodestyle (Warn)
+    "D",    # pyDocstyle
+    "I001", # Isort
+    "FIX",  # Flake8-FIXme
+    "PL",   # PyLinT
+    "NPY",  # NumPY
+    "T100"  # debugger
+]
+
+extend-select = [
+    "D417"  # no missing arguments
+]  
+ignore = [
+    "FIX002",  # Ignore TODOs
+    "D203",    # one-blank-line-before-class
+    "D205",    # 1 blank line between summary and description
+    "D213",    # multiline-summary-docs
+    "D103",    # missing-class-docstring
+    "D102",    # missing-public-method-docstring
+    "D101",    # missing-public-class-docstring
+    "D100",    # missing-module-docstring 
+    "D104",    # missing-package-docstring
+    "D400",    # doc line ends in period
+    "D415",    # doc line ends in punctuation
+    "D401",    # imperative mood
+    "PLW0603", # globals
+    "PLR2004",  # magic values
+]
 
 [tool.mypy]
 strict = true
@@ -91,3 +130,4 @@ filterwarnings = [
 testpaths = ["tests"]
 # make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
+addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"
