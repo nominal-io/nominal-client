@@ -12,3 +12,6 @@ nom.add_command(attachment.attachment_cmd)
 nom.add_command(auth.auth_cmd)
 nom.add_command(dataset.dataset_cmd)
 nom.add_command(run.run_cmd)
+
+if __name__ == "__main__":
+    nom()
