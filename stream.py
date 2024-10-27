@@ -65,34 +65,3 @@ def write_stream(source: Callable[[], dict], data_source_id: str, push_freq_sec:
     stream = NominalWriteStream(source, data_source_id, push_freq_sec)
     print(f"Pushing to sink {stream.sink}")
     return stream
-
-
-
-
-
-
-
-# TOKEN='<REDACTED>'
-# BASE_URL='https://api-staging.gov.nominal.io/api'
-
-# headers = {'Authorization': 'Bearer %s' % (TOKEN), 'Content-type': 'application/json'}
-
-# data_source_rid='ri.nominal.gov-staging.datasource.17591376-973d-442b-9a1d-11a65cf91f7d'
-
-# write_url = '%s/storage/writer/v1' % (BASE_URL)
-
-
-
-# while True:
-#     points = [{'timestamp': {'seconds': seconds, 'nanos': i}, 'value': random.random()} for i in range(points_per_batch)]
-
-#     batch = {'channel': 'streaming-test-channel-0', 'tags': {}, 'points': {'type': 'double', 'double': points}}
-#     print(batch)
-#     write_req_data = {"batches": [batch], "dataSourceRid": data_source_rid}
-
-#     write_response = requests.post(write_url, json=write_req_data, headers=headers)
-
-#     print(write_response.status_code)
-#     seconds += 1
-
-#     time.sleep(1)
