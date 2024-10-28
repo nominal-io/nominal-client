@@ -298,7 +298,8 @@ def create_run_csv(
     ts_type = ts._to_typed_timestamp_type(timestamp_type)
     if not isinstance(ts_type, (ts.Iso8601, ts.Epoch)):
         raise ValueError(
-            "`create_run_csv()` only supports iso8601 or epoch timestamps: use `upload_dataset()` and `create_run()` instead"
+            "`create_run_csv()` only supports iso8601 or epoch timestamps: use "
+            "`upload_dataset()` and `create_run()` instead"
         )
     start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, ts_type)
     dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, ts_type)
@@ -397,7 +398,7 @@ def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     """Wait until all datasets have completed ingestion.
 
     If you are uploading multiple datasets, consider setting wait_until_complete=False in the upload functions and call
-    this function after uploading all the datasets to wait until ingestion completes. This allows for parallel ingestion.
+    this function after uploading all datasets to wait until ingestion completes. This allows for parallel ingestion.
     """
     poll_until_ingestion_completed(datasets)
 
@@ -449,6 +450,7 @@ def checklist_builder(
     If assignee_email is None, the checklist is assigned to the user executing the code.
 
     Example:
+    -------
     ```python
     builder = nm.checklist_builder("Programmatically created checklist")
     builder.add_check(
@@ -458,6 +460,7 @@ def checklist_builder(
     )
     checklist = builder.publish()
     ```
+
     """
     conn = get_default_client()
     return conn.checklist_builder(

@@ -29,8 +29,10 @@ class ClickLogHandler(logging.StreamHandler):  # type: ignore[type-arg]
         """Instantiate a ClickLogHandler
 
         Args:
+        ----
             stream: TextIO stream to pipe filtered and rendered log messages to
             no_color: If True, don't colorize/style log messages by level during rendering
+
         """
         if stream is None:
             stream = click.get_text_stream("stderr")
@@ -41,7 +43,6 @@ class ClickLogHandler(logging.StreamHandler):  # type: ignore[type-arg]
 
     def format(self, record: logging.LogRecord) -> str:
         """Add colors when formatting log records"""
-
         msg = super().format(record)
         if not self._no_color:
             msg = click.style(msg, fg=self.LEVEL_TO_COLOR_MAP.get(record.levelno, "white"))
@@ -53,8 +54,10 @@ def install_log_handler(level: int = logging.WARNING, no_color: bool = False) ->
     """Install and configure a ClickLogHandler as the default root-level logging handler.
 
     Args:
+    ----
         level: Minimum log severity level for log messages to be allowed to be rendered and emitted.
         no_color: If true, prevents log messages from being stylized by severity level
+
     """
     logging.basicConfig(level=level)
 

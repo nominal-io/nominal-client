@@ -65,10 +65,12 @@ class Channel(HasRid):
         The index name is "timestamp" and the series name is the channel name.
 
         Example:
+        -------
         ```
         s = channel.to_pandas()
         print(s.name, "mean:", s.mean())
         ```
+
         """
         start_time = _MIN_TIMESTAMP.to_api() if start is None else _SecondsNanos.from_flexible(start).to_api()
         end_time = _MAX_TIMESTAMP.to_api() if end is None else _SecondsNanos.from_flexible(end).to_api()
@@ -80,7 +82,8 @@ class Channel(HasRid):
 
     @classmethod
     def _from_conjure_datasource_api(cls, clients: _Clients, channel: datasource_api.ChannelMetadata) -> Self:
-        # NOTE: intentionally ignoring archetype RID as it does not correspond to a Channel in the same way that a logical series does
+        # NOTE: intentionally ignoring archetype RID as it does not correspond to a Channel in the same way that a
+        #   logical series does
         if channel.series_rid.logical_series is None:
             raise ValueError(f"Cannot create ChannelMetadata for channel {channel.name}: no defined RID")
 

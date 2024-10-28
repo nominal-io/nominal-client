@@ -142,7 +142,7 @@ def test_create_run_csv(csv_data):
     assert ref_name == "dataset"
     assert dataset.rid != ""
     assert dataset.name == f"Dataset for Run: {name}"
-    assert dataset.description == None
+    assert dataset.description is None
     assert len(dataset.properties) == 0
     assert len(dataset.labels) == 0
 

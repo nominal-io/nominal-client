@@ -411,7 +411,6 @@ class NominalClient:
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
         """
-
         # TODO(alkasm): create attachment from file/path
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
@@ -455,9 +454,12 @@ class NominalClient:
             unit_symbol: Symbol of the unit to get metadata for.
                 NOTE: This currently requires that units are formatted as laid out in
                       the latest UCUM standards (see https://ucum.org/ucum)
-        Returns:
+
+        Returns
+        -------
             Rendered Unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
+
         """
         api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
         return None if api_unit is None else Unit._from_conjure(api_unit)
@@ -488,12 +490,15 @@ class NominalClient:
         Args:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
                 NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
-        Returns:
+
+        Returns
+        -------
             A sequence of metadata for all updated channels
         Raises:
             conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the channel.
                 This typically occurs when either the units are invalid, or there are no
                 channels with the given RIDs present.
+
         """
         series_updates = []
         for rid, series_type in rids_to_types.items():
