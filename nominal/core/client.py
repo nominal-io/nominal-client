@@ -560,7 +560,7 @@ class NominalClient:
         )
         response = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
         if len(response.outputs) != 1 or response.outputs[0].target.video_rid is None:
-            raise NominalIngestError(f"No or invalid video RID returned")
+            raise NominalIngestError("No or invalid video RID returned")
         return self.get_video(response.outputs[0].target.video_rid)
 
 
