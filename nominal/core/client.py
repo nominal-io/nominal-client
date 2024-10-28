@@ -42,6 +42,7 @@ from nominal.core.run import Run
 from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user, _get_user_with_fallback
 from nominal.core.video import Video
+from nominal.exceptions import NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
     LogTimestampType,
@@ -553,9 +554,9 @@ class NominalClient:
             title=name,
         )
         response = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
-        video_rid = response.outputs[0].target.video_rid
-        assert video_rid is not None, "No RID returned"
-        return self.get_video(video_rid)
+        if len(response.outputs) != 1 or response.outputs[0].target.video_rid is None:
+            raise NominalIngestError(f"No or invalid video RID returned")
+        return self.get_video(response.outputs[0].target.video_rid)
 
 
 def _create_search_runs_query(
