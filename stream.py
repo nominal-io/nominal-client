@@ -48,7 +48,7 @@ class NominalWriteStream:
             source_data = self.source()
             write_req_data = {"batches": [source_data], "dataSourceRid": self.data_source_id}
             self.pool.submit(self._write_sink, write_req_data)
-            time.sleep(self.push_freq_sec)
+            self.stop_event.wait(self.push_freq_sec)
 
     def stop(self, cancel_running: bool = False) -> None:
         """Gracefully kill the thread.
