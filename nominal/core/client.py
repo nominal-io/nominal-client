@@ -524,7 +524,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
     ) -> Video:
-        """Create videos from topics in a mcap file.
+        """Create video from topic in a mcap file.
 
         Mcap must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
 
