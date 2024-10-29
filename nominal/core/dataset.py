@@ -4,7 +4,7 @@ import logging
 import time
 import urllib.parse
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
@@ -31,9 +31,22 @@ from nominal.core._multipart import put_multipart_upload
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.channel import Channel, _get_series_values_csv
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
-from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, _AnyTimestampType, _to_typed_timestamp_type
+from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, _AnyTimestampType, _SecondsNanos, _to_typed_timestamp_type
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DatasetBounds:
+    start: datetime
+    end: datetime
+
+    @classmethod
+    def _from_conjure(cls, bounds: scout_catalog.Bounds) -> Self:
+        return cls(
+            start=_SecondsNanos.from_api(bounds.start).to_datetime(),
+            end=_SecondsNanos.from_api(bounds.end).to_datetime(),
+        )
 
 
 @dataclass(frozen=True)
@@ -43,6 +56,7 @@ class Dataset(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
+    bounds: DatasetBounds | None
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasAuthHeader, Protocol):
@@ -345,6 +359,7 @@ class Dataset(HasRid):
             description=dataset.description,
             properties=MappingProxyType(dataset.properties),
             labels=tuple(dataset.labels),
+            bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             _clients=clients,
         )
 
