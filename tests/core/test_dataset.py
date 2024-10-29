@@ -1,5 +1,5 @@
 import functools
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -30,10 +30,7 @@ def mock_dataset(mock_clients):
         rid="test-rid",
         name="Test Dataset",
         description="A dataset for testing",
-        bounds=DatasetBounds(
-            start=datetime(year=2021, month=10, day=9, hour=10, minute=9, second=10, tzinfo=timezone.utc),
-            end=datetime(year=2021, month=10, day=9, hour=11, minute=9, second=10, tzinfo=timezone.utc),
-        ),
+        bounds=DatasetBounds(start=123455, end=123456),
         properties={},
         labels=[],
         _clients=mock_clients,
