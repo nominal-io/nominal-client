@@ -176,7 +176,10 @@ class Run(HasRid):
             if dataset.rid == dataset_rid:
                 ref_names_to_remove.add(ref_name)
                 
-        return self.remove_ref_names(ref_names_to_remove)
+        if ref_names_to_remove:    
+            return self.remove_ref_names(ref_names_to_remove)
+        else:
+            raise ValueError(f"Dataset with rid {dataset_rid} not present in run {self.rid}")
 
     def update(
         self,
