@@ -6,7 +6,7 @@ import pytest
 
 from nominal._api.combined.timeseries_logicalseries_api import BatchUpdateLogicalSeriesRequest
 from nominal.core.channel import Channel
-from nominal.core.dataset import Dataset
+from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.unit import Unit
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
@@ -30,6 +30,7 @@ def mock_dataset(mock_clients):
         rid="test-rid",
         name="Test Dataset",
         description="A dataset for testing",
+        bounds=DatasetBounds(start=123455, end=123456),
         properties={},
         labels=[],
         _clients=mock_clients,
