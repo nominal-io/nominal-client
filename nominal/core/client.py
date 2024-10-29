@@ -13,6 +13,7 @@ from typing_extensions import Self
 
 from nominal import _config
 from nominal._api.combined import (
+    api,
     attachments_api,
     datasource,
     datasource_logset_api,
@@ -41,6 +42,7 @@ from nominal.core.run import Run
 from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user, _get_user_with_fallback
 from nominal.core.video import Video
+from nominal.exceptions import NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
     LogTimestampType,
@@ -515,6 +517,51 @@ class NominalClient:
         """Retrieve a connection by its RID."""
         response = self._clients.connection.get_connection(self._clients.auth_header, rid)
         return Connection._from_conjure(self._clients, response)
+
+    def create_video_from_mcap_io(
+        self,
+        mcap: BinaryIO,
+        topic: str,
+        name: str,
+        description: str | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MCAP,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Create video from topic in a mcap file.
+
+        Mcap must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+
+        If name is None, the name of the file will be used.
+        """
+        if isinstance(mcap, TextIOBase):
+            raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
+
+        file_type = FileType(*file_type)
+        urlsafe_name = urllib.parse.quote_plus(name)
+        filename = f"{urlsafe_name}{file_type.extension}"
+
+        s3_path = put_multipart_upload(
+            self._clients.auth_header, mcap, filename, file_type.mimetype, self._clients.upload
+        )
+        request = ingest_api.IngestMcapRequest(
+            channel_config=[
+                ingest_api.McapChannelConfig(
+                    channel_type=ingest_api.McapChannelConfigType(video=ingest_api.McapVideoChannelConfig()),
+                    locator=api.McapChannelLocator(topic=topic),
+                )
+            ],
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+            sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
+            description=description,
+            title=name,
+        )
+        response = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
+        if len(response.outputs) != 1 or response.outputs[0].target.video_rid is None:
+            raise NominalIngestError("No or invalid video RID returned")
+        return self.get_video(response.outputs[0].target.video_rid)
 
 
 def _create_search_runs_query(
