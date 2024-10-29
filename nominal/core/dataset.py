@@ -61,6 +61,11 @@ class Dataset(HasRid):
         @property
         def units(self) -> scout.UnitsService: ...
 
+    @property
+    def nominal_url(self) -> str:
+        """Returns a URL to the page in the nominal app containing this dataset"""
+        return f"https://app.gov.nominal.io/data-sources/{self.rid}"
+
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
