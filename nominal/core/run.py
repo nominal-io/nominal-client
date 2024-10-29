@@ -40,6 +40,7 @@ class Run(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Run in the Nominal app"""
+        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
         return f"https://app.gov.nominal.io/runs/{self.run_number}"
 
     def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
