@@ -1,12 +1,12 @@
 import functools
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from nominal._api.combined.timeseries_logicalseries_api import BatchUpdateLogicalSeriesRequest
 from nominal.core.channel import Channel
-from nominal.core.dataset import Dataset
+from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.unit import Unit
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
@@ -30,6 +30,10 @@ def mock_dataset(mock_clients):
         rid="test-rid",
         name="Test Dataset",
         description="A dataset for testing",
+        bounds=DatasetBounds(
+            start=datetime(year=2021, month=10, day=9, hour=10, minute=9, second=10, tzinfo=timezone.utc),
+            end=datetime(year=2021, month=10, day=9, hour=11, minute=9, second=10, tzinfo=timezone.utc),
+        ),
         properties={},
         labels=[],
         _clients=mock_clients,
