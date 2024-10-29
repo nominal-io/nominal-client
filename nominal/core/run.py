@@ -144,6 +144,40 @@ class Run(HasRid):
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
 
+    def remove_ref_names(self, ref_names_to_remove: Iterable[str]) -> Self:
+        enhanced_run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        for ref_name_to_remove in ref_names_to_remove:
+            if ref_name_to_remove not in enhanced_run.data_sources:
+                raise ValueError(f"Run {self.rid} does not have an associated dataset with ref name {ref_name_to_remove}")
+            
+        request = scout_run_api.UpdateRunRequest(
+            data_sources = {
+                ref_name: scout_run_api.CreateRunDataSource(
+                    data_source = data_source.data_source,
+                    offset = data_source.offset,
+                    series_tags = data_source.series_tags,
+                )
+                for ref_name, data_source in enhanced_run.data_sources.items()
+                if ref_name not in ref_names_to_remove
+            }
+        )
+        return self._update_run(request)
+
+    def remove_ref_name(self, ref_name_to_remove: str) -> Self:
+        """ """
+        return self.remove_ref_names(set([ref_name_to_remove]))
+        
+        
+    def remove_dataset(self, dataset_rid: str) -> Self:
+        """ """
+        datasets = self.list_datasets()
+        ref_names_to_remove = set()
+        for ref_name, dataset in datasets.items():
+            if dataset.rid == dataset_rid:
+                ref_names_to_remove.add(ref_name)
+                
+        return self.remove_ref_names(ref_names_to_remove)
+
     def update(
         self,
         *,
@@ -175,6 +209,9 @@ class Run(HasRid):
             title=name,
             assets=[],
         )
+        return self._update_run(request)
+
+    def _update_run(self, request: scout_run_api.UpdateRunRequest) -> Self:
         response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, run, fields=self.__dataclass_fields__)
