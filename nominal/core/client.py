@@ -86,7 +86,7 @@ class NominalClient:
         self,
         name: str,
         start: datetime | IntegralNanosecondsUTC,
-        end: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
         properties: Mapping[str, str] | None = None,
@@ -104,7 +104,7 @@ class NominalClient:
             properties={} if properties is None else dict(properties),
             start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
-            end_time=_SecondsNanos.from_flexible(end).to_scout_run_api(),
+            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             assets=[],
         )
         response = self._clients.run.create_run(self._clients.auth_header, request)
