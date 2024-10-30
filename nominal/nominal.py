@@ -261,10 +261,12 @@ def get_dataset(rid: str) -> Dataset:
 def create_run(
     name: str,
     start: datetime | str | ts.IntegralNanosecondsUTC,
-    end: datetime | str | ts.IntegralNanosecondsUTC,
+    end: datetime | str | ts.IntegralNanosecondsUTC | None,
     description: str | None = None,
 ) -> Run:
     """Create a run in the Nominal platform.
+
+    If the run has no end (for example, if it is ongoing), use `end=None`.
 
     To add a dataset to the run, use `run.add_dataset()`.
     """
@@ -272,7 +274,7 @@ def create_run(
     return conn.create_run(
         name,
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
-        end=ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
+        end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         description=description,
     )
 
