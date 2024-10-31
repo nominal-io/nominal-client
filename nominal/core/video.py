@@ -91,6 +91,14 @@ class Video(HasRid):
         update_dataclass(self, video, fields=self.__dataclass_fields__)
         return self
 
+    def archive(self) -> None:
+        """Archives the video, preventing it from showing up in the 'All Videos' pane in the UI."""
+        self._clients.video.archive(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchives the video, allowing it to show up in the 'All Videos' pane inthe UI."""
+        self._clients.video.unarchive(self._clients.auth_header, self.rid)
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, video: scout_video_api.Video) -> Self:
         return cls(
