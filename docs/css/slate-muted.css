@@ -1,0 +1,97 @@
+/* A "muted slate" color scheme which mutes the param, attr, func, meth, class, and mod heading colors.
+   There's probably a better way to do this but I just copied the slate .scss and hardcoded the values that
+   are normally computed, but it works!
+
+   Ref:
+   - https://github.com/squidfunk/mkdocs-material/blob/8a60b49328520778a5c6b6164031d644f9a6111a/src/templates/assets/stylesheets/palette/_scheme.scss
+ */
+ [data-md-color-scheme="slate-muted"] {
+    --doc-symbol-parameter-fg-color: var(--md-code-fg-color);
+    --doc-symbol-attribute-fg-color: var(--md-code-fg-color);
+    --doc-symbol-function-fg-color: var(--md-code-fg-color);
+    --doc-symbol-method-fg-color: var(--md-code-fg-color);
+    --doc-symbol-class-fg-color: var(--md-code-fg-color);
+    --doc-symbol-module-fg-color: var(--md-code-fg-color);
+
+    --doc-symbol-parameter-bg-color: var(--md-code-bg-color);
+    --doc-symbol-attribute-bg-color: var(--md-code-bg-color);
+    --doc-symbol-function-bg-color: var(--md-code-bg-color);
+    --doc-symbol-method-bg-color: var(--md-code-bg-color);
+    --doc-symbol-class-bg-color: var(--md-code-bg-color);
+    --doc-symbol-module-bg-color: var(--md-code-bg-color);
+
+    color-scheme: dark;
+
+    --md-default-fg-color:             hsla(var(--md-hue), 15%, 90%, 0.82);
+    --md-default-fg-color--light:      hsla(var(--md-hue), 15%, 90%, 0.56);
+    --md-default-fg-color--lighter:    hsla(var(--md-hue), 15%, 90%, 0.32);
+    --md-default-fg-color--lightest:   hsla(var(--md-hue), 15%, 90%, 0.12);
+    --md-default-bg-color:             hsla(var(--md-hue), 15%, 14%, 1);
+    --md-default-bg-color--light:      hsla(var(--md-hue), 15%, 14%, 0.54);
+    --md-default-bg-color--lighter:    hsla(var(--md-hue), 15%, 14%, 0.26);
+    --md-default-bg-color--lightest:   hsla(var(--md-hue), 15%, 14%, 0.07);
+
+    --md-code-fg-color:                hsla(var(--md-hue), 18%, 86%, 0.82);
+    --md-code-bg-color:                hsla(var(--md-hue), 15%, 18%, 1);
+
+    --md-code-hl-color:                hsla(218, 100%, 58%, 1);
+    --md-code-hl-color--light:         hsla(218, 100%, 58%, 0.1);
+
+    --md-code-hl-number-color:         hsla(6, 74%, 63%, 1);
+    --md-code-hl-special-color:        hsla(340, 83%, 66%, 1);
+    --md-code-hl-function-color:       hsla(291, 57%, 65%, 1);
+    --md-code-hl-constant-color:       hsla(250, 62%, 70%, 1);
+    --md-code-hl-keyword-color:        hsla(219, 66%, 64%, 1);
+    --md-code-hl-string-color:         hsla(150, 58%, 44%, 1);
+    --md-code-hl-name-color:           var(--md-code-fg-color);
+    --md-code-hl-operator-color:       var(--md-default-fg-color--light);
+    --md-code-hl-punctuation-color:    var(--md-default-fg-color--light);
+    --md-code-hl-comment-color:        var(--md-default-fg-color--light);
+    --md-code-hl-generic-color:        var(--md-default-fg-color--light);
+    --md-code-hl-variable-color:       var(--md-default-fg-color--light);
+
+    --md-typeset-color:                var(--md-default-fg-color);
+
+    --md-typeset-a-color:              var(--md-primary-fg-color);
+
+    --md-typeset-kbd-color:            hsla(var(--md-hue), 15%, 90%, 0.12);
+    --md-typeset-kbd-accent-color:     hsla(var(--md-hue), 15%, 90%, 0.2);
+    --md-typeset-kbd-border-color:     hsla(var(--md-hue), 15%, 14%, 1);
+
+    --md-typeset-mark-color:           hsla(218, 100%, 63%, 0.3);
+
+    --md-typeset-table-color:          hsla(var(--md-hue), 15%, 95%, 0.12);
+    --md-typeset-table-color--light:   hsla(var(--md-hue), 15%, 95%, 0.035);
+
+    --md-admonition-fg-color:          var(--md-default-fg-color);
+    --md-admonition-bg-color:          var(--md-default-bg-color);
+
+    --md-footer-bg-color:              hsla(var(--md-hue), 15%, 10%, 0.87);
+    --md-footer-bg-color--dark:        hsla(var(--md-hue), 15%, 8%, 1);
+
+    --md-shadow-z1:
+      0 0.25 0.625 hsla(0, 0%, 0%, 0.05),
+      0 0    0.063 hsla(0, 0%, 0%, 0.1);
+
+    --md-shadow-z2:
+      0 0.25 0.625 hsla(0, 0%, 0%, 0.25),
+      0 0    0.063 hsla(0, 0%, 0%, 0.25);
+
+    --md-shadow-z3:
+      0 0.25 0.625 hsla(0, 0%, 0%, 0.4),
+      0 0    0.063 hsla(0, 0%, 0%, 0.35);
+
+  }
+
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="pink"] { --md-typeset-a-color: hsl(340, 81%, 63%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="purple"] { --md-typeset-a-color: hsl(291, 53%, 63%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="deep-purple"] { --md-typeset-a-color: hsl(262, 73%, 70%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="indigo"] { --md-typeset-a-color: hsl(219, 76%, 62%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="teal"] { --md-typeset-a-color: hsl(174, 100%, 40%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="green"] { --md-typeset-a-color: hsl(122, 39%, 60%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="deep-orange"] { --md-typeset-a-color: hsl(14, 100%, 65%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="brown"] { --md-typeset-a-color: hsl(16, 45%, 56%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="grey"] { --md-typeset-a-color: hsl(219, 66%, 62%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="blue-grey"] { --md-typeset-a-color: hsl(219, 66%, 62%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="white"] { --md-typeset-a-color: hsl(219, 66%, 62%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="black"] { --md-typeset-a-color: hsl(219, 66%, 62%); }
