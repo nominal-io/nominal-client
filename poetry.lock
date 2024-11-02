@@ -3698,4 +3698,4 @@ hdf5 = []
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "cf8647390d80e42b5a574e72fb14670c84597e0b2513d53e7bacad7430081c7c"
+content-hash = "d7143b29eda976c8aea6244e335b8c3424136f2198f613f801f431033b05c881"
