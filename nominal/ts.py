@@ -418,6 +418,9 @@ class _SecondsNanos(NamedTuple):
     def to_nanoseconds(self) -> IntegralNanosecondsUTC:
         return self.seconds * 1_000_000_000 + self.nanos
 
+    def to_datetime(self) -> datetime:
+        return datetime.fromtimestamp(self.seconds + self.nanos * 1e-9, timezone.utc)
+
     @classmethod
     def from_scout_run_api(cls, ts: scout_run_api.UtcTimestamp) -> Self:
         return cls(seconds=ts.seconds_since_epoch, nanos=ts.offset_nanoseconds or 0)

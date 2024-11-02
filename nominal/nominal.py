@@ -261,10 +261,12 @@ def get_dataset(rid: str) -> Dataset:
 def create_run(
     name: str,
     start: datetime | str | ts.IntegralNanosecondsUTC,
-    end: datetime | str | ts.IntegralNanosecondsUTC,
+    end: datetime | str | ts.IntegralNanosecondsUTC | None,
     description: str | None = None,
 ) -> Run:
     """Create a run in the Nominal platform.
+
+    If the run has no end (for example, if it is ongoing), use `end=None`.
 
     To add a dataset to the run, use `run.add_dataset()`.
     """
@@ -272,7 +274,7 @@ def create_run(
     return conn.create_run(
         name,
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
-        end=ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
+        end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         description=description,
     )
 
@@ -474,3 +476,39 @@ def checklist_builder(
 def get_checklist(checklist_rid: str) -> Checklist:
     conn = get_default_client()
     return conn.get_checklist(checklist_rid)
+
+
+def upload_mcap_video(
+    file: Path | str,
+    topic: str,
+    name: str | None = None,
+    description: str | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Video:
+    """Create a video in the Nominal platform from a topic in a mcap file.
+
+    If `name` is None, the video is created with the name of the file.
+
+    If `wait_until_complete=True` (the default), this function waits until the video has completed ingestion before
+        returning. If you are uploading many videos, set `wait_until_complete=False` instead and call
+        `wait_until_ingestion_complete()` after uploading all videos to allow for parallel ingestion.
+    """
+    conn = get_default_client()
+
+    path = Path(file)
+    file_type = FileType.from_path(path)
+    if name is None:
+        name = path.name
+
+    with open(file, "rb") as f:
+        video = conn.create_video_from_mcap_io(
+            f,
+            topic,
+            name,
+            description,
+            file_type,
+        )
+    if wait_until_complete:
+        video.poll_until_ingestion_completed()
+    return video
