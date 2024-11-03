@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nominal"
-version = "1.9.0"
+version = "1.10.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     "Alexander Reynolds <alex.reynolds@nominal.io>",
@@ -49,6 +49,12 @@ mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", rev = "alkasm/k
 jupyterlab = "^4.2.5"
 pytest-cov = "^5.0.0"
 
+# hdf5 extras
+h5py = { version = ">=3.0", optional = true }
+tables = { version = ">=3.7", optional = true}
+
+[tool.poetry.extras]
+hdf5 = ["h5py", "tables"]
 
 [tool.distutils.bdist_wheel]
 universal = true

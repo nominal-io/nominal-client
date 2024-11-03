@@ -25,6 +25,8 @@ class Run(HasRid):
     labels: Sequence[str]
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
+    run_number: int
+
     _clients: _Clients = field(repr=False)
 
     class _Clients(Dataset._Clients, Attachment._Clients, HasAuthHeader, Protocol):
@@ -34,6 +36,12 @@ class Run(HasRid):
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def run(self) -> scout.RunService: ...
+
+    @property
+    def nominal_url(self) -> str:
+        """Returns a link to the page for this Run in the Nominal app"""
+        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
+        return f"https://app.gov.nominal.io/runs/{self.run_number}"
 
     def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
         """Add a dataset to this run.
@@ -182,5 +190,6 @@ class Run(HasRid):
             labels=tuple(run.labels),
             start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
+            run_number=run.run_number,
             _clients=clients,
         )

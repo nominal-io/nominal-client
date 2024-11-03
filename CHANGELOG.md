@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.10.0](https://github.com/nominal-io/nominal-client/compare/v1.9.0...v1.10.0) (2024-10-30)
+
+
+### Features
+
+* add bounds to dataset class ([#110](https://github.com/nominal-io/nominal-client/issues/110)) ([f111bca](https://github.com/nominal-io/nominal-client/commit/f111bca5f71aa60e8f1514dfef077574ee2968fa))
+* add nominal_url property to dataset ([#111](https://github.com/nominal-io/nominal-client/issues/111)) ([28a3b5a](https://github.com/nominal-io/nominal-client/commit/28a3b5a2e4fec2505464cf12482cb3e172332695))
+* add run number to nominal Run class ([#109](https://github.com/nominal-io/nominal-client/issues/109)) ([26fc1bb](https://github.com/nominal-io/nominal-client/commit/26fc1bb2f5a413469083a99aaac631f899b6c3d7))
+* allow end=None when creating runs for streaming ([#114](https://github.com/nominal-io/nominal-client/issues/114)) ([e89d9bc](https://github.com/nominal-io/nominal-client/commit/e89d9bc5f175c08f649d076d9edfec2a12c7e69c))
+* ingest video from MCAP file ([#105](https://github.com/nominal-io/nominal-client/issues/105)) ([75e7011](https://github.com/nominal-io/nominal-client/commit/75e7011eb1a3006b447c069d6dd12c9c9b893882))
+
 ## [1.9.0](https://github.com/nominal-io/nominal-client/compare/v1.8.0...v1.9.0) (2024-10-23)
 
 

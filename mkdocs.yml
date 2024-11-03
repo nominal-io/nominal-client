@@ -13,6 +13,7 @@ validation:
 
 extra_css:
   - css/mkdocstrings.css
+  - css/slate-muted.css
 
 nav:
   - Home:
@@ -61,7 +62,11 @@ theme:
       scheme: slate
       toggle:
         icon: material/weather-night
-        name: Switch to system preference
+        name: Switch to muted dark mode
+    - scheme: slate-muted
+      toggle:
+        icon: material/weather-night-partly-cloudy
+        name: Switch to light mode
 
 markdown_extensions:
   - admonition
