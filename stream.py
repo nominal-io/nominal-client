@@ -4,7 +4,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from types import TracebackType
-from typing import Callable, Type
+from typing import Type
 from uuid import uuid4
 
 ## User Code
@@ -128,26 +128,6 @@ class NominalWriteStream:
             self._flush_batch()
 
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
-
-
-def write_stream(source: Callable[[], dict], data_source_id: str, push_freq_sec: float | int = 1) -> NominalWriteStream:
-    """Start a write stream based on a callable source.
-
-    Args:
-    ----
-        source (Callable[[], dict]): A callable function that returns a dictionary of data to write to the source.
-            The callable must not take any parameters. If it does, use a `functools.partial` to pre-fill the params
-        data_source_id (str): The source in nominal to write to.
-        push_freq_sec (int): The frequency with which to read from the source and write to the sink. Default 1.
-
-    Returns:
-    -------
-        NominalWriteStream: The write task running the process. To end the stream, call stream.stop()
-
-    """
-    stream = NominalWriteStream(source, data_source_id, push_freq_sec)
-    print(f"Pushing to sink {stream.sink}")
-    return stream
 
 
 if __name__ == "__main__":
