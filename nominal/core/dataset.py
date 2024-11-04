@@ -18,7 +18,6 @@ from nominal._api.combined import (
     ingest_api,
     scout,
     scout_catalog,
-    scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
     timeseries_logicalseries,
@@ -67,7 +66,7 @@ class Dataset(HasRid):
     bounds: DatasetBounds | None
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(Channel._Clients, HasAuthHeader, Protocol):
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
@@ -82,8 +81,6 @@ class Dataset(HasRid):
         def upload(self) -> upload_api.UploadService: ...
         @property
         def units(self) -> scout.UnitsService: ...
-        @property
-        def compute(self) -> scout_compute_api.ComputeService: ...
 
     @property
     def nominal_url(self) -> str:
