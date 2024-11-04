@@ -16,7 +16,7 @@ from nominal._api.combined import (
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
-from nominal._api.combined._impl import api_Timestamp
+from nominal._api.combined.api import Timestamp
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
@@ -125,39 +125,39 @@ class Channel(HasRid):
         buckets: int | None = None,
         resolution: int | None = None,
     ) -> pd.DataFrame:
-        """Retrieve the channel data as a pandas.Dataframe, decimated to the given buckets or resolution.
+        """Retrieve the channel data as a pandas.DataFrame, decimated to the given buckets or resolution.
 
         Enter either the number of buckets or the resolution for the output.
         Resolution in picoseconds for picosecond-granularity dataset, nanoseconds otherwise.
         """
+        if buckets is not None and resolution is not None:
+            raise ValueError("Either buckets or resolution should be provided")
+
         if buckets is not None:
             # Somehow the number of points returned is buckets / 1000
             buckets = buckets * 1000
 
         result = self._decimate_request(start, end, buckets, resolution)
 
-        def to_ts(timestamp: api_Timestamp) -> pd.Timestamp:
-            return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
-
         # when there are less than 1000 points, the result is numeric
         if result.numeric is not None:
             df = pd.DataFrame(
                 result.numeric.values,
                 columns=["value"],
-                index=[to_ts(timestamp) for timestamp in result.numeric.timestamps],
+                index=[_to_pandas_timestamp(timestamp) for timestamp in result.numeric.timestamps],
             )
             df.index.name = "timestamp"
             return df
 
         if result.bucketed_numeric is None:
-            raise ValueError("Unexpected response from compute service")
+            raise ValueError("Unexpected response from compute service, bucketed_numeric should not be None")
         df = pd.DataFrame(
             [
                 (bucket.min, bucket.max, bucket.mean, bucket.count, bucket.variance)
                 for bucket in result.bucketed_numeric.buckets
             ],
             columns=["min", "max", "mean", "count", "variance"],
-            index=[to_ts(timestamp) for timestamp in result.bucketed_numeric.timestamps],
+            index=[_to_pandas_timestamp(timestamp) for timestamp in result.bucketed_numeric.timestamps],
         )
         df.index.name = "timestamp"
         return df
@@ -238,3 +238,7 @@ def _get_series_values_csv(
     # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
     # this acts like a file-like object in binary-mode.
     return cast(BinaryIO, response)
+
+
+def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
+    return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
