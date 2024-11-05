@@ -1,3 +1,4 @@
+from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.channel import Channel
 from nominal.core.checklist import Check, Checklist, ChecklistBuilder
@@ -10,6 +11,7 @@ from nominal.core.user import User
 from nominal.core.video import Video
 
 __all__ = [
+    "Asset",
     "Attachment",
     "Channel",
     "Check",
