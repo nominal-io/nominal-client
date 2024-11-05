@@ -16,6 +16,7 @@ from nominal._api.combined import (
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
+from nominal._api.combined.api import Timestamp
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
@@ -53,6 +54,8 @@ class Channel(HasRid):
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
+        @property
+        def compute(self) -> scout_compute_api.ComputeService: ...
 
     def to_pandas(
         self,
@@ -114,6 +117,80 @@ class Channel(HasRid):
             _clients=clients,
         )
 
+    def get_decimated(
+        self,
+        start: str | datetime | IntegralNanosecondsUTC,
+        end: str | datetime | IntegralNanosecondsUTC,
+        *,
+        buckets: int | None = None,
+        resolution: int | None = None,
+    ) -> pd.DataFrame:
+        """Retrieve the channel data as a pandas.DataFrame, decimated to the given buckets or resolution.
+
+        Enter either the number of buckets or the resolution for the output.
+        Resolution in picoseconds for picosecond-granularity dataset, nanoseconds otherwise.
+        """
+        if buckets is not None and resolution is not None:
+            raise ValueError("Either buckets or resolution should be provided")
+
+        if buckets is not None:
+            # Somehow the number of points returned is buckets / 1000
+            buckets = buckets * 1000
+
+        result = self._decimate_request(start, end, buckets, resolution)
+
+        # when there are less than 1000 points, the result is numeric
+        if result.numeric is not None:
+            df = pd.DataFrame(
+                result.numeric.values,
+                columns=["value"],
+                index=[_to_pandas_timestamp(timestamp) for timestamp in result.numeric.timestamps],
+            )
+            df.index.name = "timestamp"
+            return df
+
+        if result.bucketed_numeric is None:
+            raise ValueError("Unexpected response from compute service, bucketed_numeric should not be None")
+        df = pd.DataFrame(
+            [
+                (bucket.min, bucket.max, bucket.mean, bucket.count, bucket.variance)
+                for bucket in result.bucketed_numeric.buckets
+            ],
+            columns=["min", "max", "mean", "count", "variance"],
+            index=[_to_pandas_timestamp(timestamp) for timestamp in result.bucketed_numeric.timestamps],
+        )
+        df.index.name = "timestamp"
+        return df
+
+    def _decimate_request(
+        self,
+        start: str | datetime | IntegralNanosecondsUTC,
+        end: str | datetime | IntegralNanosecondsUTC,
+        buckets: int | None = None,
+        resolution: int | None = None,
+    ) -> scout_compute_api.ComputeNodeResponse:
+        request = scout_compute_api.ComputeNodeRequest(
+            start=_SecondsNanos.from_flexible(start).to_api(),
+            end=_SecondsNanos.from_flexible(end).to_api(),
+            node=scout_compute_api.ComputableNode(
+                series=scout_compute_api.SummarizeSeriesNode(
+                    input=scout_compute_api.SeriesNode(
+                        numeric=scout_compute_api.NumericSeriesNode(
+                            raw=scout_compute_api.RawNumericSeriesNode(name="ch-1")
+                        )
+                    ),
+                    buckets=buckets,
+                    resolution=resolution,
+                )
+            ),
+            context=scout_compute_api.Context(
+                function_variables={},
+                variables={"ch-1": scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=self.rid))},
+            ),
+        )
+        response = self._clients.compute.compute(self._clients.auth_header, request)
+        return response
+
 
 def _get_series_values_csv(
     auth_header: str,
@@ -161,3 +238,7 @@ def _get_series_values_csv(
     # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
     # this acts like a file-like object in binary-mode.
     return cast(BinaryIO, response)
+
+
+def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
+    return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")

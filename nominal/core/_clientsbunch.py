@@ -15,6 +15,7 @@ from nominal._api.combined import (
     scout,
     scout_catalog,
     scout_checks_api,
+    scout_compute_api,
     scout_compute_representation_api,
     scout_dataexport_api,
     scout_datasource,
@@ -44,6 +45,7 @@ class ClientsBunch:
     units: scout.UnitsService
     upload: upload_api.UploadService
     video: scout_video.VideoService
+    compute: scout_compute_api.ComputeService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -66,6 +68,7 @@ class ClientsBunch:
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
             video=client_factory(scout_video.VideoService),
+            compute=client_factory(scout_compute_api.ComputeService),
         )
 
 

@@ -66,7 +66,7 @@ class Dataset(HasRid):
     bounds: DatasetBounds | None
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(Channel._Clients, HasAuthHeader, Protocol):
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
