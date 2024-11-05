@@ -19,8 +19,10 @@ from nominal._api.combined import (
     datasource_logset_api,
     ingest_api,
     scout_catalog,
+    scout_datasource_connection_api,
     scout_run_api,
     scout_video_api,
+    storage_datasource_api,
     timeseries_logicalseries_api,
 )
 from nominal._utils import (
@@ -562,6 +564,33 @@ class NominalClient:
         if len(response.outputs) != 1 or response.outputs[0].target.video_rid is None:
             raise NominalIngestError("No or invalid video RID returned")
         return self.get_video(response.outputs[0].target.video_rid)
+
+    def create_streaming_connection(
+        self, datasource_id: str, connection_name: str, datasource_description: str | None = None
+    ) -> Connection:
+        datasource_response = self._clients.storage.create(
+            self._clients.auth_header,
+            storage_datasource_api.CreateNominalDataSourceRequest(
+                id=datasource_id,
+                description=datasource_description,
+            ),
+        )
+        connection_response = self._clients.connection.create_connection(
+            self._clients.auth_header,
+            scout_datasource_connection_api.CreateConnection(
+                name=connection_name,
+                connection_details=scout_datasource_connection_api.ConnectionDetails(
+                    nominal=scout_datasource_connection_api.NominalConnectionDetails(
+                        nominal_data_source_rid=datasource_response.rid
+                    ),
+                ),
+                metadata={},
+                required_tag_names=[],
+                available_tag_values={},
+                should_scrape=True,
+            ),
+        )
+        return Connection._from_conjure(self._clients, connection_response)
 
 
 def _create_search_runs_query(
