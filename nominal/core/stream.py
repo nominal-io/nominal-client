@@ -3,9 +3,20 @@ import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import datetime
 from types import TracebackType
-from typing import Type
+from typing import Type, Dict
 from uuid import uuid4
+
+from nominal.ts import IntegralNanosecondsUTC
+
+@dataclass(frozen=True)
+class BatchItem:
+    channel_name: str
+    timestamp: str | datetime | IntegralNanosecondsUTC
+    value: float
+    tags: Dict[str, str] | None = None
 
 
 class NominalWriteStream:
@@ -60,7 +71,7 @@ class NominalWriteStream:
         """Leave the context manager. Close all running threads."""
         self.close()
 
-    def _write_sink(self, batch: list[dict]) -> None:
+    def _write_sink(self, batch: list[BatchItem]) -> None:
         """Threaded entrypoint to write to the sink in the threadpool."""
         sleep_time = random.randint(0, 4) + 0.3  # some major fluctuation in request latency
         time.sleep(sleep_time)  # simulate some network request lag
@@ -69,13 +80,19 @@ class NominalWriteStream:
                 json.dump(message, sink)
                 sink.write("\n")
 
-    def enqueue(self, message: dict) -> None:
+    def enqueue(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: float,
+        tags: Dict[str, str] | None = None
+    ) -> None:
         """Add a message to the queue.
 
         The message will not be immediately sent to Nominal. Only after the batch size is full or the timeout occurs.
         """
         with self._batch_lock:
-            self._batch.append({"message": message, "dataSourceRid": self.data_source_id})
+            self._batch.append(BatchItem(channel_name, timestamp, value, tags))
 
             if len(self._batch) >= self.batch_size:
                 self._flush_batch()
