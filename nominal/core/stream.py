@@ -7,25 +7,6 @@ from types import TracebackType
 from typing import Type
 from uuid import uuid4
 
-## User Code
-SECONDS = 0
-points_per_batch = 10
-
-
-def read_source() -> dict:
-    global SECONDS
-    points = [
-        {"timestamp": {"seconds": SECONDS, "nanos": i}, "value": random.random()} for i in range(points_per_batch)
-    ]
-    batch = {"channel": "streaming-test-channel-0", "tags": {}, "points": {"type": "double", "double": points}}
-    SECONDS += 1
-    return batch
-
-
-## End user code
-
-## Nominal Stream Client
-
 
 class NominalWriteStream:
     """Nominal Stream to write non-blocking messages to a data source ID.
@@ -68,9 +49,6 @@ class NominalWriteStream:
 
         self._timeout_thread = threading.Thread(target=self._process_timeout_batches, daemon=True)
         self._timeout_thread.start()
-
-        self.sink = f"sink_{uuid4()}.jsonl"
-        print(f"Writing to {self.sink}")
 
     def __enter__(self) -> "NominalWriteStream":
         """Create the stream as a context manager."""
@@ -129,19 +107,3 @@ class NominalWriteStream:
 
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
 
-
-if __name__ == "__main__":
-    # Read at a higher frequency than the sink can handle. We'll ensure that no messages are dropped
-    with NominalWriteStream("source-1") as stream:
-        for _ in range(1_000):
-            data = read_source()
-            stream.enqueue(data)
-            time.sleep(0.001)  # 1000hz
-        print("Stopping...")
-    print("Testing...")
-    with open(stream.sink, "r") as f:
-        data = [json.loads(line) for line in f.readlines()]
-    batch_seconds = [row["message"]["points"]["double"][0]["timestamp"]["seconds"] for row in data]
-    assert sorted(batch_seconds) == list(range(len(data)))
-    assert SECONDS == len(batch_seconds)  # ensure we didn't drop any records from the sink
-    print("Success!")
