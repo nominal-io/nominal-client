@@ -6,10 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from types import TracebackType
-from typing import Type, Dict
+from typing import Dict, Type
 from uuid import uuid4
 
 from nominal.ts import IntegralNanosecondsUTC
+
 
 @dataclass(frozen=True)
 class BatchItem:
@@ -53,7 +54,7 @@ class NominalWriteStream:
         self.batch_size = batch_size
         self.max_wait_sec = max_wait_sec
         self._executor = ThreadPoolExecutor()
-        self._batch = []
+        self._batch: list[BatchItem] = []
         self._batch_lock = threading.Lock()
         self._last_batch_time = time.time()
         self._running = True
@@ -67,7 +68,7 @@ class NominalWriteStream:
 
     def __exit__(
         self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
-    ) -> bool | None:
+    ) -> None:
         """Leave the context manager. Close all running threads."""
         self.close()
 
@@ -85,7 +86,7 @@ class NominalWriteStream:
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         value: float,
-        tags: Dict[str, str] | None = None
+        tags: Dict[str, str] | None = None,
     ) -> None:
         """Add a message to the queue.
 
@@ -97,20 +98,20 @@ class NominalWriteStream:
             if len(self._batch) >= self.batch_size:
                 self._flush_batch()
 
-    def _flush_batch(self):
+    def _flush_batch(self) -> None:
         if self._batch:
             self._executor.submit(self._write_sink, self._batch)
             self._batch = []
             self._last_batch_time = time.time()
 
-    def _process_timeout_batches(self):
+    def _process_timeout_batches(self) -> None:
         while self._running:
             time.sleep(self.max_wait_sec / 10)
             with self._batch_lock:
                 if self._batch and (time.time() - self._last_batch_time) >= self.max_wait_sec:
                     self._flush_batch()
 
-    def close(self, wait=True) -> None:
+    def close(self, wait: bool = True) -> None:
         """Close the Nominal Stream.
 
         Stop the process timeout thread
@@ -123,4 +124,3 @@ class NominalWriteStream:
             self._flush_batch()
 
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
-
