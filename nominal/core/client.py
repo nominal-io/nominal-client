@@ -585,6 +585,16 @@ class NominalClient:
                     ),
                 ),
                 metadata={},
+                scraping=scout_datasource_connection_api.ScrapingConfig(
+                    nominal=scout_datasource_connection_api.NominalScrapingConfig(
+                        channel_name_components=[
+                            scout_datasource_connection_api.NominalChannelNameComponent(
+                                channel=scout_datasource_connection_api.Empty()
+                            )
+                        ],
+                        separator=".",
+                    )
+                ),
                 required_tag_names=[],
                 available_tag_values={},
                 should_scrape=True,
