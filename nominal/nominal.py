@@ -514,6 +514,17 @@ def upload_mcap_video(
     return video
 
 
+def create_streaming_connection(
+    datasource_id: str, connection_name: str, datasource_description: str | None = None
+) -> Connection:
+    """Creates a new datasource and a new connection.
+
+    datasource_id: A human readable identifier. Must be unique within an organization.
+    """
+    conn = get_default_client()
+    return conn.create_streaming_connection(datasource_id, connection_name, datasource_description)
+
+
 def get_connection(rid: str) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID."""
     conn = get_default_client()
