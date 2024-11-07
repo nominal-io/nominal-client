@@ -523,3 +523,9 @@ def create_streaming_connection(
     """
     conn = get_default_client()
     return conn.create_streaming_connection(datasource_id, connection_name, datasource_description)
+
+
+def get_connection(rid: str) -> Connection:
+    """Retrieve a connection from the Nominal platform by its RID."""
+    conn = get_default_client()
+    return conn.get_connection(rid)

@@ -3,12 +3,20 @@ from __future__ import annotations
 import itertools
 import logging
 from dataclasses import dataclass, field
+from itertools import groupby
 from typing import Iterable, Mapping, Sequence
 
-from nominal._api.combined import datasource_api, scout_datasource_connection_api, timeseries_logicalseries_api
+from nominal._api.combined import (
+    datasource_api,
+    scout_datasource_connection_api,
+    storage_writer_api,
+    timeseries_logicalseries_api,
+)
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
+from nominal.core.stream import BatchItem, NominalWriteStream
+from nominal.ts import _SecondsNanos
 
 
 @dataclass(frozen=True)
@@ -18,6 +26,7 @@ class Connection(HasRid):
     description: str | None
     _tags: Mapping[str, Sequence[str]]
     _clients: ClientsBunch = field(repr=False)
+    _nominal_data_source_rid: str | None = None
 
     @classmethod
     def _from_conjure(cls, clients: ClientsBunch, response: scout_datasource_connection_api.Connection) -> Connection:
@@ -27,6 +36,9 @@ class Connection(HasRid):
             description=response.description,
             _tags=response.available_tag_values,
             _clients=clients,
+            _nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid
+            if response.connection_details.nominal is not None
+            else None,
         )
 
     def _get_series_achetypes_paginated(self) -> Iterable[datasource_api.ChannelMetadata]:
@@ -111,6 +123,74 @@ class Connection(HasRid):
             raise RuntimeError(f"error resolving series for series {resolved_series}: no rid returned")
         series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
         return Channel._from_conjure_logicalseries_api(self._clients, series)
+
+    def get_nominal_write_stream(self, batch_size: int = 10, max_wait_sec: int = 5) -> NominalWriteStream:
+        """Nominal Stream to write non-blocking messages to a datasource.
+
+        Args:
+        ----
+            batch_size (int): How big the batch can get before writing to Nominal. Default 10
+            max_wait_sec (int): How long a batch can exist before being flushed to Nominal. Default 5
+
+        Examples:
+        --------
+            Standard Usage:
+            ```py
+            with connection.get_nominal_write_stream() as stream:
+                stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
+                stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
+                ...
+            ```
+
+            Without a context manager:
+            ```py
+            stream = connection.get_nominal_write_stream()
+            stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
+            stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
+            ...
+            stream.close()
+            ```
+
+        """
+        if self._nominal_data_source_rid is not None:
+            return NominalWriteStream(self._process_batch, batch_size, max_wait_sec)
+        else:
+            raise ValueError("Writing not implemented for this connection type")
+
+    def _process_batch(self, batch: Sequence[BatchItem]) -> None:
+        api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
+
+        if self._nominal_data_source_rid is None:
+            raise ValueError("Writing not implemented for this connection type")
+
+        api_batches = [list(api_batch) for _, api_batch in api_batched]
+
+        self._clients.storage_writer.write_batches(
+            self._clients.auth_header,
+            storage_writer_api.WriteBatchesRequest(
+                data_source_rid=self._nominal_data_source_rid,
+                batches=[
+                    storage_writer_api.RecordsBatch(
+                        channel=api_batch[0].channel_name,
+                        points=storage_writer_api.Points(
+                            double=[
+                                storage_writer_api.DoublePoint(
+                                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                                    value=item.value,
+                                )
+                                for item in api_batch
+                            ]
+                        ),
+                        tags=api_batch[0].tags or {},
+                    )
+                    for api_batch in api_batches
+                ],
+            ),
+        )
+
+
+def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]]]:
+    return item.channel_name, sorted(item.tags.items()) if item.tags is not None else []
 
 
 def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
