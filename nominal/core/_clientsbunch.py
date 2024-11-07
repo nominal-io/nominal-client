@@ -15,6 +15,7 @@ from nominal._api.combined import (
     scout,
     scout_catalog,
     scout_checks_api,
+    scout_compute_api,
     scout_compute_representation_api,
     scout_dataexport_api,
     scout_datasource,
@@ -45,6 +46,7 @@ class ClientsBunch:
     units: scout.UnitsService
     upload: upload_api.UploadService
     video: scout_video.VideoService
+    compute: scout_compute_api.ComputeService
     storage_writer: storage_writer_api.NominalChannelWriterService
 
     @classmethod
@@ -68,6 +70,7 @@ class ClientsBunch:
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
             video=client_factory(scout_video.VideoService),
+            compute=client_factory(scout_compute_api.ComputeService),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
         )
 
