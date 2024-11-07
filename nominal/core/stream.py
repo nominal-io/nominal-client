@@ -1,13 +1,12 @@
-import json
-import random
+from __future__ import annotations
+
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from types import TracebackType
-from typing import Dict, Type
-from uuid import uuid4
+from typing import Callable, Dict, Sequence, Type
 
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -21,36 +20,11 @@ class BatchItem:
 
 
 class NominalWriteStream:
-    """Nominal Stream to write non-blocking messages to a data source ID.
-
-    Args:
-    ----
-        data_source_id (str): Where to write the data.
-        batch_size (int): How big the batch can get before writing to Nominal. Default 10
-        max_wait_sec (int): How long a batch can exist before being flushed to Nominal
-
-    Examples:
-    --------
-        Standard Usage:
-        ```py
-        with NominalWriteStream("source-id") as stream:
-            stream.enqueue({"ts": 0, "message": "hello1"})
-            stream.enqueue({"ts": 1, "message": "hello2"})
-        ```
-
-        Without a context manager:
-        ```py
-        stream = NominalWriteStream("source-id)
-        stream.enqueue({"ts": 0, "message": "hello1"})
-        stream.enqueue({"ts": 1, "message": "hello2"})
-        stream.close()
-        ```
-
-    """
-
-    def __init__(self, data_source_id: str, batch_size: int = 10, max_wait_sec: int = 5):
+    def __init__(
+        self, process_batch: Callable[[Sequence[BatchItem]], None], batch_size: int = 10, max_wait_sec: int = 5
+    ):
         """Create the stream."""
-        self.data_source_id = data_source_id
+        self._process_batch = process_batch
         self.batch_size = batch_size
         self.max_wait_sec = max_wait_sec
         self._executor = ThreadPoolExecutor()
@@ -72,15 +46,6 @@ class NominalWriteStream:
         """Leave the context manager. Close all running threads."""
         self.close()
 
-    def _write_sink(self, batch: list[BatchItem]) -> None:
-        """Threaded entrypoint to write to the sink in the threadpool."""
-        sleep_time = random.randint(0, 4) + 0.3  # some major fluctuation in request latency
-        time.sleep(sleep_time)  # simulate some network request lag
-        with open(self.sink, "a") as sink:
-            for message in batch:  # just for ease of writing. in the real impl we'd of course send the full batch
-                json.dump(message, sink)
-                sink.write("\n")
-
     def enqueue(
         self,
         channel_name: str,
@@ -100,7 +65,7 @@ class NominalWriteStream:
 
     def _flush_batch(self) -> None:
         if self._batch:
-            self._executor.submit(self._write_sink, self._batch)
+            self._executor.submit(self._process_batch, self._batch)
             self._batch = []
             self._last_batch_time = time.time()
 

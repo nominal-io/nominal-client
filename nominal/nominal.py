@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
 
-from nominal import _config, ts
+from nominal import Connection, _config, ts
 from nominal._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
 from nominal.core import (
     Attachment,
@@ -512,3 +512,9 @@ def upload_mcap_video(
     if wait_until_complete:
         video.poll_until_ingestion_completed()
     return video
+
+
+def get_connection(rid: str) -> Connection:
+    """Retrieve a connection from the Nominal platform by its RID."""
+    conn = get_default_client()
+    return conn.get_connection(rid)

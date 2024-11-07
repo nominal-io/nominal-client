@@ -20,6 +20,7 @@ from nominal._api.combined import (
     scout_datasource,
     scout_datasource_connection,
     scout_video,
+    storage_writer_api,
     timeseries_logicalseries,
     upload_api,
 )
@@ -44,6 +45,7 @@ class ClientsBunch:
     units: scout.UnitsService
     upload: upload_api.UploadService
     video: scout_video.VideoService
+    storage_writer: storage_writer_api.NominalChannelWriterService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -66,6 +68,7 @@ class ClientsBunch:
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
             video=client_factory(scout_video.VideoService),
+            storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
         )
 
 
