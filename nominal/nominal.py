@@ -99,7 +99,8 @@ def upload_tdms(
             for channel in group.channels():
                 # some channels may not have the required properties to construct a time track
                 if ("wf_increment" in channel.properties) and ("wf_start_time" in channel.properties):
-                    channel_name = f"{channel.group_name.replace(' ', '_')}.{channel.name.replace(' ', '_')}"
+                    channel_name = f"{channel.group_name.replace(' ', '_')}.{
+                        channel.name.replace(' ', '_')}"
                     channels_to_export[channel_name] = channel
 
         df = pd.DataFrame.from_dict(
@@ -274,7 +275,8 @@ def create_run(
     return conn.create_run(
         name,
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
-        end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
+        end=None if end is None else ts._SecondsNanos.from_flexible(
+            end).to_nanoseconds(),
         description=description,
     )
 
@@ -303,8 +305,10 @@ def create_run_csv(
             "`create_run_csv()` only supports iso8601 or epoch timestamps: use "
             "`upload_dataset()` and `create_run()` instead"
         )
-    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, ts_type)
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, ts_type)
+    start, end = _get_start_end_timestamp_csv_file(
+        file, timestamp_column, ts_type)
+    dataset = upload_csv(file, f"Dataset for Run: {
+                         name}", timestamp_column, ts_type)
     run = create_run(name, start=start, end=end, description=description)
     run.add_dataset("dataset", dataset)
     return run
@@ -333,11 +337,14 @@ def search_runs(
     - `property` is a key-value pair, e.g. ("name", "value")
     """
     if all([v is None for v in (start, end, name_substring, label, property)]):
-        raise ValueError("must provide one of: start, end, name_substring, label, or property")
+        raise ValueError(
+            "must provide one of: start, end, name_substring, label, or property")
     conn = get_default_client()
     runs = conn.search_runs(
-        start=None if start is None else ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
-        end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
+        start=None if start is None else ts._SecondsNanos.from_flexible(
+            start).to_nanoseconds(),
+        end=None if end is None else ts._SecondsNanos.from_flexible(
+            end).to_nanoseconds(),
         name_substring=name_substring,
         label=label,
         property=property,
@@ -386,7 +393,8 @@ def upload_video(
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
         return conn.create_video_from_io(
-            f, name, ts._SecondsNanos.from_flexible(start).to_nanoseconds(), description, file_type
+            f, name, ts._SecondsNanos.from_flexible(
+                start).to_nanoseconds(), description, file_type
         )
 
 
@@ -529,3 +537,15 @@ def get_connection(rid: str) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_connection(rid)
+
+
+def create_workbook_from_template(
+        run_rid: str, template_rid: str
+) -> Workbook:
+    """Creates a new workbook from a template.
+
+    run_rid: The run to associate the workbook with.
+    template_rid: The template to use for the workbook.
+    """
+    conn = get_default_client()
+    return conn.create_workbook_from_template(run_rid, template_rid)

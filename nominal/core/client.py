@@ -20,6 +20,7 @@ from nominal._api.combined import (
     ingest_api,
     scout_catalog,
     scout_datasource_connection_api,
+    scout_notebook_api,
     scout_run_api,
     scout_video_api,
     storage_datasource_api,
@@ -41,9 +42,11 @@ from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
+from nominal.core.template import Template
 from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user, _get_user_with_fallback
 from nominal.core.video import Video
+from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
@@ -106,10 +109,12 @@ class NominalClient:
             properties={} if properties is None else dict(properties),
             start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
-            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
+            end_time=None if end is None else _SecondsNanos.from_flexible(
+                end).to_scout_run_api(),
             assets=[],
         )
-        response = self._clients.run.create_run(self._clients.auth_header, request)
+        response = self._clients.run.create_run(
+            self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)
 
     def get_run(self, rid: str) -> Run:
@@ -119,7 +124,8 @@ class NominalClient:
 
     def _search_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
         while True:
-            response = self._clients.run.search_runs(self._clients.auth_header, request)
+            response = self._clients.run.search_runs(
+                self._clients.auth_header, request)
             yield from response.results
             if response.next_page_token is None:
                 break
@@ -140,7 +146,8 @@ class NominalClient:
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
-            query=_create_search_runs_query(start, end, name_substring, label, property),
+            query=_create_search_runs_query(
+                start, end, name_substring, label, property),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
@@ -222,7 +229,8 @@ class NominalClient:
         """
         # TODO(alkasm): create dataset from file/path
         if isinstance(dataset, TextIOBase):
-            raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
+            raise TypeError(
+                f"dataset {dataset} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
         urlsafe_name = urllib.parse.quote_plus(name)
@@ -241,15 +249,18 @@ class NominalClient:
                     dataset_name=name,
                 )
             ),
-            source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+            source=ingest_api.IngestSource(
+                s3=ingest_api.S3IngestSource(path=s3_path)),
             source_metadata=ingest_api.IngestSourceMetadata(
                 timestamp_metadata=ingest_api.TimestampMetadata(
                     series_name=timestamp_column,
-                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+                    timestamp_type=_to_typed_timestamp_type(
+                        timestamp_type)._to_conjure_ingest_api(),
                 ),
             ),
         )
-        response = self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
+        response = self._clients.ingest.trigger_file_ingest(
+            self._clients.auth_header, request)
         return self.get_dataset(response.dataset_rid)
 
     def create_video_from_io(
@@ -268,7 +279,8 @@ class NominalClient:
         The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         """
         if isinstance(video, TextIOBase):
-            raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
+            raise TypeError(
+                f"video {video} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
         urlsafe_name = urllib.parse.quote_plus(name)
@@ -280,16 +292,19 @@ class NominalClient:
         request = ingest_api.IngestVideoRequest(
             labels=list(labels),
             properties={} if properties is None else dict(properties),
-            sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
+            sources=[ingest_api.IngestSource(
+                s3=ingest_api.S3IngestSource(path=s3_path))],
             timestamps=ingest_api.VideoTimestampManifest(
                 no_manifest=ingest_api.NoTimestampManifest(
-                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
+                    starting_timestamp=_SecondsNanos.from_flexible(
+                        start).to_ingest_api()
                 )
             ),
             description=description,
             title=name,
         )
-        response = self._clients.ingest.ingest_video(self._clients.auth_header, request)
+        response = self._clients.ingest.ingest_video(
+            self._clients.auth_header, request)
         return self.get_video(response.video_rid)
 
     def create_log_set(
@@ -310,11 +325,13 @@ class NominalClient:
             origin_metadata={},
             timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
         )
-        response = self._clients.logset.create(self._clients.auth_header, request)
+        response = self._clients.logset.create(
+            self._clients.auth_header, request)
         return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
 
     def _attach_logs_and_finalize(self, rid: str, logs: Iterable[datasource_logset_api.Log]) -> LogSet:
-        request = datasource_logset_api.AttachLogsAndFinalizeRequest(logs=list(logs))
+        request = datasource_logset_api.AttachLogsAndFinalizeRequest(
+            logs=list(logs))
         response = self._clients.logset.attach_logs_and_finalize(
             auth_header=self._clients.auth_header, log_set_rid=rid, request=request
         )
@@ -336,12 +353,14 @@ class NominalClient:
 
     def get_dataset(self, rid: str) -> Dataset:
         """Retrieve a dataset by its RID."""
-        response = _get_dataset(self._clients.auth_header, self._clients.catalog, rid)
+        response = _get_dataset(self._clients.auth_header,
+                                self._clients.catalog, rid)
         return Dataset._from_conjure(self._clients, response)
 
     def get_log_set(self, log_set_rid: str) -> LogSet:
         """Retrieve a log set along with its metadata given its RID."""
-        response = _get_log_set(self._clients.auth_header, self._clients.logset, log_set_rid)
+        response = _get_log_set(self._clients.auth_header,
+                                self._clients.logset, log_set_rid)
         return LogSet._from_conjure(self._clients, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
@@ -362,9 +381,11 @@ class NominalClient:
                     scout_catalog.SearchDatasetsQuery(archive_status=True),
                 ]
             ),
-            sort_options=scout_catalog.SortOptions(field=scout_catalog.SortField.INGEST_DATE, is_descending=True),
+            sort_options=scout_catalog.SortOptions(
+                field=scout_catalog.SortField.INGEST_DATE, is_descending=True),
         )
-        response = self._clients.catalog.search_datasets(self._clients.auth_header, request)
+        response = self._clients.catalog.search_datasets(
+            self._clients.auth_header, request)
         for ds in response.results:
             yield Dataset._from_conjure(self._clients, ds)
 
@@ -415,7 +436,8 @@ class NominalClient:
         """
         # TODO(alkasm): create attachment from file/path
         if isinstance(attachment, TextIOBase):
-            raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
+            raise TypeError(
+                f"attachment {attachment} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
         urlsafe_name = urllib.parse.quote_plus(name)
@@ -431,7 +453,8 @@ class NominalClient:
             s3_path=s3_path,
             title=name,
         )
-        response = self._clients.attachment.create(self._clients.auth_header, request)
+        response = self._clients.attachment.create(
+            self._clients.auth_header, request)
         return Attachment._from_conjure(self._clients, response)
 
     def get_attachment(self, rid: str) -> Attachment:
@@ -463,7 +486,8 @@ class NominalClient:
             if no such unit symbol matches.
 
         """
-        api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
+        api_unit = self._clients.units.get_unit(
+            self._clients.auth_header, unit_symbol)
         return None if api_unit is None else Unit._from_conjure(api_unit)
 
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[Unit]:
@@ -484,7 +508,8 @@ class NominalClient:
                 This typically occurs when there is no such channel for the given RID.
         """
         return Channel._from_conjure_logicalseries_api(
-            self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
+            self._clients, self._clients.logical_series.get_logical_series(
+                self._clients.auth_header, rid)
         )
 
     def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Sequence[Channel]:
@@ -511,13 +536,16 @@ class NominalClient:
                 )
             )
 
-        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
-        response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
+        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(
+            series_updates)
+        response = self._clients.logical_series.batch_update_logical_series(
+            self._clients.auth_header, request)
         return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
 
     def get_connection(self, rid: str) -> Connection:
         """Retrieve a connection by its RID."""
-        response = self._clients.connection.get_connection(self._clients.auth_header, rid)
+        response = self._clients.connection.get_connection(
+            self._clients.auth_header, rid)
         return Connection._from_conjure(self._clients, response)
 
     def create_video_from_mcap_io(
@@ -538,7 +566,8 @@ class NominalClient:
         If name is None, the name of the file will be used.
         """
         if isinstance(mcap, TextIOBase):
-            raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
+            raise TypeError(
+                f"dataset {mcap} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
         urlsafe_name = urllib.parse.quote_plus(name)
@@ -550,17 +579,20 @@ class NominalClient:
         request = ingest_api.IngestMcapRequest(
             channel_config=[
                 ingest_api.McapChannelConfig(
-                    channel_type=ingest_api.McapChannelConfigType(video=ingest_api.McapVideoChannelConfig()),
+                    channel_type=ingest_api.McapChannelConfigType(
+                        video=ingest_api.McapVideoChannelConfig()),
                     locator=api.McapChannelLocator(topic=topic),
                 )
             ],
             labels=list(labels),
             properties={} if properties is None else dict(properties),
-            sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
+            sources=[ingest_api.IngestSource(
+                s3=ingest_api.S3IngestSource(path=s3_path))],
             description=description,
             title=name,
         )
-        response = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
+        response = self._clients.ingest.ingest_mcap(
+            self._clients.auth_header, request)
         if len(response.outputs) != 1 or response.outputs[0].target.video_rid is None:
             raise NominalIngestError("No or invalid video RID returned")
         return self.get_video(response.outputs[0].target.video_rid)
@@ -602,6 +634,52 @@ class NominalClient:
         )
         return Connection._from_conjure(self._clients, connection_response)
 
+    def get_template(self, rid: str) -> Template:
+        response = self._clients.template.get_template(
+            self._clients.auth_header, rid)
+        return Template._from_conjure(self._clients, response)
+
+    # TODO: fix types
+    def _create_workbook(
+            self,
+            title: str,
+            description: str,
+            is_draft: bool,
+            data_scope: scout_notebook_api.NotebookDataScope,
+            content: any,
+            layout: any,
+            charts: any
+    ) -> Workbook:
+        request = scout_notebook_api.CreateNotebookRequest(
+            title=title,
+            description=description,
+            is_draft=is_draft,
+            data_scope=data_scope,
+            stateAsJson="{}",
+            charts=charts,
+            layout=layout,
+            content=content,
+        )
+        response = self._clients.notebook.create_notebook(
+            self._clients.auth_header, request)
+        return Workbook._from_conjure(self._clients, response)
+
+    # TODO: This should probably allow for passing either a run_rid or asset_rid.
+    def create_workbook_from_template(self, run_rid: str, template_rid: str) -> Workbook:
+        template = self.get_template(template_rid)
+        new_title = f"Workbook from {template.title or 'template'}"
+        data_scope = scout_notebook_api.NotebookDataScope(run_rids=[run_rid])
+        return self.create_workbook(
+            title=new_title,
+            description=template.description,
+            # auto-publish the workbook
+            is_draft=False,
+            data_scope=data_scope,
+            content=template.content,
+            layout=template.layout,
+            charts=template.charts,
+        )
+
 
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
@@ -612,10 +690,12 @@ def _create_search_runs_query(
 ) -> scout_run_api.SearchQuery:
     queries = []
     if start is not None:
-        q = scout_run_api.SearchQuery(start_time_inclusive=_SecondsNanos.from_flexible(start).to_scout_run_api())
+        q = scout_run_api.SearchQuery(
+            start_time_inclusive=_SecondsNanos.from_flexible(start).to_scout_run_api())
         queries.append(q)
     if end is not None:
-        q = scout_run_api.SearchQuery(end_time_inclusive=_SecondsNanos.from_flexible(end).to_scout_run_api())
+        q = scout_run_api.SearchQuery(
+            end_time_inclusive=_SecondsNanos.from_flexible(end).to_scout_run_api())
         queries.append(q)
     if name_substring is not None:
         q = scout_run_api.SearchQuery(exact_match=name_substring)
@@ -625,7 +705,8 @@ def _create_search_runs_query(
         queries.append(q)
     if property is not None:
         name, value = property
-        q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
+        q = scout_run_api.SearchQuery(
+            property=scout_run_api.Property(name=name, value=value))
         queries.append(q)
     return scout_run_api.SearchQuery(and_=queries)
 
@@ -643,7 +724,8 @@ def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> data
         return datasource.TimestampType.ABSOLUTE
     elif log_timestamp_type == "relative":
         return datasource.TimestampType.RELATIVE
-    raise ValueError(f"timestamp type {log_timestamp_type} must be 'relative' or 'absolute'")
+    raise ValueError(f"timestamp type {
+                     log_timestamp_type} must be 'relative' or 'absolute'")
 
 
 def _logs_to_conjure(
