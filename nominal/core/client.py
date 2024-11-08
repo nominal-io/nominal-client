@@ -20,6 +20,7 @@ from nominal._api.combined import (
     ingest_api,
     scout_catalog,
     scout_datasource_connection_api,
+    scout_notebook_api,
     scout_run_api,
     scout_video_api,
     storage_datasource_api,
@@ -44,6 +45,7 @@ from nominal.core.run import Run
 from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user, _get_user_with_fallback
 from nominal.core.video import Video
+from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
@@ -601,6 +603,35 @@ class NominalClient:
             ),
         )
         return Connection._from_conjure(self._clients, connection_response)
+
+    def create_workbook_from_template(
+        self,
+        run_rid: str,
+        template_rid: str,
+        title: str | None = None,
+        description: str | None = None,
+        is_draft: bool = False,
+    ) -> Workbook:
+        template = self._clients.template.get(self._clients.auth_header, template_rid)
+
+        notebook = self._clients.notebook.create(
+            self._clients.auth_header,
+            scout_notebook_api.CreateNotebookRequest(
+                title=title if title is not None else f"Workbook from {template.metadata.title}",
+                description=description or "",
+                notebook_type=None,
+                is_draft=is_draft,
+                state_as_json="{}",
+                charts=None,
+                run_rid=run_rid,
+                data_scope=None,
+                layout=template.layout,
+                content=template.content,
+                content_v2=None,
+            ),
+        )
+
+        return Workbook._from_conjure(self._clients, notebook)
 
 
 def _create_search_runs_query(

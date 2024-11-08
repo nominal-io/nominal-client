@@ -50,6 +50,8 @@ class ClientsBunch:
     compute: scout_compute_api.ComputeService
     storage: storage_datasource_api.NominalDataSourceService
     storage_writer: storage_writer_api.NominalChannelWriterService
+    template: scout.TemplateService
+    notebook: scout.NotebookService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -75,6 +77,8 @@ class ClientsBunch:
             compute=client_factory(scout_compute_api.ComputeService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
+            template=client_factory(scout.TemplateService),
+            notebook=client_factory(scout.NotebookService),
         )
 
 

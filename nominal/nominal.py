@@ -18,6 +18,7 @@ from nominal.core import (
     Run,
     User,
     Video,
+    Workbook,
     poll_until_ingestion_completed,
 )
 
@@ -529,3 +530,10 @@ def get_connection(rid: str) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_connection(rid)
+
+
+def create_workbook_from_template(
+    run_rid: str, template_rid: str, title: str | None = None, description: str | None = None, is_draft: bool = False
+) -> Workbook:
+    conn = get_default_client()
+    return conn.create_workbook_from_template(run_rid, template_rid, title, description, is_draft)
