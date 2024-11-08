@@ -22,6 +22,12 @@ class Workbook(HasRid):
         @property
         def notebook(self) -> scout.NotebookService: ...
 
+    @property
+    def nominal_url(self) -> str:
+        """Returns a link to the page for this Workbook in the Nominal app"""
+        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
+        return f"https://app.gov.nominal.io/workbooks/{self.rid}"
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, notebook: scout_notebook_api.Notebook) -> Self:
         return cls(
