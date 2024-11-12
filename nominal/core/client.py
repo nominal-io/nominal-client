@@ -606,8 +606,8 @@ class NominalClient:
 
     def create_workbook_from_template(
         self,
-        run_rid: str,
         template_rid: str,
+        run_rid: str,
         title: str | None = None,
         description: str | None = None,
         is_draft: bool = False,
