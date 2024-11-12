@@ -188,15 +188,6 @@ class Run(HasRid):
         connection should use the same ref name across runs, since checklists and templates use ref names to reference
         connections.
         """
-        self.add_connections({ref_name: connection})
-
-    def add_connections(self, connections: Mapping[str, Connection | str]) -> None:
-        """Add multiple connections to this run.
-
-        Connections map "ref names" (their name within the run) to a Connection (or connection rid). The same type of
-        connections should use the same ref name across runs, since checklists and templates use ref names to reference
-        connections.
-        """
         # TODO(alkasm): support series tags & offset
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
@@ -204,7 +195,6 @@ class Run(HasRid):
                 series_tags={},
                 offset=None,
             )
-            for ref_name, connection in connections.items()
         }
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
 
