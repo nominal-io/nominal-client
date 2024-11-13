@@ -18,6 +18,7 @@ from nominal._api.combined import (
     datasource,
     datasource_logset_api,
     ingest_api,
+    scout_asset_api,
     scout_catalog,
     scout_datasource_connection_api,
     scout_notebook_api,
@@ -54,6 +55,8 @@ from nominal.ts import (
     _SecondsNanos,
     _to_typed_timestamp_type,
 )
+
+from .asset import Asset
 
 
 @dataclass(frozen=True)
@@ -632,6 +635,36 @@ class NominalClient:
         )
 
         return Workbook._from_conjure(self._clients, notebook)
+
+    def create_asset(
+        self,
+        name: str,
+        description: str | None = None,
+        *,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+    ) -> Asset:
+        """Create an asset."""
+        request = scout_asset_api.CreateAssetRequest(
+            description=description,
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+            title=name,
+            attachments=[],
+            data_scopes=[],
+            links=[],
+        )
+        response = self._clients.assets.create_asset(self._clients.auth_header, request)
+        return Asset._from_conjure(self._clients, response)
+
+    def get_asset(self, rid: str) -> Asset:
+        """Retrieve an asset by its RID."""
+        response = self._clients.assets.get_assets(self._clients.auth_header, [rid])
+        if len(response) == 0 or rid not in response:
+            raise ValueError(f"no asset found with RID {rid!r}: {response!r}")
+        if len(response) > 1:
+            raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
+        return Asset._from_conjure(self._clients, response[rid])
 
 
 def _create_search_runs_query(

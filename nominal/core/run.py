@@ -14,6 +14,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet
+from nominal.core.video import Video
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -180,6 +181,43 @@ class Run(HasRid):
         run = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, run, fields=self.__dataclass_fields__)
         return self
+
+    def remove_data_sources(
+        self,
+        *,
+        ref_names: Sequence[str] | None = None,
+        data_sources: Sequence[Connection | Dataset | Video | str] | None = None,
+    ) -> None:
+        """Remove data sources from this run.
+
+        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
+        """
+        ref_names = ref_names or []
+        data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
+
+        conjure_run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+
+        data_sources_to_keep = {
+            ref_name: scout_run_api.CreateRunDataSource(
+                data_source=rds.data_source,
+                series_tags=rds.series_tags,
+                offset=rds.offset,
+            )
+            for ref_name, rds in conjure_run.data_sources.items()
+            if ref_name not in ref_names
+            and (rds.data_source.dataset or rds.data_source.connection or rds.data_source.video) not in data_source_rids
+        }
+
+        response = self._clients.run.update_run(
+            self._clients.auth_header,
+            scout_run_api.UpdateRunRequest(
+                assets=[],
+                data_sources=data_sources_to_keep,
+            ),
+            self.rid,
+        )
+        run = self.__class__._from_conjure(self._clients, response)
+        update_dataclass(self, run, fields=self.__dataclass_fields__)
 
     def add_connection(self, ref_name: str, connection: Connection | str) -> None:
         """Add a connection to this run.

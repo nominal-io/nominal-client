@@ -2,6 +2,7 @@
     options:
       filters:
       - "!^_" # default filter
+      - "!Asset"
       - "!Attachment"
       - "!Channel"
       - "!Check"
