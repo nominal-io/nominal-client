@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from types import MappingProxyType
 from typing import Mapping, Protocol, Sequence
 
@@ -10,7 +9,6 @@ from typing_extensions import Self
 from nominal._api.combined import scout_asset_api, scout_assets
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, update_dataclass
-from nominal.ts import IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)
@@ -31,13 +29,11 @@ class Asset(HasRid):
         self,
         *,
         name: str | None = None,
-        start: datetime | IntegralNanosecondsUTC | None = None,
-        end: datetime | IntegralNanosecondsUTC | None = None,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
     ) -> Self:
-        """Replace run metadata.
+        """Replace asset metadata.
         Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
@@ -45,9 +41,9 @@ class Asset(HasRid):
         calling this method. E.g.:
 
             new_labels = ["new-label-a", "new-label-b"]
-            for old_label in run.labels:
+            for old_label in asset.labels:
                 new_labels.append(old_label)
-            run = run.update(labels=new_labels)
+            asset = asset.update(labels=new_labels)
         """
         request = scout_asset_api.UpdateAssetRequest(
             description=description,
@@ -56,8 +52,8 @@ class Asset(HasRid):
             title=name,
         )
         response = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
-        run = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, run, fields=self.__dataclass_fields__)
+        asset = self.__class__._from_conjure(self._clients, response)
+        update_dataclass(self, asset, fields=self.__dataclass_fields__)
         return self
 
     @classmethod

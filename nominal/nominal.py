@@ -4,11 +4,12 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, BinaryIO, Mapping, Sequence
 
 from nominal import Connection, _config, ts
 from nominal._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
 from nominal.core import (
+    Asset,
     Attachment,
     Checklist,
     ChecklistBuilder,
@@ -395,6 +396,24 @@ def get_video(rid: str) -> Video:
     """Retrieve a video from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_video(rid)
+
+
+def create_asset(
+    name: str,
+    description: str | None = None,
+    *,
+    properties: Mapping[str, str] | None = None,
+    labels: Sequence[str] = (),
+) -> Asset:
+    """Create an asset."""
+    conn = get_default_client()
+    return conn.create_asset(name, description, properties=properties, labels=labels)
+
+
+def get_asset(rid: str) -> Asset:
+    """Retrieve an asset by its RID."""
+    conn = get_default_client()
+    return conn.get_asset(rid)
 
 
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
