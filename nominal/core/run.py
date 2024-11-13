@@ -219,6 +219,23 @@ class Run(HasRid):
         run = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, run, fields=self.__dataclass_fields__)
 
+    def add_connection(self, ref_name: str, connection: Connection | str) -> None:
+        """Add a connection to this run.
+
+        Ref_name maps "ref name" (the name within the run) to a Connection (or connection rid). The same type of
+        connection should use the same ref name across runs, since checklists and templates use ref names to reference
+        connections.
+        """
+        # TODO(alkasm): support series tags & offset
+        data_sources = {
+            ref_name: scout_run_api.CreateRunDataSource(
+                data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
+                series_tags={},
+                offset=None,
+            )
+        }
+        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:
         return cls(
