@@ -13,6 +13,7 @@ from nominal._api.combined import (
     datasource_logset,
     ingest_api,
     scout,
+    scout_assets,
     scout_catalog,
     scout_checks_api,
     scout_compute_api,
@@ -32,6 +33,7 @@ from nominal._api.combined import (
 class ClientsBunch:
     auth_header: str
 
+    assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
     authentication: authentication_api.AuthenticationServiceV2
     catalog: scout_catalog.CatalogService
@@ -59,6 +61,7 @@ class ClientsBunch:
 
         return cls(
             auth_header=f"Bearer {token}",
+            assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
             catalog=client_factory(scout_catalog.CatalogService),

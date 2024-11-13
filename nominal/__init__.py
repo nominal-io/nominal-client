@@ -1,5 +1,6 @@
 from nominal import ts
 from nominal.core import (
+    Asset,
     Attachment,
     Channel,
     Check,
@@ -11,6 +12,7 @@ from nominal.core import (
     LogSet,
     NominalClient,
     Run,
+    User,
     Video,
 )
 from nominal.nominal import (
@@ -59,6 +61,7 @@ __all__ = [
     "upload_tdms",
     "upload_video",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
+    "Asset",
     "Attachment",
     "Channel",
     "Check",
