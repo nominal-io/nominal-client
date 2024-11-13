@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.11.0](https://github.com/nominal-io/nominal-client/compare/v1.10.0...v1.11.0) (2024-11-13)
+
+
+### Features
+
+* add connections to run ([#123](https://github.com/nominal-io/nominal-client/issues/123)) ([07ea6f3](https://github.com/nominal-io/nominal-client/commit/07ea6f3df8f00ed1c5ba274fbad251039aeb384b))
+* add create streaming connection ([#119](https://github.com/nominal-io/nominal-client/issues/119)) ([36b64e4](https://github.com/nominal-io/nominal-client/commit/36b64e454013f30a18f1900603ba5be74ea83414))
+* add create/get asset ([#120](https://github.com/nominal-io/nominal-client/issues/120)) ([181f459](https://github.com/nominal-io/nominal-client/commit/181f459fc10690d639f87ce1dfdd2cb81f689b5b))
+* add function to create workbook from template ([#122](https://github.com/nominal-io/nominal-client/issues/122)) ([27f6d46](https://github.com/nominal-io/nominal-client/commit/27f6d46a36c88667453da43294568e9377ca847c))
+* add method to get decimated data to Channel ([#118](https://github.com/nominal-io/nominal-client/issues/118)) ([c2c9ff5](https://github.com/nominal-io/nominal-client/commit/c2c9ff535160662d68f832cd4d5db69a5c569d0f))
+* allow archiving / unarchiving videos ([#117](https://github.com/nominal-io/nominal-client/issues/117)) ([76d7028](https://github.com/nominal-io/nominal-client/commit/76d70289f31c4aca9b4d0026f78e79a41405da38))
+* **docs:** slate-muted color scheme ([#115](https://github.com/nominal-io/nominal-client/issues/115)) ([7cec7f5](https://github.com/nominal-io/nominal-client/commit/7cec7f55c304aec628ecf03ec5c7a298ea2779d6))
+* hdf5 extra ([#94](https://github.com/nominal-io/nominal-client/issues/94)) ([b21674e](https://github.com/nominal-io/nominal-client/commit/b21674e05aa3bbde5a0f7f8d6a26c3fd96ebadef))
+* remove data sources from run ([#124](https://github.com/nominal-io/nominal-client/issues/124)) ([b44078a](https://github.com/nominal-io/nominal-client/commit/b44078a12a8dba10c0e98c8ad8bf01de191b0be4))
+* write stream ([#106](https://github.com/nominal-io/nominal-client/issues/106)) ([952f944](https://github.com/nominal-io/nominal-client/commit/952f9441da11080246167b2fe2bd4bef372513f7))
+
 ## [1.10.0](https://github.com/nominal-io/nominal-client/compare/v1.9.0...v1.10.0) (2024-10-30)
 
 
