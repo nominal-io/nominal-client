@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO
 
-from nominal import _config, ts
+from nominal import Connection, _config, ts
 from nominal._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
 from nominal.core import (
     Attachment,
@@ -18,6 +18,7 @@ from nominal.core import (
     Run,
     User,
     Video,
+    Workbook,
     poll_until_ingestion_completed,
 )
 
@@ -512,3 +513,31 @@ def upload_mcap_video(
     if wait_until_complete:
         video.poll_until_ingestion_completed()
     return video
+
+
+def create_streaming_connection(
+    datasource_id: str, connection_name: str, datasource_description: str | None = None
+) -> Connection:
+    """Creates a new datasource and a new connection.
+
+    datasource_id: A human readable identifier. Must be unique within an organization.
+    """
+    conn = get_default_client()
+    return conn.create_streaming_connection(datasource_id, connection_name, datasource_description)
+
+
+def get_connection(rid: str) -> Connection:
+    """Retrieve a connection from the Nominal platform by its RID."""
+    conn = get_default_client()
+    return conn.get_connection(rid)
+
+
+def create_workbook_from_template(
+    template_rid: str, run_rid: str, *, title: str | None = None, description: str | None = None, is_draft: bool = False
+) -> Workbook:
+    """Creates a new workbook from a template.
+    template_rid: The template to use for the workbook.
+    run_rid: The run to associate the workbook with.
+    """
+    conn = get_default_client()
+    return conn.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)

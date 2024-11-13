@@ -9,6 +9,7 @@ from nominal.core.log import Log, LogSet
 from nominal.core.run import Run
 from nominal.core.user import User
 from nominal.core.video import Video
+from nominal.core.workbook import Workbook
 
 __all__ = [
     "Asset",
@@ -26,4 +27,5 @@ __all__ = [
     "User",
     "Video",
     "poll_until_ingestion_completed",
+    "Workbook",
 ]

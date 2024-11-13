@@ -20,8 +20,11 @@ from nominal._api.combined import (
     ingest_api,
     scout_asset_api,
     scout_catalog,
+    scout_datasource_connection_api,
+    scout_notebook_api,
     scout_run_api,
     scout_video_api,
+    storage_datasource_api,
     timeseries_logicalseries_api,
 )
 from nominal._utils import (
@@ -43,6 +46,7 @@ from nominal.core.run import Run
 from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user, _get_user_with_fallback
 from nominal.core.video import Video
+from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
@@ -565,6 +569,72 @@ class NominalClient:
         if len(response.outputs) != 1 or response.outputs[0].target.video_rid is None:
             raise NominalIngestError("No or invalid video RID returned")
         return self.get_video(response.outputs[0].target.video_rid)
+
+    def create_streaming_connection(
+        self, datasource_id: str, connection_name: str, datasource_description: str | None = None
+    ) -> Connection:
+        datasource_response = self._clients.storage.create(
+            self._clients.auth_header,
+            storage_datasource_api.CreateNominalDataSourceRequest(
+                id=datasource_id,
+                description=datasource_description,
+            ),
+        )
+        connection_response = self._clients.connection.create_connection(
+            self._clients.auth_header,
+            scout_datasource_connection_api.CreateConnection(
+                name=connection_name,
+                connection_details=scout_datasource_connection_api.ConnectionDetails(
+                    nominal=scout_datasource_connection_api.NominalConnectionDetails(
+                        nominal_data_source_rid=datasource_response.rid
+                    ),
+                ),
+                metadata={},
+                scraping=scout_datasource_connection_api.ScrapingConfig(
+                    nominal=scout_datasource_connection_api.NominalScrapingConfig(
+                        channel_name_components=[
+                            scout_datasource_connection_api.NominalChannelNameComponent(
+                                channel=scout_datasource_connection_api.Empty()
+                            )
+                        ],
+                        separator=".",
+                    )
+                ),
+                required_tag_names=[],
+                available_tag_values={},
+                should_scrape=True,
+            ),
+        )
+        return Connection._from_conjure(self._clients, connection_response)
+
+    def create_workbook_from_template(
+        self,
+        template_rid: str,
+        run_rid: str,
+        title: str | None = None,
+        description: str | None = None,
+        is_draft: bool = False,
+    ) -> Workbook:
+        template = self._clients.template.get(self._clients.auth_header, template_rid)
+
+        notebook = self._clients.notebook.create(
+            self._clients.auth_header,
+            scout_notebook_api.CreateNotebookRequest(
+                title=title if title is not None else f"Workbook from {template.metadata.title}",
+                description=description or "",
+                notebook_type=None,
+                is_draft=is_draft,
+                state_as_json="{}",
+                charts=None,
+                run_rid=run_rid,
+                data_scope=None,
+                layout=template.layout,
+                content=template.content,
+                content_v2=None,
+            ),
+        )
+
+        return Workbook._from_conjure(self._clients, notebook)
 
     def create_asset(
         self,
