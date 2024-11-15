@@ -88,7 +88,7 @@ class Dataset(HasRid):
         # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
         return f"https://app.gov.nominal.io/data-sources/{self.rid}"
 
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
+    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
@@ -101,7 +101,7 @@ class Dataset(HasRid):
         while True:
             progress = self._clients.catalog.get_ingest_progress_v2(self._clients.auth_header, self.rid)
             if progress.ingest_status.type == "success":
-                return
+                break
             elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
                 pass
             elif progress.ingest_status.type == "error":
@@ -118,6 +118,14 @@ class Dataset(HasRid):
                     f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
                 )
             time.sleep(interval.total_seconds())
+
+        # Update metadata now that data has successfully ingested
+        updated_dataset = self.__class__._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid),
+        )
+        update_dataclass(self, updated_dataset, fields=self.__dataclass_fields__)
+        return self
 
     def update(
         self,
