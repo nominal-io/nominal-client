@@ -20,8 +20,6 @@ nav:
       - Overview: index.md
       - Changelog: changelog.md
       - License: license.md
-  - Usage:
-      - Examples: usage/examples.md
   - Reference:
       - High-level SDK: reference/toplevel.md
       - Timestamps: reference/ts.md
