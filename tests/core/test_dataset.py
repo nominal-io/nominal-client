@@ -35,11 +35,11 @@ def mock_dataset(mock_clients):
         labels=[],
         _clients=mock_clients,
     )
-    
+
     spy = MagicMock(wraps=ds.refresh)
     object.__setattr__(ds, "refresh", spy)
     ds.refresh.return_value = ds
-    
+
     return ds
 
 
