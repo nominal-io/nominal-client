@@ -7,13 +7,21 @@ from typing import Iterable, Mapping, Protocol, Sequence, cast
 
 from typing_extensions import Self
 
-from nominal._api.combined import attachments_api, scout, scout_catalog, scout_run_api
+from nominal._api.combined import (
+    attachments_api,
+    datasource_logset,
+    scout,
+    scout_catalog,
+    scout_datasource_connection,
+    scout_run_api,
+    storage_writer_api,
+)
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.connection import Connection
+from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
-from nominal.core.log import LogSet
+from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -38,6 +46,12 @@ class Run(HasRid):
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def run(self) -> scout.RunService: ...
+        @property
+        def connection(self) -> scout_datasource_connection.ConnectionService: ...
+        @property
+        def logset(self) -> datasource_logset.LogSetService: ...
+        @property
+        def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
 
     @property
     def nominal_url(self) -> str:
@@ -45,13 +59,21 @@ class Run(HasRid):
         # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
         return f"https://app.gov.nominal.io/runs/{self.run_number}"
 
-    def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
-        """Add a dataset to this run.
+    def _list_datasource_rids(
+        self, datasource_type: str | None = None, property_name: str | None = None
+    ) -> Mapping[str, str]:
+        enriched_run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        datasource_rids_by_ref_name = {}
+        for ref_name, source in enriched_run.data_sources.items():
+            if datasource_type is not None and source.data_source.type != datasource_type:
+                continue
 
-        Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
-        should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
-        """
-        self.add_datasets({ref_name: dataset})
+            rid = cast(
+                str, getattr(source.data_source, source.data_source.type if property_name is None else property_name)
+            )
+            datasource_rids_by_ref_name[ref_name] = rid
+
+        return datasource_rids_by_ref_name
 
     def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this run.
@@ -75,6 +97,33 @@ class Run(HasRid):
         }
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
 
+    def _iter_list_log_sets(self) -> Iterable[tuple[str, LogSet]]:
+        log_set_rids_by_ref_name = self._list_datasource_rids("logSet", property_name="log_set")
+        log_sets_by_rids = {
+            rid: LogSet._from_conjure(
+                self._clients,
+                _get_log_set(self._clients.auth_header, self._clients.logset, rid),
+            )
+            for rid in log_set_rids_by_ref_name.values()
+        }
+        for ref_name, rid in log_set_rids_by_ref_name.items():
+            log_set = log_sets_by_rids[rid]
+            yield (ref_name, log_set)
+
+    def list_log_sets(self) -> Sequence[tuple[str, LogSet]]:
+        """List the log_sets associated with this run.
+        Returns (ref_name, logset) pairs for each logset.
+        """
+        return list(self._iter_list_log_sets())
+
+    def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
+        """Add a dataset to this run.
+
+        Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
+        should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
+        """
+        self.add_datasets({ref_name: dataset})
+
     def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
         """Add multiple datasets to this run.
 
@@ -93,12 +142,7 @@ class Run(HasRid):
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
 
     def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
-        run = self._clients.run.get_run(self._clients.auth_header, self.rid)
-        dataset_rids_by_ref_name = {}
-        for ref_name, source in run.data_sources.items():
-            if source.data_source.type == "dataset":
-                dataset_rid = cast(str, source.data_source.dataset)
-                dataset_rids_by_ref_name[ref_name] = dataset_rid
+        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
         datasets_by_rids = {
             ds.rid: Dataset._from_conjure(self._clients, ds)
             for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, dataset_rids_by_ref_name.values())
@@ -235,6 +279,25 @@ class Run(HasRid):
             )
         }
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
+
+    def _iter_list_connections(self) -> Iterable[tuple[str, Connection]]:
+        conn_rids_by_ref_name = self._list_datasource_rids("connection")
+        connections_by_rids = {
+            conn.rid: Connection._from_conjure(self._clients, conn)
+            for conn in _get_connections(
+                self._clients.auth_header, self._clients.connection, conn_rids_by_ref_name.values()
+            )
+        }
+
+        for ref_name, rid in conn_rids_by_ref_name.items():
+            connection = connections_by_rids[rid]
+            yield (ref_name, connection)
+
+    def list_connections(self) -> Sequence[tuple[str, Connection]]:
+        """List the connections associated with this run.
+        Returns (ref_name, connection) pairs for each connection
+        """
+        return list(self._iter_list_connections())
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:

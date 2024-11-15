@@ -4,15 +4,20 @@ import itertools
 import logging
 from dataclasses import dataclass, field
 from itertools import groupby
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal._api.combined import (
     datasource_api,
+    scout_compute_api,
+    scout_dataexport_api,
+    scout_datasource,
+    scout_datasource_connection,
     scout_datasource_connection_api,
     storage_writer_api,
+    timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
-from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, NominalWriteStream
@@ -25,11 +30,25 @@ class Connection(HasRid):
     name: str
     description: str | None
     _tags: Mapping[str, Sequence[str]]
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
     _nominal_data_source_rid: str | None = None
 
+    class _Clients(HasAuthHeader, Protocol):
+        @property
+        def compute(self) -> scout_compute_api.ComputeService: ...
+        @property
+        def connection(self) -> scout_datasource_connection.ConnectionService: ...
+        @property
+        def dataexport(self) -> scout_dataexport_api.DataExportService: ...
+        @property
+        def datasource(self) -> scout_datasource.DataSourceService: ...
+        @property
+        def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
+        @property
+        def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
+
     @classmethod
-    def _from_conjure(cls, clients: ClientsBunch, response: scout_datasource_connection_api.Connection) -> Connection:
+    def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection:
         return cls(
             rid=response.rid,
             name=response.display_name,
@@ -196,6 +215,14 @@ class Connection(HasRid):
     def unarchive(self) -> None:
         """Unarchive this connection, making it visible in the UI."""
         self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
+
+
+def _get_connections(
+    auth_header: str,
+    client: scout_datasource_connection.ConnectionService,
+    connection_rids: Iterable[str],
+) -> Iterable[scout_datasource_connection_api.Connection]:
+    return [client.get_connection(auth_header, rid) for rid in connection_rids]
 
 
 def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]]]:
