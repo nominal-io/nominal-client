@@ -120,6 +120,9 @@ class Dataset(HasRid):
             time.sleep(interval.total_seconds())
 
         # Update metadata now that data has successfully ingested
+        return self.refresh()
+
+    def refresh(self) -> Self:
         updated_dataset = self.__class__._from_conjure(
             self._clients,
             _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid),
