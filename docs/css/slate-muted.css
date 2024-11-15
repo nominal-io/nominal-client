@@ -86,7 +86,7 @@
   [data-md-color-scheme="slate-muted"][data-md-color-primary="pink"] { --md-typeset-a-color: hsl(340, 81%, 63%); }
   [data-md-color-scheme="slate-muted"][data-md-color-primary="purple"] { --md-typeset-a-color: hsl(291, 53%, 63%); }
   [data-md-color-scheme="slate-muted"][data-md-color-primary="deep-purple"] { --md-typeset-a-color: hsl(262, 73%, 70%); }
-  [data-md-color-scheme="slate-muted"][data-md-color-primary="indigo"] { --md-typeset-a-color: hsl(219, 76%, 62%); }
+  [data-md-color-scheme="slate-muted"][data-md-color-primary="indigo"] { --md-typeset-a-color: lightgreen; }
   [data-md-color-scheme="slate-muted"][data-md-color-primary="teal"] { --md-typeset-a-color: hsl(174, 100%, 40%); }
   [data-md-color-scheme="slate-muted"][data-md-color-primary="green"] { --md-typeset-a-color: hsl(122, 39%, 60%); }
   [data-md-color-scheme="slate-muted"][data-md-color-primary="deep-orange"] { --md-typeset-a-color: hsl(14, 100%, 65%); }
