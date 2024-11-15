@@ -245,14 +245,17 @@ class Run(HasRid):
         """
         datasets = self.list_datasets()
 
+        # Get the start and end bounds of all composing datasets
         dataset_starts = [dataset.bounds.start for _, dataset in datasets if dataset.bounds]
         dataset_ends = [dataset.bounds.end for _, dataset in datasets if dataset.bounds]
 
-        # If there are not yet any datasets with bounds in the run, there is nothing to reset
-        if not dataset_starts or not dataset_ends:
-            return self
-
-        return self.update(start=min(dataset_starts), end=max(dataset_ends))
+        # If there are no start or end bounds across all input datasets, don't update the
+        # respective bound of the Run by using None
+        new_start = min(dataset_starts) if dataset_starts else None
+        new_end = max(dataset_ends) if dataset_ends else None
+        
+        # Update the run and return with updated metadata
+        return self.update(start=new_start, end=new_end)
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:
