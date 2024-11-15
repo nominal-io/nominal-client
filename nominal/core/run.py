@@ -242,6 +242,10 @@ class Run(HasRid):
 
         This is primarily useful when the set of datasets composing the run change, or
         the individual datasets get modified to have more or less data.
+        
+        NOTE: this only considers datasets when resetting run boundaries. Setting boundaries
+              on runs containing streaming connections must be done manually using the UI or
+              the update() function
         """
         datasets = self.list_datasets()
 
