@@ -242,7 +242,7 @@ class Run(HasRid):
 
         This is primarily useful when the set of datasets composing the run change, or
         the individual datasets get modified to have more or less data.
-        
+
         NOTE: this only considers datasets when resetting run boundaries. Setting boundaries
               on runs containing streaming connections must be done manually using the UI or
               the update() function
@@ -257,7 +257,7 @@ class Run(HasRid):
         # respective bound of the Run by using None
         new_start = min(dataset_starts) if dataset_starts else None
         new_end = max(dataset_ends) if dataset_ends else None
-        
+
         # Update the run and return with updated metadata
         return self.update(start=new_start, end=new_end)
 
