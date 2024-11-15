@@ -57,6 +57,7 @@ from nominal.ts import (
 )
 
 from .asset import Asset
+from .streaming_checklist import StreamingChecklist
 
 
 @dataclass(frozen=True)
@@ -665,6 +666,16 @@ class NominalClient:
         if len(response) > 1:
             raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
         return Asset._from_conjure(self._clients, response[rid])
+
+    def get_streaming_checklist(self, rid: str) -> StreamingChecklist:
+        """Retrieve a Streaming Checklist by its RID."""
+        response = self._clients.checklist_execution.get_streaming_checklist(self._clients.auth_header, rid)
+        return StreamingChecklist._from_conjure(self._clients, response)
+
+    def list_streaming_checklists(self) -> Sequence[str]:
+        """List all Streaming Checklists."""
+        response = self._clients.checklist_execution.list_streaming_checklist(self._clients.auth_header)
+        return response
 
 
 def _create_search_runs_query(

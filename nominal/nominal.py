@@ -22,6 +22,7 @@ from nominal.core import (
     Workbook,
     poll_until_ingestion_completed,
 )
+from nominal.core.streaming_checklist import StreamingChecklist
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -414,6 +415,18 @@ def get_asset(rid: str) -> Asset:
     """Retrieve an asset by its RID."""
     conn = get_default_client()
     return conn.get_asset(rid)
+
+
+def get_streaming_checklist(rid: str) -> StreamingChecklist:
+    """Retrieve a Streaming Checklist by its RID."""
+    conn = get_default_client()
+    return conn.get_streaming_checklist(rid)
+
+
+def list_streaming_checklists() -> Sequence[str]:
+    """List all Streaming Checklists."""
+    conn = get_default_client()
+    return conn.list_streaming_checklists()
 
 
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
