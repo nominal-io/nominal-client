@@ -157,11 +157,9 @@ class Dataset(HasRid):
             name=name,
             properties=None if properties is None else dict(properties),
         )
-        response = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
+        self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
 
-        dataset = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, dataset, fields=self.__dataclass_fields__)
-        return self
+        return self.refresh()
 
     def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
