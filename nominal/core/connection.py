@@ -165,28 +165,37 @@ class Connection(HasRid):
 
         api_batches = [list(api_batch) for _, api_batch in api_batched]
 
+        request = storage_writer_api.WriteBatchesRequest(
+            data_source_rid=self._nominal_data_source_rid,
+            batches=[
+                storage_writer_api.RecordsBatch(
+                    channel=api_batch[0].channel_name,
+                    points=storage_writer_api.Points(
+                        double=[
+                            storage_writer_api.DoublePoint(
+                                timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                                value=item.value,
+                            )
+                            for item in api_batch
+                        ]
+                    ),
+                    tags=api_batch[0].tags or {},
+                )
+                for api_batch in api_batches
+            ],
+        )
         self._clients.storage_writer.write_batches(
             self._clients.auth_header,
-            storage_writer_api.WriteBatchesRequest(
-                data_source_rid=self._nominal_data_source_rid,
-                batches=[
-                    storage_writer_api.RecordsBatch(
-                        channel=api_batch[0].channel_name,
-                        points=storage_writer_api.Points(
-                            double=[
-                                storage_writer_api.DoublePoint(
-                                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                                    value=item.value,
-                                )
-                                for item in api_batch
-                            ]
-                        ),
-                        tags=api_batch[0].tags or {},
-                    )
-                    for api_batch in api_batches
-                ],
-            ),
+            request,
         )
+
+    def archive(self) -> None:
+        """Archive this connection, hiding it in the UI."""
+        self._clients.connection.archive_connection(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive this connection, making it visible in the UI."""
+        self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
 
 
 def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]]]:
