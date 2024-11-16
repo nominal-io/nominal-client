@@ -9,7 +9,7 @@ div.doc-contents:not(.first) {
 }
 
 .md-tabs__item--active, md-nav__link--active, md-nav__item:hover {
-  color: rgb(198, 252, 204);
+  lightgreen;
 }
 
 
