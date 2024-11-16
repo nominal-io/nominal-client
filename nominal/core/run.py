@@ -236,6 +236,31 @@ class Run(HasRid):
         }
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
 
+    def reset_bounds(self) -> Self:
+        """Update the start and end timestamps on the run by inspecting the bounds on
+        the datasets that compose this run.
+
+        This is primarily useful when the set of datasets composing the run change, or
+        the individual datasets get modified to have more or less data.
+
+        NOTE: this only considers datasets when resetting run boundaries. Setting boundaries
+              on runs containing streaming connections must be done manually using the UI or
+              the update() function
+        """
+        datasets = self.list_datasets()
+
+        # Get the start and end bounds of all composing datasets
+        dataset_starts = [dataset.bounds.start for _, dataset in datasets if dataset.bounds]
+        dataset_ends = [dataset.bounds.end for _, dataset in datasets if dataset.bounds]
+
+        # If there are no start or end bounds across all input datasets, don't update the
+        # respective bound of the Run by using None
+        new_start = min(dataset_starts) if dataset_starts else None
+        new_end = max(dataset_ends) if dataset_ends else None
+
+        # Update the run and return with updated metadata
+        return self.update(start=new_start, end=new_end)
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:
         return cls(
