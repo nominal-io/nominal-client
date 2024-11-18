@@ -109,3 +109,7 @@ class Video(HasRid):
             labels=tuple(video.labels),
             _clients=clients,
         )
+
+
+def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:
+    return clients.video.get(clients.auth_header, video_rid)
