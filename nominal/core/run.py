@@ -19,7 +19,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet, _get_log_set
-from nominal.core.video import Video
+from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -37,7 +37,13 @@ class Run(HasRid):
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        Attachment._Clients, Connection._Clients, Dataset._Clients, LogSet._Clients, HasAuthHeader, Protocol
+        Attachment._Clients,
+        Connection._Clients,
+        Dataset._Clients,
+        LogSet._Clients,
+        Video._Clients,
+        HasAuthHeader,
+        Protocol,
     ):
         @property
         def attachment(self) -> attachments_api.AttachmentService: ...
@@ -149,6 +155,31 @@ class Run(HasRid):
         Returns (ref_name, dataset) pairs for each dataset.
         """
         return list(self._iter_list_datasets())
+
+    def add_video(self, ref_name: str, video: Video | str) -> None:
+        """Add a video to a run via video object or RID."""
+        request = scout_run_api.CreateRunDataSource(
+            data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
+            series_tags={},
+            offset=None,
+        )
+        self._clients.run.add_data_sources_to_run(self._clients.auth_header, {ref_name: request}, self.rid)
+
+    def _iter_list_videos(self) -> Iterable[tuple[str, Video]]:
+        video_rids_by_ref_name = self._list_datasource_rids("video")
+        videos_by_rids = {
+            rid: Video._from_conjure(
+                self._clients,
+                _get_video(self._clients, rid),
+            )
+            for rid in video_rids_by_ref_name.values()
+        }
+        for ref_name, rid in video_rids_by_ref_name.items():
+            video = videos_by_rids[rid]
+            yield (ref_name, video)
+
+    def list_videos(self) -> Sequence[tuple[str, Video]]:
+        return list(self._iter_list_videos())
 
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Add attachments that have already been uploaded to this run.
