@@ -212,8 +212,8 @@ class Connection(HasRid):
 
 
 def _get_connections(
-    clients: Connection._Clients, connection_rids: Iterable[str]
-) -> Iterable[scout_datasource_connection_api.Connection]:
+    clients: Connection._Clients, connection_rids: Sequence[str]
+) -> Sequence[scout_datasource_connection_api.Connection]:
     return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
 
 

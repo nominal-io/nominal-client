@@ -277,7 +277,7 @@ class Run(HasRid):
         conn_rids_by_ref_name = self._list_datasource_rids("connection")
         connections_by_rids = {
             conn.rid: Connection._from_conjure(self._clients, conn)
-            for conn in _get_connections(self._clients, conn_rids_by_ref_name.values())
+            for conn in _get_connections(self._clients, list(conn_rids_by_ref_name.values()))
         }
 
         for ref_name, rid in conn_rids_by_ref_name.items():
