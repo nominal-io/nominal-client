@@ -179,6 +179,7 @@ class Run(HasRid):
             yield (ref_name, video)
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
+        """List a sequence of refname, Video tuples associated with this Run."""
         return list(self._iter_list_videos())
 
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
@@ -206,6 +207,7 @@ class Run(HasRid):
             yield Attachment._from_conjure(self._clients, a)
 
     def list_attachments(self) -> Sequence[Attachment]:
+        """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
 
     def archive(self) -> None:
