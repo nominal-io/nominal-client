@@ -64,8 +64,27 @@ class NominalWriteStream:
 
         The message will not be immediately sent to Nominal. Only after the batch size is full or the timeout occurs.
         """
+        self.enqueue_batch(channel_name, [timestamp], [value], tags)
+
+    def enqueue_batch(
+        self,
+        channel_name: str,
+        timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
+        values: Sequence[float],
+        tags: Dict[str, str] | None = None,
+    ) -> None:
+        """Add a sequence of messages to the queue.
+
+        The messages will not be immediately sent to Nominal. Only after the batch size is full or the timeout occurs.
+        """
+        if len(timestamps) != len(values):
+            raise ValueError(
+                f"Expected equal numbers of timestamps and values! Received: {len(timestamps)} vs. {len(values)}"
+            )
+
         with self._batch_lock:
-            self._batch.append(BatchItem(channel_name, timestamp, value, tags))
+            for timestamp, value in zip(timestamps, values):
+                self._batch.append(BatchItem(channel_name, timestamp, value, tags))
 
             if len(self._batch) >= self.batch_size:
                 self.flush()
