@@ -9,12 +9,9 @@ from typing_extensions import Self
 
 from nominal._api.combined import (
     attachments_api,
-    datasource_logset,
     scout,
     scout_catalog,
-    scout_datasource_connection,
     scout_run_api,
-    storage_writer_api,
 )
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
@@ -39,19 +36,15 @@ class Run(HasRid):
 
     _clients: _Clients = field(repr=False)
 
-    class _Clients(Dataset._Clients, Attachment._Clients, HasAuthHeader, Protocol):
+    class _Clients(
+        Attachment._Clients, Connection._Clients, Dataset._Clients, LogSet._Clients, HasAuthHeader, Protocol
+    ):
         @property
         def attachment(self) -> attachments_api.AttachmentService: ...
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def run(self) -> scout.RunService: ...
-        @property
-        def connection(self) -> scout_datasource_connection.ConnectionService: ...
-        @property
-        def logset(self) -> datasource_logset.LogSetService: ...
-        @property
-        def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
 
     @property
     def nominal_url(self) -> str:
@@ -102,7 +95,7 @@ class Run(HasRid):
         log_sets_by_rids = {
             rid: LogSet._from_conjure(
                 self._clients,
-                _get_log_set(self._clients.auth_header, self._clients.logset, rid),
+                _get_log_set(self._clients, rid),
             )
             for rid in log_set_rids_by_ref_name.values()
         }
@@ -284,9 +277,7 @@ class Run(HasRid):
         conn_rids_by_ref_name = self._list_datasource_rids("connection")
         connections_by_rids = {
             conn.rid: Connection._from_conjure(self._clients, conn)
-            for conn in _get_connections(
-                self._clients.auth_header, self._clients.connection, conn_rids_by_ref_name.values()
-            )
+            for conn in _get_connections(self._clients, conn_rids_by_ref_name.values())
         }
 
         for ref_name, rid in conn_rids_by_ref_name.items():

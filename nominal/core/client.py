@@ -346,7 +346,7 @@ class NominalClient:
 
     def get_log_set(self, log_set_rid: str) -> LogSet:
         """Retrieve a log set along with its metadata given its RID."""
-        response = _get_log_set(self._clients.auth_header, self._clients.logset, log_set_rid)
+        response = _get_log_set(self._clients, log_set_rid)
         return LogSet._from_conjure(self._clients, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:

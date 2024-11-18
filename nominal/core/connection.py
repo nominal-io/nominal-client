@@ -8,8 +8,6 @@ from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal._api.combined import (
     datasource_api,
-    scout_compute_api,
-    scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
     scout_datasource_connection_api,
@@ -33,13 +31,9 @@ class Connection(HasRid):
     _clients: _Clients = field(repr=False)
     _nominal_data_source_rid: str | None = None
 
-    class _Clients(HasAuthHeader, Protocol):
-        @property
-        def compute(self) -> scout_compute_api.ComputeService: ...
+    class _Clients(Channel._Clients, HasAuthHeader, Protocol):
         @property
         def connection(self) -> scout_datasource_connection.ConnectionService: ...
-        @property
-        def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
         def datasource(self) -> scout_datasource.DataSourceService: ...
         @property
@@ -218,11 +212,9 @@ class Connection(HasRid):
 
 
 def _get_connections(
-    auth_header: str,
-    client: scout_datasource_connection.ConnectionService,
-    connection_rids: Iterable[str],
+    clients: Connection._Clients, connection_rids: Iterable[str]
 ) -> Iterable[scout_datasource_connection_api.Connection]:
-    return [client.get_connection(auth_header, rid) for rid in connection_rids]
+    return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
 
 
 def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]]]:

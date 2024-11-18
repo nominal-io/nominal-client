@@ -80,7 +80,5 @@ def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampTyp
     raise ValueError(f"unhandled timestamp type {log_timestamp_type}")
 
 
-def _get_log_set(
-    auth_header: str, client: datasource_logset.LogSetService, log_set_rid: str
-) -> datasource_logset_api.LogSetMetadata:
-    return client.get_log_set_metadata(auth_header, log_set_rid)
+def _get_log_set(clients: LogSet._Clients, log_set_rid: str) -> datasource_logset_api.LogSetMetadata:
+    return clients.logset.get_log_set_metadata(clients.auth_header, log_set_rid)
