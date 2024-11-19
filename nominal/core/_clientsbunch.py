@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
 
-from conjure_python_client import RequestsClient, ServiceConfiguration
 import requests
+from conjure_python_client import RequestsClient, ServiceConfiguration
 from typing_extensions import Self
 
 from nominal._api.combined import (
@@ -34,7 +34,7 @@ from nominal._api.combined import (
 class ClientsBunch:
     auth_header: str
     requests_session: requests.Session
-    """The requests session should be used for any requests calls from this client to utilize the same cert as conjure calls."""
+    """The session should be used for requests to utilize the same cert as conjure calls."""
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
