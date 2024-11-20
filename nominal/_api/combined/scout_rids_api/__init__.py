@@ -17,6 +17,7 @@ from .._impl import (
     scout_rids_api_PendingReviewAlertState as PendingReviewAlertState,
     scout_rids_api_SnapshotRid as SnapshotRid,
     scout_rids_api_TemplateRid as TemplateRid,
+    scout_rids_api_TypeRid as TypeRid,
     scout_rids_api_UserRid as UserRid,
     scout_rids_api_Version as Version,
     scout_rids_api_VersionedVizId as VersionedVizId,
