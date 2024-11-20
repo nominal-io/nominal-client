@@ -173,11 +173,9 @@ class Channel(HasRid):
             start=_SecondsNanos.from_flexible(start).to_api(),
             end=_SecondsNanos.from_flexible(end).to_api(),
             node=scout_compute_api.ComputableNode(
-                series=scout_compute_api.SummarizeSeriesNode(
-                    input=scout_compute_api.SeriesNode(
-                        numeric=scout_compute_api.NumericSeriesNode(
-                            raw=scout_compute_api.RawNumericSeriesNode(name="ch-1")
-                        )
+                series=scout_compute_api.SummarizeSeries(
+                    input=scout_compute_api.Series(
+                        numeric=scout_compute_api.NumericSeries(raw=scout_compute_api.Reference(name="ch-1"))
                     ),
                     buckets=buckets,
                     resolution=resolution,
@@ -205,9 +203,7 @@ def _get_series_values_csv(
                 channels=[
                     scout_dataexport_api.TimeDomainChannel(
                         column_name=name,
-                        compute_node=scout_compute_api.SeriesNode(
-                            raw=scout_compute_api.RawUntypedSeriesNode(name=name)
-                        ),
+                        compute_node=scout_compute_api.Series(raw=scout_compute_api.Reference(name=name)),
                     )
                     for name in rid_to_name.values()
                 ],

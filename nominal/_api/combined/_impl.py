@@ -25,6 +25,24 @@ from typing import (
     Set,
 )
 
+class api_Granularity(ConjureEnumType):
+
+    PICOSECONDS = 'PICOSECONDS'
+    '''PICOSECONDS'''
+    NANOSECONDS = 'NANOSECONDS'
+    '''NANOSECONDS'''
+    UNKNOWN = 'UNKNOWN'
+    '''UNKNOWN'''
+
+    def __reduce_ex__(self, proto):
+        return self.__class__, (self.name,)
+
+
+api_Granularity.__name__ = "Granularity"
+api_Granularity.__qualname__ = "Granularity"
+api_Granularity.__module__ = "scout_service_api.api"
+
+
 class api_McapChannelLocator(ConjureUnionType):
     """Locator for a channel in an mcap file. Channel name is not guaranteed to be unique, so channel ID should
 be used for mcap files with duplicate channel names."""
@@ -1775,35 +1793,6 @@ authentication_api_UserV2.__qualname__ = "UserV2"
 authentication_api_UserV2.__module__ = "scout_service_api.authentication_api"
 
 
-class authorization_AppendOrgAssignmentRulesRequest(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'rules': ConjureFieldDefinition('rules', List[authorization_OrgAssignmentRule]),
-            'last_version': ConjureFieldDefinition('lastVersion', int)
-        }
-
-    __slots__: List[str] = ['_rules', '_last_version']
-
-    def __init__(self, last_version: int, rules: List["authorization_OrgAssignmentRule"]) -> None:
-        self._rules = rules
-        self._last_version = last_version
-
-    @builtins.property
-    def rules(self) -> List["authorization_OrgAssignmentRule"]:
-        return self._rules
-
-    @builtins.property
-    def last_version(self) -> int:
-        return self._last_version
-
-
-authorization_AppendOrgAssignmentRulesRequest.__name__ = "AppendOrgAssignmentRulesRequest"
-authorization_AppendOrgAssignmentRulesRequest.__qualname__ = "AppendOrgAssignmentRulesRequest"
-authorization_AppendOrgAssignmentRulesRequest.__module__ = "scout_service_api.authorization"
-
-
 class authorization_AuthorizationRequest(ConjureBeanType):
 
     @builtins.classmethod
@@ -1930,7 +1919,7 @@ authenticated user is an admin and HTTP 403 otherwise.
 
         return
 
-    def is_email_allowed(self, email: str) -> bool:
+    def is_email_allowed(self, request: "authorization_IsEmailAllowedRequest") -> "authorization_IsEmailAllowedResponse":
         """
         Checks if the email is allowed to register.
         """
@@ -1946,7 +1935,7 @@ authenticated user is an admin and HTTP 403 otherwise.
         _path_params: Dict[str, Any] = {
         }
 
-        _json: Any = ConjureEncoder().default(email)
+        _json: Any = ConjureEncoder().default(request)
 
         _path = '/authorization/v1/is-email-allowed'
         _path = _path.format(**_path_params)
@@ -1959,7 +1948,7 @@ authenticated user is an admin and HTTP 403 otherwise.
             json=_json)
 
         _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), bool, self._return_none_for_unknown_union_types)
+        return _decoder.decode(_response.json(), authorization_IsEmailAllowedResponse, self._return_none_for_unknown_union_types)
 
     def get_access_token(self, request: "authorization_GetAccessTokenRequest") -> "authorization_GetAccessTokenResponse":
         """
@@ -1996,438 +1985,10 @@ is not known.
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), authorization_GetAccessTokenResponse, self._return_none_for_unknown_union_types)
 
-    def get_org_assignment_rules(self, auth_header: str) -> "authorization_OrgAssignmentRulesResponse":
-        """
-        Gets the current org assignment rules.
-Throws if the caller is not an admin.
-        """
-
-        _headers: Dict[str, Any] = {
-            'Accept': 'application/json',
-            'Authorization': auth_header,
-        }
-
-        _params: Dict[str, Any] = {
-        }
-
-        _path_params: Dict[str, Any] = {
-        }
-
-        _json: Any = None
-
-        _path = '/authorization/v1/org-assignment-rules'
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request(
-            'GET',
-            self._uri + _path,
-            params=_params,
-            headers=_headers,
-            json=_json)
-
-        _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), authorization_OrgAssignmentRulesResponse, self._return_none_for_unknown_union_types)
-
-    def set_all_org_assignment_rules(self, auth_header: str, request: "authorization_SetOrgAssignmentRulesRequest") -> "authorization_OrgAssignmentRulesResponse":
-        """
-        Sets the org assignment rules, requiring the last known version
-to avoid race conditions.
-Throws if the caller is not an admin.
-        """
-
-        _headers: Dict[str, Any] = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': auth_header,
-        }
-
-        _params: Dict[str, Any] = {
-        }
-
-        _path_params: Dict[str, Any] = {
-        }
-
-        _json: Any = ConjureEncoder().default(request)
-
-        _path = '/authorization/v1/org-assignment-rules/set-all'
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request(
-            'POST',
-            self._uri + _path,
-            params=_params,
-            headers=_headers,
-            json=_json)
-
-        _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), authorization_OrgAssignmentRulesResponse, self._return_none_for_unknown_union_types)
-
-    def append_org_assignment_rules(self, auth_header: str, request: "authorization_AppendOrgAssignmentRulesRequest") -> "authorization_OrgAssignmentRulesResponse":
-        """
-        Appends new org assignment rules to the current rules.
-Pass the last known version to avoid race condition.
-Throws if the caller is not an admin.
-        """
-
-        _headers: Dict[str, Any] = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': auth_header,
-        }
-
-        _params: Dict[str, Any] = {
-        }
-
-        _path_params: Dict[str, Any] = {
-        }
-
-        _json: Any = ConjureEncoder().default(request)
-
-        _path = '/authorization/v1/org-assignment-rules/append'
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request(
-            'POST',
-            self._uri + _path,
-            params=_params,
-            headers=_headers,
-            json=_json)
-
-        _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), authorization_OrgAssignmentRulesResponse, self._return_none_for_unknown_union_types)
-
-    def get_user_filters(self, auth_header: str) -> "authorization_UserFiltersResponse":
-        """
-        Gets the user filters.
-Throws if the caller is not an admin.
-        """
-
-        _headers: Dict[str, Any] = {
-            'Accept': 'application/json',
-            'Authorization': auth_header,
-        }
-
-        _params: Dict[str, Any] = {
-        }
-
-        _path_params: Dict[str, Any] = {
-        }
-
-        _json: Any = None
-
-        _path = '/authorization/v1/user-filters'
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request(
-            'GET',
-            self._uri + _path,
-            params=_params,
-            headers=_headers,
-            json=_json)
-
-        _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), authorization_UserFiltersResponse, self._return_none_for_unknown_union_types)
-
-    def set_user_filter_for_one_org(self, auth_header: str, request: "authorization_SetUserFilterForOneOrgRequest") -> "authorization_UserFiltersResponse":
-        """
-        Sets the user filters for the specified org, overwriting
-any existing filter. Requires the last known version to avoid
-race conditions.
-Throws if the caller is not an admin.
-        """
-
-        _headers: Dict[str, Any] = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': auth_header,
-        }
-
-        _params: Dict[str, Any] = {
-        }
-
-        _path_params: Dict[str, Any] = {
-        }
-
-        _json: Any = ConjureEncoder().default(request)
-
-        _path = '/authorization/v1/user-filters/set-one'
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request(
-            'POST',
-            self._uri + _path,
-            params=_params,
-            headers=_headers,
-            json=_json)
-
-        _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), authorization_UserFiltersResponse, self._return_none_for_unknown_union_types)
-
-    def remove_user_filter_for_one_org(self, auth_header: str, request: "authorization_RemoveUserFilterForOneOrgRequest") -> "authorization_UserFiltersResponse":
-        """
-        Removes the user filter for an org. Requires the last known
-version to avoid race conditions.
-Throws if the caller is not an admin.
-        """
-
-        _headers: Dict[str, Any] = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': auth_header,
-        }
-
-        _params: Dict[str, Any] = {
-        }
-
-        _path_params: Dict[str, Any] = {
-        }
-
-        _json: Any = ConjureEncoder().default(request)
-
-        _path = '/authorization/v1/user-filters/remove-one'
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request(
-            'POST',
-            self._uri + _path,
-            params=_params,
-            headers=_headers,
-            json=_json)
-
-        _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), authorization_UserFiltersResponse, self._return_none_for_unknown_union_types)
-
 
 authorization_AuthorizationService.__name__ = "AuthorizationService"
 authorization_AuthorizationService.__qualname__ = "AuthorizationService"
 authorization_AuthorizationService.__module__ = "scout_service_api.authorization"
-
-
-class authorization_Condition(ConjureUnionType):
-    """A condition to be evaluated on the ID token's claims"""
-    _or_: Optional[List["authorization_Condition"]] = None
-    _and_: Optional[List["authorization_Condition"]] = None
-    _not_: Optional["authorization_Condition"] = None
-    _exact: Optional["authorization_ExactClaimCondition"] = None
-    _regex: Optional["authorization_RegexClaimCondition"] = None
-    _contains: Optional["authorization_ContainsClaimCondition"] = None
-
-    @builtins.classmethod
-    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'or_': ConjureFieldDefinition('or', List[authorization_Condition]),
-            'and_': ConjureFieldDefinition('and', List[authorization_Condition]),
-            'not_': ConjureFieldDefinition('not', authorization_Condition),
-            'exact': ConjureFieldDefinition('exact', authorization_ExactClaimCondition),
-            'regex': ConjureFieldDefinition('regex', authorization_RegexClaimCondition),
-            'contains': ConjureFieldDefinition('contains', authorization_ContainsClaimCondition)
-        }
-
-    def __init__(
-            self,
-            or_: Optional[List["authorization_Condition"]] = None,
-            and_: Optional[List["authorization_Condition"]] = None,
-            not_: Optional["authorization_Condition"] = None,
-            exact: Optional["authorization_ExactClaimCondition"] = None,
-            regex: Optional["authorization_RegexClaimCondition"] = None,
-            contains: Optional["authorization_ContainsClaimCondition"] = None,
-            type_of_union: Optional[str] = None
-            ) -> None:
-        if type_of_union is None:
-            if (or_ is not None) + (and_ is not None) + (not_ is not None) + (exact is not None) + (regex is not None) + (contains is not None) != 1:
-                raise ValueError('a union must contain a single member')
-
-            if or_ is not None:
-                self._or_ = or_
-                self._type = 'or'
-            if and_ is not None:
-                self._and_ = and_
-                self._type = 'and'
-            if not_ is not None:
-                self._not_ = not_
-                self._type = 'not'
-            if exact is not None:
-                self._exact = exact
-                self._type = 'exact'
-            if regex is not None:
-                self._regex = regex
-                self._type = 'regex'
-            if contains is not None:
-                self._contains = contains
-                self._type = 'contains'
-
-        elif type_of_union == 'or':
-            if or_ is None:
-                raise ValueError('a union value must not be None')
-            self._or_ = or_
-            self._type = 'or'
-        elif type_of_union == 'and':
-            if and_ is None:
-                raise ValueError('a union value must not be None')
-            self._and_ = and_
-            self._type = 'and'
-        elif type_of_union == 'not':
-            if not_ is None:
-                raise ValueError('a union value must not be None')
-            self._not_ = not_
-            self._type = 'not'
-        elif type_of_union == 'exact':
-            if exact is None:
-                raise ValueError('a union value must not be None')
-            self._exact = exact
-            self._type = 'exact'
-        elif type_of_union == 'regex':
-            if regex is None:
-                raise ValueError('a union value must not be None')
-            self._regex = regex
-            self._type = 'regex'
-        elif type_of_union == 'contains':
-            if contains is None:
-                raise ValueError('a union value must not be None')
-            self._contains = contains
-            self._type = 'contains'
-
-    @builtins.property
-    def or_(self) -> Optional[List["authorization_Condition"]]:
-        return self._or_
-
-    @builtins.property
-    def and_(self) -> Optional[List["authorization_Condition"]]:
-        return self._and_
-
-    @builtins.property
-    def not_(self) -> Optional["authorization_Condition"]:
-        return self._not_
-
-    @builtins.property
-    def exact(self) -> Optional["authorization_ExactClaimCondition"]:
-        return self._exact
-
-    @builtins.property
-    def regex(self) -> Optional["authorization_RegexClaimCondition"]:
-        return self._regex
-
-    @builtins.property
-    def contains(self) -> Optional["authorization_ContainsClaimCondition"]:
-        return self._contains
-
-    def accept(self, visitor) -> Any:
-        if not isinstance(visitor, authorization_ConditionVisitor):
-            raise ValueError('{} is not an instance of authorization_ConditionVisitor'.format(visitor.__class__.__name__))
-        if self._type == 'or' and self.or_ is not None:
-            return visitor._or(self.or_)
-        if self._type == 'and' and self.and_ is not None:
-            return visitor._and(self.and_)
-        if self._type == 'not' and self.not_ is not None:
-            return visitor._not(self.not_)
-        if self._type == 'exact' and self.exact is not None:
-            return visitor._exact(self.exact)
-        if self._type == 'regex' and self.regex is not None:
-            return visitor._regex(self.regex)
-        if self._type == 'contains' and self.contains is not None:
-            return visitor._contains(self.contains)
-
-
-authorization_Condition.__name__ = "Condition"
-authorization_Condition.__qualname__ = "Condition"
-authorization_Condition.__module__ = "scout_service_api.authorization"
-
-
-class authorization_ConditionVisitor:
-
-    @abstractmethod
-    def _or(self, or_: List["authorization_Condition"]) -> Any:
-        pass
-
-    @abstractmethod
-    def _and(self, and_: List["authorization_Condition"]) -> Any:
-        pass
-
-    @abstractmethod
-    def _not(self, not_: "authorization_Condition") -> Any:
-        pass
-
-    @abstractmethod
-    def _exact(self, exact: "authorization_ExactClaimCondition") -> Any:
-        pass
-
-    @abstractmethod
-    def _regex(self, regex: "authorization_RegexClaimCondition") -> Any:
-        pass
-
-    @abstractmethod
-    def _contains(self, contains: "authorization_ContainsClaimCondition") -> Any:
-        pass
-
-
-authorization_ConditionVisitor.__name__ = "ConditionVisitor"
-authorization_ConditionVisitor.__qualname__ = "ConditionVisitor"
-authorization_ConditionVisitor.__module__ = "scout_service_api.authorization"
-
-
-class authorization_ContainsClaimCondition(ConjureBeanType):
-    """
-    Returns true if the claim's value (expected to be an array)
-contains the given value.
-    """
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'array_claim': ConjureFieldDefinition('arrayClaim', str),
-            'value': ConjureFieldDefinition('value', str)
-        }
-
-    __slots__: List[str] = ['_array_claim', '_value']
-
-    def __init__(self, array_claim: str, value: str) -> None:
-        self._array_claim = array_claim
-        self._value = value
-
-    @builtins.property
-    def array_claim(self) -> str:
-        return self._array_claim
-
-    @builtins.property
-    def value(self) -> str:
-        return self._value
-
-
-authorization_ContainsClaimCondition.__name__ = "ContainsClaimCondition"
-authorization_ContainsClaimCondition.__qualname__ = "ContainsClaimCondition"
-authorization_ContainsClaimCondition.__module__ = "scout_service_api.authorization"
-
-
-class authorization_ExactClaimCondition(ConjureBeanType):
-    """
-    Returns true if the claim's value matches the given value
-    """
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'claim': ConjureFieldDefinition('claim', str),
-            'value': ConjureFieldDefinition('value', str)
-        }
-
-    __slots__: List[str] = ['_claim', '_value']
-
-    def __init__(self, claim: str, value: str) -> None:
-        self._claim = claim
-        self._value = value
-
-    @builtins.property
-    def claim(self) -> str:
-        return self._claim
-
-    @builtins.property
-    def value(self) -> str:
-        return self._value
-
-
-authorization_ExactClaimCondition.__name__ = "ExactClaimCondition"
-authorization_ExactClaimCondition.__qualname__ = "ExactClaimCondition"
-authorization_ExactClaimCondition.__module__ = "scout_service_api.authorization"
 
 
 class authorization_GetAccessTokenRequest(ConjureBeanType):
@@ -2503,98 +2064,50 @@ authorization_GetAccessTokenResponse.__qualname__ = "GetAccessTokenResponse"
 authorization_GetAccessTokenResponse.__module__ = "scout_service_api.authorization"
 
 
-class authorization_OrgAssignmentRule(ConjureBeanType):
+class authorization_IsEmailAllowedRequest(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'condition': ConjureFieldDefinition('condition', authorization_Condition),
-            'org_rid': ConjureFieldDefinition('orgRid', authorization_OrgRid)
+            'email': ConjureFieldDefinition('email', str)
         }
 
-    __slots__: List[str] = ['_condition', '_org_rid']
+    __slots__: List[str] = ['_email']
 
-    def __init__(self, condition: "authorization_Condition", org_rid: str) -> None:
-        self._condition = condition
-        self._org_rid = org_rid
-
-    @builtins.property
-    def condition(self) -> "authorization_Condition":
-        return self._condition
+    def __init__(self, email: str) -> None:
+        self._email = email
 
     @builtins.property
-    def org_rid(self) -> str:
-        return self._org_rid
+    def email(self) -> str:
+        return self._email
 
 
-authorization_OrgAssignmentRule.__name__ = "OrgAssignmentRule"
-authorization_OrgAssignmentRule.__qualname__ = "OrgAssignmentRule"
-authorization_OrgAssignmentRule.__module__ = "scout_service_api.authorization"
+authorization_IsEmailAllowedRequest.__name__ = "IsEmailAllowedRequest"
+authorization_IsEmailAllowedRequest.__qualname__ = "IsEmailAllowedRequest"
+authorization_IsEmailAllowedRequest.__module__ = "scout_service_api.authorization"
 
 
-class authorization_OrgAssignmentRulesResponse(ConjureBeanType):
+class authorization_IsEmailAllowedResponse(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'rules': ConjureFieldDefinition('rules', List[authorization_OrgAssignmentRule]),
-            'version': ConjureFieldDefinition('version', int)
+            'allowed': ConjureFieldDefinition('allowed', bool)
         }
 
-    __slots__: List[str] = ['_rules', '_version']
+    __slots__: List[str] = ['_allowed']
 
-    def __init__(self, rules: List["authorization_OrgAssignmentRule"], version: int) -> None:
-        self._rules = rules
-        self._version = version
-
-    @builtins.property
-    def rules(self) -> List["authorization_OrgAssignmentRule"]:
-        """
-        The first rule that matches will be used to assign a user to an org.
-If a user does not match any rule, they will be rejected.
-        """
-        return self._rules
+    def __init__(self, allowed: bool) -> None:
+        self._allowed = allowed
 
     @builtins.property
-    def version(self) -> int:
-        return self._version
+    def allowed(self) -> bool:
+        return self._allowed
 
 
-authorization_OrgAssignmentRulesResponse.__name__ = "OrgAssignmentRulesResponse"
-authorization_OrgAssignmentRulesResponse.__qualname__ = "OrgAssignmentRulesResponse"
-authorization_OrgAssignmentRulesResponse.__module__ = "scout_service_api.authorization"
-
-
-class authorization_RegexClaimCondition(ConjureBeanType):
-    """
-    Returns true if the claim's value matches the given regex
-    """
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'claim': ConjureFieldDefinition('claim', str),
-            'regex': ConjureFieldDefinition('regex', str)
-        }
-
-    __slots__: List[str] = ['_claim', '_regex']
-
-    def __init__(self, claim: str, regex: str) -> None:
-        self._claim = claim
-        self._regex = regex
-
-    @builtins.property
-    def claim(self) -> str:
-        return self._claim
-
-    @builtins.property
-    def regex(self) -> str:
-        return self._regex
-
-
-authorization_RegexClaimCondition.__name__ = "RegexClaimCondition"
-authorization_RegexClaimCondition.__qualname__ = "RegexClaimCondition"
-authorization_RegexClaimCondition.__module__ = "scout_service_api.authorization"
+authorization_IsEmailAllowedResponse.__name__ = "IsEmailAllowedResponse"
+authorization_IsEmailAllowedResponse.__qualname__ = "IsEmailAllowedResponse"
+authorization_IsEmailAllowedResponse.__module__ = "scout_service_api.authorization"
 
 
 class authorization_RegistrationRequest(ConjureBeanType):
@@ -2627,155 +2140,6 @@ class authorization_RegistrationRequest(ConjureBeanType):
 authorization_RegistrationRequest.__name__ = "RegistrationRequest"
 authorization_RegistrationRequest.__qualname__ = "RegistrationRequest"
 authorization_RegistrationRequest.__module__ = "scout_service_api.authorization"
-
-
-class authorization_RemoveUserFilterForOneOrgRequest(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'org_rid': ConjureFieldDefinition('orgRid', authorization_OrgRid),
-            'last_version': ConjureFieldDefinition('lastVersion', int)
-        }
-
-    __slots__: List[str] = ['_org_rid', '_last_version']
-
-    def __init__(self, last_version: int, org_rid: str) -> None:
-        self._org_rid = org_rid
-        self._last_version = last_version
-
-    @builtins.property
-    def org_rid(self) -> str:
-        return self._org_rid
-
-    @builtins.property
-    def last_version(self) -> int:
-        return self._last_version
-
-
-authorization_RemoveUserFilterForOneOrgRequest.__name__ = "RemoveUserFilterForOneOrgRequest"
-authorization_RemoveUserFilterForOneOrgRequest.__qualname__ = "RemoveUserFilterForOneOrgRequest"
-authorization_RemoveUserFilterForOneOrgRequest.__module__ = "scout_service_api.authorization"
-
-
-class authorization_SetOrgAssignmentRulesRequest(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'rules': ConjureFieldDefinition('rules', List[authorization_OrgAssignmentRule]),
-            'last_version': ConjureFieldDefinition('lastVersion', int)
-        }
-
-    __slots__: List[str] = ['_rules', '_last_version']
-
-    def __init__(self, last_version: int, rules: List["authorization_OrgAssignmentRule"]) -> None:
-        self._rules = rules
-        self._last_version = last_version
-
-    @builtins.property
-    def rules(self) -> List["authorization_OrgAssignmentRule"]:
-        return self._rules
-
-    @builtins.property
-    def last_version(self) -> int:
-        return self._last_version
-
-
-authorization_SetOrgAssignmentRulesRequest.__name__ = "SetOrgAssignmentRulesRequest"
-authorization_SetOrgAssignmentRulesRequest.__qualname__ = "SetOrgAssignmentRulesRequest"
-authorization_SetOrgAssignmentRulesRequest.__module__ = "scout_service_api.authorization"
-
-
-class authorization_SetUserFilterForOneOrgRequest(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'org_rid': ConjureFieldDefinition('orgRid', authorization_OrgRid),
-            'user_filter': ConjureFieldDefinition('userFilter', authorization_UserFilter),
-            'last_version': ConjureFieldDefinition('lastVersion', int)
-        }
-
-    __slots__: List[str] = ['_org_rid', '_user_filter', '_last_version']
-
-    def __init__(self, last_version: int, org_rid: str, user_filter: "authorization_UserFilter") -> None:
-        self._org_rid = org_rid
-        self._user_filter = user_filter
-        self._last_version = last_version
-
-    @builtins.property
-    def org_rid(self) -> str:
-        return self._org_rid
-
-    @builtins.property
-    def user_filter(self) -> "authorization_UserFilter":
-        return self._user_filter
-
-    @builtins.property
-    def last_version(self) -> int:
-        return self._last_version
-
-
-authorization_SetUserFilterForOneOrgRequest.__name__ = "SetUserFilterForOneOrgRequest"
-authorization_SetUserFilterForOneOrgRequest.__qualname__ = "SetUserFilterForOneOrgRequest"
-authorization_SetUserFilterForOneOrgRequest.__module__ = "scout_service_api.authorization"
-
-
-class authorization_UserFilter(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'condition': ConjureFieldDefinition('condition', authorization_Condition)
-        }
-
-    __slots__: List[str] = ['_condition']
-
-    def __init__(self, condition: "authorization_Condition") -> None:
-        self._condition = condition
-
-    @builtins.property
-    def condition(self) -> "authorization_Condition":
-        return self._condition
-
-
-authorization_UserFilter.__name__ = "UserFilter"
-authorization_UserFilter.__qualname__ = "UserFilter"
-authorization_UserFilter.__module__ = "scout_service_api.authorization"
-
-
-class authorization_UserFiltersResponse(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'user_filters_by_org': ConjureFieldDefinition('userFiltersByOrg', Dict[authorization_OrgRid, authorization_UserFilter]),
-            'version': ConjureFieldDefinition('version', int)
-        }
-
-    __slots__: List[str] = ['_user_filters_by_org', '_version']
-
-    def __init__(self, user_filters_by_org: Dict[str, "authorization_UserFilter"], version: int) -> None:
-        self._user_filters_by_org = user_filters_by_org
-        self._version = version
-
-    @builtins.property
-    def user_filters_by_org(self) -> Dict[str, "authorization_UserFilter"]:
-        """
-        If a user is assigned to an org, they must pass the filter or else be rejected.
-If there is no filter for an org, all users assigned to that org are accepted.
-        """
-        return self._user_filters_by_org
-
-    @builtins.property
-    def version(self) -> int:
-        return self._version
-
-
-authorization_UserFiltersResponse.__name__ = "UserFiltersResponse"
-authorization_UserFiltersResponse.__qualname__ = "UserFiltersResponse"
-authorization_UserFiltersResponse.__module__ = "scout_service_api.authorization"
 
 
 class comments_api_Comment(ConjureBeanType):
@@ -5085,18 +4449,20 @@ class event_CreateEvent(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'associations': ConjureFieldDefinition('associations', List[str]),
-            'dataset_rid': ConjureFieldDefinition('datasetRid', str),
+            'dataset_rid': ConjureFieldDefinition('datasetRid', OptionalTypeWrapper[str]),
+            'authorization_rid': ConjureFieldDefinition('authorizationRid', OptionalTypeWrapper[str]),
             'timestamp': ConjureFieldDefinition('timestamp', api_Timestamp),
             'duration': ConjureFieldDefinition('duration', scout_run_api_Duration),
             'name': ConjureFieldDefinition('name', str),
-            'type': ConjureFieldDefinition('type', OptionalTypeWrapper[event_EventType])
+            'type': ConjureFieldDefinition('type', event_EventType)
         }
 
-    __slots__: List[str] = ['_associations', '_dataset_rid', '_timestamp', '_duration', '_name', '_type']
+    __slots__: List[str] = ['_associations', '_dataset_rid', '_authorization_rid', '_timestamp', '_duration', '_name', '_type']
 
-    def __init__(self, associations: List[str], dataset_rid: str, duration: "scout_run_api_Duration", name: str, timestamp: "api_Timestamp", type: Optional["event_EventType"] = None) -> None:
+    def __init__(self, associations: List[str], duration: "scout_run_api_Duration", name: str, timestamp: "api_Timestamp", type: "event_EventType", authorization_rid: Optional[str] = None, dataset_rid: Optional[str] = None) -> None:
         self._associations = associations
         self._dataset_rid = dataset_rid
+        self._authorization_rid = authorization_rid
         self._timestamp = timestamp
         self._duration = duration
         self._name = name
@@ -5107,8 +4473,12 @@ class event_CreateEvent(ConjureBeanType):
         return self._associations
 
     @builtins.property
-    def dataset_rid(self) -> str:
+    def dataset_rid(self) -> Optional[str]:
         return self._dataset_rid
+
+    @builtins.property
+    def authorization_rid(self) -> Optional[str]:
+        return self._authorization_rid
 
     @builtins.property
     def timestamp(self) -> "api_Timestamp":
@@ -5123,7 +4493,7 @@ class event_CreateEvent(ConjureBeanType):
         return self._name
 
     @builtins.property
-    def type(self) -> Optional["event_EventType"]:
+    def type(self) -> "event_EventType":
         return self._type
 
 
@@ -5141,18 +4511,20 @@ class event_Event(ConjureBeanType):
             'timestamp': ConjureFieldDefinition('timestamp', api_Timestamp),
             'duration': ConjureFieldDefinition('duration', scout_run_api_Duration),
             'name': ConjureFieldDefinition('name', str),
-            'dataset_rid': ConjureFieldDefinition('datasetRid', str),
+            'dataset_rid': ConjureFieldDefinition('datasetRid', OptionalTypeWrapper[str]),
+            'authorization_rid': ConjureFieldDefinition('authorizationRid', OptionalTypeWrapper[str]),
             'type': ConjureFieldDefinition('type', event_EventType)
         }
 
-    __slots__: List[str] = ['_uuid', '_timestamp', '_duration', '_name', '_dataset_rid', '_type']
+    __slots__: List[str] = ['_uuid', '_timestamp', '_duration', '_name', '_dataset_rid', '_authorization_rid', '_type']
 
-    def __init__(self, dataset_rid: str, duration: "scout_run_api_Duration", name: str, timestamp: "api_Timestamp", type: "event_EventType", uuid: str) -> None:
+    def __init__(self, duration: "scout_run_api_Duration", name: str, timestamp: "api_Timestamp", type: "event_EventType", uuid: str, authorization_rid: Optional[str] = None, dataset_rid: Optional[str] = None) -> None:
         self._uuid = uuid
         self._timestamp = timestamp
         self._duration = duration
         self._name = name
         self._dataset_rid = dataset_rid
+        self._authorization_rid = authorization_rid
         self._type = type
 
     @builtins.property
@@ -5172,8 +4544,16 @@ class event_Event(ConjureBeanType):
         return self._name
 
     @builtins.property
-    def dataset_rid(self) -> str:
+    def dataset_rid(self) -> Optional[str]:
         return self._dataset_rid
+
+    @builtins.property
+    def authorization_rid(self) -> Optional[str]:
+        """
+        A user authorized for this rid can access the event. 
+Can be a workbook rid, asset rid, etc.
+        """
+        return self._authorization_rid
 
     @builtins.property
     def type(self) -> "event_EventType":
@@ -10281,12 +9661,13 @@ class scout_asset_api_Asset(ConjureBeanType):
             'created_by': ConjureFieldDefinition('createdBy', OptionalTypeWrapper[str]),
             'created_at': ConjureFieldDefinition('createdAt', str),
             'updated_at': ConjureFieldDefinition('updatedAt', str),
-            'attachments': ConjureFieldDefinition('attachments', List[scout_rids_api_AttachmentRid])
+            'attachments': ConjureFieldDefinition('attachments', List[scout_rids_api_AttachmentRid]),
+            'type': ConjureFieldDefinition('type', OptionalTypeWrapper[scout_rids_api_TypeRid])
         }
 
-    __slots__: List[str] = ['_rid', '_title', '_description', '_properties', '_labels', '_links', '_data_scopes', '_created_by', '_created_at', '_updated_at', '_attachments']
+    __slots__: List[str] = ['_rid', '_title', '_description', '_properties', '_labels', '_links', '_data_scopes', '_created_by', '_created_at', '_updated_at', '_attachments', '_type']
 
-    def __init__(self, attachments: List[str], created_at: str, data_scopes: List["scout_asset_api_AssetDataScope"], labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], rid: str, title: str, updated_at: str, created_by: Optional[str] = None, description: Optional[str] = None) -> None:
+    def __init__(self, attachments: List[str], created_at: str, data_scopes: List["scout_asset_api_AssetDataScope"], labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], rid: str, title: str, updated_at: str, created_by: Optional[str] = None, description: Optional[str] = None, type: Optional[str] = None) -> None:
         self._rid = rid
         self._title = title
         self._description = description
@@ -10298,6 +9679,7 @@ class scout_asset_api_Asset(ConjureBeanType):
         self._created_at = created_at
         self._updated_at = updated_at
         self._attachments = attachments
+        self._type = type
 
     @builtins.property
     def rid(self) -> str:
@@ -10353,6 +9735,10 @@ To associate links with a range of time, create a time range on the asset with l
     @builtins.property
     def attachments(self) -> List[str]:
         return self._attachments
+
+    @builtins.property
+    def type(self) -> Optional[str]:
+        return self._type
 
 
 scout_asset_api_Asset.__name__ = "Asset"
@@ -10520,12 +9906,13 @@ class scout_asset_api_CreateAssetRequest(ConjureBeanType):
             'labels': ConjureFieldDefinition('labels', List[scout_run_api_Label]),
             'links': ConjureFieldDefinition('links', List[scout_run_api_Link]),
             'data_scopes': ConjureFieldDefinition('dataScopes', List[scout_asset_api_CreateAssetDataScope]),
-            'attachments': ConjureFieldDefinition('attachments', List[scout_rids_api_AttachmentRid])
+            'attachments': ConjureFieldDefinition('attachments', List[scout_rids_api_AttachmentRid]),
+            'type': ConjureFieldDefinition('type', OptionalTypeWrapper[scout_rids_api_TypeRid])
         }
 
-    __slots__: List[str] = ['_title', '_description', '_properties', '_labels', '_links', '_data_scopes', '_attachments']
+    __slots__: List[str] = ['_title', '_description', '_properties', '_labels', '_links', '_data_scopes', '_attachments', '_type']
 
-    def __init__(self, attachments: List[str], data_scopes: List["scout_asset_api_CreateAssetDataScope"], labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], title: str, description: Optional[str] = None) -> None:
+    def __init__(self, attachments: List[str], data_scopes: List["scout_asset_api_CreateAssetDataScope"], labels: List[str], links: List["scout_run_api_Link"], properties: Dict[str, str], title: str, description: Optional[str] = None, type: Optional[str] = None) -> None:
         self._title = title
         self._description = description
         self._properties = properties
@@ -10533,6 +9920,7 @@ class scout_asset_api_CreateAssetRequest(ConjureBeanType):
         self._links = links
         self._data_scopes = data_scopes
         self._attachments = attachments
+        self._type = type
 
     @builtins.property
     def title(self) -> str:
@@ -10565,10 +9953,97 @@ class scout_asset_api_CreateAssetRequest(ConjureBeanType):
     def attachments(self) -> List[str]:
         return self._attachments
 
+    @builtins.property
+    def type(self) -> Optional[str]:
+        return self._type
+
 
 scout_asset_api_CreateAssetRequest.__name__ = "CreateAssetRequest"
 scout_asset_api_CreateAssetRequest.__qualname__ = "CreateAssetRequest"
 scout_asset_api_CreateAssetRequest.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_CreateTypeRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'name': ConjureFieldDefinition('name', str),
+            'property_configs': ConjureFieldDefinition('propertyConfigs', Dict[scout_run_api_PropertyName, scout_asset_api_PropertyConfig]),
+            'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str])
+        }
+
+    __slots__: List[str] = ['_name', '_property_configs', '_description']
+
+    def __init__(self, name: str, property_configs: Dict[str, "scout_asset_api_PropertyConfig"], description: Optional[str] = None) -> None:
+        self._name = name
+        self._property_configs = property_configs
+        self._description = description
+
+    @builtins.property
+    def name(self) -> str:
+        return self._name
+
+    @builtins.property
+    def property_configs(self) -> Dict[str, "scout_asset_api_PropertyConfig"]:
+        return self._property_configs
+
+    @builtins.property
+    def description(self) -> Optional[str]:
+        return self._description
+
+
+scout_asset_api_CreateTypeRequest.__name__ = "CreateTypeRequest"
+scout_asset_api_CreateTypeRequest.__qualname__ = "CreateTypeRequest"
+scout_asset_api_CreateTypeRequest.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_PropertyConfig(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'is_required': ConjureFieldDefinition('isRequired', bool),
+            'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str])
+        }
+
+    __slots__: List[str] = ['_is_required', '_description']
+
+    def __init__(self, is_required: bool, description: Optional[str] = None) -> None:
+        self._is_required = is_required
+        self._description = description
+
+    @builtins.property
+    def is_required(self) -> bool:
+        return self._is_required
+
+    @builtins.property
+    def description(self) -> Optional[str]:
+        return self._description
+
+
+scout_asset_api_PropertyConfig.__name__ = "PropertyConfig"
+scout_asset_api_PropertyConfig.__qualname__ = "PropertyConfig"
+scout_asset_api_PropertyConfig.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_RemoveType(ConjureBeanType):
+    """
+    The request to remove the type from the asset.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+        }
+
+    __slots__: List[str] = []
+
+
+
+scout_asset_api_RemoveType.__name__ = "RemoveType"
+scout_asset_api_RemoveType.__qualname__ = "RemoveType"
+scout_asset_api_RemoveType.__module__ = "scout_service_api.scout_asset_api"
 
 
 class scout_asset_api_SearchAssetChannelsRequest(ConjureBeanType):
@@ -10608,7 +10083,7 @@ class scout_asset_api_SearchAssetChannelsRequest(ConjureBeanType):
     @builtins.property
     def page_size(self) -> Optional[int]:
         """
-        Defaults to 1000. Will throw if larger than 10000.
+        Defaults to 1000. Will throw if larger than 10000. Default pageSize is 100.
         """
         return self._page_size
 
@@ -10651,6 +10126,7 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
     _search_text: Optional[str] = None
     _label: Optional[str] = None
     _property: Optional["scout_run_api_Property"] = None
+    _type_rid: Optional[str] = None
     _and_: Optional[List["scout_asset_api_SearchAssetsQuery"]] = None
     _or_: Optional[List["scout_asset_api_SearchAssetsQuery"]] = None
 
@@ -10660,6 +10136,7 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
             'search_text': ConjureFieldDefinition('searchText', str),
             'label': ConjureFieldDefinition('label', scout_run_api_Label),
             'property': ConjureFieldDefinition('property', scout_run_api_Property),
+            'type_rid': ConjureFieldDefinition('typeRid', scout_rids_api_TypeRid),
             'and_': ConjureFieldDefinition('and', List[scout_asset_api_SearchAssetsQuery]),
             'or_': ConjureFieldDefinition('or', List[scout_asset_api_SearchAssetsQuery])
         }
@@ -10669,12 +10146,13 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
             search_text: Optional[str] = None,
             label: Optional[str] = None,
             property: Optional["scout_run_api_Property"] = None,
+            type_rid: Optional[str] = None,
             and_: Optional[List["scout_asset_api_SearchAssetsQuery"]] = None,
             or_: Optional[List["scout_asset_api_SearchAssetsQuery"]] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (search_text is not None) + (label is not None) + (property is not None) + (and_ is not None) + (or_ is not None) != 1:
+            if (search_text is not None) + (label is not None) + (property is not None) + (type_rid is not None) + (and_ is not None) + (or_ is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if search_text is not None:
@@ -10686,6 +10164,9 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
             if property is not None:
                 self._property = property
                 self._type = 'property'
+            if type_rid is not None:
+                self._type_rid = type_rid
+                self._type = 'typeRid'
             if and_ is not None:
                 self._and_ = and_
                 self._type = 'and'
@@ -10708,6 +10189,11 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._property = property
             self._type = 'property'
+        elif type_of_union == 'typeRid':
+            if type_rid is None:
+                raise ValueError('a union value must not be None')
+            self._type_rid = type_rid
+            self._type = 'typeRid'
         elif type_of_union == 'and':
             if and_ is None:
                 raise ValueError('a union value must not be None')
@@ -10732,6 +10218,10 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
         return self._property
 
     @builtins.property
+    def type_rid(self) -> Optional[str]:
+        return self._type_rid
+
+    @builtins.property
     def and_(self) -> Optional[List["scout_asset_api_SearchAssetsQuery"]]:
         return self._and_
 
@@ -10748,6 +10238,8 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
             return visitor._label(self.label)
         if self._type == 'property' and self.property is not None:
             return visitor._property(self.property)
+        if self._type == 'typeRid' and self.type_rid is not None:
+            return visitor._type_rid(self.type_rid)
         if self._type == 'and' and self.and_ is not None:
             return visitor._and(self.and_)
         if self._type == 'or' and self.or_ is not None:
@@ -10771,6 +10263,10 @@ class scout_asset_api_SearchAssetsQueryVisitor:
 
     @abstractmethod
     def _property(self, property: "scout_run_api_Property") -> Any:
+        pass
+
+    @abstractmethod
+    def _type_rid(self, type_rid: str) -> Any:
         pass
 
     @abstractmethod
@@ -10815,7 +10311,7 @@ class scout_asset_api_SearchAssetsRequest(ConjureBeanType):
     @builtins.property
     def page_size(self) -> Optional[int]:
         """
-        Page sizes greater than 10_000 will be rejected
+        Page sizes greater than 10_000 will be rejected. Default pageSize is 100.
         """
         return self._page_size
 
@@ -10867,6 +10363,207 @@ class scout_asset_api_SearchAssetsResponse(ConjureBeanType):
 scout_asset_api_SearchAssetsResponse.__name__ = "SearchAssetsResponse"
 scout_asset_api_SearchAssetsResponse.__qualname__ = "SearchAssetsResponse"
 scout_asset_api_SearchAssetsResponse.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_SearchTypesQuery(ConjureUnionType):
+    _search_text: Optional[str] = None
+    _property: Optional[str] = None
+    _and_: Optional[List["scout_asset_api_SearchTypesQuery"]] = None
+    _or_: Optional[List["scout_asset_api_SearchTypesQuery"]] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'search_text': ConjureFieldDefinition('searchText', str),
+            'property': ConjureFieldDefinition('property', scout_run_api_PropertyName),
+            'and_': ConjureFieldDefinition('and', List[scout_asset_api_SearchTypesQuery]),
+            'or_': ConjureFieldDefinition('or', List[scout_asset_api_SearchTypesQuery])
+        }
+
+    def __init__(
+            self,
+            search_text: Optional[str] = None,
+            property: Optional[str] = None,
+            and_: Optional[List["scout_asset_api_SearchTypesQuery"]] = None,
+            or_: Optional[List["scout_asset_api_SearchTypesQuery"]] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (search_text is not None) + (property is not None) + (and_ is not None) + (or_ is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if search_text is not None:
+                self._search_text = search_text
+                self._type = 'searchText'
+            if property is not None:
+                self._property = property
+                self._type = 'property'
+            if and_ is not None:
+                self._and_ = and_
+                self._type = 'and'
+            if or_ is not None:
+                self._or_ = or_
+                self._type = 'or'
+
+        elif type_of_union == 'searchText':
+            if search_text is None:
+                raise ValueError('a union value must not be None')
+            self._search_text = search_text
+            self._type = 'searchText'
+        elif type_of_union == 'property':
+            if property is None:
+                raise ValueError('a union value must not be None')
+            self._property = property
+            self._type = 'property'
+        elif type_of_union == 'and':
+            if and_ is None:
+                raise ValueError('a union value must not be None')
+            self._and_ = and_
+            self._type = 'and'
+        elif type_of_union == 'or':
+            if or_ is None:
+                raise ValueError('a union value must not be None')
+            self._or_ = or_
+            self._type = 'or'
+
+    @builtins.property
+    def search_text(self) -> Optional[str]:
+        return self._search_text
+
+    @builtins.property
+    def property(self) -> Optional[str]:
+        return self._property
+
+    @builtins.property
+    def and_(self) -> Optional[List["scout_asset_api_SearchTypesQuery"]]:
+        return self._and_
+
+    @builtins.property
+    def or_(self) -> Optional[List["scout_asset_api_SearchTypesQuery"]]:
+        return self._or_
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_asset_api_SearchTypesQueryVisitor):
+            raise ValueError('{} is not an instance of scout_asset_api_SearchTypesQueryVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'searchText' and self.search_text is not None:
+            return visitor._search_text(self.search_text)
+        if self._type == 'property' and self.property is not None:
+            return visitor._property(self.property)
+        if self._type == 'and' and self.and_ is not None:
+            return visitor._and(self.and_)
+        if self._type == 'or' and self.or_ is not None:
+            return visitor._or(self.or_)
+
+
+scout_asset_api_SearchTypesQuery.__name__ = "SearchTypesQuery"
+scout_asset_api_SearchTypesQuery.__qualname__ = "SearchTypesQuery"
+scout_asset_api_SearchTypesQuery.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_SearchTypesQueryVisitor:
+
+    @abstractmethod
+    def _search_text(self, search_text: str) -> Any:
+        pass
+
+    @abstractmethod
+    def _property(self, property: str) -> Any:
+        pass
+
+    @abstractmethod
+    def _and(self, and_: List["scout_asset_api_SearchTypesQuery"]) -> Any:
+        pass
+
+    @abstractmethod
+    def _or(self, or_: List["scout_asset_api_SearchTypesQuery"]) -> Any:
+        pass
+
+
+scout_asset_api_SearchTypesQueryVisitor.__name__ = "SearchTypesQueryVisitor"
+scout_asset_api_SearchTypesQueryVisitor.__qualname__ = "SearchTypesQueryVisitor"
+scout_asset_api_SearchTypesQueryVisitor.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_SearchTypesRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'sort': ConjureFieldDefinition('sort', scout_asset_api_SortOptions),
+            'page_size': ConjureFieldDefinition('pageSize', OptionalTypeWrapper[int]),
+            'next_page_token': ConjureFieldDefinition('nextPageToken', OptionalTypeWrapper[scout_api_Token]),
+            'query': ConjureFieldDefinition('query', scout_asset_api_SearchTypesQuery),
+            'archived_statuses': ConjureFieldDefinition('archivedStatuses', OptionalTypeWrapper[List[scout_rids_api_ArchivedStatus]])
+        }
+
+    __slots__: List[str] = ['_sort', '_page_size', '_next_page_token', '_query', '_archived_statuses']
+
+    def __init__(self, query: "scout_asset_api_SearchTypesQuery", sort: "scout_asset_api_SortOptions", archived_statuses: Optional[List["scout_rids_api_ArchivedStatus"]] = None, next_page_token: Optional[str] = None, page_size: Optional[int] = None) -> None:
+        self._sort = sort
+        self._page_size = page_size
+        self._next_page_token = next_page_token
+        self._query = query
+        self._archived_statuses = archived_statuses
+
+    @builtins.property
+    def sort(self) -> "scout_asset_api_SortOptions":
+        return self._sort
+
+    @builtins.property
+    def page_size(self) -> Optional[int]:
+        """
+        Page sizes greater than 10_000 will be rejected. Default pageSize is 100.
+        """
+        return self._page_size
+
+    @builtins.property
+    def next_page_token(self) -> Optional[str]:
+        return self._next_page_token
+
+    @builtins.property
+    def query(self) -> "scout_asset_api_SearchTypesQuery":
+        return self._query
+
+    @builtins.property
+    def archived_statuses(self) -> Optional[List["scout_rids_api_ArchivedStatus"]]:
+        """
+        Default search status is NOT_ARCHIVED if none are provided. Allows for including archived assets in search.
+        """
+        return self._archived_statuses
+
+
+scout_asset_api_SearchTypesRequest.__name__ = "SearchTypesRequest"
+scout_asset_api_SearchTypesRequest.__qualname__ = "SearchTypesRequest"
+scout_asset_api_SearchTypesRequest.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_SearchTypesResponse(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'results': ConjureFieldDefinition('results', List[scout_asset_api_Type]),
+            'next_page_token': ConjureFieldDefinition('nextPageToken', OptionalTypeWrapper[scout_api_Token])
+        }
+
+    __slots__: List[str] = ['_results', '_next_page_token']
+
+    def __init__(self, results: List["scout_asset_api_Type"], next_page_token: Optional[str] = None) -> None:
+        self._results = results
+        self._next_page_token = next_page_token
+
+    @builtins.property
+    def results(self) -> List["scout_asset_api_Type"]:
+        return self._results
+
+    @builtins.property
+    def next_page_token(self) -> Optional[str]:
+        return self._next_page_token
+
+
+scout_asset_api_SearchTypesResponse.__name__ = "SearchTypesResponse"
+scout_asset_api_SearchTypesResponse.__qualname__ = "SearchTypesResponse"
+scout_asset_api_SearchTypesResponse.__module__ = "scout_service_api.scout_asset_api"
 
 
 class scout_asset_api_SeriesDataType(ConjureEnumType):
@@ -10932,6 +10629,53 @@ scout_asset_api_SortOptions.__qualname__ = "SortOptions"
 scout_asset_api_SortOptions.__module__ = "scout_service_api.scout_asset_api"
 
 
+class scout_asset_api_Type(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'rid': ConjureFieldDefinition('rid', scout_rids_api_TypeRid),
+            'name': ConjureFieldDefinition('name', str),
+            'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
+            'property_configs': ConjureFieldDefinition('propertyConfigs', Dict[scout_run_api_PropertyName, scout_asset_api_PropertyConfig]),
+            'created_at': ConjureFieldDefinition('createdAt', str)
+        }
+
+    __slots__: List[str] = ['_rid', '_name', '_description', '_property_configs', '_created_at']
+
+    def __init__(self, created_at: str, name: str, property_configs: Dict[str, "scout_asset_api_PropertyConfig"], rid: str, description: Optional[str] = None) -> None:
+        self._rid = rid
+        self._name = name
+        self._description = description
+        self._property_configs = property_configs
+        self._created_at = created_at
+
+    @builtins.property
+    def rid(self) -> str:
+        return self._rid
+
+    @builtins.property
+    def name(self) -> str:
+        return self._name
+
+    @builtins.property
+    def description(self) -> Optional[str]:
+        return self._description
+
+    @builtins.property
+    def property_configs(self) -> Dict[str, "scout_asset_api_PropertyConfig"]:
+        return self._property_configs
+
+    @builtins.property
+    def created_at(self) -> str:
+        return self._created_at
+
+
+scout_asset_api_Type.__name__ = "Type"
+scout_asset_api_Type.__qualname__ = "Type"
+scout_asset_api_Type.__module__ = "scout_service_api.scout_asset_api"
+
+
 class scout_asset_api_Unit(ConjureBeanType):
 
     @builtins.classmethod
@@ -10971,18 +10715,20 @@ class scout_asset_api_UpdateAssetRequest(ConjureBeanType):
             'properties': ConjureFieldDefinition('properties', OptionalTypeWrapper[Dict[scout_run_api_PropertyName, scout_run_api_PropertyValue]]),
             'labels': ConjureFieldDefinition('labels', OptionalTypeWrapper[List[scout_run_api_Label]]),
             'links': ConjureFieldDefinition('links', OptionalTypeWrapper[List[scout_run_api_Link]]),
-            'data_scopes': ConjureFieldDefinition('dataScopes', OptionalTypeWrapper[List[scout_asset_api_CreateAssetDataScope]])
+            'data_scopes': ConjureFieldDefinition('dataScopes', OptionalTypeWrapper[List[scout_asset_api_CreateAssetDataScope]]),
+            'type': ConjureFieldDefinition('type', OptionalTypeWrapper[scout_asset_api_UpdateOrRemoveAssetType])
         }
 
-    __slots__: List[str] = ['_title', '_description', '_properties', '_labels', '_links', '_data_scopes']
+    __slots__: List[str] = ['_title', '_description', '_properties', '_labels', '_links', '_data_scopes', '_type']
 
-    def __init__(self, data_scopes: Optional[List["scout_asset_api_CreateAssetDataScope"]] = None, description: Optional[str] = None, labels: Optional[List[str]] = None, links: Optional[List["scout_run_api_Link"]] = None, properties: Optional[Dict[str, str]] = None, title: Optional[str] = None) -> None:
+    def __init__(self, data_scopes: Optional[List["scout_asset_api_CreateAssetDataScope"]] = None, description: Optional[str] = None, labels: Optional[List[str]] = None, links: Optional[List["scout_run_api_Link"]] = None, properties: Optional[Dict[str, str]] = None, title: Optional[str] = None, type: Optional["scout_asset_api_UpdateOrRemoveAssetType"] = None) -> None:
         self._title = title
         self._description = description
         self._properties = properties
         self._labels = labels
         self._links = links
         self._data_scopes = data_scopes
+        self._type = type
 
     @builtins.property
     def title(self) -> Optional[str]:
@@ -11010,6 +10756,10 @@ class scout_asset_api_UpdateAssetRequest(ConjureBeanType):
         The data scopes for the asset. This will replace all existing data scopes with the scopes specified.
         """
         return self._data_scopes
+
+    @builtins.property
+    def type(self) -> Optional["scout_asset_api_UpdateOrRemoveAssetType"]:
+        return self._type
 
 
 scout_asset_api_UpdateAssetRequest.__name__ = "UpdateAssetRequest"
@@ -11044,6 +10794,124 @@ class scout_asset_api_UpdateAttachmentsRequest(ConjureBeanType):
 scout_asset_api_UpdateAttachmentsRequest.__name__ = "UpdateAttachmentsRequest"
 scout_asset_api_UpdateAttachmentsRequest.__qualname__ = "UpdateAttachmentsRequest"
 scout_asset_api_UpdateAttachmentsRequest.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_UpdateOrRemoveAssetType(ConjureUnionType):
+    """The request to update the type of the asset. The request will replace the existing type with the type
+specified in the request if a typeRID is provided. Otherwise, the type will be removed from the asset."""
+    _type_rid: Optional[str] = None
+    _remove_type: Optional["scout_asset_api_RemoveType"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'type_rid': ConjureFieldDefinition('typeRid', scout_rids_api_TypeRid),
+            'remove_type': ConjureFieldDefinition('removeType', scout_asset_api_RemoveType)
+        }
+
+    def __init__(
+            self,
+            type_rid: Optional[str] = None,
+            remove_type: Optional["scout_asset_api_RemoveType"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (type_rid is not None) + (remove_type is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if type_rid is not None:
+                self._type_rid = type_rid
+                self._type = 'typeRid'
+            if remove_type is not None:
+                self._remove_type = remove_type
+                self._type = 'removeType'
+
+        elif type_of_union == 'typeRid':
+            if type_rid is None:
+                raise ValueError('a union value must not be None')
+            self._type_rid = type_rid
+            self._type = 'typeRid'
+        elif type_of_union == 'removeType':
+            if remove_type is None:
+                raise ValueError('a union value must not be None')
+            self._remove_type = remove_type
+            self._type = 'removeType'
+
+    @builtins.property
+    def type_rid(self) -> Optional[str]:
+        return self._type_rid
+
+    @builtins.property
+    def remove_type(self) -> Optional["scout_asset_api_RemoveType"]:
+        return self._remove_type
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_asset_api_UpdateOrRemoveAssetTypeVisitor):
+            raise ValueError('{} is not an instance of scout_asset_api_UpdateOrRemoveAssetTypeVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'typeRid' and self.type_rid is not None:
+            return visitor._type_rid(self.type_rid)
+        if self._type == 'removeType' and self.remove_type is not None:
+            return visitor._remove_type(self.remove_type)
+
+
+scout_asset_api_UpdateOrRemoveAssetType.__name__ = "UpdateOrRemoveAssetType"
+scout_asset_api_UpdateOrRemoveAssetType.__qualname__ = "UpdateOrRemoveAssetType"
+scout_asset_api_UpdateOrRemoveAssetType.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_UpdateOrRemoveAssetTypeVisitor:
+
+    @abstractmethod
+    def _type_rid(self, type_rid: str) -> Any:
+        pass
+
+    @abstractmethod
+    def _remove_type(self, remove_type: "scout_asset_api_RemoveType") -> Any:
+        pass
+
+
+scout_asset_api_UpdateOrRemoveAssetTypeVisitor.__name__ = "UpdateOrRemoveAssetTypeVisitor"
+scout_asset_api_UpdateOrRemoveAssetTypeVisitor.__qualname__ = "UpdateOrRemoveAssetTypeVisitor"
+scout_asset_api_UpdateOrRemoveAssetTypeVisitor.__module__ = "scout_service_api.scout_asset_api"
+
+
+class scout_asset_api_UpdateTypeRequest(ConjureBeanType):
+    """
+    The request to update a type. The request will replace all existing properties with the properties
+specified in the request.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'name': ConjureFieldDefinition('name', OptionalTypeWrapper[str]),
+            'property_configs': ConjureFieldDefinition('propertyConfigs', OptionalTypeWrapper[Dict[scout_run_api_PropertyName, scout_asset_api_PropertyConfig]]),
+            'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str])
+        }
+
+    __slots__: List[str] = ['_name', '_property_configs', '_description']
+
+    def __init__(self, description: Optional[str] = None, name: Optional[str] = None, property_configs: Optional[Dict[str, "scout_asset_api_PropertyConfig"]] = None) -> None:
+        self._name = name
+        self._property_configs = property_configs
+        self._description = description
+
+    @builtins.property
+    def name(self) -> Optional[str]:
+        return self._name
+
+    @builtins.property
+    def property_configs(self) -> Optional[Dict[str, "scout_asset_api_PropertyConfig"]]:
+        return self._property_configs
+
+    @builtins.property
+    def description(self) -> Optional[str]:
+        return self._description
+
+
+scout_asset_api_UpdateTypeRequest.__name__ = "UpdateTypeRequest"
+scout_asset_api_UpdateTypeRequest.__qualname__ = "UpdateTypeRequest"
+scout_asset_api_UpdateTypeRequest.__module__ = "scout_service_api.scout_asset_api"
 
 
 class scout_assets_AssetService(Service):
@@ -11262,6 +11130,35 @@ Throws if the asset already has data scopes with data scope names matching those
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), scout_asset_api_SearchAssetsResponse, self._return_none_for_unknown_union_types)
 
+    def search_types(self, auth_header: str, search_types_request: "scout_asset_api_SearchTypesRequest") -> "scout_asset_api_SearchTypesResponse":
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(search_types_request)
+
+        _path = '/scout/v1/search-types'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_asset_api_SearchTypesResponse, self._return_none_for_unknown_union_types)
+
     def update_asset_attachments(self, auth_header: str, request: "scout_asset_api_UpdateAttachmentsRequest", rid: str) -> None:
         """
         Update the attachments associated with an asset.
@@ -11283,6 +11180,190 @@ Throws if the asset already has data scopes with data scope names matching those
         _json: Any = ConjureEncoder().default(request)
 
         _path = '/scout/v1/asset/{rid}/attachments'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        return
+
+    def create_type(self, auth_header: str, request: "scout_asset_api_CreateTypeRequest") -> "scout_asset_api_Type":
+        """
+        Creates a new type.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/scout/v1/type'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_asset_api_Type, self._return_none_for_unknown_union_types)
+
+    def update_type(self, auth_header: str, request: "scout_asset_api_UpdateTypeRequest", type_rid: str) -> "scout_asset_api_Type":
+        """
+        Updates a type. Will throw unless all assets that reference the type pass the updated type check.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'typeRid': type_rid,
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/scout/v1/type/{typeRid}'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'PUT',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_asset_api_Type, self._return_none_for_unknown_union_types)
+
+    def get_type(self, auth_header: str, rid: str) -> "scout_asset_api_Type":
+        """
+        Retrieves a type with the specified type RID.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'rid': rid,
+        }
+
+        _json: Any = None
+
+        _path = '/scout/v1/type/rid/{rid}'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'GET',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_asset_api_Type, self._return_none_for_unknown_union_types)
+
+    def delete_type(self, auth_header: str, rid: str) -> None:
+        """
+        Deletes a type. The type must not be referenced by any assets.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'rid': rid,
+        }
+
+        _json: Any = None
+
+        _path = '/scout/v1/type/{rid}'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'DELETE',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        return
+
+    def archive_type(self, auth_header: str, rid: str) -> None:
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'rid': rid,
+        }
+
+        _json: Any = None
+
+        _path = '/scout/v1/type/archive/{rid}'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        return
+
+    def unarchive_type(self, auth_header: str, rid: str) -> None:
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'rid': rid,
+        }
+
+        _json: Any = None
+
+        _path = '/scout/v1/type/unarchive/{rid}'
         _path = _path.format(**_path_params)
 
         _response: Response = self._request(
@@ -12316,12 +12397,12 @@ class scout_catalog_CreateDataset(ConjureBeanType):
             'labels': ConjureFieldDefinition('labels', List[datasource_Label]),
             'properties': ConjureFieldDefinition('properties', Dict[datasource_PropertyName, datasource_PropertyValue]),
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
-            'granularity': ConjureFieldDefinition('granularity', OptionalTypeWrapper[api_TimeUnit])
+            'granularity': ConjureFieldDefinition('granularity', OptionalTypeWrapper[api_Granularity])
         }
 
     __slots__: List[str] = ['_name', '_handle', '_metadata', '_origin_metadata', '_labels', '_properties', '_description', '_granularity']
 
-    def __init__(self, labels: List[str], metadata: Dict[str, str], name: str, origin_metadata: "scout_catalog_DatasetOriginMetadata", properties: Dict[str, str], description: Optional[str] = None, granularity: Optional["api_TimeUnit"] = None, handle: Optional["scout_catalog_Handle"] = None) -> None:
+    def __init__(self, labels: List[str], metadata: Dict[str, str], name: str, origin_metadata: "scout_catalog_DatasetOriginMetadata", properties: Dict[str, str], description: Optional[str] = None, granularity: Optional["api_Granularity"] = None, handle: Optional["scout_catalog_Handle"] = None) -> None:
         self._name = name
         self._handle = handle
         self._metadata = metadata
@@ -12360,7 +12441,7 @@ class scout_catalog_CreateDataset(ConjureBeanType):
         return self._description
 
     @builtins.property
-    def granularity(self) -> Optional["api_TimeUnit"]:
+    def granularity(self) -> Optional["api_Granularity"]:
         """
         Granularity of dataset timestamps. Defaults to nanoseconds.
         """
@@ -12706,27 +12787,24 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
             'name': ConjureFieldDefinition('name', str),
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
             'display_name': ConjureFieldDefinition('displayName', str),
-            'metadata': ConjureFieldDefinition('metadata', Dict[str, str]),
+            'metadata': ConjureFieldDefinition('metadata', OptionalTypeWrapper[Dict[str, str]]),
             'handle': ConjureFieldDefinition('handle', OptionalTypeWrapper[scout_catalog_Handle]),
             'origin_metadata': ConjureFieldDefinition('originMetadata', OptionalTypeWrapper[scout_catalog_DatasetOriginMetadata]),
             'ingest_date': ConjureFieldDefinition('ingestDate', str),
-            'ingest_status': ConjureFieldDefinition('ingestStatus', scout_catalog_IngestStatus),
+            'ingest_status': ConjureFieldDefinition('ingestStatus', OptionalTypeWrapper[scout_catalog_IngestStatus]),
             'last_ingest_status': ConjureFieldDefinition('lastIngestStatus', scout_catalog_IngestStatusV2),
             'retention_policy': ConjureFieldDefinition('retentionPolicy', scout_catalog_RetentionPolicy),
-            'run_rid': ConjureFieldDefinition('runRid', OptionalTypeWrapper[str]),
-            'run_date': ConjureFieldDefinition('runDate', OptionalTypeWrapper[str]),
-            'shorthand': ConjureFieldDefinition('shorthand', OptionalTypeWrapper[str]),
             'source': ConjureFieldDefinition('source', OptionalTypeWrapper[str]),
             'bounds': ConjureFieldDefinition('bounds', OptionalTypeWrapper[scout_catalog_Bounds]),
             'timestamp_type': ConjureFieldDefinition('timestampType', scout_catalog_WeakTimestampType),
             'labels': ConjureFieldDefinition('labels', List[datasource_Label]),
             'properties': ConjureFieldDefinition('properties', Dict[datasource_PropertyName, datasource_PropertyValue]),
-            'granularity': ConjureFieldDefinition('granularity', api_TimeUnit)
+            'granularity': ConjureFieldDefinition('granularity', api_Granularity)
         }
 
-    __slots__: List[str] = ['_rid', '_uuid', '_name', '_description', '_display_name', '_metadata', '_handle', '_origin_metadata', '_ingest_date', '_ingest_status', '_last_ingest_status', '_retention_policy', '_run_rid', '_run_date', '_shorthand', '_source', '_bounds', '_timestamp_type', '_labels', '_properties', '_granularity']
+    __slots__: List[str] = ['_rid', '_uuid', '_name', '_description', '_display_name', '_metadata', '_handle', '_origin_metadata', '_ingest_date', '_ingest_status', '_last_ingest_status', '_retention_policy', '_source', '_bounds', '_timestamp_type', '_labels', '_properties', '_granularity']
 
-    def __init__(self, display_name: str, granularity: "api_TimeUnit", ingest_date: str, ingest_status: "scout_catalog_IngestStatus", labels: List[str], last_ingest_status: "scout_catalog_IngestStatusV2", metadata: Dict[str, str], name: str, properties: Dict[str, str], retention_policy: "scout_catalog_RetentionPolicy", rid: str, timestamp_type: "scout_catalog_WeakTimestampType", uuid: str, bounds: Optional["scout_catalog_Bounds"] = None, description: Optional[str] = None, handle: Optional["scout_catalog_Handle"] = None, origin_metadata: Optional["scout_catalog_DatasetOriginMetadata"] = None, run_date: Optional[str] = None, run_rid: Optional[str] = None, shorthand: Optional[str] = None, source: Optional[str] = None) -> None:
+    def __init__(self, display_name: str, granularity: "api_Granularity", ingest_date: str, labels: List[str], last_ingest_status: "scout_catalog_IngestStatusV2", name: str, properties: Dict[str, str], retention_policy: "scout_catalog_RetentionPolicy", rid: str, timestamp_type: "scout_catalog_WeakTimestampType", uuid: str, bounds: Optional["scout_catalog_Bounds"] = None, description: Optional[str] = None, handle: Optional["scout_catalog_Handle"] = None, ingest_status: Optional["scout_catalog_IngestStatus"] = None, metadata: Optional[Dict[str, str]] = None, origin_metadata: Optional["scout_catalog_DatasetOriginMetadata"] = None, source: Optional[str] = None) -> None:
         self._rid = rid
         self._uuid = uuid
         self._name = name
@@ -12739,9 +12817,6 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
         self._ingest_status = ingest_status
         self._last_ingest_status = last_ingest_status
         self._retention_policy = retention_policy
-        self._run_rid = run_rid
-        self._run_date = run_date
-        self._shorthand = shorthand
         self._source = source
         self._bounds = bounds
         self._timestamp_type = timestamp_type
@@ -12770,7 +12845,7 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
         return self._display_name
 
     @builtins.property
-    def metadata(self) -> Dict[str, str]:
+    def metadata(self) -> Optional[Dict[str, str]]:
         return self._metadata
 
     @builtins.property
@@ -12786,7 +12861,7 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
         return self._ingest_date
 
     @builtins.property
-    def ingest_status(self) -> "scout_catalog_IngestStatus":
+    def ingest_status(self) -> Optional["scout_catalog_IngestStatus"]:
         return self._ingest_status
 
     @builtins.property
@@ -12796,18 +12871,6 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
     @builtins.property
     def retention_policy(self) -> "scout_catalog_RetentionPolicy":
         return self._retention_policy
-
-    @builtins.property
-    def run_rid(self) -> Optional[str]:
-        return self._run_rid
-
-    @builtins.property
-    def run_date(self) -> Optional[str]:
-        return self._run_date
-
-    @builtins.property
-    def shorthand(self) -> Optional[str]:
-        return self._shorthand
 
     @builtins.property
     def source(self) -> Optional[str]:
@@ -12830,7 +12893,7 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
         return self._properties
 
     @builtins.property
-    def granularity(self) -> "api_TimeUnit":
+    def granularity(self) -> "api_Granularity":
         return self._granularity
 
 
@@ -15281,6 +15344,98 @@ scout_chartdefinition_api_FrequencyPlot.__qualname__ = "FrequencyPlot"
 scout_chartdefinition_api_FrequencyPlot.__module__ = "scout_service_api.scout_chartdefinition_api"
 
 
+class scout_chartdefinition_api_GeoAdditionalVariable(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'variable_name': ConjureFieldDefinition('variableName', scout_channelvariables_api_ChannelVariableName),
+            'label': ConjureFieldDefinition('label', OptionalTypeWrapper[str]),
+            'visualization_option': ConjureFieldDefinition('visualizationOption', OptionalTypeWrapper[scout_chartdefinition_api_GeoSecondaryPlotVisualizationOption])
+        }
+
+    __slots__: List[str] = ['_variable_name', '_label', '_visualization_option']
+
+    def __init__(self, variable_name: str, label: Optional[str] = None, visualization_option: Optional["scout_chartdefinition_api_GeoSecondaryPlotVisualizationOption"] = None) -> None:
+        self._variable_name = variable_name
+        self._label = label
+        self._visualization_option = visualization_option
+
+    @builtins.property
+    def variable_name(self) -> str:
+        return self._variable_name
+
+    @builtins.property
+    def label(self) -> Optional[str]:
+        return self._label
+
+    @builtins.property
+    def visualization_option(self) -> Optional["scout_chartdefinition_api_GeoSecondaryPlotVisualizationOption"]:
+        return self._visualization_option
+
+
+scout_chartdefinition_api_GeoAdditionalVariable.__name__ = "GeoAdditionalVariable"
+scout_chartdefinition_api_GeoAdditionalVariable.__qualname__ = "GeoAdditionalVariable"
+scout_chartdefinition_api_GeoAdditionalVariable.__module__ = "scout_service_api.scout_chartdefinition_api"
+
+
+class scout_chartdefinition_api_GeoCustomFeature(ConjureUnionType):
+    """Additional static objects on the map, such as a point representing a tower"""
+    _point: Optional["scout_chartdefinition_api_GeoPoint"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'point': ConjureFieldDefinition('point', scout_chartdefinition_api_GeoPoint)
+        }
+
+    def __init__(
+            self,
+            point: Optional["scout_chartdefinition_api_GeoPoint"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (point is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if point is not None:
+                self._point = point
+                self._type = 'point'
+
+        elif type_of_union == 'point':
+            if point is None:
+                raise ValueError('a union value must not be None')
+            self._point = point
+            self._type = 'point'
+
+    @builtins.property
+    def point(self) -> Optional["scout_chartdefinition_api_GeoPoint"]:
+        return self._point
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_chartdefinition_api_GeoCustomFeatureVisitor):
+            raise ValueError('{} is not an instance of scout_chartdefinition_api_GeoCustomFeatureVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'point' and self.point is not None:
+            return visitor._point(self.point)
+
+
+scout_chartdefinition_api_GeoCustomFeature.__name__ = "GeoCustomFeature"
+scout_chartdefinition_api_GeoCustomFeature.__qualname__ = "GeoCustomFeature"
+scout_chartdefinition_api_GeoCustomFeature.__module__ = "scout_service_api.scout_chartdefinition_api"
+
+
+class scout_chartdefinition_api_GeoCustomFeatureVisitor:
+
+    @abstractmethod
+    def _point(self, point: "scout_chartdefinition_api_GeoPoint") -> Any:
+        pass
+
+
+scout_chartdefinition_api_GeoCustomFeatureVisitor.__name__ = "GeoCustomFeatureVisitor"
+scout_chartdefinition_api_GeoCustomFeatureVisitor.__qualname__ = "GeoCustomFeatureVisitor"
+scout_chartdefinition_api_GeoCustomFeatureVisitor.__module__ = "scout_service_api.scout_chartdefinition_api"
+
+
 class scout_chartdefinition_api_GeoLineStyle(ConjureEnumType):
 
     POINTS = 'POINTS'
@@ -15304,7 +15459,7 @@ class scout_chartdefinition_api_GeoPlotFromLatLong(ConjureBeanType):
         return {
             'latitude_variable_name': ConjureFieldDefinition('latitudeVariableName', scout_channelvariables_api_ChannelVariableName),
             'longitude_variable_name': ConjureFieldDefinition('longitudeVariableName', scout_channelvariables_api_ChannelVariableName),
-            'secondary_variables': ConjureFieldDefinition('secondaryVariables', OptionalTypeWrapper[List[scout_chartdefinition_api_GeoSecondaryVariable]]),
+            'secondary_variables': ConjureFieldDefinition('secondaryVariables', OptionalTypeWrapper[List[scout_chartdefinition_api_GeoAdditionalVariable]]),
             'enabled': ConjureFieldDefinition('enabled', OptionalTypeWrapper[bool]),
             'label': ConjureFieldDefinition('label', OptionalTypeWrapper[str]),
             'visualization_options': ConjureFieldDefinition('visualizationOptions', scout_chartdefinition_api_GeoPlotVisualizationOptions)
@@ -15312,7 +15467,7 @@ class scout_chartdefinition_api_GeoPlotFromLatLong(ConjureBeanType):
 
     __slots__: List[str] = ['_latitude_variable_name', '_longitude_variable_name', '_secondary_variables', '_enabled', '_label', '_visualization_options']
 
-    def __init__(self, latitude_variable_name: str, longitude_variable_name: str, visualization_options: "scout_chartdefinition_api_GeoPlotVisualizationOptions", enabled: Optional[bool] = None, label: Optional[str] = None, secondary_variables: Optional[List["scout_chartdefinition_api_GeoSecondaryVariable"]] = None) -> None:
+    def __init__(self, latitude_variable_name: str, longitude_variable_name: str, visualization_options: "scout_chartdefinition_api_GeoPlotVisualizationOptions", enabled: Optional[bool] = None, label: Optional[str] = None, secondary_variables: Optional[List["scout_chartdefinition_api_GeoAdditionalVariable"]] = None) -> None:
         self._latitude_variable_name = latitude_variable_name
         self._longitude_variable_name = longitude_variable_name
         self._secondary_variables = secondary_variables
@@ -15329,7 +15484,7 @@ class scout_chartdefinition_api_GeoPlotFromLatLong(ConjureBeanType):
         return self._longitude_variable_name
 
     @builtins.property
-    def secondary_variables(self) -> Optional[List["scout_chartdefinition_api_GeoSecondaryVariable"]]:
+    def secondary_variables(self) -> Optional[List["scout_chartdefinition_api_GeoAdditionalVariable"]]:
         """
         optional for backcompatibility
         """
@@ -15420,6 +15575,56 @@ scout_chartdefinition_api_GeoPlotVisualizationOptions.__qualname__ = "GeoPlotVis
 scout_chartdefinition_api_GeoPlotVisualizationOptions.__module__ = "scout_service_api.scout_chartdefinition_api"
 
 
+class scout_chartdefinition_api_GeoPoint(ConjureBeanType):
+    """
+    A static coordinate on the map
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'label': ConjureFieldDefinition('label', OptionalTypeWrapper[str]),
+            'icon': ConjureFieldDefinition('icon', str),
+            'latitude': ConjureFieldDefinition('latitude', float),
+            'longitude': ConjureFieldDefinition('longitude', float),
+            'variables': ConjureFieldDefinition('variables', List[scout_chartdefinition_api_GeoAdditionalVariable])
+        }
+
+    __slots__: List[str] = ['_label', '_icon', '_latitude', '_longitude', '_variables']
+
+    def __init__(self, icon: str, latitude: float, longitude: float, variables: List["scout_chartdefinition_api_GeoAdditionalVariable"], label: Optional[str] = None) -> None:
+        self._label = label
+        self._icon = icon
+        self._latitude = latitude
+        self._longitude = longitude
+        self._variables = variables
+
+    @builtins.property
+    def label(self) -> Optional[str]:
+        return self._label
+
+    @builtins.property
+    def icon(self) -> str:
+        return self._icon
+
+    @builtins.property
+    def latitude(self) -> float:
+        return self._latitude
+
+    @builtins.property
+    def longitude(self) -> float:
+        return self._longitude
+
+    @builtins.property
+    def variables(self) -> List["scout_chartdefinition_api_GeoAdditionalVariable"]:
+        return self._variables
+
+
+scout_chartdefinition_api_GeoPoint.__name__ = "GeoPoint"
+scout_chartdefinition_api_GeoPoint.__qualname__ = "GeoPoint"
+scout_chartdefinition_api_GeoPoint.__module__ = "scout_service_api.scout_chartdefinition_api"
+
+
 class scout_chartdefinition_api_GeoSecondaryPlotVisualizationOption(ConjureUnionType):
     """Specifies how values of a secondary channel should be visualized."""
     _as_colors: Optional["scout_chartdefinition_api_ValueToColorMap"] = None
@@ -15475,35 +15680,6 @@ class scout_chartdefinition_api_GeoSecondaryPlotVisualizationOptionVisitor:
 scout_chartdefinition_api_GeoSecondaryPlotVisualizationOptionVisitor.__name__ = "GeoSecondaryPlotVisualizationOptionVisitor"
 scout_chartdefinition_api_GeoSecondaryPlotVisualizationOptionVisitor.__qualname__ = "GeoSecondaryPlotVisualizationOptionVisitor"
 scout_chartdefinition_api_GeoSecondaryPlotVisualizationOptionVisitor.__module__ = "scout_service_api.scout_chartdefinition_api"
-
-
-class scout_chartdefinition_api_GeoSecondaryVariable(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'variable_name': ConjureFieldDefinition('variableName', scout_channelvariables_api_ChannelVariableName),
-            'visualization_option': ConjureFieldDefinition('visualizationOption', OptionalTypeWrapper[scout_chartdefinition_api_GeoSecondaryPlotVisualizationOption])
-        }
-
-    __slots__: List[str] = ['_variable_name', '_visualization_option']
-
-    def __init__(self, variable_name: str, visualization_option: Optional["scout_chartdefinition_api_GeoSecondaryPlotVisualizationOption"] = None) -> None:
-        self._variable_name = variable_name
-        self._visualization_option = visualization_option
-
-    @builtins.property
-    def variable_name(self) -> str:
-        return self._variable_name
-
-    @builtins.property
-    def visualization_option(self) -> Optional["scout_chartdefinition_api_GeoSecondaryPlotVisualizationOption"]:
-        return self._visualization_option
-
-
-scout_chartdefinition_api_GeoSecondaryVariable.__name__ = "GeoSecondaryVariable"
-scout_chartdefinition_api_GeoSecondaryVariable.__qualname__ = "GeoSecondaryVariable"
-scout_chartdefinition_api_GeoSecondaryVariable.__module__ = "scout_service_api.scout_chartdefinition_api"
 
 
 class scout_chartdefinition_api_GeoVizDefinition(ConjureUnionType):
@@ -15568,14 +15744,16 @@ class scout_chartdefinition_api_GeoVizDefinitionV1(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'plots': ConjureFieldDefinition('plots', List[scout_chartdefinition_api_GeoPlotFromLatLong]),
-            'title': ConjureFieldDefinition('title', OptionalTypeWrapper[str])
+            'title': ConjureFieldDefinition('title', OptionalTypeWrapper[str]),
+            'custom_features': ConjureFieldDefinition('customFeatures', List[scout_chartdefinition_api_GeoCustomFeature])
         }
 
-    __slots__: List[str] = ['_plots', '_title']
+    __slots__: List[str] = ['_plots', '_title', '_custom_features']
 
-    def __init__(self, plots: List["scout_chartdefinition_api_GeoPlotFromLatLong"], title: Optional[str] = None) -> None:
+    def __init__(self, custom_features: List["scout_chartdefinition_api_GeoCustomFeature"], plots: List["scout_chartdefinition_api_GeoPlotFromLatLong"], title: Optional[str] = None) -> None:
         self._plots = plots
         self._title = title
+        self._custom_features = custom_features
 
     @builtins.property
     def plots(self) -> List["scout_chartdefinition_api_GeoPlotFromLatLong"]:
@@ -15584,6 +15762,10 @@ class scout_chartdefinition_api_GeoVizDefinitionV1(ConjureBeanType):
     @builtins.property
     def title(self) -> Optional[str]:
         return self._title
+
+    @builtins.property
+    def custom_features(self) -> List["scout_chartdefinition_api_GeoCustomFeature"]:
+        return self._custom_features
 
 
 scout_chartdefinition_api_GeoVizDefinitionV1.__name__ = "GeoVizDefinitionV1"
@@ -17056,22 +17238,28 @@ class scout_checklistexecution_api_AssetStreamConfiguration(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'notification_configurations': ConjureFieldDefinition('notificationConfigurations', List[scout_integrations_api_NotificationConfiguration]),
-            'stream_delay': ConjureFieldDefinition('streamDelay', scout_run_api_Duration)
+            'evaluation_delay': ConjureFieldDefinition('evaluationDelay', scout_run_api_Duration),
+            'recovery_delay': ConjureFieldDefinition('recoveryDelay', scout_run_api_Duration)
         }
 
-    __slots__: List[str] = ['_notification_configurations', '_stream_delay']
+    __slots__: List[str] = ['_notification_configurations', '_evaluation_delay', '_recovery_delay']
 
-    def __init__(self, notification_configurations: List["scout_integrations_api_NotificationConfiguration"], stream_delay: "scout_run_api_Duration") -> None:
+    def __init__(self, evaluation_delay: "scout_run_api_Duration", notification_configurations: List["scout_integrations_api_NotificationConfiguration"], recovery_delay: "scout_run_api_Duration") -> None:
         self._notification_configurations = notification_configurations
-        self._stream_delay = stream_delay
+        self._evaluation_delay = evaluation_delay
+        self._recovery_delay = recovery_delay
 
     @builtins.property
     def notification_configurations(self) -> List["scout_integrations_api_NotificationConfiguration"]:
         return self._notification_configurations
 
     @builtins.property
-    def stream_delay(self) -> "scout_run_api_Duration":
-        return self._stream_delay
+    def evaluation_delay(self) -> "scout_run_api_Duration":
+        return self._evaluation_delay
+
+    @builtins.property
+    def recovery_delay(self) -> "scout_run_api_Duration":
+        return self._recovery_delay
 
 
 scout_checklistexecution_api_AssetStreamConfiguration.__name__ = "AssetStreamConfiguration"
@@ -17606,7 +17794,7 @@ scout_checklistexecution_api_ChecklistExecutionService.__module__ = "scout_servi
 
 class scout_checklistexecution_api_ChecklistLiveStatusRequest(ConjureBeanType):
     """
-    If commit not is provided, the latest commit on main will be used.
+    If commit is not provided, the latest commit on main will be used.
     """
 
     @builtins.classmethod
@@ -17768,16 +17956,18 @@ class scout_checklistexecution_api_ExecuteChecklistForAssetsRequest(ConjureBeanT
             'checklist': ConjureFieldDefinition('checklist', scout_rids_api_ChecklistRid),
             'assets': ConjureFieldDefinition('assets', List[scout_rids_api_AssetRid]),
             'notification_configurations': ConjureFieldDefinition('notificationConfigurations', List[scout_integrations_api_NotificationConfiguration]),
-            'stream_delay': ConjureFieldDefinition('streamDelay', scout_run_api_Duration)
+            'evaluation_delay': ConjureFieldDefinition('evaluationDelay', scout_run_api_Duration),
+            'recovery_delay': ConjureFieldDefinition('recoveryDelay', scout_run_api_Duration)
         }
 
-    __slots__: List[str] = ['_checklist', '_assets', '_notification_configurations', '_stream_delay']
+    __slots__: List[str] = ['_checklist', '_assets', '_notification_configurations', '_evaluation_delay', '_recovery_delay']
 
-    def __init__(self, assets: List[str], checklist: str, notification_configurations: List["scout_integrations_api_NotificationConfiguration"], stream_delay: "scout_run_api_Duration") -> None:
+    def __init__(self, assets: List[str], checklist: str, evaluation_delay: "scout_run_api_Duration", notification_configurations: List["scout_integrations_api_NotificationConfiguration"], recovery_delay: "scout_run_api_Duration") -> None:
         self._checklist = checklist
         self._assets = assets
         self._notification_configurations = notification_configurations
-        self._stream_delay = stream_delay
+        self._evaluation_delay = evaluation_delay
+        self._recovery_delay = recovery_delay
 
     @builtins.property
     def checklist(self) -> str:
@@ -17795,11 +17985,19 @@ class scout_checklistexecution_api_ExecuteChecklistForAssetsRequest(ConjureBeanT
         return self._notification_configurations
 
     @builtins.property
-    def stream_delay(self) -> "scout_run_api_Duration":
+    def evaluation_delay(self) -> "scout_run_api_Duration":
         """
-        Delays the execution of the streaming checklist. This is useful for when data is delayed.
+        Delays the evaluation of the streaming checklist. This is useful for when data is delayed.
         """
-        return self._stream_delay
+        return self._evaluation_delay
+
+    @builtins.property
+    def recovery_delay(self) -> "scout_run_api_Duration":
+        """
+        Specifies the minimum amount of time that must pass before a check can recover from a failure.
+Minimum value is 15 seconds.
+        """
+        return self._recovery_delay
 
 
 scout_checklistexecution_api_ExecuteChecklistForAssetsRequest.__name__ = "ExecuteChecklistForAssetsRequest"
@@ -20088,23 +20286,23 @@ scout_checks_api_Function.__module__ = "scout_service_api.scout_checks_api"
 
 
 class scout_checks_api_FunctionNode(ConjureUnionType):
-    _enum: Optional["scout_compute_api_EnumSeriesNode"] = None
-    _numeric: Optional["scout_compute_api_NumericSeriesNode"] = None
-    _ranges: Optional["scout_compute_api_RangesNode"] = None
+    _enum: Optional["scout_compute_api_EnumSeries"] = None
+    _numeric: Optional["scout_compute_api_NumericSeries"] = None
+    _ranges: Optional["scout_compute_api_RangeSeries"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'enum': ConjureFieldDefinition('enum', scout_compute_api_EnumSeriesNode),
-            'numeric': ConjureFieldDefinition('numeric', scout_compute_api_NumericSeriesNode),
-            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangesNode)
+            'enum': ConjureFieldDefinition('enum', scout_compute_api_EnumSeries),
+            'numeric': ConjureFieldDefinition('numeric', scout_compute_api_NumericSeries),
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangeSeries)
         }
 
     def __init__(
             self,
-            enum: Optional["scout_compute_api_EnumSeriesNode"] = None,
-            numeric: Optional["scout_compute_api_NumericSeriesNode"] = None,
-            ranges: Optional["scout_compute_api_RangesNode"] = None,
+            enum: Optional["scout_compute_api_EnumSeries"] = None,
+            numeric: Optional["scout_compute_api_NumericSeries"] = None,
+            ranges: Optional["scout_compute_api_RangeSeries"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
@@ -20138,15 +20336,15 @@ class scout_checks_api_FunctionNode(ConjureUnionType):
             self._type = 'ranges'
 
     @builtins.property
-    def enum(self) -> Optional["scout_compute_api_EnumSeriesNode"]:
+    def enum(self) -> Optional["scout_compute_api_EnumSeries"]:
         return self._enum
 
     @builtins.property
-    def numeric(self) -> Optional["scout_compute_api_NumericSeriesNode"]:
+    def numeric(self) -> Optional["scout_compute_api_NumericSeries"]:
         return self._numeric
 
     @builtins.property
-    def ranges(self) -> Optional["scout_compute_api_RangesNode"]:
+    def ranges(self) -> Optional["scout_compute_api_RangeSeries"]:
         return self._ranges
 
     def accept(self, visitor) -> Any:
@@ -20168,15 +20366,15 @@ scout_checks_api_FunctionNode.__module__ = "scout_service_api.scout_checks_api"
 class scout_checks_api_FunctionNodeVisitor:
 
     @abstractmethod
-    def _enum(self, enum: "scout_compute_api_EnumSeriesNode") -> Any:
+    def _enum(self, enum: "scout_compute_api_EnumSeries") -> Any:
         pass
 
     @abstractmethod
-    def _numeric(self, numeric: "scout_compute_api_NumericSeriesNode") -> Any:
+    def _numeric(self, numeric: "scout_compute_api_NumericSeries") -> Any:
         pass
 
     @abstractmethod
-    def _ranges(self, ranges: "scout_compute_api_RangesNode") -> Any:
+    def _ranges(self, ranges: "scout_compute_api_RangeSeries") -> Any:
         pass
 
 
@@ -20637,7 +20835,7 @@ class scout_checks_api_NumRangesConditionV3(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangesNode),
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangeSeries),
             'function_spec': ConjureFieldDefinition('functionSpec', object),
             'threshold': ConjureFieldDefinition('threshold', int),
             'operator': ConjureFieldDefinition('operator', scout_compute_api_ThresholdOperator),
@@ -20647,7 +20845,7 @@ class scout_checks_api_NumRangesConditionV3(ConjureBeanType):
 
     __slots__: List[str] = ['_ranges', '_function_spec', '_threshold', '_operator', '_variables', '_function_variables']
 
-    def __init__(self, function_spec: Any, function_variables: Dict[str, "scout_checks_api_CheckContext"], operator: "scout_compute_api_ThresholdOperator", ranges: "scout_compute_api_RangesNode", threshold: int, variables: Dict[str, "scout_checks_api_VariableLocator"]) -> None:
+    def __init__(self, function_spec: Any, function_variables: Dict[str, "scout_checks_api_CheckContext"], operator: "scout_compute_api_ThresholdOperator", ranges: "scout_compute_api_RangeSeries", threshold: int, variables: Dict[str, "scout_checks_api_VariableLocator"]) -> None:
         self._ranges = ranges
         self._function_spec = function_spec
         self._threshold = threshold
@@ -20656,7 +20854,7 @@ class scout_checks_api_NumRangesConditionV3(ConjureBeanType):
         self._function_variables = function_variables
 
     @builtins.property
-    def ranges(self) -> "scout_compute_api_RangesNode":
+    def ranges(self) -> "scout_compute_api_RangeSeries":
         return self._ranges
 
     @builtins.property
@@ -20694,18 +20892,18 @@ class scout_checks_api_ParameterizedNumRangesConditionV1(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangesNode),
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangeSeries),
             'implementations': ConjureFieldDefinition('implementations', List[scout_checks_api_CheckContext])
         }
 
     __slots__: List[str] = ['_ranges', '_implementations']
 
-    def __init__(self, implementations: List["scout_checks_api_CheckContext"], ranges: "scout_compute_api_RangesNode") -> None:
+    def __init__(self, implementations: List["scout_checks_api_CheckContext"], ranges: "scout_compute_api_RangeSeries") -> None:
         self._ranges = ranges
         self._implementations = implementations
 
     @builtins.property
-    def ranges(self) -> "scout_compute_api_RangesNode":
+    def ranges(self) -> "scout_compute_api_RangeSeries":
         return self._ranges
 
     @builtins.property
@@ -21263,7 +21461,7 @@ class scout_checks_api_UnresolvedNumRangesConditionV3(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangesNode),
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangeSeries),
             'function_spec': ConjureFieldDefinition('functionSpec', object),
             'threshold': ConjureFieldDefinition('threshold', int),
             'operator': ConjureFieldDefinition('operator', scout_compute_api_ThresholdOperator),
@@ -21273,7 +21471,7 @@ class scout_checks_api_UnresolvedNumRangesConditionV3(ConjureBeanType):
 
     __slots__: List[str] = ['_ranges', '_function_spec', '_threshold', '_operator', '_variables', '_function_variables']
 
-    def __init__(self, function_spec: Any, function_variables: Dict[str, "scout_checks_api_UnresolvedVariables"], operator: "scout_compute_api_ThresholdOperator", ranges: "scout_compute_api_RangesNode", threshold: int, variables: Dict[str, "scout_checks_api_UnresolvedVariableLocator"]) -> None:
+    def __init__(self, function_spec: Any, function_variables: Dict[str, "scout_checks_api_UnresolvedVariables"], operator: "scout_compute_api_ThresholdOperator", ranges: "scout_compute_api_RangeSeries", threshold: int, variables: Dict[str, "scout_checks_api_UnresolvedVariableLocator"]) -> None:
         self._ranges = ranges
         self._function_spec = function_spec
         self._threshold = threshold
@@ -21282,7 +21480,7 @@ class scout_checks_api_UnresolvedNumRangesConditionV3(ConjureBeanType):
         self._function_variables = function_variables
 
     @builtins.property
-    def ranges(self) -> "scout_compute_api_RangesNode":
+    def ranges(self) -> "scout_compute_api_RangeSeries":
         return self._ranges
 
     @builtins.property
@@ -21325,18 +21523,18 @@ class scout_checks_api_UnresolvedParameterizedNumRangesConditionV1(ConjureBeanTy
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangesNode),
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangeSeries),
             'implementations': ConjureFieldDefinition('implementations', List[scout_checks_api_UnresolvedVariables])
         }
 
     __slots__: List[str] = ['_ranges', '_implementations']
 
-    def __init__(self, implementations: List["scout_checks_api_UnresolvedVariables"], ranges: "scout_compute_api_RangesNode") -> None:
+    def __init__(self, implementations: List["scout_checks_api_UnresolvedVariables"], ranges: "scout_compute_api_RangeSeries") -> None:
         self._ranges = ranges
         self._implementations = implementations
 
     @builtins.property
-    def ranges(self) -> "scout_compute_api_RangesNode":
+    def ranges(self) -> "scout_compute_api_RangeSeries":
         return self._ranges
 
     @builtins.property
@@ -22124,6 +22322,103 @@ scout_comparisonnotebook_api_ChannelVariable.__qualname__ = "ChannelVariable"
 scout_comparisonnotebook_api_ChannelVariable.__module__ = "scout_service_api.scout_comparisonnotebook_api"
 
 
+class scout_comparisonnotebook_api_ColorByVariableConfiguration(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'locator': ConjureFieldDefinition('locator', scout_comparisonnotebook_api_VariableLocator),
+            'aggregation_type': ConjureFieldDefinition('aggregationType', scout_comparisonnotebook_api_AggregationType),
+            'lower_bound': ConjureFieldDefinition('lowerBound', float),
+            'upper_bound': ConjureFieldDefinition('upperBound', float)
+        }
+
+    __slots__: List[str] = ['_locator', '_aggregation_type', '_lower_bound', '_upper_bound']
+
+    def __init__(self, aggregation_type: "scout_comparisonnotebook_api_AggregationType", locator: "scout_comparisonnotebook_api_VariableLocator", lower_bound: float, upper_bound: float) -> None:
+        self._locator = locator
+        self._aggregation_type = aggregation_type
+        self._lower_bound = lower_bound
+        self._upper_bound = upper_bound
+
+    @builtins.property
+    def locator(self) -> "scout_comparisonnotebook_api_VariableLocator":
+        return self._locator
+
+    @builtins.property
+    def aggregation_type(self) -> "scout_comparisonnotebook_api_AggregationType":
+        return self._aggregation_type
+
+    @builtins.property
+    def lower_bound(self) -> float:
+        return self._lower_bound
+
+    @builtins.property
+    def upper_bound(self) -> float:
+        return self._upper_bound
+
+
+scout_comparisonnotebook_api_ColorByVariableConfiguration.__name__ = "ColorByVariableConfiguration"
+scout_comparisonnotebook_api_ColorByVariableConfiguration.__qualname__ = "ColorByVariableConfiguration"
+scout_comparisonnotebook_api_ColorByVariableConfiguration.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonScatterPlotColoringOption(ConjureUnionType):
+    _by_variable: Optional["scout_comparisonnotebook_api_ColorByVariableConfiguration"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'by_variable': ConjureFieldDefinition('byVariable', scout_comparisonnotebook_api_ColorByVariableConfiguration)
+        }
+
+    def __init__(
+            self,
+            by_variable: Optional["scout_comparisonnotebook_api_ColorByVariableConfiguration"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (by_variable is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if by_variable is not None:
+                self._by_variable = by_variable
+                self._type = 'byVariable'
+
+        elif type_of_union == 'byVariable':
+            if by_variable is None:
+                raise ValueError('a union value must not be None')
+            self._by_variable = by_variable
+            self._type = 'byVariable'
+
+    @builtins.property
+    def by_variable(self) -> Optional["scout_comparisonnotebook_api_ColorByVariableConfiguration"]:
+        return self._by_variable
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_comparisonnotebook_api_ComparisonScatterPlotColoringOptionVisitor):
+            raise ValueError('{} is not an instance of scout_comparisonnotebook_api_ComparisonScatterPlotColoringOptionVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'byVariable' and self.by_variable is not None:
+            return visitor._by_variable(self.by_variable)
+
+
+scout_comparisonnotebook_api_ComparisonScatterPlotColoringOption.__name__ = "ComparisonScatterPlotColoringOption"
+scout_comparisonnotebook_api_ComparisonScatterPlotColoringOption.__qualname__ = "ComparisonScatterPlotColoringOption"
+scout_comparisonnotebook_api_ComparisonScatterPlotColoringOption.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonScatterPlotColoringOptionVisitor:
+
+    @abstractmethod
+    def _by_variable(self, by_variable: "scout_comparisonnotebook_api_ColorByVariableConfiguration") -> Any:
+        pass
+
+
+scout_comparisonnotebook_api_ComparisonScatterPlotColoringOptionVisitor.__name__ = "ComparisonScatterPlotColoringOptionVisitor"
+scout_comparisonnotebook_api_ComparisonScatterPlotColoringOptionVisitor.__qualname__ = "ComparisonScatterPlotColoringOptionVisitor"
+scout_comparisonnotebook_api_ComparisonScatterPlotColoringOptionVisitor.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
 class scout_comparisonnotebook_api_ComparisonScatterPlotDefinition(ConjureUnionType):
     _v1: Optional["scout_comparisonnotebook_api_ComparisonScatterPlotDefinitionV1"] = None
 
@@ -22191,16 +22486,18 @@ class scout_comparisonnotebook_api_ComparisonScatterPlotDefinitionV1(ConjureBean
             'title': ConjureFieldDefinition('title', OptionalTypeWrapper[str]),
             'range_aggregation': ConjureFieldDefinition('rangeAggregation', OptionalTypeWrapper[scout_comparisonnotebook_api_RangeAggregationDefinition]),
             'variables': ConjureFieldDefinition('variables', List[scout_comparisonnotebook_api_ComparisonScatterPlotVariable]),
-            'axes': ConjureFieldDefinition('axes', List[scout_comparisonnotebook_api_ScatterPlotValueAxes])
+            'axes': ConjureFieldDefinition('axes', List[scout_comparisonnotebook_api_ScatterPlotValueAxes]),
+            'visualization_options': ConjureFieldDefinition('visualizationOptions', OptionalTypeWrapper[scout_comparisonnotebook_api_ComparisonScatterPlotVizOptions])
         }
 
-    __slots__: List[str] = ['_title', '_range_aggregation', '_variables', '_axes']
+    __slots__: List[str] = ['_title', '_range_aggregation', '_variables', '_axes', '_visualization_options']
 
-    def __init__(self, axes: List["scout_comparisonnotebook_api_ScatterPlotValueAxes"], variables: List["scout_comparisonnotebook_api_ComparisonScatterPlotVariable"], range_aggregation: Optional["scout_comparisonnotebook_api_RangeAggregationDefinition"] = None, title: Optional[str] = None) -> None:
+    def __init__(self, axes: List["scout_comparisonnotebook_api_ScatterPlotValueAxes"], variables: List["scout_comparisonnotebook_api_ComparisonScatterPlotVariable"], range_aggregation: Optional["scout_comparisonnotebook_api_RangeAggregationDefinition"] = None, title: Optional[str] = None, visualization_options: Optional["scout_comparisonnotebook_api_ComparisonScatterPlotVizOptions"] = None) -> None:
         self._title = title
         self._range_aggregation = range_aggregation
         self._variables = variables
         self._axes = axes
+        self._visualization_options = visualization_options
 
     @builtins.property
     def title(self) -> Optional[str]:
@@ -22217,6 +22514,13 @@ class scout_comparisonnotebook_api_ComparisonScatterPlotDefinitionV1(ConjureBean
     @builtins.property
     def axes(self) -> List["scout_comparisonnotebook_api_ScatterPlotValueAxes"]:
         return self._axes
+
+    @builtins.property
+    def visualization_options(self) -> Optional["scout_comparisonnotebook_api_ComparisonScatterPlotVizOptions"]:
+        """
+        optional for backcompatibility.
+        """
+        return self._visualization_options
 
 
 scout_comparisonnotebook_api_ComparisonScatterPlotDefinitionV1.__name__ = "ComparisonScatterPlotDefinitionV1"
@@ -22269,6 +22573,29 @@ class scout_comparisonnotebook_api_ComparisonScatterPlotVariable(ConjureBeanType
 scout_comparisonnotebook_api_ComparisonScatterPlotVariable.__name__ = "ComparisonScatterPlotVariable"
 scout_comparisonnotebook_api_ComparisonScatterPlotVariable.__qualname__ = "ComparisonScatterPlotVariable"
 scout_comparisonnotebook_api_ComparisonScatterPlotVariable.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_ComparisonScatterPlotVizOptions(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'coloring': ConjureFieldDefinition('coloring', scout_comparisonnotebook_api_ComparisonScatterPlotColoringOption)
+        }
+
+    __slots__: List[str] = ['_coloring']
+
+    def __init__(self, coloring: "scout_comparisonnotebook_api_ComparisonScatterPlotColoringOption") -> None:
+        self._coloring = coloring
+
+    @builtins.property
+    def coloring(self) -> "scout_comparisonnotebook_api_ComparisonScatterPlotColoringOption":
+        return self._coloring
+
+
+scout_comparisonnotebook_api_ComparisonScatterPlotVizOptions.__name__ = "ComparisonScatterPlotVizOptions"
+scout_comparisonnotebook_api_ComparisonScatterPlotVizOptions.__qualname__ = "ComparisonScatterPlotVizOptions"
+scout_comparisonnotebook_api_ComparisonScatterPlotVizOptions.__module__ = "scout_service_api.scout_comparisonnotebook_api"
 
 
 class scout_comparisonnotebook_api_ComparisonTableColumn(ConjureBeanType):
@@ -22783,41 +23110,58 @@ scout_comparisonnotebook_api_ComparisonWorkbookContext.__module__ = "scout_servi
 
 class scout_comparisonnotebook_api_ComparisonWorkbookDataScope(ConjureUnionType):
     _runs: Optional[List[str]] = None
+    _assets: Optional[List[str]] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'runs': ConjureFieldDefinition('runs', List[scout_run_api_RunRid])
+            'runs': ConjureFieldDefinition('runs', List[scout_run_api_RunRid]),
+            'assets': ConjureFieldDefinition('assets', List[scout_rids_api_AssetRid])
         }
 
     def __init__(
             self,
             runs: Optional[List[str]] = None,
+            assets: Optional[List[str]] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (runs is not None) != 1:
+            if (runs is not None) + (assets is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if runs is not None:
                 self._runs = runs
                 self._type = 'runs'
+            if assets is not None:
+                self._assets = assets
+                self._type = 'assets'
 
         elif type_of_union == 'runs':
             if runs is None:
                 raise ValueError('a union value must not be None')
             self._runs = runs
             self._type = 'runs'
+        elif type_of_union == 'assets':
+            if assets is None:
+                raise ValueError('a union value must not be None')
+            self._assets = assets
+            self._type = 'assets'
 
     @builtins.property
     def runs(self) -> Optional[List[str]]:
         return self._runs
+
+    @builtins.property
+    def assets(self) -> Optional[List[str]]:
+        return self._assets
 
     def accept(self, visitor) -> Any:
         if not isinstance(visitor, scout_comparisonnotebook_api_ComparisonWorkbookDataScopeVisitor):
             raise ValueError('{} is not an instance of scout_comparisonnotebook_api_ComparisonWorkbookDataScopeVisitor'.format(visitor.__class__.__name__))
         if self._type == 'runs' and self.runs is not None:
             return visitor._runs(self.runs)
+        if self._type == 'assets' and self.assets is not None:
+            return visitor._assets(self.assets)
 
 
 scout_comparisonnotebook_api_ComparisonWorkbookDataScope.__name__ = "ComparisonWorkbookDataScope"
@@ -22829,6 +23173,10 @@ class scout_comparisonnotebook_api_ComparisonWorkbookDataScopeVisitor:
 
     @abstractmethod
     def _runs(self, runs: List[str]) -> Any:
+        pass
+
+    @abstractmethod
+    def _assets(self, assets: List[str]) -> Any:
         pass
 
 
@@ -22953,14 +23301,16 @@ every comparison workbook viz definition.
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'data_scope': ConjureFieldDefinition('dataScope', scout_comparisonnotebook_api_ComparisonWorkbookDataScope),
-            'condition': ConjureFieldDefinition('condition', scout_comparisonnotebook_api_ComputeNodeWithContext)
+            'condition': ConjureFieldDefinition('condition', scout_comparisonnotebook_api_ComputeNodeWithContext),
+            'time_window': ConjureFieldDefinition('timeWindow', OptionalTypeWrapper[scout_comparisonnotebook_api_TimeWindow])
         }
 
-    __slots__: List[str] = ['_data_scope', '_condition']
+    __slots__: List[str] = ['_data_scope', '_condition', '_time_window']
 
-    def __init__(self, condition: "scout_comparisonnotebook_api_ComputeNodeWithContext", data_scope: "scout_comparisonnotebook_api_ComparisonWorkbookDataScope") -> None:
+    def __init__(self, condition: "scout_comparisonnotebook_api_ComputeNodeWithContext", data_scope: "scout_comparisonnotebook_api_ComparisonWorkbookDataScope", time_window: Optional["scout_comparisonnotebook_api_TimeWindow"] = None) -> None:
         self._data_scope = data_scope
         self._condition = condition
+        self._time_window = time_window
 
     @builtins.property
     def data_scope(self) -> "scout_comparisonnotebook_api_ComparisonWorkbookDataScope":
@@ -22969,6 +23319,13 @@ every comparison workbook viz definition.
     @builtins.property
     def condition(self) -> "scout_comparisonnotebook_api_ComputeNodeWithContext":
         return self._condition
+
+    @builtins.property
+    def time_window(self) -> Optional["scout_comparisonnotebook_api_TimeWindow"]:
+        """
+        determines the window of data included in the visualization. Currently only applied on assets.
+        """
+        return self._time_window
 
 
 scout_comparisonnotebook_api_RangeAggregationDefinition.__name__ = "RangeAggregationDefinition"
@@ -23102,6 +23459,112 @@ class scout_comparisonnotebook_api_SupplementalComparisonWorkbookContextVisitor:
 scout_comparisonnotebook_api_SupplementalComparisonWorkbookContextVisitor.__name__ = "SupplementalComparisonWorkbookContextVisitor"
 scout_comparisonnotebook_api_SupplementalComparisonWorkbookContextVisitor.__qualname__ = "SupplementalComparisonWorkbookContextVisitor"
 scout_comparisonnotebook_api_SupplementalComparisonWorkbookContextVisitor.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_TimeWindow(ConjureUnionType):
+    _relative: Optional["scout_run_api_Duration"] = None
+    _fixed: Optional["scout_comparisonnotebook_api_TimestampedRange"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'relative': ConjureFieldDefinition('relative', scout_run_api_Duration),
+            'fixed': ConjureFieldDefinition('fixed', scout_comparisonnotebook_api_TimestampedRange)
+        }
+
+    def __init__(
+            self,
+            relative: Optional["scout_run_api_Duration"] = None,
+            fixed: Optional["scout_comparisonnotebook_api_TimestampedRange"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (relative is not None) + (fixed is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if relative is not None:
+                self._relative = relative
+                self._type = 'relative'
+            if fixed is not None:
+                self._fixed = fixed
+                self._type = 'fixed'
+
+        elif type_of_union == 'relative':
+            if relative is None:
+                raise ValueError('a union value must not be None')
+            self._relative = relative
+            self._type = 'relative'
+        elif type_of_union == 'fixed':
+            if fixed is None:
+                raise ValueError('a union value must not be None')
+            self._fixed = fixed
+            self._type = 'fixed'
+
+    @builtins.property
+    def relative(self) -> Optional["scout_run_api_Duration"]:
+        return self._relative
+
+    @builtins.property
+    def fixed(self) -> Optional["scout_comparisonnotebook_api_TimestampedRange"]:
+        return self._fixed
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_comparisonnotebook_api_TimeWindowVisitor):
+            raise ValueError('{} is not an instance of scout_comparisonnotebook_api_TimeWindowVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'relative' and self.relative is not None:
+            return visitor._relative(self.relative)
+        if self._type == 'fixed' and self.fixed is not None:
+            return visitor._fixed(self.fixed)
+
+
+scout_comparisonnotebook_api_TimeWindow.__name__ = "TimeWindow"
+scout_comparisonnotebook_api_TimeWindow.__qualname__ = "TimeWindow"
+scout_comparisonnotebook_api_TimeWindow.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_TimeWindowVisitor:
+
+    @abstractmethod
+    def _relative(self, relative: "scout_run_api_Duration") -> Any:
+        pass
+
+    @abstractmethod
+    def _fixed(self, fixed: "scout_comparisonnotebook_api_TimestampedRange") -> Any:
+        pass
+
+
+scout_comparisonnotebook_api_TimeWindowVisitor.__name__ = "TimeWindowVisitor"
+scout_comparisonnotebook_api_TimeWindowVisitor.__qualname__ = "TimeWindowVisitor"
+scout_comparisonnotebook_api_TimeWindowVisitor.__module__ = "scout_service_api.scout_comparisonnotebook_api"
+
+
+class scout_comparisonnotebook_api_TimestampedRange(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'start': ConjureFieldDefinition('start', OptionalTypeWrapper[api_Timestamp]),
+            'end': ConjureFieldDefinition('end', OptionalTypeWrapper[api_Timestamp])
+        }
+
+    __slots__: List[str] = ['_start', '_end']
+
+    def __init__(self, end: Optional["api_Timestamp"] = None, start: Optional["api_Timestamp"] = None) -> None:
+        self._start = start
+        self._end = end
+
+    @builtins.property
+    def start(self) -> Optional["api_Timestamp"]:
+        return self._start
+
+    @builtins.property
+    def end(self) -> Optional["api_Timestamp"]:
+        return self._end
+
+
+scout_comparisonnotebook_api_TimestampedRange.__name__ = "TimestampedRange"
+scout_comparisonnotebook_api_TimestampedRange.__qualname__ = "TimestampedRange"
+scout_comparisonnotebook_api_TimestampedRange.__module__ = "scout_service_api.scout_comparisonnotebook_api"
 
 
 class scout_comparisonnotebook_api_VariableLocator(ConjureUnionType):
@@ -23541,6 +24004,32 @@ scout_comparisonrun_api_OffsetSeriesAnchor.__qualname__ = "OffsetSeriesAnchor"
 scout_comparisonrun_api_OffsetSeriesAnchor.__module__ = "scout_service_api.scout_comparisonrun_api"
 
 
+class scout_compute_api_AbsoluteThreshold(ConjureBeanType):
+    """
+    Threshold defined as a real number corresponding the unit of a series.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'value': ConjureFieldDefinition('value', scout_compute_api_DoubleConstant)
+        }
+
+    __slots__: List[str] = ['_value']
+
+    def __init__(self, value: "scout_compute_api_DoubleConstant") -> None:
+        self._value = value
+
+    @builtins.property
+    def value(self) -> "scout_compute_api_DoubleConstant":
+        return self._value
+
+
+scout_compute_api_AbsoluteThreshold.__name__ = "AbsoluteThreshold"
+scout_compute_api_AbsoluteThreshold.__qualname__ = "AbsoluteThreshold"
+scout_compute_api_AbsoluteThreshold.__module__ = "scout_service_api.scout_compute_api"
+
+
 class scout_compute_api_AfterPersistenceWindow(ConjureBeanType):
     """
     The first point in the output range will be the first point after the condition has been true
@@ -23561,7 +24050,7 @@ scout_compute_api_AfterPersistenceWindow.__qualname__ = "AfterPersistenceWindow"
 scout_compute_api_AfterPersistenceWindow.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_AggregateEnumSeriesNode(ConjureBeanType):
+class scout_compute_api_AggregateEnumSeries(ConjureBeanType):
     """
     Aggregates values with duplicate timestamps in the input series values into a single value using the specified aggregation function.
     """
@@ -23569,18 +24058,18 @@ class scout_compute_api_AggregateEnumSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeries),
             'function': ConjureFieldDefinition('function', scout_compute_api_EnumAggregationFunction)
         }
 
     __slots__: List[str] = ['_input', '_function']
 
-    def __init__(self, function: "scout_compute_api_EnumAggregationFunction", input: "scout_compute_api_EnumSeriesNode") -> None:
+    def __init__(self, function: "scout_compute_api_EnumAggregationFunction", input: "scout_compute_api_EnumSeries") -> None:
         self._input = input
         self._function = function
 
     @builtins.property
-    def input(self) -> "scout_compute_api_EnumSeriesNode":
+    def input(self) -> "scout_compute_api_EnumSeries":
         return self._input
 
     @builtins.property
@@ -23588,12 +24077,12 @@ class scout_compute_api_AggregateEnumSeriesNode(ConjureBeanType):
         return self._function
 
 
-scout_compute_api_AggregateEnumSeriesNode.__name__ = "AggregateEnumSeriesNode"
-scout_compute_api_AggregateEnumSeriesNode.__qualname__ = "AggregateEnumSeriesNode"
-scout_compute_api_AggregateEnumSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_AggregateEnumSeries.__name__ = "AggregateEnumSeries"
+scout_compute_api_AggregateEnumSeries.__qualname__ = "AggregateEnumSeries"
+scout_compute_api_AggregateEnumSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_AggregateNumericSeriesNode(ConjureBeanType):
+class scout_compute_api_AggregateNumericSeries(ConjureBeanType):
     """
     Aggregates values with duplicate timestamps in the input series values into a single value using the specified aggregation function.
     """
@@ -23601,18 +24090,18 @@ class scout_compute_api_AggregateNumericSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'function': ConjureFieldDefinition('function', scout_compute_api_NumericAggregationFunction)
         }
 
     __slots__: List[str] = ['_input', '_function']
 
-    def __init__(self, function: "scout_compute_api_NumericAggregationFunction", input: "scout_compute_api_NumericSeriesNode") -> None:
+    def __init__(self, function: "scout_compute_api_NumericAggregationFunction", input: "scout_compute_api_NumericSeries") -> None:
         self._input = input
         self._function = function
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -23620,9 +24109,9 @@ class scout_compute_api_AggregateNumericSeriesNode(ConjureBeanType):
         return self._function
 
 
-scout_compute_api_AggregateNumericSeriesNode.__name__ = "AggregateNumericSeriesNode"
-scout_compute_api_AggregateNumericSeriesNode.__qualname__ = "AggregateNumericSeriesNode"
-scout_compute_api_AggregateNumericSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_AggregateNumericSeries.__name__ = "AggregateNumericSeries"
+scout_compute_api_AggregateNumericSeries.__qualname__ = "AggregateNumericSeries"
+scout_compute_api_AggregateNumericSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_AllowNegativeValues(ConjureBeanType):
@@ -23641,25 +24130,25 @@ scout_compute_api_AllowNegativeValues.__qualname__ = "AllowNegativeValues"
 scout_compute_api_AllowNegativeValues.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_ArithmeticSeriesNode(ConjureBeanType):
+class scout_compute_api_ArithmeticSeries(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', Dict[scout_compute_api_LocalVariableName, scout_compute_api_NumericSeriesNode]),
+            'inputs': ConjureFieldDefinition('inputs', Dict[scout_compute_api_LocalVariableName, scout_compute_api_NumericSeries]),
             'expression': ConjureFieldDefinition('expression', str),
             'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
         }
 
     __slots__: List[str] = ['_inputs', '_expression', '_interpolation_configuration']
 
-    def __init__(self, expression: str, inputs: Dict[str, "scout_compute_api_NumericSeriesNode"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
+    def __init__(self, expression: str, inputs: Dict[str, "scout_compute_api_NumericSeries"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
         self._inputs = inputs
         self._expression = expression
         self._interpolation_configuration = interpolation_configuration
 
     @builtins.property
-    def inputs(self) -> Dict[str, "scout_compute_api_NumericSeriesNode"]:
+    def inputs(self) -> Dict[str, "scout_compute_api_NumericSeries"]:
         return self._inputs
 
     @builtins.property
@@ -23674,9 +24163,58 @@ class scout_compute_api_ArithmeticSeriesNode(ConjureBeanType):
         return self._interpolation_configuration
 
 
-scout_compute_api_ArithmeticSeriesNode.__name__ = "ArithmeticSeriesNode"
-scout_compute_api_ArithmeticSeriesNode.__qualname__ = "ArithmeticSeriesNode"
-scout_compute_api_ArithmeticSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_ArithmeticSeries.__name__ = "ArithmeticSeries"
+scout_compute_api_ArithmeticSeries.__qualname__ = "ArithmeticSeries"
+scout_compute_api_ArithmeticSeries.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_AssetChannel(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'asset_rid': ConjureFieldDefinition('assetRid', scout_compute_api_StringConstant),
+            'data_scope_name': ConjureFieldDefinition('dataScopeName', scout_compute_api_StringConstant),
+            'channel': ConjureFieldDefinition('channel', scout_compute_api_StringConstant),
+            'additional_tags': ConjureFieldDefinition('additionalTags', Dict[str, scout_compute_api_StringConstant])
+        }
+
+    __slots__: List[str] = ['_asset_rid', '_data_scope_name', '_channel', '_additional_tags']
+
+    def __init__(self, additional_tags: Dict[str, "scout_compute_api_StringConstant"], asset_rid: "scout_compute_api_StringConstant", channel: "scout_compute_api_StringConstant", data_scope_name: "scout_compute_api_StringConstant") -> None:
+        self._asset_rid = asset_rid
+        self._data_scope_name = data_scope_name
+        self._channel = channel
+        self._additional_tags = additional_tags
+
+    @builtins.property
+    def asset_rid(self) -> "scout_compute_api_StringConstant":
+        return self._asset_rid
+
+    @builtins.property
+    def data_scope_name(self) -> "scout_compute_api_StringConstant":
+        """
+        Used to disambiguate when multiple data scopes within this asset contain channels with the same name.
+        """
+        return self._data_scope_name
+
+    @builtins.property
+    def channel(self) -> "scout_compute_api_StringConstant":
+        return self._channel
+
+    @builtins.property
+    def additional_tags(self) -> Dict[str, "scout_compute_api_StringConstant"]:
+        """
+        Tags to filter the channel by, in addition to tag filters defined for a given Asset data scope. Throws on 
+collisions with tag keys already defined for the given Asset data scope. Only returns points that match 
+both sets of tag filters.
+        """
+        return self._additional_tags
+
+
+scout_compute_api_AssetChannel.__name__ = "AssetChannel"
+scout_compute_api_AssetChannel.__qualname__ = "AssetChannel"
+scout_compute_api_AssetChannel.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_Average(ConjureBeanType):
@@ -23760,7 +24298,7 @@ scout_compute_api_BinaryArithmeticOperation.__qualname__ = "BinaryArithmeticOper
 scout_compute_api_BinaryArithmeticOperation.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_BinaryArithmeticSeriesNode(ConjureBeanType):
+class scout_compute_api_BinaryArithmeticSeries(ConjureBeanType):
     """
     Applies a point-wise transformation to a pair of series.
     """
@@ -23768,26 +24306,26 @@ class scout_compute_api_BinaryArithmeticSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input1': ConjureFieldDefinition('input1', scout_compute_api_NumericSeriesNode),
-            'input2': ConjureFieldDefinition('input2', scout_compute_api_NumericSeriesNode),
+            'input1': ConjureFieldDefinition('input1', scout_compute_api_NumericSeries),
+            'input2': ConjureFieldDefinition('input2', scout_compute_api_NumericSeries),
             'operation': ConjureFieldDefinition('operation', scout_compute_api_BinaryArithmeticOperation),
             'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
         }
 
     __slots__: List[str] = ['_input1', '_input2', '_operation', '_interpolation_configuration']
 
-    def __init__(self, input1: "scout_compute_api_NumericSeriesNode", input2: "scout_compute_api_NumericSeriesNode", operation: "scout_compute_api_BinaryArithmeticOperation", interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
+    def __init__(self, input1: "scout_compute_api_NumericSeries", input2: "scout_compute_api_NumericSeries", operation: "scout_compute_api_BinaryArithmeticOperation", interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
         self._input1 = input1
         self._input2 = input2
         self._operation = operation
         self._interpolation_configuration = interpolation_configuration
 
     @builtins.property
-    def input1(self) -> "scout_compute_api_NumericSeriesNode":
+    def input1(self) -> "scout_compute_api_NumericSeries":
         return self._input1
 
     @builtins.property
-    def input2(self) -> "scout_compute_api_NumericSeriesNode":
+    def input2(self) -> "scout_compute_api_NumericSeries":
         return self._input2
 
     @builtins.property
@@ -23802,9 +24340,9 @@ class scout_compute_api_BinaryArithmeticSeriesNode(ConjureBeanType):
         return self._interpolation_configuration
 
 
-scout_compute_api_BinaryArithmeticSeriesNode.__name__ = "BinaryArithmeticSeriesNode"
-scout_compute_api_BinaryArithmeticSeriesNode.__qualname__ = "BinaryArithmeticSeriesNode"
-scout_compute_api_BinaryArithmeticSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_BinaryArithmeticSeries.__name__ = "BinaryArithmeticSeries"
+scout_compute_api_BinaryArithmeticSeries.__qualname__ = "BinaryArithmeticSeries"
+scout_compute_api_BinaryArithmeticSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_BitAndFunction(ConjureBeanType):
@@ -23949,7 +24487,7 @@ scout_compute_api_BitOperationFunctionVisitor.__qualname__ = "BitOperationFuncti
 scout_compute_api_BitOperationFunctionVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_BitOperationSeriesNode(ConjureBeanType):
+class scout_compute_api_BitOperationSeries(ConjureBeanType):
     """
     Casts input series values to long before applying the bitwise operation.
     """
@@ -23957,18 +24495,18 @@ class scout_compute_api_BitOperationSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'function': ConjureFieldDefinition('function', scout_compute_api_BitOperationFunction)
         }
 
     __slots__: List[str] = ['_input', '_function']
 
-    def __init__(self, function: "scout_compute_api_BitOperationFunction", input: "scout_compute_api_NumericSeriesNode") -> None:
+    def __init__(self, function: "scout_compute_api_BitOperationFunction", input: "scout_compute_api_NumericSeries") -> None:
         self._input = input
         self._function = function
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -23976,9 +24514,9 @@ class scout_compute_api_BitOperationSeriesNode(ConjureBeanType):
         return self._function
 
 
-scout_compute_api_BitOperationSeriesNode.__name__ = "BitOperationSeriesNode"
-scout_compute_api_BitOperationSeriesNode.__qualname__ = "BitOperationSeriesNode"
-scout_compute_api_BitOperationSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_BitOperationSeries.__name__ = "BitOperationSeries"
+scout_compute_api_BitOperationSeries.__qualname__ = "BitOperationSeries"
+scout_compute_api_BitOperationSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_BitOrFunction(ConjureBeanType):
@@ -24202,6 +24740,62 @@ scout_compute_api_BucketedNumericPlot.__qualname__ = "BucketedNumericPlot"
 scout_compute_api_BucketedNumericPlot.__module__ = "scout_service_api.scout_compute_api"
 
 
+class scout_compute_api_Cartesian(ConjureUnionType):
+    _scatter: Optional["scout_compute_api_Scatter"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'scatter': ConjureFieldDefinition('scatter', scout_compute_api_Scatter)
+        }
+
+    def __init__(
+            self,
+            scatter: Optional["scout_compute_api_Scatter"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (scatter is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if scatter is not None:
+                self._scatter = scatter
+                self._type = 'scatter'
+
+        elif type_of_union == 'scatter':
+            if scatter is None:
+                raise ValueError('a union value must not be None')
+            self._scatter = scatter
+            self._type = 'scatter'
+
+    @builtins.property
+    def scatter(self) -> Optional["scout_compute_api_Scatter"]:
+        return self._scatter
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_CartesianVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_CartesianVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'scatter' and self.scatter is not None:
+            return visitor._scatter(self.scatter)
+
+
+scout_compute_api_Cartesian.__name__ = "Cartesian"
+scout_compute_api_Cartesian.__qualname__ = "Cartesian"
+scout_compute_api_Cartesian.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_CartesianVisitor:
+
+    @abstractmethod
+    def _scatter(self, scatter: "scout_compute_api_Scatter") -> Any:
+        pass
+
+
+scout_compute_api_CartesianVisitor.__name__ = "CartesianVisitor"
+scout_compute_api_CartesianVisitor.__qualname__ = "CartesianVisitor"
+scout_compute_api_CartesianVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
 class scout_compute_api_CartesianBounds(ConjureBeanType):
     """
     Min/max bounds of an XY Cartesian plot, inclusive.
@@ -24305,62 +24899,6 @@ scout_compute_api_CartesianBucket.__qualname__ = "CartesianBucket"
 scout_compute_api_CartesianBucket.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_CartesianNode(ConjureUnionType):
-    _scatter: Optional["scout_compute_api_ScatterNode"] = None
-
-    @builtins.classmethod
-    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'scatter': ConjureFieldDefinition('scatter', scout_compute_api_ScatterNode)
-        }
-
-    def __init__(
-            self,
-            scatter: Optional["scout_compute_api_ScatterNode"] = None,
-            type_of_union: Optional[str] = None
-            ) -> None:
-        if type_of_union is None:
-            if (scatter is not None) != 1:
-                raise ValueError('a union must contain a single member')
-
-            if scatter is not None:
-                self._scatter = scatter
-                self._type = 'scatter'
-
-        elif type_of_union == 'scatter':
-            if scatter is None:
-                raise ValueError('a union value must not be None')
-            self._scatter = scatter
-            self._type = 'scatter'
-
-    @builtins.property
-    def scatter(self) -> Optional["scout_compute_api_ScatterNode"]:
-        return self._scatter
-
-    def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_CartesianNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_CartesianNodeVisitor'.format(visitor.__class__.__name__))
-        if self._type == 'scatter' and self.scatter is not None:
-            return visitor._scatter(self.scatter)
-
-
-scout_compute_api_CartesianNode.__name__ = "CartesianNode"
-scout_compute_api_CartesianNode.__qualname__ = "CartesianNode"
-scout_compute_api_CartesianNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_CartesianNodeVisitor:
-
-    @abstractmethod
-    def _scatter(self, scatter: "scout_compute_api_ScatterNode") -> Any:
-        pass
-
-
-scout_compute_api_CartesianNodeVisitor.__name__ = "CartesianNodeVisitor"
-scout_compute_api_CartesianNodeVisitor.__qualname__ = "CartesianNodeVisitor"
-scout_compute_api_CartesianNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
-
-
 class scout_compute_api_CartesianPlot(ConjureBeanType):
 
     @builtins.classmethod
@@ -24425,6 +24963,83 @@ scout_compute_api_CartesianUnitResult.__qualname__ = "CartesianUnitResult"
 scout_compute_api_CartesianUnitResult.__module__ = "scout_service_api.scout_compute_api"
 
 
+class scout_compute_api_ChannelSeries(ConjureUnionType):
+    _data_source: Optional["scout_compute_api_DataSourceChannel"] = None
+    _asset: Optional["scout_compute_api_AssetChannel"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'data_source': ConjureFieldDefinition('dataSource', scout_compute_api_DataSourceChannel),
+            'asset': ConjureFieldDefinition('asset', scout_compute_api_AssetChannel)
+        }
+
+    def __init__(
+            self,
+            data_source: Optional["scout_compute_api_DataSourceChannel"] = None,
+            asset: Optional["scout_compute_api_AssetChannel"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (data_source is not None) + (asset is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if data_source is not None:
+                self._data_source = data_source
+                self._type = 'dataSource'
+            if asset is not None:
+                self._asset = asset
+                self._type = 'asset'
+
+        elif type_of_union == 'dataSource':
+            if data_source is None:
+                raise ValueError('a union value must not be None')
+            self._data_source = data_source
+            self._type = 'dataSource'
+        elif type_of_union == 'asset':
+            if asset is None:
+                raise ValueError('a union value must not be None')
+            self._asset = asset
+            self._type = 'asset'
+
+    @builtins.property
+    def data_source(self) -> Optional["scout_compute_api_DataSourceChannel"]:
+        return self._data_source
+
+    @builtins.property
+    def asset(self) -> Optional["scout_compute_api_AssetChannel"]:
+        return self._asset
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_ChannelSeriesVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_ChannelSeriesVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'dataSource' and self.data_source is not None:
+            return visitor._data_source(self.data_source)
+        if self._type == 'asset' and self.asset is not None:
+            return visitor._asset(self.asset)
+
+
+scout_compute_api_ChannelSeries.__name__ = "ChannelSeries"
+scout_compute_api_ChannelSeries.__qualname__ = "ChannelSeries"
+scout_compute_api_ChannelSeries.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ChannelSeriesVisitor:
+
+    @abstractmethod
+    def _data_source(self, data_source: "scout_compute_api_DataSourceChannel") -> Any:
+        pass
+
+    @abstractmethod
+    def _asset(self, asset: "scout_compute_api_AssetChannel") -> Any:
+        pass
+
+
+scout_compute_api_ChannelSeriesVisitor.__name__ = "ChannelSeriesVisitor"
+scout_compute_api_ChannelSeriesVisitor.__qualname__ = "ChannelSeriesVisitor"
+scout_compute_api_ChannelSeriesVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
 class scout_compute_api_CompactEnumPoint(ConjureBeanType):
 
     @builtins.classmethod
@@ -24455,35 +25070,35 @@ scout_compute_api_CompactEnumPoint.__module__ = "scout_service_api.scout_compute
 
 
 class scout_compute_api_ComputableNode(ConjureUnionType):
-    _ranges: Optional["scout_compute_api_SummarizeRangesNode"] = None
-    _series: Optional["scout_compute_api_SummarizeSeriesNode"] = None
-    _value: Optional["scout_compute_api_SelectValueNode"] = None
-    _cartesian: Optional["scout_compute_api_SummarizeCartesianNode"] = None
-    _frequency: Optional["scout_compute_api_FrequencyDomainNode"] = None
-    _histogram: Optional["scout_compute_api_HistogramNode"] = None
-    _geo: Optional["scout_compute_api_SummarizeGeoNode"] = None
+    _ranges: Optional["scout_compute_api_SummarizeRanges"] = None
+    _series: Optional["scout_compute_api_SummarizeSeries"] = None
+    _value: Optional["scout_compute_api_SelectValue"] = None
+    _cartesian: Optional["scout_compute_api_SummarizeCartesian"] = None
+    _frequency: Optional["scout_compute_api_FrequencyDomain"] = None
+    _histogram: Optional["scout_compute_api_Histogram"] = None
+    _geo: Optional["scout_compute_api_SummarizeGeo"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_SummarizeRangesNode),
-            'series': ConjureFieldDefinition('series', scout_compute_api_SummarizeSeriesNode),
-            'value': ConjureFieldDefinition('value', scout_compute_api_SelectValueNode),
-            'cartesian': ConjureFieldDefinition('cartesian', scout_compute_api_SummarizeCartesianNode),
-            'frequency': ConjureFieldDefinition('frequency', scout_compute_api_FrequencyDomainNode),
-            'histogram': ConjureFieldDefinition('histogram', scout_compute_api_HistogramNode),
-            'geo': ConjureFieldDefinition('geo', scout_compute_api_SummarizeGeoNode)
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_SummarizeRanges),
+            'series': ConjureFieldDefinition('series', scout_compute_api_SummarizeSeries),
+            'value': ConjureFieldDefinition('value', scout_compute_api_SelectValue),
+            'cartesian': ConjureFieldDefinition('cartesian', scout_compute_api_SummarizeCartesian),
+            'frequency': ConjureFieldDefinition('frequency', scout_compute_api_FrequencyDomain),
+            'histogram': ConjureFieldDefinition('histogram', scout_compute_api_Histogram),
+            'geo': ConjureFieldDefinition('geo', scout_compute_api_SummarizeGeo)
         }
 
     def __init__(
             self,
-            ranges: Optional["scout_compute_api_SummarizeRangesNode"] = None,
-            series: Optional["scout_compute_api_SummarizeSeriesNode"] = None,
-            value: Optional["scout_compute_api_SelectValueNode"] = None,
-            cartesian: Optional["scout_compute_api_SummarizeCartesianNode"] = None,
-            frequency: Optional["scout_compute_api_FrequencyDomainNode"] = None,
-            histogram: Optional["scout_compute_api_HistogramNode"] = None,
-            geo: Optional["scout_compute_api_SummarizeGeoNode"] = None,
+            ranges: Optional["scout_compute_api_SummarizeRanges"] = None,
+            series: Optional["scout_compute_api_SummarizeSeries"] = None,
+            value: Optional["scout_compute_api_SelectValue"] = None,
+            cartesian: Optional["scout_compute_api_SummarizeCartesian"] = None,
+            frequency: Optional["scout_compute_api_FrequencyDomain"] = None,
+            histogram: Optional["scout_compute_api_Histogram"] = None,
+            geo: Optional["scout_compute_api_SummarizeGeo"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
@@ -24549,31 +25164,31 @@ class scout_compute_api_ComputableNode(ConjureUnionType):
             self._type = 'geo'
 
     @builtins.property
-    def ranges(self) -> Optional["scout_compute_api_SummarizeRangesNode"]:
+    def ranges(self) -> Optional["scout_compute_api_SummarizeRanges"]:
         return self._ranges
 
     @builtins.property
-    def series(self) -> Optional["scout_compute_api_SummarizeSeriesNode"]:
+    def series(self) -> Optional["scout_compute_api_SummarizeSeries"]:
         return self._series
 
     @builtins.property
-    def value(self) -> Optional["scout_compute_api_SelectValueNode"]:
+    def value(self) -> Optional["scout_compute_api_SelectValue"]:
         return self._value
 
     @builtins.property
-    def cartesian(self) -> Optional["scout_compute_api_SummarizeCartesianNode"]:
+    def cartesian(self) -> Optional["scout_compute_api_SummarizeCartesian"]:
         return self._cartesian
 
     @builtins.property
-    def frequency(self) -> Optional["scout_compute_api_FrequencyDomainNode"]:
+    def frequency(self) -> Optional["scout_compute_api_FrequencyDomain"]:
         return self._frequency
 
     @builtins.property
-    def histogram(self) -> Optional["scout_compute_api_HistogramNode"]:
+    def histogram(self) -> Optional["scout_compute_api_Histogram"]:
         return self._histogram
 
     @builtins.property
-    def geo(self) -> Optional["scout_compute_api_SummarizeGeoNode"]:
+    def geo(self) -> Optional["scout_compute_api_SummarizeGeo"]:
         return self._geo
 
     def accept(self, visitor) -> Any:
@@ -24603,31 +25218,31 @@ scout_compute_api_ComputableNode.__module__ = "scout_service_api.scout_compute_a
 class scout_compute_api_ComputableNodeVisitor:
 
     @abstractmethod
-    def _ranges(self, ranges: "scout_compute_api_SummarizeRangesNode") -> Any:
+    def _ranges(self, ranges: "scout_compute_api_SummarizeRanges") -> Any:
         pass
 
     @abstractmethod
-    def _series(self, series: "scout_compute_api_SummarizeSeriesNode") -> Any:
+    def _series(self, series: "scout_compute_api_SummarizeSeries") -> Any:
         pass
 
     @abstractmethod
-    def _value(self, value: "scout_compute_api_SelectValueNode") -> Any:
+    def _value(self, value: "scout_compute_api_SelectValue") -> Any:
         pass
 
     @abstractmethod
-    def _cartesian(self, cartesian: "scout_compute_api_SummarizeCartesianNode") -> Any:
+    def _cartesian(self, cartesian: "scout_compute_api_SummarizeCartesian") -> Any:
         pass
 
     @abstractmethod
-    def _frequency(self, frequency: "scout_compute_api_FrequencyDomainNode") -> Any:
+    def _frequency(self, frequency: "scout_compute_api_FrequencyDomain") -> Any:
         pass
 
     @abstractmethod
-    def _histogram(self, histogram: "scout_compute_api_HistogramNode") -> Any:
+    def _histogram(self, histogram: "scout_compute_api_Histogram") -> Any:
         pass
 
     @abstractmethod
-    def _geo(self, geo: "scout_compute_api_SummarizeGeoNode") -> Any:
+    def _geo(self, geo: "scout_compute_api_SummarizeGeo") -> Any:
         pass
 
 
@@ -24637,26 +25252,26 @@ scout_compute_api_ComputableNodeVisitor.__module__ = "scout_service_api.scout_co
 
 
 class scout_compute_api_ComputeNode(ConjureUnionType):
-    _enum: Optional["scout_compute_api_EnumSeriesNode"] = None
-    _numeric: Optional["scout_compute_api_NumericSeriesNode"] = None
-    _ranges: Optional["scout_compute_api_RangesNode"] = None
-    _raw: Optional["scout_compute_api_RawUntypedSeriesNode"] = None
+    _enum: Optional["scout_compute_api_EnumSeries"] = None
+    _numeric: Optional["scout_compute_api_NumericSeries"] = None
+    _ranges: Optional["scout_compute_api_RangeSeries"] = None
+    _raw: Optional["scout_compute_api_Reference"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'enum': ConjureFieldDefinition('enum', scout_compute_api_EnumSeriesNode),
-            'numeric': ConjureFieldDefinition('numeric', scout_compute_api_NumericSeriesNode),
-            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangesNode),
-            'raw': ConjureFieldDefinition('raw', scout_compute_api_RawUntypedSeriesNode)
+            'enum': ConjureFieldDefinition('enum', scout_compute_api_EnumSeries),
+            'numeric': ConjureFieldDefinition('numeric', scout_compute_api_NumericSeries),
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangeSeries),
+            'raw': ConjureFieldDefinition('raw', scout_compute_api_Reference)
         }
 
     def __init__(
             self,
-            enum: Optional["scout_compute_api_EnumSeriesNode"] = None,
-            numeric: Optional["scout_compute_api_NumericSeriesNode"] = None,
-            ranges: Optional["scout_compute_api_RangesNode"] = None,
-            raw: Optional["scout_compute_api_RawUntypedSeriesNode"] = None,
+            enum: Optional["scout_compute_api_EnumSeries"] = None,
+            numeric: Optional["scout_compute_api_NumericSeries"] = None,
+            ranges: Optional["scout_compute_api_RangeSeries"] = None,
+            raw: Optional["scout_compute_api_Reference"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
@@ -24698,19 +25313,19 @@ class scout_compute_api_ComputeNode(ConjureUnionType):
             self._type = 'raw'
 
     @builtins.property
-    def enum(self) -> Optional["scout_compute_api_EnumSeriesNode"]:
+    def enum(self) -> Optional["scout_compute_api_EnumSeries"]:
         return self._enum
 
     @builtins.property
-    def numeric(self) -> Optional["scout_compute_api_NumericSeriesNode"]:
+    def numeric(self) -> Optional["scout_compute_api_NumericSeries"]:
         return self._numeric
 
     @builtins.property
-    def ranges(self) -> Optional["scout_compute_api_RangesNode"]:
+    def ranges(self) -> Optional["scout_compute_api_RangeSeries"]:
         return self._ranges
 
     @builtins.property
-    def raw(self) -> Optional["scout_compute_api_RawUntypedSeriesNode"]:
+    def raw(self) -> Optional["scout_compute_api_Reference"]:
         return self._raw
 
     def accept(self, visitor) -> Any:
@@ -24734,19 +25349,19 @@ scout_compute_api_ComputeNode.__module__ = "scout_service_api.scout_compute_api"
 class scout_compute_api_ComputeNodeVisitor:
 
     @abstractmethod
-    def _enum(self, enum: "scout_compute_api_EnumSeriesNode") -> Any:
+    def _enum(self, enum: "scout_compute_api_EnumSeries") -> Any:
         pass
 
     @abstractmethod
-    def _numeric(self, numeric: "scout_compute_api_NumericSeriesNode") -> Any:
+    def _numeric(self, numeric: "scout_compute_api_NumericSeries") -> Any:
         pass
 
     @abstractmethod
-    def _ranges(self, ranges: "scout_compute_api_RangesNode") -> Any:
+    def _ranges(self, ranges: "scout_compute_api_RangeSeries") -> Any:
         pass
 
     @abstractmethod
-    def _raw(self, raw: "scout_compute_api_RawUntypedSeriesNode") -> Any:
+    def _raw(self, raw: "scout_compute_api_Reference") -> Any:
         pass
 
 
@@ -25546,7 +26161,7 @@ scout_compute_api_Count.__qualname__ = "Count"
 scout_compute_api_Count.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_CumulativeSumSeriesNode(ConjureBeanType):
+class scout_compute_api_CumulativeSumSeries(ConjureBeanType):
     """
     Calculates the running total of the series values.
     """
@@ -25554,18 +26169,18 @@ class scout_compute_api_CumulativeSumSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'start_timestamp': ConjureFieldDefinition('startTimestamp', scout_compute_api_TimestampConstant)
         }
 
     __slots__: List[str] = ['_input', '_start_timestamp']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", start_timestamp: "scout_compute_api_TimestampConstant") -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", start_timestamp: "scout_compute_api_TimestampConstant") -> None:
         self._input = input
         self._start_timestamp = start_timestamp
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -25573,12 +26188,51 @@ class scout_compute_api_CumulativeSumSeriesNode(ConjureBeanType):
         return self._start_timestamp
 
 
-scout_compute_api_CumulativeSumSeriesNode.__name__ = "CumulativeSumSeriesNode"
-scout_compute_api_CumulativeSumSeriesNode.__qualname__ = "CumulativeSumSeriesNode"
-scout_compute_api_CumulativeSumSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_CumulativeSumSeries.__name__ = "CumulativeSumSeries"
+scout_compute_api_CumulativeSumSeries.__qualname__ = "CumulativeSumSeries"
+scout_compute_api_CumulativeSumSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_DerivativeSeriesNode(ConjureBeanType):
+class scout_compute_api_DataSourceChannel(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'data_source_rid': ConjureFieldDefinition('dataSourceRid', scout_compute_api_StringConstant),
+            'channel': ConjureFieldDefinition('channel', scout_compute_api_StringConstant),
+            'tags': ConjureFieldDefinition('tags', Dict[str, scout_compute_api_StringConstant])
+        }
+
+    __slots__: List[str] = ['_data_source_rid', '_channel', '_tags']
+
+    def __init__(self, channel: "scout_compute_api_StringConstant", data_source_rid: "scout_compute_api_StringConstant", tags: Dict[str, "scout_compute_api_StringConstant"]) -> None:
+        self._data_source_rid = data_source_rid
+        self._channel = channel
+        self._tags = tags
+
+    @builtins.property
+    def data_source_rid(self) -> "scout_compute_api_StringConstant":
+        return self._data_source_rid
+
+    @builtins.property
+    def channel(self) -> "scout_compute_api_StringConstant":
+        return self._channel
+
+    @builtins.property
+    def tags(self) -> Dict[str, "scout_compute_api_StringConstant"]:
+        """
+        Tags to filter the channel by. Only returns points from the channel with matching tag values for the 
+provided tag keys.
+        """
+        return self._tags
+
+
+scout_compute_api_DataSourceChannel.__name__ = "DataSourceChannel"
+scout_compute_api_DataSourceChannel.__qualname__ = "DataSourceChannel"
+scout_compute_api_DataSourceChannel.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_DerivativeSeries(ConjureBeanType):
     """
     Calculates the rate of change between subsequent points.
     """
@@ -25586,20 +26240,20 @@ class scout_compute_api_DerivativeSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'time_unit': ConjureFieldDefinition('timeUnit', OptionalTypeWrapper[api_TimeUnit]),
             'negative_values_configuration': ConjureFieldDefinition('negativeValuesConfiguration', OptionalTypeWrapper[scout_compute_api_NegativeValueConfiguration])
         }
 
     __slots__: List[str] = ['_input', '_time_unit', '_negative_values_configuration']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", negative_values_configuration: Optional["scout_compute_api_NegativeValueConfiguration"] = None, time_unit: Optional["api_TimeUnit"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", negative_values_configuration: Optional["scout_compute_api_NegativeValueConfiguration"] = None, time_unit: Optional["api_TimeUnit"] = None) -> None:
         self._input = input
         self._time_unit = time_unit
         self._negative_values_configuration = negative_values_configuration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -25617,9 +26271,9 @@ class scout_compute_api_DerivativeSeriesNode(ConjureBeanType):
         return self._negative_values_configuration
 
 
-scout_compute_api_DerivativeSeriesNode.__name__ = "DerivativeSeriesNode"
-scout_compute_api_DerivativeSeriesNode.__qualname__ = "DerivativeSeriesNode"
-scout_compute_api_DerivativeSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_DerivativeSeries.__name__ = "DerivativeSeries"
+scout_compute_api_DerivativeSeries.__qualname__ = "DerivativeSeries"
+scout_compute_api_DerivativeSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_DoubleConstant(ConjureUnionType):
@@ -25869,7 +26523,7 @@ scout_compute_api_EnumFilterOperator.__qualname__ = "EnumFilterOperator"
 scout_compute_api_EnumFilterOperator.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_EnumFilterRangesNode(ConjureBeanType):
+class scout_compute_api_EnumFilterRanges(ConjureBeanType):
     """
     Produces a list of ranges for which the filter condition is satisfied.
     """
@@ -25877,7 +26531,7 @@ class scout_compute_api_EnumFilterRangesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeries),
             'operator': ConjureFieldDefinition('operator', scout_compute_api_EnumFilterOperator),
             'values': ConjureFieldDefinition('values', scout_compute_api_StringSetConstant),
             'persistence_window_configuration': ConjureFieldDefinition('persistenceWindowConfiguration', OptionalTypeWrapper[scout_compute_api_PersistenceWindowConfiguration])
@@ -25885,14 +26539,14 @@ class scout_compute_api_EnumFilterRangesNode(ConjureBeanType):
 
     __slots__: List[str] = ['_input', '_operator', '_values', '_persistence_window_configuration']
 
-    def __init__(self, input: "scout_compute_api_EnumSeriesNode", operator: "scout_compute_api_EnumFilterOperator", values: "scout_compute_api_StringSetConstant", persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_EnumSeries", operator: "scout_compute_api_EnumFilterOperator", values: "scout_compute_api_StringSetConstant", persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None) -> None:
         self._input = input
         self._operator = operator
         self._values = values
         self._persistence_window_configuration = persistence_window_configuration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_EnumSeriesNode":
+    def input(self) -> "scout_compute_api_EnumSeries":
         return self._input
 
     @builtins.property
@@ -25908,12 +26562,12 @@ class scout_compute_api_EnumFilterRangesNode(ConjureBeanType):
         return self._persistence_window_configuration
 
 
-scout_compute_api_EnumFilterRangesNode.__name__ = "EnumFilterRangesNode"
-scout_compute_api_EnumFilterRangesNode.__qualname__ = "EnumFilterRangesNode"
-scout_compute_api_EnumFilterRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_EnumFilterRanges.__name__ = "EnumFilterRanges"
+scout_compute_api_EnumFilterRanges.__qualname__ = "EnumFilterRanges"
+scout_compute_api_EnumFilterRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_EnumFilterTransformationSeriesNode(ConjureBeanType):
+class scout_compute_api_EnumFilterTransformationSeries(ConjureBeanType):
     """
     Outputs the values of the enum plot value within the ranges specified by a ranges node
     """
@@ -25921,28 +26575,28 @@ class scout_compute_api_EnumFilterTransformationSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeriesNode),
-            'filter': ConjureFieldDefinition('filter', scout_compute_api_RangesNode)
+            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeries),
+            'filter': ConjureFieldDefinition('filter', scout_compute_api_RangeSeries)
         }
 
     __slots__: List[str] = ['_input', '_filter']
 
-    def __init__(self, filter: "scout_compute_api_RangesNode", input: "scout_compute_api_EnumSeriesNode") -> None:
+    def __init__(self, filter: "scout_compute_api_RangeSeries", input: "scout_compute_api_EnumSeries") -> None:
         self._input = input
         self._filter = filter
 
     @builtins.property
-    def input(self) -> "scout_compute_api_EnumSeriesNode":
+    def input(self) -> "scout_compute_api_EnumSeries":
         return self._input
 
     @builtins.property
-    def filter(self) -> "scout_compute_api_RangesNode":
+    def filter(self) -> "scout_compute_api_RangeSeries":
         return self._filter
 
 
-scout_compute_api_EnumFilterTransformationSeriesNode.__name__ = "EnumFilterTransformationSeriesNode"
-scout_compute_api_EnumFilterTransformationSeriesNode.__qualname__ = "EnumFilterTransformationSeriesNode"
-scout_compute_api_EnumFilterTransformationSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_EnumFilterTransformationSeries.__name__ = "EnumFilterTransformationSeries"
+scout_compute_api_EnumFilterTransformationSeries.__qualname__ = "EnumFilterTransformationSeries"
+scout_compute_api_EnumFilterTransformationSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_EnumHistogramBucket(ConjureBeanType):
@@ -25986,16 +26640,16 @@ class scout_compute_api_EnumHistogramNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', Dict[scout_compute_api_VariableName, scout_compute_api_EnumSeriesNode])
+            'inputs': ConjureFieldDefinition('inputs', Dict[scout_compute_api_VariableName, scout_compute_api_EnumSeries])
         }
 
     __slots__: List[str] = ['_inputs']
 
-    def __init__(self, inputs: Dict[str, "scout_compute_api_EnumSeriesNode"]) -> None:
+    def __init__(self, inputs: Dict[str, "scout_compute_api_EnumSeries"]) -> None:
         self._inputs = inputs
 
     @builtins.property
-    def inputs(self) -> Dict[str, "scout_compute_api_EnumSeriesNode"]:
+    def inputs(self) -> Dict[str, "scout_compute_api_EnumSeries"]:
         return self._inputs
 
 
@@ -26091,7 +26745,7 @@ scout_compute_api_EnumPoint.__qualname__ = "EnumPoint"
 scout_compute_api_EnumPoint.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_EnumResampleSeriesNode(ConjureBeanType):
+class scout_compute_api_EnumResampleSeries(ConjureBeanType):
     """
     Resamples the input series to a new resolution using interpolation.
 Outputs data for timestamps corresponding to the defined frequency. Based on interpolation strategy,
@@ -26101,18 +26755,18 @@ determines range of timestamps to output data for and interpolates values where 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeries),
             'resample_configuration': ConjureFieldDefinition('resampleConfiguration', scout_compute_api_ResampleConfiguration)
         }
 
     __slots__: List[str] = ['_input', '_resample_configuration']
 
-    def __init__(self, input: "scout_compute_api_EnumSeriesNode", resample_configuration: "scout_compute_api_ResampleConfiguration") -> None:
+    def __init__(self, input: "scout_compute_api_EnumSeries", resample_configuration: "scout_compute_api_ResampleConfiguration") -> None:
         self._input = input
         self._resample_configuration = resample_configuration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_EnumSeriesNode":
+    def input(self) -> "scout_compute_api_EnumSeries":
         return self._input
 
     @builtins.property
@@ -26123,12 +26777,236 @@ determines range of timestamps to output data for and interpolates values where 
         return self._resample_configuration
 
 
-scout_compute_api_EnumResampleSeriesNode.__name__ = "EnumResampleSeriesNode"
-scout_compute_api_EnumResampleSeriesNode.__qualname__ = "EnumResampleSeriesNode"
-scout_compute_api_EnumResampleSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_EnumResampleSeries.__name__ = "EnumResampleSeries"
+scout_compute_api_EnumResampleSeries.__qualname__ = "EnumResampleSeries"
+scout_compute_api_EnumResampleSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_EnumSeriesEqualityRangesNode(ConjureBeanType):
+class scout_compute_api_EnumSeries(ConjureUnionType):
+    _aggregate: Optional["scout_compute_api_AggregateEnumSeries"] = None
+    _function: Optional["scout_compute_api_EnumSeriesFunction"] = None
+    _raw: Optional["scout_compute_api_Reference"] = None
+    _channel: Optional["scout_compute_api_ChannelSeries"] = None
+    _resample: Optional["scout_compute_api_EnumResampleSeries"] = None
+    _time_range_filter: Optional["scout_compute_api_EnumTimeRangeFilterSeries"] = None
+    _time_shift: Optional["scout_compute_api_EnumTimeShiftSeries"] = None
+    _union: Optional["scout_compute_api_EnumUnionSeries"] = None
+    _filter_transformation: Optional["scout_compute_api_EnumFilterTransformationSeries"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'aggregate': ConjureFieldDefinition('aggregate', scout_compute_api_AggregateEnumSeries),
+            'function': ConjureFieldDefinition('function', scout_compute_api_EnumSeriesFunction),
+            'raw': ConjureFieldDefinition('raw', scout_compute_api_Reference),
+            'channel': ConjureFieldDefinition('channel', scout_compute_api_ChannelSeries),
+            'resample': ConjureFieldDefinition('resample', scout_compute_api_EnumResampleSeries),
+            'time_range_filter': ConjureFieldDefinition('timeRangeFilter', scout_compute_api_EnumTimeRangeFilterSeries),
+            'time_shift': ConjureFieldDefinition('timeShift', scout_compute_api_EnumTimeShiftSeries),
+            'union': ConjureFieldDefinition('union', scout_compute_api_EnumUnionSeries),
+            'filter_transformation': ConjureFieldDefinition('filterTransformation', scout_compute_api_EnumFilterTransformationSeries)
+        }
+
+    def __init__(
+            self,
+            aggregate: Optional["scout_compute_api_AggregateEnumSeries"] = None,
+            function: Optional["scout_compute_api_EnumSeriesFunction"] = None,
+            raw: Optional["scout_compute_api_Reference"] = None,
+            channel: Optional["scout_compute_api_ChannelSeries"] = None,
+            resample: Optional["scout_compute_api_EnumResampleSeries"] = None,
+            time_range_filter: Optional["scout_compute_api_EnumTimeRangeFilterSeries"] = None,
+            time_shift: Optional["scout_compute_api_EnumTimeShiftSeries"] = None,
+            union: Optional["scout_compute_api_EnumUnionSeries"] = None,
+            filter_transformation: Optional["scout_compute_api_EnumFilterTransformationSeries"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (aggregate is not None) + (function is not None) + (raw is not None) + (channel is not None) + (resample is not None) + (time_range_filter is not None) + (time_shift is not None) + (union is not None) + (filter_transformation is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if aggregate is not None:
+                self._aggregate = aggregate
+                self._type = 'aggregate'
+            if function is not None:
+                self._function = function
+                self._type = 'function'
+            if raw is not None:
+                self._raw = raw
+                self._type = 'raw'
+            if channel is not None:
+                self._channel = channel
+                self._type = 'channel'
+            if resample is not None:
+                self._resample = resample
+                self._type = 'resample'
+            if time_range_filter is not None:
+                self._time_range_filter = time_range_filter
+                self._type = 'timeRangeFilter'
+            if time_shift is not None:
+                self._time_shift = time_shift
+                self._type = 'timeShift'
+            if union is not None:
+                self._union = union
+                self._type = 'union'
+            if filter_transformation is not None:
+                self._filter_transformation = filter_transformation
+                self._type = 'filterTransformation'
+
+        elif type_of_union == 'aggregate':
+            if aggregate is None:
+                raise ValueError('a union value must not be None')
+            self._aggregate = aggregate
+            self._type = 'aggregate'
+        elif type_of_union == 'function':
+            if function is None:
+                raise ValueError('a union value must not be None')
+            self._function = function
+            self._type = 'function'
+        elif type_of_union == 'raw':
+            if raw is None:
+                raise ValueError('a union value must not be None')
+            self._raw = raw
+            self._type = 'raw'
+        elif type_of_union == 'channel':
+            if channel is None:
+                raise ValueError('a union value must not be None')
+            self._channel = channel
+            self._type = 'channel'
+        elif type_of_union == 'resample':
+            if resample is None:
+                raise ValueError('a union value must not be None')
+            self._resample = resample
+            self._type = 'resample'
+        elif type_of_union == 'timeRangeFilter':
+            if time_range_filter is None:
+                raise ValueError('a union value must not be None')
+            self._time_range_filter = time_range_filter
+            self._type = 'timeRangeFilter'
+        elif type_of_union == 'timeShift':
+            if time_shift is None:
+                raise ValueError('a union value must not be None')
+            self._time_shift = time_shift
+            self._type = 'timeShift'
+        elif type_of_union == 'union':
+            if union is None:
+                raise ValueError('a union value must not be None')
+            self._union = union
+            self._type = 'union'
+        elif type_of_union == 'filterTransformation':
+            if filter_transformation is None:
+                raise ValueError('a union value must not be None')
+            self._filter_transformation = filter_transformation
+            self._type = 'filterTransformation'
+
+    @builtins.property
+    def aggregate(self) -> Optional["scout_compute_api_AggregateEnumSeries"]:
+        return self._aggregate
+
+    @builtins.property
+    def function(self) -> Optional["scout_compute_api_EnumSeriesFunction"]:
+        return self._function
+
+    @builtins.property
+    def raw(self) -> Optional["scout_compute_api_Reference"]:
+        return self._raw
+
+    @builtins.property
+    def channel(self) -> Optional["scout_compute_api_ChannelSeries"]:
+        return self._channel
+
+    @builtins.property
+    def resample(self) -> Optional["scout_compute_api_EnumResampleSeries"]:
+        return self._resample
+
+    @builtins.property
+    def time_range_filter(self) -> Optional["scout_compute_api_EnumTimeRangeFilterSeries"]:
+        return self._time_range_filter
+
+    @builtins.property
+    def time_shift(self) -> Optional["scout_compute_api_EnumTimeShiftSeries"]:
+        return self._time_shift
+
+    @builtins.property
+    def union(self) -> Optional["scout_compute_api_EnumUnionSeries"]:
+        return self._union
+
+    @builtins.property
+    def filter_transformation(self) -> Optional["scout_compute_api_EnumFilterTransformationSeries"]:
+        return self._filter_transformation
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_EnumSeriesVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_EnumSeriesVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'aggregate' and self.aggregate is not None:
+            return visitor._aggregate(self.aggregate)
+        if self._type == 'function' and self.function is not None:
+            return visitor._function(self.function)
+        if self._type == 'raw' and self.raw is not None:
+            return visitor._raw(self.raw)
+        if self._type == 'channel' and self.channel is not None:
+            return visitor._channel(self.channel)
+        if self._type == 'resample' and self.resample is not None:
+            return visitor._resample(self.resample)
+        if self._type == 'timeRangeFilter' and self.time_range_filter is not None:
+            return visitor._time_range_filter(self.time_range_filter)
+        if self._type == 'timeShift' and self.time_shift is not None:
+            return visitor._time_shift(self.time_shift)
+        if self._type == 'union' and self.union is not None:
+            return visitor._union(self.union)
+        if self._type == 'filterTransformation' and self.filter_transformation is not None:
+            return visitor._filter_transformation(self.filter_transformation)
+
+
+scout_compute_api_EnumSeries.__name__ = "EnumSeries"
+scout_compute_api_EnumSeries.__qualname__ = "EnumSeries"
+scout_compute_api_EnumSeries.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_EnumSeriesVisitor:
+
+    @abstractmethod
+    def _aggregate(self, aggregate: "scout_compute_api_AggregateEnumSeries") -> Any:
+        pass
+
+    @abstractmethod
+    def _function(self, function: "scout_compute_api_EnumSeriesFunction") -> Any:
+        pass
+
+    @abstractmethod
+    def _raw(self, raw: "scout_compute_api_Reference") -> Any:
+        pass
+
+    @abstractmethod
+    def _channel(self, channel: "scout_compute_api_ChannelSeries") -> Any:
+        pass
+
+    @abstractmethod
+    def _resample(self, resample: "scout_compute_api_EnumResampleSeries") -> Any:
+        pass
+
+    @abstractmethod
+    def _time_range_filter(self, time_range_filter: "scout_compute_api_EnumTimeRangeFilterSeries") -> Any:
+        pass
+
+    @abstractmethod
+    def _time_shift(self, time_shift: "scout_compute_api_EnumTimeShiftSeries") -> Any:
+        pass
+
+    @abstractmethod
+    def _union(self, union: "scout_compute_api_EnumUnionSeries") -> Any:
+        pass
+
+    @abstractmethod
+    def _filter_transformation(self, filter_transformation: "scout_compute_api_EnumFilterTransformationSeries") -> Any:
+        pass
+
+
+scout_compute_api_EnumSeriesVisitor.__name__ = "EnumSeriesVisitor"
+scout_compute_api_EnumSeriesVisitor.__qualname__ = "EnumSeriesVisitor"
+scout_compute_api_EnumSeriesVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_EnumSeriesEqualityRanges(ConjureBeanType):
     """
     Produces a list of ranges for which provided enum series are all equal (or are not all equal).
     """
@@ -26136,7 +27014,7 @@ class scout_compute_api_EnumSeriesEqualityRangesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', List[scout_compute_api_EnumSeriesNode]),
+            'input': ConjureFieldDefinition('input', List[scout_compute_api_EnumSeries]),
             'equality_operator': ConjureFieldDefinition('equalityOperator', scout_compute_api_EqualityOperator),
             'persistence_window_configuration': ConjureFieldDefinition('persistenceWindowConfiguration', OptionalTypeWrapper[scout_compute_api_PersistenceWindowConfiguration]),
             'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
@@ -26144,14 +27022,14 @@ class scout_compute_api_EnumSeriesEqualityRangesNode(ConjureBeanType):
 
     __slots__: List[str] = ['_input', '_equality_operator', '_persistence_window_configuration', '_interpolation_configuration']
 
-    def __init__(self, equality_operator: "scout_compute_api_EqualityOperator", input: List["scout_compute_api_EnumSeriesNode"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None, persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None) -> None:
+    def __init__(self, equality_operator: "scout_compute_api_EqualityOperator", input: List["scout_compute_api_EnumSeries"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None, persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None) -> None:
         self._input = input
         self._equality_operator = equality_operator
         self._persistence_window_configuration = persistence_window_configuration
         self._interpolation_configuration = interpolation_configuration
 
     @builtins.property
-    def input(self) -> List["scout_compute_api_EnumSeriesNode"]:
+    def input(self) -> List["scout_compute_api_EnumSeries"]:
         return self._input
 
     @builtins.property
@@ -26170,9 +27048,9 @@ class scout_compute_api_EnumSeriesEqualityRangesNode(ConjureBeanType):
         return self._interpolation_configuration
 
 
-scout_compute_api_EnumSeriesEqualityRangesNode.__name__ = "EnumSeriesEqualityRangesNode"
-scout_compute_api_EnumSeriesEqualityRangesNode.__qualname__ = "EnumSeriesEqualityRangesNode"
-scout_compute_api_EnumSeriesEqualityRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_EnumSeriesEqualityRanges.__name__ = "EnumSeriesEqualityRanges"
+scout_compute_api_EnumSeriesEqualityRanges.__qualname__ = "EnumSeriesEqualityRanges"
+scout_compute_api_EnumSeriesEqualityRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_EnumSeriesFunction(ConjureBeanType):
@@ -26213,210 +27091,7 @@ scout_compute_api_EnumSeriesFunction.__qualname__ = "EnumSeriesFunction"
 scout_compute_api_EnumSeriesFunction.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_EnumSeriesNode(ConjureUnionType):
-    _aggregate: Optional["scout_compute_api_AggregateEnumSeriesNode"] = None
-    _function: Optional["scout_compute_api_EnumSeriesFunction"] = None
-    _raw: Optional["scout_compute_api_RawEnumSeriesNode"] = None
-    _resample: Optional["scout_compute_api_EnumResampleSeriesNode"] = None
-    _time_range_filter: Optional["scout_compute_api_EnumTimeRangeFilterSeriesNode"] = None
-    _time_shift: Optional["scout_compute_api_EnumTimeShiftSeriesNode"] = None
-    _union: Optional["scout_compute_api_EnumUnionSeriesNode"] = None
-    _filter_transformation: Optional["scout_compute_api_EnumFilterTransformationSeriesNode"] = None
-
-    @builtins.classmethod
-    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'aggregate': ConjureFieldDefinition('aggregate', scout_compute_api_AggregateEnumSeriesNode),
-            'function': ConjureFieldDefinition('function', scout_compute_api_EnumSeriesFunction),
-            'raw': ConjureFieldDefinition('raw', scout_compute_api_RawEnumSeriesNode),
-            'resample': ConjureFieldDefinition('resample', scout_compute_api_EnumResampleSeriesNode),
-            'time_range_filter': ConjureFieldDefinition('timeRangeFilter', scout_compute_api_EnumTimeRangeFilterSeriesNode),
-            'time_shift': ConjureFieldDefinition('timeShift', scout_compute_api_EnumTimeShiftSeriesNode),
-            'union': ConjureFieldDefinition('union', scout_compute_api_EnumUnionSeriesNode),
-            'filter_transformation': ConjureFieldDefinition('filterTransformation', scout_compute_api_EnumFilterTransformationSeriesNode)
-        }
-
-    def __init__(
-            self,
-            aggregate: Optional["scout_compute_api_AggregateEnumSeriesNode"] = None,
-            function: Optional["scout_compute_api_EnumSeriesFunction"] = None,
-            raw: Optional["scout_compute_api_RawEnumSeriesNode"] = None,
-            resample: Optional["scout_compute_api_EnumResampleSeriesNode"] = None,
-            time_range_filter: Optional["scout_compute_api_EnumTimeRangeFilterSeriesNode"] = None,
-            time_shift: Optional["scout_compute_api_EnumTimeShiftSeriesNode"] = None,
-            union: Optional["scout_compute_api_EnumUnionSeriesNode"] = None,
-            filter_transformation: Optional["scout_compute_api_EnumFilterTransformationSeriesNode"] = None,
-            type_of_union: Optional[str] = None
-            ) -> None:
-        if type_of_union is None:
-            if (aggregate is not None) + (function is not None) + (raw is not None) + (resample is not None) + (time_range_filter is not None) + (time_shift is not None) + (union is not None) + (filter_transformation is not None) != 1:
-                raise ValueError('a union must contain a single member')
-
-            if aggregate is not None:
-                self._aggregate = aggregate
-                self._type = 'aggregate'
-            if function is not None:
-                self._function = function
-                self._type = 'function'
-            if raw is not None:
-                self._raw = raw
-                self._type = 'raw'
-            if resample is not None:
-                self._resample = resample
-                self._type = 'resample'
-            if time_range_filter is not None:
-                self._time_range_filter = time_range_filter
-                self._type = 'timeRangeFilter'
-            if time_shift is not None:
-                self._time_shift = time_shift
-                self._type = 'timeShift'
-            if union is not None:
-                self._union = union
-                self._type = 'union'
-            if filter_transformation is not None:
-                self._filter_transformation = filter_transformation
-                self._type = 'filterTransformation'
-
-        elif type_of_union == 'aggregate':
-            if aggregate is None:
-                raise ValueError('a union value must not be None')
-            self._aggregate = aggregate
-            self._type = 'aggregate'
-        elif type_of_union == 'function':
-            if function is None:
-                raise ValueError('a union value must not be None')
-            self._function = function
-            self._type = 'function'
-        elif type_of_union == 'raw':
-            if raw is None:
-                raise ValueError('a union value must not be None')
-            self._raw = raw
-            self._type = 'raw'
-        elif type_of_union == 'resample':
-            if resample is None:
-                raise ValueError('a union value must not be None')
-            self._resample = resample
-            self._type = 'resample'
-        elif type_of_union == 'timeRangeFilter':
-            if time_range_filter is None:
-                raise ValueError('a union value must not be None')
-            self._time_range_filter = time_range_filter
-            self._type = 'timeRangeFilter'
-        elif type_of_union == 'timeShift':
-            if time_shift is None:
-                raise ValueError('a union value must not be None')
-            self._time_shift = time_shift
-            self._type = 'timeShift'
-        elif type_of_union == 'union':
-            if union is None:
-                raise ValueError('a union value must not be None')
-            self._union = union
-            self._type = 'union'
-        elif type_of_union == 'filterTransformation':
-            if filter_transformation is None:
-                raise ValueError('a union value must not be None')
-            self._filter_transformation = filter_transformation
-            self._type = 'filterTransformation'
-
-    @builtins.property
-    def aggregate(self) -> Optional["scout_compute_api_AggregateEnumSeriesNode"]:
-        return self._aggregate
-
-    @builtins.property
-    def function(self) -> Optional["scout_compute_api_EnumSeriesFunction"]:
-        return self._function
-
-    @builtins.property
-    def raw(self) -> Optional["scout_compute_api_RawEnumSeriesNode"]:
-        return self._raw
-
-    @builtins.property
-    def resample(self) -> Optional["scout_compute_api_EnumResampleSeriesNode"]:
-        return self._resample
-
-    @builtins.property
-    def time_range_filter(self) -> Optional["scout_compute_api_EnumTimeRangeFilterSeriesNode"]:
-        return self._time_range_filter
-
-    @builtins.property
-    def time_shift(self) -> Optional["scout_compute_api_EnumTimeShiftSeriesNode"]:
-        return self._time_shift
-
-    @builtins.property
-    def union(self) -> Optional["scout_compute_api_EnumUnionSeriesNode"]:
-        return self._union
-
-    @builtins.property
-    def filter_transformation(self) -> Optional["scout_compute_api_EnumFilterTransformationSeriesNode"]:
-        return self._filter_transformation
-
-    def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_EnumSeriesNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_EnumSeriesNodeVisitor'.format(visitor.__class__.__name__))
-        if self._type == 'aggregate' and self.aggregate is not None:
-            return visitor._aggregate(self.aggregate)
-        if self._type == 'function' and self.function is not None:
-            return visitor._function(self.function)
-        if self._type == 'raw' and self.raw is not None:
-            return visitor._raw(self.raw)
-        if self._type == 'resample' and self.resample is not None:
-            return visitor._resample(self.resample)
-        if self._type == 'timeRangeFilter' and self.time_range_filter is not None:
-            return visitor._time_range_filter(self.time_range_filter)
-        if self._type == 'timeShift' and self.time_shift is not None:
-            return visitor._time_shift(self.time_shift)
-        if self._type == 'union' and self.union is not None:
-            return visitor._union(self.union)
-        if self._type == 'filterTransformation' and self.filter_transformation is not None:
-            return visitor._filter_transformation(self.filter_transformation)
-
-
-scout_compute_api_EnumSeriesNode.__name__ = "EnumSeriesNode"
-scout_compute_api_EnumSeriesNode.__qualname__ = "EnumSeriesNode"
-scout_compute_api_EnumSeriesNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_EnumSeriesNodeVisitor:
-
-    @abstractmethod
-    def _aggregate(self, aggregate: "scout_compute_api_AggregateEnumSeriesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _function(self, function: "scout_compute_api_EnumSeriesFunction") -> Any:
-        pass
-
-    @abstractmethod
-    def _raw(self, raw: "scout_compute_api_RawEnumSeriesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _resample(self, resample: "scout_compute_api_EnumResampleSeriesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _time_range_filter(self, time_range_filter: "scout_compute_api_EnumTimeRangeFilterSeriesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _time_shift(self, time_shift: "scout_compute_api_EnumTimeShiftSeriesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _union(self, union: "scout_compute_api_EnumUnionSeriesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _filter_transformation(self, filter_transformation: "scout_compute_api_EnumFilterTransformationSeriesNode") -> Any:
-        pass
-
-
-scout_compute_api_EnumSeriesNodeVisitor.__name__ = "EnumSeriesNodeVisitor"
-scout_compute_api_EnumSeriesNodeVisitor.__qualname__ = "EnumSeriesNodeVisitor"
-scout_compute_api_EnumSeriesNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_EnumTimeRangeFilterSeriesNode(ConjureBeanType):
+class scout_compute_api_EnumTimeRangeFilterSeries(ConjureBeanType):
     """
     Filters the series to points within the specified time range.
     """
@@ -26424,20 +27099,20 @@ class scout_compute_api_EnumTimeRangeFilterSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeries),
             'start_time': ConjureFieldDefinition('startTime', OptionalTypeWrapper[scout_compute_api_TimestampConstant]),
             'end_time': ConjureFieldDefinition('endTime', OptionalTypeWrapper[scout_compute_api_TimestampConstant])
         }
 
     __slots__: List[str] = ['_input', '_start_time', '_end_time']
 
-    def __init__(self, input: "scout_compute_api_EnumSeriesNode", end_time: Optional["scout_compute_api_TimestampConstant"] = None, start_time: Optional["scout_compute_api_TimestampConstant"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_EnumSeries", end_time: Optional["scout_compute_api_TimestampConstant"] = None, start_time: Optional["scout_compute_api_TimestampConstant"] = None) -> None:
         self._input = input
         self._start_time = start_time
         self._end_time = end_time
 
     @builtins.property
-    def input(self) -> "scout_compute_api_EnumSeriesNode":
+    def input(self) -> "scout_compute_api_EnumSeries":
         return self._input
 
     @builtins.property
@@ -26455,28 +27130,28 @@ class scout_compute_api_EnumTimeRangeFilterSeriesNode(ConjureBeanType):
         return self._end_time
 
 
-scout_compute_api_EnumTimeRangeFilterSeriesNode.__name__ = "EnumTimeRangeFilterSeriesNode"
-scout_compute_api_EnumTimeRangeFilterSeriesNode.__qualname__ = "EnumTimeRangeFilterSeriesNode"
-scout_compute_api_EnumTimeRangeFilterSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_EnumTimeRangeFilterSeries.__name__ = "EnumTimeRangeFilterSeries"
+scout_compute_api_EnumTimeRangeFilterSeries.__qualname__ = "EnumTimeRangeFilterSeries"
+scout_compute_api_EnumTimeRangeFilterSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_EnumTimeShiftSeriesNode(ConjureBeanType):
+class scout_compute_api_EnumTimeShiftSeries(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_EnumSeries),
             'duration': ConjureFieldDefinition('duration', scout_compute_api_DurationConstant)
         }
 
     __slots__: List[str] = ['_input', '_duration']
 
-    def __init__(self, duration: "scout_compute_api_DurationConstant", input: "scout_compute_api_EnumSeriesNode") -> None:
+    def __init__(self, duration: "scout_compute_api_DurationConstant", input: "scout_compute_api_EnumSeries") -> None:
         self._input = input
         self._duration = duration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_EnumSeriesNode":
+    def input(self) -> "scout_compute_api_EnumSeries":
         return self._input
 
     @builtins.property
@@ -26484,9 +27159,9 @@ class scout_compute_api_EnumTimeShiftSeriesNode(ConjureBeanType):
         return self._duration
 
 
-scout_compute_api_EnumTimeShiftSeriesNode.__name__ = "EnumTimeShiftSeriesNode"
-scout_compute_api_EnumTimeShiftSeriesNode.__qualname__ = "EnumTimeShiftSeriesNode"
-scout_compute_api_EnumTimeShiftSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_EnumTimeShiftSeries.__name__ = "EnumTimeShiftSeries"
+scout_compute_api_EnumTimeShiftSeries.__qualname__ = "EnumTimeShiftSeries"
+scout_compute_api_EnumTimeShiftSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_EnumUnionOperation(ConjureEnumType):
@@ -26509,7 +27184,7 @@ scout_compute_api_EnumUnionOperation.__qualname__ = "EnumUnionOperation"
 scout_compute_api_EnumUnionOperation.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_EnumUnionSeriesNode(ConjureBeanType):
+class scout_compute_api_EnumUnionSeries(ConjureBeanType):
     """
     Combines multiple enum series together and outputs a single series. The strategy to merge input values
 with the same timestamp together is specified in the operation field.
@@ -26518,18 +27193,18 @@ with the same timestamp together is specified in the operation field.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', List[scout_compute_api_EnumSeriesNode]),
+            'input': ConjureFieldDefinition('input', List[scout_compute_api_EnumSeries]),
             'operation': ConjureFieldDefinition('operation', scout_compute_api_EnumUnionOperation)
         }
 
     __slots__: List[str] = ['_input', '_operation']
 
-    def __init__(self, input: List["scout_compute_api_EnumSeriesNode"], operation: "scout_compute_api_EnumUnionOperation") -> None:
+    def __init__(self, input: List["scout_compute_api_EnumSeries"], operation: "scout_compute_api_EnumUnionOperation") -> None:
         self._input = input
         self._operation = operation
 
     @builtins.property
-    def input(self) -> List["scout_compute_api_EnumSeriesNode"]:
+    def input(self) -> List["scout_compute_api_EnumSeries"]:
         return self._input
 
     @builtins.property
@@ -26540,9 +27215,9 @@ with the same timestamp together is specified in the operation field.
         return self._operation
 
 
-scout_compute_api_EnumUnionSeriesNode.__name__ = "EnumUnionSeriesNode"
-scout_compute_api_EnumUnionSeriesNode.__qualname__ = "EnumUnionSeriesNode"
-scout_compute_api_EnumUnionSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_EnumUnionSeries.__name__ = "EnumUnionSeries"
+scout_compute_api_EnumUnionSeries.__qualname__ = "EnumUnionSeries"
+scout_compute_api_EnumUnionSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_EqualityOperator(ConjureEnumType):
@@ -26627,7 +27302,7 @@ scout_compute_api_ExponentialAverage.__qualname__ = "ExponentialAverage"
 scout_compute_api_ExponentialAverage.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_FftNode(ConjureBeanType):
+class scout_compute_api_Fft(ConjureBeanType):
     """
     Returns the single sided amplitude spectrum of the input series.
     """
@@ -26635,22 +27310,22 @@ class scout_compute_api_FftNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode)
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries)
         }
 
     __slots__: List[str] = ['_input']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode") -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries") -> None:
         self._input = input
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
 
-scout_compute_api_FftNode.__name__ = "FftNode"
-scout_compute_api_FftNode.__qualname__ = "FftNode"
-scout_compute_api_FftNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_Fft.__name__ = "Fft"
+scout_compute_api_Fft.__qualname__ = "Fft"
+scout_compute_api_Fft.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_FirstPointMatchingCondition(ConjureBeanType):
@@ -26716,18 +27391,18 @@ scout_compute_api_ForwardFillResampleInterpolationConfiguration.__qualname__ = "
 scout_compute_api_ForwardFillResampleInterpolationConfiguration.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_FrequencyDomainNode(ConjureUnionType):
-    _fft: Optional["scout_compute_api_FftNode"] = None
+class scout_compute_api_FrequencyDomain(ConjureUnionType):
+    _fft: Optional["scout_compute_api_Fft"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'fft': ConjureFieldDefinition('fft', scout_compute_api_FftNode)
+            'fft': ConjureFieldDefinition('fft', scout_compute_api_Fft)
         }
 
     def __init__(
             self,
-            fft: Optional["scout_compute_api_FftNode"] = None,
+            fft: Optional["scout_compute_api_Fft"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
@@ -26745,31 +27420,31 @@ class scout_compute_api_FrequencyDomainNode(ConjureUnionType):
             self._type = 'fft'
 
     @builtins.property
-    def fft(self) -> Optional["scout_compute_api_FftNode"]:
+    def fft(self) -> Optional["scout_compute_api_Fft"]:
         return self._fft
 
     def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_FrequencyDomainNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_FrequencyDomainNodeVisitor'.format(visitor.__class__.__name__))
+        if not isinstance(visitor, scout_compute_api_FrequencyDomainVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_FrequencyDomainVisitor'.format(visitor.__class__.__name__))
         if self._type == 'fft' and self.fft is not None:
             return visitor._fft(self.fft)
 
 
-scout_compute_api_FrequencyDomainNode.__name__ = "FrequencyDomainNode"
-scout_compute_api_FrequencyDomainNode.__qualname__ = "FrequencyDomainNode"
-scout_compute_api_FrequencyDomainNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_FrequencyDomain.__name__ = "FrequencyDomain"
+scout_compute_api_FrequencyDomain.__qualname__ = "FrequencyDomain"
+scout_compute_api_FrequencyDomain.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_FrequencyDomainNodeVisitor:
+class scout_compute_api_FrequencyDomainVisitor:
 
     @abstractmethod
-    def _fft(self, fft: "scout_compute_api_FftNode") -> Any:
+    def _fft(self, fft: "scout_compute_api_Fft") -> Any:
         pass
 
 
-scout_compute_api_FrequencyDomainNodeVisitor.__name__ = "FrequencyDomainNodeVisitor"
-scout_compute_api_FrequencyDomainNodeVisitor.__qualname__ = "FrequencyDomainNodeVisitor"
-scout_compute_api_FrequencyDomainNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_FrequencyDomainVisitor.__name__ = "FrequencyDomainVisitor"
+scout_compute_api_FrequencyDomainVisitor.__qualname__ = "FrequencyDomainVisitor"
+scout_compute_api_FrequencyDomainVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_FrequencyDomainPlot(ConjureBeanType):
@@ -26886,141 +27561,6 @@ scout_compute_api_FunctionVariables.__qualname__ = "FunctionVariables"
 scout_compute_api_FunctionVariables.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_GeoNode(ConjureUnionType):
-    _lat_long_geo_node: Optional["scout_compute_api_LatLongGeoNode"] = None
-
-    @builtins.classmethod
-    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'lat_long_geo_node': ConjureFieldDefinition('latLongGeoNode', scout_compute_api_LatLongGeoNode)
-        }
-
-    def __init__(
-            self,
-            lat_long_geo_node: Optional["scout_compute_api_LatLongGeoNode"] = None,
-            type_of_union: Optional[str] = None
-            ) -> None:
-        if type_of_union is None:
-            if (lat_long_geo_node is not None) != 1:
-                raise ValueError('a union must contain a single member')
-
-            if lat_long_geo_node is not None:
-                self._lat_long_geo_node = lat_long_geo_node
-                self._type = 'latLongGeoNode'
-
-        elif type_of_union == 'latLongGeoNode':
-            if lat_long_geo_node is None:
-                raise ValueError('a union value must not be None')
-            self._lat_long_geo_node = lat_long_geo_node
-            self._type = 'latLongGeoNode'
-
-    @builtins.property
-    def lat_long_geo_node(self) -> Optional["scout_compute_api_LatLongGeoNode"]:
-        return self._lat_long_geo_node
-
-    def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_GeoNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_GeoNodeVisitor'.format(visitor.__class__.__name__))
-        if self._type == 'latLongGeoNode' and self.lat_long_geo_node is not None:
-            return visitor._lat_long_geo_node(self.lat_long_geo_node)
-
-
-scout_compute_api_GeoNode.__name__ = "GeoNode"
-scout_compute_api_GeoNode.__qualname__ = "GeoNode"
-scout_compute_api_GeoNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_GeoNodeVisitor:
-
-    @abstractmethod
-    def _lat_long_geo_node(self, lat_long_geo_node: "scout_compute_api_LatLongGeoNode") -> Any:
-        pass
-
-
-scout_compute_api_GeoNodeVisitor.__name__ = "GeoNodeVisitor"
-scout_compute_api_GeoNodeVisitor.__qualname__ = "GeoNodeVisitor"
-scout_compute_api_GeoNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_GeoNodeSummaryStrategy(ConjureUnionType):
-    _temporal: Optional["scout_compute_api_GeoNodeTemporalSummary"] = None
-
-    @builtins.classmethod
-    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'temporal': ConjureFieldDefinition('temporal', scout_compute_api_GeoNodeTemporalSummary)
-        }
-
-    def __init__(
-            self,
-            temporal: Optional["scout_compute_api_GeoNodeTemporalSummary"] = None,
-            type_of_union: Optional[str] = None
-            ) -> None:
-        if type_of_union is None:
-            if (temporal is not None) != 1:
-                raise ValueError('a union must contain a single member')
-
-            if temporal is not None:
-                self._temporal = temporal
-                self._type = 'temporal'
-
-        elif type_of_union == 'temporal':
-            if temporal is None:
-                raise ValueError('a union value must not be None')
-            self._temporal = temporal
-            self._type = 'temporal'
-
-    @builtins.property
-    def temporal(self) -> Optional["scout_compute_api_GeoNodeTemporalSummary"]:
-        return self._temporal
-
-    def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_GeoNodeSummaryStrategyVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_GeoNodeSummaryStrategyVisitor'.format(visitor.__class__.__name__))
-        if self._type == 'temporal' and self.temporal is not None:
-            return visitor._temporal(self.temporal)
-
-
-scout_compute_api_GeoNodeSummaryStrategy.__name__ = "GeoNodeSummaryStrategy"
-scout_compute_api_GeoNodeSummaryStrategy.__qualname__ = "GeoNodeSummaryStrategy"
-scout_compute_api_GeoNodeSummaryStrategy.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_GeoNodeSummaryStrategyVisitor:
-
-    @abstractmethod
-    def _temporal(self, temporal: "scout_compute_api_GeoNodeTemporalSummary") -> Any:
-        pass
-
-
-scout_compute_api_GeoNodeSummaryStrategyVisitor.__name__ = "GeoNodeSummaryStrategyVisitor"
-scout_compute_api_GeoNodeSummaryStrategyVisitor.__qualname__ = "GeoNodeSummaryStrategyVisitor"
-scout_compute_api_GeoNodeSummaryStrategyVisitor.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_GeoNodeTemporalSummary(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'resolution': ConjureFieldDefinition('resolution', int)
-        }
-
-    __slots__: List[str] = ['_resolution']
-
-    def __init__(self, resolution: int) -> None:
-        self._resolution = resolution
-
-    @builtins.property
-    def resolution(self) -> int:
-        return self._resolution
-
-
-scout_compute_api_GeoNodeTemporalSummary.__name__ = "GeoNodeTemporalSummary"
-scout_compute_api_GeoNodeTemporalSummary.__qualname__ = "GeoNodeTemporalSummary"
-scout_compute_api_GeoNodeTemporalSummary.__module__ = "scout_service_api.scout_compute_api"
-
-
 class scout_compute_api_GeoPoint(ConjureUnionType):
     """Represents a geographic point. Flexible to handle multiple types of geographic coordinate systems."""
     _lat_long: Optional["scout_compute_api_LatLongPoint"] = None
@@ -27107,6 +27647,141 @@ scout_compute_api_GeoPointWithTimestamp.__qualname__ = "GeoPointWithTimestamp"
 scout_compute_api_GeoPointWithTimestamp.__module__ = "scout_service_api.scout_compute_api"
 
 
+class scout_compute_api_GeoSeries(ConjureUnionType):
+    _lat_long_geo_node: Optional["scout_compute_api_LatLongGeo"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'lat_long_geo_node': ConjureFieldDefinition('latLongGeoNode', scout_compute_api_LatLongGeo)
+        }
+
+    def __init__(
+            self,
+            lat_long_geo_node: Optional["scout_compute_api_LatLongGeo"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (lat_long_geo_node is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if lat_long_geo_node is not None:
+                self._lat_long_geo_node = lat_long_geo_node
+                self._type = 'latLongGeoNode'
+
+        elif type_of_union == 'latLongGeoNode':
+            if lat_long_geo_node is None:
+                raise ValueError('a union value must not be None')
+            self._lat_long_geo_node = lat_long_geo_node
+            self._type = 'latLongGeoNode'
+
+    @builtins.property
+    def lat_long_geo_node(self) -> Optional["scout_compute_api_LatLongGeo"]:
+        return self._lat_long_geo_node
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_GeoSeriesVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_GeoSeriesVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'latLongGeoNode' and self.lat_long_geo_node is not None:
+            return visitor._lat_long_geo_node(self.lat_long_geo_node)
+
+
+scout_compute_api_GeoSeries.__name__ = "GeoSeries"
+scout_compute_api_GeoSeries.__qualname__ = "GeoSeries"
+scout_compute_api_GeoSeries.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_GeoSeriesVisitor:
+
+    @abstractmethod
+    def _lat_long_geo_node(self, lat_long_geo_node: "scout_compute_api_LatLongGeo") -> Any:
+        pass
+
+
+scout_compute_api_GeoSeriesVisitor.__name__ = "GeoSeriesVisitor"
+scout_compute_api_GeoSeriesVisitor.__qualname__ = "GeoSeriesVisitor"
+scout_compute_api_GeoSeriesVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_GeoSummaryStrategy(ConjureUnionType):
+    _temporal: Optional["scout_compute_api_GeoTemporalSummary"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'temporal': ConjureFieldDefinition('temporal', scout_compute_api_GeoTemporalSummary)
+        }
+
+    def __init__(
+            self,
+            temporal: Optional["scout_compute_api_GeoTemporalSummary"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (temporal is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if temporal is not None:
+                self._temporal = temporal
+                self._type = 'temporal'
+
+        elif type_of_union == 'temporal':
+            if temporal is None:
+                raise ValueError('a union value must not be None')
+            self._temporal = temporal
+            self._type = 'temporal'
+
+    @builtins.property
+    def temporal(self) -> Optional["scout_compute_api_GeoTemporalSummary"]:
+        return self._temporal
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_GeoSummaryStrategyVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_GeoSummaryStrategyVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'temporal' and self.temporal is not None:
+            return visitor._temporal(self.temporal)
+
+
+scout_compute_api_GeoSummaryStrategy.__name__ = "GeoSummaryStrategy"
+scout_compute_api_GeoSummaryStrategy.__qualname__ = "GeoSummaryStrategy"
+scout_compute_api_GeoSummaryStrategy.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_GeoSummaryStrategyVisitor:
+
+    @abstractmethod
+    def _temporal(self, temporal: "scout_compute_api_GeoTemporalSummary") -> Any:
+        pass
+
+
+scout_compute_api_GeoSummaryStrategyVisitor.__name__ = "GeoSummaryStrategyVisitor"
+scout_compute_api_GeoSummaryStrategyVisitor.__qualname__ = "GeoSummaryStrategyVisitor"
+scout_compute_api_GeoSummaryStrategyVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_GeoTemporalSummary(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'resolution': ConjureFieldDefinition('resolution', int)
+        }
+
+    __slots__: List[str] = ['_resolution']
+
+    def __init__(self, resolution: int) -> None:
+        self._resolution = resolution
+
+    @builtins.property
+    def resolution(self) -> int:
+        return self._resolution
+
+
+scout_compute_api_GeoTemporalSummary.__name__ = "GeoTemporalSummary"
+scout_compute_api_GeoTemporalSummary.__qualname__ = "GeoTemporalSummary"
+scout_compute_api_GeoTemporalSummary.__module__ = "scout_service_api.scout_compute_api"
+
+
 class scout_compute_api_GeoTimeBucket(ConjureBeanType):
     """
     Summary of a time-based bucket of geo points.
@@ -27163,33 +27838,7 @@ scout_compute_api_GeoTimeBucket.__qualname__ = "GeoTimeBucket"
 scout_compute_api_GeoTimeBucket.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_HistogramChannelCount(ConjureBeanType):
-    """
-    The count of the value in the bucket for the specific channel.
-    """
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'count': ConjureFieldDefinition('count', int)
-        }
-
-    __slots__: List[str] = ['_count']
-
-    def __init__(self, count: int) -> None:
-        self._count = count
-
-    @builtins.property
-    def count(self) -> int:
-        return self._count
-
-
-scout_compute_api_HistogramChannelCount.__name__ = "HistogramChannelCount"
-scout_compute_api_HistogramChannelCount.__qualname__ = "HistogramChannelCount"
-scout_compute_api_HistogramChannelCount.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_HistogramNode(ConjureUnionType):
+class scout_compute_api_Histogram(ConjureUnionType):
     _numeric: Optional["scout_compute_api_NumericHistogramNode"] = None
     _enum: Optional["scout_compute_api_EnumHistogramNode"] = None
 
@@ -27237,20 +27886,20 @@ class scout_compute_api_HistogramNode(ConjureUnionType):
         return self._enum
 
     def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_HistogramNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_HistogramNodeVisitor'.format(visitor.__class__.__name__))
+        if not isinstance(visitor, scout_compute_api_HistogramVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_HistogramVisitor'.format(visitor.__class__.__name__))
         if self._type == 'numeric' and self.numeric is not None:
             return visitor._numeric(self.numeric)
         if self._type == 'enum' and self.enum is not None:
             return visitor._enum(self.enum)
 
 
-scout_compute_api_HistogramNode.__name__ = "HistogramNode"
-scout_compute_api_HistogramNode.__qualname__ = "HistogramNode"
-scout_compute_api_HistogramNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_Histogram.__name__ = "Histogram"
+scout_compute_api_Histogram.__qualname__ = "Histogram"
+scout_compute_api_Histogram.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_HistogramNodeVisitor:
+class scout_compute_api_HistogramVisitor:
 
     @abstractmethod
     def _numeric(self, numeric: "scout_compute_api_NumericHistogramNode") -> Any:
@@ -27261,9 +27910,35 @@ class scout_compute_api_HistogramNodeVisitor:
         pass
 
 
-scout_compute_api_HistogramNodeVisitor.__name__ = "HistogramNodeVisitor"
-scout_compute_api_HistogramNodeVisitor.__qualname__ = "HistogramNodeVisitor"
-scout_compute_api_HistogramNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_HistogramVisitor.__name__ = "HistogramVisitor"
+scout_compute_api_HistogramVisitor.__qualname__ = "HistogramVisitor"
+scout_compute_api_HistogramVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_HistogramChannelCount(ConjureBeanType):
+    """
+    The count of the value in the bucket for the specific channel.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'count': ConjureFieldDefinition('count', int)
+        }
+
+    __slots__: List[str] = ['_count']
+
+    def __init__(self, count: int) -> None:
+        self._count = count
+
+    @builtins.property
+    def count(self) -> int:
+        return self._count
+
+
+scout_compute_api_HistogramChannelCount.__name__ = "HistogramChannelCount"
+scout_compute_api_HistogramChannelCount.__qualname__ = "HistogramChannelCount"
+scout_compute_api_HistogramChannelCount.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_IncompatibleUnitOperation(ConjureBeanType):
@@ -27375,7 +28050,7 @@ scout_compute_api_IntegerConstantVisitor.__qualname__ = "IntegerConstantVisitor"
 scout_compute_api_IntegerConstantVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_IntegralSeriesNode(ConjureBeanType):
+class scout_compute_api_IntegralSeries(ConjureBeanType):
     """
     Calculates the running sum of the area underneath a series using the trapezoidal rule.
     """
@@ -27383,20 +28058,20 @@ class scout_compute_api_IntegralSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'start_timestamp': ConjureFieldDefinition('startTimestamp', scout_compute_api_TimestampConstant),
             'time_unit': ConjureFieldDefinition('timeUnit', OptionalTypeWrapper[api_TimeUnit])
         }
 
     __slots__: List[str] = ['_input', '_start_timestamp', '_time_unit']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", start_timestamp: "scout_compute_api_TimestampConstant", time_unit: Optional["api_TimeUnit"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", start_timestamp: "scout_compute_api_TimestampConstant", time_unit: Optional["api_TimeUnit"] = None) -> None:
         self._input = input
         self._start_timestamp = start_timestamp
         self._time_unit = time_unit
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -27411,9 +28086,9 @@ class scout_compute_api_IntegralSeriesNode(ConjureBeanType):
         return self._time_unit
 
 
-scout_compute_api_IntegralSeriesNode.__name__ = "IntegralSeriesNode"
-scout_compute_api_IntegralSeriesNode.__qualname__ = "IntegralSeriesNode"
-scout_compute_api_IntegralSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_IntegralSeries.__name__ = "IntegralSeries"
+scout_compute_api_IntegralSeries.__qualname__ = "IntegralSeries"
+scout_compute_api_IntegralSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_InterpolationConfiguration(ConjureUnionType):
@@ -27472,7 +28147,7 @@ scout_compute_api_InterpolationConfigurationVisitor.__qualname__ = "Interpolatio
 scout_compute_api_InterpolationConfigurationVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_IntersectRangesNode(ConjureBeanType):
+class scout_compute_api_IntersectRanges(ConjureBeanType):
     """
     The FE should try to pass in inputs in the order in which they should be
 evaluated for optimization's sake. Alternatively, we can let the user select
@@ -27483,22 +28158,22 @@ first.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_RangesNode])
+            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_RangeSeries])
         }
 
     __slots__: List[str] = ['_inputs']
 
-    def __init__(self, inputs: List["scout_compute_api_RangesNode"]) -> None:
+    def __init__(self, inputs: List["scout_compute_api_RangeSeries"]) -> None:
         self._inputs = inputs
 
     @builtins.property
-    def inputs(self) -> List["scout_compute_api_RangesNode"]:
+    def inputs(self) -> List["scout_compute_api_RangeSeries"]:
         return self._inputs
 
 
-scout_compute_api_IntersectRangesNode.__name__ = "IntersectRangesNode"
-scout_compute_api_IntersectRangesNode.__qualname__ = "IntersectRangesNode"
-scout_compute_api_IntersectRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_IntersectRanges.__name__ = "IntersectRanges"
+scout_compute_api_IntersectRanges.__qualname__ = "IntersectRanges"
+scout_compute_api_IntersectRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_LatLongBounds(ConjureBeanType):
@@ -27534,7 +28209,7 @@ scout_compute_api_LatLongBounds.__qualname__ = "LatLongBounds"
 scout_compute_api_LatLongBounds.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_LatLongGeoNode(ConjureBeanType):
+class scout_compute_api_LatLongGeo(ConjureBeanType):
     """
     A geo node derived from a lat and long series.
     """
@@ -27542,24 +28217,24 @@ class scout_compute_api_LatLongGeoNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'latitude': ConjureFieldDefinition('latitude', scout_compute_api_NumericSeriesNode),
-            'longitude': ConjureFieldDefinition('longitude', scout_compute_api_NumericSeriesNode),
+            'latitude': ConjureFieldDefinition('latitude', scout_compute_api_NumericSeries),
+            'longitude': ConjureFieldDefinition('longitude', scout_compute_api_NumericSeries),
             'bounds': ConjureFieldDefinition('bounds', OptionalTypeWrapper[scout_compute_api_LatLongBounds])
         }
 
     __slots__: List[str] = ['_latitude', '_longitude', '_bounds']
 
-    def __init__(self, latitude: "scout_compute_api_NumericSeriesNode", longitude: "scout_compute_api_NumericSeriesNode", bounds: Optional["scout_compute_api_LatLongBounds"] = None) -> None:
+    def __init__(self, latitude: "scout_compute_api_NumericSeries", longitude: "scout_compute_api_NumericSeries", bounds: Optional["scout_compute_api_LatLongBounds"] = None) -> None:
         self._latitude = latitude
         self._longitude = longitude
         self._bounds = bounds
 
     @builtins.property
-    def latitude(self) -> "scout_compute_api_NumericSeriesNode":
+    def latitude(self) -> "scout_compute_api_NumericSeries":
         return self._latitude
 
     @builtins.property
-    def longitude(self) -> "scout_compute_api_NumericSeriesNode":
+    def longitude(self) -> "scout_compute_api_NumericSeries":
         return self._longitude
 
     @builtins.property
@@ -27567,9 +28242,9 @@ class scout_compute_api_LatLongGeoNode(ConjureBeanType):
         return self._bounds
 
 
-scout_compute_api_LatLongGeoNode.__name__ = "LatLongGeoNode"
-scout_compute_api_LatLongGeoNode.__qualname__ = "LatLongGeoNode"
-scout_compute_api_LatLongGeoNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_LatLongGeo.__name__ = "LatLongGeo"
+scout_compute_api_LatLongGeo.__qualname__ = "LatLongGeo"
+scout_compute_api_LatLongGeo.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_LatLongPoint(ConjureBeanType):
@@ -27601,7 +28276,7 @@ scout_compute_api_LatLongPoint.__qualname__ = "LatLongPoint"
 scout_compute_api_LatLongPoint.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_MaxSeriesNode(ConjureBeanType):
+class scout_compute_api_MaxSeries(ConjureBeanType):
     """
     For every timestamp specified in the input series, outputs a value that is the maximum for that timestamp
 across all input series.
@@ -27612,18 +28287,18 @@ using the interpolation configuration.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeriesNode]),
+            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeries]),
             'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
         }
 
     __slots__: List[str] = ['_inputs', '_interpolation_configuration']
 
-    def __init__(self, inputs: List["scout_compute_api_NumericSeriesNode"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
+    def __init__(self, inputs: List["scout_compute_api_NumericSeries"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
         self._inputs = inputs
         self._interpolation_configuration = interpolation_configuration
 
     @builtins.property
-    def inputs(self) -> List["scout_compute_api_NumericSeriesNode"]:
+    def inputs(self) -> List["scout_compute_api_NumericSeries"]:
         return self._inputs
 
     @builtins.property
@@ -27634,9 +28309,9 @@ using the interpolation configuration.
         return self._interpolation_configuration
 
 
-scout_compute_api_MaxSeriesNode.__name__ = "MaxSeriesNode"
-scout_compute_api_MaxSeriesNode.__qualname__ = "MaxSeriesNode"
-scout_compute_api_MaxSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_MaxSeries.__name__ = "MaxSeries"
+scout_compute_api_MaxSeries.__qualname__ = "MaxSeries"
+scout_compute_api_MaxSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_Maximum(ConjureBeanType):
@@ -27658,7 +28333,7 @@ scout_compute_api_Maximum.__qualname__ = "Maximum"
 scout_compute_api_Maximum.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_MeanSeriesNode(ConjureBeanType):
+class scout_compute_api_MeanSeries(ConjureBeanType):
     """
     For every timestamp specified in the input series, outputs a value that is the mean for that timestamp
 across all input series.
@@ -27669,18 +28344,18 @@ using the interpolation configuration.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeriesNode]),
+            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeries]),
             'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
         }
 
     __slots__: List[str] = ['_inputs', '_interpolation_configuration']
 
-    def __init__(self, inputs: List["scout_compute_api_NumericSeriesNode"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
+    def __init__(self, inputs: List["scout_compute_api_NumericSeries"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
         self._inputs = inputs
         self._interpolation_configuration = interpolation_configuration
 
     @builtins.property
-    def inputs(self) -> List["scout_compute_api_NumericSeriesNode"]:
+    def inputs(self) -> List["scout_compute_api_NumericSeries"]:
         return self._inputs
 
     @builtins.property
@@ -27691,9 +28366,9 @@ using the interpolation configuration.
         return self._interpolation_configuration
 
 
-scout_compute_api_MeanSeriesNode.__name__ = "MeanSeriesNode"
-scout_compute_api_MeanSeriesNode.__qualname__ = "MeanSeriesNode"
-scout_compute_api_MeanSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_MeanSeries.__name__ = "MeanSeries"
+scout_compute_api_MeanSeries.__qualname__ = "MeanSeries"
+scout_compute_api_MeanSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_MinMaxThresholdOperator(ConjureEnumType):
@@ -27718,7 +28393,7 @@ scout_compute_api_MinMaxThresholdOperator.__qualname__ = "MinMaxThresholdOperato
 scout_compute_api_MinMaxThresholdOperator.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_MinMaxThresholdRangesNode(ConjureBeanType):
+class scout_compute_api_MinMaxThresholdRanges(ConjureBeanType):
     """
     Produces a list of ranges for which the threshold condition is satisfied.
     """
@@ -27726,7 +28401,7 @@ class scout_compute_api_MinMaxThresholdRangesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'lower_bound': ConjureFieldDefinition('lowerBound', scout_compute_api_DoubleConstant),
             'upper_bound': ConjureFieldDefinition('upperBound', scout_compute_api_DoubleConstant),
             'operator': ConjureFieldDefinition('operator', scout_compute_api_MinMaxThresholdOperator),
@@ -27735,7 +28410,7 @@ class scout_compute_api_MinMaxThresholdRangesNode(ConjureBeanType):
 
     __slots__: List[str] = ['_input', '_lower_bound', '_upper_bound', '_operator', '_persistence_window_configuration']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", lower_bound: "scout_compute_api_DoubleConstant", operator: "scout_compute_api_MinMaxThresholdOperator", upper_bound: "scout_compute_api_DoubleConstant", persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", lower_bound: "scout_compute_api_DoubleConstant", operator: "scout_compute_api_MinMaxThresholdOperator", upper_bound: "scout_compute_api_DoubleConstant", persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None) -> None:
         self._input = input
         self._lower_bound = lower_bound
         self._upper_bound = upper_bound
@@ -27743,7 +28418,7 @@ class scout_compute_api_MinMaxThresholdRangesNode(ConjureBeanType):
         self._persistence_window_configuration = persistence_window_configuration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -27763,12 +28438,12 @@ class scout_compute_api_MinMaxThresholdRangesNode(ConjureBeanType):
         return self._persistence_window_configuration
 
 
-scout_compute_api_MinMaxThresholdRangesNode.__name__ = "MinMaxThresholdRangesNode"
-scout_compute_api_MinMaxThresholdRangesNode.__qualname__ = "MinMaxThresholdRangesNode"
-scout_compute_api_MinMaxThresholdRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_MinMaxThresholdRanges.__name__ = "MinMaxThresholdRanges"
+scout_compute_api_MinMaxThresholdRanges.__qualname__ = "MinMaxThresholdRanges"
+scout_compute_api_MinMaxThresholdRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_MinSeriesNode(ConjureBeanType):
+class scout_compute_api_MinSeries(ConjureBeanType):
     """
     For every timestamp specified in the input series, outputs a value that is the minimum for that timestamp
 across all input series.
@@ -27779,18 +28454,18 @@ using the interpolation configuration.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeriesNode]),
+            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeries]),
             'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
         }
 
     __slots__: List[str] = ['_inputs', '_interpolation_configuration']
 
-    def __init__(self, inputs: List["scout_compute_api_NumericSeriesNode"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
+    def __init__(self, inputs: List["scout_compute_api_NumericSeries"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
         self._inputs = inputs
         self._interpolation_configuration = interpolation_configuration
 
     @builtins.property
-    def inputs(self) -> List["scout_compute_api_NumericSeriesNode"]:
+    def inputs(self) -> List["scout_compute_api_NumericSeries"]:
         return self._inputs
 
     @builtins.property
@@ -27801,9 +28476,9 @@ using the interpolation configuration.
         return self._interpolation_configuration
 
 
-scout_compute_api_MinSeriesNode.__name__ = "MinSeriesNode"
-scout_compute_api_MinSeriesNode.__qualname__ = "MinSeriesNode"
-scout_compute_api_MinSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_MinSeries.__name__ = "MinSeries"
+scout_compute_api_MinSeries.__qualname__ = "MinSeries"
+scout_compute_api_MinSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_Minimum(ConjureBeanType):
@@ -27932,7 +28607,7 @@ scout_compute_api_NegativeValueConfigurationVisitor.__qualname__ = "NegativeValu
 scout_compute_api_NegativeValueConfigurationVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_NotRangesNode(ConjureBeanType):
+class scout_compute_api_NotRanges(ConjureBeanType):
     """
     The not ranges node will invert the ranges, filling the negative space in time.
     """
@@ -27940,22 +28615,22 @@ class scout_compute_api_NotRangesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_RangesNode)
+            'input': ConjureFieldDefinition('input', scout_compute_api_RangeSeries)
         }
 
     __slots__: List[str] = ['_input']
 
-    def __init__(self, input: "scout_compute_api_RangesNode") -> None:
+    def __init__(self, input: "scout_compute_api_RangeSeries") -> None:
         self._input = input
 
     @builtins.property
-    def input(self) -> "scout_compute_api_RangesNode":
+    def input(self) -> "scout_compute_api_RangeSeries":
         return self._input
 
 
-scout_compute_api_NotRangesNode.__name__ = "NotRangesNode"
-scout_compute_api_NotRangesNode.__qualname__ = "NotRangesNode"
-scout_compute_api_NotRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_NotRanges.__name__ = "NotRanges"
+scout_compute_api_NotRanges.__qualname__ = "NotRanges"
+scout_compute_api_NotRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_NumericAggregationFunction(ConjureEnumType):
@@ -28045,7 +28720,7 @@ scout_compute_api_NumericBucket.__qualname__ = "NumericBucket"
 scout_compute_api_NumericBucket.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_NumericFilterTransformationSeriesNode(ConjureBeanType):
+class scout_compute_api_NumericFilterTransformationSeries(ConjureBeanType):
     """
     Outputs the values of the numeric plot value within the ranges specified by a ranges node
     """
@@ -28053,28 +28728,28 @@ class scout_compute_api_NumericFilterTransformationSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
-            'filter': ConjureFieldDefinition('filter', scout_compute_api_RangesNode)
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
+            'filter': ConjureFieldDefinition('filter', scout_compute_api_RangeSeries)
         }
 
     __slots__: List[str] = ['_input', '_filter']
 
-    def __init__(self, filter: "scout_compute_api_RangesNode", input: "scout_compute_api_NumericSeriesNode") -> None:
+    def __init__(self, filter: "scout_compute_api_RangeSeries", input: "scout_compute_api_NumericSeries") -> None:
         self._input = input
         self._filter = filter
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
-    def filter(self) -> "scout_compute_api_RangesNode":
+    def filter(self) -> "scout_compute_api_RangeSeries":
         return self._filter
 
 
-scout_compute_api_NumericFilterTransformationSeriesNode.__name__ = "NumericFilterTransformationSeriesNode"
-scout_compute_api_NumericFilterTransformationSeriesNode.__qualname__ = "NumericFilterTransformationSeriesNode"
-scout_compute_api_NumericFilterTransformationSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_NumericFilterTransformationSeries.__name__ = "NumericFilterTransformationSeries"
+scout_compute_api_NumericFilterTransformationSeries.__qualname__ = "NumericFilterTransformationSeries"
+scout_compute_api_NumericFilterTransformationSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_NumericHistogramBucket(ConjureBeanType):
@@ -28252,18 +28927,18 @@ class scout_compute_api_NumericHistogramNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', Dict[scout_compute_api_VariableName, scout_compute_api_NumericSeriesNode]),
+            'inputs': ConjureFieldDefinition('inputs', Dict[scout_compute_api_VariableName, scout_compute_api_NumericSeries]),
             'bucket_strategy': ConjureFieldDefinition('bucketStrategy', OptionalTypeWrapper[scout_compute_api_NumericHistogramBucketStrategy])
         }
 
     __slots__: List[str] = ['_inputs', '_bucket_strategy']
 
-    def __init__(self, inputs: Dict[str, "scout_compute_api_NumericSeriesNode"], bucket_strategy: Optional["scout_compute_api_NumericHistogramBucketStrategy"] = None) -> None:
+    def __init__(self, inputs: Dict[str, "scout_compute_api_NumericSeries"], bucket_strategy: Optional["scout_compute_api_NumericHistogramBucketStrategy"] = None) -> None:
         self._inputs = inputs
         self._bucket_strategy = bucket_strategy
 
     @builtins.property
-    def inputs(self) -> Dict[str, "scout_compute_api_NumericSeriesNode"]:
+    def inputs(self) -> Dict[str, "scout_compute_api_NumericSeries"]:
         return self._inputs
 
     @builtins.property
@@ -28357,7 +29032,7 @@ scout_compute_api_NumericPoint.__qualname__ = "NumericPoint"
 scout_compute_api_NumericPoint.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_NumericResampleSeriesNode(ConjureBeanType):
+class scout_compute_api_NumericResampleSeries(ConjureBeanType):
     """
     Resamples the input series to a new resolution using interpolation.
 Outputs data for timestamps corresponding to the defined frequency. Based on interpolation strategy,
@@ -28367,18 +29042,18 @@ determines range of timestamps to output data for and interpolates values where 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'resample_configuration': ConjureFieldDefinition('resampleConfiguration', scout_compute_api_ResampleConfiguration)
         }
 
     __slots__: List[str] = ['_input', '_resample_configuration']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", resample_configuration: "scout_compute_api_ResampleConfiguration") -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", resample_configuration: "scout_compute_api_ResampleConfiguration") -> None:
         self._input = input
         self._resample_configuration = resample_configuration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -28389,140 +29064,108 @@ determines range of timestamps to output data for and interpolates values where 
         return self._resample_configuration
 
 
-scout_compute_api_NumericResampleSeriesNode.__name__ = "NumericResampleSeriesNode"
-scout_compute_api_NumericResampleSeriesNode.__qualname__ = "NumericResampleSeriesNode"
-scout_compute_api_NumericResampleSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_NumericResampleSeries.__name__ = "NumericResampleSeries"
+scout_compute_api_NumericResampleSeries.__qualname__ = "NumericResampleSeries"
+scout_compute_api_NumericResampleSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_NumericSeriesFunction(ConjureBeanType):
-    """
-    A function reference that outputs a numeric series.
-    """
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'function_reference': ConjureFieldDefinition('functionReference', scout_compute_api_FunctionReference),
-            'function_identifier': ConjureFieldDefinition('functionIdentifier', scout_compute_api_FunctionVariable)
-        }
-
-    __slots__: List[str] = ['_function_reference', '_function_identifier']
-
-    def __init__(self, function_identifier: "scout_compute_api_FunctionVariable", function_reference: str) -> None:
-        self._function_reference = function_reference
-        self._function_identifier = function_identifier
-
-    @builtins.property
-    def function_reference(self) -> str:
-        """
-        A reference to identify the function node for substituting variables used within the function.
-        """
-        return self._function_reference
-
-    @builtins.property
-    def function_identifier(self) -> "scout_compute_api_FunctionVariable":
-        """
-        The variable that needs to be substituted with the function RID.
-        """
-        return self._function_identifier
-
-
-scout_compute_api_NumericSeriesFunction.__name__ = "NumericSeriesFunction"
-scout_compute_api_NumericSeriesFunction.__qualname__ = "NumericSeriesFunction"
-scout_compute_api_NumericSeriesFunction.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_NumericSeriesNode(ConjureUnionType):
-    _aggregate: Optional["scout_compute_api_AggregateNumericSeriesNode"] = None
-    _arithmetic: Optional["scout_compute_api_ArithmeticSeriesNode"] = None
-    _bit_operation: Optional["scout_compute_api_BitOperationSeriesNode"] = None
-    _cumulative_sum: Optional["scout_compute_api_CumulativeSumSeriesNode"] = None
-    _derivative: Optional["scout_compute_api_DerivativeSeriesNode"] = None
+class scout_compute_api_NumericSeries(ConjureUnionType):
+    _aggregate: Optional["scout_compute_api_AggregateNumericSeries"] = None
+    _arithmetic: Optional["scout_compute_api_ArithmeticSeries"] = None
+    _bit_operation: Optional["scout_compute_api_BitOperationSeries"] = None
+    _cumulative_sum: Optional["scout_compute_api_CumulativeSumSeries"] = None
+    _derivative: Optional["scout_compute_api_DerivativeSeries"] = None
     _function: Optional["scout_compute_api_NumericSeriesFunction"] = None
-    _integral: Optional["scout_compute_api_IntegralSeriesNode"] = None
-    _max: Optional["scout_compute_api_MaxSeriesNode"] = None
-    _mean: Optional["scout_compute_api_MeanSeriesNode"] = None
-    _min: Optional["scout_compute_api_MinSeriesNode"] = None
-    _offset: Optional["scout_compute_api_OffsetSeriesNode"] = None
-    _product: Optional["scout_compute_api_ProductSeriesNode"] = None
-    _raw: Optional["scout_compute_api_RawNumericSeriesNode"] = None
-    _resample: Optional["scout_compute_api_NumericResampleSeriesNode"] = None
-    _rolling_operation: Optional["scout_compute_api_RollingOperationSeriesNode"] = None
-    _sum: Optional["scout_compute_api_SumSeriesNode"] = None
-    _scale: Optional["scout_compute_api_ScaleSeriesNode"] = None
-    _time_difference: Optional["scout_compute_api_TimeDifferenceSeriesNode"] = None
-    _time_range_filter: Optional["scout_compute_api_NumericTimeRangeFilterSeriesNode"] = None
-    _time_shift: Optional["scout_compute_api_NumericTimeShiftSeriesNode"] = None
-    _unary_arithmetic: Optional["scout_compute_api_UnaryArithmeticSeriesNode"] = None
-    _binary_arithmetic: Optional["scout_compute_api_BinaryArithmeticSeriesNode"] = None
-    _union: Optional["scout_compute_api_NumericUnionSeriesNode"] = None
-    _unit_conversion: Optional["scout_compute_api_UnitConversionSeriesNode"] = None
-    _value_difference: Optional["scout_compute_api_ValueDifferenceSeriesNode"] = None
-    _filter_transformation: Optional["scout_compute_api_NumericFilterTransformationSeriesNode"] = None
+    _integral: Optional["scout_compute_api_IntegralSeries"] = None
+    _max: Optional["scout_compute_api_MaxSeries"] = None
+    _mean: Optional["scout_compute_api_MeanSeries"] = None
+    _min: Optional["scout_compute_api_MinSeries"] = None
+    _offset: Optional["scout_compute_api_OffsetSeries"] = None
+    _product: Optional["scout_compute_api_ProductSeries"] = None
+    _raw: Optional["scout_compute_api_Reference"] = None
+    _channel: Optional["scout_compute_api_ChannelSeries"] = None
+    _resample: Optional["scout_compute_api_NumericResampleSeries"] = None
+    _rolling_operation: Optional["scout_compute_api_RollingOperationSeries"] = None
+    _sum: Optional["scout_compute_api_SumSeries"] = None
+    _scale: Optional["scout_compute_api_ScaleSeries"] = None
+    _time_difference: Optional["scout_compute_api_TimeDifferenceSeries"] = None
+    _time_range_filter: Optional["scout_compute_api_NumericTimeRangeFilterSeries"] = None
+    _time_shift: Optional["scout_compute_api_NumericTimeShiftSeries"] = None
+    _unary_arithmetic: Optional["scout_compute_api_UnaryArithmeticSeries"] = None
+    _binary_arithmetic: Optional["scout_compute_api_BinaryArithmeticSeries"] = None
+    _union: Optional["scout_compute_api_NumericUnionSeries"] = None
+    _unit_conversion: Optional["scout_compute_api_UnitConversionSeries"] = None
+    _value_difference: Optional["scout_compute_api_ValueDifferenceSeries"] = None
+    _filter_transformation: Optional["scout_compute_api_NumericFilterTransformationSeries"] = None
+    _threshold_filter: Optional["scout_compute_api_NumericThresholdFilterSeries"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'aggregate': ConjureFieldDefinition('aggregate', scout_compute_api_AggregateNumericSeriesNode),
-            'arithmetic': ConjureFieldDefinition('arithmetic', scout_compute_api_ArithmeticSeriesNode),
-            'bit_operation': ConjureFieldDefinition('bitOperation', scout_compute_api_BitOperationSeriesNode),
-            'cumulative_sum': ConjureFieldDefinition('cumulativeSum', scout_compute_api_CumulativeSumSeriesNode),
-            'derivative': ConjureFieldDefinition('derivative', scout_compute_api_DerivativeSeriesNode),
+            'aggregate': ConjureFieldDefinition('aggregate', scout_compute_api_AggregateNumericSeries),
+            'arithmetic': ConjureFieldDefinition('arithmetic', scout_compute_api_ArithmeticSeries),
+            'bit_operation': ConjureFieldDefinition('bitOperation', scout_compute_api_BitOperationSeries),
+            'cumulative_sum': ConjureFieldDefinition('cumulativeSum', scout_compute_api_CumulativeSumSeries),
+            'derivative': ConjureFieldDefinition('derivative', scout_compute_api_DerivativeSeries),
             'function': ConjureFieldDefinition('function', scout_compute_api_NumericSeriesFunction),
-            'integral': ConjureFieldDefinition('integral', scout_compute_api_IntegralSeriesNode),
-            'max': ConjureFieldDefinition('max', scout_compute_api_MaxSeriesNode),
-            'mean': ConjureFieldDefinition('mean', scout_compute_api_MeanSeriesNode),
-            'min': ConjureFieldDefinition('min', scout_compute_api_MinSeriesNode),
-            'offset': ConjureFieldDefinition('offset', scout_compute_api_OffsetSeriesNode),
-            'product': ConjureFieldDefinition('product', scout_compute_api_ProductSeriesNode),
-            'raw': ConjureFieldDefinition('raw', scout_compute_api_RawNumericSeriesNode),
-            'resample': ConjureFieldDefinition('resample', scout_compute_api_NumericResampleSeriesNode),
-            'rolling_operation': ConjureFieldDefinition('rollingOperation', scout_compute_api_RollingOperationSeriesNode),
-            'sum': ConjureFieldDefinition('sum', scout_compute_api_SumSeriesNode),
-            'scale': ConjureFieldDefinition('scale', scout_compute_api_ScaleSeriesNode),
-            'time_difference': ConjureFieldDefinition('timeDifference', scout_compute_api_TimeDifferenceSeriesNode),
-            'time_range_filter': ConjureFieldDefinition('timeRangeFilter', scout_compute_api_NumericTimeRangeFilterSeriesNode),
-            'time_shift': ConjureFieldDefinition('timeShift', scout_compute_api_NumericTimeShiftSeriesNode),
-            'unary_arithmetic': ConjureFieldDefinition('unaryArithmetic', scout_compute_api_UnaryArithmeticSeriesNode),
-            'binary_arithmetic': ConjureFieldDefinition('binaryArithmetic', scout_compute_api_BinaryArithmeticSeriesNode),
-            'union': ConjureFieldDefinition('union', scout_compute_api_NumericUnionSeriesNode),
-            'unit_conversion': ConjureFieldDefinition('unitConversion', scout_compute_api_UnitConversionSeriesNode),
-            'value_difference': ConjureFieldDefinition('valueDifference', scout_compute_api_ValueDifferenceSeriesNode),
-            'filter_transformation': ConjureFieldDefinition('filterTransformation', scout_compute_api_NumericFilterTransformationSeriesNode)
+            'integral': ConjureFieldDefinition('integral', scout_compute_api_IntegralSeries),
+            'max': ConjureFieldDefinition('max', scout_compute_api_MaxSeries),
+            'mean': ConjureFieldDefinition('mean', scout_compute_api_MeanSeries),
+            'min': ConjureFieldDefinition('min', scout_compute_api_MinSeries),
+            'offset': ConjureFieldDefinition('offset', scout_compute_api_OffsetSeries),
+            'product': ConjureFieldDefinition('product', scout_compute_api_ProductSeries),
+            'raw': ConjureFieldDefinition('raw', scout_compute_api_Reference),
+            'channel': ConjureFieldDefinition('channel', scout_compute_api_ChannelSeries),
+            'resample': ConjureFieldDefinition('resample', scout_compute_api_NumericResampleSeries),
+            'rolling_operation': ConjureFieldDefinition('rollingOperation', scout_compute_api_RollingOperationSeries),
+            'sum': ConjureFieldDefinition('sum', scout_compute_api_SumSeries),
+            'scale': ConjureFieldDefinition('scale', scout_compute_api_ScaleSeries),
+            'time_difference': ConjureFieldDefinition('timeDifference', scout_compute_api_TimeDifferenceSeries),
+            'time_range_filter': ConjureFieldDefinition('timeRangeFilter', scout_compute_api_NumericTimeRangeFilterSeries),
+            'time_shift': ConjureFieldDefinition('timeShift', scout_compute_api_NumericTimeShiftSeries),
+            'unary_arithmetic': ConjureFieldDefinition('unaryArithmetic', scout_compute_api_UnaryArithmeticSeries),
+            'binary_arithmetic': ConjureFieldDefinition('binaryArithmetic', scout_compute_api_BinaryArithmeticSeries),
+            'union': ConjureFieldDefinition('union', scout_compute_api_NumericUnionSeries),
+            'unit_conversion': ConjureFieldDefinition('unitConversion', scout_compute_api_UnitConversionSeries),
+            'value_difference': ConjureFieldDefinition('valueDifference', scout_compute_api_ValueDifferenceSeries),
+            'filter_transformation': ConjureFieldDefinition('filterTransformation', scout_compute_api_NumericFilterTransformationSeries),
+            'threshold_filter': ConjureFieldDefinition('thresholdFilter', scout_compute_api_NumericThresholdFilterSeries)
         }
 
     def __init__(
             self,
-            aggregate: Optional["scout_compute_api_AggregateNumericSeriesNode"] = None,
-            arithmetic: Optional["scout_compute_api_ArithmeticSeriesNode"] = None,
-            bit_operation: Optional["scout_compute_api_BitOperationSeriesNode"] = None,
-            cumulative_sum: Optional["scout_compute_api_CumulativeSumSeriesNode"] = None,
-            derivative: Optional["scout_compute_api_DerivativeSeriesNode"] = None,
+            aggregate: Optional["scout_compute_api_AggregateNumericSeries"] = None,
+            arithmetic: Optional["scout_compute_api_ArithmeticSeries"] = None,
+            bit_operation: Optional["scout_compute_api_BitOperationSeries"] = None,
+            cumulative_sum: Optional["scout_compute_api_CumulativeSumSeries"] = None,
+            derivative: Optional["scout_compute_api_DerivativeSeries"] = None,
             function: Optional["scout_compute_api_NumericSeriesFunction"] = None,
-            integral: Optional["scout_compute_api_IntegralSeriesNode"] = None,
-            max: Optional["scout_compute_api_MaxSeriesNode"] = None,
-            mean: Optional["scout_compute_api_MeanSeriesNode"] = None,
-            min: Optional["scout_compute_api_MinSeriesNode"] = None,
-            offset: Optional["scout_compute_api_OffsetSeriesNode"] = None,
-            product: Optional["scout_compute_api_ProductSeriesNode"] = None,
-            raw: Optional["scout_compute_api_RawNumericSeriesNode"] = None,
-            resample: Optional["scout_compute_api_NumericResampleSeriesNode"] = None,
-            rolling_operation: Optional["scout_compute_api_RollingOperationSeriesNode"] = None,
-            sum: Optional["scout_compute_api_SumSeriesNode"] = None,
-            scale: Optional["scout_compute_api_ScaleSeriesNode"] = None,
-            time_difference: Optional["scout_compute_api_TimeDifferenceSeriesNode"] = None,
-            time_range_filter: Optional["scout_compute_api_NumericTimeRangeFilterSeriesNode"] = None,
-            time_shift: Optional["scout_compute_api_NumericTimeShiftSeriesNode"] = None,
-            unary_arithmetic: Optional["scout_compute_api_UnaryArithmeticSeriesNode"] = None,
-            binary_arithmetic: Optional["scout_compute_api_BinaryArithmeticSeriesNode"] = None,
-            union: Optional["scout_compute_api_NumericUnionSeriesNode"] = None,
-            unit_conversion: Optional["scout_compute_api_UnitConversionSeriesNode"] = None,
-            value_difference: Optional["scout_compute_api_ValueDifferenceSeriesNode"] = None,
-            filter_transformation: Optional["scout_compute_api_NumericFilterTransformationSeriesNode"] = None,
+            integral: Optional["scout_compute_api_IntegralSeries"] = None,
+            max: Optional["scout_compute_api_MaxSeries"] = None,
+            mean: Optional["scout_compute_api_MeanSeries"] = None,
+            min: Optional["scout_compute_api_MinSeries"] = None,
+            offset: Optional["scout_compute_api_OffsetSeries"] = None,
+            product: Optional["scout_compute_api_ProductSeries"] = None,
+            raw: Optional["scout_compute_api_Reference"] = None,
+            channel: Optional["scout_compute_api_ChannelSeries"] = None,
+            resample: Optional["scout_compute_api_NumericResampleSeries"] = None,
+            rolling_operation: Optional["scout_compute_api_RollingOperationSeries"] = None,
+            sum: Optional["scout_compute_api_SumSeries"] = None,
+            scale: Optional["scout_compute_api_ScaleSeries"] = None,
+            time_difference: Optional["scout_compute_api_TimeDifferenceSeries"] = None,
+            time_range_filter: Optional["scout_compute_api_NumericTimeRangeFilterSeries"] = None,
+            time_shift: Optional["scout_compute_api_NumericTimeShiftSeries"] = None,
+            unary_arithmetic: Optional["scout_compute_api_UnaryArithmeticSeries"] = None,
+            binary_arithmetic: Optional["scout_compute_api_BinaryArithmeticSeries"] = None,
+            union: Optional["scout_compute_api_NumericUnionSeries"] = None,
+            unit_conversion: Optional["scout_compute_api_UnitConversionSeries"] = None,
+            value_difference: Optional["scout_compute_api_ValueDifferenceSeries"] = None,
+            filter_transformation: Optional["scout_compute_api_NumericFilterTransformationSeries"] = None,
+            threshold_filter: Optional["scout_compute_api_NumericThresholdFilterSeries"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (aggregate is not None) + (arithmetic is not None) + (bit_operation is not None) + (cumulative_sum is not None) + (derivative is not None) + (function is not None) + (integral is not None) + (max is not None) + (mean is not None) + (min is not None) + (offset is not None) + (product is not None) + (raw is not None) + (resample is not None) + (rolling_operation is not None) + (sum is not None) + (scale is not None) + (time_difference is not None) + (time_range_filter is not None) + (time_shift is not None) + (unary_arithmetic is not None) + (binary_arithmetic is not None) + (union is not None) + (unit_conversion is not None) + (value_difference is not None) + (filter_transformation is not None) != 1:
+            if (aggregate is not None) + (arithmetic is not None) + (bit_operation is not None) + (cumulative_sum is not None) + (derivative is not None) + (function is not None) + (integral is not None) + (max is not None) + (mean is not None) + (min is not None) + (offset is not None) + (product is not None) + (raw is not None) + (channel is not None) + (resample is not None) + (rolling_operation is not None) + (sum is not None) + (scale is not None) + (time_difference is not None) + (time_range_filter is not None) + (time_shift is not None) + (unary_arithmetic is not None) + (binary_arithmetic is not None) + (union is not None) + (unit_conversion is not None) + (value_difference is not None) + (filter_transformation is not None) + (threshold_filter is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if aggregate is not None:
@@ -28564,6 +29207,9 @@ class scout_compute_api_NumericSeriesNode(ConjureUnionType):
             if raw is not None:
                 self._raw = raw
                 self._type = 'raw'
+            if channel is not None:
+                self._channel = channel
+                self._type = 'channel'
             if resample is not None:
                 self._resample = resample
                 self._type = 'resample'
@@ -28603,6 +29249,9 @@ class scout_compute_api_NumericSeriesNode(ConjureUnionType):
             if filter_transformation is not None:
                 self._filter_transformation = filter_transformation
                 self._type = 'filterTransformation'
+            if threshold_filter is not None:
+                self._threshold_filter = threshold_filter
+                self._type = 'thresholdFilter'
 
         elif type_of_union == 'aggregate':
             if aggregate is None:
@@ -28669,6 +29318,11 @@ class scout_compute_api_NumericSeriesNode(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._raw = raw
             self._type = 'raw'
+        elif type_of_union == 'channel':
+            if channel is None:
+                raise ValueError('a union value must not be None')
+            self._channel = channel
+            self._type = 'channel'
         elif type_of_union == 'resample':
             if resample is None:
                 raise ValueError('a union value must not be None')
@@ -28734,25 +29388,30 @@ class scout_compute_api_NumericSeriesNode(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._filter_transformation = filter_transformation
             self._type = 'filterTransformation'
+        elif type_of_union == 'thresholdFilter':
+            if threshold_filter is None:
+                raise ValueError('a union value must not be None')
+            self._threshold_filter = threshold_filter
+            self._type = 'thresholdFilter'
 
     @builtins.property
-    def aggregate(self) -> Optional["scout_compute_api_AggregateNumericSeriesNode"]:
+    def aggregate(self) -> Optional["scout_compute_api_AggregateNumericSeries"]:
         return self._aggregate
 
     @builtins.property
-    def arithmetic(self) -> Optional["scout_compute_api_ArithmeticSeriesNode"]:
+    def arithmetic(self) -> Optional["scout_compute_api_ArithmeticSeries"]:
         return self._arithmetic
 
     @builtins.property
-    def bit_operation(self) -> Optional["scout_compute_api_BitOperationSeriesNode"]:
+    def bit_operation(self) -> Optional["scout_compute_api_BitOperationSeries"]:
         return self._bit_operation
 
     @builtins.property
-    def cumulative_sum(self) -> Optional["scout_compute_api_CumulativeSumSeriesNode"]:
+    def cumulative_sum(self) -> Optional["scout_compute_api_CumulativeSumSeries"]:
         return self._cumulative_sum
 
     @builtins.property
-    def derivative(self) -> Optional["scout_compute_api_DerivativeSeriesNode"]:
+    def derivative(self) -> Optional["scout_compute_api_DerivativeSeries"]:
         return self._derivative
 
     @builtins.property
@@ -28760,88 +29419,96 @@ class scout_compute_api_NumericSeriesNode(ConjureUnionType):
         return self._function
 
     @builtins.property
-    def integral(self) -> Optional["scout_compute_api_IntegralSeriesNode"]:
+    def integral(self) -> Optional["scout_compute_api_IntegralSeries"]:
         return self._integral
 
     @builtins.property
-    def max(self) -> Optional["scout_compute_api_MaxSeriesNode"]:
+    def max(self) -> Optional["scout_compute_api_MaxSeries"]:
         return self._max
 
     @builtins.property
-    def mean(self) -> Optional["scout_compute_api_MeanSeriesNode"]:
+    def mean(self) -> Optional["scout_compute_api_MeanSeries"]:
         return self._mean
 
     @builtins.property
-    def min(self) -> Optional["scout_compute_api_MinSeriesNode"]:
+    def min(self) -> Optional["scout_compute_api_MinSeries"]:
         return self._min
 
     @builtins.property
-    def offset(self) -> Optional["scout_compute_api_OffsetSeriesNode"]:
+    def offset(self) -> Optional["scout_compute_api_OffsetSeries"]:
         return self._offset
 
     @builtins.property
-    def product(self) -> Optional["scout_compute_api_ProductSeriesNode"]:
+    def product(self) -> Optional["scout_compute_api_ProductSeries"]:
         return self._product
 
     @builtins.property
-    def raw(self) -> Optional["scout_compute_api_RawNumericSeriesNode"]:
+    def raw(self) -> Optional["scout_compute_api_Reference"]:
         return self._raw
 
     @builtins.property
-    def resample(self) -> Optional["scout_compute_api_NumericResampleSeriesNode"]:
+    def channel(self) -> Optional["scout_compute_api_ChannelSeries"]:
+        return self._channel
+
+    @builtins.property
+    def resample(self) -> Optional["scout_compute_api_NumericResampleSeries"]:
         return self._resample
 
     @builtins.property
-    def rolling_operation(self) -> Optional["scout_compute_api_RollingOperationSeriesNode"]:
+    def rolling_operation(self) -> Optional["scout_compute_api_RollingOperationSeries"]:
         return self._rolling_operation
 
     @builtins.property
-    def sum(self) -> Optional["scout_compute_api_SumSeriesNode"]:
+    def sum(self) -> Optional["scout_compute_api_SumSeries"]:
         return self._sum
 
     @builtins.property
-    def scale(self) -> Optional["scout_compute_api_ScaleSeriesNode"]:
+    def scale(self) -> Optional["scout_compute_api_ScaleSeries"]:
         return self._scale
 
     @builtins.property
-    def time_difference(self) -> Optional["scout_compute_api_TimeDifferenceSeriesNode"]:
+    def time_difference(self) -> Optional["scout_compute_api_TimeDifferenceSeries"]:
         return self._time_difference
 
     @builtins.property
-    def time_range_filter(self) -> Optional["scout_compute_api_NumericTimeRangeFilterSeriesNode"]:
+    def time_range_filter(self) -> Optional["scout_compute_api_NumericTimeRangeFilterSeries"]:
         return self._time_range_filter
 
     @builtins.property
-    def time_shift(self) -> Optional["scout_compute_api_NumericTimeShiftSeriesNode"]:
+    def time_shift(self) -> Optional["scout_compute_api_NumericTimeShiftSeries"]:
         return self._time_shift
 
     @builtins.property
-    def unary_arithmetic(self) -> Optional["scout_compute_api_UnaryArithmeticSeriesNode"]:
+    def unary_arithmetic(self) -> Optional["scout_compute_api_UnaryArithmeticSeries"]:
         return self._unary_arithmetic
 
     @builtins.property
-    def binary_arithmetic(self) -> Optional["scout_compute_api_BinaryArithmeticSeriesNode"]:
+    def binary_arithmetic(self) -> Optional["scout_compute_api_BinaryArithmeticSeries"]:
         return self._binary_arithmetic
 
     @builtins.property
-    def union(self) -> Optional["scout_compute_api_NumericUnionSeriesNode"]:
+    def union(self) -> Optional["scout_compute_api_NumericUnionSeries"]:
         return self._union
 
     @builtins.property
-    def unit_conversion(self) -> Optional["scout_compute_api_UnitConversionSeriesNode"]:
+    def unit_conversion(self) -> Optional["scout_compute_api_UnitConversionSeries"]:
         return self._unit_conversion
 
     @builtins.property
-    def value_difference(self) -> Optional["scout_compute_api_ValueDifferenceSeriesNode"]:
+    def value_difference(self) -> Optional["scout_compute_api_ValueDifferenceSeries"]:
         return self._value_difference
 
     @builtins.property
-    def filter_transformation(self) -> Optional["scout_compute_api_NumericFilterTransformationSeriesNode"]:
+    def filter_transformation(self) -> Optional["scout_compute_api_NumericFilterTransformationSeries"]:
         return self._filter_transformation
 
+    @builtins.property
+    def threshold_filter(self) -> Optional["scout_compute_api_NumericThresholdFilterSeries"]:
+        return self._threshold_filter
+
     def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_NumericSeriesNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_NumericSeriesNodeVisitor'.format(visitor.__class__.__name__))
+        if not isinstance(visitor, scout_compute_api_NumericSeriesVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_NumericSeriesVisitor'.format(visitor.__class__.__name__))
         if self._type == 'aggregate' and self.aggregate is not None:
             return visitor._aggregate(self.aggregate)
         if self._type == 'arithmetic' and self.arithmetic is not None:
@@ -28868,6 +29535,8 @@ class scout_compute_api_NumericSeriesNode(ConjureUnionType):
             return visitor._product(self.product)
         if self._type == 'raw' and self.raw is not None:
             return visitor._raw(self.raw)
+        if self._type == 'channel' and self.channel is not None:
+            return visitor._channel(self.channel)
         if self._type == 'resample' and self.resample is not None:
             return visitor._resample(self.resample)
         if self._type == 'rollingOperation' and self.rolling_operation is not None:
@@ -28894,33 +29563,35 @@ class scout_compute_api_NumericSeriesNode(ConjureUnionType):
             return visitor._value_difference(self.value_difference)
         if self._type == 'filterTransformation' and self.filter_transformation is not None:
             return visitor._filter_transformation(self.filter_transformation)
+        if self._type == 'thresholdFilter' and self.threshold_filter is not None:
+            return visitor._threshold_filter(self.threshold_filter)
 
 
-scout_compute_api_NumericSeriesNode.__name__ = "NumericSeriesNode"
-scout_compute_api_NumericSeriesNode.__qualname__ = "NumericSeriesNode"
-scout_compute_api_NumericSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_NumericSeries.__name__ = "NumericSeries"
+scout_compute_api_NumericSeries.__qualname__ = "NumericSeries"
+scout_compute_api_NumericSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_NumericSeriesNodeVisitor:
+class scout_compute_api_NumericSeriesVisitor:
 
     @abstractmethod
-    def _aggregate(self, aggregate: "scout_compute_api_AggregateNumericSeriesNode") -> Any:
+    def _aggregate(self, aggregate: "scout_compute_api_AggregateNumericSeries") -> Any:
         pass
 
     @abstractmethod
-    def _arithmetic(self, arithmetic: "scout_compute_api_ArithmeticSeriesNode") -> Any:
+    def _arithmetic(self, arithmetic: "scout_compute_api_ArithmeticSeries") -> Any:
         pass
 
     @abstractmethod
-    def _bit_operation(self, bit_operation: "scout_compute_api_BitOperationSeriesNode") -> Any:
+    def _bit_operation(self, bit_operation: "scout_compute_api_BitOperationSeries") -> Any:
         pass
 
     @abstractmethod
-    def _cumulative_sum(self, cumulative_sum: "scout_compute_api_CumulativeSumSeriesNode") -> Any:
+    def _cumulative_sum(self, cumulative_sum: "scout_compute_api_CumulativeSumSeries") -> Any:
         pass
 
     @abstractmethod
-    def _derivative(self, derivative: "scout_compute_api_DerivativeSeriesNode") -> Any:
+    def _derivative(self, derivative: "scout_compute_api_DerivativeSeries") -> Any:
         pass
 
     @abstractmethod
@@ -28928,92 +29599,176 @@ class scout_compute_api_NumericSeriesNodeVisitor:
         pass
 
     @abstractmethod
-    def _integral(self, integral: "scout_compute_api_IntegralSeriesNode") -> Any:
+    def _integral(self, integral: "scout_compute_api_IntegralSeries") -> Any:
         pass
 
     @abstractmethod
-    def _max(self, max: "scout_compute_api_MaxSeriesNode") -> Any:
+    def _max(self, max: "scout_compute_api_MaxSeries") -> Any:
         pass
 
     @abstractmethod
-    def _mean(self, mean: "scout_compute_api_MeanSeriesNode") -> Any:
+    def _mean(self, mean: "scout_compute_api_MeanSeries") -> Any:
         pass
 
     @abstractmethod
-    def _min(self, min: "scout_compute_api_MinSeriesNode") -> Any:
+    def _min(self, min: "scout_compute_api_MinSeries") -> Any:
         pass
 
     @abstractmethod
-    def _offset(self, offset: "scout_compute_api_OffsetSeriesNode") -> Any:
+    def _offset(self, offset: "scout_compute_api_OffsetSeries") -> Any:
         pass
 
     @abstractmethod
-    def _product(self, product: "scout_compute_api_ProductSeriesNode") -> Any:
+    def _product(self, product: "scout_compute_api_ProductSeries") -> Any:
         pass
 
     @abstractmethod
-    def _raw(self, raw: "scout_compute_api_RawNumericSeriesNode") -> Any:
+    def _raw(self, raw: "scout_compute_api_Reference") -> Any:
         pass
 
     @abstractmethod
-    def _resample(self, resample: "scout_compute_api_NumericResampleSeriesNode") -> Any:
+    def _channel(self, channel: "scout_compute_api_ChannelSeries") -> Any:
         pass
 
     @abstractmethod
-    def _rolling_operation(self, rolling_operation: "scout_compute_api_RollingOperationSeriesNode") -> Any:
+    def _resample(self, resample: "scout_compute_api_NumericResampleSeries") -> Any:
         pass
 
     @abstractmethod
-    def _sum(self, sum: "scout_compute_api_SumSeriesNode") -> Any:
+    def _rolling_operation(self, rolling_operation: "scout_compute_api_RollingOperationSeries") -> Any:
         pass
 
     @abstractmethod
-    def _scale(self, scale: "scout_compute_api_ScaleSeriesNode") -> Any:
+    def _sum(self, sum: "scout_compute_api_SumSeries") -> Any:
         pass
 
     @abstractmethod
-    def _time_difference(self, time_difference: "scout_compute_api_TimeDifferenceSeriesNode") -> Any:
+    def _scale(self, scale: "scout_compute_api_ScaleSeries") -> Any:
         pass
 
     @abstractmethod
-    def _time_range_filter(self, time_range_filter: "scout_compute_api_NumericTimeRangeFilterSeriesNode") -> Any:
+    def _time_difference(self, time_difference: "scout_compute_api_TimeDifferenceSeries") -> Any:
         pass
 
     @abstractmethod
-    def _time_shift(self, time_shift: "scout_compute_api_NumericTimeShiftSeriesNode") -> Any:
+    def _time_range_filter(self, time_range_filter: "scout_compute_api_NumericTimeRangeFilterSeries") -> Any:
         pass
 
     @abstractmethod
-    def _unary_arithmetic(self, unary_arithmetic: "scout_compute_api_UnaryArithmeticSeriesNode") -> Any:
+    def _time_shift(self, time_shift: "scout_compute_api_NumericTimeShiftSeries") -> Any:
         pass
 
     @abstractmethod
-    def _binary_arithmetic(self, binary_arithmetic: "scout_compute_api_BinaryArithmeticSeriesNode") -> Any:
+    def _unary_arithmetic(self, unary_arithmetic: "scout_compute_api_UnaryArithmeticSeries") -> Any:
         pass
 
     @abstractmethod
-    def _union(self, union: "scout_compute_api_NumericUnionSeriesNode") -> Any:
+    def _binary_arithmetic(self, binary_arithmetic: "scout_compute_api_BinaryArithmeticSeries") -> Any:
         pass
 
     @abstractmethod
-    def _unit_conversion(self, unit_conversion: "scout_compute_api_UnitConversionSeriesNode") -> Any:
+    def _union(self, union: "scout_compute_api_NumericUnionSeries") -> Any:
         pass
 
     @abstractmethod
-    def _value_difference(self, value_difference: "scout_compute_api_ValueDifferenceSeriesNode") -> Any:
+    def _unit_conversion(self, unit_conversion: "scout_compute_api_UnitConversionSeries") -> Any:
         pass
 
     @abstractmethod
-    def _filter_transformation(self, filter_transformation: "scout_compute_api_NumericFilterTransformationSeriesNode") -> Any:
+    def _value_difference(self, value_difference: "scout_compute_api_ValueDifferenceSeries") -> Any:
+        pass
+
+    @abstractmethod
+    def _filter_transformation(self, filter_transformation: "scout_compute_api_NumericFilterTransformationSeries") -> Any:
+        pass
+
+    @abstractmethod
+    def _threshold_filter(self, threshold_filter: "scout_compute_api_NumericThresholdFilterSeries") -> Any:
         pass
 
 
-scout_compute_api_NumericSeriesNodeVisitor.__name__ = "NumericSeriesNodeVisitor"
-scout_compute_api_NumericSeriesNodeVisitor.__qualname__ = "NumericSeriesNodeVisitor"
-scout_compute_api_NumericSeriesNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_NumericSeriesVisitor.__name__ = "NumericSeriesVisitor"
+scout_compute_api_NumericSeriesVisitor.__qualname__ = "NumericSeriesVisitor"
+scout_compute_api_NumericSeriesVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_NumericTimeRangeFilterSeriesNode(ConjureBeanType):
+class scout_compute_api_NumericSeriesFunction(ConjureBeanType):
+    """
+    A function reference that outputs a numeric series.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'function_reference': ConjureFieldDefinition('functionReference', scout_compute_api_FunctionReference),
+            'function_identifier': ConjureFieldDefinition('functionIdentifier', scout_compute_api_FunctionVariable)
+        }
+
+    __slots__: List[str] = ['_function_reference', '_function_identifier']
+
+    def __init__(self, function_identifier: "scout_compute_api_FunctionVariable", function_reference: str) -> None:
+        self._function_reference = function_reference
+        self._function_identifier = function_identifier
+
+    @builtins.property
+    def function_reference(self) -> str:
+        """
+        A reference to identify the function node for substituting variables used within the function.
+        """
+        return self._function_reference
+
+    @builtins.property
+    def function_identifier(self) -> "scout_compute_api_FunctionVariable":
+        """
+        The variable that needs to be substituted with the function RID.
+        """
+        return self._function_identifier
+
+
+scout_compute_api_NumericSeriesFunction.__name__ = "NumericSeriesFunction"
+scout_compute_api_NumericSeriesFunction.__qualname__ = "NumericSeriesFunction"
+scout_compute_api_NumericSeriesFunction.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_NumericThresholdFilterSeries(ConjureBeanType):
+    """
+    Outputs only the values of the numeric plot value that satisfy the threshold condition.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
+            'threshold': ConjureFieldDefinition('threshold', scout_compute_api_DoubleConstant),
+            'operator': ConjureFieldDefinition('operator', scout_compute_api_ThresholdOperator)
+        }
+
+    __slots__: List[str] = ['_input', '_threshold', '_operator']
+
+    def __init__(self, input: "scout_compute_api_NumericSeries", operator: "scout_compute_api_ThresholdOperator", threshold: "scout_compute_api_DoubleConstant") -> None:
+        self._input = input
+        self._threshold = threshold
+        self._operator = operator
+
+    @builtins.property
+    def input(self) -> "scout_compute_api_NumericSeries":
+        return self._input
+
+    @builtins.property
+    def threshold(self) -> "scout_compute_api_DoubleConstant":
+        return self._threshold
+
+    @builtins.property
+    def operator(self) -> "scout_compute_api_ThresholdOperator":
+        return self._operator
+
+
+scout_compute_api_NumericThresholdFilterSeries.__name__ = "NumericThresholdFilterSeries"
+scout_compute_api_NumericThresholdFilterSeries.__qualname__ = "NumericThresholdFilterSeries"
+scout_compute_api_NumericThresholdFilterSeries.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_NumericTimeRangeFilterSeries(ConjureBeanType):
     """
     Filters the series to points within the specified time range.
     """
@@ -29021,20 +29776,20 @@ class scout_compute_api_NumericTimeRangeFilterSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'start_time': ConjureFieldDefinition('startTime', OptionalTypeWrapper[scout_compute_api_TimestampConstant]),
             'end_time': ConjureFieldDefinition('endTime', OptionalTypeWrapper[scout_compute_api_TimestampConstant])
         }
 
     __slots__: List[str] = ['_input', '_start_time', '_end_time']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", end_time: Optional["scout_compute_api_TimestampConstant"] = None, start_time: Optional["scout_compute_api_TimestampConstant"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", end_time: Optional["scout_compute_api_TimestampConstant"] = None, start_time: Optional["scout_compute_api_TimestampConstant"] = None) -> None:
         self._input = input
         self._start_time = start_time
         self._end_time = end_time
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -29052,28 +29807,28 @@ class scout_compute_api_NumericTimeRangeFilterSeriesNode(ConjureBeanType):
         return self._end_time
 
 
-scout_compute_api_NumericTimeRangeFilterSeriesNode.__name__ = "NumericTimeRangeFilterSeriesNode"
-scout_compute_api_NumericTimeRangeFilterSeriesNode.__qualname__ = "NumericTimeRangeFilterSeriesNode"
-scout_compute_api_NumericTimeRangeFilterSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_NumericTimeRangeFilterSeries.__name__ = "NumericTimeRangeFilterSeries"
+scout_compute_api_NumericTimeRangeFilterSeries.__qualname__ = "NumericTimeRangeFilterSeries"
+scout_compute_api_NumericTimeRangeFilterSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_NumericTimeShiftSeriesNode(ConjureBeanType):
+class scout_compute_api_NumericTimeShiftSeries(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'duration': ConjureFieldDefinition('duration', scout_compute_api_DurationConstant)
         }
 
     __slots__: List[str] = ['_input', '_duration']
 
-    def __init__(self, duration: "scout_compute_api_DurationConstant", input: "scout_compute_api_NumericSeriesNode") -> None:
+    def __init__(self, duration: "scout_compute_api_DurationConstant", input: "scout_compute_api_NumericSeries") -> None:
         self._input = input
         self._duration = duration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -29081,9 +29836,9 @@ class scout_compute_api_NumericTimeShiftSeriesNode(ConjureBeanType):
         return self._duration
 
 
-scout_compute_api_NumericTimeShiftSeriesNode.__name__ = "NumericTimeShiftSeriesNode"
-scout_compute_api_NumericTimeShiftSeriesNode.__qualname__ = "NumericTimeShiftSeriesNode"
-scout_compute_api_NumericTimeShiftSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_NumericTimeShiftSeries.__name__ = "NumericTimeShiftSeries"
+scout_compute_api_NumericTimeShiftSeries.__qualname__ = "NumericTimeShiftSeries"
+scout_compute_api_NumericTimeShiftSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_NumericUnionOperation(ConjureEnumType):
@@ -29110,7 +29865,7 @@ scout_compute_api_NumericUnionOperation.__qualname__ = "NumericUnionOperation"
 scout_compute_api_NumericUnionOperation.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_NumericUnionSeriesNode(ConjureBeanType):
+class scout_compute_api_NumericUnionSeries(ConjureBeanType):
     """
     Combines multiple numeric series together and outputs a single series. If the same timestamp is duplicated in
 multiple input series, the output series will contain a single point with this timestamp. The strategy to
@@ -29120,18 +29875,18 @@ merge input values with the same timestamp together is specified in the operatio
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', List[scout_compute_api_NumericSeriesNode]),
+            'input': ConjureFieldDefinition('input', List[scout_compute_api_NumericSeries]),
             'operation': ConjureFieldDefinition('operation', scout_compute_api_NumericUnionOperation)
         }
 
     __slots__: List[str] = ['_input', '_operation']
 
-    def __init__(self, input: List["scout_compute_api_NumericSeriesNode"], operation: "scout_compute_api_NumericUnionOperation") -> None:
+    def __init__(self, input: List["scout_compute_api_NumericSeries"], operation: "scout_compute_api_NumericUnionOperation") -> None:
         self._input = input
         self._operation = operation
 
     @builtins.property
-    def input(self) -> List["scout_compute_api_NumericSeriesNode"]:
+    def input(self) -> List["scout_compute_api_NumericSeries"]:
         return self._input
 
     @builtins.property
@@ -29142,12 +29897,12 @@ merge input values with the same timestamp together is specified in the operatio
         return self._operation
 
 
-scout_compute_api_NumericUnionSeriesNode.__name__ = "NumericUnionSeriesNode"
-scout_compute_api_NumericUnionSeriesNode.__qualname__ = "NumericUnionSeriesNode"
-scout_compute_api_NumericUnionSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_NumericUnionSeries.__name__ = "NumericUnionSeries"
+scout_compute_api_NumericUnionSeries.__qualname__ = "NumericUnionSeries"
+scout_compute_api_NumericUnionSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_OffsetSeriesNode(ConjureBeanType):
+class scout_compute_api_OffsetSeries(ConjureBeanType):
     """
     For every timestamp specified in the input series, offset it by a constant factor.
     """
@@ -29155,18 +29910,18 @@ class scout_compute_api_OffsetSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'scalar': ConjureFieldDefinition('scalar', scout_compute_api_DoubleConstant)
         }
 
     __slots__: List[str] = ['_input', '_scalar']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", scalar: "scout_compute_api_DoubleConstant") -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", scalar: "scout_compute_api_DoubleConstant") -> None:
         self._input = input
         self._scalar = scalar
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -29177,12 +29932,12 @@ class scout_compute_api_OffsetSeriesNode(ConjureBeanType):
         return self._scalar
 
 
-scout_compute_api_OffsetSeriesNode.__name__ = "OffsetSeriesNode"
-scout_compute_api_OffsetSeriesNode.__qualname__ = "OffsetSeriesNode"
-scout_compute_api_OffsetSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_OffsetSeries.__name__ = "OffsetSeries"
+scout_compute_api_OffsetSeries.__qualname__ = "OffsetSeries"
+scout_compute_api_OffsetSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_OnChangeRangesNode(ConjureBeanType):
+class scout_compute_api_OnChangeRanges(ConjureBeanType):
     """
     Produces a list of ranges for each point that has a different value to the previous point.
 A range will have identical start and end times.
@@ -29191,22 +29946,22 @@ A range will have identical start and end times.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_SeriesNode)
+            'input': ConjureFieldDefinition('input', scout_compute_api_Series)
         }
 
     __slots__: List[str] = ['_input']
 
-    def __init__(self, input: "scout_compute_api_SeriesNode") -> None:
+    def __init__(self, input: "scout_compute_api_Series") -> None:
         self._input = input
 
     @builtins.property
-    def input(self) -> "scout_compute_api_SeriesNode":
+    def input(self) -> "scout_compute_api_Series":
         return self._input
 
 
-scout_compute_api_OnChangeRangesNode.__name__ = "OnChangeRangesNode"
-scout_compute_api_OnChangeRangesNode.__qualname__ = "OnChangeRangesNode"
-scout_compute_api_OnChangeRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_OnChangeRanges.__name__ = "OnChangeRanges"
+scout_compute_api_OnChangeRanges.__qualname__ = "OnChangeRanges"
+scout_compute_api_OnChangeRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_OutputRangeStart(ConjureUnionType):
@@ -29514,7 +30269,7 @@ scout_compute_api_ParameterizedContext.__qualname__ = "ParameterizedContext"
 scout_compute_api_ParameterizedContext.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_PeakRangesNode(ConjureBeanType):
+class scout_compute_api_PeakRanges(ConjureBeanType):
     """
     Produces a list of ranges for each point that is greater than its neighbors.
 Peaks at edges are discarded, and continuous, multivalue, flat peaks will return all values.
@@ -29523,7 +30278,7 @@ Peaks at edges are discarded, and continuous, multivalue, flat peaks will return
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'returns_peaks': ConjureFieldDefinition('returnsPeaks', OptionalTypeWrapper[bool]),
             'return_type': ConjureFieldDefinition('returnType', OptionalTypeWrapper[scout_compute_api_PeakType]),
             'minimum_prominence': ConjureFieldDefinition('minimumProminence', OptionalTypeWrapper[scout_compute_api_DoubleConstant])
@@ -29531,14 +30286,14 @@ Peaks at edges are discarded, and continuous, multivalue, flat peaks will return
 
     __slots__: List[str] = ['_input', '_returns_peaks', '_return_type', '_minimum_prominence']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", minimum_prominence: Optional["scout_compute_api_DoubleConstant"] = None, return_type: Optional["scout_compute_api_PeakType"] = None, returns_peaks: Optional[bool] = None) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", minimum_prominence: Optional["scout_compute_api_DoubleConstant"] = None, return_type: Optional["scout_compute_api_PeakType"] = None, returns_peaks: Optional[bool] = None) -> None:
         self._input = input
         self._returns_peaks = returns_peaks
         self._return_type = return_type
         self._minimum_prominence = minimum_prominence
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -29564,9 +30319,9 @@ Prominence is the minimum vertical distance needed to travel from an extrema to 
         return self._minimum_prominence
 
 
-scout_compute_api_PeakRangesNode.__name__ = "PeakRangesNode"
-scout_compute_api_PeakRangesNode.__qualname__ = "PeakRangesNode"
-scout_compute_api_PeakRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_PeakRanges.__name__ = "PeakRanges"
+scout_compute_api_PeakRanges.__qualname__ = "PeakRanges"
+scout_compute_api_PeakRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_PeakType(ConjureEnumType):
@@ -29587,6 +30342,32 @@ class scout_compute_api_PeakType(ConjureEnumType):
 scout_compute_api_PeakType.__name__ = "PeakType"
 scout_compute_api_PeakType.__qualname__ = "PeakType"
 scout_compute_api_PeakType.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_PercentageThreshold(ConjureBeanType):
+    """
+    Threshold defined as the percentage of a given value.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'value': ConjureFieldDefinition('value', scout_compute_api_DoubleConstant)
+        }
+
+    __slots__: List[str] = ['_value']
+
+    def __init__(self, value: "scout_compute_api_DoubleConstant") -> None:
+        self._value = value
+
+    @builtins.property
+    def value(self) -> "scout_compute_api_DoubleConstant":
+        return self._value
+
+
+scout_compute_api_PercentageThreshold.__name__ = "PercentageThreshold"
+scout_compute_api_PercentageThreshold.__qualname__ = "PercentageThreshold"
+scout_compute_api_PercentageThreshold.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_PersistenceWindowConfiguration(ConjureBeanType):
@@ -29640,7 +30421,7 @@ scout_compute_api_PersistenceWindowConfiguration.__qualname__ = "PersistenceWind
 scout_compute_api_PersistenceWindowConfiguration.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_ProductSeriesNode(ConjureBeanType):
+class scout_compute_api_ProductSeries(ConjureBeanType):
     """
     For every timestamp specified in the input series, outputs a value that is the product for that timestamp
 across all input series.
@@ -29651,18 +30432,18 @@ using the interpolation configuration.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeriesNode]),
+            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeries]),
             'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
         }
 
     __slots__: List[str] = ['_inputs', '_interpolation_configuration']
 
-    def __init__(self, inputs: List["scout_compute_api_NumericSeriesNode"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
+    def __init__(self, inputs: List["scout_compute_api_NumericSeries"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
         self._inputs = inputs
         self._interpolation_configuration = interpolation_configuration
 
     @builtins.property
-    def inputs(self) -> List["scout_compute_api_NumericSeriesNode"]:
+    def inputs(self) -> List["scout_compute_api_NumericSeries"]:
         return self._inputs
 
     @builtins.property
@@ -29673,9 +30454,9 @@ using the interpolation configuration.
         return self._interpolation_configuration
 
 
-scout_compute_api_ProductSeriesNode.__name__ = "ProductSeriesNode"
-scout_compute_api_ProductSeriesNode.__qualname__ = "ProductSeriesNode"
-scout_compute_api_ProductSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_ProductSeries.__name__ = "ProductSeries"
+scout_compute_api_ProductSeries.__qualname__ = "ProductSeries"
+scout_compute_api_ProductSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_Range(ConjureBeanType):
@@ -29898,6 +30679,383 @@ scout_compute_api_RangeAggregationOperationVisitor.__qualname__ = "RangeAggregat
 scout_compute_api_RangeAggregationOperationVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
+class scout_compute_api_RangeSeries(ConjureUnionType):
+    _enum_filter: Optional["scout_compute_api_EnumFilterRanges"] = None
+    _function: Optional["scout_compute_api_RangesFunction"] = None
+    _intersect_range: Optional["scout_compute_api_IntersectRanges"] = None
+    _not_: Optional["scout_compute_api_NotRanges"] = None
+    _on_change: Optional["scout_compute_api_OnChangeRanges"] = None
+    _min_max_threshold: Optional["scout_compute_api_MinMaxThresholdRanges"] = None
+    _peak: Optional["scout_compute_api_PeakRanges"] = None
+    _raw: Optional["scout_compute_api_Reference"] = None
+    _series_crossover_ranges_node: Optional["scout_compute_api_SeriesCrossoverRanges"] = None
+    _series_equality_ranges_node: Optional["scout_compute_api_SeriesEqualityRanges"] = None
+    _enum_series_equality_ranges_node: Optional["scout_compute_api_EnumSeriesEqualityRanges"] = None
+    _stale_range: Optional["scout_compute_api_StaleRanges"] = None
+    _threshold: Optional["scout_compute_api_ThresholdingRanges"] = None
+    _union_range: Optional["scout_compute_api_UnionRanges"] = None
+    _range_numeric_aggregation: Optional["scout_compute_api_RangesNumericAggregation"] = None
+    _stability_detection: Optional["scout_compute_api_StabilityDetectionRanges"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'enum_filter': ConjureFieldDefinition('enumFilter', scout_compute_api_EnumFilterRanges),
+            'function': ConjureFieldDefinition('function', scout_compute_api_RangesFunction),
+            'intersect_range': ConjureFieldDefinition('intersectRange', scout_compute_api_IntersectRanges),
+            'not_': ConjureFieldDefinition('not', scout_compute_api_NotRanges),
+            'on_change': ConjureFieldDefinition('onChange', scout_compute_api_OnChangeRanges),
+            'min_max_threshold': ConjureFieldDefinition('minMaxThreshold', scout_compute_api_MinMaxThresholdRanges),
+            'peak': ConjureFieldDefinition('peak', scout_compute_api_PeakRanges),
+            'raw': ConjureFieldDefinition('raw', scout_compute_api_Reference),
+            'series_crossover_ranges_node': ConjureFieldDefinition('seriesCrossoverRangesNode', scout_compute_api_SeriesCrossoverRanges),
+            'series_equality_ranges_node': ConjureFieldDefinition('seriesEqualityRangesNode', scout_compute_api_SeriesEqualityRanges),
+            'enum_series_equality_ranges_node': ConjureFieldDefinition('enumSeriesEqualityRangesNode', scout_compute_api_EnumSeriesEqualityRanges),
+            'stale_range': ConjureFieldDefinition('staleRange', scout_compute_api_StaleRanges),
+            'threshold': ConjureFieldDefinition('threshold', scout_compute_api_ThresholdingRanges),
+            'union_range': ConjureFieldDefinition('unionRange', scout_compute_api_UnionRanges),
+            'range_numeric_aggregation': ConjureFieldDefinition('rangeNumericAggregation', scout_compute_api_RangesNumericAggregation),
+            'stability_detection': ConjureFieldDefinition('stabilityDetection', scout_compute_api_StabilityDetectionRanges)
+        }
+
+    def __init__(
+            self,
+            enum_filter: Optional["scout_compute_api_EnumFilterRanges"] = None,
+            function: Optional["scout_compute_api_RangesFunction"] = None,
+            intersect_range: Optional["scout_compute_api_IntersectRanges"] = None,
+            not_: Optional["scout_compute_api_NotRanges"] = None,
+            on_change: Optional["scout_compute_api_OnChangeRanges"] = None,
+            min_max_threshold: Optional["scout_compute_api_MinMaxThresholdRanges"] = None,
+            peak: Optional["scout_compute_api_PeakRanges"] = None,
+            raw: Optional["scout_compute_api_Reference"] = None,
+            series_crossover_ranges_node: Optional["scout_compute_api_SeriesCrossoverRanges"] = None,
+            series_equality_ranges_node: Optional["scout_compute_api_SeriesEqualityRanges"] = None,
+            enum_series_equality_ranges_node: Optional["scout_compute_api_EnumSeriesEqualityRanges"] = None,
+            stale_range: Optional["scout_compute_api_StaleRanges"] = None,
+            threshold: Optional["scout_compute_api_ThresholdingRanges"] = None,
+            union_range: Optional["scout_compute_api_UnionRanges"] = None,
+            range_numeric_aggregation: Optional["scout_compute_api_RangesNumericAggregation"] = None,
+            stability_detection: Optional["scout_compute_api_StabilityDetectionRanges"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (enum_filter is not None) + (function is not None) + (intersect_range is not None) + (not_ is not None) + (on_change is not None) + (min_max_threshold is not None) + (peak is not None) + (raw is not None) + (series_crossover_ranges_node is not None) + (series_equality_ranges_node is not None) + (enum_series_equality_ranges_node is not None) + (stale_range is not None) + (threshold is not None) + (union_range is not None) + (range_numeric_aggregation is not None) + (stability_detection is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if enum_filter is not None:
+                self._enum_filter = enum_filter
+                self._type = 'enumFilter'
+            if function is not None:
+                self._function = function
+                self._type = 'function'
+            if intersect_range is not None:
+                self._intersect_range = intersect_range
+                self._type = 'intersectRange'
+            if not_ is not None:
+                self._not_ = not_
+                self._type = 'not'
+            if on_change is not None:
+                self._on_change = on_change
+                self._type = 'onChange'
+            if min_max_threshold is not None:
+                self._min_max_threshold = min_max_threshold
+                self._type = 'minMaxThreshold'
+            if peak is not None:
+                self._peak = peak
+                self._type = 'peak'
+            if raw is not None:
+                self._raw = raw
+                self._type = 'raw'
+            if series_crossover_ranges_node is not None:
+                self._series_crossover_ranges_node = series_crossover_ranges_node
+                self._type = 'seriesCrossoverRangesNode'
+            if series_equality_ranges_node is not None:
+                self._series_equality_ranges_node = series_equality_ranges_node
+                self._type = 'seriesEqualityRangesNode'
+            if enum_series_equality_ranges_node is not None:
+                self._enum_series_equality_ranges_node = enum_series_equality_ranges_node
+                self._type = 'enumSeriesEqualityRangesNode'
+            if stale_range is not None:
+                self._stale_range = stale_range
+                self._type = 'staleRange'
+            if threshold is not None:
+                self._threshold = threshold
+                self._type = 'threshold'
+            if union_range is not None:
+                self._union_range = union_range
+                self._type = 'unionRange'
+            if range_numeric_aggregation is not None:
+                self._range_numeric_aggregation = range_numeric_aggregation
+                self._type = 'rangeNumericAggregation'
+            if stability_detection is not None:
+                self._stability_detection = stability_detection
+                self._type = 'stabilityDetection'
+
+        elif type_of_union == 'enumFilter':
+            if enum_filter is None:
+                raise ValueError('a union value must not be None')
+            self._enum_filter = enum_filter
+            self._type = 'enumFilter'
+        elif type_of_union == 'function':
+            if function is None:
+                raise ValueError('a union value must not be None')
+            self._function = function
+            self._type = 'function'
+        elif type_of_union == 'intersectRange':
+            if intersect_range is None:
+                raise ValueError('a union value must not be None')
+            self._intersect_range = intersect_range
+            self._type = 'intersectRange'
+        elif type_of_union == 'not':
+            if not_ is None:
+                raise ValueError('a union value must not be None')
+            self._not_ = not_
+            self._type = 'not'
+        elif type_of_union == 'onChange':
+            if on_change is None:
+                raise ValueError('a union value must not be None')
+            self._on_change = on_change
+            self._type = 'onChange'
+        elif type_of_union == 'minMaxThreshold':
+            if min_max_threshold is None:
+                raise ValueError('a union value must not be None')
+            self._min_max_threshold = min_max_threshold
+            self._type = 'minMaxThreshold'
+        elif type_of_union == 'peak':
+            if peak is None:
+                raise ValueError('a union value must not be None')
+            self._peak = peak
+            self._type = 'peak'
+        elif type_of_union == 'raw':
+            if raw is None:
+                raise ValueError('a union value must not be None')
+            self._raw = raw
+            self._type = 'raw'
+        elif type_of_union == 'seriesCrossoverRangesNode':
+            if series_crossover_ranges_node is None:
+                raise ValueError('a union value must not be None')
+            self._series_crossover_ranges_node = series_crossover_ranges_node
+            self._type = 'seriesCrossoverRangesNode'
+        elif type_of_union == 'seriesEqualityRangesNode':
+            if series_equality_ranges_node is None:
+                raise ValueError('a union value must not be None')
+            self._series_equality_ranges_node = series_equality_ranges_node
+            self._type = 'seriesEqualityRangesNode'
+        elif type_of_union == 'enumSeriesEqualityRangesNode':
+            if enum_series_equality_ranges_node is None:
+                raise ValueError('a union value must not be None')
+            self._enum_series_equality_ranges_node = enum_series_equality_ranges_node
+            self._type = 'enumSeriesEqualityRangesNode'
+        elif type_of_union == 'staleRange':
+            if stale_range is None:
+                raise ValueError('a union value must not be None')
+            self._stale_range = stale_range
+            self._type = 'staleRange'
+        elif type_of_union == 'threshold':
+            if threshold is None:
+                raise ValueError('a union value must not be None')
+            self._threshold = threshold
+            self._type = 'threshold'
+        elif type_of_union == 'unionRange':
+            if union_range is None:
+                raise ValueError('a union value must not be None')
+            self._union_range = union_range
+            self._type = 'unionRange'
+        elif type_of_union == 'rangeNumericAggregation':
+            if range_numeric_aggregation is None:
+                raise ValueError('a union value must not be None')
+            self._range_numeric_aggregation = range_numeric_aggregation
+            self._type = 'rangeNumericAggregation'
+        elif type_of_union == 'stabilityDetection':
+            if stability_detection is None:
+                raise ValueError('a union value must not be None')
+            self._stability_detection = stability_detection
+            self._type = 'stabilityDetection'
+
+    @builtins.property
+    def enum_filter(self) -> Optional["scout_compute_api_EnumFilterRanges"]:
+        return self._enum_filter
+
+    @builtins.property
+    def function(self) -> Optional["scout_compute_api_RangesFunction"]:
+        return self._function
+
+    @builtins.property
+    def intersect_range(self) -> Optional["scout_compute_api_IntersectRanges"]:
+        return self._intersect_range
+
+    @builtins.property
+    def not_(self) -> Optional["scout_compute_api_NotRanges"]:
+        return self._not_
+
+    @builtins.property
+    def on_change(self) -> Optional["scout_compute_api_OnChangeRanges"]:
+        return self._on_change
+
+    @builtins.property
+    def min_max_threshold(self) -> Optional["scout_compute_api_MinMaxThresholdRanges"]:
+        """
+        Computes ranges where the input time series matches a filter defined by lower and upper bounds, and an operator.
+        """
+        return self._min_max_threshold
+
+    @builtins.property
+    def peak(self) -> Optional["scout_compute_api_PeakRanges"]:
+        return self._peak
+
+    @builtins.property
+    def raw(self) -> Optional["scout_compute_api_Reference"]:
+        return self._raw
+
+    @builtins.property
+    def series_crossover_ranges_node(self) -> Optional["scout_compute_api_SeriesCrossoverRanges"]:
+        return self._series_crossover_ranges_node
+
+    @builtins.property
+    def series_equality_ranges_node(self) -> Optional["scout_compute_api_SeriesEqualityRanges"]:
+        return self._series_equality_ranges_node
+
+    @builtins.property
+    def enum_series_equality_ranges_node(self) -> Optional["scout_compute_api_EnumSeriesEqualityRanges"]:
+        return self._enum_series_equality_ranges_node
+
+    @builtins.property
+    def stale_range(self) -> Optional["scout_compute_api_StaleRanges"]:
+        return self._stale_range
+
+    @builtins.property
+    def threshold(self) -> Optional["scout_compute_api_ThresholdingRanges"]:
+        """
+        Computes ranges where the input time series matches a filter defined by a single threshold and an operator.
+        """
+        return self._threshold
+
+    @builtins.property
+    def union_range(self) -> Optional["scout_compute_api_UnionRanges"]:
+        return self._union_range
+
+    @builtins.property
+    def range_numeric_aggregation(self) -> Optional["scout_compute_api_RangesNumericAggregation"]:
+        return self._range_numeric_aggregation
+
+    @builtins.property
+    def stability_detection(self) -> Optional["scout_compute_api_StabilityDetectionRanges"]:
+        return self._stability_detection
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_RangeSeriesVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_RangeSeriesVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'enumFilter' and self.enum_filter is not None:
+            return visitor._enum_filter(self.enum_filter)
+        if self._type == 'function' and self.function is not None:
+            return visitor._function(self.function)
+        if self._type == 'intersectRange' and self.intersect_range is not None:
+            return visitor._intersect_range(self.intersect_range)
+        if self._type == 'not' and self.not_ is not None:
+            return visitor._not(self.not_)
+        if self._type == 'onChange' and self.on_change is not None:
+            return visitor._on_change(self.on_change)
+        if self._type == 'minMaxThreshold' and self.min_max_threshold is not None:
+            return visitor._min_max_threshold(self.min_max_threshold)
+        if self._type == 'peak' and self.peak is not None:
+            return visitor._peak(self.peak)
+        if self._type == 'raw' and self.raw is not None:
+            return visitor._raw(self.raw)
+        if self._type == 'seriesCrossoverRangesNode' and self.series_crossover_ranges_node is not None:
+            return visitor._series_crossover_ranges_node(self.series_crossover_ranges_node)
+        if self._type == 'seriesEqualityRangesNode' and self.series_equality_ranges_node is not None:
+            return visitor._series_equality_ranges_node(self.series_equality_ranges_node)
+        if self._type == 'enumSeriesEqualityRangesNode' and self.enum_series_equality_ranges_node is not None:
+            return visitor._enum_series_equality_ranges_node(self.enum_series_equality_ranges_node)
+        if self._type == 'staleRange' and self.stale_range is not None:
+            return visitor._stale_range(self.stale_range)
+        if self._type == 'threshold' and self.threshold is not None:
+            return visitor._threshold(self.threshold)
+        if self._type == 'unionRange' and self.union_range is not None:
+            return visitor._union_range(self.union_range)
+        if self._type == 'rangeNumericAggregation' and self.range_numeric_aggregation is not None:
+            return visitor._range_numeric_aggregation(self.range_numeric_aggregation)
+        if self._type == 'stabilityDetection' and self.stability_detection is not None:
+            return visitor._stability_detection(self.stability_detection)
+
+
+scout_compute_api_RangeSeries.__name__ = "RangeSeries"
+scout_compute_api_RangeSeries.__qualname__ = "RangeSeries"
+scout_compute_api_RangeSeries.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_RangeSeriesVisitor:
+
+    @abstractmethod
+    def _enum_filter(self, enum_filter: "scout_compute_api_EnumFilterRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _function(self, function: "scout_compute_api_RangesFunction") -> Any:
+        pass
+
+    @abstractmethod
+    def _intersect_range(self, intersect_range: "scout_compute_api_IntersectRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _not(self, not_: "scout_compute_api_NotRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _on_change(self, on_change: "scout_compute_api_OnChangeRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _min_max_threshold(self, min_max_threshold: "scout_compute_api_MinMaxThresholdRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _peak(self, peak: "scout_compute_api_PeakRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _raw(self, raw: "scout_compute_api_Reference") -> Any:
+        pass
+
+    @abstractmethod
+    def _series_crossover_ranges_node(self, series_crossover_ranges_node: "scout_compute_api_SeriesCrossoverRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _series_equality_ranges_node(self, series_equality_ranges_node: "scout_compute_api_SeriesEqualityRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _enum_series_equality_ranges_node(self, enum_series_equality_ranges_node: "scout_compute_api_EnumSeriesEqualityRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _stale_range(self, stale_range: "scout_compute_api_StaleRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _threshold(self, threshold: "scout_compute_api_ThresholdingRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _union_range(self, union_range: "scout_compute_api_UnionRanges") -> Any:
+        pass
+
+    @abstractmethod
+    def _range_numeric_aggregation(self, range_numeric_aggregation: "scout_compute_api_RangesNumericAggregation") -> Any:
+        pass
+
+    @abstractmethod
+    def _stability_detection(self, stability_detection: "scout_compute_api_StabilityDetectionRanges") -> Any:
+        pass
+
+
+scout_compute_api_RangeSeriesVisitor.__name__ = "RangeSeriesVisitor"
+scout_compute_api_RangeSeriesVisitor.__qualname__ = "RangeSeriesVisitor"
+scout_compute_api_RangeSeriesVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
 class scout_compute_api_RangeSummary(ConjureBeanType):
     """
     Summary of a set of ranges
@@ -30072,363 +31230,7 @@ scout_compute_api_RangesFunction.__qualname__ = "RangesFunction"
 scout_compute_api_RangesFunction.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_RangesNode(ConjureUnionType):
-    _enum_filter: Optional["scout_compute_api_EnumFilterRangesNode"] = None
-    _function: Optional["scout_compute_api_RangesFunction"] = None
-    _intersect_range: Optional["scout_compute_api_IntersectRangesNode"] = None
-    _not_: Optional["scout_compute_api_NotRangesNode"] = None
-    _on_change: Optional["scout_compute_api_OnChangeRangesNode"] = None
-    _min_max_threshold: Optional["scout_compute_api_MinMaxThresholdRangesNode"] = None
-    _peak: Optional["scout_compute_api_PeakRangesNode"] = None
-    _raw: Optional["scout_compute_api_RawRangesNode"] = None
-    _series_crossover_ranges_node: Optional["scout_compute_api_SeriesCrossoverRangesNode"] = None
-    _series_equality_ranges_node: Optional["scout_compute_api_SeriesEqualityRangesNode"] = None
-    _enum_series_equality_ranges_node: Optional["scout_compute_api_EnumSeriesEqualityRangesNode"] = None
-    _stale_range: Optional["scout_compute_api_StaleRangesNode"] = None
-    _threshold: Optional["scout_compute_api_ThresholdingRangesNode"] = None
-    _union_range: Optional["scout_compute_api_UnionRangesNode"] = None
-    _range_numeric_aggregation: Optional["scout_compute_api_RangesNumericAggregationNode"] = None
-
-    @builtins.classmethod
-    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'enum_filter': ConjureFieldDefinition('enumFilter', scout_compute_api_EnumFilterRangesNode),
-            'function': ConjureFieldDefinition('function', scout_compute_api_RangesFunction),
-            'intersect_range': ConjureFieldDefinition('intersectRange', scout_compute_api_IntersectRangesNode),
-            'not_': ConjureFieldDefinition('not', scout_compute_api_NotRangesNode),
-            'on_change': ConjureFieldDefinition('onChange', scout_compute_api_OnChangeRangesNode),
-            'min_max_threshold': ConjureFieldDefinition('minMaxThreshold', scout_compute_api_MinMaxThresholdRangesNode),
-            'peak': ConjureFieldDefinition('peak', scout_compute_api_PeakRangesNode),
-            'raw': ConjureFieldDefinition('raw', scout_compute_api_RawRangesNode),
-            'series_crossover_ranges_node': ConjureFieldDefinition('seriesCrossoverRangesNode', scout_compute_api_SeriesCrossoverRangesNode),
-            'series_equality_ranges_node': ConjureFieldDefinition('seriesEqualityRangesNode', scout_compute_api_SeriesEqualityRangesNode),
-            'enum_series_equality_ranges_node': ConjureFieldDefinition('enumSeriesEqualityRangesNode', scout_compute_api_EnumSeriesEqualityRangesNode),
-            'stale_range': ConjureFieldDefinition('staleRange', scout_compute_api_StaleRangesNode),
-            'threshold': ConjureFieldDefinition('threshold', scout_compute_api_ThresholdingRangesNode),
-            'union_range': ConjureFieldDefinition('unionRange', scout_compute_api_UnionRangesNode),
-            'range_numeric_aggregation': ConjureFieldDefinition('rangeNumericAggregation', scout_compute_api_RangesNumericAggregationNode)
-        }
-
-    def __init__(
-            self,
-            enum_filter: Optional["scout_compute_api_EnumFilterRangesNode"] = None,
-            function: Optional["scout_compute_api_RangesFunction"] = None,
-            intersect_range: Optional["scout_compute_api_IntersectRangesNode"] = None,
-            not_: Optional["scout_compute_api_NotRangesNode"] = None,
-            on_change: Optional["scout_compute_api_OnChangeRangesNode"] = None,
-            min_max_threshold: Optional["scout_compute_api_MinMaxThresholdRangesNode"] = None,
-            peak: Optional["scout_compute_api_PeakRangesNode"] = None,
-            raw: Optional["scout_compute_api_RawRangesNode"] = None,
-            series_crossover_ranges_node: Optional["scout_compute_api_SeriesCrossoverRangesNode"] = None,
-            series_equality_ranges_node: Optional["scout_compute_api_SeriesEqualityRangesNode"] = None,
-            enum_series_equality_ranges_node: Optional["scout_compute_api_EnumSeriesEqualityRangesNode"] = None,
-            stale_range: Optional["scout_compute_api_StaleRangesNode"] = None,
-            threshold: Optional["scout_compute_api_ThresholdingRangesNode"] = None,
-            union_range: Optional["scout_compute_api_UnionRangesNode"] = None,
-            range_numeric_aggregation: Optional["scout_compute_api_RangesNumericAggregationNode"] = None,
-            type_of_union: Optional[str] = None
-            ) -> None:
-        if type_of_union is None:
-            if (enum_filter is not None) + (function is not None) + (intersect_range is not None) + (not_ is not None) + (on_change is not None) + (min_max_threshold is not None) + (peak is not None) + (raw is not None) + (series_crossover_ranges_node is not None) + (series_equality_ranges_node is not None) + (enum_series_equality_ranges_node is not None) + (stale_range is not None) + (threshold is not None) + (union_range is not None) + (range_numeric_aggregation is not None) != 1:
-                raise ValueError('a union must contain a single member')
-
-            if enum_filter is not None:
-                self._enum_filter = enum_filter
-                self._type = 'enumFilter'
-            if function is not None:
-                self._function = function
-                self._type = 'function'
-            if intersect_range is not None:
-                self._intersect_range = intersect_range
-                self._type = 'intersectRange'
-            if not_ is not None:
-                self._not_ = not_
-                self._type = 'not'
-            if on_change is not None:
-                self._on_change = on_change
-                self._type = 'onChange'
-            if min_max_threshold is not None:
-                self._min_max_threshold = min_max_threshold
-                self._type = 'minMaxThreshold'
-            if peak is not None:
-                self._peak = peak
-                self._type = 'peak'
-            if raw is not None:
-                self._raw = raw
-                self._type = 'raw'
-            if series_crossover_ranges_node is not None:
-                self._series_crossover_ranges_node = series_crossover_ranges_node
-                self._type = 'seriesCrossoverRangesNode'
-            if series_equality_ranges_node is not None:
-                self._series_equality_ranges_node = series_equality_ranges_node
-                self._type = 'seriesEqualityRangesNode'
-            if enum_series_equality_ranges_node is not None:
-                self._enum_series_equality_ranges_node = enum_series_equality_ranges_node
-                self._type = 'enumSeriesEqualityRangesNode'
-            if stale_range is not None:
-                self._stale_range = stale_range
-                self._type = 'staleRange'
-            if threshold is not None:
-                self._threshold = threshold
-                self._type = 'threshold'
-            if union_range is not None:
-                self._union_range = union_range
-                self._type = 'unionRange'
-            if range_numeric_aggregation is not None:
-                self._range_numeric_aggregation = range_numeric_aggregation
-                self._type = 'rangeNumericAggregation'
-
-        elif type_of_union == 'enumFilter':
-            if enum_filter is None:
-                raise ValueError('a union value must not be None')
-            self._enum_filter = enum_filter
-            self._type = 'enumFilter'
-        elif type_of_union == 'function':
-            if function is None:
-                raise ValueError('a union value must not be None')
-            self._function = function
-            self._type = 'function'
-        elif type_of_union == 'intersectRange':
-            if intersect_range is None:
-                raise ValueError('a union value must not be None')
-            self._intersect_range = intersect_range
-            self._type = 'intersectRange'
-        elif type_of_union == 'not':
-            if not_ is None:
-                raise ValueError('a union value must not be None')
-            self._not_ = not_
-            self._type = 'not'
-        elif type_of_union == 'onChange':
-            if on_change is None:
-                raise ValueError('a union value must not be None')
-            self._on_change = on_change
-            self._type = 'onChange'
-        elif type_of_union == 'minMaxThreshold':
-            if min_max_threshold is None:
-                raise ValueError('a union value must not be None')
-            self._min_max_threshold = min_max_threshold
-            self._type = 'minMaxThreshold'
-        elif type_of_union == 'peak':
-            if peak is None:
-                raise ValueError('a union value must not be None')
-            self._peak = peak
-            self._type = 'peak'
-        elif type_of_union == 'raw':
-            if raw is None:
-                raise ValueError('a union value must not be None')
-            self._raw = raw
-            self._type = 'raw'
-        elif type_of_union == 'seriesCrossoverRangesNode':
-            if series_crossover_ranges_node is None:
-                raise ValueError('a union value must not be None')
-            self._series_crossover_ranges_node = series_crossover_ranges_node
-            self._type = 'seriesCrossoverRangesNode'
-        elif type_of_union == 'seriesEqualityRangesNode':
-            if series_equality_ranges_node is None:
-                raise ValueError('a union value must not be None')
-            self._series_equality_ranges_node = series_equality_ranges_node
-            self._type = 'seriesEqualityRangesNode'
-        elif type_of_union == 'enumSeriesEqualityRangesNode':
-            if enum_series_equality_ranges_node is None:
-                raise ValueError('a union value must not be None')
-            self._enum_series_equality_ranges_node = enum_series_equality_ranges_node
-            self._type = 'enumSeriesEqualityRangesNode'
-        elif type_of_union == 'staleRange':
-            if stale_range is None:
-                raise ValueError('a union value must not be None')
-            self._stale_range = stale_range
-            self._type = 'staleRange'
-        elif type_of_union == 'threshold':
-            if threshold is None:
-                raise ValueError('a union value must not be None')
-            self._threshold = threshold
-            self._type = 'threshold'
-        elif type_of_union == 'unionRange':
-            if union_range is None:
-                raise ValueError('a union value must not be None')
-            self._union_range = union_range
-            self._type = 'unionRange'
-        elif type_of_union == 'rangeNumericAggregation':
-            if range_numeric_aggregation is None:
-                raise ValueError('a union value must not be None')
-            self._range_numeric_aggregation = range_numeric_aggregation
-            self._type = 'rangeNumericAggregation'
-
-    @builtins.property
-    def enum_filter(self) -> Optional["scout_compute_api_EnumFilterRangesNode"]:
-        return self._enum_filter
-
-    @builtins.property
-    def function(self) -> Optional["scout_compute_api_RangesFunction"]:
-        return self._function
-
-    @builtins.property
-    def intersect_range(self) -> Optional["scout_compute_api_IntersectRangesNode"]:
-        return self._intersect_range
-
-    @builtins.property
-    def not_(self) -> Optional["scout_compute_api_NotRangesNode"]:
-        return self._not_
-
-    @builtins.property
-    def on_change(self) -> Optional["scout_compute_api_OnChangeRangesNode"]:
-        return self._on_change
-
-    @builtins.property
-    def min_max_threshold(self) -> Optional["scout_compute_api_MinMaxThresholdRangesNode"]:
-        """
-        Computes ranges where the input time series matches a filter defined by lower and upper bounds, and an operator.
-        """
-        return self._min_max_threshold
-
-    @builtins.property
-    def peak(self) -> Optional["scout_compute_api_PeakRangesNode"]:
-        return self._peak
-
-    @builtins.property
-    def raw(self) -> Optional["scout_compute_api_RawRangesNode"]:
-        return self._raw
-
-    @builtins.property
-    def series_crossover_ranges_node(self) -> Optional["scout_compute_api_SeriesCrossoverRangesNode"]:
-        return self._series_crossover_ranges_node
-
-    @builtins.property
-    def series_equality_ranges_node(self) -> Optional["scout_compute_api_SeriesEqualityRangesNode"]:
-        return self._series_equality_ranges_node
-
-    @builtins.property
-    def enum_series_equality_ranges_node(self) -> Optional["scout_compute_api_EnumSeriesEqualityRangesNode"]:
-        return self._enum_series_equality_ranges_node
-
-    @builtins.property
-    def stale_range(self) -> Optional["scout_compute_api_StaleRangesNode"]:
-        return self._stale_range
-
-    @builtins.property
-    def threshold(self) -> Optional["scout_compute_api_ThresholdingRangesNode"]:
-        """
-        Computes ranges where the input time series matches a filter defined by a single threshold and an operator.
-        """
-        return self._threshold
-
-    @builtins.property
-    def union_range(self) -> Optional["scout_compute_api_UnionRangesNode"]:
-        return self._union_range
-
-    @builtins.property
-    def range_numeric_aggregation(self) -> Optional["scout_compute_api_RangesNumericAggregationNode"]:
-        return self._range_numeric_aggregation
-
-    def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_RangesNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_RangesNodeVisitor'.format(visitor.__class__.__name__))
-        if self._type == 'enumFilter' and self.enum_filter is not None:
-            return visitor._enum_filter(self.enum_filter)
-        if self._type == 'function' and self.function is not None:
-            return visitor._function(self.function)
-        if self._type == 'intersectRange' and self.intersect_range is not None:
-            return visitor._intersect_range(self.intersect_range)
-        if self._type == 'not' and self.not_ is not None:
-            return visitor._not(self.not_)
-        if self._type == 'onChange' and self.on_change is not None:
-            return visitor._on_change(self.on_change)
-        if self._type == 'minMaxThreshold' and self.min_max_threshold is not None:
-            return visitor._min_max_threshold(self.min_max_threshold)
-        if self._type == 'peak' and self.peak is not None:
-            return visitor._peak(self.peak)
-        if self._type == 'raw' and self.raw is not None:
-            return visitor._raw(self.raw)
-        if self._type == 'seriesCrossoverRangesNode' and self.series_crossover_ranges_node is not None:
-            return visitor._series_crossover_ranges_node(self.series_crossover_ranges_node)
-        if self._type == 'seriesEqualityRangesNode' and self.series_equality_ranges_node is not None:
-            return visitor._series_equality_ranges_node(self.series_equality_ranges_node)
-        if self._type == 'enumSeriesEqualityRangesNode' and self.enum_series_equality_ranges_node is not None:
-            return visitor._enum_series_equality_ranges_node(self.enum_series_equality_ranges_node)
-        if self._type == 'staleRange' and self.stale_range is not None:
-            return visitor._stale_range(self.stale_range)
-        if self._type == 'threshold' and self.threshold is not None:
-            return visitor._threshold(self.threshold)
-        if self._type == 'unionRange' and self.union_range is not None:
-            return visitor._union_range(self.union_range)
-        if self._type == 'rangeNumericAggregation' and self.range_numeric_aggregation is not None:
-            return visitor._range_numeric_aggregation(self.range_numeric_aggregation)
-
-
-scout_compute_api_RangesNode.__name__ = "RangesNode"
-scout_compute_api_RangesNode.__qualname__ = "RangesNode"
-scout_compute_api_RangesNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_RangesNodeVisitor:
-
-    @abstractmethod
-    def _enum_filter(self, enum_filter: "scout_compute_api_EnumFilterRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _function(self, function: "scout_compute_api_RangesFunction") -> Any:
-        pass
-
-    @abstractmethod
-    def _intersect_range(self, intersect_range: "scout_compute_api_IntersectRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _not(self, not_: "scout_compute_api_NotRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _on_change(self, on_change: "scout_compute_api_OnChangeRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _min_max_threshold(self, min_max_threshold: "scout_compute_api_MinMaxThresholdRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _peak(self, peak: "scout_compute_api_PeakRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _raw(self, raw: "scout_compute_api_RawRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _series_crossover_ranges_node(self, series_crossover_ranges_node: "scout_compute_api_SeriesCrossoverRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _series_equality_ranges_node(self, series_equality_ranges_node: "scout_compute_api_SeriesEqualityRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _enum_series_equality_ranges_node(self, enum_series_equality_ranges_node: "scout_compute_api_EnumSeriesEqualityRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _stale_range(self, stale_range: "scout_compute_api_StaleRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _threshold(self, threshold: "scout_compute_api_ThresholdingRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _union_range(self, union_range: "scout_compute_api_UnionRangesNode") -> Any:
-        pass
-
-    @abstractmethod
-    def _range_numeric_aggregation(self, range_numeric_aggregation: "scout_compute_api_RangesNumericAggregationNode") -> Any:
-        pass
-
-
-scout_compute_api_RangesNodeVisitor.__name__ = "RangesNodeVisitor"
-scout_compute_api_RangesNodeVisitor.__qualname__ = "RangesNodeVisitor"
-scout_compute_api_RangesNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_RangesNumericAggregationNode(ConjureBeanType):
+class scout_compute_api_RangesNumericAggregation(ConjureBeanType):
     """
     Aggregates the values of a numeric series at each range specified by the input ranges.
     """
@@ -30436,24 +31238,24 @@ class scout_compute_api_RangesNumericAggregationNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangesNode),
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'ranges': ConjureFieldDefinition('ranges', scout_compute_api_RangeSeries),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'operation': ConjureFieldDefinition('operation', scout_compute_api_RangeAggregationOperation)
         }
 
     __slots__: List[str] = ['_ranges', '_input', '_operation']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", operation: "scout_compute_api_RangeAggregationOperation", ranges: "scout_compute_api_RangesNode") -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", operation: "scout_compute_api_RangeAggregationOperation", ranges: "scout_compute_api_RangeSeries") -> None:
         self._ranges = ranges
         self._input = input
         self._operation = operation
 
     @builtins.property
-    def ranges(self) -> "scout_compute_api_RangesNode":
+    def ranges(self) -> "scout_compute_api_RangeSeries":
         return self._ranges
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -30461,14 +31263,14 @@ class scout_compute_api_RangesNumericAggregationNode(ConjureBeanType):
         return self._operation
 
 
-scout_compute_api_RangesNumericAggregationNode.__name__ = "RangesNumericAggregationNode"
-scout_compute_api_RangesNumericAggregationNode.__qualname__ = "RangesNumericAggregationNode"
-scout_compute_api_RangesNumericAggregationNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_RangesNumericAggregation.__name__ = "RangesNumericAggregation"
+scout_compute_api_RangesNumericAggregation.__qualname__ = "RangesNumericAggregation"
+scout_compute_api_RangesNumericAggregation.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_RangesSummary(ConjureBeanType):
     """
-    A summary of the ranges returned from a SummarizeRangesNode request. Returned when the number of ranges
+    A summary of the ranges returned from a SummarizeRanges request. Returned when the number of ranges
 found is above a threshold.
     """
 
@@ -30493,7 +31295,7 @@ scout_compute_api_RangesSummary.__qualname__ = "RangesSummary"
 scout_compute_api_RangesSummary.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_RawEnumSeriesNode(ConjureBeanType):
+class scout_compute_api_Reference(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
@@ -30511,78 +31313,9 @@ class scout_compute_api_RawEnumSeriesNode(ConjureBeanType):
         return self._name
 
 
-scout_compute_api_RawEnumSeriesNode.__name__ = "RawEnumSeriesNode"
-scout_compute_api_RawEnumSeriesNode.__qualname__ = "RawEnumSeriesNode"
-scout_compute_api_RawEnumSeriesNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_RawNumericSeriesNode(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'name': ConjureFieldDefinition('name', scout_compute_api_VariableName)
-        }
-
-    __slots__: List[str] = ['_name']
-
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    @builtins.property
-    def name(self) -> str:
-        return self._name
-
-
-scout_compute_api_RawNumericSeriesNode.__name__ = "RawNumericSeriesNode"
-scout_compute_api_RawNumericSeriesNode.__qualname__ = "RawNumericSeriesNode"
-scout_compute_api_RawNumericSeriesNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_RawRangesNode(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'name': ConjureFieldDefinition('name', scout_compute_api_VariableName)
-        }
-
-    __slots__: List[str] = ['_name']
-
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    @builtins.property
-    def name(self) -> str:
-        return self._name
-
-
-scout_compute_api_RawRangesNode.__name__ = "RawRangesNode"
-scout_compute_api_RawRangesNode.__qualname__ = "RawRangesNode"
-scout_compute_api_RawRangesNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_RawUntypedSeriesNode(ConjureBeanType):
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'name': ConjureFieldDefinition('name', scout_compute_api_VariableName)
-        }
-
-    __slots__: List[str] = ['_name']
-
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    @builtins.property
-    def name(self) -> str:
-        return self._name
-
-
-scout_compute_api_RawUntypedSeriesNode.__name__ = "RawUntypedSeriesNode"
-scout_compute_api_RawUntypedSeriesNode.__qualname__ = "RawUntypedSeriesNode"
-scout_compute_api_RawUntypedSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_Reference.__name__ = "Reference"
+scout_compute_api_Reference.__qualname__ = "Reference"
+scout_compute_api_Reference.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_ResampleConfiguration(ConjureBeanType):
@@ -30676,25 +31409,25 @@ scout_compute_api_ResampleInterpolationConfigurationVisitor.__qualname__ = "Resa
 scout_compute_api_ResampleInterpolationConfigurationVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_RollingOperationSeriesNode(ConjureBeanType):
+class scout_compute_api_RollingOperationSeries(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'window': ConjureFieldDefinition('window', scout_compute_api_Window),
             'operator': ConjureFieldDefinition('operator', scout_compute_api_RollingOperator)
         }
 
     __slots__: List[str] = ['_input', '_window', '_operator']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", operator: "scout_compute_api_RollingOperator", window: "scout_compute_api_Window") -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", operator: "scout_compute_api_RollingOperator", window: "scout_compute_api_Window") -> None:
         self._input = input
         self._window = window
         self._operator = operator
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -30706,9 +31439,9 @@ class scout_compute_api_RollingOperationSeriesNode(ConjureBeanType):
         return self._operator
 
 
-scout_compute_api_RollingOperationSeriesNode.__name__ = "RollingOperationSeriesNode"
-scout_compute_api_RollingOperationSeriesNode.__qualname__ = "RollingOperationSeriesNode"
-scout_compute_api_RollingOperationSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_RollingOperationSeries.__name__ = "RollingOperationSeries"
+scout_compute_api_RollingOperationSeries.__qualname__ = "RollingOperationSeries"
+scout_compute_api_RollingOperationSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_RollingOperator(ConjureUnionType):
@@ -30893,7 +31626,7 @@ scout_compute_api_RollingOperatorVisitor.__qualname__ = "RollingOperatorVisitor"
 scout_compute_api_RollingOperatorVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_ScaleSeriesNode(ConjureBeanType):
+class scout_compute_api_ScaleSeries(ConjureBeanType):
     """
     For every timestamp specified in the input series, multiply it by a constant factor.
     """
@@ -30901,20 +31634,20 @@ class scout_compute_api_ScaleSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'scalar': ConjureFieldDefinition('scalar', scout_compute_api_DoubleConstant),
             'scalar_unit': ConjureFieldDefinition('scalarUnit', OptionalTypeWrapper[scout_units_api_UnitSymbol])
         }
 
     __slots__: List[str] = ['_input', '_scalar', '_scalar_unit']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", scalar: "scout_compute_api_DoubleConstant", scalar_unit: Optional[str] = None) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", scalar: "scout_compute_api_DoubleConstant", scalar_unit: Optional[str] = None) -> None:
         self._input = input
         self._scalar = scalar
         self._scalar_unit = scalar_unit
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -30932,55 +31665,55 @@ class scout_compute_api_ScaleSeriesNode(ConjureBeanType):
         return self._scalar_unit
 
 
-scout_compute_api_ScaleSeriesNode.__name__ = "ScaleSeriesNode"
-scout_compute_api_ScaleSeriesNode.__qualname__ = "ScaleSeriesNode"
-scout_compute_api_ScaleSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_ScaleSeries.__name__ = "ScaleSeries"
+scout_compute_api_ScaleSeries.__qualname__ = "ScaleSeries"
+scout_compute_api_ScaleSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_ScatterNode(ConjureBeanType):
+class scout_compute_api_Scatter(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'x': ConjureFieldDefinition('x', scout_compute_api_NumericSeriesNode),
-            'y': ConjureFieldDefinition('y', scout_compute_api_NumericSeriesNode)
+            'x': ConjureFieldDefinition('x', scout_compute_api_NumericSeries),
+            'y': ConjureFieldDefinition('y', scout_compute_api_NumericSeries)
         }
 
     __slots__: List[str] = ['_x', '_y']
 
-    def __init__(self, x: "scout_compute_api_NumericSeriesNode", y: "scout_compute_api_NumericSeriesNode") -> None:
+    def __init__(self, x: "scout_compute_api_NumericSeries", y: "scout_compute_api_NumericSeries") -> None:
         self._x = x
         self._y = y
 
     @builtins.property
-    def x(self) -> "scout_compute_api_NumericSeriesNode":
+    def x(self) -> "scout_compute_api_NumericSeries":
         return self._x
 
     @builtins.property
-    def y(self) -> "scout_compute_api_NumericSeriesNode":
+    def y(self) -> "scout_compute_api_NumericSeries":
         return self._y
 
 
-scout_compute_api_ScatterNode.__name__ = "ScatterNode"
-scout_compute_api_ScatterNode.__qualname__ = "ScatterNode"
-scout_compute_api_ScatterNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_Scatter.__name__ = "Scatter"
+scout_compute_api_Scatter.__qualname__ = "Scatter"
+scout_compute_api_Scatter.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SelectValueNode(ConjureUnionType):
-    _first_point: Optional["scout_compute_api_SeriesNode"] = None
-    _first_range: Optional["scout_compute_api_RangesNode"] = None
+class scout_compute_api_SelectValue(ConjureUnionType):
+    _first_point: Optional["scout_compute_api_Series"] = None
+    _first_range: Optional["scout_compute_api_RangeSeries"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'first_point': ConjureFieldDefinition('firstPoint', scout_compute_api_SeriesNode),
-            'first_range': ConjureFieldDefinition('firstRange', scout_compute_api_RangesNode)
+            'first_point': ConjureFieldDefinition('firstPoint', scout_compute_api_Series),
+            'first_range': ConjureFieldDefinition('firstRange', scout_compute_api_RangeSeries)
         }
 
     def __init__(
             self,
-            first_point: Optional["scout_compute_api_SeriesNode"] = None,
-            first_range: Optional["scout_compute_api_RangesNode"] = None,
+            first_point: Optional["scout_compute_api_Series"] = None,
+            first_range: Optional["scout_compute_api_RangeSeries"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
@@ -31006,146 +31739,61 @@ class scout_compute_api_SelectValueNode(ConjureUnionType):
             self._type = 'firstRange'
 
     @builtins.property
-    def first_point(self) -> Optional["scout_compute_api_SeriesNode"]:
+    def first_point(self) -> Optional["scout_compute_api_Series"]:
         return self._first_point
 
     @builtins.property
-    def first_range(self) -> Optional["scout_compute_api_RangesNode"]:
+    def first_range(self) -> Optional["scout_compute_api_RangeSeries"]:
         return self._first_range
 
     def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_SelectValueNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_SelectValueNodeVisitor'.format(visitor.__class__.__name__))
+        if not isinstance(visitor, scout_compute_api_SelectValueVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_SelectValueVisitor'.format(visitor.__class__.__name__))
         if self._type == 'firstPoint' and self.first_point is not None:
             return visitor._first_point(self.first_point)
         if self._type == 'firstRange' and self.first_range is not None:
             return visitor._first_range(self.first_range)
 
 
-scout_compute_api_SelectValueNode.__name__ = "SelectValueNode"
-scout_compute_api_SelectValueNode.__qualname__ = "SelectValueNode"
-scout_compute_api_SelectValueNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_SelectValue.__name__ = "SelectValue"
+scout_compute_api_SelectValue.__qualname__ = "SelectValue"
+scout_compute_api_SelectValue.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SelectValueNodeVisitor:
+class scout_compute_api_SelectValueVisitor:
 
     @abstractmethod
-    def _first_point(self, first_point: "scout_compute_api_SeriesNode") -> Any:
+    def _first_point(self, first_point: "scout_compute_api_Series") -> Any:
         pass
 
     @abstractmethod
-    def _first_range(self, first_range: "scout_compute_api_RangesNode") -> Any:
+    def _first_range(self, first_range: "scout_compute_api_RangeSeries") -> Any:
         pass
 
 
-scout_compute_api_SelectValueNodeVisitor.__name__ = "SelectValueNodeVisitor"
-scout_compute_api_SelectValueNodeVisitor.__qualname__ = "SelectValueNodeVisitor"
-scout_compute_api_SelectValueNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_SelectValueVisitor.__name__ = "SelectValueVisitor"
+scout_compute_api_SelectValueVisitor.__qualname__ = "SelectValueVisitor"
+scout_compute_api_SelectValueVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SeriesCrossoverRangesNode(ConjureBeanType):
-    """
-    Produces a list of zero-duration ranges at the first point where two series cross over one another
-    """
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'input_a': ConjureFieldDefinition('inputA', scout_compute_api_NumericSeriesNode),
-            'input_b': ConjureFieldDefinition('inputB', scout_compute_api_NumericSeriesNode)
-        }
-
-    __slots__: List[str] = ['_input_a', '_input_b']
-
-    def __init__(self, input_a: "scout_compute_api_NumericSeriesNode", input_b: "scout_compute_api_NumericSeriesNode") -> None:
-        self._input_a = input_a
-        self._input_b = input_b
-
-    @builtins.property
-    def input_a(self) -> "scout_compute_api_NumericSeriesNode":
-        return self._input_a
-
-    @builtins.property
-    def input_b(self) -> "scout_compute_api_NumericSeriesNode":
-        return self._input_b
-
-
-scout_compute_api_SeriesCrossoverRangesNode.__name__ = "SeriesCrossoverRangesNode"
-scout_compute_api_SeriesCrossoverRangesNode.__qualname__ = "SeriesCrossoverRangesNode"
-scout_compute_api_SeriesCrossoverRangesNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_SeriesEqualityRangesNode(ConjureBeanType):
-    """
-    Produces a list of ranges for which provided series are all equal (or are not all equal).
-    """
-
-    @builtins.classmethod
-    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
-        return {
-            'input': ConjureFieldDefinition('input', List[scout_compute_api_NumericSeriesNode]),
-            'equality_operator': ConjureFieldDefinition('equalityOperator', scout_compute_api_EqualityOperator),
-            'tolerance': ConjureFieldDefinition('tolerance', OptionalTypeWrapper[scout_compute_api_DoubleConstant]),
-            'persistence_window_configuration': ConjureFieldDefinition('persistenceWindowConfiguration', OptionalTypeWrapper[scout_compute_api_PersistenceWindowConfiguration]),
-            'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
-        }
-
-    __slots__: List[str] = ['_input', '_equality_operator', '_tolerance', '_persistence_window_configuration', '_interpolation_configuration']
-
-    def __init__(self, equality_operator: "scout_compute_api_EqualityOperator", input: List["scout_compute_api_NumericSeriesNode"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None, persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None, tolerance: Optional["scout_compute_api_DoubleConstant"] = None) -> None:
-        self._input = input
-        self._equality_operator = equality_operator
-        self._tolerance = tolerance
-        self._persistence_window_configuration = persistence_window_configuration
-        self._interpolation_configuration = interpolation_configuration
-
-    @builtins.property
-    def input(self) -> List["scout_compute_api_NumericSeriesNode"]:
-        return self._input
-
-    @builtins.property
-    def equality_operator(self) -> "scout_compute_api_EqualityOperator":
-        return self._equality_operator
-
-    @builtins.property
-    def tolerance(self) -> Optional["scout_compute_api_DoubleConstant"]:
-        return self._tolerance
-
-    @builtins.property
-    def persistence_window_configuration(self) -> Optional["scout_compute_api_PersistenceWindowConfiguration"]:
-        return self._persistence_window_configuration
-
-    @builtins.property
-    def interpolation_configuration(self) -> Optional["scout_compute_api_InterpolationConfiguration"]:
-        """
-        Defaults to forward fill interpolation with a 1s interpolation radius
-        """
-        return self._interpolation_configuration
-
-
-scout_compute_api_SeriesEqualityRangesNode.__name__ = "SeriesEqualityRangesNode"
-scout_compute_api_SeriesEqualityRangesNode.__qualname__ = "SeriesEqualityRangesNode"
-scout_compute_api_SeriesEqualityRangesNode.__module__ = "scout_service_api.scout_compute_api"
-
-
-class scout_compute_api_SeriesNode(ConjureUnionType):
-    _raw: Optional["scout_compute_api_RawUntypedSeriesNode"] = None
-    _enum: Optional["scout_compute_api_EnumSeriesNode"] = None
-    _numeric: Optional["scout_compute_api_NumericSeriesNode"] = None
+class scout_compute_api_Series(ConjureUnionType):
+    _raw: Optional["scout_compute_api_Reference"] = None
+    _enum: Optional["scout_compute_api_EnumSeries"] = None
+    _numeric: Optional["scout_compute_api_NumericSeries"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'raw': ConjureFieldDefinition('raw', scout_compute_api_RawUntypedSeriesNode),
-            'enum': ConjureFieldDefinition('enum', scout_compute_api_EnumSeriesNode),
-            'numeric': ConjureFieldDefinition('numeric', scout_compute_api_NumericSeriesNode)
+            'raw': ConjureFieldDefinition('raw', scout_compute_api_Reference),
+            'enum': ConjureFieldDefinition('enum', scout_compute_api_EnumSeries),
+            'numeric': ConjureFieldDefinition('numeric', scout_compute_api_NumericSeries)
         }
 
     def __init__(
             self,
-            raw: Optional["scout_compute_api_RawUntypedSeriesNode"] = None,
-            enum: Optional["scout_compute_api_EnumSeriesNode"] = None,
-            numeric: Optional["scout_compute_api_NumericSeriesNode"] = None,
+            raw: Optional["scout_compute_api_Reference"] = None,
+            enum: Optional["scout_compute_api_EnumSeries"] = None,
+            numeric: Optional["scout_compute_api_NumericSeries"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
@@ -31179,20 +31827,20 @@ class scout_compute_api_SeriesNode(ConjureUnionType):
             self._type = 'numeric'
 
     @builtins.property
-    def raw(self) -> Optional["scout_compute_api_RawUntypedSeriesNode"]:
+    def raw(self) -> Optional["scout_compute_api_Reference"]:
         return self._raw
 
     @builtins.property
-    def enum(self) -> Optional["scout_compute_api_EnumSeriesNode"]:
+    def enum(self) -> Optional["scout_compute_api_EnumSeries"]:
         return self._enum
 
     @builtins.property
-    def numeric(self) -> Optional["scout_compute_api_NumericSeriesNode"]:
+    def numeric(self) -> Optional["scout_compute_api_NumericSeries"]:
         return self._numeric
 
     def accept(self, visitor) -> Any:
-        if not isinstance(visitor, scout_compute_api_SeriesNodeVisitor):
-            raise ValueError('{} is not an instance of scout_compute_api_SeriesNodeVisitor'.format(visitor.__class__.__name__))
+        if not isinstance(visitor, scout_compute_api_SeriesVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_SeriesVisitor'.format(visitor.__class__.__name__))
         if self._type == 'raw' and self.raw is not None:
             return visitor._raw(self.raw)
         if self._type == 'enum' and self.enum is not None:
@@ -31201,29 +31849,114 @@ class scout_compute_api_SeriesNode(ConjureUnionType):
             return visitor._numeric(self.numeric)
 
 
-scout_compute_api_SeriesNode.__name__ = "SeriesNode"
-scout_compute_api_SeriesNode.__qualname__ = "SeriesNode"
-scout_compute_api_SeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_Series.__name__ = "Series"
+scout_compute_api_Series.__qualname__ = "Series"
+scout_compute_api_Series.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SeriesNodeVisitor:
+class scout_compute_api_SeriesVisitor:
 
     @abstractmethod
-    def _raw(self, raw: "scout_compute_api_RawUntypedSeriesNode") -> Any:
+    def _raw(self, raw: "scout_compute_api_Reference") -> Any:
         pass
 
     @abstractmethod
-    def _enum(self, enum: "scout_compute_api_EnumSeriesNode") -> Any:
+    def _enum(self, enum: "scout_compute_api_EnumSeries") -> Any:
         pass
 
     @abstractmethod
-    def _numeric(self, numeric: "scout_compute_api_NumericSeriesNode") -> Any:
+    def _numeric(self, numeric: "scout_compute_api_NumericSeries") -> Any:
         pass
 
 
-scout_compute_api_SeriesNodeVisitor.__name__ = "SeriesNodeVisitor"
-scout_compute_api_SeriesNodeVisitor.__qualname__ = "SeriesNodeVisitor"
-scout_compute_api_SeriesNodeVisitor.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_SeriesVisitor.__name__ = "SeriesVisitor"
+scout_compute_api_SeriesVisitor.__qualname__ = "SeriesVisitor"
+scout_compute_api_SeriesVisitor.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_SeriesCrossoverRanges(ConjureBeanType):
+    """
+    Produces a list of zero-duration ranges at the first point where two series cross over one another
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'input_a': ConjureFieldDefinition('inputA', scout_compute_api_NumericSeries),
+            'input_b': ConjureFieldDefinition('inputB', scout_compute_api_NumericSeries)
+        }
+
+    __slots__: List[str] = ['_input_a', '_input_b']
+
+    def __init__(self, input_a: "scout_compute_api_NumericSeries", input_b: "scout_compute_api_NumericSeries") -> None:
+        self._input_a = input_a
+        self._input_b = input_b
+
+    @builtins.property
+    def input_a(self) -> "scout_compute_api_NumericSeries":
+        return self._input_a
+
+    @builtins.property
+    def input_b(self) -> "scout_compute_api_NumericSeries":
+        return self._input_b
+
+
+scout_compute_api_SeriesCrossoverRanges.__name__ = "SeriesCrossoverRanges"
+scout_compute_api_SeriesCrossoverRanges.__qualname__ = "SeriesCrossoverRanges"
+scout_compute_api_SeriesCrossoverRanges.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_SeriesEqualityRanges(ConjureBeanType):
+    """
+    Produces a list of ranges for which provided series are all equal (or are not all equal).
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'input': ConjureFieldDefinition('input', List[scout_compute_api_NumericSeries]),
+            'equality_operator': ConjureFieldDefinition('equalityOperator', scout_compute_api_EqualityOperator),
+            'tolerance': ConjureFieldDefinition('tolerance', OptionalTypeWrapper[scout_compute_api_DoubleConstant]),
+            'persistence_window_configuration': ConjureFieldDefinition('persistenceWindowConfiguration', OptionalTypeWrapper[scout_compute_api_PersistenceWindowConfiguration]),
+            'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
+        }
+
+    __slots__: List[str] = ['_input', '_equality_operator', '_tolerance', '_persistence_window_configuration', '_interpolation_configuration']
+
+    def __init__(self, equality_operator: "scout_compute_api_EqualityOperator", input: List["scout_compute_api_NumericSeries"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None, persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None, tolerance: Optional["scout_compute_api_DoubleConstant"] = None) -> None:
+        self._input = input
+        self._equality_operator = equality_operator
+        self._tolerance = tolerance
+        self._persistence_window_configuration = persistence_window_configuration
+        self._interpolation_configuration = interpolation_configuration
+
+    @builtins.property
+    def input(self) -> List["scout_compute_api_NumericSeries"]:
+        return self._input
+
+    @builtins.property
+    def equality_operator(self) -> "scout_compute_api_EqualityOperator":
+        return self._equality_operator
+
+    @builtins.property
+    def tolerance(self) -> Optional["scout_compute_api_DoubleConstant"]:
+        return self._tolerance
+
+    @builtins.property
+    def persistence_window_configuration(self) -> Optional["scout_compute_api_PersistenceWindowConfiguration"]:
+        return self._persistence_window_configuration
+
+    @builtins.property
+    def interpolation_configuration(self) -> Optional["scout_compute_api_InterpolationConfiguration"]:
+        """
+        Defaults to forward fill interpolation with a 1s interpolation radius
+        """
+        return self._interpolation_configuration
+
+
+scout_compute_api_SeriesEqualityRanges.__name__ = "SeriesEqualityRanges"
+scout_compute_api_SeriesEqualityRanges.__qualname__ = "SeriesEqualityRanges"
+scout_compute_api_SeriesEqualityRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_SeriesSpec(ConjureBeanType):
@@ -31274,7 +32007,82 @@ scout_compute_api_SetNegativeValuesToZero.__qualname__ = "SetNegativeValuesToZer
 scout_compute_api_SetNegativeValuesToZero.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_StaleRangesNode(ConjureBeanType):
+class scout_compute_api_StabilityDetectionRanges(ConjureBeanType):
+    """
+    Outputs a set of ranges where the input series is stable. For each point, the min and max are calculated over 
+the specified lookback window, including the current point. A point is considered stable if its value does 
+not deviate from the calculated min and the max by more than the threshold and the total number of points
+within the window is at least the specified amount. The threshold can be either fixed values or percentages 
+of the value. The minimum points threshold defaults to 2.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
+            'window_configuration': ConjureFieldDefinition('windowConfiguration', scout_compute_api_StabilityWindowConfiguration),
+            'threshold': ConjureFieldDefinition('threshold', scout_compute_api_Threshold)
+        }
+
+    __slots__: List[str] = ['_input', '_window_configuration', '_threshold']
+
+    def __init__(self, input: "scout_compute_api_NumericSeries", threshold: "scout_compute_api_Threshold", window_configuration: "scout_compute_api_StabilityWindowConfiguration") -> None:
+        self._input = input
+        self._window_configuration = window_configuration
+        self._threshold = threshold
+
+    @builtins.property
+    def input(self) -> "scout_compute_api_NumericSeries":
+        return self._input
+
+    @builtins.property
+    def window_configuration(self) -> "scout_compute_api_StabilityWindowConfiguration":
+        return self._window_configuration
+
+    @builtins.property
+    def threshold(self) -> "scout_compute_api_Threshold":
+        return self._threshold
+
+
+scout_compute_api_StabilityDetectionRanges.__name__ = "StabilityDetectionRanges"
+scout_compute_api_StabilityDetectionRanges.__qualname__ = "StabilityDetectionRanges"
+scout_compute_api_StabilityDetectionRanges.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_StabilityWindowConfiguration(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'min_points': ConjureFieldDefinition('minPoints', OptionalTypeWrapper[scout_compute_api_IntegerConstant]),
+            'duration': ConjureFieldDefinition('duration', scout_compute_api_DurationConstant)
+        }
+
+    __slots__: List[str] = ['_min_points', '_duration']
+
+    def __init__(self, duration: "scout_compute_api_DurationConstant", min_points: Optional["scout_compute_api_IntegerConstant"] = None) -> None:
+        self._min_points = min_points
+        self._duration = duration
+
+    @builtins.property
+    def min_points(self) -> Optional["scout_compute_api_IntegerConstant"]:
+        """
+        The minimum number of points within the window to create a stable range. Must be non-negative. If not 
+present, will default to 2.
+        """
+        return self._min_points
+
+    @builtins.property
+    def duration(self) -> "scout_compute_api_DurationConstant":
+        return self._duration
+
+
+scout_compute_api_StabilityWindowConfiguration.__name__ = "StabilityWindowConfiguration"
+scout_compute_api_StabilityWindowConfiguration.__qualname__ = "StabilityWindowConfiguration"
+scout_compute_api_StabilityWindowConfiguration.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_StaleRanges(ConjureBeanType):
     """
     Produces a list of ranges for which data does not exist for the specified duration or longer. Increases 
 window size by the specified staleness threshold on both ends to capture edge cases of data not currently 
@@ -31284,7 +32092,7 @@ in view.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_SeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_Series),
             'threshold': ConjureFieldDefinition('threshold', scout_compute_api_DurationConstant),
             'start_timestamp': ConjureFieldDefinition('startTimestamp', scout_compute_api_TimestampConstant),
             'end_timestamp': ConjureFieldDefinition('endTimestamp', OptionalTypeWrapper[scout_compute_api_TimestampConstant])
@@ -31292,14 +32100,14 @@ in view.
 
     __slots__: List[str] = ['_input', '_threshold', '_start_timestamp', '_end_timestamp']
 
-    def __init__(self, input: "scout_compute_api_SeriesNode", start_timestamp: "scout_compute_api_TimestampConstant", threshold: "scout_compute_api_DurationConstant", end_timestamp: Optional["scout_compute_api_TimestampConstant"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_Series", start_timestamp: "scout_compute_api_TimestampConstant", threshold: "scout_compute_api_DurationConstant", end_timestamp: Optional["scout_compute_api_TimestampConstant"] = None) -> None:
         self._input = input
         self._threshold = threshold
         self._start_timestamp = start_timestamp
         self._end_timestamp = end_timestamp
 
     @builtins.property
-    def input(self) -> "scout_compute_api_SeriesNode":
+    def input(self) -> "scout_compute_api_Series":
         return self._input
 
     @builtins.property
@@ -31315,9 +32123,9 @@ in view.
         return self._end_timestamp
 
 
-scout_compute_api_StaleRangesNode.__name__ = "StaleRangesNode"
-scout_compute_api_StaleRangesNode.__qualname__ = "StaleRangesNode"
-scout_compute_api_StaleRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_StaleRanges.__name__ = "StaleRanges"
+scout_compute_api_StaleRanges.__qualname__ = "StaleRanges"
+scout_compute_api_StaleRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_StandardDeviation(ConjureBeanType):
@@ -31337,6 +32145,83 @@ class scout_compute_api_StandardDeviation(ConjureBeanType):
 scout_compute_api_StandardDeviation.__name__ = "StandardDeviation"
 scout_compute_api_StandardDeviation.__qualname__ = "StandardDeviation"
 scout_compute_api_StandardDeviation.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_StringConstant(ConjureUnionType):
+    _literal: Optional[str] = None
+    _variable: Optional[str] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'literal': ConjureFieldDefinition('literal', str),
+            'variable': ConjureFieldDefinition('variable', scout_compute_api_VariableName)
+        }
+
+    def __init__(
+            self,
+            literal: Optional[str] = None,
+            variable: Optional[str] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (literal is not None) + (variable is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if literal is not None:
+                self._literal = literal
+                self._type = 'literal'
+            if variable is not None:
+                self._variable = variable
+                self._type = 'variable'
+
+        elif type_of_union == 'literal':
+            if literal is None:
+                raise ValueError('a union value must not be None')
+            self._literal = literal
+            self._type = 'literal'
+        elif type_of_union == 'variable':
+            if variable is None:
+                raise ValueError('a union value must not be None')
+            self._variable = variable
+            self._type = 'variable'
+
+    @builtins.property
+    def literal(self) -> Optional[str]:
+        return self._literal
+
+    @builtins.property
+    def variable(self) -> Optional[str]:
+        return self._variable
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_StringConstantVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_StringConstantVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'literal' and self.literal is not None:
+            return visitor._literal(self.literal)
+        if self._type == 'variable' and self.variable is not None:
+            return visitor._variable(self.variable)
+
+
+scout_compute_api_StringConstant.__name__ = "StringConstant"
+scout_compute_api_StringConstant.__qualname__ = "StringConstant"
+scout_compute_api_StringConstant.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_StringConstantVisitor:
+
+    @abstractmethod
+    def _literal(self, literal: str) -> Any:
+        pass
+
+    @abstractmethod
+    def _variable(self, variable: str) -> Any:
+        pass
+
+
+scout_compute_api_StringConstantVisitor.__name__ = "StringConstantVisitor"
+scout_compute_api_StringConstantVisitor.__qualname__ = "StringConstantVisitor"
+scout_compute_api_StringConstantVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_StringSetConstant(ConjureUnionType):
@@ -31435,7 +32320,7 @@ scout_compute_api_Sum.__qualname__ = "Sum"
 scout_compute_api_Sum.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SumSeriesNode(ConjureBeanType):
+class scout_compute_api_SumSeries(ConjureBeanType):
     """
     For every timestamp specified in the input series, outputs a value that is the sum for that timestamp
 across all input series.
@@ -31446,18 +32331,18 @@ using the interpolation configuration.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeriesNode]),
+            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_NumericSeries]),
             'interpolation_configuration': ConjureFieldDefinition('interpolationConfiguration', OptionalTypeWrapper[scout_compute_api_InterpolationConfiguration])
         }
 
     __slots__: List[str] = ['_inputs', '_interpolation_configuration']
 
-    def __init__(self, inputs: List["scout_compute_api_NumericSeriesNode"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
+    def __init__(self, inputs: List["scout_compute_api_NumericSeries"], interpolation_configuration: Optional["scout_compute_api_InterpolationConfiguration"] = None) -> None:
         self._inputs = inputs
         self._interpolation_configuration = interpolation_configuration
 
     @builtins.property
-    def inputs(self) -> List["scout_compute_api_NumericSeriesNode"]:
+    def inputs(self) -> List["scout_compute_api_NumericSeries"]:
         return self._inputs
 
     @builtins.property
@@ -31468,30 +32353,30 @@ using the interpolation configuration.
         return self._interpolation_configuration
 
 
-scout_compute_api_SumSeriesNode.__name__ = "SumSeriesNode"
-scout_compute_api_SumSeriesNode.__qualname__ = "SumSeriesNode"
-scout_compute_api_SumSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_SumSeries.__name__ = "SumSeries"
+scout_compute_api_SumSeries.__qualname__ = "SumSeries"
+scout_compute_api_SumSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SummarizeCartesianNode(ConjureBeanType):
+class scout_compute_api_SummarizeCartesian(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_CartesianNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_Cartesian),
             'bounds': ConjureFieldDefinition('bounds', OptionalTypeWrapper[scout_compute_api_CartesianBounds]),
             'max_points': ConjureFieldDefinition('maxPoints', OptionalTypeWrapper[int])
         }
 
     __slots__: List[str] = ['_input', '_bounds', '_max_points']
 
-    def __init__(self, input: "scout_compute_api_CartesianNode", bounds: Optional["scout_compute_api_CartesianBounds"] = None, max_points: Optional[int] = None) -> None:
+    def __init__(self, input: "scout_compute_api_Cartesian", bounds: Optional["scout_compute_api_CartesianBounds"] = None, max_points: Optional[int] = None) -> None:
         self._input = input
         self._bounds = bounds
         self._max_points = max_points
 
     @builtins.property
-    def input(self) -> "scout_compute_api_CartesianNode":
+    def input(self) -> "scout_compute_api_Cartesian":
         return self._input
 
     @builtins.property
@@ -31507,57 +32392,57 @@ will be returned. Maximum is 10,000. Defaults to 2,000 if not specified.
         return self._max_points
 
 
-scout_compute_api_SummarizeCartesianNode.__name__ = "SummarizeCartesianNode"
-scout_compute_api_SummarizeCartesianNode.__qualname__ = "SummarizeCartesianNode"
-scout_compute_api_SummarizeCartesianNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_SummarizeCartesian.__name__ = "SummarizeCartesian"
+scout_compute_api_SummarizeCartesian.__qualname__ = "SummarizeCartesian"
+scout_compute_api_SummarizeCartesian.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SummarizeGeoNode(ConjureBeanType):
+class scout_compute_api_SummarizeGeo(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_GeoNode),
-            'summary_strategy': ConjureFieldDefinition('summaryStrategy', scout_compute_api_GeoNodeSummaryStrategy)
+            'input': ConjureFieldDefinition('input', scout_compute_api_GeoSeries),
+            'summary_strategy': ConjureFieldDefinition('summaryStrategy', scout_compute_api_GeoSummaryStrategy)
         }
 
     __slots__: List[str] = ['_input', '_summary_strategy']
 
-    def __init__(self, input: "scout_compute_api_GeoNode", summary_strategy: "scout_compute_api_GeoNodeSummaryStrategy") -> None:
+    def __init__(self, input: "scout_compute_api_GeoSeries", summary_strategy: "scout_compute_api_GeoSummaryStrategy") -> None:
         self._input = input
         self._summary_strategy = summary_strategy
 
     @builtins.property
-    def input(self) -> "scout_compute_api_GeoNode":
+    def input(self) -> "scout_compute_api_GeoSeries":
         return self._input
 
     @builtins.property
-    def summary_strategy(self) -> "scout_compute_api_GeoNodeSummaryStrategy":
+    def summary_strategy(self) -> "scout_compute_api_GeoSummaryStrategy":
         return self._summary_strategy
 
 
-scout_compute_api_SummarizeGeoNode.__name__ = "SummarizeGeoNode"
-scout_compute_api_SummarizeGeoNode.__qualname__ = "SummarizeGeoNode"
-scout_compute_api_SummarizeGeoNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_SummarizeGeo.__name__ = "SummarizeGeo"
+scout_compute_api_SummarizeGeo.__qualname__ = "SummarizeGeo"
+scout_compute_api_SummarizeGeo.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SummarizeRangesNode(ConjureBeanType):
+class scout_compute_api_SummarizeRanges(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_RangesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_RangeSeries),
             'max_ranges': ConjureFieldDefinition('maxRanges', OptionalTypeWrapper[int])
         }
 
     __slots__: List[str] = ['_input', '_max_ranges']
 
-    def __init__(self, input: "scout_compute_api_RangesNode", max_ranges: Optional[int] = None) -> None:
+    def __init__(self, input: "scout_compute_api_RangeSeries", max_ranges: Optional[int] = None) -> None:
         self._input = input
         self._max_ranges = max_ranges
 
     @builtins.property
-    def input(self) -> "scout_compute_api_RangesNode":
+    def input(self) -> "scout_compute_api_RangeSeries":
         return self._input
 
     @builtins.property
@@ -31569,12 +32454,12 @@ will be returned. Defaults to 2000 if not specified.
         return self._max_ranges
 
 
-scout_compute_api_SummarizeRangesNode.__name__ = "SummarizeRangesNode"
-scout_compute_api_SummarizeRangesNode.__qualname__ = "SummarizeRangesNode"
-scout_compute_api_SummarizeRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_SummarizeRanges.__name__ = "SummarizeRanges"
+scout_compute_api_SummarizeRanges.__qualname__ = "SummarizeRanges"
+scout_compute_api_SummarizeRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_SummarizeSeriesNode(ConjureBeanType):
+class scout_compute_api_SummarizeSeries(ConjureBeanType):
     """
     Summarizes the output of a series node. The output can be a numeric, enum, or cartesian series.
 Only resolution or buckets should be specified, not both.
@@ -31583,20 +32468,20 @@ Only resolution or buckets should be specified, not both.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_SeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_Series),
             'resolution': ConjureFieldDefinition('resolution', OptionalTypeWrapper[int]),
             'buckets': ConjureFieldDefinition('buckets', OptionalTypeWrapper[int])
         }
 
     __slots__: List[str] = ['_input', '_resolution', '_buckets']
 
-    def __init__(self, input: "scout_compute_api_SeriesNode", buckets: Optional[int] = None, resolution: Optional[int] = None) -> None:
+    def __init__(self, input: "scout_compute_api_Series", buckets: Optional[int] = None, resolution: Optional[int] = None) -> None:
         self._input = input
         self._resolution = resolution
         self._buckets = buckets
 
     @builtins.property
-    def input(self) -> "scout_compute_api_SeriesNode":
+    def input(self) -> "scout_compute_api_Series":
         return self._input
 
     @builtins.property
@@ -31615,9 +32500,86 @@ Picoseconds for picosecond-granularity dataset, nanoseconds otherwise.
         return self._buckets
 
 
-scout_compute_api_SummarizeSeriesNode.__name__ = "SummarizeSeriesNode"
-scout_compute_api_SummarizeSeriesNode.__qualname__ = "SummarizeSeriesNode"
-scout_compute_api_SummarizeSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_SummarizeSeries.__name__ = "SummarizeSeries"
+scout_compute_api_SummarizeSeries.__qualname__ = "SummarizeSeries"
+scout_compute_api_SummarizeSeries.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_Threshold(ConjureUnionType):
+    _absolute: Optional["scout_compute_api_AbsoluteThreshold"] = None
+    _percentage: Optional["scout_compute_api_PercentageThreshold"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'absolute': ConjureFieldDefinition('absolute', scout_compute_api_AbsoluteThreshold),
+            'percentage': ConjureFieldDefinition('percentage', scout_compute_api_PercentageThreshold)
+        }
+
+    def __init__(
+            self,
+            absolute: Optional["scout_compute_api_AbsoluteThreshold"] = None,
+            percentage: Optional["scout_compute_api_PercentageThreshold"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (absolute is not None) + (percentage is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if absolute is not None:
+                self._absolute = absolute
+                self._type = 'absolute'
+            if percentage is not None:
+                self._percentage = percentage
+                self._type = 'percentage'
+
+        elif type_of_union == 'absolute':
+            if absolute is None:
+                raise ValueError('a union value must not be None')
+            self._absolute = absolute
+            self._type = 'absolute'
+        elif type_of_union == 'percentage':
+            if percentage is None:
+                raise ValueError('a union value must not be None')
+            self._percentage = percentage
+            self._type = 'percentage'
+
+    @builtins.property
+    def absolute(self) -> Optional["scout_compute_api_AbsoluteThreshold"]:
+        return self._absolute
+
+    @builtins.property
+    def percentage(self) -> Optional["scout_compute_api_PercentageThreshold"]:
+        return self._percentage
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_api_ThresholdVisitor):
+            raise ValueError('{} is not an instance of scout_compute_api_ThresholdVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'absolute' and self.absolute is not None:
+            return visitor._absolute(self.absolute)
+        if self._type == 'percentage' and self.percentage is not None:
+            return visitor._percentage(self.percentage)
+
+
+scout_compute_api_Threshold.__name__ = "Threshold"
+scout_compute_api_Threshold.__qualname__ = "Threshold"
+scout_compute_api_Threshold.__module__ = "scout_service_api.scout_compute_api"
+
+
+class scout_compute_api_ThresholdVisitor:
+
+    @abstractmethod
+    def _absolute(self, absolute: "scout_compute_api_AbsoluteThreshold") -> Any:
+        pass
+
+    @abstractmethod
+    def _percentage(self, percentage: "scout_compute_api_PercentageThreshold") -> Any:
+        pass
+
+
+scout_compute_api_ThresholdVisitor.__name__ = "ThresholdVisitor"
+scout_compute_api_ThresholdVisitor.__qualname__ = "ThresholdVisitor"
+scout_compute_api_ThresholdVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_ThresholdOperator(ConjureEnumType):
@@ -31646,7 +32608,7 @@ scout_compute_api_ThresholdOperator.__qualname__ = "ThresholdOperator"
 scout_compute_api_ThresholdOperator.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_ThresholdingRangesNode(ConjureBeanType):
+class scout_compute_api_ThresholdingRanges(ConjureBeanType):
     """
     Produces a list of ranges for which the threshold condition is satisfied.
     """
@@ -31654,7 +32616,7 @@ class scout_compute_api_ThresholdingRangesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'threshold': ConjureFieldDefinition('threshold', scout_compute_api_DoubleConstant),
             'operator': ConjureFieldDefinition('operator', scout_compute_api_ThresholdOperator),
             'persistence_window_configuration': ConjureFieldDefinition('persistenceWindowConfiguration', OptionalTypeWrapper[scout_compute_api_PersistenceWindowConfiguration])
@@ -31662,14 +32624,14 @@ class scout_compute_api_ThresholdingRangesNode(ConjureBeanType):
 
     __slots__: List[str] = ['_input', '_threshold', '_operator', '_persistence_window_configuration']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", operator: "scout_compute_api_ThresholdOperator", threshold: "scout_compute_api_DoubleConstant", persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", operator: "scout_compute_api_ThresholdOperator", threshold: "scout_compute_api_DoubleConstant", persistence_window_configuration: Optional["scout_compute_api_PersistenceWindowConfiguration"] = None) -> None:
         self._input = input
         self._threshold = threshold
         self._operator = operator
         self._persistence_window_configuration = persistence_window_configuration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -31685,9 +32647,9 @@ class scout_compute_api_ThresholdingRangesNode(ConjureBeanType):
         return self._persistence_window_configuration
 
 
-scout_compute_api_ThresholdingRangesNode.__name__ = "ThresholdingRangesNode"
-scout_compute_api_ThresholdingRangesNode.__qualname__ = "ThresholdingRangesNode"
-scout_compute_api_ThresholdingRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_ThresholdingRanges.__name__ = "ThresholdingRanges"
+scout_compute_api_ThresholdingRanges.__qualname__ = "ThresholdingRanges"
+scout_compute_api_ThresholdingRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_TimeBucketedGeoPlot(ConjureBeanType):
@@ -31722,7 +32684,7 @@ scout_compute_api_TimeBucketedGeoPlot.__qualname__ = "TimeBucketedGeoPlot"
 scout_compute_api_TimeBucketedGeoPlot.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_TimeDifferenceSeriesNode(ConjureBeanType):
+class scout_compute_api_TimeDifferenceSeries(ConjureBeanType):
     """
     Outputs a new series where each value is the difference between the time of the current and previous points.
     """
@@ -31730,18 +32692,18 @@ class scout_compute_api_TimeDifferenceSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_SeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_Series),
             'time_unit': ConjureFieldDefinition('timeUnit', OptionalTypeWrapper[api_TimeUnit])
         }
 
     __slots__: List[str] = ['_input', '_time_unit']
 
-    def __init__(self, input: "scout_compute_api_SeriesNode", time_unit: Optional["api_TimeUnit"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_Series", time_unit: Optional["api_TimeUnit"] = None) -> None:
         self._input = input
         self._time_unit = time_unit
 
     @builtins.property
-    def input(self) -> "scout_compute_api_SeriesNode":
+    def input(self) -> "scout_compute_api_Series":
         return self._input
 
     @builtins.property
@@ -31752,9 +32714,9 @@ class scout_compute_api_TimeDifferenceSeriesNode(ConjureBeanType):
         return self._time_unit
 
 
-scout_compute_api_TimeDifferenceSeriesNode.__name__ = "TimeDifferenceSeriesNode"
-scout_compute_api_TimeDifferenceSeriesNode.__qualname__ = "TimeDifferenceSeriesNode"
-scout_compute_api_TimeDifferenceSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_TimeDifferenceSeries.__name__ = "TimeDifferenceSeries"
+scout_compute_api_TimeDifferenceSeries.__qualname__ = "TimeDifferenceSeries"
+scout_compute_api_TimeDifferenceSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_TimestampConstant(ConjureUnionType):
@@ -31860,7 +32822,7 @@ scout_compute_api_UnaryArithmeticOperation.__qualname__ = "UnaryArithmeticOperat
 scout_compute_api_UnaryArithmeticOperation.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_UnaryArithmeticSeriesNode(ConjureBeanType):
+class scout_compute_api_UnaryArithmeticSeries(ConjureBeanType):
     """
     Applies a point-wise transformation to a series. The transformation function is applied to every
 individual data point.
@@ -31869,18 +32831,18 @@ individual data point.
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'operation': ConjureFieldDefinition('operation', scout_compute_api_UnaryArithmeticOperation)
         }
 
     __slots__: List[str] = ['_input', '_operation']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", operation: "scout_compute_api_UnaryArithmeticOperation") -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", operation: "scout_compute_api_UnaryArithmeticOperation") -> None:
         self._input = input
         self._operation = operation
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -31888,32 +32850,32 @@ individual data point.
         return self._operation
 
 
-scout_compute_api_UnaryArithmeticSeriesNode.__name__ = "UnaryArithmeticSeriesNode"
-scout_compute_api_UnaryArithmeticSeriesNode.__qualname__ = "UnaryArithmeticSeriesNode"
-scout_compute_api_UnaryArithmeticSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_UnaryArithmeticSeries.__name__ = "UnaryArithmeticSeries"
+scout_compute_api_UnaryArithmeticSeries.__qualname__ = "UnaryArithmeticSeries"
+scout_compute_api_UnaryArithmeticSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_UnionRangesNode(ConjureBeanType):
+class scout_compute_api_UnionRanges(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_RangesNode])
+            'inputs': ConjureFieldDefinition('inputs', List[scout_compute_api_RangeSeries])
         }
 
     __slots__: List[str] = ['_inputs']
 
-    def __init__(self, inputs: List["scout_compute_api_RangesNode"]) -> None:
+    def __init__(self, inputs: List["scout_compute_api_RangeSeries"]) -> None:
         self._inputs = inputs
 
     @builtins.property
-    def inputs(self) -> List["scout_compute_api_RangesNode"]:
+    def inputs(self) -> List["scout_compute_api_RangeSeries"]:
         return self._inputs
 
 
-scout_compute_api_UnionRangesNode.__name__ = "UnionRangesNode"
-scout_compute_api_UnionRangesNode.__qualname__ = "UnionRangesNode"
-scout_compute_api_UnionRangesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_UnionRanges.__name__ = "UnionRanges"
+scout_compute_api_UnionRanges.__qualname__ = "UnionRanges"
+scout_compute_api_UnionRanges.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_UnitComputationError(ConjureUnionType):
@@ -32014,7 +32976,7 @@ scout_compute_api_UnitComputationErrorVisitor.__qualname__ = "UnitComputationErr
 scout_compute_api_UnitComputationErrorVisitor.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_UnitConversionSeriesNode(ConjureBeanType):
+class scout_compute_api_UnitConversionSeries(ConjureBeanType):
     """
     Convert the given series to a different unit.
     """
@@ -32022,18 +32984,18 @@ class scout_compute_api_UnitConversionSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'output_unit': ConjureFieldDefinition('outputUnit', scout_units_api_UnitSymbol)
         }
 
     __slots__: List[str] = ['_input', '_output_unit']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", output_unit: str) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", output_unit: str) -> None:
         self._input = input
         self._output_unit = output_unit
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -32041,9 +33003,9 @@ class scout_compute_api_UnitConversionSeriesNode(ConjureBeanType):
         return self._output_unit
 
 
-scout_compute_api_UnitConversionSeriesNode.__name__ = "UnitConversionSeriesNode"
-scout_compute_api_UnitConversionSeriesNode.__qualname__ = "UnitConversionSeriesNode"
-scout_compute_api_UnitConversionSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_UnitConversionSeries.__name__ = "UnitConversionSeries"
+scout_compute_api_UnitConversionSeries.__qualname__ = "UnitConversionSeries"
+scout_compute_api_UnitConversionSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_UnitOperation(ConjureEnumType):
@@ -32190,7 +33152,7 @@ scout_compute_api_UnitsMissing.__qualname__ = "UnitsMissing"
 scout_compute_api_UnitsMissing.__module__ = "scout_service_api.scout_compute_api"
 
 
-class scout_compute_api_ValueDifferenceSeriesNode(ConjureBeanType):
+class scout_compute_api_ValueDifferenceSeries(ConjureBeanType):
     """
     Outputs a new series where each value is the difference between the values of the current and previous point.
     """
@@ -32198,18 +33160,18 @@ class scout_compute_api_ValueDifferenceSeriesNode(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeriesNode),
+            'input': ConjureFieldDefinition('input', scout_compute_api_NumericSeries),
             'negative_values_configuration': ConjureFieldDefinition('negativeValuesConfiguration', OptionalTypeWrapper[scout_compute_api_NegativeValueConfiguration])
         }
 
     __slots__: List[str] = ['_input', '_negative_values_configuration']
 
-    def __init__(self, input: "scout_compute_api_NumericSeriesNode", negative_values_configuration: Optional["scout_compute_api_NegativeValueConfiguration"] = None) -> None:
+    def __init__(self, input: "scout_compute_api_NumericSeries", negative_values_configuration: Optional["scout_compute_api_NegativeValueConfiguration"] = None) -> None:
         self._input = input
         self._negative_values_configuration = negative_values_configuration
 
     @builtins.property
-    def input(self) -> "scout_compute_api_NumericSeriesNode":
+    def input(self) -> "scout_compute_api_NumericSeries":
         return self._input
 
     @builtins.property
@@ -32220,9 +33182,9 @@ class scout_compute_api_ValueDifferenceSeriesNode(ConjureBeanType):
         return self._negative_values_configuration
 
 
-scout_compute_api_ValueDifferenceSeriesNode.__name__ = "ValueDifferenceSeriesNode"
-scout_compute_api_ValueDifferenceSeriesNode.__qualname__ = "ValueDifferenceSeriesNode"
-scout_compute_api_ValueDifferenceSeriesNode.__module__ = "scout_service_api.scout_compute_api"
+scout_compute_api_ValueDifferenceSeries.__name__ = "ValueDifferenceSeries"
+scout_compute_api_ValueDifferenceSeries.__qualname__ = "ValueDifferenceSeries"
+scout_compute_api_ValueDifferenceSeries.__module__ = "scout_service_api.scout_compute_api"
 
 
 class scout_compute_api_VariableValue(ConjureUnionType):
@@ -32232,6 +33194,7 @@ class scout_compute_api_VariableValue(ConjureUnionType):
     _function_rid: Optional[str] = None
     _integer: Optional[int] = None
     _series: Optional["scout_compute_api_SeriesSpec"] = None
+    _string: Optional[str] = None
     _string_set: Optional[List[str]] = None
     _timestamp: Optional["api_Timestamp"] = None
 
@@ -32244,6 +33207,7 @@ class scout_compute_api_VariableValue(ConjureUnionType):
             'function_rid': ConjureFieldDefinition('functionRid', scout_rids_api_FunctionRid),
             'integer': ConjureFieldDefinition('integer', int),
             'series': ConjureFieldDefinition('series', scout_compute_api_SeriesSpec),
+            'string': ConjureFieldDefinition('string', str),
             'string_set': ConjureFieldDefinition('stringSet', List[str]),
             'timestamp': ConjureFieldDefinition('timestamp', api_Timestamp)
         }
@@ -32256,12 +33220,13 @@ class scout_compute_api_VariableValue(ConjureUnionType):
             function_rid: Optional[str] = None,
             integer: Optional[int] = None,
             series: Optional["scout_compute_api_SeriesSpec"] = None,
+            string: Optional[str] = None,
             string_set: Optional[List[str]] = None,
             timestamp: Optional["api_Timestamp"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (double is not None) + (compute_node is not None) + (duration is not None) + (function_rid is not None) + (integer is not None) + (series is not None) + (string_set is not None) + (timestamp is not None) != 1:
+            if (double is not None) + (compute_node is not None) + (duration is not None) + (function_rid is not None) + (integer is not None) + (series is not None) + (string is not None) + (string_set is not None) + (timestamp is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if double is not None:
@@ -32282,6 +33247,9 @@ class scout_compute_api_VariableValue(ConjureUnionType):
             if series is not None:
                 self._series = series
                 self._type = 'series'
+            if string is not None:
+                self._string = string
+                self._type = 'string'
             if string_set is not None:
                 self._string_set = string_set
                 self._type = 'stringSet'
@@ -32319,6 +33287,11 @@ class scout_compute_api_VariableValue(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._series = series
             self._type = 'series'
+        elif type_of_union == 'string':
+            if string is None:
+                raise ValueError('a union value must not be None')
+            self._string = string
+            self._type = 'string'
         elif type_of_union == 'stringSet':
             if string_set is None:
                 raise ValueError('a union value must not be None')
@@ -32355,6 +33328,10 @@ class scout_compute_api_VariableValue(ConjureUnionType):
         return self._series
 
     @builtins.property
+    def string(self) -> Optional[str]:
+        return self._string
+
+    @builtins.property
     def string_set(self) -> Optional[List[str]]:
         return self._string_set
 
@@ -32377,6 +33354,8 @@ class scout_compute_api_VariableValue(ConjureUnionType):
             return visitor._integer(self.integer)
         if self._type == 'series' and self.series is not None:
             return visitor._series(self.series)
+        if self._type == 'string' and self.string is not None:
+            return visitor._string(self.string)
         if self._type == 'stringSet' and self.string_set is not None:
             return visitor._string_set(self.string_set)
         if self._type == 'timestamp' and self.timestamp is not None:
@@ -32412,6 +33391,10 @@ class scout_compute_api_VariableValueVisitor:
 
     @abstractmethod
     def _series(self, series: "scout_compute_api_SeriesSpec") -> Any:
+        pass
+
+    @abstractmethod
+    def _string(self, string: str) -> Any:
         pass
 
     @abstractmethod
@@ -32975,7 +33958,7 @@ scout_compute_api_deprecated_EnumFilterRangesNode.__module__ = "scout_service_ap
 
 
 class scout_compute_api_deprecated_EnumSeriesNode(ConjureUnionType):
-    _raw: Optional["scout_compute_api_RawEnumSeriesNode"] = None
+    _raw: Optional["scout_compute_api_Reference"] = None
     _function: Optional["scout_compute_api_EnumSeriesFunction"] = None
     _time_range_filter: Optional["scout_compute_api_deprecated_EnumTimeRangeFilterSeriesNode"] = None
     _time_shift: Optional["scout_compute_api_deprecated_EnumTimeShiftSeriesNode"] = None
@@ -32984,7 +33967,7 @@ class scout_compute_api_deprecated_EnumSeriesNode(ConjureUnionType):
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'raw': ConjureFieldDefinition('raw', scout_compute_api_RawEnumSeriesNode),
+            'raw': ConjureFieldDefinition('raw', scout_compute_api_Reference),
             'function': ConjureFieldDefinition('function', scout_compute_api_EnumSeriesFunction),
             'time_range_filter': ConjureFieldDefinition('timeRangeFilter', scout_compute_api_deprecated_EnumTimeRangeFilterSeriesNode),
             'time_shift': ConjureFieldDefinition('timeShift', scout_compute_api_deprecated_EnumTimeShiftSeriesNode),
@@ -32993,7 +33976,7 @@ class scout_compute_api_deprecated_EnumSeriesNode(ConjureUnionType):
 
     def __init__(
             self,
-            raw: Optional["scout_compute_api_RawEnumSeriesNode"] = None,
+            raw: Optional["scout_compute_api_Reference"] = None,
             function: Optional["scout_compute_api_EnumSeriesFunction"] = None,
             time_range_filter: Optional["scout_compute_api_deprecated_EnumTimeRangeFilterSeriesNode"] = None,
             time_shift: Optional["scout_compute_api_deprecated_EnumTimeShiftSeriesNode"] = None,
@@ -33047,7 +34030,7 @@ class scout_compute_api_deprecated_EnumSeriesNode(ConjureUnionType):
             self._type = 'union'
 
     @builtins.property
-    def raw(self) -> Optional["scout_compute_api_RawEnumSeriesNode"]:
+    def raw(self) -> Optional["scout_compute_api_Reference"]:
         return self._raw
 
     @builtins.property
@@ -33089,7 +34072,7 @@ scout_compute_api_deprecated_EnumSeriesNode.__module__ = "scout_service_api.scou
 class scout_compute_api_deprecated_EnumSeriesNodeVisitor:
 
     @abstractmethod
-    def _raw(self, raw: "scout_compute_api_RawEnumSeriesNode") -> Any:
+    def _raw(self, raw: "scout_compute_api_Reference") -> Any:
         pass
 
     @abstractmethod
@@ -33310,7 +34293,7 @@ scout_compute_api_deprecated_IntersectRangesNode.__module__ = "scout_service_api
 
 
 class scout_compute_api_deprecated_NumericSeriesNode(ConjureUnionType):
-    _raw: Optional["scout_compute_api_RawNumericSeriesNode"] = None
+    _raw: Optional["scout_compute_api_Reference"] = None
     _arithmetic: Optional["scout_compute_api_deprecated_ArithmeticSeriesNode"] = None
     _bit_operation: Optional["scout_compute_api_deprecated_BitOperationSeriesNode"] = None
     _cumulative_sum: Optional["scout_compute_api_deprecated_CumulativeSumSeriesNode"] = None
@@ -33327,7 +34310,7 @@ class scout_compute_api_deprecated_NumericSeriesNode(ConjureUnionType):
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'raw': ConjureFieldDefinition('raw', scout_compute_api_RawNumericSeriesNode),
+            'raw': ConjureFieldDefinition('raw', scout_compute_api_Reference),
             'arithmetic': ConjureFieldDefinition('arithmetic', scout_compute_api_deprecated_ArithmeticSeriesNode),
             'bit_operation': ConjureFieldDefinition('bitOperation', scout_compute_api_deprecated_BitOperationSeriesNode),
             'cumulative_sum': ConjureFieldDefinition('cumulativeSum', scout_compute_api_deprecated_CumulativeSumSeriesNode),
@@ -33344,7 +34327,7 @@ class scout_compute_api_deprecated_NumericSeriesNode(ConjureUnionType):
 
     def __init__(
             self,
-            raw: Optional["scout_compute_api_RawNumericSeriesNode"] = None,
+            raw: Optional["scout_compute_api_Reference"] = None,
             arithmetic: Optional["scout_compute_api_deprecated_ArithmeticSeriesNode"] = None,
             bit_operation: Optional["scout_compute_api_deprecated_BitOperationSeriesNode"] = None,
             cumulative_sum: Optional["scout_compute_api_deprecated_CumulativeSumSeriesNode"] = None,
@@ -33470,7 +34453,7 @@ class scout_compute_api_deprecated_NumericSeriesNode(ConjureUnionType):
             self._type = 'valueDifference'
 
     @builtins.property
-    def raw(self) -> Optional["scout_compute_api_RawNumericSeriesNode"]:
+    def raw(self) -> Optional["scout_compute_api_Reference"]:
         return self._raw
 
     @builtins.property
@@ -33560,7 +34543,7 @@ scout_compute_api_deprecated_NumericSeriesNode.__module__ = "scout_service_api.s
 class scout_compute_api_deprecated_NumericSeriesNodeVisitor:
 
     @abstractmethod
-    def _raw(self, raw: "scout_compute_api_RawNumericSeriesNode") -> Any:
+    def _raw(self, raw: "scout_compute_api_Reference") -> Any:
         pass
 
     @abstractmethod
@@ -34071,21 +35054,21 @@ scout_compute_api_deprecated_SelectValueNodeVisitor.__module__ = "scout_service_
 
 
 class scout_compute_api_deprecated_SeriesNode(ConjureUnionType):
-    _raw: Optional["scout_compute_api_RawUntypedSeriesNode"] = None
+    _raw: Optional["scout_compute_api_Reference"] = None
     _enum: Optional["scout_compute_api_deprecated_EnumSeriesNode"] = None
     _numeric: Optional["scout_compute_api_deprecated_NumericSeriesNode"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'raw': ConjureFieldDefinition('raw', scout_compute_api_RawUntypedSeriesNode),
+            'raw': ConjureFieldDefinition('raw', scout_compute_api_Reference),
             'enum': ConjureFieldDefinition('enum', scout_compute_api_deprecated_EnumSeriesNode),
             'numeric': ConjureFieldDefinition('numeric', scout_compute_api_deprecated_NumericSeriesNode)
         }
 
     def __init__(
             self,
-            raw: Optional["scout_compute_api_RawUntypedSeriesNode"] = None,
+            raw: Optional["scout_compute_api_Reference"] = None,
             enum: Optional["scout_compute_api_deprecated_EnumSeriesNode"] = None,
             numeric: Optional["scout_compute_api_deprecated_NumericSeriesNode"] = None,
             type_of_union: Optional[str] = None
@@ -34121,7 +35104,7 @@ class scout_compute_api_deprecated_SeriesNode(ConjureUnionType):
             self._type = 'numeric'
 
     @builtins.property
-    def raw(self) -> Optional["scout_compute_api_RawUntypedSeriesNode"]:
+    def raw(self) -> Optional["scout_compute_api_Reference"]:
         return self._raw
 
     @builtins.property
@@ -34151,7 +35134,7 @@ scout_compute_api_deprecated_SeriesNode.__module__ = "scout_service_api.scout_co
 class scout_compute_api_deprecated_SeriesNodeVisitor:
 
     @abstractmethod
-    def _raw(self, raw: "scout_compute_api_RawUntypedSeriesNode") -> Any:
+    def _raw(self, raw: "scout_compute_api_Reference") -> Any:
         pass
 
     @abstractmethod
@@ -34628,18 +35611,18 @@ class scout_compute_representation_api_CompiledEnumeratedSeries(ConjureBeanType)
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'node': ConjureFieldDefinition('node', scout_compute_api_EnumSeriesNode),
+            'node': ConjureFieldDefinition('node', scout_compute_api_EnumSeries),
             'context': ConjureFieldDefinition('context', scout_compute_representation_api_ComputeRepresentationContext)
         }
 
     __slots__: List[str] = ['_node', '_context']
 
-    def __init__(self, context: "scout_compute_representation_api_ComputeRepresentationContext", node: "scout_compute_api_EnumSeriesNode") -> None:
+    def __init__(self, context: "scout_compute_representation_api_ComputeRepresentationContext", node: "scout_compute_api_EnumSeries") -> None:
         self._node = node
         self._context = context
 
     @builtins.property
-    def node(self) -> "scout_compute_api_EnumSeriesNode":
+    def node(self) -> "scout_compute_api_EnumSeries":
         return self._node
 
     @builtins.property
@@ -34686,18 +35669,18 @@ class scout_compute_representation_api_CompiledNumericSeries(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'node': ConjureFieldDefinition('node', scout_compute_api_NumericSeriesNode),
+            'node': ConjureFieldDefinition('node', scout_compute_api_NumericSeries),
             'context': ConjureFieldDefinition('context', scout_compute_representation_api_ComputeRepresentationContext)
         }
 
     __slots__: List[str] = ['_node', '_context']
 
-    def __init__(self, context: "scout_compute_representation_api_ComputeRepresentationContext", node: "scout_compute_api_NumericSeriesNode") -> None:
+    def __init__(self, context: "scout_compute_representation_api_ComputeRepresentationContext", node: "scout_compute_api_NumericSeries") -> None:
         self._node = node
         self._context = context
 
     @builtins.property
-    def node(self) -> "scout_compute_api_NumericSeriesNode":
+    def node(self) -> "scout_compute_api_NumericSeries":
         return self._node
 
     @builtins.property
@@ -34715,18 +35698,18 @@ class scout_compute_representation_api_CompiledRangeSeries(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'node': ConjureFieldDefinition('node', scout_compute_api_RangesNode),
+            'node': ConjureFieldDefinition('node', scout_compute_api_RangeSeries),
             'context': ConjureFieldDefinition('context', scout_compute_representation_api_ComputeRepresentationContext)
         }
 
     __slots__: List[str] = ['_node', '_context']
 
-    def __init__(self, context: "scout_compute_representation_api_ComputeRepresentationContext", node: "scout_compute_api_RangesNode") -> None:
+    def __init__(self, context: "scout_compute_representation_api_ComputeRepresentationContext", node: "scout_compute_api_RangeSeries") -> None:
         self._node = node
         self._context = context
 
     @builtins.property
-    def node(self) -> "scout_compute_api_RangesNode":
+    def node(self) -> "scout_compute_api_RangeSeries":
         return self._node
 
     @builtins.property
@@ -35243,23 +36226,23 @@ scout_compute_representation_api_ExpressionToComputeResultVisitor.__module__ = "
 
 
 class scout_compute_representation_api_Node(ConjureUnionType):
-    _enumerated_series: Optional["scout_compute_api_EnumSeriesNode"] = None
-    _numeric_series: Optional["scout_compute_api_NumericSeriesNode"] = None
-    _range_series: Optional["scout_compute_api_RangesNode"] = None
+    _enumerated_series: Optional["scout_compute_api_EnumSeries"] = None
+    _numeric_series: Optional["scout_compute_api_NumericSeries"] = None
+    _range_series: Optional["scout_compute_api_RangeSeries"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'enumerated_series': ConjureFieldDefinition('enumeratedSeries', scout_compute_api_EnumSeriesNode),
-            'numeric_series': ConjureFieldDefinition('numericSeries', scout_compute_api_NumericSeriesNode),
-            'range_series': ConjureFieldDefinition('rangeSeries', scout_compute_api_RangesNode)
+            'enumerated_series': ConjureFieldDefinition('enumeratedSeries', scout_compute_api_EnumSeries),
+            'numeric_series': ConjureFieldDefinition('numericSeries', scout_compute_api_NumericSeries),
+            'range_series': ConjureFieldDefinition('rangeSeries', scout_compute_api_RangeSeries)
         }
 
     def __init__(
             self,
-            enumerated_series: Optional["scout_compute_api_EnumSeriesNode"] = None,
-            numeric_series: Optional["scout_compute_api_NumericSeriesNode"] = None,
-            range_series: Optional["scout_compute_api_RangesNode"] = None,
+            enumerated_series: Optional["scout_compute_api_EnumSeries"] = None,
+            numeric_series: Optional["scout_compute_api_NumericSeries"] = None,
+            range_series: Optional["scout_compute_api_RangeSeries"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
@@ -35293,15 +36276,15 @@ class scout_compute_representation_api_Node(ConjureUnionType):
             self._type = 'rangeSeries'
 
     @builtins.property
-    def enumerated_series(self) -> Optional["scout_compute_api_EnumSeriesNode"]:
+    def enumerated_series(self) -> Optional["scout_compute_api_EnumSeries"]:
         return self._enumerated_series
 
     @builtins.property
-    def numeric_series(self) -> Optional["scout_compute_api_NumericSeriesNode"]:
+    def numeric_series(self) -> Optional["scout_compute_api_NumericSeries"]:
         return self._numeric_series
 
     @builtins.property
-    def range_series(self) -> Optional["scout_compute_api_RangesNode"]:
+    def range_series(self) -> Optional["scout_compute_api_RangeSeries"]:
         return self._range_series
 
     def accept(self, visitor) -> Any:
@@ -35323,15 +36306,15 @@ scout_compute_representation_api_Node.__module__ = "scout_service_api.scout_comp
 class scout_compute_representation_api_NodeVisitor:
 
     @abstractmethod
-    def _enumerated_series(self, enumerated_series: "scout_compute_api_EnumSeriesNode") -> Any:
+    def _enumerated_series(self, enumerated_series: "scout_compute_api_EnumSeries") -> Any:
         pass
 
     @abstractmethod
-    def _numeric_series(self, numeric_series: "scout_compute_api_NumericSeriesNode") -> Any:
+    def _numeric_series(self, numeric_series: "scout_compute_api_NumericSeries") -> Any:
         pass
 
     @abstractmethod
-    def _range_series(self, range_series: "scout_compute_api_RangesNode") -> Any:
+    def _range_series(self, range_series: "scout_compute_api_RangeSeries") -> Any:
         pass
 
 
@@ -35361,6 +36344,29 @@ class scout_compute_representation_api_SuccessExpressionToComputeResult(ConjureB
 scout_compute_representation_api_SuccessExpressionToComputeResult.__name__ = "SuccessExpressionToComputeResult"
 scout_compute_representation_api_SuccessExpressionToComputeResult.__qualname__ = "SuccessExpressionToComputeResult"
 scout_compute_representation_api_SuccessExpressionToComputeResult.__module__ = "scout_service_api.scout_compute_representation_api"
+
+
+class scout_compute_resolved_api_AbsoluteThreshold(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'value': ConjureFieldDefinition('value', float)
+        }
+
+    __slots__: List[str] = ['_value']
+
+    def __init__(self, value: float) -> None:
+        self._value = value
+
+    @builtins.property
+    def value(self) -> float:
+        return self._value
+
+
+scout_compute_resolved_api_AbsoluteThreshold.__name__ = "AbsoluteThreshold"
+scout_compute_resolved_api_AbsoluteThreshold.__qualname__ = "AbsoluteThreshold"
+scout_compute_resolved_api_AbsoluteThreshold.__module__ = "scout_service_api.scout_compute_resolved_api"
 
 
 class scout_compute_resolved_api_AggregateEnumSeriesNode(ConjureBeanType):
@@ -37732,6 +38738,29 @@ scout_compute_resolved_api_OnChangeRangesNode.__qualname__ = "OnChangeRangesNode
 scout_compute_resolved_api_OnChangeRangesNode.__module__ = "scout_service_api.scout_compute_resolved_api"
 
 
+class scout_compute_resolved_api_PercentageThreshold(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'value': ConjureFieldDefinition('value', float)
+        }
+
+    __slots__: List[str] = ['_value']
+
+    def __init__(self, value: float) -> None:
+        self._value = value
+
+    @builtins.property
+    def value(self) -> float:
+        return self._value
+
+
+scout_compute_resolved_api_PercentageThreshold.__name__ = "PercentageThreshold"
+scout_compute_resolved_api_PercentageThreshold.__qualname__ = "PercentageThreshold"
+scout_compute_resolved_api_PercentageThreshold.__module__ = "scout_service_api.scout_compute_resolved_api"
+
+
 class scout_compute_resolved_api_PersistenceWindowConfiguration(ConjureBeanType):
 
     @builtins.classmethod
@@ -37809,6 +38838,7 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
     _stale_range: Optional["scout_compute_resolved_api_StaleRangesNode"] = None
     _union_range: Optional["scout_compute_resolved_api_UnionRangesNode"] = None
     _range_numeric_aggregation: Optional["scout_compute_resolved_api_RangesNumericAggregationNode"] = None
+    _stability_detection: Optional["scout_compute_resolved_api_StabilityDetectionRangesNode"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
@@ -37824,7 +38854,8 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
             'series_crossover_ranges_node': ConjureFieldDefinition('seriesCrossoverRangesNode', scout_compute_resolved_api_SeriesCrossoverRangesNode),
             'stale_range': ConjureFieldDefinition('staleRange', scout_compute_resolved_api_StaleRangesNode),
             'union_range': ConjureFieldDefinition('unionRange', scout_compute_resolved_api_UnionRangesNode),
-            'range_numeric_aggregation': ConjureFieldDefinition('rangeNumericAggregation', scout_compute_resolved_api_RangesNumericAggregationNode)
+            'range_numeric_aggregation': ConjureFieldDefinition('rangeNumericAggregation', scout_compute_resolved_api_RangesNumericAggregationNode),
+            'stability_detection': ConjureFieldDefinition('stabilityDetection', scout_compute_resolved_api_StabilityDetectionRangesNode)
         }
 
     def __init__(
@@ -37841,10 +38872,11 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
             stale_range: Optional["scout_compute_resolved_api_StaleRangesNode"] = None,
             union_range: Optional["scout_compute_resolved_api_UnionRangesNode"] = None,
             range_numeric_aggregation: Optional["scout_compute_resolved_api_RangesNumericAggregationNode"] = None,
+            stability_detection: Optional["scout_compute_resolved_api_StabilityDetectionRangesNode"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (enum_filter is not None) + (enum_equality is not None) + (extrema is not None) + (intersect_range is not None) + (not_ is not None) + (min_max_threshold is not None) + (on_change is not None) + (threshold is not None) + (series_crossover_ranges_node is not None) + (stale_range is not None) + (union_range is not None) + (range_numeric_aggregation is not None) != 1:
+            if (enum_filter is not None) + (enum_equality is not None) + (extrema is not None) + (intersect_range is not None) + (not_ is not None) + (min_max_threshold is not None) + (on_change is not None) + (threshold is not None) + (series_crossover_ranges_node is not None) + (stale_range is not None) + (union_range is not None) + (range_numeric_aggregation is not None) + (stability_detection is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if enum_filter is not None:
@@ -37883,6 +38915,9 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
             if range_numeric_aggregation is not None:
                 self._range_numeric_aggregation = range_numeric_aggregation
                 self._type = 'rangeNumericAggregation'
+            if stability_detection is not None:
+                self._stability_detection = stability_detection
+                self._type = 'stabilityDetection'
 
         elif type_of_union == 'enumFilter':
             if enum_filter is None:
@@ -37944,6 +38979,11 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._range_numeric_aggregation = range_numeric_aggregation
             self._type = 'rangeNumericAggregation'
+        elif type_of_union == 'stabilityDetection':
+            if stability_detection is None:
+                raise ValueError('a union value must not be None')
+            self._stability_detection = stability_detection
+            self._type = 'stabilityDetection'
 
     @builtins.property
     def enum_filter(self) -> Optional["scout_compute_resolved_api_EnumFilterRangesNode"]:
@@ -37993,6 +39033,10 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
     def range_numeric_aggregation(self) -> Optional["scout_compute_resolved_api_RangesNumericAggregationNode"]:
         return self._range_numeric_aggregation
 
+    @builtins.property
+    def stability_detection(self) -> Optional["scout_compute_resolved_api_StabilityDetectionRangesNode"]:
+        return self._stability_detection
+
     def accept(self, visitor) -> Any:
         if not isinstance(visitor, scout_compute_resolved_api_RangesNodeVisitor):
             raise ValueError('{} is not an instance of scout_compute_resolved_api_RangesNodeVisitor'.format(visitor.__class__.__name__))
@@ -38020,6 +39064,8 @@ class scout_compute_resolved_api_RangesNode(ConjureUnionType):
             return visitor._union_range(self.union_range)
         if self._type == 'rangeNumericAggregation' and self.range_numeric_aggregation is not None:
             return visitor._range_numeric_aggregation(self.range_numeric_aggregation)
+        if self._type == 'stabilityDetection' and self.stability_detection is not None:
+            return visitor._stability_detection(self.stability_detection)
 
 
 scout_compute_resolved_api_RangesNode.__name__ = "RangesNode"
@@ -38075,6 +39121,10 @@ class scout_compute_resolved_api_RangesNodeVisitor:
 
     @abstractmethod
     def _range_numeric_aggregation(self, range_numeric_aggregation: "scout_compute_resolved_api_RangesNumericAggregationNode") -> Any:
+        pass
+
+    @abstractmethod
+    def _stability_detection(self, stability_detection: "scout_compute_resolved_api_StabilityDetectionRangesNode") -> Any:
         pass
 
 
@@ -38757,6 +39807,41 @@ scout_compute_resolved_api_SeriesNodeVisitor.__qualname__ = "SeriesNodeVisitor"
 scout_compute_resolved_api_SeriesNodeVisitor.__module__ = "scout_service_api.scout_compute_resolved_api"
 
 
+class scout_compute_resolved_api_StabilityDetectionRangesNode(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'input': ConjureFieldDefinition('input', scout_compute_resolved_api_NumericSeriesNode),
+            'threshold': ConjureFieldDefinition('threshold', scout_compute_resolved_api_Threshold),
+            'window_configuration': ConjureFieldDefinition('windowConfiguration', scout_compute_resolved_api_PersistenceWindowConfiguration)
+        }
+
+    __slots__: List[str] = ['_input', '_threshold', '_window_configuration']
+
+    def __init__(self, input: "scout_compute_resolved_api_NumericSeriesNode", threshold: "scout_compute_resolved_api_Threshold", window_configuration: "scout_compute_resolved_api_PersistenceWindowConfiguration") -> None:
+        self._input = input
+        self._threshold = threshold
+        self._window_configuration = window_configuration
+
+    @builtins.property
+    def input(self) -> "scout_compute_resolved_api_NumericSeriesNode":
+        return self._input
+
+    @builtins.property
+    def threshold(self) -> "scout_compute_resolved_api_Threshold":
+        return self._threshold
+
+    @builtins.property
+    def window_configuration(self) -> "scout_compute_resolved_api_PersistenceWindowConfiguration":
+        return self._window_configuration
+
+
+scout_compute_resolved_api_StabilityDetectionRangesNode.__name__ = "StabilityDetectionRangesNode"
+scout_compute_resolved_api_StabilityDetectionRangesNode.__qualname__ = "StabilityDetectionRangesNode"
+scout_compute_resolved_api_StabilityDetectionRangesNode.__module__ = "scout_service_api.scout_compute_resolved_api"
+
+
 class scout_compute_resolved_api_StaleRangesNode(ConjureBeanType):
 
     @builtins.classmethod
@@ -38958,6 +40043,83 @@ Picoseconds for picosecond-granularity dataset, nanoseconds otherwise.
 scout_compute_resolved_api_SummarizeSeriesNode.__name__ = "SummarizeSeriesNode"
 scout_compute_resolved_api_SummarizeSeriesNode.__qualname__ = "SummarizeSeriesNode"
 scout_compute_resolved_api_SummarizeSeriesNode.__module__ = "scout_service_api.scout_compute_resolved_api"
+
+
+class scout_compute_resolved_api_Threshold(ConjureUnionType):
+    _absolute: Optional["scout_compute_resolved_api_AbsoluteThreshold"] = None
+    _percentage: Optional["scout_compute_resolved_api_PercentageThreshold"] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'absolute': ConjureFieldDefinition('absolute', scout_compute_resolved_api_AbsoluteThreshold),
+            'percentage': ConjureFieldDefinition('percentage', scout_compute_resolved_api_PercentageThreshold)
+        }
+
+    def __init__(
+            self,
+            absolute: Optional["scout_compute_resolved_api_AbsoluteThreshold"] = None,
+            percentage: Optional["scout_compute_resolved_api_PercentageThreshold"] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (absolute is not None) + (percentage is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if absolute is not None:
+                self._absolute = absolute
+                self._type = 'absolute'
+            if percentage is not None:
+                self._percentage = percentage
+                self._type = 'percentage'
+
+        elif type_of_union == 'absolute':
+            if absolute is None:
+                raise ValueError('a union value must not be None')
+            self._absolute = absolute
+            self._type = 'absolute'
+        elif type_of_union == 'percentage':
+            if percentage is None:
+                raise ValueError('a union value must not be None')
+            self._percentage = percentage
+            self._type = 'percentage'
+
+    @builtins.property
+    def absolute(self) -> Optional["scout_compute_resolved_api_AbsoluteThreshold"]:
+        return self._absolute
+
+    @builtins.property
+    def percentage(self) -> Optional["scout_compute_resolved_api_PercentageThreshold"]:
+        return self._percentage
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, scout_compute_resolved_api_ThresholdVisitor):
+            raise ValueError('{} is not an instance of scout_compute_resolved_api_ThresholdVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'absolute' and self.absolute is not None:
+            return visitor._absolute(self.absolute)
+        if self._type == 'percentage' and self.percentage is not None:
+            return visitor._percentage(self.percentage)
+
+
+scout_compute_resolved_api_Threshold.__name__ = "Threshold"
+scout_compute_resolved_api_Threshold.__qualname__ = "Threshold"
+scout_compute_resolved_api_Threshold.__module__ = "scout_service_api.scout_compute_resolved_api"
+
+
+class scout_compute_resolved_api_ThresholdVisitor:
+
+    @abstractmethod
+    def _absolute(self, absolute: "scout_compute_resolved_api_AbsoluteThreshold") -> Any:
+        pass
+
+    @abstractmethod
+    def _percentage(self, percentage: "scout_compute_resolved_api_PercentageThreshold") -> Any:
+        pass
+
+
+scout_compute_resolved_api_ThresholdVisitor.__name__ = "ThresholdVisitor"
+scout_compute_resolved_api_ThresholdVisitor.__qualname__ = "ThresholdVisitor"
+scout_compute_resolved_api_ThresholdVisitor.__module__ = "scout_service_api.scout_compute_resolved_api"
 
 
 class scout_compute_resolved_api_ThresholdingRangesNode(ConjureBeanType):
@@ -39626,28 +40788,34 @@ class scout_dataexport_api_ResolutionOption(ConjureUnionType):
     """The minimum desired step between adjacent timestamps. If multiple values are available for a timestamp,
 the mean of the values will be used for numeric types and the mode of the values will be used for enum types."""
     _nanoseconds: Optional[int] = None
+    _buckets: Optional[int] = None
     _undecimated: Optional["scout_dataexport_api_UndecimatedResolution"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'nanoseconds': ConjureFieldDefinition('nanoseconds', int),
+            'buckets': ConjureFieldDefinition('buckets', int),
             'undecimated': ConjureFieldDefinition('undecimated', scout_dataexport_api_UndecimatedResolution)
         }
 
     def __init__(
             self,
             nanoseconds: Optional[int] = None,
+            buckets: Optional[int] = None,
             undecimated: Optional["scout_dataexport_api_UndecimatedResolution"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (nanoseconds is not None) + (undecimated is not None) != 1:
+            if (nanoseconds is not None) + (buckets is not None) + (undecimated is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if nanoseconds is not None:
                 self._nanoseconds = nanoseconds
                 self._type = 'nanoseconds'
+            if buckets is not None:
+                self._buckets = buckets
+                self._type = 'buckets'
             if undecimated is not None:
                 self._undecimated = undecimated
                 self._type = 'undecimated'
@@ -39657,6 +40825,11 @@ the mean of the values will be used for numeric types and the mode of the values
                 raise ValueError('a union value must not be None')
             self._nanoseconds = nanoseconds
             self._type = 'nanoseconds'
+        elif type_of_union == 'buckets':
+            if buckets is None:
+                raise ValueError('a union value must not be None')
+            self._buckets = buckets
+            self._type = 'buckets'
         elif type_of_union == 'undecimated':
             if undecimated is None:
                 raise ValueError('a union value must not be None')
@@ -39668,6 +40841,10 @@ the mean of the values will be used for numeric types and the mode of the values
         return self._nanoseconds
 
     @builtins.property
+    def buckets(self) -> Optional[int]:
+        return self._buckets
+
+    @builtins.property
     def undecimated(self) -> Optional["scout_dataexport_api_UndecimatedResolution"]:
         return self._undecimated
 
@@ -39676,6 +40853,8 @@ the mean of the values will be used for numeric types and the mode of the values
             raise ValueError('{} is not an instance of scout_dataexport_api_ResolutionOptionVisitor'.format(visitor.__class__.__name__))
         if self._type == 'nanoseconds' and self.nanoseconds is not None:
             return visitor._nanoseconds(self.nanoseconds)
+        if self._type == 'buckets' and self.buckets is not None:
+            return visitor._buckets(self.buckets)
         if self._type == 'undecimated' and self.undecimated is not None:
             return visitor._undecimated(self.undecimated)
 
@@ -39689,6 +40868,10 @@ class scout_dataexport_api_ResolutionOptionVisitor:
 
     @abstractmethod
     def _nanoseconds(self, nanoseconds: int) -> Any:
+        pass
+
+    @abstractmethod
+    def _buckets(self, buckets: int) -> Any:
         pass
 
     @abstractmethod
@@ -39707,12 +40890,12 @@ class scout_dataexport_api_TimeDomainChannel(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'column_name': ConjureFieldDefinition('columnName', str),
-            'compute_node': ConjureFieldDefinition('computeNode', scout_compute_api_SeriesNode)
+            'compute_node': ConjureFieldDefinition('computeNode', scout_compute_api_Series)
         }
 
     __slots__: List[str] = ['_column_name', '_compute_node']
 
-    def __init__(self, column_name: str, compute_node: "scout_compute_api_SeriesNode") -> None:
+    def __init__(self, column_name: str, compute_node: "scout_compute_api_Series") -> None:
         self._column_name = column_name
         self._compute_node = compute_node
 
@@ -39721,7 +40904,7 @@ class scout_dataexport_api_TimeDomainChannel(ConjureBeanType):
         return self._column_name
 
     @builtins.property
-    def compute_node(self) -> "scout_compute_api_SeriesNode":
+    def compute_node(self) -> "scout_compute_api_Series":
         return self._compute_node
 
 
@@ -41161,15 +42344,16 @@ class scout_datareview_api_CheckAlertsHistogramRequest(ConjureBeanType):
             'assignee_rids': ConjureFieldDefinition('assigneeRids', OptionalTypeWrapper[List[scout_rids_api_UserRid]]),
             'priorities': ConjureFieldDefinition('priorities', OptionalTypeWrapper[List[scout_checks_api_Priority]]),
             'run_rids': ConjureFieldDefinition('runRids', List[scout_run_api_RunRid]),
+            'asset_rids': ConjureFieldDefinition('assetRids', List[scout_rids_api_AssetRid]),
             'pinned_checklist_refs': ConjureFieldDefinition('pinnedChecklistRefs', OptionalTypeWrapper[List[scout_checks_api_PinnedChecklistRef]]),
             'chart_rids': ConjureFieldDefinition('chartRids', OptionalTypeWrapper[List[scout_rids_api_VersionedVizId]]),
             'notebook_rids': ConjureFieldDefinition('notebookRids', OptionalTypeWrapper[List[scout_rids_api_NotebookRid]]),
             'show_archived': ConjureFieldDefinition('showArchived', OptionalTypeWrapper[bool])
         }
 
-    __slots__: List[str] = ['_num_bins', '_search_text', '_distribution_variable', '_sub_group_variable', '_start_time_after', '_start_time_before', '_status', '_check_rids', '_data_review_rids', '_assignee_rids', '_priorities', '_run_rids', '_pinned_checklist_refs', '_chart_rids', '_notebook_rids', '_show_archived']
+    __slots__: List[str] = ['_num_bins', '_search_text', '_distribution_variable', '_sub_group_variable', '_start_time_after', '_start_time_before', '_status', '_check_rids', '_data_review_rids', '_assignee_rids', '_priorities', '_run_rids', '_asset_rids', '_pinned_checklist_refs', '_chart_rids', '_notebook_rids', '_show_archived']
 
-    def __init__(self, distribution_variable: "scout_datareview_api_HistogramDistributionVariable", run_rids: List[str], start_time_after: "api_Timestamp", start_time_before: "api_Timestamp", assignee_rids: Optional[List[str]] = None, chart_rids: Optional[List["scout_rids_api_VersionedVizId"]] = None, check_rids: Optional[List[str]] = None, data_review_rids: Optional[List[str]] = None, notebook_rids: Optional[List[str]] = None, num_bins: Optional[int] = None, pinned_checklist_refs: Optional[List["scout_checks_api_PinnedChecklistRef"]] = None, priorities: Optional[List["scout_checks_api_Priority"]] = None, search_text: Optional[str] = None, show_archived: Optional[bool] = None, status: Optional[List["scout_datareview_api_CheckAlertStatus"]] = None, sub_group_variable: Optional["scout_datareview_api_HistogramSubGroupVariable"] = None) -> None:
+    def __init__(self, asset_rids: List[str], distribution_variable: "scout_datareview_api_HistogramDistributionVariable", run_rids: List[str], start_time_after: "api_Timestamp", start_time_before: "api_Timestamp", assignee_rids: Optional[List[str]] = None, chart_rids: Optional[List["scout_rids_api_VersionedVizId"]] = None, check_rids: Optional[List[str]] = None, data_review_rids: Optional[List[str]] = None, notebook_rids: Optional[List[str]] = None, num_bins: Optional[int] = None, pinned_checklist_refs: Optional[List["scout_checks_api_PinnedChecklistRef"]] = None, priorities: Optional[List["scout_checks_api_Priority"]] = None, search_text: Optional[str] = None, show_archived: Optional[bool] = None, status: Optional[List["scout_datareview_api_CheckAlertStatus"]] = None, sub_group_variable: Optional["scout_datareview_api_HistogramSubGroupVariable"] = None) -> None:
         self._num_bins = num_bins
         self._search_text = search_text
         self._distribution_variable = distribution_variable
@@ -41182,6 +42366,7 @@ class scout_datareview_api_CheckAlertsHistogramRequest(ConjureBeanType):
         self._assignee_rids = assignee_rids
         self._priorities = priorities
         self._run_rids = run_rids
+        self._asset_rids = asset_rids
         self._pinned_checklist_refs = pinned_checklist_refs
         self._chart_rids = chart_rids
         self._notebook_rids = notebook_rids
@@ -41252,6 +42437,10 @@ class scout_datareview_api_CheckAlertsHistogramRequest(ConjureBeanType):
     @builtins.property
     def run_rids(self) -> List[str]:
         return self._run_rids
+
+    @builtins.property
+    def asset_rids(self) -> List[str]:
+        return self._asset_rids
 
     @builtins.property
     def pinned_checklist_refs(self) -> Optional[List["scout_checks_api_PinnedChecklistRef"]]:
@@ -42670,16 +43859,18 @@ If commitId is omitted from a ChecklistRef, it will match all commits.
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'run_rids': ConjureFieldDefinition('runRids', List[scout_run_api_RunRid]),
+            'asset_rids': ConjureFieldDefinition('assetRids', List[scout_rids_api_AssetRid]),
             'checklist_refs': ConjureFieldDefinition('checklistRefs', List[scout_checks_api_ChecklistRef]),
             'next_page_token': ConjureFieldDefinition('nextPageToken', OptionalTypeWrapper[scout_api_Token]),
             'page_size': ConjureFieldDefinition('pageSize', OptionalTypeWrapper[int]),
             'show_archived': ConjureFieldDefinition('showArchived', OptionalTypeWrapper[bool])
         }
 
-    __slots__: List[str] = ['_run_rids', '_checklist_refs', '_next_page_token', '_page_size', '_show_archived']
+    __slots__: List[str] = ['_run_rids', '_asset_rids', '_checklist_refs', '_next_page_token', '_page_size', '_show_archived']
 
-    def __init__(self, checklist_refs: List["scout_checks_api_ChecklistRef"], run_rids: List[str], next_page_token: Optional[str] = None, page_size: Optional[int] = None, show_archived: Optional[bool] = None) -> None:
+    def __init__(self, asset_rids: List[str], checklist_refs: List["scout_checks_api_ChecklistRef"], run_rids: List[str], next_page_token: Optional[str] = None, page_size: Optional[int] = None, show_archived: Optional[bool] = None) -> None:
         self._run_rids = run_rids
+        self._asset_rids = asset_rids
         self._checklist_refs = checklist_refs
         self._next_page_token = next_page_token
         self._page_size = page_size
@@ -42688,6 +43879,10 @@ If commitId is omitted from a ChecklistRef, it will match all commits.
     @builtins.property
     def run_rids(self) -> List[str]:
         return self._run_rids
+
+    @builtins.property
+    def asset_rids(self) -> List[str]:
+        return self._asset_rids
 
     @builtins.property
     def checklist_refs(self) -> List["scout_checks_api_ChecklistRef"]:
@@ -43942,15 +45137,16 @@ class scout_datareview_api_SearchCheckAlertsRequest(ConjureBeanType):
             'assignee_rids': ConjureFieldDefinition('assigneeRids', OptionalTypeWrapper[List[scout_rids_api_UserRid]]),
             'priorities': ConjureFieldDefinition('priorities', OptionalTypeWrapper[List[scout_checks_api_Priority]]),
             'run_rids': ConjureFieldDefinition('runRids', List[scout_run_api_RunRid]),
+            'asset_rids': ConjureFieldDefinition('assetRids', List[scout_rids_api_AssetRid]),
             'pinned_checklist_refs': ConjureFieldDefinition('pinnedChecklistRefs', OptionalTypeWrapper[List[scout_checks_api_PinnedChecklistRef]]),
             'chart_rids': ConjureFieldDefinition('chartRids', OptionalTypeWrapper[List[scout_rids_api_VersionedVizId]]),
             'notebook_rids': ConjureFieldDefinition('notebookRids', OptionalTypeWrapper[List[scout_rids_api_NotebookRid]]),
             'show_archived': ConjureFieldDefinition('showArchived', OptionalTypeWrapper[bool])
         }
 
-    __slots__: List[str] = ['_next_page_token', '_page_size', '_sort_by', '_search_text', '_after', '_before', '_status', '_check_rids', '_data_review_rids', '_assignee_rids', '_priorities', '_run_rids', '_pinned_checklist_refs', '_chart_rids', '_notebook_rids', '_show_archived']
+    __slots__: List[str] = ['_next_page_token', '_page_size', '_sort_by', '_search_text', '_after', '_before', '_status', '_check_rids', '_data_review_rids', '_assignee_rids', '_priorities', '_run_rids', '_asset_rids', '_pinned_checklist_refs', '_chart_rids', '_notebook_rids', '_show_archived']
 
-    def __init__(self, run_rids: List[str], after: Optional["api_Timestamp"] = None, assignee_rids: Optional[List[str]] = None, before: Optional["api_Timestamp"] = None, chart_rids: Optional[List["scout_rids_api_VersionedVizId"]] = None, check_rids: Optional[List[str]] = None, data_review_rids: Optional[List[str]] = None, next_page_token: Optional[str] = None, notebook_rids: Optional[List[str]] = None, page_size: Optional[int] = None, pinned_checklist_refs: Optional[List["scout_checks_api_PinnedChecklistRef"]] = None, priorities: Optional[List["scout_checks_api_Priority"]] = None, search_text: Optional[str] = None, show_archived: Optional[bool] = None, sort_by: Optional["scout_datareview_api_SearchCheckAlertsSortOptions"] = None, status: Optional[List["scout_datareview_api_CheckAlertStatus"]] = None) -> None:
+    def __init__(self, asset_rids: List[str], run_rids: List[str], after: Optional["api_Timestamp"] = None, assignee_rids: Optional[List[str]] = None, before: Optional["api_Timestamp"] = None, chart_rids: Optional[List["scout_rids_api_VersionedVizId"]] = None, check_rids: Optional[List[str]] = None, data_review_rids: Optional[List[str]] = None, next_page_token: Optional[str] = None, notebook_rids: Optional[List[str]] = None, page_size: Optional[int] = None, pinned_checklist_refs: Optional[List["scout_checks_api_PinnedChecklistRef"]] = None, priorities: Optional[List["scout_checks_api_Priority"]] = None, search_text: Optional[str] = None, show_archived: Optional[bool] = None, sort_by: Optional["scout_datareview_api_SearchCheckAlertsSortOptions"] = None, status: Optional[List["scout_datareview_api_CheckAlertStatus"]] = None) -> None:
         self._next_page_token = next_page_token
         self._page_size = page_size
         self._sort_by = sort_by
@@ -43963,6 +45159,7 @@ class scout_datareview_api_SearchCheckAlertsRequest(ConjureBeanType):
         self._assignee_rids = assignee_rids
         self._priorities = priorities
         self._run_rids = run_rids
+        self._asset_rids = asset_rids
         self._pinned_checklist_refs = pinned_checklist_refs
         self._chart_rids = chart_rids
         self._notebook_rids = notebook_rids
@@ -44030,6 +45227,10 @@ class scout_datareview_api_SearchCheckAlertsRequest(ConjureBeanType):
     @builtins.property
     def run_rids(self) -> List[str]:
         return self._run_rids
+
+    @builtins.property
+    def asset_rids(self) -> List[str]:
+        return self._asset_rids
 
     @builtins.property
     def pinned_checklist_refs(self) -> Optional[List["scout_checks_api_PinnedChecklistRef"]]:
@@ -56940,14 +58141,16 @@ class storage_datasource_api_CreateNominalDataSourceRequest(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'id': ConjureFieldDefinition('id', storage_datasource_api_NominalDataSourceId),
-            'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str])
+            'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
+            'granularity': ConjureFieldDefinition('granularity', OptionalTypeWrapper[api_Granularity])
         }
 
-    __slots__: List[str] = ['_id', '_description']
+    __slots__: List[str] = ['_id', '_description', '_granularity']
 
-    def __init__(self, id: str, description: Optional[str] = None) -> None:
+    def __init__(self, id: str, description: Optional[str] = None, granularity: Optional["api_Granularity"] = None) -> None:
         self._id = id
         self._description = description
+        self._granularity = granularity
 
     @builtins.property
     def id(self) -> str:
@@ -56959,6 +58162,14 @@ class storage_datasource_api_CreateNominalDataSourceRequest(ConjureBeanType):
     @builtins.property
     def description(self) -> Optional[str]:
         return self._description
+
+    @builtins.property
+    def granularity(self) -> Optional["api_Granularity"]:
+        """
+        Specifies the timestamp granularity of the datasource (i.e., picosecond or nanosecond scale).
+Defaults to nanosecond granularity.
+        """
+        return self._granularity
 
 
 storage_datasource_api_CreateNominalDataSourceRequest.__name__ = "CreateNominalDataSourceRequest"
@@ -56977,16 +58188,18 @@ class storage_datasource_api_NominalDataSource(ConjureBeanType):
             'rid': ConjureFieldDefinition('rid', storage_datasource_api_NominalDataSourceRid),
             'id': ConjureFieldDefinition('id', storage_datasource_api_NominalDataSourceId),
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
-            'data_last_written_at': ConjureFieldDefinition('dataLastWrittenAt', OptionalTypeWrapper[str])
+            'data_last_written_at': ConjureFieldDefinition('dataLastWrittenAt', OptionalTypeWrapper[str]),
+            'granularity': ConjureFieldDefinition('granularity', api_Granularity)
         }
 
-    __slots__: List[str] = ['_rid', '_id', '_description', '_data_last_written_at']
+    __slots__: List[str] = ['_rid', '_id', '_description', '_data_last_written_at', '_granularity']
 
-    def __init__(self, id: str, rid: str, data_last_written_at: Optional[str] = None, description: Optional[str] = None) -> None:
+    def __init__(self, granularity: "api_Granularity", id: str, rid: str, data_last_written_at: Optional[str] = None, description: Optional[str] = None) -> None:
         self._rid = rid
         self._id = id
         self._description = description
         self._data_last_written_at = data_last_written_at
+        self._granularity = granularity
 
     @builtins.property
     def rid(self) -> str:
@@ -57007,6 +58220,10 @@ class storage_datasource_api_NominalDataSource(ConjureBeanType):
 Will be accurate to within 1 minute.
         """
         return self._data_last_written_at
+
+    @builtins.property
+    def granularity(self) -> "api_Granularity":
+        return self._granularity
 
 
 storage_datasource_api_NominalDataSource.__name__ = "NominalDataSource"
@@ -57124,6 +58341,64 @@ storage_datasource_api_NominalDataSourceService.__qualname__ = "NominalDataSourc
 storage_datasource_api_NominalDataSourceService.__module__ = "scout_service_api.storage_datasource_api"
 
 
+class storage_series_api_BatchCreateOrGetResponse(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'created_series': ConjureFieldDefinition('createdSeries', List[storage_series_api_NominalSeries]),
+            'existing_series': ConjureFieldDefinition('existingSeries', List[storage_series_api_NominalSeries])
+        }
+
+    __slots__: List[str] = ['_created_series', '_existing_series']
+
+    def __init__(self, created_series: List["storage_series_api_NominalSeries"], existing_series: List["storage_series_api_NominalSeries"]) -> None:
+        self._created_series = created_series
+        self._existing_series = existing_series
+
+    @builtins.property
+    def created_series(self) -> List["storage_series_api_NominalSeries"]:
+        return self._created_series
+
+    @builtins.property
+    def existing_series(self) -> List["storage_series_api_NominalSeries"]:
+        return self._existing_series
+
+
+storage_series_api_BatchCreateOrGetResponse.__name__ = "BatchCreateOrGetResponse"
+storage_series_api_BatchCreateOrGetResponse.__qualname__ = "BatchCreateOrGetResponse"
+storage_series_api_BatchCreateOrGetResponse.__module__ = "scout_service_api.storage_series_api"
+
+
+class storage_series_api_BatchUpdateLastTouchedAtRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'requests': ConjureFieldDefinition('requests', List[storage_series_api_UpdateLastTouchedAtRequest]),
+            'time': ConjureFieldDefinition('time', api_Timestamp)
+        }
+
+    __slots__: List[str] = ['_requests', '_time']
+
+    def __init__(self, requests: List["storage_series_api_UpdateLastTouchedAtRequest"], time: "api_Timestamp") -> None:
+        self._requests = requests
+        self._time = time
+
+    @builtins.property
+    def requests(self) -> List["storage_series_api_UpdateLastTouchedAtRequest"]:
+        return self._requests
+
+    @builtins.property
+    def time(self) -> "api_Timestamp":
+        return self._time
+
+
+storage_series_api_BatchUpdateLastTouchedAtRequest.__name__ = "BatchUpdateLastTouchedAtRequest"
+storage_series_api_BatchUpdateLastTouchedAtRequest.__qualname__ = "BatchUpdateLastTouchedAtRequest"
+storage_series_api_BatchUpdateLastTouchedAtRequest.__module__ = "scout_service_api.storage_series_api"
+
+
 class storage_series_api_CreateSeriesRequest(ConjureBeanType):
 
     @builtins.classmethod
@@ -57163,6 +58438,44 @@ class storage_series_api_CreateSeriesRequest(ConjureBeanType):
 storage_series_api_CreateSeriesRequest.__name__ = "CreateSeriesRequest"
 storage_series_api_CreateSeriesRequest.__qualname__ = "CreateSeriesRequest"
 storage_series_api_CreateSeriesRequest.__module__ = "scout_service_api.storage_series_api"
+
+
+class storage_series_api_GetSeriesByChannelAndTagsRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'channel': ConjureFieldDefinition('channel', storage_series_api_Channel),
+            'data_source_rid': ConjureFieldDefinition('dataSourceRid', storage_datasource_api_NominalDataSourceRid),
+            'tags': ConjureFieldDefinition('tags', Dict[api_TagName, api_TagValue])
+        }
+
+    __slots__: List[str] = ['_channel', '_data_source_rid', '_tags']
+
+    def __init__(self, channel: str, data_source_rid: str, tags: Dict[str, str]) -> None:
+        self._channel = channel
+        self._data_source_rid = data_source_rid
+        self._tags = tags
+
+    @builtins.property
+    def channel(self) -> str:
+        return self._channel
+
+    @builtins.property
+    def data_source_rid(self) -> str:
+        return self._data_source_rid
+
+    @builtins.property
+    def tags(self) -> Dict[str, str]:
+        """
+        Returns a series that match this set of tags exactly.
+        """
+        return self._tags
+
+
+storage_series_api_GetSeriesByChannelAndTagsRequest.__name__ = "GetSeriesByChannelAndTagsRequest"
+storage_series_api_GetSeriesByChannelAndTagsRequest.__qualname__ = "GetSeriesByChannelAndTagsRequest"
+storage_series_api_GetSeriesByChannelAndTagsRequest.__module__ = "scout_service_api.storage_series_api"
 
 
 class storage_series_api_NominalDataType(ConjureEnumType):
@@ -57301,6 +58614,40 @@ Excludes series that do not exist or are unauthorized. A maximum of 1000 rids ca
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), List[storage_series_api_NominalSeries], self._return_none_for_unknown_union_types)
 
+    def batch_get_by_channel_and_tags(self, auth_header: str, request: List["storage_series_api_GetSeriesByChannelAndTagsRequest"] = None) -> List["storage_series_api_NominalSeries"]:
+        """
+        Retrieves series that match the requested data source, channel name and tags exactly.
+Omits series that do not exist or are unauthorized. A maximum of 1000 rids can be requested.
+        """
+        request = request if request is not None else []
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/storage/series/v1/batch-get-by-channel-and-tags'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), List[storage_series_api_NominalSeries], self._return_none_for_unknown_union_types)
+
     def create_or_get(self, auth_header: str, request: "storage_series_api_CreateSeriesRequest") -> "storage_series_api_NominalSeries":
         """
         Creates a new series if it doesn't already exist.
@@ -57337,12 +58684,6 @@ Returns the series that was created or the existing series.
         return _decoder.decode(_response.json(), storage_series_api_NominalSeries, self._return_none_for_unknown_union_types)
 
     def batch_create_or_get(self, auth_header: str, request: List["storage_series_api_CreateSeriesRequest"] = None) -> List["storage_series_api_NominalSeries"]:
-        """
-        Creates new series if they don't already exist.
-
-A series exists if there is already a series with the same channel name and tag values in the data source.
-Returns series that were created and any existing series.
-        """
         request = request if request is not None else []
 
         _headers: Dict[str, Any] = {
@@ -57371,6 +58712,74 @@ Returns series that were created and any existing series.
 
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), List[storage_series_api_NominalSeries], self._return_none_for_unknown_union_types)
+
+    def batch_create_or_get_v2(self, auth_header: str, request: List["storage_series_api_CreateSeriesRequest"] = None) -> "storage_series_api_BatchCreateOrGetResponse":
+        """
+        Creates new series if they don't already exist.
+
+A series exists if there is already a series with the same channel name and tag values in the data source.
+Returns series that were created and any existing series.
+        """
+        request = request if request is not None else []
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/storage/series/v1/batch-create-or-get'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), storage_series_api_BatchCreateOrGetResponse, self._return_none_for_unknown_union_types)
+
+    def update_last_touched_at(self, auth_header: str, request: "storage_series_api_BatchUpdateLastTouchedAtRequest") -> None:
+        """
+        Updates the last touched at time for series. The last touched at time represents the last time a series
+had data written to it.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/storage/series/v1/update-last-touched'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        return
 
     def search(self, auth_header: str, request: "storage_series_api_SearchSeriesRequest") -> "storage_series_api_SearchSeriesResponse":
         """
@@ -57470,6 +58879,87 @@ class storage_series_api_SearchSeriesResponse(ConjureBeanType):
 storage_series_api_SearchSeriesResponse.__name__ = "SearchSeriesResponse"
 storage_series_api_SearchSeriesResponse.__qualname__ = "SearchSeriesResponse"
 storage_series_api_SearchSeriesResponse.__module__ = "scout_service_api.storage_series_api"
+
+
+class storage_series_api_UpdateLastTouchedAtRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'data_source_rid': ConjureFieldDefinition('dataSourceRid', storage_datasource_api_NominalDataSourceRid),
+            'channel': ConjureFieldDefinition('channel', storage_series_api_Channel),
+            'tags': ConjureFieldDefinition('tags', Dict[api_TagName, api_TagValue])
+        }
+
+    __slots__: List[str] = ['_data_source_rid', '_channel', '_tags']
+
+    def __init__(self, channel: str, data_source_rid: str, tags: Dict[str, str]) -> None:
+        self._data_source_rid = data_source_rid
+        self._channel = channel
+        self._tags = tags
+
+    @builtins.property
+    def data_source_rid(self) -> str:
+        return self._data_source_rid
+
+    @builtins.property
+    def channel(self) -> str:
+        return self._channel
+
+    @builtins.property
+    def tags(self) -> Dict[str, str]:
+        return self._tags
+
+
+storage_series_api_UpdateLastTouchedAtRequest.__name__ = "UpdateLastTouchedAtRequest"
+storage_series_api_UpdateLastTouchedAtRequest.__qualname__ = "UpdateLastTouchedAtRequest"
+storage_series_api_UpdateLastTouchedAtRequest.__module__ = "scout_service_api.storage_series_api"
+
+
+class storage_writer_api_DirectNominalChannelWriterService(Service):
+    """
+    Writes data points directly to Nominal's managed database offering.
+    """
+
+    def write_batches(self, auth_header: str, request: "storage_writer_api_WriteBatchesRequest") -> None:
+        """
+        Synchronously writes batches of records to a Nominal data source. This endpoint bypasses the
+Channel Writer service entirely, and should only be used if the implications are well understood.
+
+If you call this endpoint, writes will go directly into Nominal DB and will not be placed in Nominal's
+durable queue. This results in lower latency, but also consequently lower durability.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/storage/direct-writer/v1'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        return
+
+
+storage_writer_api_DirectNominalChannelWriterService.__name__ = "DirectNominalChannelWriterService"
+storage_writer_api_DirectNominalChannelWriterService.__qualname__ = "DirectNominalChannelWriterService"
+storage_writer_api_DirectNominalChannelWriterService.__module__ = "scout_service_api.storage_writer_api"
 
 
 class storage_writer_api_DoublePoint(ConjureBeanType):
@@ -59093,12 +60583,12 @@ class timeseries_logicalseries_api_CreateLogicalSeries(ConjureBeanType):
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
             'unit': ConjureFieldDefinition('unit', OptionalTypeWrapper[timeseries_logicalseries_api_Unit]),
             'series_data_type': ConjureFieldDefinition('seriesDataType', OptionalTypeWrapper[timeseries_logicalseries_api_SeriesDataType]),
-            'granularity': ConjureFieldDefinition('granularity', OptionalTypeWrapper[api_TimeUnit])
+            'granularity': ConjureFieldDefinition('granularity', OptionalTypeWrapper[api_Granularity])
         }
 
     __slots__: List[str] = ['_channel', '_locator', '_id_locator', '_data_source_rid', '_description', '_unit', '_series_data_type', '_granularity']
 
-    def __init__(self, channel: str, data_source_rid: str, locator: "timeseries_logicalseries_api_Locator", description: Optional[str] = None, granularity: Optional["api_TimeUnit"] = None, id_locator: Optional[str] = None, series_data_type: Optional["timeseries_logicalseries_api_SeriesDataType"] = None, unit: Optional[str] = None) -> None:
+    def __init__(self, channel: str, data_source_rid: str, locator: "timeseries_logicalseries_api_Locator", description: Optional[str] = None, granularity: Optional["api_Granularity"] = None, id_locator: Optional[str] = None, series_data_type: Optional["timeseries_logicalseries_api_SeriesDataType"] = None, unit: Optional[str] = None) -> None:
         self._channel = channel
         self._locator = locator
         self._id_locator = id_locator
@@ -59141,7 +60631,7 @@ with this id, will throw a CONFLICT.
         return self._series_data_type
 
     @builtins.property
-    def granularity(self) -> Optional["api_TimeUnit"]:
+    def granularity(self) -> Optional["api_Granularity"]:
         return self._granularity
 
 
@@ -59646,12 +61136,12 @@ class timeseries_logicalseries_api_LogicalSeries(ConjureBeanType):
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
             'unit': ConjureFieldDefinition('unit', OptionalTypeWrapper[timeseries_logicalseries_api_Unit]),
             'series_data_type': ConjureFieldDefinition('seriesDataType', OptionalTypeWrapper[timeseries_logicalseries_api_SeriesDataType]),
-            'granularity': ConjureFieldDefinition('granularity', api_TimeUnit)
+            'granularity': ConjureFieldDefinition('granularity', api_Granularity)
         }
 
     __slots__: List[str] = ['_rid', '_data_source_rid', '_locator', '_time_locator', '_channel', '_description', '_unit', '_series_data_type', '_granularity']
 
-    def __init__(self, channel: str, data_source_rid: str, granularity: "api_TimeUnit", locator: "timeseries_logicalseries_api_Locator", rid: str, description: Optional[str] = None, series_data_type: Optional["timeseries_logicalseries_api_SeriesDataType"] = None, time_locator: Optional["timeseries_logicalseries_api_Locator"] = None, unit: Optional[str] = None) -> None:
+    def __init__(self, channel: str, data_source_rid: str, granularity: "api_Granularity", locator: "timeseries_logicalseries_api_Locator", rid: str, description: Optional[str] = None, series_data_type: Optional["timeseries_logicalseries_api_SeriesDataType"] = None, time_locator: Optional["timeseries_logicalseries_api_Locator"] = None, unit: Optional[str] = None) -> None:
         self._rid = rid
         self._data_source_rid = data_source_rid
         self._locator = locator
@@ -59698,7 +61188,7 @@ class timeseries_logicalseries_api_LogicalSeries(ConjureBeanType):
         return self._series_data_type
 
     @builtins.property
-    def granularity(self) -> "api_TimeUnit":
+    def granularity(self) -> "api_Granularity":
         """
         Time granularity of the series. If omitted, defaults to nanoseconds.
         """
@@ -61321,6 +62811,8 @@ scout_rids_api_FunctionLineageRid = str
 
 scout_rids_api_SnapshotRid = str
 
+scout_rids_api_TypeRid = str
+
 scout_datasource_connection_api_SecretRid = str
 
 scout_rids_api_AttachmentRid = str
@@ -61420,8 +62912,6 @@ scout_channelvariables_api_ComputeSpecV1 = str
 scout_video_api_VideoRid = str
 
 ingest_api_PropertyValue = str
-
-authorization_OrgRid = str
 
 scout_datasource_connection_api_influx_OrgId = str
 
