@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
 
+import requests
 from conjure_python_client import RequestsClient, ServiceConfiguration
 from typing_extensions import Self
 
@@ -32,6 +33,8 @@ from nominal._api.combined import (
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
+    requests_session: requests.Session
+    """The session should be used for requests to utilize the same cert as conjure calls."""
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
@@ -56,11 +59,13 @@ class ClientsBunch:
     notebook: scout.NotebookService
 
     @classmethod
-    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
+    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, trust_store_path: str) -> Self:
         client_factory = partial(RequestsClient.create, user_agent=agent, service_config=cfg)
-
+        requests_session = requests.Session()
+        requests_session.cert = trust_store_path
         return cls(
             auth_header=f"Bearer {token}",
+            requests_session=requests_session,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
@@ -88,3 +93,8 @@ class ClientsBunch:
 class HasAuthHeader(Protocol):
     @property
     def auth_header(self) -> str: ...
+
+
+class HasRequestsSession(Protocol):
+    @property
+    def requests_session(self) -> requests.Session: ...

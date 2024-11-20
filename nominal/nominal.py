@@ -4,7 +4,7 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Mapping, Sequence
+from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
 from nominal import Connection, _config, ts
 from nominal._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
@@ -14,6 +14,7 @@ from nominal.core import (
     Checklist,
     ChecklistBuilder,
     Dataset,
+    Log,
     LogSet,
     NominalClient,
     Run,
@@ -583,3 +584,18 @@ def create_workbook_from_template(
     """
     conn = get_default_client()
     return conn.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
+
+
+def create_log_set(
+    name: str,
+    logs: Iterable[Log] | Iterable[tuple[datetime | ts.IntegralNanosecondsUTC, str]],
+    timestamp_type: ts.LogTimestampType = "absolute",
+    description: str | None = None,
+) -> LogSet:
+    """Create an immutable log set with the given logs.
+
+    The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
+    or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
+    """
+    conn = get_default_client()
+    return conn.create_log_set(name, logs, timestamp_type, description)
