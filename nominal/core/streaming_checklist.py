@@ -36,7 +36,8 @@ class StreamingChecklist(HasRid):
                 notification_configurations=[
                     scout_integrations_api.NotificationConfiguration(c) for c in notification_configurations or []
                 ],
-                stream_delay=scout_run_api.Duration(seconds=0, nanos=0),
+                evaluation_delay=scout_run_api.Duration(seconds=0, nanos=0),
+                recovery_delay=scout_run_api.Duration(seconds=0, nanos=0),
             ),
         )
 
