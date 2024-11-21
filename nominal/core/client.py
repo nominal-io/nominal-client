@@ -83,7 +83,7 @@ class NominalClient:
             connect_timeout=connect_timeout,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, trust_store_path))
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
@@ -234,12 +234,7 @@ class NominalClient:
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(
-            self._clients.auth_header,
-            self._clients.upload,
-            self._clients.requests_session,
-            dataset,
-            filename,
-            file_type.mimetype,
+            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
         )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
@@ -285,12 +280,7 @@ class NominalClient:
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(
-            self._clients.auth_header,
-            self._clients.upload,
-            self._clients.requests_session,
-            video,
-            filename,
-            file_type.mimetype,
+            self._clients.auth_header, video, filename, file_type.mimetype, self._clients.upload
         )
         request = ingest_api.IngestVideoRequest(
             labels=list(labels),
@@ -437,12 +427,7 @@ class NominalClient:
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(
-            self._clients.auth_header,
-            self._clients.upload,
-            self._clients.requests_session,
-            attachment,
-            filename,
-            file_type.mimetype,
+            self._clients.auth_header, attachment, filename, file_type.mimetype, self._clients.upload
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
@@ -565,12 +550,7 @@ class NominalClient:
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(
-            self._clients.auth_header,
-            self._clients.upload,
-            self._clients.requests_session,
-            mcap,
-            filename,
-            file_type.mimetype,
+            self._clients.auth_header, mcap, filename, file_type.mimetype, self._clients.upload
         )
         request = ingest_api.IngestMcapRequest(
             channel_config=[
