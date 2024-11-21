@@ -25,7 +25,7 @@ from nominal._api.combined import (
     upload_api,
 )
 from nominal._utils import FileType, FileTypes
-from nominal.core._clientsbunch import HasAuthHeader, HasRequestsSession
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import put_multipart_upload
 from nominal.core._utils import HasRid, update_dataclass
@@ -66,7 +66,7 @@ class Dataset(HasRid):
     bounds: DatasetBounds | None
     _clients: _Clients = field(repr=False)
 
-    class _Clients(Channel._Clients, HasAuthHeader, HasRequestsSession, Protocol):
+    class _Clients(Channel._Clients, HasAuthHeader, Protocol):
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
@@ -187,12 +187,7 @@ class Dataset(HasRid):
         urlsafe_name = urllib.parse.quote_plus(self.name)
         filename = f"{urlsafe_name}{file_type.extension}"
         s3_path = put_multipart_upload(
-            self._clients.auth_header,
-            self._clients.upload,
-            self._clients.requests_session,
-            dataset,
-            filename,
-            file_type.mimetype,
+            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
         )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
