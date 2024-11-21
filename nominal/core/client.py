@@ -84,7 +84,7 @@ class NominalClient:
             connect_timeout=connect_timeout,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, trust_store_path))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
@@ -235,7 +235,12 @@ class NominalClient:
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(
-            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
+            self._clients.auth_header,
+            self._clients.upload,
+            self._clients.requests_session,
+            dataset,
+            filename,
+            file_type.mimetype,
         )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
@@ -281,7 +286,12 @@ class NominalClient:
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(
-            self._clients.auth_header, video, filename, file_type.mimetype, self._clients.upload
+            self._clients.auth_header,
+            self._clients.upload,
+            self._clients.requests_session,
+            video,
+            filename,
+            file_type.mimetype,
         )
         request = ingest_api.IngestVideoRequest(
             labels=list(labels),
@@ -347,7 +357,7 @@ class NominalClient:
 
     def get_log_set(self, log_set_rid: str) -> LogSet:
         """Retrieve a log set along with its metadata given its RID."""
-        response = _get_log_set(self._clients.auth_header, self._clients.logset, log_set_rid)
+        response = _get_log_set(self._clients, log_set_rid)
         return LogSet._from_conjure(self._clients, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
@@ -428,7 +438,12 @@ class NominalClient:
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(
-            self._clients.auth_header, attachment, filename, file_type.mimetype, self._clients.upload
+            self._clients.auth_header,
+            self._clients.upload,
+            self._clients.requests_session,
+            attachment,
+            filename,
+            file_type.mimetype,
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
@@ -551,7 +566,12 @@ class NominalClient:
         filename = f"{urlsafe_name}{file_type.extension}"
 
         s3_path = put_multipart_upload(
-            self._clients.auth_header, mcap, filename, file_type.mimetype, self._clients.upload
+            self._clients.auth_header,
+            self._clients.upload,
+            self._clients.requests_session,
+            mcap,
+            filename,
+            file_type.mimetype,
         )
         request = ingest_api.IngestMcapRequest(
             channel_config=[
@@ -667,6 +687,49 @@ class NominalClient:
             raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
         return Asset._from_conjure(self._clients, response[rid])
 
+    def _search_assets_paginated(self, request: scout_asset_api.SearchAssetsRequest) -> Iterable[scout_asset_api.Asset]:
+        while True:
+            response = self._clients.assets.search_assets(self._clients.auth_header, request)
+            yield from response.results
+            if response.next_page_token is None:
+                break
+            request = scout_asset_api.SearchAssetsRequest(
+                page_size=request.page_size,
+                query=request.query,
+                sort=request.sort,
+                next_page_token=response.next_page_token,
+            )
+
+    def _iter_search_assets(
+        self,
+        search_text: str | None = None,
+        label: str | None = None,
+        property: tuple[str, str] | None = None,
+    ) -> Iterable[Asset]:
+        request = scout_asset_api.SearchAssetsRequest(
+            page_size=100,
+            query=_create_search_assets_query(search_text, label, property),
+            sort=scout_asset_api.SortOptions(
+                field=scout_asset_api.SortField.CREATED_AT,
+                is_descending=True,
+            ),
+        )
+        for asset in self._search_assets_paginated(request):
+            yield Asset._from_conjure(self._clients, asset)
+
+    def search_assets(
+        self,
+        search_text: str | None = None,
+        label: str | None = None,
+        property: tuple[str, str] | None = None,
+    ) -> Sequence[Asset]:
+        """Search for assets meeting the specified filters.
+        Filters are ANDed together, e.g. `(asset.label == label) AND (asset.property == property)`
+        - `search_text`: search case-insensitive for any of the keywords in all string fields.
+        - `property` is a key-value pair, e.g. ("name", "value")
+        """
+        return list(self._iter_search_assets(search_text, label, property))
+
     def get_streaming_checklist(self, rid: str) -> StreamingChecklist:
         """Retrieve a Streaming Checklist by its RID."""
         response = self._clients.checklist_execution.get_streaming_checklist(self._clients.auth_header, rid)
@@ -730,3 +793,22 @@ def _logs_to_conjure(
         elif isinstance(log, tuple):
             ts, body = log
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
+
+
+def _create_search_assets_query(
+    search_text: str | None = None,
+    label: str | None = None,
+    property: tuple[str, str] | None = None,
+) -> scout_asset_api.SearchAssetsQuery:
+    queries = []
+    if search_text is not None:
+        q = scout_asset_api.SearchAssetsQuery(search_text=search_text)
+        queries.append(q)
+    if label is not None:
+        q = scout_asset_api.SearchAssetsQuery(label=label)
+        queries.append(q)
+    if property is not None:
+        name, value = property
+        q = scout_asset_api.SearchAssetsQuery(property=scout_run_api.Property(name=name, value=value))
+        queries.append(q)
+    return scout_asset_api.SearchAssetsQuery(and_=queries)

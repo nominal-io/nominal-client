@@ -380,27 +380,27 @@ def _batch_create_variable_to_conjure(
 
 
 class _ComputeNodeVisitor(scout_compute_api.ComputeNodeVisitor):
-    def _enum(self, enum: scout_compute_api.EnumSeriesNode) -> scout_compute_representation_api.Node:
+    def _enum(self, enum: scout_compute_api.EnumSeries) -> scout_compute_representation_api.Node:
         return scout_compute_representation_api.Node(enumerated_series=enum)
 
-    def _numeric(self, numeric: scout_compute_api.NumericSeriesNode) -> scout_compute_representation_api.Node:
+    def _numeric(self, numeric: scout_compute_api.NumericSeries) -> scout_compute_representation_api.Node:
         return scout_compute_representation_api.Node(numeric_series=numeric)
 
-    def _ranges(self, ranges: scout_compute_api.RangesNode) -> scout_compute_representation_api.Node:
+    def _ranges(self, ranges: scout_compute_api.RangeSeries) -> scout_compute_representation_api.Node:
         return scout_compute_representation_api.Node(range_series=ranges)
 
-    def _raw(self, raw: scout_compute_api.RawUntypedSeriesNode) -> scout_compute_representation_api.Node:
+    def _raw(self, raw: scout_compute_api.Reference) -> scout_compute_representation_api.Node:
         raise ValueError("Raw nodes are not yet supported by the client library")
 
 
 class _NodeVisitor(scout_compute_representation_api.NodeVisitor):
-    def _enumerated_series(self, enumerated_series: scout_compute_api.EnumSeriesNode) -> scout_compute_api.ComputeNode:
+    def _enumerated_series(self, enumerated_series: scout_compute_api.EnumSeries) -> scout_compute_api.ComputeNode:
         return scout_compute_api.ComputeNode(enum=enumerated_series)
 
-    def _numeric_series(self, numeric_series: scout_compute_api.NumericSeriesNode) -> scout_compute_api.ComputeNode:
+    def _numeric_series(self, numeric_series: scout_compute_api.NumericSeries) -> scout_compute_api.ComputeNode:
         return scout_compute_api.ComputeNode(numeric=numeric_series)
 
-    def _range_series(self, range_series: scout_compute_api.RangesNode) -> scout_compute_api.ComputeNode:
+    def _range_series(self, range_series: scout_compute_api.RangeSeries) -> scout_compute_api.ComputeNode:
         return scout_compute_api.ComputeNode(ranges=range_series)
 
 

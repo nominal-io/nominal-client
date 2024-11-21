@@ -15,8 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 def _sign_and_upload_part_job(
-    upload_client: upload_api.UploadService,
     auth_header: str,
+    upload_client: upload_api.UploadService,
+    session: requests.Session,
     key: str,
     upload_id: str,
     q: Queue[bytes],
@@ -29,7 +30,7 @@ def _sign_and_upload_part_job(
             "successfully signed multipart upload part",
             extra={"key": key, "part": part, "upload_id": upload_id, "response.url": response.url},
         )
-        put_response = requests.put(response.url, data=data, headers=response.headers)
+        put_response = session.put(response.url, data=data, headers=response.headers)
         logger.debug(
             "put multipart upload part",
             extra={"url": response.url, "size": len(data), "status_code": put_response.status_code},
@@ -50,10 +51,11 @@ def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
 
 def put_multipart_upload(
     auth_header: str,
+    upload_client: upload_api.UploadService,
+    session: requests.Session,
     f: BinaryIO,
     filename: str,
     mimetype: str,
-    upload_client: upload_api.UploadService,
     chunk_size: int = 64_000_000,
     max_workers: int = 8,
 ) -> str:
@@ -78,7 +80,7 @@ def put_multipart_upload(
     initiate_request = ingest_api.InitiateMultipartUploadRequest(filename=filename, filetype=mimetype)
     initiate_response = upload_client.initiate_multipart_upload(auth_header, initiate_request)
     key, upload_id = initiate_response.key, initiate_response.upload_id
-    _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, auth_header, key, upload_id, q)
+    _sign_and_upload_part = partial(_sign_and_upload_part_job, auth_header, upload_client, session, key, upload_id, q)
 
     jobs: list[concurrent.futures.Future[requests.Response]] = []
 

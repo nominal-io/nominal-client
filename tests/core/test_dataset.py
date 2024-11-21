@@ -26,7 +26,7 @@ def mock_clients():
 
 @pytest.fixture
 def mock_dataset(mock_clients):
-    return Dataset(
+    ds = Dataset(
         rid="test-rid",
         name="Test Dataset",
         description="A dataset for testing",
@@ -35,6 +35,12 @@ def mock_dataset(mock_clients):
         labels=[],
         _clients=mock_clients,
     )
+
+    spy = MagicMock(wraps=ds.refresh)
+    object.__setattr__(ds, "refresh", spy)
+    ds.refresh.return_value = ds
+
+    return ds
 
 
 @patch("nominal.core.dataset._available_units", return_value=UNITS)
@@ -124,7 +130,6 @@ def test_poll_until_ingestion_completed_success(mock_sleep: MagicMock, mock_data
     )
 
     mock_dataset.poll_until_ingestion_completed(interval=timedelta(seconds=1))
-
     mock_dataset._clients.catalog.get_ingest_progress_v2.assert_called()
 
 

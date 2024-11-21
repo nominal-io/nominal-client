@@ -25,7 +25,7 @@ from nominal._api.combined import (
     upload_api,
 )
 from nominal._utils import FileType, FileTypes
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasAuthHeader, HasRequestsSession
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import put_multipart_upload
 from nominal.core._utils import HasRid, update_dataclass
@@ -66,7 +66,7 @@ class Dataset(HasRid):
     bounds: DatasetBounds | None
     _clients: _Clients = field(repr=False)
 
-    class _Clients(Channel._Clients, HasAuthHeader, Protocol):
+    class _Clients(Channel._Clients, HasAuthHeader, HasRequestsSession, Protocol):
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
@@ -88,7 +88,7 @@ class Dataset(HasRid):
         # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
         return f"https://app.gov.nominal.io/data-sources/{self.rid}"
 
-    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
+    def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
@@ -101,7 +101,7 @@ class Dataset(HasRid):
         while True:
             progress = self._clients.catalog.get_ingest_progress_v2(self._clients.auth_header, self.rid)
             if progress.ingest_status.type == "success":
-                return
+                break
             elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
                 pass
             elif progress.ingest_status.type == "error":
@@ -118,6 +118,17 @@ class Dataset(HasRid):
                     f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
                 )
             time.sleep(interval.total_seconds())
+
+        # Update metadata now that data has successfully ingested
+        return self.refresh()
+
+    def refresh(self) -> Self:
+        updated_dataset = self.__class__._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid),
+        )
+        update_dataclass(self, updated_dataset, fields=self.__dataclass_fields__)
+        return self
 
     def update(
         self,
@@ -146,11 +157,9 @@ class Dataset(HasRid):
             name=name,
             properties=None if properties is None else dict(properties),
         )
-        response = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
+        self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
 
-        dataset = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, dataset, fields=self.__dataclass_fields__)
-        return self
+        return self.refresh()
 
     def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
@@ -178,7 +187,12 @@ class Dataset(HasRid):
         urlsafe_name = urllib.parse.quote_plus(self.name)
         filename = f"{urlsafe_name}{file_type.extension}"
         s3_path = put_multipart_upload(
-            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
+            self._clients.auth_header,
+            self._clients.upload,
+            self._clients.requests_session,
+            dataset,
+            filename,
+            file_type.mimetype,
         )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(

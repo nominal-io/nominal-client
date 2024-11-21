@@ -1,4 +1,4 @@
-site_name: "Nominal Python SDK"
+site_name: "Nominal Python SDK: Function Reference"
 repo_url: "https://github.com/nominal-io/nominal-client"
 repo_name: "nominal-io/nominal-client"
 site_dir: "site"
@@ -20,8 +20,6 @@ nav:
       - Overview: index.md
       - Changelog: changelog.md
       - License: license.md
-  - Usage:
-      - Examples: usage/examples.md
   - Reference:
       - High-level SDK: reference/toplevel.md
       - Timestamps: reference/ts.md
@@ -30,6 +28,7 @@ nav:
       - nom cli: reference/nom-cli.md
   - Development:
       - Contributing: contributing.md
+  - Documentation: https://docs.nominal.io/python/quickstart
   - Nominal: https://nominal.io
 
 theme:

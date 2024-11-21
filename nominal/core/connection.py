@@ -4,15 +4,18 @@ import itertools
 import logging
 from dataclasses import dataclass, field
 from itertools import groupby
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal._api.combined import (
     datasource_api,
+    scout_datasource,
+    scout_datasource_connection,
     scout_datasource_connection_api,
     storage_writer_api,
+    timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
-from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, NominalWriteStream
@@ -25,11 +28,21 @@ class Connection(HasRid):
     name: str
     description: str | None
     _tags: Mapping[str, Sequence[str]]
-    _clients: ClientsBunch = field(repr=False)
+    _clients: _Clients = field(repr=False)
     _nominal_data_source_rid: str | None = None
 
+    class _Clients(Channel._Clients, HasAuthHeader, Protocol):
+        @property
+        def connection(self) -> scout_datasource_connection.ConnectionService: ...
+        @property
+        def datasource(self) -> scout_datasource.DataSourceService: ...
+        @property
+        def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
+        @property
+        def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
+
     @classmethod
-    def _from_conjure(cls, clients: ClientsBunch, response: scout_datasource_connection_api.Connection) -> Connection:
+    def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection:
         return cls(
             rid=response.rid,
             name=response.display_name,
@@ -165,28 +178,43 @@ class Connection(HasRid):
 
         api_batches = [list(api_batch) for _, api_batch in api_batched]
 
+        request = storage_writer_api.WriteBatchesRequest(
+            data_source_rid=self._nominal_data_source_rid,
+            batches=[
+                storage_writer_api.RecordsBatch(
+                    channel=api_batch[0].channel_name,
+                    points=storage_writer_api.Points(
+                        double=[
+                            storage_writer_api.DoublePoint(
+                                timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                                value=item.value,
+                            )
+                            for item in api_batch
+                        ]
+                    ),
+                    tags=api_batch[0].tags or {},
+                )
+                for api_batch in api_batches
+            ],
+        )
         self._clients.storage_writer.write_batches(
             self._clients.auth_header,
-            storage_writer_api.WriteBatchesRequest(
-                data_source_rid=self._nominal_data_source_rid,
-                batches=[
-                    storage_writer_api.RecordsBatch(
-                        channel=api_batch[0].channel_name,
-                        points=storage_writer_api.Points(
-                            double=[
-                                storage_writer_api.DoublePoint(
-                                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                                    value=item.value,
-                                )
-                                for item in api_batch
-                            ]
-                        ),
-                        tags=api_batch[0].tags or {},
-                    )
-                    for api_batch in api_batches
-                ],
-            ),
+            request,
         )
+
+    def archive(self) -> None:
+        """Archive this connection, hiding it in the UI."""
+        self._clients.connection.archive_connection(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive this connection, making it visible in the UI."""
+        self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
+
+
+def _get_connections(
+    clients: Connection._Clients, connection_rids: Sequence[str]
+) -> Sequence[scout_datasource_connection_api.Connection]:
+    return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
 
 
 def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]]]:

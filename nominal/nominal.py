@@ -4,7 +4,7 @@ from datetime import datetime
 from functools import cache
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Mapping, Sequence
+from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
 from nominal import Connection, _config, ts
 from nominal._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
@@ -14,6 +14,7 @@ from nominal.core import (
     Checklist,
     ChecklistBuilder,
     Dataset,
+    Log,
     LogSet,
     NominalClient,
     Run,
@@ -417,6 +418,29 @@ def get_asset(rid: str) -> Asset:
     return conn.get_asset(rid)
 
 
+def search_assets(
+    *,
+    search_text: str | None = None,
+    label: str | None = None,
+    property: tuple[str, str] | None = None,
+) -> list[Asset]:
+    """Search for assets meeting the specified filters.
+
+    Filters are ANDed together, e.g. `(asset.label == label) AND (asset.property == property)`
+    - `search_text`: search case-insensitive for any of the keywords in all string fields.
+    - `property` is a key-value pair, e.g. ("name", "value")
+    """
+    if all([v is None for v in (search_text, label, property)]):
+        raise ValueError("must provide one of: start, end, search_text, label, or property")
+    conn = get_default_client()
+    assets = conn.search_assets(
+        search_text=search_text,
+        label=label,
+        property=property,
+    )
+    return list(assets)
+
+
 def get_streaming_checklist(rid: str) -> StreamingChecklist:
     """Retrieve a Streaming Checklist by its RID."""
     conn = get_default_client()
@@ -573,3 +597,18 @@ def create_workbook_from_template(
     """
     conn = get_default_client()
     return conn.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
+
+
+def create_log_set(
+    name: str,
+    logs: Iterable[Log] | Iterable[tuple[datetime | ts.IntegralNanosecondsUTC, str]],
+    timestamp_type: ts.LogTimestampType = "absolute",
+    description: str | None = None,
+) -> LogSet:
+    """Create an immutable log set with the given logs.
+
+    The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
+    or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
+    """
+    conn = get_default_client()
+    return conn.create_log_set(name, logs, timestamp_type, description)

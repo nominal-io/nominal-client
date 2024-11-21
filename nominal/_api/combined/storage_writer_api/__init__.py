@@ -1,5 +1,6 @@
 # coding=utf-8
 from .._impl import (
+    storage_writer_api_DirectNominalChannelWriterService as DirectNominalChannelWriterService,
     storage_writer_api_DoublePoint as DoublePoint,
     storage_writer_api_Field as Field,
     storage_writer_api_MeasurementName as MeasurementName,

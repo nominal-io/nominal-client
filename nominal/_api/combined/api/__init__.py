@@ -1,5 +1,6 @@
 # coding=utf-8
 from .._impl import (
+    api_Granularity as Granularity,
     api_McapChannelId as McapChannelId,
     api_McapChannelLocator as McapChannelLocator,
     api_McapChannelLocatorVisitor as McapChannelLocatorVisitor,
