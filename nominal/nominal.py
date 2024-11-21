@@ -417,6 +417,29 @@ def get_asset(rid: str) -> Asset:
     return conn.get_asset(rid)
 
 
+def search_assets(
+    *,
+    search_text: str | None = None,
+    label: str | None = None,
+    property: tuple[str, str] | None = None,
+) -> list[Asset]:
+    """Search for assets meeting the specified filters.
+
+    Filters are ANDed together, e.g. `(asset.label == label) AND (asset.property == property)`
+    - `search_text`: search case-insensitive for any of the keywords in all string fields.
+    - `property` is a key-value pair, e.g. ("name", "value")
+    """
+    if all([v is None for v in (search_text, label, property)]):
+        raise ValueError("must provide one of: start, end, search_text, label, or property")
+    conn = get_default_client()
+    assets = conn.search_assets(
+        search_text=search_text,
+        label=label,
+        property=property,
+    )
+    return list(assets)
+
+
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     """Wait until all datasets have completed ingestion.
 

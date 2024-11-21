@@ -686,6 +686,49 @@ class NominalClient:
             raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
         return Asset._from_conjure(self._clients, response[rid])
 
+    def _search_assets_paginated(self, request: scout_asset_api.SearchAssetsRequest) -> Iterable[scout_asset_api.Asset]:
+        while True:
+            response = self._clients.assets.search_assets(self._clients.auth_header, request)
+            yield from response.results
+            if response.next_page_token is None:
+                break
+            request = scout_asset_api.SearchAssetsRequest(
+                page_size=request.page_size,
+                query=request.query,
+                sort=request.sort,
+                next_page_token=response.next_page_token,
+            )
+
+    def _iter_search_assets(
+        self,
+        search_text: str | None = None,
+        label: str | None = None,
+        property: tuple[str, str] | None = None,
+    ) -> Iterable[Asset]:
+        request = scout_asset_api.SearchAssetsRequest(
+            page_size=100,
+            query=_create_search_assets_query(search_text, label, property),
+            sort=scout_asset_api.SortOptions(
+                field=scout_asset_api.SortField.CREATED_AT,
+                is_descending=True,
+            ),
+        )
+        for asset in self._search_assets_paginated(request):
+            yield Asset._from_conjure(self._clients, asset)
+
+    def search_assets(
+        self,
+        search_text: str | None = None,
+        label: str | None = None,
+        property: tuple[str, str] | None = None,
+    ) -> Sequence[Asset]:
+        """Search for assets meeting the specified filters.
+        Filters are ANDed together, e.g. `(asset.label == label) AND (asset.property == property)`
+        - `search_text`: search case-insensitive for any of the keywords in all string fields.
+        - `property` is a key-value pair, e.g. ("name", "value")
+        """
+        return list(self._iter_search_assets(search_text, label, property))
+
 
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
@@ -739,3 +782,22 @@ def _logs_to_conjure(
         elif isinstance(log, tuple):
             ts, body = log
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
+
+
+def _create_search_assets_query(
+    search_text: str | None = None,
+    label: str | None = None,
+    property: tuple[str, str] | None = None,
+) -> scout_asset_api.SearchAssetsQuery:
+    queries = []
+    if search_text is not None:
+        q = scout_asset_api.SearchAssetsQuery(search_text=search_text)
+        queries.append(q)
+    if label is not None:
+        q = scout_asset_api.SearchAssetsQuery(label=label)
+        queries.append(q)
+    if property is not None:
+        name, value = property
+        q = scout_asset_api.SearchAssetsQuery(property=scout_run_api.Property(name=name, value=value))
+        queries.append(q)
+    return scout_asset_api.SearchAssetsQuery(and_=queries)
