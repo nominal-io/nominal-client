@@ -76,9 +76,8 @@ def get_user() -> User:
 
 
 def upload_tdms(
-    file: Path | str, name: str | None = None, timestamp_column: str | None = None,
-        timestamp_type: ts._AnyTimestampType | None = None, description: str | None = None,
-        *, wait_until_complete: bool = True
+    file: Path | str, name: str | None = None, description: str | None = None, timestamp_column: str | None = None,
+        timestamp_type: ts._AnyTimestampType | None = None, *, wait_until_complete: bool = True
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a tdms file.
 
@@ -100,35 +99,33 @@ def upload_tdms(
     import pandas as pd
     from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 
-    path = Path(file)
-    with TdmsFile.open(path) as tdms_file:
-        channels_to_export: dict[str, TdmsChannel] = {}
-        group: TdmsGroup
-        df = None
+    def _tdms_upload_with_time_column():
+        path = Path(file)
+        with TdmsFile.open(path) as tdms_file:
+            channels_to_export: dict[str, TdmsChannel] = {}
+            group: TdmsGroup
+            df = None
 
-        for group in tdms_file.groups():
-            time_channel = None
-            channel: TdmsChannel
+            for group in tdms_file.groups():
+                time_channel = None
+                channel: TdmsChannel
 
-            # pull out timestamp column if expected
-            if timestamp_column:
+                # pull out timestamp column if expected
                 for channel in group.channels():
                     if channel.name == timestamp_column:
                         time_channel = channel
                 if not time_channel:
-                    logger.info("Skipping channel group \"%s\" because expected timestamp_column \"%s\" does not exist",
-                                channel.group_name, timestamp_column)
+                    logger.info(
+                        "Skipping channel group \"%s\" because expected timestamp_column \"%s\" does not exist",
+                        channel.group_name, timestamp_column)
                     continue
 
-            # select channels for export
-            for channel in group.channels():
-                # do not export timestamp column
-                if channel.name == timestamp_column:
-                    continue
+                # select channels for export
+                for channel in group.channels():
+                    # do not export timestamp column
+                    if channel.name == timestamp_column:
+                        continue
 
-                # export IFF timestamp_column provided OR waveform time properties are set
-                if timestamp_column or (("wf_increment" in channel.properties) and ("wf_start_time" in
-                                                                                    channel.properties)):
                     # skip if unexpected column length
                     if timestamp_column and len(channel) != len(time_channel):
                         logger.info("Skipping channel \"%s\" because length does not match \"%s\"",
@@ -137,31 +134,71 @@ def upload_tdms(
                     channel_name = f"{channel.group_name.replace(' ', '_')}.{channel.name.replace(' ', '_')}"
                     channels_to_export[channel_name] = channel
 
-            group_df = pd.DataFrame.from_dict(
+                group_df = pd.DataFrame.from_dict(
+                    {
+                        channel_name: pd.Series(
+                            data=channel.read_data(), index=time_channel.read_data()
+                        )
+                        for channel_name, channel in channels_to_export.items()
+                    })
+                df = group_df if not df else pd.merge(left=df, right=group_df, left_index=True, right_index=True)
+
+            # format for nominal upload
+            time_column = timestamp_column
+            df.index = df.index.set_names(time_column, level=None)
+            df = df.reset_index()
+
+            return upload_pandas(
+                df=df,
+                name=name if name is not None else path.with_suffix(".csv").name,
+                description=description,
+                timestamp_column=time_column,
+                timestamp_type=timestamp_type,
+                wait_until_complete=wait_until_complete,
+            )
+
+    def _tdms_upload_with_waveform_props():
+        path = Path(file)
+        with TdmsFile.open(path) as tdms_file:
+            channels_to_export: dict[str, TdmsChannel] = {}
+            group: TdmsGroup
+
+            # select channels for export
+            for group in tdms_file.groups():
+                channel: TdmsChannel
+                for channel in group.channels():
+                    # skip channel if it does not have the required waveform properties to construct a time track
+                    if ("wf_increment" in channel.properties) and ("wf_start_time" in channel.properties):
+                        channel_name = f"{channel.group_name.replace(' ', '_')}.{channel.name.replace(' ', '_')}"
+                        channels_to_export[channel_name] = channel
+
+            df = pd.DataFrame.from_dict(
                 {
                     channel_name: pd.Series(
-                        data=channel.read_data(), index=time_channel.read_data() if timestamp_column else
-                        channel.time_track(absolute_time=True, accuracy="ns")
+                        data=channel.read_data(), index=channel.time_track(absolute_time=True, accuracy="ns")
                     )
                     for channel_name, channel in channels_to_export.items()
-                })
-            df = group_df if not df else pd.merge(left=df, right=group_df, left_index=True, right_index=True)
+                }
+            )
 
-        # format for nominal upload
-        time_column = timestamp_column if timestamp_column else "time_ns"
-        df.index = df.index.set_names(time_column, level=None)
-        df = df.reset_index()
-        if not timestamp_column:
+            # format for nominal upload
+            time_column = "time_ns"
+            df.index = df.index.set_names(time_column, level=None)
+            df = df.reset_index()
             df[time_column] = df[time_column].astype(np.int64)
 
-        return upload_pandas(
-            df=df,
-            name=name if name is not None else path.with_suffix(".csv").name,
-            description=description,
-            timestamp_column=time_column,
-            timestamp_type=timestamp_type if timestamp_type else ts.EPOCH_NANOSECONDS,
-            wait_until_complete=wait_until_complete,
-        )
+            return upload_pandas(
+                df=df,
+                name=name if name is not None else path.with_suffix(".csv").name,
+                description=description,
+                timestamp_column=time_column,
+                timestamp_type=ts.EPOCH_NANOSECONDS,
+                wait_until_complete=wait_until_complete,
+            )
+    if timestamp_column:
+        return _tdms_upload_with_time_column()
+    else:
+        return _tdms_upload_with_waveform_props()
 
 
 def upload_pandas(
