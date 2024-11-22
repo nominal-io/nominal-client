@@ -62,8 +62,8 @@ __all__ = [
     "upload_pandas",
     "upload_polars",
     "upload_tdms",
-    "upload_video",
     "upload_mcap_video",
+    "upload_video",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
     "Asset",
     "Attachment",
