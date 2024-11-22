@@ -36,8 +36,8 @@ from nominal.nominal import (
     upload_pandas,
     upload_polars,
     upload_tdms,
-    upload_video,
     upload_mcap_video,
+    upload_video,
 )
 
 __all__ = [
