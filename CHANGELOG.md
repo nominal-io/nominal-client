@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/nominal-io/nominal-client/compare/v1.12.1...v1.13.0) (2024-11-22)
+
+
+### Features
+
+* update combined -&gt; scout-service-api ([#147](https://github.com/nominal-io/nominal-client/issues/147)) ([a891d3a](https://github.com/nominal-io/nominal-client/commit/a891d3a09e408667afa1c8433b5c38ce24a501c2))
+
 ## [1.12.1](https://github.com/nominal-io/nominal-client/compare/v1.12.0...v1.12.1) (2024-11-21)
 
 
