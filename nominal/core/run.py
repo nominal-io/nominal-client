@@ -7,7 +7,7 @@ from typing import Iterable, Mapping, Protocol, Sequence, cast
 
 from typing_extensions import Self
 
-from nominal._api.combined import (
+from nominal._api.scout_service_api import (
     attachments_api,
     scout,
     scout_catalog,

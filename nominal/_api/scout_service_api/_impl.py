@@ -25,6 +25,22 @@ from typing import (
     Set,
 )
 
+class api_Empty(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+        }
+
+    __slots__: List[str] = []
+
+
+
+api_Empty.__name__ = "Empty"
+api_Empty.__qualname__ = "Empty"
+api_Empty.__module__ = "scout_service_api.api"
+
+
 class api_Granularity(ConjureEnumType):
 
     PICOSECONDS = 'PICOSECONDS'
@@ -5360,17 +5376,19 @@ class ingest_api_IngestMcapRequest(ConjureBeanType):
         return {
             'sources': ConjureFieldDefinition('sources', List[ingest_api_IngestSource]),
             'channel_config': ConjureFieldDefinition('channelConfig', List[ingest_api_McapChannelConfig]),
+            'channels': ConjureFieldDefinition('channels', OptionalTypeWrapper[ingest_api_McapChannels]),
             'properties': ConjureFieldDefinition('properties', Dict[ingest_api_PropertyName, ingest_api_PropertyValue]),
             'labels': ConjureFieldDefinition('labels', List[ingest_api_Label]),
             'title': ConjureFieldDefinition('title', OptionalTypeWrapper[str]),
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str])
         }
 
-    __slots__: List[str] = ['_sources', '_channel_config', '_properties', '_labels', '_title', '_description']
+    __slots__: List[str] = ['_sources', '_channel_config', '_channels', '_properties', '_labels', '_title', '_description']
 
-    def __init__(self, channel_config: List["ingest_api_McapChannelConfig"], labels: List[str], properties: Dict[str, str], sources: List["ingest_api_IngestSource"], description: Optional[str] = None, title: Optional[str] = None) -> None:
+    def __init__(self, channel_config: List["ingest_api_McapChannelConfig"], labels: List[str], properties: Dict[str, str], sources: List["ingest_api_IngestSource"], channels: Optional["ingest_api_McapChannels"] = None, description: Optional[str] = None, title: Optional[str] = None) -> None:
         self._sources = sources
         self._channel_config = channel_config
+        self._channels = channels
         self._properties = properties
         self._labels = labels
         self._title = title
@@ -5388,6 +5406,14 @@ Note: only a single files are currently supported, this field is mostly for forw
     @builtins.property
     def channel_config(self) -> List["ingest_api_McapChannelConfig"]:
         return self._channel_config
+
+    @builtins.property
+    def channels(self) -> Optional["ingest_api_McapChannels"]:
+        """
+        Config to define which channels in the mcap should be ingested. The default is to ingest only
+channels with config, otherwise the mcap may not be supported.
+        """
+        return self._channels
 
     @builtins.property
     def properties(self) -> Dict[str, str]:
@@ -6267,43 +6293,158 @@ ingest_api_McapChannelConfigTypeVisitor.__qualname__ = "McapChannelConfigTypeVis
 ingest_api_McapChannelConfigTypeVisitor.__module__ = "scout_service_api.ingest_api"
 
 
-class ingest_api_McapDestination(ConjureUnionType):
-    _video_rid: Optional[str] = None
+class ingest_api_McapChannels(ConjureUnionType):
+    _all: Optional["api_Empty"] = None
+    _include: Optional[List["api_McapChannelLocator"]] = None
+    _exclude: Optional[List["api_McapChannelLocator"]] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'video_rid': ConjureFieldDefinition('videoRid', str)
+            'all': ConjureFieldDefinition('all', api_Empty),
+            'include': ConjureFieldDefinition('include', List[api_McapChannelLocator]),
+            'exclude': ConjureFieldDefinition('exclude', List[api_McapChannelLocator])
+        }
+
+    def __init__(
+            self,
+            all: Optional["api_Empty"] = None,
+            include: Optional[List["api_McapChannelLocator"]] = None,
+            exclude: Optional[List["api_McapChannelLocator"]] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (all is not None) + (include is not None) + (exclude is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if all is not None:
+                self._all = all
+                self._type = 'all'
+            if include is not None:
+                self._include = include
+                self._type = 'include'
+            if exclude is not None:
+                self._exclude = exclude
+                self._type = 'exclude'
+
+        elif type_of_union == 'all':
+            if all is None:
+                raise ValueError('a union value must not be None')
+            self._all = all
+            self._type = 'all'
+        elif type_of_union == 'include':
+            if include is None:
+                raise ValueError('a union value must not be None')
+            self._include = include
+            self._type = 'include'
+        elif type_of_union == 'exclude':
+            if exclude is None:
+                raise ValueError('a union value must not be None')
+            self._exclude = exclude
+            self._type = 'exclude'
+
+    @builtins.property
+    def all(self) -> Optional["api_Empty"]:
+        return self._all
+
+    @builtins.property
+    def include(self) -> Optional[List["api_McapChannelLocator"]]:
+        return self._include
+
+    @builtins.property
+    def exclude(self) -> Optional[List["api_McapChannelLocator"]]:
+        return self._exclude
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, ingest_api_McapChannelsVisitor):
+            raise ValueError('{} is not an instance of ingest_api_McapChannelsVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'all' and self.all is not None:
+            return visitor._all(self.all)
+        if self._type == 'include' and self.include is not None:
+            return visitor._include(self.include)
+        if self._type == 'exclude' and self.exclude is not None:
+            return visitor._exclude(self.exclude)
+
+
+ingest_api_McapChannels.__name__ = "McapChannels"
+ingest_api_McapChannels.__qualname__ = "McapChannels"
+ingest_api_McapChannels.__module__ = "scout_service_api.ingest_api"
+
+
+class ingest_api_McapChannelsVisitor:
+
+    @abstractmethod
+    def _all(self, all: "api_Empty") -> Any:
+        pass
+
+    @abstractmethod
+    def _include(self, include: List["api_McapChannelLocator"]) -> Any:
+        pass
+
+    @abstractmethod
+    def _exclude(self, exclude: List["api_McapChannelLocator"]) -> Any:
+        pass
+
+
+ingest_api_McapChannelsVisitor.__name__ = "McapChannelsVisitor"
+ingest_api_McapChannelsVisitor.__qualname__ = "McapChannelsVisitor"
+ingest_api_McapChannelsVisitor.__module__ = "scout_service_api.ingest_api"
+
+
+class ingest_api_McapDestination(ConjureUnionType):
+    _video_rid: Optional[str] = None
+    _dataset_rid: Optional[str] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'video_rid': ConjureFieldDefinition('videoRid', str),
+            'dataset_rid': ConjureFieldDefinition('datasetRid', str)
         }
 
     def __init__(
             self,
             video_rid: Optional[str] = None,
+            dataset_rid: Optional[str] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (video_rid is not None) != 1:
+            if (video_rid is not None) + (dataset_rid is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if video_rid is not None:
                 self._video_rid = video_rid
                 self._type = 'videoRid'
+            if dataset_rid is not None:
+                self._dataset_rid = dataset_rid
+                self._type = 'datasetRid'
 
         elif type_of_union == 'videoRid':
             if video_rid is None:
                 raise ValueError('a union value must not be None')
             self._video_rid = video_rid
             self._type = 'videoRid'
+        elif type_of_union == 'datasetRid':
+            if dataset_rid is None:
+                raise ValueError('a union value must not be None')
+            self._dataset_rid = dataset_rid
+            self._type = 'datasetRid'
 
     @builtins.property
     def video_rid(self) -> Optional[str]:
         return self._video_rid
+
+    @builtins.property
+    def dataset_rid(self) -> Optional[str]:
+        return self._dataset_rid
 
     def accept(self, visitor) -> Any:
         if not isinstance(visitor, ingest_api_McapDestinationVisitor):
             raise ValueError('{} is not an instance of ingest_api_McapDestinationVisitor'.format(visitor.__class__.__name__))
         if self._type == 'videoRid' and self.video_rid is not None:
             return visitor._video_rid(self.video_rid)
+        if self._type == 'datasetRid' and self.dataset_rid is not None:
+            return visitor._dataset_rid(self.dataset_rid)
 
 
 ingest_api_McapDestination.__name__ = "McapDestination"
@@ -6315,6 +6456,10 @@ class ingest_api_McapDestinationVisitor:
 
     @abstractmethod
     def _video_rid(self, video_rid: str) -> Any:
+        pass
+
+    @abstractmethod
+    def _dataset_rid(self, dataset_rid: str) -> Any:
         pass
 
 
@@ -6354,41 +6499,58 @@ ingest_api_McapIngestionOutput.__module__ = "scout_service_api.ingest_api"
 
 class ingest_api_McapSource(ConjureUnionType):
     _single_channel: Optional["api_McapChannelLocator"] = None
+    _mcap_file: Optional["ingest_api_IngestSource"] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'single_channel': ConjureFieldDefinition('singleChannel', api_McapChannelLocator)
+            'single_channel': ConjureFieldDefinition('singleChannel', api_McapChannelLocator),
+            'mcap_file': ConjureFieldDefinition('mcapFile', ingest_api_IngestSource)
         }
 
     def __init__(
             self,
             single_channel: Optional["api_McapChannelLocator"] = None,
+            mcap_file: Optional["ingest_api_IngestSource"] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (single_channel is not None) != 1:
+            if (single_channel is not None) + (mcap_file is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if single_channel is not None:
                 self._single_channel = single_channel
                 self._type = 'singleChannel'
+            if mcap_file is not None:
+                self._mcap_file = mcap_file
+                self._type = 'mcapFile'
 
         elif type_of_union == 'singleChannel':
             if single_channel is None:
                 raise ValueError('a union value must not be None')
             self._single_channel = single_channel
             self._type = 'singleChannel'
+        elif type_of_union == 'mcapFile':
+            if mcap_file is None:
+                raise ValueError('a union value must not be None')
+            self._mcap_file = mcap_file
+            self._type = 'mcapFile'
 
     @builtins.property
     def single_channel(self) -> Optional["api_McapChannelLocator"]:
         return self._single_channel
+
+    @builtins.property
+    def mcap_file(self) -> Optional["ingest_api_IngestSource"]:
+        return self._mcap_file
 
     def accept(self, visitor) -> Any:
         if not isinstance(visitor, ingest_api_McapSourceVisitor):
             raise ValueError('{} is not an instance of ingest_api_McapSourceVisitor'.format(visitor.__class__.__name__))
         if self._type == 'singleChannel' and self.single_channel is not None:
             return visitor._single_channel(self.single_channel)
+        if self._type == 'mcapFile' and self.mcap_file is not None:
+            return visitor._mcap_file(self.mcap_file)
 
 
 ingest_api_McapSource.__name__ = "McapSource"
@@ -6400,6 +6562,10 @@ class ingest_api_McapSourceVisitor:
 
     @abstractmethod
     def _single_channel(self, single_channel: "api_McapChannelLocator") -> Any:
+        pass
+
+    @abstractmethod
+    def _mcap_file(self, mcap_file: "ingest_api_IngestSource") -> Any:
         pass
 
 
@@ -7074,6 +7240,17 @@ class ingest_api_TriggerFileIngest(ConjureBeanType):
 
     @builtins.property
     def source(self) -> "ingest_api_IngestSource":
+        """
+        Source data for the ingest. Supported file types include:
+  * CSV (*.csv)
+  * Compressed CSV (*.csv.gz)
+  * Parquet (*.parquet)
+  * Parquet archives (*.parquet.tar, *.parquet.tar.gz, *.parquet.zip).
+      Note that timestamp column must have the same name and format across files.
+      Non parquet files will be ignored.
+      Each file can contribute to the overall schema, but conflicting types will fail the ingest.
+      Conflicting values (same timestamp, column) across files will be de-conflicted based on archive file ordering (first point taken)
+        """
         return self._source
 
     @builtins.property
@@ -12023,6 +12200,36 @@ a file, primarily CSV.
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), scout_catalog_DatasetFilesPage, self._return_none_for_unknown_union_types)
 
+    def get_dataset_file_uri(self, auth_header: str, dataset_rid: str, file_id: str) -> "scout_catalog_DatasetFileUri":
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'datasetRid': dataset_rid,
+            'fileId': file_id,
+        }
+
+        _json: Any = None
+
+        _path = '/catalog/v1/datasets/{datasetRid}/{fileId}/uri'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'GET',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), scout_catalog_DatasetFileUri, self._return_none_for_unknown_union_types)
+
     def mark_file_ingest_successful(self, auth_header: str, dataset_rid: str, file_id: str, request: "scout_catalog_MarkFileIngestSuccessful") -> "scout_catalog_DatasetFile":
 
         _headers: Dict[str, Any] = {
@@ -12635,6 +12842,33 @@ ingested for any reason or is still being processed, then this value will be emp
 scout_catalog_DatasetFile.__name__ = "DatasetFile"
 scout_catalog_DatasetFile.__qualname__ = "DatasetFile"
 scout_catalog_DatasetFile.__module__ = "scout_service_api.scout_catalog"
+
+
+class scout_catalog_DatasetFileUri(ConjureBeanType):
+    """
+    Pre-signed URI that can be used to download the original file directly. Expires if the download has
+not been initiated within 1 minute.
+    """
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'uri': ConjureFieldDefinition('uri', str)
+        }
+
+    __slots__: List[str] = ['_uri']
+
+    def __init__(self, uri: str) -> None:
+        self._uri = uri
+
+    @builtins.property
+    def uri(self) -> str:
+        return self._uri
+
+
+scout_catalog_DatasetFileUri.__name__ = "DatasetFileUri"
+scout_catalog_DatasetFileUri.__qualname__ = "DatasetFileUri"
+scout_catalog_DatasetFileUri.__module__ = "scout_service_api.scout_catalog"
 
 
 class scout_catalog_DatasetFilesPage(ConjureBeanType):
@@ -17980,7 +18214,7 @@ class scout_checklistexecution_api_ExecuteChecklistForAssetsRequest(ConjureBeanT
     @builtins.property
     def notification_configurations(self) -> List["scout_integrations_api_NotificationConfiguration"]:
         """
-        If provided, checklist violations will be sent to the specified integrations.
+        Checklist violations will be sent to the specified integrations. At least one integration must be specified.
         """
         return self._notification_configurations
 

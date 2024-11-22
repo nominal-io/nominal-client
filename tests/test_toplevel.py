@@ -4,7 +4,7 @@ import requests
 from conjure_python_client import ConjureEncoder
 
 import nominal as nm
-from nominal._api.combined.attachments_api import Attachment as _Attachment
+from nominal._api.scout_service_api.attachments_api import Attachment as _Attachment
 
 
 class MockGetAttachmentResponse(requests.Response):

@@ -207,7 +207,7 @@ import dateutil.parser
 import numpy as np
 from typing_extensions import Self, TypeAlias
 
-from nominal._api.combined import api, ingest_api, scout_run_api
+from nominal._api.scout_service_api import api, ingest_api, scout_run_api
 
 __all__ = [
     "Iso8601",
