@@ -33,10 +33,10 @@ from nominal.nominal import (
     set_token,
     upload_attachment,
     upload_csv,
+    upload_mcap_video,
     upload_pandas,
     upload_polars,
     upload_tdms,
-    upload_mcap_video,
     upload_video,
 )
 
