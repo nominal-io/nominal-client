@@ -45,6 +45,8 @@ from .._impl import (
     ingest_api_McapChannelConfig as McapChannelConfig,
     ingest_api_McapChannelConfigType as McapChannelConfigType,
     ingest_api_McapChannelConfigTypeVisitor as McapChannelConfigTypeVisitor,
+    ingest_api_McapChannels as McapChannels,
+    ingest_api_McapChannelsVisitor as McapChannelsVisitor,
     ingest_api_McapDestination as McapDestination,
     ingest_api_McapDestinationVisitor as McapDestinationVisitor,
     ingest_api_McapIngestionOutput as McapIngestionOutput,

@@ -6,7 +6,7 @@ from typing import Literal, Mapping, Protocol, Sequence
 
 from typing_extensions import Self
 
-from nominal._api.combined import (
+from nominal._api.scout_service_api import (
     api,
     scout_api,
     scout_checklistexecution_api,
