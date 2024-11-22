@@ -13,7 +13,7 @@ from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence
 import pandas as pd
 from typing_extensions import Self
 
-from nominal._api.combined import (
+from nominal._api.scout_service_api import (
     datasource_api,
     ingest_api,
     scout,

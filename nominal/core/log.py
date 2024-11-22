@@ -5,7 +5,7 @@ from typing import Iterable, Protocol
 
 from typing_extensions import Self
 
-from nominal._api.combined import datasource, datasource_logset, datasource_logset_api
+from nominal._api.scout_service_api import datasource, datasource_logset, datasource_logset_api
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos

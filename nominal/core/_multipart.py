@@ -8,7 +8,7 @@ from typing import BinaryIO, Iterable
 
 import requests
 
-from nominal._api.combined import ingest_api, upload_api
+from nominal._api.scout_service_api import ingest_api, upload_api
 from nominal.exceptions import NominalMultipartUploadFailed
 
 logger = logging.getLogger(__name__)

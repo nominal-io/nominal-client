@@ -12,7 +12,7 @@ from conjure_python_client import ServiceConfiguration, SslConfiguration
 from typing_extensions import Self
 
 from nominal import _config
-from nominal._api.combined import (
+from nominal._api.scout_service_api import (
     api,
     attachments_api,
     datasource,

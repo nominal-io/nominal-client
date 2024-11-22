@@ -6,7 +6,7 @@ from typing import Iterable, Mapping, Protocol, Sequence, cast
 
 from typing_extensions import Self
 
-from nominal._api.combined import attachments_api, scout_asset_api, scout_assets, scout_run_api
+from nominal._api.scout_service_api import attachments_api, scout_asset_api, scout_assets, scout_run_api
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
