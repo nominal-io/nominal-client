@@ -57,7 +57,6 @@ from nominal.ts import (
 )
 
 from .asset import Asset
-from .streaming_checklist import StreamingChecklist
 
 
 @dataclass(frozen=True)
@@ -729,11 +728,6 @@ class NominalClient:
         - `property` is a key-value pair, e.g. ("name", "value")
         """
         return list(self._iter_search_assets(search_text, label, property))
-
-    def get_streaming_checklist(self, rid: str) -> StreamingChecklist:
-        """Retrieve a Streaming Checklist by its RID."""
-        response = self._clients.checklist_execution.get_streaming_checklist(self._clients.auth_header, rid)
-        return StreamingChecklist._from_conjure(self._clients, response)
 
     def list_streaming_checklists(self) -> Sequence[str]:
         """List all Streaming Checklists."""
