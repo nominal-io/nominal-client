@@ -37,6 +37,7 @@ from nominal.nominal import (
     upload_polars,
     upload_tdms,
     upload_video,
+    upload_mcap_video,
 )
 
 __all__ = [
@@ -62,6 +63,7 @@ __all__ = [
     "upload_polars",
     "upload_tdms",
     "upload_video",
+    "upload_mcap_video",
     # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
     "Asset",
     "Attachment",
