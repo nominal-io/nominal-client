@@ -133,10 +133,6 @@ class Channel(HasRid):
         if buckets is not None and resolution is not None:
             raise ValueError("Either buckets or resolution should be provided")
 
-        if buckets is not None:
-            # Somehow the number of points returned is buckets / 1000
-            buckets = buckets * 1000
-
         result = self._decimate_request(start, end, buckets, resolution)
 
         # when there are less than 1000 points, the result is numeric
