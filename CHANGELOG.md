@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.1](https://github.com/nominal-io/nominal-client/compare/v1.12.0...v1.12.1) (2024-11-21)
+
+
+### Bug Fixes
+
+* bucket workaround not correct for current backend ([#143](https://github.com/nominal-io/nominal-client/issues/143)) ([eac2536](https://github.com/nominal-io/nominal-client/commit/eac2536d4ee01cb66d0f519e9c266117e3f29b68))
+* nm.upload_pandas() fails with SSLError ([#144](https://github.com/nominal-io/nominal-client/issues/144)) ([62f2e3c](https://github.com/nominal-io/nominal-client/commit/62f2e3cc96cc99b9b724f725b50ef41fc6dc92cc))
+
 ## [1.12.0](https://github.com/nominal-io/nominal-client/compare/v1.11.0...v1.12.0) (2024-11-21)
 
 
