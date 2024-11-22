@@ -141,7 +141,8 @@ def upload_tdms(
                         )
                         for channel_name, channel in channels_to_export.items()
                     })
-                df = group_df if not df else pd.merge(left=df, right=group_df, left_index=True, right_index=True)
+                df = group_df if not df else pd.merge(left=df, right=group_df, left_index=True, right_index=True,
+                                                      how='outer')
 
             # format for nominal upload
             time_column = timestamp_column
