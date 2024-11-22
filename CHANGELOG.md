@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/nominal-io/nominal-client/compare/v1.13.0...v1.14.0) (2024-11-22)
+
+
+### Features
+
+* export upload_mcap_video function ([#149](https://github.com/nominal-io/nominal-client/issues/149)) ([d269e4a](https://github.com/nominal-io/nominal-client/commit/d269e4aae57ecd9eeb31e4d2545da47140b36ef2))
+
 ## [1.13.0](https://github.com/nominal-io/nominal-client/compare/v1.12.1...v1.13.0) (2024-11-22)
 
 
