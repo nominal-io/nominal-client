@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import logging
 from datetime import datetime
-from functools import cache
+from functools import cache, partial
 from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
@@ -28,9 +27,6 @@ from nominal.core import (
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
-
-logger = logging.getLogger(__name__)
-
 _DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
 
 # global variable which `set_base_url()` modifies
@@ -76,8 +72,13 @@ def get_user() -> User:
 
 
 def upload_tdms(
-    file: Path | str, name: str | None = None, description: str | None = None, timestamp_column: str | None = None,
-        timestamp_type: ts._AnyTimestampType | None = None, *, wait_until_complete: bool = True
+    file: Path | str,
+    name: str | None = None,
+    description: str | None = None,
+    timestamp_column: str | None = None,
+    timestamp_type: ts._AnyTimestampType | None = None,
+    *,
+    wait_until_complete: bool = True,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a tdms file.
 
@@ -89,128 +90,31 @@ def upload_tdms(
     If 'timestamp_column' is None, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
     property to be included in the dataset.
 
+    Note that both 'timestamp_column' and 'timestamp_type' must be included together, or excluded together.
+
     Channels will be named as f"{group_name}.{channel_name}" with spaces replaced with underscores.
 
     If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-
-    if timestamp_column:
-        return _tdms_upload_with_time_column(file, name, description, timestamp_column, timestamp_type,
-                                             wait_until_complete=wait_until_complete)
-    else:
-        return _tdms_upload_with_waveform_props(file, name, description, wait_until_complete=wait_until_complete)
-
-
-def _tdms_upload_with_time_column(file: Path | str, name: str | None = None, description: str | None = None,
-                                  timestamp_column: str | None = None,
-                                  timestamp_type: ts._AnyTimestampType | None = None, *,
-                                  wait_until_complete: bool = True):
-    from nptdms import TdmsChannel, TdmsFile, TdmsGroup
-    import pandas as pd
+    from nominal import _tdms
 
     path = Path(file)
-    with TdmsFile.open(path) as tdms_file:
-        channels_to_export: dict[str, TdmsChannel] = {}
-        group: TdmsGroup
-        df = None
-
-        for group in tdms_file.groups():
-            time_channel = None
-            channel: TdmsChannel
-
-            # pull out timestamp column if expected
-            for channel in group.channels():
-                if channel.name == timestamp_column:
-                    time_channel = channel
-            if not time_channel:
-                logger.info(
-                    "Skipping channel group \"%s\" because expected timestamp_column \"%s\" does not exist",
-                    channel.group_name, timestamp_column)
-                continue
-
-            # select channels for export
-            for channel in group.channels():
-                # do not export timestamp column
-                if channel.name == timestamp_column:
-                    continue
-
-                # skip if unexpected column length
-                if len(channel) != len(time_channel):
-                    logger.info("Skipping channel \"%s\" because length does not match \"%s\"",
-                                channel.name, timestamp_column)
-                    continue
-                channel_name = f"{channel.group_name.replace(' ', '_')}.{channel.name.replace(' ', '_')}"
-                channels_to_export[channel_name] = channel
-
-            group_df = pd.DataFrame.from_dict(
-                {
-                    channel_name: pd.Series(
-                        data=channel.read_data(), index=time_channel.read_data()
-                    )
-                    for channel_name, channel in channels_to_export.items()
-                })
-            df = group_df if not df else pd.merge(left=df, right=group_df, left_index=True, right_index=True,
-                                                  how='outer')
-
-        # format for nominal upload
-        df.index = df.index.set_names(timestamp_column, level=None)
-        df = df.reset_index()
-
-        return upload_pandas(
-            df=df,
-            name=name if name is not None else path.with_suffix(".csv").name,
-            description=description,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            wait_until_complete=wait_until_complete,
-        )
-
-
-def _tdms_upload_with_waveform_props(file: Path | str, name: str | None = None, description: str | None = None, *,
-                                     wait_until_complete: bool = True):
-    from nptdms import TdmsChannel, TdmsFile, TdmsGroup
-    import numpy as np
-    import pandas as pd
-
-    path = Path(file)
-    with TdmsFile.open(path) as tdms_file:
-        channels_to_export: dict[str, TdmsChannel] = {}
-        group: TdmsGroup
-
-        # select channels for export
-        for group in tdms_file.groups():
-            channel: TdmsChannel
-            for channel in group.channels():
-                # skip channel if it does not have the required waveform properties to construct a time track
-                if ("wf_increment" in channel.properties) and ("wf_start_time" in channel.properties):
-                    channel_name = f"{channel.group_name.replace(' ', '_')}.{channel.name.replace(' ', '_')}"
-                    channels_to_export[channel_name] = channel
-
-        df = pd.DataFrame.from_dict(
-            {
-                channel_name: pd.Series(
-                    data=channel.read_data(), index=channel.time_track(absolute_time=True, accuracy="ns")
-                )
-                for channel_name, channel in channels_to_export.items()
-            }
-        )
-
-        # format for nominal upload
-        time_column = "time_ns"
-        df.index = df.index.set_names(time_column, level=None)
-        df = df.reset_index()
-        df[time_column] = df[time_column].astype(np.int64)
-
-        return upload_pandas(
-            df=df,
-            name=name if name is not None else path.with_suffix(".csv").name,
-            description=description,
-            timestamp_column=time_column,
-            timestamp_type=ts.EPOCH_NANOSECONDS,
-            wait_until_complete=wait_until_complete,
-        )
+    upload_func = partial(
+        upload_pandas,
+        name=name if name is not None else path.with_suffix(".csv").name,
+        description=description,
+        wait_until_complete=wait_until_complete,
+    )
+    if timestamp_column is not None and timestamp_type is not None:
+        df = _tdms.tdms_with_time_column_to_pandas(path, timestamp_column)
+        upload_func(df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
+    elif timestamp_column is None and timestamp_type is None:
+        timestamp_column = "time_ns"
+        df = _tdms.tdms_with_waveform_props_to_pandas(path, timestamp_column)
+        upload_func(df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
+    raise ValueError("'timestamp_column' and 'timestamp_type' must be included together, or excluded together.")
 
 
 def upload_pandas(
