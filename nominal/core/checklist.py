@@ -175,7 +175,7 @@ class Checklist(HasRid):
             _clients=clients,
         )
 
-    def execute(
+    def execute_streaming(
         self,
         assets: Sequence[Asset | str],
         notification_configurations: Sequence[str],
@@ -204,11 +204,11 @@ class Checklist(HasRid):
             ),
         )
 
-    def stop(self) -> None:
+    def stop_streaming(self) -> None:
         """Stop the checklist."""
         self._clients.checklist_execution.stop_streaming_checklist(self._clients.auth_header, self.rid)
 
-    def stop_for_assets(self, assets: Sequence[Asset | str]) -> None:
+    def stop_streaming_for_assets(self, assets: Sequence[Asset | str]) -> None:
         """Stop the checklist for the given assets."""
         self._clients.checklist_execution.stop_streaming_checklist_for_assets(
             self._clients.auth_header,
