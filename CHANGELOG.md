@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/nominal-io/nominal-client/compare/v1.14.0...v1.15.0) (2024-11-25)
+
+
+### Features
+
+* adding ability to specify time column in TDMS groups ([#146](https://github.com/nominal-io/nominal-client/issues/146)) ([0ae2fa5](https://github.com/nominal-io/nominal-client/commit/0ae2fa57d71f6a5f1c45851651896e79e5d2d97e))
+
 ## [1.14.0](https://github.com/nominal-io/nominal-client/compare/v1.13.0...v1.14.0) (2024-11-22)
 
 
