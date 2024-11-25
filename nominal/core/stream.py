@@ -128,7 +128,7 @@ class NominalWriteStream:
 
     def _process_timeout_batches(self) -> None:
         while self._running:
-            time.sleep(self.max_wait_sec / 10)
+            time.sleep(1)
             with self._batch_lock:
                 if self._batch and (time.time() - self._last_batch_time) >= self.max_wait_sec:
                     self.flush()
