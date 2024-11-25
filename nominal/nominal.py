@@ -109,11 +109,11 @@ def upload_tdms(
     )
     if timestamp_column is not None and timestamp_type is not None:
         df = _tdms.tdms_with_time_column_to_pandas(path, timestamp_column)
-        upload_func(df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
+        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
     elif timestamp_column is None and timestamp_type is None:
         timestamp_column = "time_ns"
         df = _tdms.tdms_with_waveform_props_to_pandas(path, timestamp_column)
-        upload_func(df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
+        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
     raise ValueError("'timestamp_column' and 'timestamp_type' must be included together, or excluded together.")
 
 
