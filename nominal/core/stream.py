@@ -39,12 +39,14 @@ class WriteStream:
         self._process_batch = process_batch
         self.batch_size = batch_size
         self.max_wait_sec = max_wait_sec
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        self.max_workers = max_workers
         self._batch: list[BatchItem] = []
         self._batch_lock = threading.Lock()
         self._last_batch_time = time.time()
         self._running = True
 
+    def start(self) -> None:
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
         self._timeout_thread = threading.Thread(target=self._process_timeout_batches, daemon=True)
         self._timeout_thread.start()
 
