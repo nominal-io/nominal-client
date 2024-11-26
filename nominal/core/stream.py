@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from types import TracebackType
-from typing import Callable, Dict, Sequence, Type
+from typing import Callable, Sequence, Type
 
 from typing_extensions import TypeAlias
 
@@ -21,7 +21,7 @@ class BatchItem:
     channel_name: str
     timestamp: str | datetime | IntegralNanosecondsUTC
     value: float
-    tags: Dict[str, str] | None = None
+    tags: dict[str, str] | None = None
 
 
 NominalWriteStream: TypeAlias = "WriteStream"
@@ -67,7 +67,7 @@ class WriteStream:
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         value: float,
-        tags: Dict[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Add a message to the queue.
 
@@ -80,7 +80,7 @@ class WriteStream:
         channel_name: str,
         timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
         values: Sequence[float],
-        tags: Dict[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Add a sequence of messages to the queue.
 
