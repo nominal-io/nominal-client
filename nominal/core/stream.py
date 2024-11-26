@@ -108,10 +108,11 @@ class WriteStream:
                      NOTE: If none, waits indefinitely.
 
         """
-        if not self._batch:
-            logger.debug("Not flushing... no enqueued batch")
-            self._last_batch_time = time.time()
-            return
+        with self._batch_lock:
+            if not self._batch:
+                logger.debug("Not flushing... no enqueued batch")
+                self._last_batch_time = time.time()
+                return
 
         self._pending_jobs.acquire()
 
@@ -124,13 +125,14 @@ class WriteStream:
             else:
                 logger.debug("Batched upload task succeeded")
 
-        logger.debug(f"Starting flush with {len(self._batch)} records")
-        future = self._executor.submit(self._process_batch, self._batch)
-        future.add_done_callback(process_future)
+        with self._batch_lock:
+            logger.debug(f"Starting flush with {len(self._batch)} records")
+            future = self._executor.submit(self._process_batch, self._batch)
+            future.add_done_callback(process_future)
 
-        # Clear metadata
-        self._batch = []
-        self._last_batch_time = time.time()
+            # Clear metadata
+            self._batch = []
+            self._last_batch_time = time.time()
 
         # Synchronously wait, if requested
         if wait:
@@ -142,7 +144,8 @@ class WriteStream:
     def _process_timeout_batches(self) -> None:
         while self._running:
             now = time.time()
-            last_batch_time = self._last_batch_time
+            with self._batch_lock:
+                last_batch_time = self._last_batch_time
             timeout = max(self.max_wait_sec - (now - last_batch_time), 0)
             self._max_wait_event.wait(timeout=timeout)
 
@@ -150,7 +153,7 @@ class WriteStream:
                 # check if flush has been called in the mean time
                 if self._last_batch_time > last_batch_time:
                     continue
-                self.flush()
+            self.flush()
 
     def close(self, wait: bool = True) -> None:
         """Close the Nominal Stream.
@@ -163,7 +166,6 @@ class WriteStream:
         self._max_wait_event.set()
         self._timeout_thread.join()
 
-        with self._batch_lock:
-            self.flush()
+        self.flush()
 
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
