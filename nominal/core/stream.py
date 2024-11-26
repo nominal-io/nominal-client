@@ -9,6 +9,8 @@ from datetime import datetime
 from types import TracebackType
 from typing import Callable, Dict, Sequence, Type
 
+from typing_extensions import TypeAlias
+
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
@@ -22,7 +24,10 @@ class BatchItem:
     tags: Dict[str, str] | None = None
 
 
-class NominalWriteStream:
+NominalWriteStream: TypeAlias = "WriteStream"
+
+
+class WriteStream:
     def __init__(
         self,
         process_batch: Callable[[Sequence[BatchItem]], None],
@@ -43,7 +48,7 @@ class NominalWriteStream:
         self._timeout_thread = threading.Thread(target=self._process_timeout_batches, daemon=True)
         self._timeout_thread.start()
 
-    def __enter__(self) -> "NominalWriteStream":
+    def __enter__(self) -> "WriteStream":
         """Create the stream as a context manager."""
         return self
 

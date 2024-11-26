@@ -18,7 +18,7 @@ from nominal._api.scout_service_api import (
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
-from nominal.core.stream import BatchItem, NominalWriteStream
+from nominal.core.stream import BatchItem, NominalWriteStream, WriteStream
 from nominal.ts import _SecondsNanos
 
 
@@ -138,7 +138,21 @@ class Connection(HasRid):
         return Channel._from_conjure_logicalseries_api(self._clients, series)
 
     def get_nominal_write_stream(self, batch_size: int = 10, max_wait_sec: int = 5) -> NominalWriteStream:
-        """Nominal Stream to write non-blocking messages to a datasource.
+        """get_nominal_write_stream is deprecated and will be removed in a future version,
+        use get_write_stream instead.
+        """
+        import warnings
+
+        warnings.warn(
+            "get_nominal_write_stream is deprecated and will be removed in a future version,"
+            "use get_write_stream instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return self.get_write_stream(batch_size, max_wait_sec)
+
+    def get_write_stream(self, batch_size: int = 10, max_wait_sec: int = 5) -> WriteStream:
+        """Stream to write non-blocking messages to a datasource.
 
         Args:
         ----
@@ -149,7 +163,7 @@ class Connection(HasRid):
         --------
             Standard Usage:
             ```py
-            with connection.get_nominal_write_stream() as stream:
+            with connection.get_write_stream() as stream:
                 stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
                 stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
                 ...
@@ -157,7 +171,7 @@ class Connection(HasRid):
 
             Without a context manager:
             ```py
-            stream = connection.get_nominal_write_stream()
+            stream = connection.get_write_stream()
             stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
             stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
             ...
@@ -166,7 +180,7 @@ class Connection(HasRid):
 
         """
         if self._nominal_data_source_rid is not None:
-            return NominalWriteStream(self._process_batch, batch_size, max_wait_sec)
+            return WriteStream(self._process_batch, batch_size, max_wait_sec)
         else:
             raise ValueError("Writing not implemented for this connection type")
 
