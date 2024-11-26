@@ -203,6 +203,64 @@ class NominalClient:
                 properties=properties,
             )
 
+    def create_mcap_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        description: str | None = None,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from an MCAP file.
+
+        If name is None, the name of the file will be used.
+
+        If include_topics is None (default), all channels with a "protobuf" message encoding are included.
+
+        See `create_dataset_from_io` for more details on the other arguments.
+        """
+        channels = ingest_api.McapChannels(all=api.Empty())
+        if include_topics is not None and exclude_topics is not None:
+            include_topics = [t for t in include_topics if t not in exclude_topics]
+        if include_topics is not None:
+            channels = ingest_api.McapChannels(
+                include=[api.McapChannelLocator(topic=topic) for topic in include_topics]
+            )
+        elif exclude_topics is not None:
+            channels = ingest_api.McapChannels(
+                exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics]
+            )
+
+        mcap_path = Path(path)
+        file_type = FileTypes.MCAP
+        urlsafe_name = urllib.parse.quote_plus(mcap_path.stem)
+        filename = f"{urlsafe_name}{file_type.extension}"
+        with open(mcap_path, "rb") as f:
+            s3_path = put_multipart_upload(
+                self._clients.auth_header, f, filename, file_type.mimetype, self._clients.upload
+            )
+        source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+        request = ingest_api.IngestMcapRequest(
+            channel_config=[],
+            channels=channels,
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+            sources=[source],
+            description=description,
+            title=name,
+        )
+        resp = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
+        if resp.outputs:
+            dataset_rid = resp.outputs[0].target.dataset_rid
+            if dataset_rid is not None:
+                dataset = self.get_dataset(dataset_rid)
+                return dataset
+            raise NominalIngestError("error ingesting mcap: no dataset rid")
+        raise NominalIngestError("error ingesting mcap: no dataset created")
+
     def create_dataset_from_io(
         self,
         dataset: BinaryIO,
