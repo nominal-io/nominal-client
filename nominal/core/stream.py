@@ -44,6 +44,7 @@ class WriteStream:
         self._batch_lock = threading.Lock()
         self._last_batch_time = time.time()
         self._running = True
+        self._max_wait_event = threading.Event()
 
     def start(self) -> None:
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
@@ -108,6 +109,7 @@ class WriteStream:
         """
         if not self._batch:
             logger.debug("Not flushing... no enqueued batch")
+            self._last_batch_time = time.time()
             return
 
         def process_future(fut: concurrent.futures.Future) -> None:  # type: ignore[type-arg]
@@ -135,10 +137,16 @@ class WriteStream:
 
     def _process_timeout_batches(self) -> None:
         while self._running:
-            time.sleep(1)
+            now = time.time()
+            last_batch_time = self._last_batch_time
+            timeout = max(self.max_wait_sec - (now - last_batch_time), 0)
+            self._max_wait_event.wait(timeout=timeout)
+
             with self._batch_lock:
-                if self._batch and (time.time() - self._last_batch_time) >= self.max_wait_sec:
-                    self.flush()
+                # check if flush has been called in the mean time
+                if self._last_batch_time > last_batch_time:
+                    continue
+                self.flush()
 
     def close(self, wait: bool = True) -> None:
         """Close the Nominal Stream.
@@ -147,6 +155,8 @@ class WriteStream:
         Flush any remaining batches
         """
         self._running = False
+
+        self._max_wait_event.set()
         self._timeout_thread.join()
 
         with self._batch_lock:
