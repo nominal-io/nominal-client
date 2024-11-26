@@ -45,6 +45,7 @@ class WriteStream:
         self._last_batch_time = time.time()
         self._running = True
         self._max_wait_event = threading.Event()
+        self._pending_jobs = threading.BoundedSemaphore(3)
 
     def start(self) -> None:
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers)
@@ -112,8 +113,11 @@ class WriteStream:
             self._last_batch_time = time.time()
             return
 
+        self._pending_jobs.acquire()
+
         def process_future(fut: concurrent.futures.Future) -> None:  # type: ignore[type-arg]
             """Callback to print errors to the console if a batch upload fails."""
+            self._pending_jobs.release()
             maybe_ex = fut.exception()
             if maybe_ex is not None:
                 logger.error("Batched upload task failed with exception", exc_info=maybe_ex)
