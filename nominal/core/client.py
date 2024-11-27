@@ -361,8 +361,7 @@ class NominalClient:
 
         # if frame_timestamps is None:
         if start is None:
-            with tempfile.NamedTemporaryFile(suffix=".json", delete_on_close=False) as tmp:
-                tmp.close()
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
                 timestamp_manifest_path = Path(tmp.name)
 
                 logger.debug(f"Writing timestamp manifest to '{timestamp_manifest_path}'")
@@ -372,6 +371,12 @@ class NominalClient:
                 manifest_s3_path = upload_multipart_file(
                     self._clients.auth_header, timestamp_manifest_path, self._clients.upload
                 )
+
+                # TODO (drake): once 3.12 is minimally supported version, use delete_on_close to
+                #               simply close at the time of creation to keep delete=True when creating
+                #               tempfile.
+                logger.debug(f"Deleting timestamp manifest file '{timestamp_manifest_path}'")
+                timestamp_manifest_path.unlink()
 
             timestamp_manifest = ingest_api.VideoTimestampManifest(
                 timestamp_manifests=ingest_api.TimestampManifest(
