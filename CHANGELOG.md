@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.16.0](https://github.com/nominal-io/nominal-client/compare/v1.15.0...v1.16.0) (2024-11-26)
+
+
+### Features
+
+* add mcap dataset creation ([#155](https://github.com/nominal-io/nominal-client/issues/155)) ([e18c3d7](https://github.com/nominal-io/nominal-client/commit/e18c3d725e06a7e07e7525792ab634205995c233))
+* remove pydantic for dataclasses ([#153](https://github.com/nominal-io/nominal-client/issues/153)) ([0cac531](https://github.com/nominal-io/nominal-client/commit/0cac531299b62018e46c17269db42ce8a4ce9a3d))
+
+## [1.15.0](https://github.com/nominal-io/nominal-client/compare/v1.14.0...v1.15.0) (2024-11-25)
+
+
+### Features
+
+* adding ability to specify time column in TDMS groups ([#146](https://github.com/nominal-io/nominal-client/issues/146)) ([0ae2fa5](https://github.com/nominal-io/nominal-client/commit/0ae2fa57d71f6a5f1c45851651896e79e5d2d97e))
+
 ## [1.14.0](https://github.com/nominal-io/nominal-client/compare/v1.13.0...v1.14.0) (2024-11-22)
 
 
