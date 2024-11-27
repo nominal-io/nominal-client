@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import pathlib
+import urllib.parse
 from functools import partial
 from queue import Queue
 from typing import BinaryIO, Iterable
@@ -9,6 +11,7 @@ from typing import BinaryIO, Iterable
 import requests
 
 from nominal._api.scout_service_api import ingest_api, upload_api
+from nominal._utils import FileType
 from nominal.exceptions import NominalMultipartUploadFailed
 
 logger = logging.getLogger(__name__)
@@ -116,6 +119,48 @@ def put_multipart_upload(
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e)
         raise e
+
+
+def upload_multipart_io(
+    auth_header: str,
+    f: BinaryIO,
+    name: str,
+    file_type: FileType,
+    upload_client: upload_api.UploadService,
+    **put_multipart_kwargs,
+) -> str:
+    urlsafe_name = urllib.parse.quote_plus(name)
+    safe_filename = f"{urlsafe_name}{file_type.extension}"
+    return put_multipart_upload(
+        auth_header,
+        f,
+        safe_filename,
+        file_type.mimetype,
+        upload_client,
+        **put_multipart_kwargs,
+    )
+
+
+def upload_multipart_file(
+    auth_header: str,
+    file: pathlib.Path,
+    upload_client: upload_api.UploadService,
+    file_type: FileType | None = None,
+    **put_multipart_kwargs,
+) -> str:
+    if file_type is None:
+        file_type = FileType.from_path(file)
+
+    file_name = file.stem.split(".")[0]
+    with file.open("rb") as file_handle:
+        return upload_multipart_io(
+            auth_header,
+            file_handle,
+            file_name,
+            file_type,
+            upload_client,
+            **put_multipart_kwargs,
+        )
 
 
 def _abort(upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str, e: Exception) -> None:

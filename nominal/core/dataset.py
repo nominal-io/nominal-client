@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import time
-import urllib.parse
 from dataclasses import dataclass, field
 from datetime import timedelta
 from io import TextIOBase
@@ -27,7 +26,7 @@ from nominal._api.scout_service_api import (
 from nominal._utils import FileType, FileTypes
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import put_multipart_upload
+from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.channel import Channel, _get_series_values_csv
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
@@ -181,13 +180,15 @@ class Dataset(HasRid):
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
-        file_type = FileType(*file_type)
-
         self.poll_until_ingestion_completed()
-        urlsafe_name = urllib.parse.quote_plus(self.name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
+
+        file_type = FileType(*file_type)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            dataset,
+            self.name,
+            file_type,
+            self._clients.upload,
         )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(

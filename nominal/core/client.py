@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import TextIOBase
@@ -34,7 +33,7 @@ from nominal._utils import (
 )
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import put_multipart_upload
+from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
@@ -235,13 +234,12 @@ class NominalClient:
             )
 
         mcap_path = Path(path)
-        file_type = FileTypes.MCAP
-        urlsafe_name = urllib.parse.quote_plus(mcap_path.stem)
-        filename = f"{urlsafe_name}{file_type.extension}"
-        with open(mcap_path, "rb") as f:
-            s3_path = put_multipart_upload(
-                self._clients.auth_header, f, filename, file_type.mimetype, self._clients.upload
-            )
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            mcap_path,
+            self._clients.upload,
+            file_type=FileTypes.MCAP,
+        )
         source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
         request = ingest_api.IngestMcapRequest(
             channel_config=[],
@@ -287,13 +285,7 @@ class NominalClient:
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
-        file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
-        )
+        s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
                 new_dataset=ingest_api.NewDatasetIngestDestination(
@@ -333,13 +325,7 @@ class NominalClient:
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
-        file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, video, filename, file_type.mimetype, self._clients.upload
-        )
+        s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
         request = ingest_api.IngestVideoRequest(
             labels=list(labels),
             properties={} if properties is None else dict(properties),
@@ -481,11 +467,12 @@ class NominalClient:
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, attachment, filename, file_type.mimetype, self._clients.upload
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            attachment,
+            name,
+            file_type,
+            self._clients.upload,
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
@@ -604,12 +591,7 @@ class NominalClient:
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, mcap, filename, file_type.mimetype, self._clients.upload
-        )
+        s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
         request = ingest_api.IngestMcapRequest(
             channel_config=[
                 ingest_api.McapChannelConfig(
