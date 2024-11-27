@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
-from io import TextIOBase
+from io import BytesIO, TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
@@ -361,22 +360,16 @@ class NominalClient:
 
         # if frame_timestamps is None:
         if start is None:
-            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
-                timestamp_manifest_path = Path(tmp.name)
-
-                logger.debug(f"Writing timestamp manifest to '{timestamp_manifest_path}'")
-                timestamp_manifest_path.write_text(json.dumps(frame_timestamps))
-
-                logger.debug("Uploading timestamp manifests to s3")
-                manifest_s3_path = upload_multipart_file(
-                    self._clients.auth_header, timestamp_manifest_path, self._clients.upload
-                )
-
-                # TODO (drake): once 3.12 is minimally supported version, use delete_on_close to
-                #               simply close at the time of creation to keep delete=True when creating
-                #               tempfile.
-                logger.debug(f"Deleting timestamp manifest file '{timestamp_manifest_path}'")
-                timestamp_manifest_path.unlink()
+            logger.debug("Uploading timestamp manifests to s3")
+            json_io = BytesIO()
+            json_io.write(json.dumps(frame_timestamps).encode())
+            manifest_s3_path = upload_multipart_io(
+                self._clients.auth_header,
+                json_io,
+                "timestamp_manifest",
+                FileTypes.JSON,
+                self._clients.upload,
+            )
 
             timestamp_manifest = ingest_api.VideoTimestampManifest(
                 timestamp_manifests=ingest_api.TimestampManifest(
