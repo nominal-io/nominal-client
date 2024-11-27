@@ -16,6 +16,9 @@ from nominal.exceptions import NominalMultipartUploadFailed
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CHUNK_SIZE = 64_000_000
+DEFAULT_NUM_WORKERS = 8
+
 
 def _sign_and_upload_part_job(
     upload_client: upload_api.UploadService,
@@ -57,8 +60,8 @@ def put_multipart_upload(
     filename: str,
     mimetype: str,
     upload_client: upload_api.UploadService,
-    chunk_size: int = 64_000_000,
-    max_workers: int = 8,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    max_workers: int = DEFAULT_NUM_WORKERS,
 ) -> str:
     """Execute a multipart upload to S3.
 
@@ -127,7 +130,8 @@ def upload_multipart_io(
     name: str,
     file_type: FileType,
     upload_client: upload_api.UploadService,
-    **put_multipart_kwargs,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    max_workers: int = DEFAULT_NUM_WORKERS,
 ) -> str:
     urlsafe_name = urllib.parse.quote_plus(name)
     safe_filename = f"{urlsafe_name}{file_type.extension}"
@@ -137,7 +141,8 @@ def upload_multipart_io(
         safe_filename,
         file_type.mimetype,
         upload_client,
-        **put_multipart_kwargs,
+        chunk_size=chunk_size,
+        max_workers=max_workers,
     )
 
 
@@ -146,7 +151,8 @@ def upload_multipart_file(
     file: pathlib.Path,
     upload_client: upload_api.UploadService,
     file_type: FileType | None = None,
-    **put_multipart_kwargs,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    max_workers: int = DEFAULT_NUM_WORKERS,
 ) -> str:
     if file_type is None:
         file_type = FileType.from_path(file)
@@ -159,7 +165,8 @@ def upload_multipart_file(
             file_name,
             file_type,
             upload_client,
-            **put_multipart_kwargs,
+            chunk_size=chunk_size,
+            max_workers=max_workers,
         )
 
 

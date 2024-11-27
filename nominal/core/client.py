@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import logging
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import TextIOBase
@@ -56,6 +59,8 @@ from nominal.ts import (
 )
 
 from .asset import Asset
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -285,6 +290,7 @@ class NominalClient:
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
+        file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
@@ -311,30 +317,63 @@ class NominalClient:
         self,
         video: BinaryIO,
         name: str,
-        start: datetime | IntegralNanosecondsUTC,
+        start: datetime | IntegralNanosecondsUTC | None = None,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
     ) -> Video:
         """Create a video from a file-like object.
 
         The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         """
+        if (start is None and frame_timestamps is None) and (None not in (start, frame_timestamps)):
+            raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
+
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
+        # if frame_timestamps is None:
+        if start is None:
+            with tempfile.NamedTemporaryFile(suffix=".json", delete_on_close=False) as tmp:
+                tmp.close()
+                timestamp_manifest_path = Path(tmp.name)
+
+                logger.debug(f"Writing timestamp manifest to '{timestamp_manifest_path}'")
+                timestamp_manifest_path.write_text(json.dumps(frame_timestamps))
+
+                logger.debug("Uploading timestamp manifests to s3")
+                manifest_s3_path = upload_multipart_file(
+                    self._clients.auth_header, timestamp_manifest_path, self._clients.upload
+                )
+
+            timestamp_manifest = ingest_api.VideoTimestampManifest(
+                timestamp_manifests=ingest_api.TimestampManifest(
+                    sources=[
+                        ingest_api.IngestSource(
+                            s3=ingest_api.S3IngestSource(
+                                path=manifest_s3_path,
+                            )
+                        )
+                    ]
+                )
+            )
+        else:
+            timestamp_manifest = ingest_api.VideoTimestampManifest(
+                no_manifest=ingest_api.NoTimestampManifest(
+                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
+                )
+            )
+
+        file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
         request = ingest_api.IngestVideoRequest(
             labels=list(labels),
             properties={} if properties is None else dict(properties),
             sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
-            timestamps=ingest_api.VideoTimestampManifest(
-                no_manifest=ingest_api.NoTimestampManifest(
-                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
-                )
-            ),
+            timestamps=timestamp_manifest,
             description=description,
             title=name,
         )

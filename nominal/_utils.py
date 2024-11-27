@@ -41,13 +41,14 @@ class FileType(NamedTuple):
 
 
 class FileTypes:
+    BINARY: FileType = FileType("", "application/octet-stream")
     CSV: FileType = FileType(".csv", "text/csv")
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
+    JSON: FileType = FileType(".json", "application/json")
+    MP4: FileType = FileType(".mp4", "video/mp4")
+    MCAP: FileType = FileType(".mcap", "application/octet-stream")
     # https://issues.apache.org/jira/browse/PARQUET-1889
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
-    MP4: FileType = FileType(".mp4", "video/mp4")
-    BINARY: FileType = FileType("", "application/octet-stream")
-    MCAP: FileType = FileType(".mcap", "application/octet-stream")
 
 
 @contextmanager
