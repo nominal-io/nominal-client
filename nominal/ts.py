@@ -224,11 +224,16 @@ __all__ = [
     "TypedTimestampType",
     "IntegralNanosecondsUTC",
     "LogTimestampType",
+    "IntegralSecondsDuration",
 ]
 
 IntegralNanosecondsUTC: TypeAlias = int
 """Alias for an `int` used in the code for documentation purposes.
 This value is a timestamp in nanoseconds since the Unix epoch, UTC."""
+
+IntegralSecondsDuration: TypeAlias = int
+"""Alias for an `int` used in the code for documentation purposes.
+This value is a duration of the number of seconds."""
 
 LogTimestampType: TypeAlias = Literal["absolute", "relative"]
 

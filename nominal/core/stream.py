@@ -11,7 +11,7 @@ from typing import Callable, Sequence, Type
 
 from typing_extensions import TypeAlias
 
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, IntegralSecondsDuration
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +32,13 @@ class WriteStream:
         self,
         process_batch: Callable[[Sequence[BatchItem]], None],
         batch_size: int = 10,
-        max_wait_sec: int = 5,
+        max_wait: IntegralSecondsDuration = 5,
         max_workers: int | None = None,
     ):
         """Create the stream."""
         self._process_batch = process_batch
         self.batch_size = batch_size
-        self.max_wait_sec = max_wait_sec
+        self.max_wait = max_wait
         self.max_workers = max_workers
         self._batch: list[BatchItem] = []
         self._batch_lock = threading.Lock()
@@ -146,7 +146,7 @@ class WriteStream:
             now = time.time()
             with self._batch_lock:
                 last_batch_time = self._last_batch_time
-            timeout = max(self.max_wait_sec - (now - last_batch_time), 0)
+            timeout = max(self.max_wait - (now - last_batch_time), 0)
             self._max_wait_event.wait(timeout=timeout)
 
             with self._batch_lock:
