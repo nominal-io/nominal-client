@@ -376,7 +376,11 @@ def upload_video(
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
         return conn.create_video_from_io(
-            f, name, ts._SecondsNanos.from_flexible(start).to_nanoseconds(), description, file_type
+            f,
+            name,
+            start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
+            description=description,
+            file_type=file_type,
         )
 
 

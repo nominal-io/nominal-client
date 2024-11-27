@@ -318,16 +318,40 @@ class NominalClient:
         video: BinaryIO,
         name: str,
         start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
-        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
     ) -> Video:
         """Create a video from a file-like object.
-
         The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+
+        Args:
+        ----
+            video: file-like object to read video data from
+            name: Name of the video to create in Nominal
+            start: Starting timestamp of the video
+            frame_timestamps: Per-frame timestamps (in nanoseconds since unix epoch) for every frame of the video
+            description: Description of the video to create in nominal
+            file_type: Type of data being uploaded
+            labels: Labels to apply to the video in nominal
+            properties: Properties to apply to the video in nominal
+
+        Returns:
+        -------
+            Handle to the created video
+
+        Note:
+        ----
+            Exactly one of 'start' and 'frame_timestamps' **must** be provided. Most users will
+            want to provide a starting timestamp: frame_timestamps is primarily useful when the scale
+            of the video data is not 1:1 with the playback speed or non-uniform over the course of the video,
+            for example, 200fps video artificially slowed to 30 fps without dropping frames. This will result
+            in the playhead on charts within the product playing at the rate of the underlying data rather than
+            time elapsed in the video playback.
+
         """
         if (start is None and frame_timestamps is None) and (None not in (start, frame_timestamps)):
             raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
@@ -546,7 +570,7 @@ class NominalClient:
                 NOTE: This currently requires that units are formatted as laid out in
                       the latest UCUM standards (see https://ucum.org/ucum)
 
-        Returns
+        Returns:
         -------
             Rendered Unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
@@ -582,7 +606,7 @@ class NominalClient:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
                 NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
 
-        Returns
+        Returns:
         -------
             A sequence of metadata for all updated channels
         Raises:

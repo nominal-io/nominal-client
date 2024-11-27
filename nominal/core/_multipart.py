@@ -68,7 +68,19 @@ def put_multipart_upload(
     All metadata-style requests (init, sign, complete) proxy through Nominal servers, while the upload PUT requests for
     each part go to a pre-signed URL to the storage provider.
 
-    Ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
+    Args:
+        auth_header: Nominal authorization token
+        f: Binary IO to upload
+        filename: URL-safe filename to use when uploading to S3
+        mimetype: Type of data contained within binary stream
+        upload_client: Conjure upload client
+        chunk_size: Maximum size of chunk to upload to S3 at once
+        max_workers: Number of worker threads to use when processing and uploading data
+
+    Returns: Path to the uploaded object in S3
+
+    See: https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
+
     """
     # muiltithreaded multipart upload:
     # - create a worker thread pool and a queue for all threads to share
@@ -133,6 +145,23 @@ def upload_multipart_io(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
 ) -> str:
+    """Execute a multipart upload to S3 proxied via Nominal servers
+
+    Args:
+        auth_header: Nominal authorization token
+        f: Binary IO to upload
+        name: Name of the file to create in S3
+            NOTE: does not need to be URL Safe
+        file_type: Type of data being uploaded
+        upload_client: Conjure upload client
+        chunk_size: Maximum size of chunk to upload to S3 at once
+        max_workers: Number of worker threads to use when processing and uploading data
+
+    Returns: Path to the uploaded object in S3
+
+    Note: see put_multipart_upload for more details
+
+    """
     urlsafe_name = urllib.parse.quote_plus(name)
     safe_filename = f"{urlsafe_name}{file_type.extension}"
     return put_multipart_upload(
@@ -154,6 +183,21 @@ def upload_multipart_file(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
 ) -> str:
+    """Execute a multipart upload to S3 proxied via Nominal servers.
+
+    Args:
+        auth_header: Nominal authorization token
+        file: File to upload to S3
+        upload_client: Conjure upload client
+        file_type: Manually override inferred file type for the given file
+        chunk_size: Maximum size of chunk to upload to S3 at once
+        max_workers: Number of worker threads to use when processing and uploading data
+
+    Returns: Path to the uploaded object in S3
+
+    Note: see put_multipart_upload for more details
+
+    """
     if file_type is None:
         file_type = FileType.from_path(file)
 

@@ -91,7 +91,7 @@ class Dataset(HasRid):
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
-        Raises
+        Raises:
         ------
             NominalIngestFailed: if the ingest failed
             NominalIngestError: if the ingest status is not known
@@ -395,7 +395,7 @@ def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timede
     This method polls Nominal for ingest status on each of the datasets on an interval.
     No specific ordering is guaranteed, but all datasets will be checked at least once.
 
-    Raises
+    Raises:
     ------
         NominalIngestMultiError: if any of the datasets failed to ingest
 
