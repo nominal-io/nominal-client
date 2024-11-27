@@ -353,7 +353,7 @@ class NominalClient:
             time elapsed in the video playback.
 
         """
-        if (start is None and frame_timestamps is None) and (None not in (start, frame_timestamps)):
+        if (start is None and frame_timestamps is None) or (None not in (start, frame_timestamps)):
             raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
 
         if isinstance(video, TextIOBase):
