@@ -364,6 +364,7 @@ class NominalClient:
             text_json_io = TextIOWrapper(json_io)
             json.dump(frame_timestamps, text_json_io)
             text_json_io.flush()
+            json_io.seek(0)
 
             logger.debug("Uploading timestamp manifests to s3")
             manifest_s3_path = upload_multipart_io(
