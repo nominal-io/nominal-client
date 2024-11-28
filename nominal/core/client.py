@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from io import BytesIO, TextIOBase
+from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
@@ -358,11 +358,14 @@ class NominalClient:
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
-        # if frame_timestamps is None:
         if start is None:
-            logger.debug("Uploading timestamp manifests to s3")
+            # Dump timestamp array into an in-memory file-like IO object
             json_io = BytesIO()
-            json_io.write(json.dumps(frame_timestamps).encode())
+            text_json_io = TextIOWrapper(json_io)
+            json.dump(frame_timestamps, text_json_io)
+            text_json_io.flush()
+
+            logger.debug("Uploading timestamp manifests to s3")
             manifest_s3_path = upload_multipart_io(
                 self._clients.auth_header,
                 json_io,
@@ -370,7 +373,6 @@ class NominalClient:
                 FileTypes.JSON,
                 self._clients.upload,
             )
-
             timestamp_manifest = ingest_api.VideoTimestampManifest(
                 timestamp_manifests=ingest_api.TimestampManifest(
                     sources=[
