@@ -675,8 +675,17 @@ class NominalClient:
         return self.get_video(response.outputs[0].target.video_rid)
 
     def create_streaming_connection(
-        self, datasource_id: str, connection_name: str, datasource_description: str | None = None
+        self,
+        datasource_id: str,
+        connection_name: str,
+        datasource_description: str | None = None,
+        *,
+        required_tag_names: list[str] | None = None,
+        available_tag_values: dict[str, list[str]] | None = None,
     ) -> Connection:
+        if required_tag_names:
+            if not available_tag_values or not all(key in available_tag_values for key in required_tag_names):
+                raise ValueError("available_tag_values contain all required_tag_names")
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
@@ -704,8 +713,8 @@ class NominalClient:
                         separator=".",
                     )
                 ),
-                required_tag_names=[],
-                available_tag_values={},
+                required_tag_names=required_tag_names or [],
+                available_tag_values=available_tag_values or {},
                 should_scrape=True,
             ),
         )
