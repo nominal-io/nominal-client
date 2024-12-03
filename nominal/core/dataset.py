@@ -23,12 +23,12 @@ from nominal._api.scout_service_api import (
     timeseries_logicalseries_api,
     upload_api,
 )
-from nominal._utils import FileType, FileTypes
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.channel import Channel, _get_series_values_csv
+from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _MAX_TIMESTAMP,

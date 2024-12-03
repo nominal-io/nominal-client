@@ -7,13 +7,15 @@ from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
 from nominal import Connection, _config, ts
-from nominal._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
+from nominal._utils import deprecate_keyword_argument, reader_writer
 from nominal.core import (
     Asset,
     Attachment,
     Checklist,
     ChecklistBuilder,
     Dataset,
+    FileType,
+    FileTypes,
     Log,
     LogSet,
     NominalClient,
