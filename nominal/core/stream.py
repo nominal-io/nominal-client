@@ -36,7 +36,7 @@ class WriteStream:
         self.max_wait = max_wait
         self.max_workers = max_workers
         self._batch: list[BatchItem] = []
-        self._batch_lock = threading.Lock()
+        self._batch_lock = threading.RLock()
         self._last_batch_time = time.time()
         self._running = True
         self._max_wait_event = threading.Event()
