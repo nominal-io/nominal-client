@@ -7,13 +7,15 @@ from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
 from nominal import Connection, _config, ts
-from nominal._utils import FileType, FileTypes, deprecate_keyword_argument, reader_writer
+from nominal._utils import deprecate_keyword_argument, reader_writer
 from nominal.core import (
     Asset,
     Attachment,
     Checklist,
     ChecklistBuilder,
     Dataset,
+    FileType,
+    FileTypes,
     Log,
     LogSet,
     NominalClient,
@@ -376,7 +378,11 @@ def upload_video(
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
         return conn.create_video_from_io(
-            f, name, ts._SecondsNanos.from_flexible(start).to_nanoseconds(), description, file_type
+            f,
+            name,
+            start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
+            description=description,
+            file_type=file_type,
         )
 
 

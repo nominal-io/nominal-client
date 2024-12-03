@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import urllib.parse
+import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from io import TextIOBase
+from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
@@ -27,20 +28,18 @@ from nominal._api.scout_service_api import (
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
-from nominal._utils import (
-    FileType,
-    FileTypes,
-    deprecate_keyword_argument,
-)
+from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import put_multipart_upload
+from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
 from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
+from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
@@ -56,7 +55,7 @@ from nominal.ts import (
     _to_typed_timestamp_type,
 )
 
-from .asset import Asset
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -235,13 +234,12 @@ class NominalClient:
             )
 
         mcap_path = Path(path)
-        file_type = FileTypes.MCAP
-        urlsafe_name = urllib.parse.quote_plus(mcap_path.stem)
-        filename = f"{urlsafe_name}{file_type.extension}"
-        with open(mcap_path, "rb") as f:
-            s3_path = put_multipart_upload(
-                self._clients.auth_header, f, filename, file_type.mimetype, self._clients.upload
-            )
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            mcap_path,
+            self._clients.upload,
+            file_type=FileTypes.MCAP,
+        )
         source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
         request = ingest_api.IngestMcapRequest(
             channel_config=[],
@@ -288,12 +286,7 @@ class NominalClient:
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
-        )
+        s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
                 new_dataset=ingest_api.NewDatasetIngestDestination(
@@ -319,7 +312,8 @@ class NominalClient:
         self,
         video: BinaryIO,
         name: str,
-        start: datetime | IntegralNanosecondsUTC,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
         *,
@@ -327,28 +321,80 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Video:
         """Create a video from a file-like object.
-
         The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+
+        Args:
+        ----
+            video: file-like object to read video data from
+            name: Name of the video to create in Nominal
+            start: Starting timestamp of the video
+            frame_timestamps: Per-frame timestamps (in nanoseconds since unix epoch) for every frame of the video
+            description: Description of the video to create in nominal
+            file_type: Type of data being uploaded
+            labels: Labels to apply to the video in nominal
+            properties: Properties to apply to the video in nominal
+
+        Returns:
+        -------
+            Handle to the created video
+
+        Note:
+        ----
+            Exactly one of 'start' and 'frame_timestamps' **must** be provided. Most users will
+            want to provide a starting timestamp: frame_timestamps is primarily useful when the scale
+            of the video data is not 1:1 with the playback speed or non-uniform over the course of the video,
+            for example, 200fps video artificially slowed to 30 fps without dropping frames. This will result
+            in the playhead on charts within the product playing at the rate of the underlying data rather than
+            time elapsed in the video playback.
+
         """
+        if (start is None and frame_timestamps is None) or (None not in (start, frame_timestamps)):
+            raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
+
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
-        file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
+        if start is None:
+            # Dump timestamp array into an in-memory file-like IO object
+            json_io = BytesIO()
+            text_json_io = TextIOWrapper(json_io)
+            json.dump(frame_timestamps, text_json_io)
+            text_json_io.flush()
+            json_io.seek(0)
 
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, video, filename, file_type.mimetype, self._clients.upload
-        )
+            logger.debug("Uploading timestamp manifests to s3")
+            manifest_s3_path = upload_multipart_io(
+                self._clients.auth_header,
+                json_io,
+                "timestamp_manifest",
+                FileTypes.JSON,
+                self._clients.upload,
+            )
+            timestamp_manifest = ingest_api.VideoTimestampManifest(
+                timestamp_manifests=ingest_api.TimestampManifest(
+                    sources=[
+                        ingest_api.IngestSource(
+                            s3=ingest_api.S3IngestSource(
+                                path=manifest_s3_path,
+                            )
+                        )
+                    ]
+                )
+            )
+        else:
+            timestamp_manifest = ingest_api.VideoTimestampManifest(
+                no_manifest=ingest_api.NoTimestampManifest(
+                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
+                )
+            )
+
+        file_type = FileType(*file_type)
+        s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
         request = ingest_api.IngestVideoRequest(
             labels=list(labels),
             properties={} if properties is None else dict(properties),
             sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
-            timestamps=ingest_api.VideoTimestampManifest(
-                no_manifest=ingest_api.NoTimestampManifest(
-                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
-                )
-            ),
+            timestamps=timestamp_manifest,
             description=description,
             title=name,
         )
@@ -481,11 +527,12 @@ class NominalClient:
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, attachment, filename, file_type.mimetype, self._clients.upload
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            attachment,
+            name,
+            file_type,
+            self._clients.upload,
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
@@ -520,7 +567,7 @@ class NominalClient:
                 NOTE: This currently requires that units are formatted as laid out in
                       the latest UCUM standards (see https://ucum.org/ucum)
 
-        Returns
+        Returns:
         -------
             Rendered Unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
@@ -556,7 +603,7 @@ class NominalClient:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
                 NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
 
-        Returns
+        Returns:
         -------
             A sequence of metadata for all updated channels
         Raises:
@@ -604,12 +651,7 @@ class NominalClient:
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, mcap, filename, file_type.mimetype, self._clients.upload
-        )
+        s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
         request = ingest_api.IngestMcapRequest(
             channel_config=[
                 ingest_api.McapChannelConfig(

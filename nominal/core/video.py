@@ -31,7 +31,7 @@ class Video(HasRid):
         """Block until video ingestion has completed.
         This method polls Nominal for ingest status after uploading a video on an interval.
 
-        Raises
+        Raises:
         ------
             NominalIngestFailed: if the ingest failed
             NominalIngestError: if the ingest status is not known

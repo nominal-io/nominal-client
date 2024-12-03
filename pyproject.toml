@@ -67,6 +67,9 @@ line-length = 120
 exclude = ["nominal/_api/*"]
 include = ["nominal/**/*.py", "tests/**/*.py"]
 
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
 [tool.ruff.lint.pylint]
 max-args = 10
 
