@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import contextmanager
-from typing import Any, BinaryIO, Callable, Iterator, Literal, TypeVar, overload
+from typing import Any, BinaryIO, Callable, Iterator, TypeVar
 
 from typing_extensions import ParamSpec
 
@@ -17,10 +17,6 @@ Param = ParamSpec("Param")
 T = TypeVar("T")
 
 
-@overload
-def __getattr__(attr: Literal["FileType"]) -> filetype.FileType: ...
-@overload
-def __getattr__(attr: Literal["FileTypes"]) -> filetype.FileTypes: ...
 def __getattr__(attr: str) -> Any:
     import warnings
 
