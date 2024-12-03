@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.0](https://github.com/nominal-io/nominal-client/compare/v1.16.0...v1.17.0) (2024-12-03)
+
+
+### Features
+
+* allow uploading manually timestamped videos ([#156](https://github.com/nominal-io/nominal-client/issues/156)) ([67f2867](https://github.com/nominal-io/nominal-client/commit/67f28672631aac3958b9d7b9b70f42634a55ef53))
+* make FileType(s) public ([#158](https://github.com/nominal-io/nominal-client/issues/158)) ([2358570](https://github.com/nominal-io/nominal-client/commit/2358570a6b95aaac35089a62205f2e285d5aaee1))
+
 ## [1.16.0](https://github.com/nominal-io/nominal-client/compare/v1.15.0...v1.16.0) (2024-11-26)
 
 
