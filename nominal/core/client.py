@@ -28,20 +28,18 @@ from nominal._api.scout_service_api import (
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
-from nominal._utils import (
-    FileType,
-    FileTypes,
-    deprecate_keyword_argument,
-)
+from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
 from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
+from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
@@ -56,8 +54,6 @@ from nominal.ts import (
     _SecondsNanos,
     _to_typed_timestamp_type,
 )
-
-from .asset import Asset
 
 logger = logging.getLogger(__name__)
 
