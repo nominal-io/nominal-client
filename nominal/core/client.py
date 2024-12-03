@@ -33,6 +33,7 @@ from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
@@ -54,7 +55,6 @@ from nominal.ts import (
     _to_typed_timestamp_type,
 )
 
-from .asset import Asset
 
 logger = logging.getLogger(__name__)
 
