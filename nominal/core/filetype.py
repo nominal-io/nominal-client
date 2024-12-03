@@ -3,9 +3,7 @@ from __future__ import annotations
 import logging
 import mimetypes
 from pathlib import Path
-from typing import NamedTuple, TypeVar
-
-from typing_extensions import ParamSpec
+from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 

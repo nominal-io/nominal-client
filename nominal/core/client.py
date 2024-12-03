@@ -55,7 +55,6 @@ from nominal.ts import (
     _to_typed_timestamp_type,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -9,7 +9,6 @@ from typing_extensions import ParamSpec
 
 from nominal.core import filetype
 
-
 logger = logging.getLogger(__name__)
 
 
