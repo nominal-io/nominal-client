@@ -5,13 +5,11 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Callable, Sequence, Type
 
-from typing_extensions import TypeAlias
-
-from nominal.ts import IntegralNanosecondsUTC, IntegralSecondsDuration
+from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +22,12 @@ class BatchItem:
     tags: dict[str, str] | None = None
 
 
-NominalWriteStream: TypeAlias = "WriteStream"
-
-
 class WriteStream:
     def __init__(
         self,
         process_batch: Callable[[Sequence[BatchItem]], None],
         batch_size: int = 10,
-        max_wait: IntegralSecondsDuration = 5,
+        max_wait: timedelta = timedelta(seconds=5),
         max_workers: int | None = None,
     ):
         """Create the stream."""
@@ -52,7 +47,7 @@ class WriteStream:
         self._timeout_thread = threading.Thread(target=self._process_timeout_batches, daemon=True)
         self._timeout_thread.start()
 
-    def __enter__(self) -> "WriteStream":
+    def __enter__(self) -> WriteStream:
         """Create the stream as a context manager."""
         return self
 
@@ -126,13 +121,14 @@ class WriteStream:
                 logger.debug("Batched upload task succeeded")
 
         with self._batch_lock:
-            logger.debug(f"Starting flush with {len(self._batch)} records")
-            future = self._executor.submit(self._process_batch, self._batch)
-            future.add_done_callback(process_future)
-
+            batch = self._batch
             # Clear metadata
             self._batch = []
             self._last_batch_time = time.time()
+
+        logger.debug(f"Starting flush with {len(batch)} records")
+        future = self._executor.submit(self._process_batch, batch)
+        future.add_done_callback(process_future)
 
         # Synchronously wait, if requested
         if wait:
@@ -146,7 +142,7 @@ class WriteStream:
             now = time.time()
             with self._batch_lock:
                 last_batch_time = self._last_batch_time
-            timeout = max(self.max_wait - (now - last_batch_time), 0)
+            timeout = max(self.max_wait.seconds - (now - last_batch_time), 0)
             self._max_wait_event.wait(timeout=timeout)
 
             with self._batch_lock:
@@ -169,3 +165,6 @@ class WriteStream:
         self.flush()
 
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
+
+
+NominalWriteStream = WriteStream

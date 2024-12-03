@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools
 import logging
 from dataclasses import dataclass, field
+from datetime import timedelta
 from itertools import groupby
 from typing import Iterable, Mapping, Protocol, Sequence
 
@@ -19,7 +20,7 @@ from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, NominalWriteStream, WriteStream
-from nominal.ts import IntegralSecondsDuration, _SecondsNanos
+from nominal.ts import _SecondsNanos
 
 
 @dataclass(frozen=True)
@@ -149,15 +150,15 @@ class Connection(HasRid):
             UserWarning,
             stacklevel=2,
         )
-        return self.get_write_stream(batch_size, max_wait_sec)
+        return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
 
-    def get_write_stream(self, batch_size: int = 10, max_wait: IntegralSecondsDuration = 5) -> WriteStream:
+    def get_write_stream(self, batch_size: int = 10, max_wait: timedelta = timedelta(seconds=5)) -> WriteStream:
         """Stream to write non-blocking messages to a datasource.
 
         Args:
         ----
             batch_size (int): How big the batch can get before writing to Nominal. Default 10
-            max_wait (IntegralSecondsDuration): How long a batch can exist before being flushed to Nominal. Default 5
+            max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
 
         Examples:
         --------
