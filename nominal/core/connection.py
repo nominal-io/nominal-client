@@ -181,9 +181,7 @@ class Connection(HasRid):
 
         """
         if self._nominal_data_source_rid is not None:
-            write_stream = WriteStream(self._process_batch, batch_size, max_wait)
-            write_stream.start()
-            return write_stream
+            return WriteStream.create(batch_size, max_wait, self._process_batch)
         else:
             raise ValueError("Writing not implemented for this connection type")
 
