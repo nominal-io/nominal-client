@@ -19,7 +19,7 @@ from nominal._api.scout_service_api import (
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
-from nominal.core.stream import BatchItem, NominalWriteStream, WriteStream
+from nominal.core.stream import BatchItem, WriteStream
 from nominal.ts import _SecondsNanos
 
 
@@ -138,7 +138,7 @@ class Connection(HasRid):
         series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
         return Channel._from_conjure_logicalseries_api(self._clients, series)
 
-    def get_nominal_write_stream(self, batch_size: int = 10, max_wait_sec: int = 5) -> NominalWriteStream:
+    def get_nominal_write_stream(self, batch_size: int = 10, max_wait_sec: int = 5) -> WriteStream:
         """get_nominal_write_stream is deprecated and will be removed in a future version,
         use get_write_stream instead.
         """
