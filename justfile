@@ -41,7 +41,7 @@ fix-format:
     poetry run ruff format
 
 # fix imports and formatting
-fix: fix-imports fix-format
+fix: fix-format fix-imports
 
 # run all tests and checks, except e2e tests
 verify: install test check
