@@ -22,14 +22,19 @@ class FileType(NamedTuple):
 
     @classmethod
     def from_path_dataset(cls, path: Path | str) -> FileType:
-        path_string = str(path) if isinstance(path, Path) else path
-        if path_string.endswith(".csv"):
-            return FileTypes.CSV
-        if path_string.endswith(".csv.gz"):
-            return FileTypes.CSV_GZ
-        if path_string.endswith(".parquet"):
-            return FileTypes.PARQUET
-        raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
+        file_type = cls.from_path(path)
+        if file_type not in (FileTypes.CSV, FileTypes.CSV_GZ, FileTypes.PARQUET):
+            raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
+
+        return file_type
+
+    @classmethod
+    def from_video(cls, path: Path | str) -> FileType:
+        file_type = cls.from_path(path)
+        if file_type not in (FileTypes.MKV, FileTypes.MP4):
+            raise ValueError(f"video path '{path}' must end in .mp4 or .mkv")
+
+        return file_type
 
 
 class FileTypes:
@@ -37,6 +42,7 @@ class FileTypes:
     CSV: FileType = FileType(".csv", "text/csv")
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
     JSON: FileType = FileType(".json", "application/json")
+    MKV: FileType = FileType(".mkv", "video/x-matroska")
     MP4: FileType = FileType(".mp4", "video/mp4")
     MCAP: FileType = FileType(".mcap", "application/octet-stream")
     # https://issues.apache.org/jira/browse/PARQUET-1889
