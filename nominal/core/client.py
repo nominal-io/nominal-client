@@ -342,7 +342,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
     ) -> Video:
-        """Create a video from an h264/h265 encoded video file (mp4, mkv, etc.).
+        """Create a video from an h264/h265 encoded video file (mp4, mkv, ts, etc.).
 
         If name is None, the name of the file will be used.
 

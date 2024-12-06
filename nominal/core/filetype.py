@@ -31,8 +31,8 @@ class FileType(NamedTuple):
     @classmethod
     def from_video(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
-        if file_type not in (FileTypes.MKV, FileTypes.MP4):
-            raise ValueError(f"video path '{path}' must end in .mp4 or .mkv")
+        if file_type not in (FileTypes.MKV, FileTypes.MP4, FileTypes.TS):
+            raise ValueError(f"video path '{path}' must end in .mp4, .mkv, or .ts")
 
         return file_type
 
@@ -47,3 +47,4 @@ class FileTypes:
     MCAP: FileType = FileType(".mcap", "application/octet-stream")
     # https://issues.apache.org/jira/browse/PARQUET-1889
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
+    TS: FileType = FileType(".ts", "video/mp2t")
