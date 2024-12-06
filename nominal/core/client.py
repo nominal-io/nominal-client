@@ -809,6 +809,11 @@ class NominalClient:
         """
         return list(self._iter_search_assets(search_text, label, property))
 
+    def list_streaming_checklists(self) -> Sequence[str]:
+        """List all Streaming Checklists."""
+        response = self._clients.checklist_execution.list_streaming_checklist(self._clients.auth_header)
+        return response
+
 
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
