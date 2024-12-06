@@ -552,14 +552,25 @@ def upload_mcap_video(
 
 
 def create_streaming_connection(
-    datasource_id: str, connection_name: str, datasource_description: str | None = None
+    datasource_id: str,
+    connection_name: str,
+    datasource_description: str | None = None,
+    *,
+    required_tag_names: list[str] | None = None,
+    available_tag_values: dict[str, list[str]] | None = None,
 ) -> Connection:
     """Creates a new datasource and a new connection.
 
     datasource_id: A human readable identifier. Must be unique within an organization.
     """
     conn = get_default_client()
-    return conn.create_streaming_connection(datasource_id, connection_name, datasource_description)
+    return conn.create_streaming_connection(
+        datasource_id,
+        connection_name,
+        datasource_description,
+        required_tag_names=required_tag_names,
+        available_tag_values=available_tag_values,
+    )
 
 
 def get_connection(rid: str) -> Connection:
