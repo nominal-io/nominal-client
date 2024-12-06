@@ -14,11 +14,34 @@ class FileType(NamedTuple):
 
     @classmethod
     def from_path(cls, path: Path | str, default_mimetype: str = "application/octect-stream") -> FileType:
-        ext = "".join(Path(path).suffixes)
+        path = Path(path)
+
+        # Note: not using path.suffix because this fails for files with multiple suffixes
+        ext_str = "".join(path.suffixes)
+
+        # Attempt to match the file's extension(s) with those already explicitly listed under FileTypes
+        for name, file_type in FileTypes.__dict__.items():
+            if "__" in name:
+                continue
+
+            if file_type.extension.endswith(ext_str):
+                return file_type
+
+        # Infer mimetype from filepath
         mimetype, _encoding = mimetypes.guess_type(path)
+
+        # If no mimetype could be inferred, use the default
         if mimetype is None:
-            return cls(ext, default_mimetype)
-        return cls(ext, mimetype)
+            return cls(ext_str, default_mimetype)
+
+        # If no extension could be matched against the explicitly listed filetypes,
+        # infer the extension using the mimetype
+        extension = mimetypes.guess_extension(mimetype)
+        if extension is None:
+            return cls(ext_str, mimetype)
+
+        # return the inferred extension and mimetype
+        return cls(extension, mimetype)
 
     @classmethod
     def from_path_dataset(cls, path: Path | str) -> FileType:
