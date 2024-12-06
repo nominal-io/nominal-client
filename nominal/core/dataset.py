@@ -385,6 +385,7 @@ class Dataset(HasRid):
             _clients=clients,
         )
 
+
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
     """Block until all dataset ingestions have completed (succeeded or failed).
 

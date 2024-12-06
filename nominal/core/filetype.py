@@ -20,8 +20,8 @@ class FileType(NamedTuple):
         ext_str = "".join(path.suffixes)
 
         # Attempt to match the file's extension(s) with those already explicitly listed under FileTypes
-        for name, file_type in FileTypes.__dict__.items():
-            if "__" in name:
+        for file_type in FileTypes.__dict__.values():
+            if not isinstance(file_type, cls):
                 continue
 
             if file_type.extension.endswith(ext_str):
