@@ -139,8 +139,8 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     ) -> T:
         api_token = get_token(base_url, token_path.expanduser().resolve()) if token is None else token
         client = NominalClient.create(
-            base_url, 
-            api_token, 
+            base_url,
+            api_token,
             trust_store_path=str(trust_store_path) if trust_store_path else None,
         )
         kwargs["client"] = client
