@@ -123,8 +123,8 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
         "--trust-store",
         type=click.Path(dir_okay=False, exists=True, resolve_path=True, path_type=pathlib.Path),
         help=(
-            "Path to a trust store CA root file to initial SSL connections."
-            "If not provided, defaults to certifi's trust store"
+            "Path to a trust store CA root file to initiate SSL connections."
+            "If not provided, defaults to certifi's trust store."
         ),
     )
 
