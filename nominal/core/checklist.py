@@ -186,7 +186,7 @@ class Checklist(HasRid):
         """Execute the checklist for the given assets.
         - `assets`: Can be `Asset` instances, or Asset RIDs.
         - `notification_configurations`: Integration RIDs, checklist violations will be sent to the specified
-           integrations.
+           integrations. At least one integration must be specified.
         - `evaluation_delay`: Delays the evaluation of the streaming checklist. This is useful for when data is delayed.
         - `recovery_delay`: Specifies the minimum amount of time that must pass before a check can recover from a
                             failure. Minimum value is 15 seconds.
