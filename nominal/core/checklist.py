@@ -218,6 +218,10 @@ class Checklist(HasRid):
             ),
         )
 
+    def reload_streaming(self) -> None:
+        """Reload the checklist."""
+        self._clients.checklist_execution.reload_streaming_checklist(self._clients.auth_header, self.rid)
+
 
 Priority = Literal[0, 1, 2, 3, 4]
 
