@@ -119,14 +119,27 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
             "If provided, takes precedence over --token-path and --base-url"
         ),
     )
+    trust_store_option = click.option(
+        "--trust-store",
+        type=click.Path(dir_okay=False, exists=True, resolve_path=True, path_type=pathlib.Path),
+        help=(
+            "Path to a trust store CA root file to initial SSL connections."
+            "If not provided, defaults to certifi's trust store"
+        ),
+    )
 
     @functools.wraps(func)
     def wrapped_function(
-        *args: Param.args, base_url: str, token: str | None, token_path: pathlib.Path, **kwargs: Param.kwargs
+        *args: Param.args,
+        base_url: str,
+        token: str | None,
+        token_path: pathlib.Path,
+        trust_store_path: pathlib.Path | None,
+        **kwargs: Param.kwargs,
     ) -> T:
         api_token = get_token(base_url, token_path.expanduser().resolve()) if token is None else token
-        client = NominalClient.create(base_url, api_token)
+        client = NominalClient.create(base_url, api_token, trust_store_path=str(trust_store_path))
         kwargs["client"] = client
         return func(*args, **kwargs)
 
-    return url_option(token_path_option(token_option(wrapped_function)))
+    return trust_store_option(url_option(token_path_option(token_option(wrapped_function))))
