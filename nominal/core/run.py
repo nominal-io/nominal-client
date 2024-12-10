@@ -289,7 +289,9 @@ class Run(HasRid):
         run = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, run, fields=self.__dataclass_fields__)
 
-    def add_connection(self, ref_name: str, connection: Connection | str) -> None:
+    def add_connection(
+        self, ref_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
+    ) -> None:
         """Add a connection to this run.
 
         Ref_name maps "ref name" (the name within the run) to a Connection (or connection rid). The same type of
@@ -300,7 +302,7 @@ class Run(HasRid):
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                series_tags={},
+                series_tags=series_tags or {},
                 offset=None,
             )
         }
