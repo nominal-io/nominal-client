@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.18.0](https://github.com/nominal-io/nominal-client/compare/v1.17.0...v1.18.0) (2024-12-10)
+
+
+### Features
+
+* add support for tags in connections and runs ([4003885](https://github.com/nominal-io/nominal-client/commit/4003885d8a664fe9ed8a1c3e0c4deb89be95aa40))
+* add support for tags in connections, runs and assets ([#159](https://github.com/nominal-io/nominal-client/issues/159)) ([4003885](https://github.com/nominal-io/nominal-client/commit/4003885d8a664fe9ed8a1c3e0c4deb89be95aa40))
+* expose trust store path for client_options decorator ([#162](https://github.com/nominal-io/nominal-client/issues/162)) ([ceede7f](https://github.com/nominal-io/nominal-client/commit/ceede7f52df9d23c73f1bbfb84710516701a6635))
+* support string in write stream ([#142](https://github.com/nominal-io/nominal-client/issues/142)) ([b2cbe18](https://github.com/nominal-io/nominal-client/commit/b2cbe182d35e9ac5ea66496e80cd8e4d87f525a2))
+
 ## [1.17.0](https://github.com/nominal-io/nominal-client/compare/v1.16.0...v1.17.0) (2024-12-03)
 
 
