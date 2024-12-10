@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class BatchItem:
     channel_name: str
     timestamp: str | datetime | IntegralNanosecondsUTC
-    value: float
+    value: float | str
     tags: Dict[str, str] | None = None
 
 
@@ -57,7 +57,7 @@ class NominalWriteStream:
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: float,
+        value: float | str,
         tags: Dict[str, str] | None = None,
     ) -> None:
         """Add a message to the queue.
@@ -70,7 +70,7 @@ class NominalWriteStream:
         self,
         channel_name: str,
         timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
-        values: Sequence[float],
+        values: Sequence[float | str],
         tags: Dict[str, str] | None = None,
     ) -> None:
         """Add a sequence of messages to the queue.
