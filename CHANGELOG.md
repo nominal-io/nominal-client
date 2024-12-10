@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/nominal-io/nominal-client/compare/v1.17.0...v1.18.0) (2024-12-10)
+
+
+### Features
+
+* expose trust store path for client_options decorator ([#162](https://github.com/nominal-io/nominal-client/issues/162)) ([ceede7f](https://github.com/nominal-io/nominal-client/commit/ceede7f52df9d23c73f1bbfb84710516701a6635))
+
 ## [1.17.0](https://github.com/nominal-io/nominal-client/compare/v1.16.0...v1.17.0) (2024-12-03)
 
 
