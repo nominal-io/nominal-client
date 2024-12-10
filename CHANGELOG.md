@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.17.0](https://github.com/nominal-io/nominal-client/compare/v1.16.0...v1.17.0) (2024-12-03)
+
+
+### Features
+
+* allow uploading manually timestamped videos ([#156](https://github.com/nominal-io/nominal-client/issues/156)) ([67f2867](https://github.com/nominal-io/nominal-client/commit/67f28672631aac3958b9d7b9b70f42634a55ef53))
+* make FileType(s) public ([#158](https://github.com/nominal-io/nominal-client/issues/158)) ([2358570](https://github.com/nominal-io/nominal-client/commit/2358570a6b95aaac35089a62205f2e285d5aaee1))
+
+## [1.16.0](https://github.com/nominal-io/nominal-client/compare/v1.15.0...v1.16.0) (2024-11-26)
+
+
+### Features
+
+* add mcap dataset creation ([#155](https://github.com/nominal-io/nominal-client/issues/155)) ([e18c3d7](https://github.com/nominal-io/nominal-client/commit/e18c3d725e06a7e07e7525792ab634205995c233))
+* remove pydantic for dataclasses ([#153](https://github.com/nominal-io/nominal-client/issues/153)) ([0cac531](https://github.com/nominal-io/nominal-client/commit/0cac531299b62018e46c17269db42ce8a4ce9a3d))
+
+## [1.15.0](https://github.com/nominal-io/nominal-client/compare/v1.14.0...v1.15.0) (2024-11-25)
+
+
+### Features
+
+* adding ability to specify time column in TDMS groups ([#146](https://github.com/nominal-io/nominal-client/issues/146)) ([0ae2fa5](https://github.com/nominal-io/nominal-client/commit/0ae2fa57d71f6a5f1c45851651896e79e5d2d97e))
+
+## [1.14.0](https://github.com/nominal-io/nominal-client/compare/v1.13.0...v1.14.0) (2024-11-22)
+
+
+### Features
+
+* export upload_mcap_video function ([#149](https://github.com/nominal-io/nominal-client/issues/149)) ([d269e4a](https://github.com/nominal-io/nominal-client/commit/d269e4aae57ecd9eeb31e4d2545da47140b36ef2))
+
+## [1.13.0](https://github.com/nominal-io/nominal-client/compare/v1.12.1...v1.13.0) (2024-11-22)
+
+
+### Features
+
+* update combined -&gt; scout-service-api ([#147](https://github.com/nominal-io/nominal-client/issues/147)) ([a891d3a](https://github.com/nominal-io/nominal-client/commit/a891d3a09e408667afa1c8433b5c38ce24a501c2))
+
 ## [1.12.1](https://github.com/nominal-io/nominal-client/compare/v1.12.0...v1.12.1) (2024-11-21)
 
 

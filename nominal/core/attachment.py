@@ -8,7 +8,7 @@ from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 
 from typing_extensions import Self
 
-from nominal._api.combined import attachments_api
+from nominal._api.scout_service_api import attachments_api
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, update_dataclass
 

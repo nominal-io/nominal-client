@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from itertools import groupby
 from typing import Iterable, Mapping, Protocol, Sequence, cast
 
-from nominal._api.combined import (
+from nominal._api.scout_service_api import (
     datasource_api,
     scout_datasource,
     scout_datasource_connection,

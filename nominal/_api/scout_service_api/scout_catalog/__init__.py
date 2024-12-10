@@ -13,6 +13,7 @@ from .._impl import (
     scout_catalog_CustomTimestamp as CustomTimestamp,
     scout_catalog_Dataset as Dataset,
     scout_catalog_DatasetFile as DatasetFile,
+    scout_catalog_DatasetFileUri as DatasetFileUri,
     scout_catalog_DatasetFilesPage as DatasetFilesPage,
     scout_catalog_DatasetFilter as DatasetFilter,
     scout_catalog_DatasetOriginMetadata as DatasetOriginMetadata,

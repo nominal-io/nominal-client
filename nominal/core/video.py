@@ -8,7 +8,7 @@ from typing import Mapping, Protocol, Sequence
 
 from typing_extensions import Self
 
-from nominal._api.combined import scout_video, scout_video_api
+from nominal._api.scout_service_api import scout_video, scout_video_api
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
@@ -31,7 +31,7 @@ class Video(HasRid):
         """Block until video ingestion has completed.
         This method polls Nominal for ingest status after uploading a video on an interval.
 
-        Raises
+        Raises:
         ------
             NominalIngestFailed: if the ingest failed
             NominalIngestError: if the ingest status is not known
