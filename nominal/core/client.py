@@ -38,6 +38,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
 from nominal.core.connection import Connection
+from nominal.core.data_review import DataReview, DataReviewBatchBuilder
 from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
@@ -817,6 +818,17 @@ class NominalClient:
         - `property` is a key-value pair, e.g. ("name", "value")
         """
         return list(self._iter_search_assets(search_text, label, property))
+
+    def create_data_review_batch_builder(
+        self, notification_configurations: Sequence[str] | None = None
+    ) -> DataReviewBatchBuilder:
+        return DataReviewBatchBuilder(
+            list(notification_configurations) if notification_configurations else [], [], self._clients
+        )
+
+    def get_data_review(self, rid: str) -> DataReview:
+        response = self._clients.datareview.get(self._clients.auth_header, rid)
+        return DataReview._from_conjure(self._clients, response)
 
 
 def _create_search_runs_query(
