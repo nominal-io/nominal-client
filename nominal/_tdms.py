@@ -28,7 +28,7 @@ def tdms_with_time_column_to_pandas(path: Path, timestamp_column: str) -> pd.Dat
     # format for nominal upload
     df = functools.reduce(
         lambda left, right: pd.merge(
-            left, right, left_index=True, right_index=True, how="outer", suffixes=["_repeated_1, _repeated_2"]
+            left, right, left_index=True, right_index=True, how="outer", suffixes=["_repeated_1", "_repeated_2"]
         ),
         group_dfs,
     )
