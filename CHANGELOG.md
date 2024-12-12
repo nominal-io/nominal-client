@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.19.0](https://github.com/nominal-io/nominal-client/compare/v1.18.0...v1.19.0) (2024-12-12)
+
+
+### Features
+
+* simplify dev experience for uploading videos ([#161](https://github.com/nominal-io/nominal-client/issues/161)) ([acedbc0](https://github.com/nominal-io/nominal-client/commit/acedbc074d67f4799b7d0e70886dda3ceed7a27b))
+
+
+### Bug Fixes
+
+* Handle case where data file has extra extension prefixes ([7a0d891](https://github.com/nominal-io/nominal-client/commit/7a0d891f0ad1c5fd45ba995f59f0420d5f5d6390))
+* handle case where data file has extra extension prefixes ([#167](https://github.com/nominal-io/nominal-client/issues/167)) ([7a0d891](https://github.com/nominal-io/nominal-client/commit/7a0d891f0ad1c5fd45ba995f59f0420d5f5d6390))
+
 ## [1.18.0](https://github.com/nominal-io/nominal-client/compare/v1.17.0...v1.18.0) (2024-12-10)
 
 
