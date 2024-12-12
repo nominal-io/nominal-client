@@ -14,22 +14,50 @@ class FileType(NamedTuple):
 
     @classmethod
     def from_path(cls, path: Path | str, default_mimetype: str = "application/octect-stream") -> FileType:
-        ext = "".join(Path(path).suffixes)
+        path = Path(path)
+
+        # Note: not using path.suffix because this fails for files with multiple suffixes
+        ext_str = "".join(path.suffixes)
+
+        # Attempt to match the file's extension(s) with those already explicitly listed under FileTypes
+        for file_type in FileTypes.__dict__.values():
+            if not isinstance(file_type, cls):
+                continue
+
+            if file_type.extension.endswith(ext_str):
+                return file_type
+
+        # Infer mimetype from filepath
         mimetype, _encoding = mimetypes.guess_type(path)
+
+        # If no mimetype could be inferred, use the default
         if mimetype is None:
-            return cls(ext, default_mimetype)
-        return cls(ext, mimetype)
+            return cls(ext_str, default_mimetype)
+
+        # If no extension could be matched against the explicitly listed filetypes,
+        # infer the extension using the mimetype
+        extension = mimetypes.guess_extension(mimetype)
+        if extension is None:
+            return cls(ext_str, mimetype)
+
+        # return the inferred extension and mimetype
+        return cls(extension, mimetype)
 
     @classmethod
     def from_path_dataset(cls, path: Path | str) -> FileType:
-        path_string = str(path) if isinstance(path, Path) else path
-        if path_string.endswith(".csv"):
-            return FileTypes.CSV
-        if path_string.endswith(".csv.gz"):
-            return FileTypes.CSV_GZ
-        if path_string.endswith(".parquet"):
-            return FileTypes.PARQUET
-        raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
+        file_type = cls.from_path(path)
+        if file_type not in (FileTypes.CSV, FileTypes.CSV_GZ, FileTypes.PARQUET):
+            raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
+
+        return file_type
+
+    @classmethod
+    def from_video(cls, path: Path | str) -> FileType:
+        file_type = cls.from_path(path)
+        if file_type not in (FileTypes.MKV, FileTypes.MP4, FileTypes.TS):
+            raise ValueError(f"video path '{path}' must end in .mp4, .mkv, or .ts")
+
+        return file_type
 
 
 class FileTypes:
@@ -37,7 +65,9 @@ class FileTypes:
     CSV: FileType = FileType(".csv", "text/csv")
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
     JSON: FileType = FileType(".json", "application/json")
+    MKV: FileType = FileType(".mkv", "video/x-matroska")
     MP4: FileType = FileType(".mp4", "video/mp4")
     MCAP: FileType = FileType(".mcap", "application/octet-stream")
     # https://issues.apache.org/jira/browse/PARQUET-1889
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
+    TS: FileType = FileType(".ts", "video/mp2t")

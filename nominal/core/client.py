@@ -187,17 +187,40 @@ class NominalClient:
 
         See `create_dataset_from_io` for more details.
         """
-        path, file_type = _verify_csv_path(path)
+        return self.create_tabular_dataset(
+            path, name, timestamp_column, timestamp_type, description, labels=labels, properties=properties
+        )
+
+    def create_tabular_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from a table-like file (CSV, parquet, etc.).
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_path_dataset(path)
         if name is None:
             name = path.name
-        with open(path, "rb") as csv_file:
+
+        with path.open("rb") as data_file:
             return self.create_dataset_from_io(
-                csv_file,
-                name,
-                timestamp_column,
-                timestamp_type,
-                file_type,
-                description,
+                data_file,
+                name=name,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                description=description,
                 labels=labels,
                 properties=properties,
             )
@@ -307,6 +330,40 @@ class NominalClient:
         )
         response = self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
         return self.get_dataset(response.dataset_rid)
+
+    def create_video(
+        self,
+        path: Path | str,
+        name: str | None,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Create a video from an h264/h265 encoded video file (mp4, mkv, ts, etc.).
+
+        If name is None, the name of the file will be used.
+
+        See `create_video_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_video(path)
+        if name is None:
+            name = path.name
+
+        with path.open("rb") as data_file:
+            return self.create_video_from_io(
+                data_file,
+                name=name,
+                start=start,
+                frame_timestamps=frame_timestamps,
+                file_type=file_type,
+                description=description,
+                labels=labels,
+                properties=properties,
+            )
 
     def create_video_from_io(
         self,
@@ -844,14 +901,6 @@ def _create_search_runs_query(
         q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
         queries.append(q)
     return scout_run_api.SearchQuery(and_=queries)
-
-
-def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
-    path = Path(path)
-    file_type = FileType.from_path_dataset(path)
-    if file_type.extension not in (".csv", ".csv.gz"):
-        raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
-    return path, file_type
 
 
 def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:
