@@ -433,6 +433,12 @@ def search_assets(
     return list(assets)
 
 
+def list_streaming_checklists() -> Sequence[str]:
+    """List all Streaming Checklists."""
+    conn = get_default_client()
+    return conn.list_streaming_checklists()
+
+
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     """Wait until all datasets have completed ingestion.
 
