@@ -23,8 +23,12 @@ class FileType(NamedTuple):
         for file_type in FileTypes.__dict__.values():
             if not isinstance(file_type, cls):
                 continue
+            elif not file_type.extension:
+                continue
 
-            if file_type.extension.endswith(ext_str):
+            # If the file ends with the given file extension, regardless of other suffixes it may have
+            # preceeding, then return the file type.
+            if ext_str.endswith(file_type.extension):
                 return file_type
 
         # Infer mimetype from filepath
