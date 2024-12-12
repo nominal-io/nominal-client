@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import contextmanager
-from typing import Any, BinaryIO, Callable, Iterator, TypeVar
+from typing import Any, BinaryIO, Callable, Iterator, Protocol, TypeVar
 
 from typing_extensions import ParamSpec
 
@@ -64,3 +64,7 @@ def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callab
         return wrapper
 
     return _deprecate_keyword_argument_decorator
+
+
+class HasBinaryRead(Protocol):
+    def read(self, length: int = ..., /) -> bytes: ...

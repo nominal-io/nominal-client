@@ -6,11 +6,12 @@ import pathlib
 import urllib.parse
 from functools import partial
 from queue import Queue
-from typing import BinaryIO, Iterable
+from typing import Iterable
 
 import requests
 
 from nominal._api.scout_service_api import ingest_api, upload_api
+from nominal._utils import HasBinaryRead
 from nominal.core.filetype import FileType
 from nominal.exceptions import NominalMultipartUploadFailed
 
@@ -49,14 +50,14 @@ def _sign_and_upload_part_job(
         q.task_done()
 
 
-def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
+def _iter_chunks(f: HasBinaryRead, chunk_size: int) -> Iterable[bytes]:
     while (data := f.read(chunk_size)) != b"":
         yield data
 
 
 def put_multipart_upload(
     auth_header: str,
-    f: BinaryIO,
+    f: HasBinaryRead,
     filename: str,
     mimetype: str,
     upload_client: upload_api.UploadService,
@@ -138,7 +139,7 @@ def put_multipart_upload(
 
 def upload_multipart_io(
     auth_header: str,
-    f: BinaryIO,
+    f: HasBinaryRead,
     name: str,
     file_type: FileType,
     upload_client: upload_api.UploadService,

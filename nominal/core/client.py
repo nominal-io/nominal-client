@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -28,7 +28,7 @@ from nominal._api.scout_service_api import (
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
-from nominal._utils import deprecate_keyword_argument
+from nominal._utils import HasBinaryRead, deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
@@ -284,7 +284,7 @@ class NominalClient:
 
     def create_dataset_from_io(
         self,
-        dataset: BinaryIO,
+        dataset: HasBinaryRead,
         name: str,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
@@ -367,7 +367,7 @@ class NominalClient:
 
     def create_video_from_io(
         self,
-        video: BinaryIO,
+        video: HasBinaryRead,
         name: str,
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
@@ -567,7 +567,7 @@ class NominalClient:
 
     def create_attachment_from_io(
         self,
-        attachment: BinaryIO,
+        attachment: HasBinaryRead,
         name: str,
         file_type: tuple[str, str] | FileType = FileTypes.BINARY,
         description: str | None = None,
@@ -689,7 +689,7 @@ class NominalClient:
 
     def create_video_from_mcap_io(
         self,
-        mcap: BinaryIO,
+        mcap: HasBinaryRead,
         topic: str,
         name: str,
         description: str | None = None,
