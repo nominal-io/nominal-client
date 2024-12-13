@@ -178,15 +178,15 @@ class Checklist(HasRid):
     def execute_streaming(
         self,
         assets: Sequence[Asset | str],
-        notification_configurations: Sequence[str],
+        integration_rids: Sequence[str],
         *,
         evaluation_delay: timedelta = timedelta(),
         recovery_delay: timedelta = timedelta(seconds=15),
     ) -> None:
         """Execute the checklist for the given assets.
         - `assets`: Can be `Asset` instances, or Asset RIDs.
-        - `notification_configurations`: Integration RIDs, checklist violations will be sent to the specified
-           integrations. At least one integration must be specified.
+        - `integration_rids`: Checklist violations will be sent to the specified integrations. At least one integration
+           must be specified. See https://app.gov.nominal.io/settings/integrations for a list of available integrations.
         - `evaluation_delay`: Delays the evaluation of the streaming checklist. This is useful for when data is delayed.
         - `recovery_delay`: Specifies the minimum amount of time that must pass before a check can recover from a
                             failure. Minimum value is 15 seconds.
@@ -197,7 +197,7 @@ class Checklist(HasRid):
                 assets=[rid_from_instance_or_string(asset) for asset in assets],
                 checklist=self.rid,
                 notification_configurations=[
-                    scout_integrations_api.NotificationConfiguration(c) for c in notification_configurations or []
+                    scout_integrations_api.NotificationConfiguration(c) for c in integration_rids
                 ],
                 evaluation_delay=_to_api_duration(evaluation_delay),
                 recovery_delay=_to_api_duration(recovery_delay),
