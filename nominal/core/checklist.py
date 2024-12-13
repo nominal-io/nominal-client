@@ -522,4 +522,4 @@ class _VariableLocatorVisitor(scout_checks_api.VariableLocatorVisitor):
 
 
 def _to_api_duration(duration: timedelta) -> scout_run_api.Duration:
-    return scout_run_api.Duration(seconds=duration.seconds, nanos=duration.microseconds * 1000)
+    return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)
