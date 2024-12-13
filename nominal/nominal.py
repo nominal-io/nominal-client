@@ -606,16 +606,14 @@ def create_log_set(
     return conn.create_log_set(name, logs, timestamp_type, description)
 
 
-def create_data_review_batch_builder(
-    notification_configurations: Sequence[str] | None = None,
-) -> DataReviewBatchBuilder:
+def create_data_review_batch_builder() -> DataReviewBatchBuilder:
     """Create a batch of data reviews to be initiated together.
 
     Example:
     -------
     ```python
     builder = nm.create_data_review_batch_builder()
-    builder.add_notification_configuration("notification_config_1")
+    builder.add_integrationn("integration_rid")
     builder.add_request("run_rid_1", "checklist_rid_1", "commit_1")
     builder.add_request("run_rid_2", "checklist_rid_2", "commit_2")
     reviews = builder.initiate()
@@ -625,7 +623,7 @@ def create_data_review_batch_builder(
     ```
     """
     conn = get_default_client()
-    return conn.create_data_review_batch_builder(notification_configurations)
+    return conn.create_data_review_batch_builder()
 
 
 def get_data_review(rid: str) -> DataReview:

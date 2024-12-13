@@ -76,12 +76,12 @@ class CheckViolation:
 
 @dataclass(frozen=True)
 class DataReviewBatchBuilder:
-    notification_configurations: list[str]
+    integration_rids: list[str]
     _requests: list[scout_datareview_api.CreateDataReviewRequest]
     _clients: DataReview._Clients = field(repr=False)
 
-    def add_notification_configuration(self, notification_configuration: str) -> DataReviewBatchBuilder:
-        self.notification_configurations.append(notification_configuration)
+    def add_integration(self, integration_rid: str) -> DataReviewBatchBuilder:
+        self.integration_rids.append(integration_rid)
         return self
 
     def add_request(self, run_rid: str, checklist_rid: str, commit: str) -> DataReviewBatchBuilder:
@@ -104,7 +104,7 @@ class DataReviewBatchBuilder:
         """
         request = scout_datareview_api.BatchInitiateDataReviewRequest(
             notification_configurations=[
-                scout_integrations_api.NotificationConfiguration(c) for c in self.notification_configurations
+                scout_integrations_api.NotificationConfiguration(c) for c in self.integration_rids
             ],
             requests=self._requests,
         )

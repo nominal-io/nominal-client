@@ -819,12 +819,8 @@ class NominalClient:
         """
         return list(self._iter_search_assets(search_text, label, property))
 
-    def create_data_review_batch_builder(
-        self, notification_configurations: Sequence[str] | None = None
-    ) -> DataReviewBatchBuilder:
-        return DataReviewBatchBuilder(
-            list(notification_configurations) if notification_configurations else [], [], self._clients
-        )
+    def create_data_review_batch_builder(self) -> DataReviewBatchBuilder:
+        return DataReviewBatchBuilder([], [], self._clients)
 
     def get_data_review(self, rid: str) -> DataReview:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
