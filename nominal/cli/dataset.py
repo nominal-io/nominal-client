@@ -42,7 +42,7 @@ def dataset_cmd() -> None:
     ),
     help="interpretation the primary timestamp column",
 )
-@click.option("-d", "--desc")
+@click.option("-d", "--description", help="description of the dataset")
 @click.option("--wait/--no-wait", default=True, help="wait until the upload is complete")
 @client_options
 @global_options
@@ -51,7 +51,7 @@ def upload_csv(
     file: str,
     timestamp_column: str,
     timestamp_type: _LiteralAbsolute,
-    desc: str | None,
+    description: str | None,
     wait: bool,
     client: NominalClient,
 ) -> None:
@@ -63,7 +63,7 @@ def upload_csv(
         name,
         timestamp_column=timestamp_column,
         timestamp_type=timestamp_type,
-        description=desc,
+        description=description,
     )
 
     # block until ingestion completed, if requested
