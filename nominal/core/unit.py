@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from typing_extensions import Self
 
-from nominal._api.scout_service_api import datasource_api, scout_asset_api, scout_run_api, scout_units_api
+from nominal._api.scout_service_api import api, scout_run_api, scout_units_api
 
 
 @dataclass(frozen=True)
@@ -23,9 +23,8 @@ class Unit:
     """
 
     @classmethod
-    def _from_conjure(
-        cls, api_unit: scout_units_api.Unit | scout_run_api.Unit | scout_asset_api.Unit | datasource_api.Unit
-    ) -> Self:
+    def _from_conjure(cls, api_unit: scout_units_api.Unit | scout_run_api.Unit | api.Unit) -> Self:
         """Construct a Unit from any conjure Unit across all API endpoints"""
-        name = "" if api_unit.name is None else api_unit.name
-        return cls(name=name, symbol=api_unit.symbol)
+        name = "" if not hasattr(api_unit, "name") or api_unit.name is None else api_unit.name
+        symbol = "" if not hasattr(api_unit, "symbol") else api_unit.symbol
+        return cls(name=name, symbol=symbol)
