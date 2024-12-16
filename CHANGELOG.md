@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.20.0](https://github.com/nominal-io/nominal-client/compare/v1.19.0...v1.20.0) (2024-12-16)
+
+
+### Features
+
+* rename --desc to --description ([#170](https://github.com/nominal-io/nominal-client/issues/170)) ([b9827be](https://github.com/nominal-io/nominal-client/commit/b9827be06d82d462ad30ba7f435f10d72669a04e))
+* support wider breadth of filetype extensions ([#174](https://github.com/nominal-io/nominal-client/issues/174)) ([d3d8d8c](https://github.com/nominal-io/nominal-client/commit/d3d8d8c4acb0422f5d098659f04ecc4b2164cde9))
+
+
+### Bug Fixes
+
+* fix name of argument for trust store cert ([#173](https://github.com/nominal-io/nominal-client/issues/173)) ([9db6a61](https://github.com/nominal-io/nominal-client/commit/9db6a61dc17396cdf57a9f11a8b14c268c89ba0f))
+* sanitize PR title before use ([#171](https://github.com/nominal-io/nominal-client/issues/171)) ([a341d1b](https://github.com/nominal-io/nominal-client/commit/a341d1b218146a34f7ad0ce0371d4041b1319a0e))
+
 ## [1.19.0](https://github.com/nominal-io/nominal-client/compare/v1.18.0...v1.19.0) (2024-12-12)
 
 
