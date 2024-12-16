@@ -42,7 +42,7 @@ def dataset_cmd() -> None:
     ),
     help="interpretation the primary timestamp column",
 )
-@click.option("-d", "--desc")
+@click.option("-d", "--description", help="description of the dataset")
 @click.option(
     "--channel-name-delimiter",
     default=".",
@@ -57,7 +57,7 @@ def upload_csv(
     file: str,
     timestamp_column: str,
     timestamp_type: _LiteralAbsolute,
-    desc: str | None,
+    description: str | None,
     channel_name_delimiter: str | None,
     wait: bool,
     client: NominalClient,
@@ -70,7 +70,7 @@ def upload_csv(
         name,
         timestamp_column=timestamp_column,
         timestamp_type=timestamp_type,
-        description=desc,
+        description=description,
         prefix_tree_delimiter=channel_name_delimiter,
     )
 
