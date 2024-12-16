@@ -2,7 +2,6 @@
 from .._impl import (
     storage_series_api_BatchCreateOrGetResponse as BatchCreateOrGetResponse,
     storage_series_api_BatchUpdateLastTouchedAtRequest as BatchUpdateLastTouchedAtRequest,
-    storage_series_api_Channel as Channel,
     storage_series_api_CreateSeriesRequest as CreateSeriesRequest,
     storage_series_api_GetSeriesByChannelAndTagsRequest as GetSeriesByChannelAndTagsRequest,
     storage_series_api_NominalDataType as NominalDataType,

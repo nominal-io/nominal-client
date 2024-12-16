@@ -13,7 +13,6 @@ from .._impl import (
     attachments_api_S3Path as S3Path,
     attachments_api_SearchAttachmentsQuery as SearchAttachmentsQuery,
     attachments_api_SearchAttachmentsQueryVisitor as SearchAttachmentsQueryVisitor,
-    attachments_api_Token as Token,
     attachments_api_UpdateAttachmentRequest as UpdateAttachmentRequest,
 )
 

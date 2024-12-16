@@ -1,7 +1,6 @@
 # coding=utf-8
 from .._impl import (
     scout_datasource_connection_api_BucketName as BucketName,
-    scout_datasource_connection_api_Channel as Channel,
     scout_datasource_connection_api_ColumnName as ColumnName,
     scout_datasource_connection_api_Connection as Connection,
     scout_datasource_connection_api_ConnectionDetails as ConnectionDetails,
@@ -28,7 +27,6 @@ from .._impl import (
     scout_datasource_connection_api_NominalChannelNameComponent as NominalChannelNameComponent,
     scout_datasource_connection_api_NominalChannelNameComponentVisitor as NominalChannelNameComponentVisitor,
     scout_datasource_connection_api_NominalConnectionDetails as NominalConnectionDetails,
-    scout_datasource_connection_api_NominalDataSourceRid as NominalDataSourceRid,
     scout_datasource_connection_api_NominalScrapingConfig as NominalScrapingConfig,
     scout_datasource_connection_api_OrganizationRid as OrganizationRid,
     scout_datasource_connection_api_PasswordCredentials as PasswordCredentials,
@@ -52,7 +50,6 @@ from .._impl import (
     scout_datasource_connection_api_TimestreamScrapingConfig as TimestreamScrapingConfig,
     scout_datasource_connection_api_TimestreamScrapingFilter as TimestreamScrapingFilter,
     scout_datasource_connection_api_TimestreamScrapingFilterVisitor as TimestreamScrapingFilterVisitor,
-    scout_datasource_connection_api_Unit as Unit,
     scout_datasource_connection_api_UpdateConnectionRequest as UpdateConnectionRequest,
     scout_datasource_connection_api_VisualCrossingAvailableSeries as VisualCrossingAvailableSeries,
     scout_datasource_connection_api_VisualCrossingConnectionDetails as VisualCrossingConnectionDetails,
