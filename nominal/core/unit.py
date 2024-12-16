@@ -25,6 +25,7 @@ class Unit:
     @classmethod
     def _from_conjure(cls, api_unit: api.Unit | scout_units_api.Unit | scout_run_api.Unit) -> Self:
         """Construct a Unit from any conjure Unit across all API endpoints"""
-        name = "" if isinstance(api_unit, api.Unit) or api_unit.name is None else api_unit.name
-        symbol = api_unit if isinstance(api_unit, api.Unit) else api_unit.symbol
-        return cls(name=name, symbol=symbol)
+        if isinstance(api_unit, api.Unit):
+            return cls(name=name, symbol=api_unit)
+        name = "" if api_unit.name is None else api_unit.name
+        return cls(name=name, symbol=api_unit.symbol)
