@@ -180,6 +180,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a CSV file.
 
@@ -188,7 +189,14 @@ class NominalClient:
         See `create_dataset_from_io` for more details.
         """
         return self.create_tabular_dataset(
-            path, name, timestamp_column, timestamp_type, description, labels=labels, properties=properties
+            path,
+            name,
+            timestamp_column,
+            timestamp_type,
+            description,
+            labels=labels,
+            properties=properties,
+            prefix_tree_delimiter=prefix_tree_delimiter,
         )
 
     def create_tabular_dataset(
@@ -201,6 +209,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a table-like file (CSV, parquet, etc.).
 
@@ -223,6 +232,7 @@ class NominalClient:
                 description=description,
                 labels=labels,
                 properties=properties,
+                prefix_tree_delimiter=prefix_tree_delimiter,
             )
 
     def create_mcap_dataset(
@@ -293,6 +303,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -310,25 +321,23 @@ class NominalClient:
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
-        request = ingest_api.TriggerFileIngest(
-            destination=ingest_api.IngestDestination(
-                new_dataset=ingest_api.NewDatasetIngestDestination(
-                    labels=list(labels),
-                    properties={} if properties is None else dict(properties),
-                    channel_config=None,  # TODO(alkasm): support offsets
-                    dataset_description=description,
-                    dataset_name=name,
-                )
-            ),
+        request = ingest_api.TriggerIngest(
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
             source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-            source_metadata=ingest_api.IngestSourceMetadata(
-                timestamp_metadata=ingest_api.TimestampMetadata(
-                    series_name=timestamp_column,
-                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                ),
+            channel_config=(
+                None
+                if prefix_tree_delimiter is None
+                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+            ),
+            dataset_description=description,
+            dataset_name=name,
+            timestamp_metadata=ingest_api.TimestampMetadata(
+                series_name=timestamp_column,
+                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             ),
         )
-        response = self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
+        response = self._clients.ingest.trigger_ingest(self._clients.auth_header, request)
         return self.get_dataset(response.dataset_rid)
 
     def create_video(
