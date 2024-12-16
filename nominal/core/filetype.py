@@ -16,14 +16,18 @@ class FileType(NamedTuple):
     def from_path(cls, path: Path | str, default_mimetype: str = "application/octect-stream") -> FileType:
         path = Path(path)
 
-        # Note: not using path.suffix because this fails for files with multiple suffixes
-        ext_str = "".join(path.suffixes)
+        # Note: not using path.suffix because this fails for files with multiple suffixes,
+        #       and lowercase to handle files with mixed capitalization on extensions
+        ext_str = "".join(path.suffixes).lower()
 
         # Attempt to match the file's extension(s) with those already explicitly listed under FileTypes
         for file_type in FileTypes.__dict__.values():
             if not isinstance(file_type, cls):
+                # Skip any member variables which are not actually FileTypes
                 continue
             elif not file_type.extension:
+                # Filetype for binary data has no extension, and should be used only
+                # as a final fallback
                 continue
 
             # If the file ends with the given file extension, regardless of other suffixes it may have
