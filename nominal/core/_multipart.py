@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import pathlib
+import urllib.parse
 from functools import partial
 from queue import Queue
 from typing import BinaryIO, Iterable
@@ -9,9 +11,13 @@ from typing import BinaryIO, Iterable
 import requests
 
 from nominal._api.scout_service_api import ingest_api, upload_api
+from nominal.core.filetype import FileType
 from nominal.exceptions import NominalMultipartUploadFailed
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_CHUNK_SIZE = 64_000_000
+DEFAULT_NUM_WORKERS = 8
 
 
 def _sign_and_upload_part_job(
@@ -54,15 +60,27 @@ def put_multipart_upload(
     filename: str,
     mimetype: str,
     upload_client: upload_api.UploadService,
-    chunk_size: int = 64_000_000,
-    max_workers: int = 8,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    max_workers: int = DEFAULT_NUM_WORKERS,
 ) -> str:
     """Execute a multipart upload to S3.
 
     All metadata-style requests (init, sign, complete) proxy through Nominal servers, while the upload PUT requests for
     each part go to a pre-signed URL to the storage provider.
 
-    Ref: https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
+    Args:
+        auth_header: Nominal authorization token
+        f: Binary IO to upload
+        filename: URL-safe filename to use when uploading to S3
+        mimetype: Type of data contained within binary stream
+        upload_client: Conjure upload client
+        chunk_size: Maximum size of chunk to upload to S3 at once
+        max_workers: Number of worker threads to use when processing and uploading data
+
+    Returns: Path to the uploaded object in S3
+
+    See: https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
+
     """
     # muiltithreaded multipart upload:
     # - create a worker thread pool and a queue for all threads to share
@@ -116,6 +134,84 @@ def put_multipart_upload(
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e)
         raise e
+
+
+def upload_multipart_io(
+    auth_header: str,
+    f: BinaryIO,
+    name: str,
+    file_type: FileType,
+    upload_client: upload_api.UploadService,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    max_workers: int = DEFAULT_NUM_WORKERS,
+) -> str:
+    """Execute a multipart upload to S3 proxied via Nominal servers
+
+    Args:
+        auth_header: Nominal authorization token
+        f: Binary IO to upload
+        name: Name of the file to create in S3
+            NOTE: does not need to be URL Safe
+        file_type: Type of data being uploaded
+        upload_client: Conjure upload client
+        chunk_size: Maximum size of chunk to upload to S3 at once
+        max_workers: Number of worker threads to use when processing and uploading data
+
+    Returns: Path to the uploaded object in S3
+
+    Note: see put_multipart_upload for more details
+
+    """
+    urlsafe_name = urllib.parse.quote_plus(name)
+    safe_filename = f"{urlsafe_name}{file_type.extension}"
+    return put_multipart_upload(
+        auth_header,
+        f,
+        safe_filename,
+        file_type.mimetype,
+        upload_client,
+        chunk_size=chunk_size,
+        max_workers=max_workers,
+    )
+
+
+def upload_multipart_file(
+    auth_header: str,
+    file: pathlib.Path,
+    upload_client: upload_api.UploadService,
+    file_type: FileType | None = None,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    max_workers: int = DEFAULT_NUM_WORKERS,
+) -> str:
+    """Execute a multipart upload to S3 proxied via Nominal servers.
+
+    Args:
+        auth_header: Nominal authorization token
+        file: File to upload to S3
+        upload_client: Conjure upload client
+        file_type: Manually override inferred file type for the given file
+        chunk_size: Maximum size of chunk to upload to S3 at once
+        max_workers: Number of worker threads to use when processing and uploading data
+
+    Returns: Path to the uploaded object in S3
+
+    Note: see put_multipart_upload for more details
+
+    """
+    if file_type is None:
+        file_type = FileType.from_path(file)
+
+    file_name = file.stem.split(".")[0]
+    with file.open("rb") as file_handle:
+        return upload_multipart_io(
+            auth_header,
+            file_handle,
+            file_name,
+            file_type,
+            upload_client,
+            chunk_size=chunk_size,
+            max_workers=max_workers,
+        )
 
 
 def _abort(upload_client: upload_api.UploadService, auth_header: str, key: str, upload_id: str, e: Exception) -> None:

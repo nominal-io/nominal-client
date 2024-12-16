@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import time
-import urllib.parse
 from dataclasses import dataclass, field
 from datetime import timedelta
 from io import TextIOBase
@@ -24,12 +23,12 @@ from nominal._api.scout_service_api import (
     timeseries_logicalseries_api,
     upload_api,
 )
-from nominal._utils import FileType, FileTypes
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import put_multipart_upload
+from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.channel import Channel, _get_series_values_csv
+from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _MAX_TIMESTAMP,
@@ -92,7 +91,7 @@ class Dataset(HasRid):
         """Block until dataset ingestion has completed.
         This method polls Nominal for ingest status after uploading a dataset on an interval.
 
-        Raises
+        Raises:
         ------
             NominalIngestFailed: if the ingest failed
             NominalIngestError: if the ingest status is not known
@@ -163,9 +162,14 @@ class Dataset(HasRid):
 
     def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
-        path, file_type = _verify_csv_path(path)
-        with open(path, "rb") as csv_file:
-            self.add_to_dataset_from_io(csv_file, timestamp_column, timestamp_type, file_type)
+        self.add_data_to_dataset(path, timestamp_column, timestamp_type)
+
+    def add_data_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
+        """Append to a dataset from data on-disk."""
+        path = Path(path)
+        file_type = FileType.from_path_dataset(path)
+        with open(path, "rb") as data_file:
+            self.add_to_dataset_from_io(data_file, timestamp_column, timestamp_type, file_type)
 
     def add_to_dataset_from_io(
         self,
@@ -181,13 +185,15 @@ class Dataset(HasRid):
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
-        file_type = FileType(*file_type)
-
         self.poll_until_ingestion_completed()
-        urlsafe_name = urllib.parse.quote_plus(self.name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
+
+        file_type = FileType(*file_type)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            dataset,
+            self.name,
+            file_type,
+            self._clients.upload,
         )
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
@@ -380,21 +386,13 @@ class Dataset(HasRid):
         )
 
 
-def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
-    path = Path(path)
-    file_type = FileType.from_path_dataset(path)
-    if file_type.extension not in (".csv", ".csv.gz"):
-        raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
-    return path, file_type
-
-
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
     """Block until all dataset ingestions have completed (succeeded or failed).
 
     This method polls Nominal for ingest status on each of the datasets on an interval.
     No specific ordering is guaranteed, but all datasets will be checked at least once.
 
-    Raises
+    Raises:
     ------
         NominalIngestMultiError: if any of the datasets failed to ingest
 

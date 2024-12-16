@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nominal"
-version = "1.13.0"
+version = "1.20.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     "Alexander Reynolds <alex.reynolds@nominal.io>",
@@ -24,7 +24,6 @@ python-dateutil = "*"
 polars = "*"
 conjure-python-client = ">=2.8.0,<3"
 pandas = "*"
-pydantic = ">=2.0,<3"
 typing-extensions = ">=4,<5"
 click = ">=8,<9"
 pyyaml = "*"
@@ -67,6 +66,9 @@ build-backend = "poetry.core.masonry.api"
 line-length = 120
 exclude = ["nominal/_api/*"]
 include = ["nominal/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.pylint]
 max-args = 10

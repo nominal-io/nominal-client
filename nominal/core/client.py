@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import urllib.parse
+import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from io import TextIOBase
+from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
@@ -27,20 +28,18 @@ from nominal._api.scout_service_api import (
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
-from nominal._utils import (
-    FileType,
-    FileTypes,
-    deprecate_keyword_argument,
-)
+from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import put_multipart_upload
+from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
 from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
+from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
@@ -56,7 +55,7 @@ from nominal.ts import (
     _to_typed_timestamp_type,
 )
 
-from .asset import Asset
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -188,20 +187,100 @@ class NominalClient:
 
         See `create_dataset_from_io` for more details.
         """
-        path, file_type = _verify_csv_path(path)
+        return self.create_tabular_dataset(
+            path, name, timestamp_column, timestamp_type, description, labels=labels, properties=properties
+        )
+
+    def create_tabular_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from a table-like file (CSV, parquet, etc.).
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_path_dataset(path)
         if name is None:
             name = path.name
-        with open(path, "rb") as csv_file:
+
+        with path.open("rb") as data_file:
             return self.create_dataset_from_io(
-                csv_file,
-                name,
-                timestamp_column,
-                timestamp_type,
-                file_type,
-                description,
+                data_file,
+                name=name,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                description=description,
                 labels=labels,
                 properties=properties,
             )
+
+    def create_mcap_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        description: str | None = None,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from an MCAP file.
+
+        If name is None, the name of the file will be used.
+
+        If include_topics is None (default), all channels with a "protobuf" message encoding are included.
+
+        See `create_dataset_from_io` for more details on the other arguments.
+        """
+        channels = ingest_api.McapChannels(all=api.Empty())
+        if include_topics is not None and exclude_topics is not None:
+            include_topics = [t for t in include_topics if t not in exclude_topics]
+        if include_topics is not None:
+            channels = ingest_api.McapChannels(
+                include=[api.McapChannelLocator(topic=topic) for topic in include_topics]
+            )
+        elif exclude_topics is not None:
+            channels = ingest_api.McapChannels(
+                exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics]
+            )
+
+        mcap_path = Path(path)
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            mcap_path,
+            self._clients.upload,
+            file_type=FileTypes.MCAP,
+        )
+        source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+        request = ingest_api.IngestMcapRequest(
+            channel_config=[],
+            channels=channels,
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+            sources=[source],
+            description=description,
+            title=name,
+        )
+        resp = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
+        if resp.outputs:
+            dataset_rid = resp.outputs[0].target.dataset_rid
+            if dataset_rid is not None:
+                dataset = self.get_dataset(dataset_rid)
+                return dataset
+            raise NominalIngestError("error ingesting mcap: no dataset rid")
+        raise NominalIngestError("error ingesting mcap: no dataset created")
 
     def create_dataset_from_io(
         self,
@@ -230,12 +309,7 @@ class NominalClient:
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, dataset, filename, file_type.mimetype, self._clients.upload
-        )
+        s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
         request = ingest_api.TriggerFileIngest(
             destination=ingest_api.IngestDestination(
                 new_dataset=ingest_api.NewDatasetIngestDestination(
@@ -257,11 +331,46 @@ class NominalClient:
         response = self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
         return self.get_dataset(response.dataset_rid)
 
+    def create_video(
+        self,
+        path: Path | str,
+        name: str | None,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Create a video from an h264/h265 encoded video file (mp4, mkv, ts, etc.).
+
+        If name is None, the name of the file will be used.
+
+        See `create_video_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_video(path)
+        if name is None:
+            name = path.name
+
+        with path.open("rb") as data_file:
+            return self.create_video_from_io(
+                data_file,
+                name=name,
+                start=start,
+                frame_timestamps=frame_timestamps,
+                file_type=file_type,
+                description=description,
+                labels=labels,
+                properties=properties,
+            )
+
     def create_video_from_io(
         self,
         video: BinaryIO,
         name: str,
-        start: datetime | IntegralNanosecondsUTC,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
         *,
@@ -269,28 +378,80 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Video:
         """Create a video from a file-like object.
-
         The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+
+        Args:
+        ----
+            video: file-like object to read video data from
+            name: Name of the video to create in Nominal
+            start: Starting timestamp of the video
+            frame_timestamps: Per-frame timestamps (in nanoseconds since unix epoch) for every frame of the video
+            description: Description of the video to create in nominal
+            file_type: Type of data being uploaded
+            labels: Labels to apply to the video in nominal
+            properties: Properties to apply to the video in nominal
+
+        Returns:
+        -------
+            Handle to the created video
+
+        Note:
+        ----
+            Exactly one of 'start' and 'frame_timestamps' **must** be provided. Most users will
+            want to provide a starting timestamp: frame_timestamps is primarily useful when the scale
+            of the video data is not 1:1 with the playback speed or non-uniform over the course of the video,
+            for example, 200fps video artificially slowed to 30 fps without dropping frames. This will result
+            in the playhead on charts within the product playing at the rate of the underlying data rather than
+            time elapsed in the video playback.
+
         """
+        if (start is None and frame_timestamps is None) or (None not in (start, frame_timestamps)):
+            raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
+
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
-        file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
+        if start is None:
+            # Dump timestamp array into an in-memory file-like IO object
+            json_io = BytesIO()
+            text_json_io = TextIOWrapper(json_io)
+            json.dump(frame_timestamps, text_json_io)
+            text_json_io.flush()
+            json_io.seek(0)
 
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, video, filename, file_type.mimetype, self._clients.upload
-        )
+            logger.debug("Uploading timestamp manifests to s3")
+            manifest_s3_path = upload_multipart_io(
+                self._clients.auth_header,
+                json_io,
+                "timestamp_manifest",
+                FileTypes.JSON,
+                self._clients.upload,
+            )
+            timestamp_manifest = ingest_api.VideoTimestampManifest(
+                timestamp_manifests=ingest_api.TimestampManifest(
+                    sources=[
+                        ingest_api.IngestSource(
+                            s3=ingest_api.S3IngestSource(
+                                path=manifest_s3_path,
+                            )
+                        )
+                    ]
+                )
+            )
+        else:
+            timestamp_manifest = ingest_api.VideoTimestampManifest(
+                no_manifest=ingest_api.NoTimestampManifest(
+                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
+                )
+            )
+
+        file_type = FileType(*file_type)
+        s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
         request = ingest_api.IngestVideoRequest(
             labels=list(labels),
             properties={} if properties is None else dict(properties),
             sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
-            timestamps=ingest_api.VideoTimestampManifest(
-                no_manifest=ingest_api.NoTimestampManifest(
-                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
-                )
-            ),
+            timestamps=timestamp_manifest,
             description=description,
             title=name,
         )
@@ -423,11 +584,12 @@ class NominalClient:
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, attachment, filename, file_type.mimetype, self._clients.upload
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            attachment,
+            name,
+            file_type,
+            self._clients.upload,
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
@@ -462,7 +624,7 @@ class NominalClient:
                 NOTE: This currently requires that units are formatted as laid out in
                       the latest UCUM standards (see https://ucum.org/ucum)
 
-        Returns
+        Returns:
         -------
             Rendered Unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
@@ -498,7 +660,7 @@ class NominalClient:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
                 NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
 
-        Returns
+        Returns:
         -------
             A sequence of metadata for all updated channels
         Raises:
@@ -546,12 +708,7 @@ class NominalClient:
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        urlsafe_name = urllib.parse.quote_plus(name)
-        filename = f"{urlsafe_name}{file_type.extension}"
-
-        s3_path = put_multipart_upload(
-            self._clients.auth_header, mcap, filename, file_type.mimetype, self._clients.upload
-        )
+        s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
         request = ingest_api.IngestMcapRequest(
             channel_config=[
                 ingest_api.McapChannelConfig(
@@ -571,8 +728,17 @@ class NominalClient:
         return self.get_video(response.outputs[0].target.video_rid)
 
     def create_streaming_connection(
-        self, datasource_id: str, connection_name: str, datasource_description: str | None = None
+        self,
+        datasource_id: str,
+        connection_name: str,
+        datasource_description: str | None = None,
+        *,
+        required_tag_names: list[str] | None = None,
+        available_tag_values: dict[str, list[str]] | None = None,
     ) -> Connection:
+        if required_tag_names:
+            if not available_tag_values or not all(key in available_tag_values for key in required_tag_names):
+                raise ValueError("available_tag_values contain all required_tag_names")
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
@@ -600,8 +766,8 @@ class NominalClient:
                         separator=".",
                     )
                 ),
-                required_tag_names=[],
-                available_tag_values={},
+                required_tag_names=required_tag_names or [],
+                available_tag_values=available_tag_values or {},
                 should_scrape=True,
             ),
         )
@@ -740,14 +906,6 @@ def _create_search_runs_query(
         q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
         queries.append(q)
     return scout_run_api.SearchQuery(and_=queries)
-
-
-def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
-    path = Path(path)
-    file_type = FileType.from_path_dataset(path)
-    if file_type.extension not in (".csv", ".csv.gz"):
-        raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
-    return path, file_type
 
 
 def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:

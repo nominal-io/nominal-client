@@ -1,5 +1,72 @@
 # Changelog
 
+## [1.20.0](https://github.com/nominal-io/nominal-client/compare/v1.19.0...v1.20.0) (2024-12-16)
+
+
+### Features
+
+* rename --desc to --description ([#170](https://github.com/nominal-io/nominal-client/issues/170)) ([b9827be](https://github.com/nominal-io/nominal-client/commit/b9827be06d82d462ad30ba7f435f10d72669a04e))
+* support wider breadth of filetype extensions ([#174](https://github.com/nominal-io/nominal-client/issues/174)) ([d3d8d8c](https://github.com/nominal-io/nominal-client/commit/d3d8d8c4acb0422f5d098659f04ecc4b2164cde9))
+
+
+### Bug Fixes
+
+* fix name of argument for trust store cert ([#173](https://github.com/nominal-io/nominal-client/issues/173)) ([9db6a61](https://github.com/nominal-io/nominal-client/commit/9db6a61dc17396cdf57a9f11a8b14c268c89ba0f))
+* sanitize PR title before use ([#171](https://github.com/nominal-io/nominal-client/issues/171)) ([a341d1b](https://github.com/nominal-io/nominal-client/commit/a341d1b218146a34f7ad0ce0371d4041b1319a0e))
+
+## [1.19.0](https://github.com/nominal-io/nominal-client/compare/v1.18.0...v1.19.0) (2024-12-12)
+
+
+### Features
+
+* simplify dev experience for uploading videos ([#161](https://github.com/nominal-io/nominal-client/issues/161)) ([acedbc0](https://github.com/nominal-io/nominal-client/commit/acedbc074d67f4799b7d0e70886dda3ceed7a27b))
+
+
+### Bug Fixes
+
+* Handle case where data file has extra extension prefixes ([7a0d891](https://github.com/nominal-io/nominal-client/commit/7a0d891f0ad1c5fd45ba995f59f0420d5f5d6390))
+* handle case where data file has extra extension prefixes ([#167](https://github.com/nominal-io/nominal-client/issues/167)) ([7a0d891](https://github.com/nominal-io/nominal-client/commit/7a0d891f0ad1c5fd45ba995f59f0420d5f5d6390))
+
+## [1.18.0](https://github.com/nominal-io/nominal-client/compare/v1.17.0...v1.18.0) (2024-12-10)
+
+
+### Features
+
+* add support for tags in connections and runs ([4003885](https://github.com/nominal-io/nominal-client/commit/4003885d8a664fe9ed8a1c3e0c4deb89be95aa40))
+* add support for tags in connections, runs and assets ([#159](https://github.com/nominal-io/nominal-client/issues/159)) ([4003885](https://github.com/nominal-io/nominal-client/commit/4003885d8a664fe9ed8a1c3e0c4deb89be95aa40))
+* expose trust store path for client_options decorator ([#162](https://github.com/nominal-io/nominal-client/issues/162)) ([ceede7f](https://github.com/nominal-io/nominal-client/commit/ceede7f52df9d23c73f1bbfb84710516701a6635))
+* support string in write stream ([#142](https://github.com/nominal-io/nominal-client/issues/142)) ([b2cbe18](https://github.com/nominal-io/nominal-client/commit/b2cbe182d35e9ac5ea66496e80cd8e4d87f525a2))
+
+## [1.17.0](https://github.com/nominal-io/nominal-client/compare/v1.16.0...v1.17.0) (2024-12-03)
+
+
+### Features
+
+* allow uploading manually timestamped videos ([#156](https://github.com/nominal-io/nominal-client/issues/156)) ([67f2867](https://github.com/nominal-io/nominal-client/commit/67f28672631aac3958b9d7b9b70f42634a55ef53))
+* make FileType(s) public ([#158](https://github.com/nominal-io/nominal-client/issues/158)) ([2358570](https://github.com/nominal-io/nominal-client/commit/2358570a6b95aaac35089a62205f2e285d5aaee1))
+
+## [1.16.0](https://github.com/nominal-io/nominal-client/compare/v1.15.0...v1.16.0) (2024-11-26)
+
+
+### Features
+
+* add mcap dataset creation ([#155](https://github.com/nominal-io/nominal-client/issues/155)) ([e18c3d7](https://github.com/nominal-io/nominal-client/commit/e18c3d725e06a7e07e7525792ab634205995c233))
+* remove pydantic for dataclasses ([#153](https://github.com/nominal-io/nominal-client/issues/153)) ([0cac531](https://github.com/nominal-io/nominal-client/commit/0cac531299b62018e46c17269db42ce8a4ce9a3d))
+
+## [1.15.0](https://github.com/nominal-io/nominal-client/compare/v1.14.0...v1.15.0) (2024-11-25)
+
+
+### Features
+
+* adding ability to specify time column in TDMS groups ([#146](https://github.com/nominal-io/nominal-client/issues/146)) ([0ae2fa5](https://github.com/nominal-io/nominal-client/commit/0ae2fa57d71f6a5f1c45851651896e79e5d2d97e))
+
+## [1.14.0](https://github.com/nominal-io/nominal-client/compare/v1.13.0...v1.14.0) (2024-11-22)
+
+
+### Features
+
+* export upload_mcap_video function ([#149](https://github.com/nominal-io/nominal-client/issues/149)) ([d269e4a](https://github.com/nominal-io/nominal-client/commit/d269e4aae57ecd9eeb31e4d2545da47140b36ef2))
+
 ## [1.13.0](https://github.com/nominal-io/nominal-client/compare/v1.12.1...v1.13.0) (2024-11-22)
 
 
