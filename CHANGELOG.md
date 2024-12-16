@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/nominal-io/nominal-client/compare/v1.20.0...v1.21.0) (2024-12-16)
+
+
+### Features
+
+* add channel name delimiter to file ingest ([#169](https://github.com/nominal-io/nominal-client/issues/169)) ([be389f4](https://github.com/nominal-io/nominal-client/commit/be389f466437c0633372856d0646276025997cdc))
+
 ## [1.20.0](https://github.com/nominal-io/nominal-client/compare/v1.19.0...v1.20.0) (2024-12-16)
 
 
