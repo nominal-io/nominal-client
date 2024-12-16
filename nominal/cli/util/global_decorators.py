@@ -120,7 +120,7 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
         ),
     )
     trust_store_option = click.option(
-        "--trust-store",
+        "--trust-store-path",
         type=click.Path(dir_okay=False, exists=True, resolve_path=True, path_type=pathlib.Path),
         help=(
             "Path to a trust store CA root file to initiate SSL connections."
