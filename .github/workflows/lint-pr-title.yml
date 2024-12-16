@@ -13,8 +13,10 @@ jobs:
         # After they fix the config-conventional package we can upgrade.
         run: npm install -g @commitlint/cli@18 @commitlint/config-conventional@18.6.0
       - name: lint pr name
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
         run: |
-          echo "${{ github.event.pull_request.title }}" | commitlint --config .github/commitlint.config.js
+          echo "$TITLE" | commitlint --config .github/commitlint.config.js
       - name: display helpful error message
         if: failure()
         run: |
