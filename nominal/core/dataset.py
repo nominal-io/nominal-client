@@ -7,7 +7,7 @@ from datetime import timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 
 import pandas as pd
 from typing_extensions import Self
@@ -23,6 +23,7 @@ from nominal._api.scout_service_api import (
     timeseries_logicalseries_api,
     upload_api,
 )
+from nominal._utils import HasBinaryRead
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_io
@@ -173,7 +174,7 @@ class Dataset(HasRid):
 
     def add_to_dataset_from_io(
         self,
-        dataset: BinaryIO,
+        dataset: HasBinaryRead,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
