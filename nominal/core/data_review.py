@@ -119,7 +119,7 @@ class DataReviewBatchBuilder:
         started = datetime.now()
         completed_review_rids = []
         completed_reviews = []
-        while datetime.now() - started <= timedelta(seconds=wait_timeout.total_seconds()):
+        while datetime.now() - started <= wait_timeout:
             sleep(2)
             for rid in response.rids:
                 if rid not in completed_review_rids:
