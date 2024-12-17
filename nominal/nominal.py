@@ -125,6 +125,7 @@ def upload_pandas(
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
+    channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -153,6 +154,7 @@ def upload_pandas(
             timestamp_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
+            prefix_tree_delimiter=channel_name_delimiter,
         )
         t.join()
     if wait_until_complete:
@@ -166,6 +168,7 @@ def upload_polars(
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
+    channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -192,6 +195,7 @@ def upload_polars(
             timestamp_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
+            prefix_tree_delimiter=channel_name_delimiter,
         )
         t.join()
     if wait_until_complete:
@@ -205,6 +209,7 @@ def upload_csv(
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
+    channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -218,7 +223,14 @@ def upload_csv(
     """
     conn = get_default_client()
     return _upload_csv(
-        conn, file, name, timestamp_column, timestamp_type, description, wait_until_complete=wait_until_complete
+        conn,
+        file,
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
     )
 
 
@@ -229,6 +241,7 @@ def _upload_csv(
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
+    channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -238,6 +251,7 @@ def _upload_csv(
         timestamp_column=timestamp_column,
         timestamp_type=timestamp_type,
         description=description,
+        prefix_tree_delimiter=channel_name_delimiter,
     )
     if wait_until_complete:
         dataset.poll_until_ingestion_completed()

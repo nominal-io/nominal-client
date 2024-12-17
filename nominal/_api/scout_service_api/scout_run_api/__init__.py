@@ -44,7 +44,6 @@ from .._impl import (
     scout_run_api_SearchRunsResponse as SearchRunsResponse,
     scout_run_api_SearchRunsWithDataReviewMetricsResponse as SearchRunsWithDataReviewMetricsResponse,
     scout_run_api_SearchRunsWithDataReviewSummaryResponse as SearchRunsWithDataReviewSummaryResponse,
-    scout_run_api_SeriesDataType as SeriesDataType,
     scout_run_api_SortField as SortField,
     scout_run_api_SortOptions as SortOptions,
     scout_run_api_Unit as Unit,
