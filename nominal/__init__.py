@@ -23,6 +23,7 @@ from nominal.nominal import (
     download_attachment,
     get_attachment,
     get_checklist,
+    get_connection,
     get_dataset,
     get_default_client,
     get_log_set,
