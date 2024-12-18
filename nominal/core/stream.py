@@ -4,12 +4,27 @@ import concurrent.futures
 import logging
 import threading
 import time
+import warnings
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Callable, Dict, Sequence, Type
+from typing import Any, Callable, Sequence, Type
+
+from typing_extensions import Self
 
 from nominal.ts import IntegralNanosecondsUTC
+
+
+def __getattr__(name: str) -> Any:
+    if name == "NominalWriteStream":
+        warnings.warn(
+            "NominalWriteStream is deprecated, use WriteStream instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return WriteStream
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,31 +34,44 @@ class BatchItem:
     channel_name: str
     timestamp: str | datetime | IntegralNanosecondsUTC
     value: float | str
-    tags: Dict[str, str] | None = None
+    tags: dict[str, str] | None = None
 
 
-class NominalWriteStream:
-    def __init__(
-        self,
+@dataclass(frozen=True)
+class WriteStream:
+    batch_size: int
+    max_wait: timedelta
+    _process_batch: Callable[[Sequence[BatchItem]], None]
+    _executor: concurrent.futures.ThreadPoolExecutor
+    _thread_safe_batch: ThreadSafeBatch
+    _stop: threading.Event
+    _pending_jobs: threading.BoundedSemaphore
+
+    @classmethod
+    def create(
+        cls,
+        batch_size: int,
+        max_wait: timedelta,
         process_batch: Callable[[Sequence[BatchItem]], None],
-        batch_size: int = 10,
-        max_wait_sec: int = 5,
-        max_workers: int | None = None,
-    ):
+    ) -> Self:
         """Create the stream."""
-        self._process_batch = process_batch
-        self.batch_size = batch_size
-        self.max_wait_sec = max_wait_sec
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-        self._batch: list[BatchItem] = []
-        self._batch_lock = threading.Lock()
-        self._last_batch_time = time.time()
-        self._running = True
+        executor = concurrent.futures.ThreadPoolExecutor()
 
-        self._timeout_thread = threading.Thread(target=self._process_timeout_batches, daemon=True)
-        self._timeout_thread.start()
+        instance = cls(
+            batch_size,
+            max_wait,
+            process_batch,
+            executor,
+            ThreadSafeBatch(),
+            threading.Event(),
+            threading.BoundedSemaphore(3),
+        )
 
-    def __enter__(self) -> "NominalWriteStream":
+        executor.submit(instance._process_timeout_batches)
+
+        return instance
+
+    def __enter__(self) -> WriteStream:
         """Create the stream as a context manager."""
         return self
 
@@ -58,7 +86,7 @@ class NominalWriteStream:
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         value: float | str,
-        tags: Dict[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Add a message to the queue.
 
@@ -71,7 +99,7 @@ class NominalWriteStream:
         channel_name: str,
         timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
         values: Sequence[float | str],
-        tags: Dict[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Add a sequence of messages to the queue.
 
@@ -82,12 +110,35 @@ class NominalWriteStream:
                 f"Expected equal numbers of timestamps and values! Received: {len(timestamps)} vs. {len(values)}"
             )
 
-        with self._batch_lock:
-            for timestamp, value in zip(timestamps, values):
-                self._batch.append(BatchItem(channel_name, timestamp, value, tags))
+        self._thread_safe_batch.add(
+            [BatchItem(channel_name, timestamp, value, tags) for timestamp, value in zip(timestamps, values)]
+        )
+        self._flush(condition=lambda size: size >= self.batch_size)
 
-            if len(self._batch) >= self.batch_size:
-                self.flush()
+    def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
+        batch = self._thread_safe_batch.swap(condition)
+
+        if batch is None:
+            return None
+        if not batch:
+            logger.debug("Not flushing... no enqueued batch")
+            return None
+
+        self._pending_jobs.acquire()
+
+        def process_future(fut: concurrent.futures.Future) -> None:  # type: ignore[type-arg]
+            """Callback to print errors to the console if a batch upload fails."""
+            self._pending_jobs.release()
+            maybe_ex = fut.exception()
+            if maybe_ex is not None:
+                logger.error("Batched upload task failed with exception", exc_info=maybe_ex)
+            else:
+                logger.debug("Batched upload task succeeded")
+
+        logger.debug(f"Starting flush with {len(batch)} records")
+        future = self._executor.submit(self._process_batch, batch)
+        future.add_done_callback(process_future)
+        return future
 
     def flush(self, wait: bool = False, timeout: float | None = None) -> None:
         """Flush current batch of records to nominal in a background thread.
@@ -99,39 +150,28 @@ class NominalWriteStream:
                      NOTE: If none, waits indefinitely.
 
         """
-        if not self._batch:
-            logger.debug("Not flushing... no enqueued batch")
-            return
-
-        def process_future(fut: concurrent.futures.Future) -> None:  # type: ignore[type-arg]
-            """Callback to print errors to the console if a batch upload fails."""
-            maybe_ex = fut.exception()
-            if maybe_ex is not None:
-                logger.error("Batched upload task failed with exception", exc_info=maybe_ex)
-            else:
-                logger.debug("Batched upload task succeeded")
-
-        logger.debug(f"Starting flush with {len(self._batch)} records")
-        future = self._executor.submit(self._process_batch, self._batch)
-        future.add_done_callback(process_future)
-
-        # Clear metadata
-        self._batch = []
-        self._last_batch_time = time.time()
+        future = self._flush()
 
         # Synchronously wait, if requested
-        if wait:
+        if wait and future is not None:
             # Warn user if timeout is too short
             _, pending = concurrent.futures.wait([future], timeout)
             if pending:
                 logger.warning("Upload task still pending after flushing batch... increase timeout or setting to None")
 
     def _process_timeout_batches(self) -> None:
-        while self._running:
-            time.sleep(self.max_wait_sec / 10)
-            with self._batch_lock:
-                if self._batch and (time.time() - self._last_batch_time) >= self.max_wait_sec:
-                    self.flush()
+        while not self._stop.is_set():
+            now = time.time()
+
+            last_batch_time = self._thread_safe_batch.last_time
+            timeout = max(self.max_wait.seconds - (now - last_batch_time), 0)
+            self._stop.wait(timeout=timeout)
+
+            # check if flush has been called in the mean time
+            if self._thread_safe_batch.last_time > last_batch_time:
+                continue
+
+            self._flush()
 
     def close(self, wait: bool = True) -> None:
         """Close the Nominal Stream.
@@ -139,10 +179,38 @@ class NominalWriteStream:
         Stop the process timeout thread
         Flush any remaining batches
         """
-        self._running = False
-        self._timeout_thread.join()
+        self._stop.set()
 
-        with self._batch_lock:
-            self.flush()
+        self._flush()
 
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
+
+
+class ThreadSafeBatch:
+    def __init__(self) -> None:
+        """Thread-safe access to batch and last swap time."""
+        self._batch: list[BatchItem] = []
+        self._last_time = time.time()
+        self._lock = threading.Lock()
+
+    def swap(self, condition: Callable[[int], bool] | None = None) -> list[BatchItem] | None:
+        """Swap the current batch with an empty one and return the old batch.
+
+        If condition is provided, the swap will only occur if the condition is met, otherwise None is returned.
+        """
+        with self._lock:
+            if condition and not condition(len(self._batch)):
+                return None
+            batch = self._batch
+            self._batch = []
+            self._last_time = time.time()
+        return batch
+
+    def add(self, items: Sequence[BatchItem]) -> None:
+        with self._lock:
+            self._batch.extend(items)
+
+    @property
+    def last_time(self) -> float:
+        with self._lock:
+            return self._last_time
