@@ -570,8 +570,7 @@ def create_streaming_connection(
     connection_name: str,
     datasource_description: str | None = None,
     *,
-    required_tag_names: list[str] | None = None,
-    available_tag_values: dict[str, list[str]] | None = None,
+    required_tag_names: list[str] | None = None
 ) -> Connection:
     """Creates a new datasource and a new connection.
 
@@ -582,8 +581,7 @@ def create_streaming_connection(
         datasource_id,
         connection_name,
         datasource_description,
-        required_tag_names=required_tag_names,
-        available_tag_values=available_tag_values,
+        required_tag_names=required_tag_names
     )
 
 

@@ -743,11 +743,7 @@ class NominalClient:
         datasource_description: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
-        available_tag_values: dict[str, list[str]] | None = None,
     ) -> Connection:
-        if required_tag_names:
-            if not available_tag_values or not all(key in available_tag_values for key in required_tag_names):
-                raise ValueError("available_tag_values contain all required_tag_names")
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
@@ -765,19 +761,7 @@ class NominalClient:
                     ),
                 ),
                 metadata={},
-                scraping=scout_datasource_connection_api.ScrapingConfig(
-                    nominal=scout_datasource_connection_api.NominalScrapingConfig(
-                        channel_name_components=[
-                            scout_datasource_connection_api.NominalChannelNameComponent(
-                                channel=scout_datasource_connection_api.Empty()
-                            )
-                        ],
-                        separator=".",
-                    )
-                ),
                 required_tag_names=required_tag_names or [],
-                available_tag_values=available_tag_values or {},
-                should_scrape=True,
             ),
         )
         return Connection._from_conjure(self._clients, connection_response)
