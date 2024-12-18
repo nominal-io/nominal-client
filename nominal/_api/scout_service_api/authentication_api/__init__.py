@@ -12,7 +12,6 @@ from .._impl import (
     authentication_api_SortBy as SortBy,
     authentication_api_SortByField as SortByField,
     authentication_api_TimezoneSetting as TimezoneSetting,
-    authentication_api_Token as Token,
     authentication_api_UpdateMyProfileRequest as UpdateMyProfileRequest,
     authentication_api_UserRid as UserRid,
     authentication_api_UserSettings as UserSettings,
