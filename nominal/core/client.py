@@ -760,6 +760,8 @@ class NominalClient:
                         nominal_data_source_rid=datasource_response.rid
                     ),
                 ),
+                available_tag_values={},
+                should_scrape=False,
                 metadata={},
                 required_tag_names=required_tag_names or [],
             ),

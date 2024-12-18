@@ -570,7 +570,7 @@ def create_streaming_connection(
     connection_name: str,
     datasource_description: str | None = None,
     *,
-    required_tag_names: list[str] | None = None
+    required_tag_names: list[str] | None = None,
 ) -> Connection:
     """Creates a new datasource and a new connection.
 
@@ -578,10 +578,7 @@ def create_streaming_connection(
     """
     conn = get_default_client()
     return conn.create_streaming_connection(
-        datasource_id,
-        connection_name,
-        datasource_description,
-        required_tag_names=required_tag_names
+        datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
     )
 
 
