@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import timedelta
 from time import sleep
 from typing import Protocol, Sequence
 
@@ -50,6 +50,20 @@ class DataReview(HasRid):
         response = self._clients.datareview.get_check_alerts_for_data_review(self._clients.auth_header, self.rid)
         return [CheckViolation._from_conjure(alert) for alert in response]
 
+    def reload(self) -> DataReview:
+        """Reloads the data review from the server."""
+        return DataReview._from_conjure(
+            self._clients, self._clients.datareview.get(self._clients.auth_header, self.rid)
+        )
+
+    def poll_for_completion(self, interval: timedelta = timedelta(seconds=2)) -> DataReview:
+        """Polls the data review until it is completed."""
+        review = self
+        while not review.completed:
+            sleep(interval.total_seconds())
+            review = review.reload()
+        return review
+
 
 @dataclass(frozen=True)
 class CheckViolation:
@@ -75,60 +89,45 @@ class CheckViolation:
 
 
 @dataclass(frozen=True)
-class DataReviewBatchBuilder:
-    integration_rids: list[str]
+class DataReviewBuilder:
+    _integration_rids: list[str]
     _requests: list[scout_datareview_api.CreateDataReviewRequest]
     _clients: DataReview._Clients = field(repr=False)
 
-    def add_integration(self, integration_rid: str) -> DataReviewBatchBuilder:
-        self.integration_rids.append(integration_rid)
+    def add_integration(self, integration_rid: str) -> DataReviewBuilder:
+        self._integration_rids.append(integration_rid)
         return self
 
-    def add_request(self, run_rid: str, checklist_rid: str, commit: str) -> DataReviewBatchBuilder:
+    def add_request(self, run_rid: str, checklist_rid: str, commit: str) -> DataReviewBuilder:
         self._requests.append(scout_datareview_api.CreateDataReviewRequest(checklist_rid, run_rid, commit))
         return self
 
-    def initiate(
-        self, wait_for_completion: bool = True, wait_timeout: timedelta = timedelta(minutes=1)
-    ) -> Sequence[DataReview]:
+    def initiate(self, wait_for_completion: bool = True) -> Sequence[DataReview]:
         """Initiates a batch data review process.
 
         Args:
             wait_for_completion (bool): If True, waits for the data review process to complete before returning.
                                         Default is True.
-            wait_timeout (timedelta): The maximum time to wait for the data review process to complete.
-                                      Default is 1 minute.
-
-        Raises:
-            TimeoutError: If the data review process does not complete before the wait_timeout.
         """
         request = scout_datareview_api.BatchInitiateDataReviewRequest(
             notification_configurations=[
-                scout_integrations_api.NotificationConfiguration(c) for c in self.integration_rids
+                scout_integrations_api.NotificationConfiguration(c) for c in self._integration_rids
             ],
             requests=self._requests,
         )
         response = self._clients.datareview.batch_initiate(self._clients.auth_header, request)
 
-        if not wait_for_completion:
-            return [
-                DataReview._from_conjure(self._clients, self._clients.datareview.get(self._clients.auth_header, rid))
-                for rid in response.rids
-            ]
+        data_reviews = [
+            DataReview._from_conjure(self._clients, self._clients.datareview.get(self._clients.auth_header, rid))
+            for rid in response.rids
+        ]
+        if wait_for_completion:
+            return poll_until_completed(data_reviews)
+        else:
+            return data_reviews
 
-        started = datetime.now()
-        completed_review_rids = []
-        completed_reviews = []
-        while datetime.now() - started <= wait_timeout:
-            sleep(2)
-            for rid in response.rids:
-                if rid not in completed_review_rids:
-                    review_response = self._clients.datareview.get(self._clients.auth_header, rid)
-                    review = DataReview._from_conjure(self._clients, review_response)
-                    if review.completed:
-                        completed_review_rids.append(rid)
-                        completed_reviews.append(review)
-            if len(completed_reviews) == len(response.rids):
-                return completed_reviews
 
-        raise TimeoutError(f"Data review initiation did not complete before wait_timeout. Review rids: {response.rids}")
+def poll_until_completed(
+    data_reviews: Sequence[DataReview], interval: timedelta = timedelta(seconds=2)
+) -> Sequence[DataReview]:
+    return [review.poll_for_completion(interval) for review in data_reviews]

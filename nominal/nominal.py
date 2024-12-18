@@ -25,7 +25,7 @@ from nominal.core import (
     Workbook,
     poll_until_ingestion_completed,
 )
-from nominal.core.data_review import DataReview, DataReviewBatchBuilder
+from nominal.core.data_review import DataReview, DataReviewBuilder
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -606,14 +606,14 @@ def create_log_set(
     return conn.create_log_set(name, logs, timestamp_type, description)
 
 
-def create_data_review_batch_builder() -> DataReviewBatchBuilder:
+def data_review_builder() -> DataReviewBuilder:
     """Create a batch of data reviews to be initiated together.
 
     Example:
     -------
     ```python
-    builder = nm.create_data_review_batch_builder()
-    builder.add_integrationn("integration_rid")
+    builder = nm.data_review_builder()
+    builder.add_integration("integration_rid")
     builder.add_request("run_rid_1", "checklist_rid_1", "commit_1")
     builder.add_request("run_rid_2", "checklist_rid_2", "commit_2")
     reviews = builder.initiate()
@@ -623,7 +623,7 @@ def create_data_review_batch_builder() -> DataReviewBatchBuilder:
     ```
     """
     conn = get_default_client()
-    return conn.create_data_review_batch_builder()
+    return conn.data_review_builder()
 
 
 def get_data_review(rid: str) -> DataReview:

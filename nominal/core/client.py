@@ -38,7 +38,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
 from nominal.core.connection import Connection
-from nominal.core.data_review import DataReview, DataReviewBatchBuilder
+from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
@@ -819,8 +819,8 @@ class NominalClient:
         """
         return list(self._iter_search_assets(search_text, label, property))
 
-    def create_data_review_batch_builder(self) -> DataReviewBatchBuilder:
-        return DataReviewBatchBuilder([], [], self._clients)
+    def data_review_builder(self) -> DataReviewBuilder:
+        return DataReviewBuilder([], [], self._clients)
 
     def get_data_review(self, rid: str) -> DataReview:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
