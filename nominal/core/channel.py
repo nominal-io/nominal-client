@@ -28,9 +28,7 @@ class ChannelDataType(enum.Enum):
     UNKNOWN = "UNKNOWN"
 
     @classmethod
-    def _from_conjure(
-        cls, data_type: datasource_api.SeriesDataType | timeseries_logicalseries_api.SeriesDataType
-    ) -> Self:
+    def _from_conjure(cls, data_type: api.SeriesDataType) -> Self:
         if data_type.value in cls.__members__:
             return cls(data_type.value)
         else:
