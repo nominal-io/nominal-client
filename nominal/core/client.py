@@ -21,6 +21,7 @@ from nominal._api.scout_service_api import (
     ingest_api,
     scout_asset_api,
     scout_catalog,
+    scout_checklistexecution_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -883,6 +884,35 @@ class NominalClient:
         - `property` is a key-value pair, e.g. ("name", "value")
         """
         return list(self._iter_search_assets(search_text, label, property))
+
+    def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
+        """List all Streaming Checklists.
+
+        Args:
+            asset: if provided, only return checklists associated with the given asset.
+        """
+        next_page_token = None
+
+        while True:
+            if asset is None:
+                response = self._clients.checklist_execution.list_streaming_checklist(
+                    self._clients.auth_header,
+                    scout_checklistexecution_api.ListStreamingChecklistRequest(page_token=next_page_token),
+                )
+                yield from response.checklists
+                next_page_token = response.next_page_token
+            else:
+                for_asset_response = self._clients.checklist_execution.list_streaming_checklist_for_asset(
+                    self._clients.auth_header,
+                    scout_checklistexecution_api.ListStreamingChecklistForAssetRequest(
+                        asset_rid=rid_from_instance_or_string(asset), page_token=next_page_token
+                    ),
+                )
+                yield from for_asset_response.checklists
+                next_page_token = for_asset_response.next_page_token
+
+            if next_page_token is None:
+                break
 
 
 def _create_search_runs_query(

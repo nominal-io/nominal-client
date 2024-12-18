@@ -447,6 +447,16 @@ def search_assets(
     return list(assets)
 
 
+def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
+    """List all Streaming Checklists.
+
+    Args:
+        asset: if provided, only return checklists associated with the given asset.
+    """
+    conn = get_default_client()
+    return conn.list_streaming_checklists(asset)
+
+
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     """Wait until all datasets have completed ingestion.
 
