@@ -19,6 +19,7 @@ from nominal._api.scout_service_api import (
     scout_compute_api,
     scout_compute_representation_api,
     scout_dataexport_api,
+    scout_datareview_api,
     scout_datasource,
     scout_datasource_connection,
     scout_video,
@@ -54,6 +55,7 @@ class ClientsBunch:
     storage_writer: storage_writer_api.NominalChannelWriterService
     template: scout.TemplateService
     notebook: scout.NotebookService
+    datareview: scout_datareview_api.DataReviewService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -82,6 +84,7 @@ class ClientsBunch:
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             template=client_factory(scout.TemplateService),
             notebook=client_factory(scout.NotebookService),
+            datareview=client_factory(scout_datareview_api.DataReviewService),
         )
 
 
