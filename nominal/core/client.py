@@ -769,12 +769,12 @@ class NominalClient:
                                 channel=scout_datasource_connection_api.Empty()
                             )
                         ],
-                        separator="."
+                        separator=".",
                     )
                 ),
                 required_tag_names=required_tag_names or [],
                 available_tag_values={},
-                should_scrape=True
+                should_scrape=True,
             ),
         )
         return Connection._from_conjure(self._clients, connection_response)
