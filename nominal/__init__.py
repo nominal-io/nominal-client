@@ -49,6 +49,7 @@ __all__ = [
     "download_attachment",
     "get_attachment",
     "create_streaming_connection",
+    "get_connection",
     "get_checklist",
     "get_dataset",
     "get_default_client",

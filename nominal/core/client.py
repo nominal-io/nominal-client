@@ -761,8 +761,18 @@ class NominalClient:
                         nominal_data_source_rid=datasource_response.rid
                     ),
                 ),
+                scraping=scout_datasource_connection_api.ScrapingConfig(
+                    nominal=scout_datasource_connection_api.NominalScrapingConfig(
+                        channel_name_components=[
+                            scout_datasource_connection_api.NominalChannelNameComponent(
+                                channel=scout_datasource_connection_api.Empty()
+                            )
+                        ],
+                        separator='.'
+                    )
+                ),
                 available_tag_values={},
-                should_scrape=False,
+                should_scrape=True,
                 metadata={},
                 required_tag_names=required_tag_names or [],
             ),
