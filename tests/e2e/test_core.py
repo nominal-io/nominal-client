@@ -151,6 +151,21 @@ def test_add_attachment_to_run_and_list_attachments(csv_data):
     assert at2.get_contents().read() == at.get_contents().read() == csv_data
 
 
+def test_add_asset_to_run():
+    asset_name = f"asset-{uuid4()}"
+    asset_desc = f"core test to add a asset to a run {uuid4()}"
+    asset = nm.create_asset(asset_name, asset_desc)
+
+    title = f"run-{uuid4()}"
+    desc = f"core test to add a asset to a run {uuid4()}"
+    start, end = _create_random_start_end()
+    run = nm.create_run(title, start, end, desc)
+    run.add_asset(asset.rid)
+
+    asset2 = run.get_asset()
+    assert asset2.rid == asset.rid
+
+
 def test_create_get_log_set(client: nm.NominalClient):
     name = f"logset-{uuid4()}"
     desc = f"core test to create & get a log set {uuid4()}"

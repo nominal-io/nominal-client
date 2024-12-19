@@ -17,6 +17,7 @@ from nominal.core import (
 )
 from nominal.nominal import (
     checklist_builder,
+    create_asset,
     create_run,
     create_run_csv,
     create_streaming_connection,
@@ -42,6 +43,7 @@ from nominal.nominal import (
 
 __all__ = [
     "ts",
+    "create_asset",
     "create_run",
     "create_run_csv",
     "checklist_builder",

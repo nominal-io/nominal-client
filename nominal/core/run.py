@@ -15,6 +15,7 @@ from nominal._api.scout_service_api import (
 )
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
+from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
@@ -209,6 +210,19 @@ class Run(HasRid):
     def list_attachments(self) -> Sequence[Attachment]:
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
+
+    def add_asset(self, asset: Asset | str) -> None:
+        """Add an asset to this run.
+
+        `asset` can be an `Asset` instances, or asset RID.
+        """
+        rid = rid_from_instance_or_string(asset)
+        request = scout_run_api.UpdateRunRequest(asset=rid)
+        self._clients.run.update_run(self._clients.auth_header, request, self.rid)
+
+    def get_asset(self) -> Asset:
+        run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        return run.asset
 
     def archive(self) -> None:
         """Archive this run.
