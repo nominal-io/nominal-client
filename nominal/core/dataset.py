@@ -301,6 +301,18 @@ class Dataset(HasRid):
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
         return df
 
+    def _batch_update_channels(self, channel_updates: Sequence[_ChannelUpdate]) -> None:
+        update_requests = [
+            timeseries_logicalseries_api.UpdateLogicalSeries(
+                logical_series_rid=c.rid,
+                unit_update=_build_unit_update(c.unit),
+                description=c.description,
+            )
+            for c in channel_updates
+        ]
+        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(update_requests)
+        self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
+
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
 
@@ -339,7 +351,7 @@ class Dataset(HasRid):
 
         # For each channel / unit combination, create an update request to set the series's unit
         # to that symbol
-        update_requests = []
+        channel_updates = []
         for channel_name, unit in channels_to_units.items():
             # No data uploaded to channel yet ...
             if channel_name not in found_channels:
@@ -352,17 +364,9 @@ class Dataset(HasRid):
                     continue
 
             channel = found_channels[channel_name]
-            channel_request = timeseries_logicalseries_api.UpdateLogicalSeries(
-                logical_series_rid=channel.rid,
-                unit_update=_build_unit_update(unit),
-            )
-            update_requests.append(channel_request)
-
-        if not update_requests:
-            return
+            channel_updates.append(_ChannelUpdate(rid=channel.rid, unit=unit, description=None))
         # Set units in database
-        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(update_requests)
-        self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
+        self._batch_update_channels(channel_updates)
 
     def set_channel_prefix_tree(self, delimiter: str = ".") -> None:
         """Index channels hierarchically by a given delimiter.
@@ -405,6 +409,13 @@ def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timede
             errors[dataset.rid] = e
     if errors:
         raise NominalIngestMultiError(errors)
+
+
+@dataclass
+class _ChannelUpdate:
+    rid: str
+    unit: str | None
+    description: str | None
 
 
 def _get_datasets(
