@@ -21,6 +21,7 @@ from nominal._api.scout_service_api import (
     ingest_api,
     scout_asset_api,
     scout_catalog,
+    scout_checklistexecution_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -744,11 +745,7 @@ class NominalClient:
         datasource_description: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
-        available_tag_values: dict[str, list[str]] | None = None,
     ) -> Connection:
-        if required_tag_names:
-            if not available_tag_values or not all(key in available_tag_values for key in required_tag_names):
-                raise ValueError("available_tag_values contain all required_tag_names")
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
@@ -777,8 +774,8 @@ class NominalClient:
                     )
                 ),
                 required_tag_names=required_tag_names or [],
-                available_tag_values=available_tag_values or {},
-                should_scrape=True,
+                available_tag_values={},
+                should_scrape=False,
             ),
         )
         return Connection._from_conjure(self._clients, connection_response)
@@ -884,6 +881,35 @@ class NominalClient:
         - `property` is a key-value pair, e.g. ("name", "value")
         """
         return list(self._iter_search_assets(search_text, label, property))
+
+    def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
+        """List all Streaming Checklists.
+
+        Args:
+            asset: if provided, only return checklists associated with the given asset.
+        """
+        next_page_token = None
+
+        while True:
+            if asset is None:
+                response = self._clients.checklist_execution.list_streaming_checklist(
+                    self._clients.auth_header,
+                    scout_checklistexecution_api.ListStreamingChecklistRequest(page_token=next_page_token),
+                )
+                yield from response.checklists
+                next_page_token = response.next_page_token
+            else:
+                for_asset_response = self._clients.checklist_execution.list_streaming_checklist_for_asset(
+                    self._clients.auth_header,
+                    scout_checklistexecution_api.ListStreamingChecklistForAssetRequest(
+                        asset_rid=rid_from_instance_or_string(asset), page_token=next_page_token
+                    ),
+                )
+                yield from for_asset_response.checklists
+                next_page_token = for_asset_response.next_page_token
+
+            if next_page_token is None:
+                break
 
     def data_review_builder(self) -> DataReviewBuilder:
         return DataReviewBuilder([], [], self._clients)

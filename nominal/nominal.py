@@ -448,6 +448,16 @@ def search_assets(
     return list(assets)
 
 
+def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
+    """List all Streaming Checklists.
+
+    Args:
+        asset: if provided, only return checklists associated with the given asset.
+    """
+    conn = get_default_client()
+    return conn.list_streaming_checklists(asset)
+
+
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     """Wait until all datasets have completed ingestion.
 
@@ -572,7 +582,6 @@ def create_streaming_connection(
     datasource_description: str | None = None,
     *,
     required_tag_names: list[str] | None = None,
-    available_tag_values: dict[str, list[str]] | None = None,
 ) -> Connection:
     """Creates a new datasource and a new connection.
 
@@ -580,11 +589,7 @@ def create_streaming_connection(
     """
     conn = get_default_client()
     return conn.create_streaming_connection(
-        datasource_id,
-        connection_name,
-        datasource_description,
-        required_tag_names=required_tag_names,
-        available_tag_values=available_tag_values,
+        datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
     )
 
 

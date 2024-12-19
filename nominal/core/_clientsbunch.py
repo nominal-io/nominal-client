@@ -15,6 +15,7 @@ from nominal._api.scout_service_api import (
     scout,
     scout_assets,
     scout_catalog,
+    scout_checklistexecution_api,
     scout_checks_api,
     scout_compute_api,
     scout_compute_representation_api,
@@ -55,6 +56,7 @@ class ClientsBunch:
     storage_writer: storage_writer_api.NominalChannelWriterService
     template: scout.TemplateService
     notebook: scout.NotebookService
+    checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
 
     @classmethod
@@ -84,6 +86,7 @@ class ClientsBunch:
             storage_writer=client_factory(storage_writer_api.NominalChannelWriterService),
             template=client_factory(scout.TemplateService),
             notebook=client_factory(scout.NotebookService),
+            checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
         )
 
