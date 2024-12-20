@@ -217,6 +217,9 @@ class Run(HasRid):
 
         `asset` can be an `Asset` instance, or asset RID.
         """
+        if len(self.list_assets()) != 0:
+            raise ValueError("runs cannot have more than one asset")
+
         rid = rid_from_instance_or_string(asset)
         request = scout_run_api.UpdateRunRequest(assets=[rid])
         self._clients.run.update_run(self._clients.auth_header, request, self.rid)
