@@ -212,13 +212,13 @@ class Run(HasRid):
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
 
-    def add_assets(self, assets: Iterable[Asset] | Iterable[str]) -> None:
-        """Add assets to this run.
+    def add_asset(self, asset: Asset | str) -> None:
+        """Add an asset to this run.
 
-        `asset` can be an `Asset` instances, or asset RID.
+        `asset` can be an `Asset` instance, or asset RID.
         """
-        rids = [rid_from_instance_or_string(a) for a in assets]
-        request = scout_run_api.UpdateRunRequest(assets=rids)
+        rid = rid_from_instance_or_string(asset)
+        request = scout_run_api.UpdateRunRequest(assets=[rid])
         self._clients.run.update_run(self._clients.auth_header, request, self.rid)
 
     def _iter_list_assets(self) -> Iterable[Asset]:
