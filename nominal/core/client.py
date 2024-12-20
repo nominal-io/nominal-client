@@ -774,7 +774,7 @@ class NominalClient:
                 ),
                 required_tag_names=required_tag_names or [],
                 available_tag_values={},
-                should_scrape=False,
+                should_scrape=True,
             ),
         )
         return Connection._from_conjure(self._clients, connection_response)
