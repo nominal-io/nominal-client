@@ -39,6 +39,7 @@ class Run(HasRid):
 
     class _Clients(
         Attachment._Clients,
+        Asset._Clients,
         Connection._Clients,
         Dataset._Clients,
         LogSet._Clients,
@@ -211,18 +212,24 @@ class Run(HasRid):
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
 
-    def add_asset(self, asset: Asset | str) -> None:
-        """Add an asset to this run.
+    def add_assets(self, assets: Iterable[Asset] | Iterable[str]) -> None:
+        """Add assets to this run.
 
         `asset` can be an `Asset` instances, or asset RID.
         """
-        rid = rid_from_instance_or_string(asset)
-        request = scout_run_api.UpdateRunRequest(asset=rid)
+        rids = [rid_from_instance_or_string(a) for a in assets]
+        request = scout_run_api.UpdateRunRequest(assets=rids)
         self._clients.run.update_run(self._clients.auth_header, request, self.rid)
 
-    def get_asset(self) -> Asset:
+    def _iter_list_assets(self) -> Iterable[Asset]:
         run = self._clients.run.get_run(self._clients.auth_header, self.rid)
-        return run.asset
+        assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
+        for a in assets.values():
+            yield Asset._from_conjure(self._clients, a)
+
+    def list_assets(self) -> Sequence[Asset]:
+        """List assets associated with this run."""
+        return list(self._iter_list_assets())
 
     def archive(self) -> None:
         """Archive this run.
