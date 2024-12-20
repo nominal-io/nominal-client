@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.22.0](https://github.com/nominal-io/nominal-client/compare/v1.21.0...v1.22.0) (2024-12-20)
+
+
+### Features
+
+* add run.add_asset() ([#180](https://github.com/nominal-io/nominal-client/issues/180)) ([e6a292b](https://github.com/nominal-io/nominal-client/commit/e6a292ba4f3cf84f03126a1e51d2f29d2abfe533))
+* add streaming checklists ([#126](https://github.com/nominal-io/nominal-client/issues/126)) ([3093a4c](https://github.com/nominal-io/nominal-client/commit/3093a4c57ed03ec4b56de9f39d09fd86d58a5137))
+
+
+### Bug Fixes
+
+* fix __from__conjure ([#177](https://github.com/nominal-io/nominal-client/issues/177)) ([c436015](https://github.com/nominal-io/nominal-client/commit/c436015b3ba4b7ab527b9996a93aea6bfd9f0c90))
+* issues of post merge review of [#106](https://github.com/nominal-io/nominal-client/issues/106) ([#151](https://github.com/nominal-io/nominal-client/issues/151)) ([e6ff256](https://github.com/nominal-io/nominal-client/commit/e6ff256c5ec90729a6a279c59e90e71e8ea53753))
+* remove available_tag_values from create streaming connection and expose get connection ([#179](https://github.com/nominal-io/nominal-client/issues/179)) ([cdea621](https://github.com/nominal-io/nominal-client/commit/cdea6211568b100d5bafa5e2b1feef022cd0a802))
+
 ## [1.21.0](https://github.com/nominal-io/nominal-client/compare/v1.20.0...v1.21.0) (2024-12-16)
 
 
