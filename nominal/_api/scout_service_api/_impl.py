@@ -4956,35 +4956,68 @@ datasource_pagination_api_PageResponse.__qualname__ = "PageResponse"
 datasource_pagination_api_PageResponse.__module__ = "scout_service_api.datasource_pagination_api"
 
 
+class event_ArchiveEvent(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'uuid': ConjureFieldDefinition('uuid', str)
+        }
+
+    __slots__: List[str] = ['_uuid']
+
+    def __init__(self, uuid: str) -> None:
+        self._uuid = uuid
+
+    @builtins.property
+    def uuid(self) -> str:
+        return self._uuid
+
+
+event_ArchiveEvent.__name__ = "ArchiveEvent"
+event_ArchiveEvent.__qualname__ = "ArchiveEvent"
+event_ArchiveEvent.__module__ = "scout_service_api.event"
+
+
 class event_CreateEvent(ConjureBeanType):
 
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
+            'asset_rids': ConjureFieldDefinition('assetRids', List[str]),
             'associations': ConjureFieldDefinition('associations', List[str]),
-            'authorization_rid': ConjureFieldDefinition('authorizationRid', OptionalTypeWrapper[str]),
+            'authorization_rid': ConjureFieldDefinition('authorizationRid', str),
             'timestamp': ConjureFieldDefinition('timestamp', api_Timestamp),
             'duration': ConjureFieldDefinition('duration', scout_run_api_Duration),
             'name': ConjureFieldDefinition('name', str),
-            'type': ConjureFieldDefinition('type', event_EventType)
+            'type': ConjureFieldDefinition('type', event_EventType),
+            'labels': ConjureFieldDefinition('labels', OptionalTypeWrapper[List[scout_run_api_Label]]),
+            'properties': ConjureFieldDefinition('properties', Dict[scout_run_api_PropertyName, scout_run_api_PropertyValue])
         }
 
-    __slots__: List[str] = ['_associations', '_authorization_rid', '_timestamp', '_duration', '_name', '_type']
+    __slots__: List[str] = ['_asset_rids', '_associations', '_authorization_rid', '_timestamp', '_duration', '_name', '_type', '_labels', '_properties']
 
-    def __init__(self, associations: List[str], duration: "scout_run_api_Duration", name: str, timestamp: "api_Timestamp", type: "event_EventType", authorization_rid: Optional[str] = None) -> None:
+    def __init__(self, asset_rids: List[str], associations: List[str], authorization_rid: str, duration: "scout_run_api_Duration", name: str, properties: Dict[str, str], timestamp: "api_Timestamp", type: "event_EventType", labels: Optional[List[str]] = None) -> None:
+        self._asset_rids = asset_rids
         self._associations = associations
         self._authorization_rid = authorization_rid
         self._timestamp = timestamp
         self._duration = duration
         self._name = name
         self._type = type
+        self._labels = labels
+        self._properties = properties
+
+    @builtins.property
+    def asset_rids(self) -> List[str]:
+        return self._asset_rids
 
     @builtins.property
     def associations(self) -> List[str]:
         return self._associations
 
     @builtins.property
-    def authorization_rid(self) -> Optional[str]:
+    def authorization_rid(self) -> str:
         return self._authorization_rid
 
     @builtins.property
@@ -5002,6 +5035,14 @@ class event_CreateEvent(ConjureBeanType):
     @builtins.property
     def type(self) -> "event_EventType":
         return self._type
+
+    @builtins.property
+    def labels(self) -> Optional[List[str]]:
+        return self._labels
+
+    @builtins.property
+    def properties(self) -> Dict[str, str]:
+        return self._properties
 
 
 event_CreateEvent.__name__ = "CreateEvent"
@@ -5015,28 +5056,47 @@ class event_Event(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'uuid': ConjureFieldDefinition('uuid', str),
+            'asset_rids': ConjureFieldDefinition('assetRids', List[str]),
+            'authorization_rid': ConjureFieldDefinition('authorizationRid', str),
             'timestamp': ConjureFieldDefinition('timestamp', api_Timestamp),
             'duration': ConjureFieldDefinition('duration', scout_run_api_Duration),
             'name': ConjureFieldDefinition('name', str),
-            'dataset_rid': ConjureFieldDefinition('datasetRid', OptionalTypeWrapper[str]),
-            'authorization_rid': ConjureFieldDefinition('authorizationRid', OptionalTypeWrapper[str]),
-            'type': ConjureFieldDefinition('type', event_EventType)
+            'type': ConjureFieldDefinition('type', event_EventType),
+            'labels': ConjureFieldDefinition('labels', OptionalTypeWrapper[List[scout_run_api_Label]]),
+            'properties': ConjureFieldDefinition('properties', Dict[scout_run_api_PropertyName, scout_run_api_PropertyValue])
         }
 
-    __slots__: List[str] = ['_uuid', '_timestamp', '_duration', '_name', '_dataset_rid', '_authorization_rid', '_type']
+    __slots__: List[str] = ['_uuid', '_asset_rids', '_authorization_rid', '_timestamp', '_duration', '_name', '_type', '_labels', '_properties']
 
-    def __init__(self, duration: "scout_run_api_Duration", name: str, timestamp: "api_Timestamp", type: "event_EventType", uuid: str, authorization_rid: Optional[str] = None, dataset_rid: Optional[str] = None) -> None:
+    def __init__(self, asset_rids: List[str], authorization_rid: str, duration: "scout_run_api_Duration", name: str, properties: Dict[str, str], timestamp: "api_Timestamp", type: "event_EventType", uuid: str, labels: Optional[List[str]] = None) -> None:
         self._uuid = uuid
+        self._asset_rids = asset_rids
+        self._authorization_rid = authorization_rid
         self._timestamp = timestamp
         self._duration = duration
         self._name = name
-        self._dataset_rid = dataset_rid
-        self._authorization_rid = authorization_rid
         self._type = type
+        self._labels = labels
+        self._properties = properties
 
     @builtins.property
     def uuid(self) -> str:
         return self._uuid
+
+    @builtins.property
+    def asset_rids(self) -> List[str]:
+        """
+        A set of asset rids associated with the event.
+        """
+        return self._asset_rids
+
+    @builtins.property
+    def authorization_rid(self) -> str:
+        """
+        A user authorized for this rid can access the event. 
+Can be a workbook rid, asset rid, etc.
+        """
+        return self._authorization_rid
 
     @builtins.property
     def timestamp(self) -> "api_Timestamp":
@@ -5051,20 +5111,16 @@ class event_Event(ConjureBeanType):
         return self._name
 
     @builtins.property
-    def dataset_rid(self) -> Optional[str]:
-        return self._dataset_rid
-
-    @builtins.property
-    def authorization_rid(self) -> Optional[str]:
-        """
-        A user authorized for this rid can access the event. 
-Can be a workbook rid, asset rid, etc.
-        """
-        return self._authorization_rid
-
-    @builtins.property
     def type(self) -> "event_EventType":
         return self._type
+
+    @builtins.property
+    def labels(self) -> Optional[List[str]]:
+        return self._labels
+
+    @builtins.property
+    def properties(self) -> Dict[str, str]:
+        return self._properties
 
 
 event_Event.__name__ = "Event"
@@ -5142,6 +5198,101 @@ The Event Service is responsible for creating and retrieving events for a partic
         _decoder = ConjureDecoder()
         return _decoder.decode(_response.json(), List[event_Event], self._return_none_for_unknown_union_types)
 
+    def update_event(self, auth_header: str, request: "event_UpdateEvent") -> "event_Event":
+        """
+        Updates the fields of an event. Empty fields are left unchanged
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/event/v1/update-event'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), event_Event, self._return_none_for_unknown_union_types)
+
+    def archive_event(self, auth_header: str, request: "event_ArchiveEvent") -> None:
+        """
+        Archives an event
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(request)
+
+        _path = '/event/v1/archive-event'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        return
+
+    def search_events(self, auth_header: str, list_runs_request: "event_SearchEventsRequest") -> "event_SearchEventsResponse":
+        """
+        Searches for events that match the given ƒilters.
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+        }
+
+        _json: Any = ConjureEncoder().default(list_runs_request)
+
+        _path = '/event/v1/search-events'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), event_SearchEventsResponse, self._return_none_for_unknown_union_types)
+
 
 event_EventService.__name__ = "EventService"
 event_EventService.__qualname__ = "EventService"
@@ -5191,6 +5342,383 @@ class event_GetEvents(ConjureBeanType):
 event_GetEvents.__name__ = "GetEvents"
 event_GetEvents.__qualname__ = "GetEvents"
 event_GetEvents.__module__ = "scout_service_api.event"
+
+
+class event_SearchEventsRequest(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'sort': ConjureFieldDefinition('sort', event_SortOptions),
+            'page_size': ConjureFieldDefinition('pageSize', int),
+            'next_page_token': ConjureFieldDefinition('nextPageToken', OptionalTypeWrapper[scout_api_Token]),
+            'query': ConjureFieldDefinition('query', event_SearchQuery)
+        }
+
+    __slots__: List[str] = ['_sort', '_page_size', '_next_page_token', '_query']
+
+    def __init__(self, page_size: int, query: "event_SearchQuery", sort: "event_SortOptions", next_page_token: Optional[str] = None) -> None:
+        self._sort = sort
+        self._page_size = page_size
+        self._next_page_token = next_page_token
+        self._query = query
+
+    @builtins.property
+    def sort(self) -> "event_SortOptions":
+        return self._sort
+
+    @builtins.property
+    def page_size(self) -> int:
+        """
+        Will reject page sizes greater than 10k.
+        """
+        return self._page_size
+
+    @builtins.property
+    def next_page_token(self) -> Optional[str]:
+        return self._next_page_token
+
+    @builtins.property
+    def query(self) -> "event_SearchQuery":
+        return self._query
+
+
+event_SearchEventsRequest.__name__ = "SearchEventsRequest"
+event_SearchEventsRequest.__qualname__ = "SearchEventsRequest"
+event_SearchEventsRequest.__module__ = "scout_service_api.event"
+
+
+class event_SearchEventsResponse(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'results': ConjureFieldDefinition('results', List[event_Event]),
+            'next_page_token': ConjureFieldDefinition('nextPageToken', OptionalTypeWrapper[scout_api_Token])
+        }
+
+    __slots__: List[str] = ['_results', '_next_page_token']
+
+    def __init__(self, results: List["event_Event"], next_page_token: Optional[str] = None) -> None:
+        self._results = results
+        self._next_page_token = next_page_token
+
+    @builtins.property
+    def results(self) -> List["event_Event"]:
+        return self._results
+
+    @builtins.property
+    def next_page_token(self) -> Optional[str]:
+        return self._next_page_token
+
+
+event_SearchEventsResponse.__name__ = "SearchEventsResponse"
+event_SearchEventsResponse.__qualname__ = "SearchEventsResponse"
+event_SearchEventsResponse.__module__ = "scout_service_api.event"
+
+
+class event_SearchQuery(ConjureUnionType):
+    _after: Optional["api_Timestamp"] = None
+    _before: Optional["api_Timestamp"] = None
+    _asset: Optional[str] = None
+    _label: Optional[str] = None
+    _property: Optional["scout_run_api_Property"] = None
+    _and_: Optional[List["event_SearchQuery"]] = None
+    _or_: Optional[List["event_SearchQuery"]] = None
+
+    @builtins.classmethod
+    def _options(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'after': ConjureFieldDefinition('after', api_Timestamp),
+            'before': ConjureFieldDefinition('before', api_Timestamp),
+            'asset': ConjureFieldDefinition('asset', scout_rids_api_AssetRid),
+            'label': ConjureFieldDefinition('label', scout_run_api_Label),
+            'property': ConjureFieldDefinition('property', scout_run_api_Property),
+            'and_': ConjureFieldDefinition('and', List[event_SearchQuery]),
+            'or_': ConjureFieldDefinition('or', List[event_SearchQuery])
+        }
+
+    def __init__(
+            self,
+            after: Optional["api_Timestamp"] = None,
+            before: Optional["api_Timestamp"] = None,
+            asset: Optional[str] = None,
+            label: Optional[str] = None,
+            property: Optional["scout_run_api_Property"] = None,
+            and_: Optional[List["event_SearchQuery"]] = None,
+            or_: Optional[List["event_SearchQuery"]] = None,
+            type_of_union: Optional[str] = None
+            ) -> None:
+        if type_of_union is None:
+            if (after is not None) + (before is not None) + (asset is not None) + (label is not None) + (property is not None) + (and_ is not None) + (or_ is not None) != 1:
+                raise ValueError('a union must contain a single member')
+
+            if after is not None:
+                self._after = after
+                self._type = 'after'
+            if before is not None:
+                self._before = before
+                self._type = 'before'
+            if asset is not None:
+                self._asset = asset
+                self._type = 'asset'
+            if label is not None:
+                self._label = label
+                self._type = 'label'
+            if property is not None:
+                self._property = property
+                self._type = 'property'
+            if and_ is not None:
+                self._and_ = and_
+                self._type = 'and'
+            if or_ is not None:
+                self._or_ = or_
+                self._type = 'or'
+
+        elif type_of_union == 'after':
+            if after is None:
+                raise ValueError('a union value must not be None')
+            self._after = after
+            self._type = 'after'
+        elif type_of_union == 'before':
+            if before is None:
+                raise ValueError('a union value must not be None')
+            self._before = before
+            self._type = 'before'
+        elif type_of_union == 'asset':
+            if asset is None:
+                raise ValueError('a union value must not be None')
+            self._asset = asset
+            self._type = 'asset'
+        elif type_of_union == 'label':
+            if label is None:
+                raise ValueError('a union value must not be None')
+            self._label = label
+            self._type = 'label'
+        elif type_of_union == 'property':
+            if property is None:
+                raise ValueError('a union value must not be None')
+            self._property = property
+            self._type = 'property'
+        elif type_of_union == 'and':
+            if and_ is None:
+                raise ValueError('a union value must not be None')
+            self._and_ = and_
+            self._type = 'and'
+        elif type_of_union == 'or':
+            if or_ is None:
+                raise ValueError('a union value must not be None')
+            self._or_ = or_
+            self._type = 'or'
+
+    @builtins.property
+    def after(self) -> Optional["api_Timestamp"]:
+        """
+        Filters to start times after this time, inclusive.
+        """
+        return self._after
+
+    @builtins.property
+    def before(self) -> Optional["api_Timestamp"]:
+        """
+        Filters to start times before this time, exclusive.
+        """
+        return self._before
+
+    @builtins.property
+    def asset(self) -> Optional[str]:
+        return self._asset
+
+    @builtins.property
+    def label(self) -> Optional[str]:
+        return self._label
+
+    @builtins.property
+    def property(self) -> Optional["scout_run_api_Property"]:
+        return self._property
+
+    @builtins.property
+    def and_(self) -> Optional[List["event_SearchQuery"]]:
+        return self._and_
+
+    @builtins.property
+    def or_(self) -> Optional[List["event_SearchQuery"]]:
+        return self._or_
+
+    def accept(self, visitor) -> Any:
+        if not isinstance(visitor, event_SearchQueryVisitor):
+            raise ValueError('{} is not an instance of event_SearchQueryVisitor'.format(visitor.__class__.__name__))
+        if self._type == 'after' and self.after is not None:
+            return visitor._after(self.after)
+        if self._type == 'before' and self.before is not None:
+            return visitor._before(self.before)
+        if self._type == 'asset' and self.asset is not None:
+            return visitor._asset(self.asset)
+        if self._type == 'label' and self.label is not None:
+            return visitor._label(self.label)
+        if self._type == 'property' and self.property is not None:
+            return visitor._property(self.property)
+        if self._type == 'and' and self.and_ is not None:
+            return visitor._and(self.and_)
+        if self._type == 'or' and self.or_ is not None:
+            return visitor._or(self.or_)
+
+
+event_SearchQuery.__name__ = "SearchQuery"
+event_SearchQuery.__qualname__ = "SearchQuery"
+event_SearchQuery.__module__ = "scout_service_api.event"
+
+
+class event_SearchQueryVisitor:
+
+    @abstractmethod
+    def _after(self, after: "api_Timestamp") -> Any:
+        pass
+
+    @abstractmethod
+    def _before(self, before: "api_Timestamp") -> Any:
+        pass
+
+    @abstractmethod
+    def _asset(self, asset: str) -> Any:
+        pass
+
+    @abstractmethod
+    def _label(self, label: str) -> Any:
+        pass
+
+    @abstractmethod
+    def _property(self, property: "scout_run_api_Property") -> Any:
+        pass
+
+    @abstractmethod
+    def _and(self, and_: List["event_SearchQuery"]) -> Any:
+        pass
+
+    @abstractmethod
+    def _or(self, or_: List["event_SearchQuery"]) -> Any:
+        pass
+
+
+event_SearchQueryVisitor.__name__ = "SearchQueryVisitor"
+event_SearchQueryVisitor.__qualname__ = "SearchQueryVisitor"
+event_SearchQueryVisitor.__module__ = "scout_service_api.event"
+
+
+class event_SortField(ConjureEnumType):
+
+    START_TIME = 'START_TIME'
+    '''START_TIME'''
+    UNKNOWN = 'UNKNOWN'
+    '''UNKNOWN'''
+
+    def __reduce_ex__(self, proto):
+        return self.__class__, (self.name,)
+
+
+event_SortField.__name__ = "SortField"
+event_SortField.__qualname__ = "SortField"
+event_SortField.__module__ = "scout_service_api.event"
+
+
+class event_SortOptions(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'is_descending': ConjureFieldDefinition('isDescending', bool),
+            'field': ConjureFieldDefinition('field', event_SortField)
+        }
+
+    __slots__: List[str] = ['_is_descending', '_field']
+
+    def __init__(self, field: "event_SortField", is_descending: bool) -> None:
+        self._is_descending = is_descending
+        self._field = field
+
+    @builtins.property
+    def is_descending(self) -> bool:
+        return self._is_descending
+
+    @builtins.property
+    def field(self) -> "event_SortField":
+        return self._field
+
+
+event_SortOptions.__name__ = "SortOptions"
+event_SortOptions.__qualname__ = "SortOptions"
+event_SortOptions.__module__ = "scout_service_api.event"
+
+
+class event_UpdateEvent(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'uuid': ConjureFieldDefinition('uuid', str),
+            'asset_rids': ConjureFieldDefinition('assetRids', OptionalTypeWrapper[List[str]]),
+            'authorization_rid': ConjureFieldDefinition('authorizationRid', OptionalTypeWrapper[str]),
+            'timestamp': ConjureFieldDefinition('timestamp', OptionalTypeWrapper[api_Timestamp]),
+            'duration': ConjureFieldDefinition('duration', OptionalTypeWrapper[scout_run_api_Duration]),
+            'name': ConjureFieldDefinition('name', OptionalTypeWrapper[str]),
+            'type': ConjureFieldDefinition('type', OptionalTypeWrapper[event_EventType]),
+            'labels': ConjureFieldDefinition('labels', OptionalTypeWrapper[List[scout_run_api_Label]]),
+            'properties': ConjureFieldDefinition('properties', OptionalTypeWrapper[Dict[scout_run_api_PropertyName, scout_run_api_PropertyValue]])
+        }
+
+    __slots__: List[str] = ['_uuid', '_asset_rids', '_authorization_rid', '_timestamp', '_duration', '_name', '_type', '_labels', '_properties']
+
+    def __init__(self, uuid: str, asset_rids: Optional[List[str]] = None, authorization_rid: Optional[str] = None, duration: Optional["scout_run_api_Duration"] = None, labels: Optional[List[str]] = None, name: Optional[str] = None, properties: Optional[Dict[str, str]] = None, timestamp: Optional["api_Timestamp"] = None, type: Optional["event_EventType"] = None) -> None:
+        self._uuid = uuid
+        self._asset_rids = asset_rids
+        self._authorization_rid = authorization_rid
+        self._timestamp = timestamp
+        self._duration = duration
+        self._name = name
+        self._type = type
+        self._labels = labels
+        self._properties = properties
+
+    @builtins.property
+    def uuid(self) -> str:
+        return self._uuid
+
+    @builtins.property
+    def asset_rids(self) -> Optional[List[str]]:
+        return self._asset_rids
+
+    @builtins.property
+    def authorization_rid(self) -> Optional[str]:
+        return self._authorization_rid
+
+    @builtins.property
+    def timestamp(self) -> Optional["api_Timestamp"]:
+        return self._timestamp
+
+    @builtins.property
+    def duration(self) -> Optional["scout_run_api_Duration"]:
+        return self._duration
+
+    @builtins.property
+    def name(self) -> Optional[str]:
+        return self._name
+
+    @builtins.property
+    def type(self) -> Optional["event_EventType"]:
+        return self._type
+
+    @builtins.property
+    def labels(self) -> Optional[List[str]]:
+        return self._labels
+
+    @builtins.property
+    def properties(self) -> Optional[Dict[str, str]]:
+        return self._properties
+
+
+event_UpdateEvent.__name__ = "UpdateEvent"
+event_UpdateEvent.__qualname__ = "UpdateEvent"
+event_UpdateEvent.__module__ = "scout_service_api.event"
 
 
 class ingest_api_AbsoluteTimestamp(ConjureUnionType):
@@ -5369,14 +5897,16 @@ class ingest_api_CustomTimestamp(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'format': ConjureFieldDefinition('format', str),
-            'default_year': ConjureFieldDefinition('defaultYear', OptionalTypeWrapper[int])
+            'default_year': ConjureFieldDefinition('defaultYear', OptionalTypeWrapper[int]),
+            'default_day_of_year': ConjureFieldDefinition('defaultDayOfYear', OptionalTypeWrapper[int])
         }
 
-    __slots__: List[str] = ['_format', '_default_year']
+    __slots__: List[str] = ['_format', '_default_year', '_default_day_of_year']
 
-    def __init__(self, format: str, default_year: Optional[int] = None) -> None:
+    def __init__(self, format: str, default_day_of_year: Optional[int] = None, default_year: Optional[int] = None) -> None:
         self._format = format
         self._default_year = default_year
+        self._default_day_of_year = default_day_of_year
 
     @builtins.property
     def format(self) -> str:
@@ -5391,6 +5921,13 @@ class ingest_api_CustomTimestamp(ConjureBeanType):
         Default year is accepted as an optional field for cases like IRIG time format and will be overridden by year in time format.
         """
         return self._default_year
+
+    @builtins.property
+    def default_day_of_year(self) -> Optional[int]:
+        """
+        Default day of year is accepted as an optional field for cases like IRIG time format and will be overridden by day of year in time format.
+        """
+        return self._default_day_of_year
 
 
 ingest_api_CustomTimestamp.__name__ = "CustomTimestamp"
@@ -7959,48 +8496,6 @@ class ingest_api_VideoTimestampManifestVisitor:
 ingest_api_VideoTimestampManifestVisitor.__name__ = "VideoTimestampManifestVisitor"
 ingest_api_VideoTimestampManifestVisitor.__qualname__ = "VideoTimestampManifestVisitor"
 ingest_api_VideoTimestampManifestVisitor.__module__ = "scout_service_api.ingest_api"
-
-
-class openapi_OpenApiSpecService(Service):
-    """
-    This service hosts the OpenAPI specification for the Nominal API.
-    """
-
-    def get_open_api(self, auth_header: str) -> str:
-        """
-        Publishes the Nominal OpenAPI Specification.
-        """
-
-        _headers: Dict[str, Any] = {
-            'Accept': 'application/json',
-            'Authorization': auth_header,
-        }
-
-        _params: Dict[str, Any] = {
-        }
-
-        _path_params: Dict[str, Any] = {
-        }
-
-        _json: Any = None
-
-        _path = '/openapi'
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request(
-            'GET',
-            self._uri + _path,
-            params=_params,
-            headers=_headers,
-            json=_json)
-
-        _decoder = ConjureDecoder()
-        return _decoder.decode(_response.json(), str, self._return_none_for_unknown_union_types)
-
-
-openapi_OpenApiSpecService.__name__ = "OpenApiSpecService"
-openapi_OpenApiSpecService.__qualname__ = "OpenApiSpecService"
-openapi_OpenApiSpecService.__module__ = "scout_service_api.openapi"
 
 
 class scout_InternalVersioningService(Service):
@@ -10812,6 +11307,7 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
     _type_rid: Optional[str] = None
     _and_: Optional[List["scout_asset_api_SearchAssetsQuery"]] = None
     _or_: Optional[List["scout_asset_api_SearchAssetsQuery"]] = None
+    _is_staged: Optional[bool] = None
 
     @builtins.classmethod
     def _options(cls) -> Dict[str, ConjureFieldDefinition]:
@@ -10821,7 +11317,8 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
             'property': ConjureFieldDefinition('property', scout_run_api_Property),
             'type_rid': ConjureFieldDefinition('typeRid', scout_rids_api_TypeRid),
             'and_': ConjureFieldDefinition('and', List[scout_asset_api_SearchAssetsQuery]),
-            'or_': ConjureFieldDefinition('or', List[scout_asset_api_SearchAssetsQuery])
+            'or_': ConjureFieldDefinition('or', List[scout_asset_api_SearchAssetsQuery]),
+            'is_staged': ConjureFieldDefinition('isStaged', bool)
         }
 
     def __init__(
@@ -10832,10 +11329,11 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
             type_rid: Optional[str] = None,
             and_: Optional[List["scout_asset_api_SearchAssetsQuery"]] = None,
             or_: Optional[List["scout_asset_api_SearchAssetsQuery"]] = None,
+            is_staged: Optional[bool] = None,
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (search_text is not None) + (label is not None) + (property is not None) + (type_rid is not None) + (and_ is not None) + (or_ is not None) != 1:
+            if (search_text is not None) + (label is not None) + (property is not None) + (type_rid is not None) + (and_ is not None) + (or_ is not None) + (is_staged is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if search_text is not None:
@@ -10856,6 +11354,9 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
             if or_ is not None:
                 self._or_ = or_
                 self._type = 'or'
+            if is_staged is not None:
+                self._is_staged = is_staged
+                self._type = 'isStaged'
 
         elif type_of_union == 'searchText':
             if search_text is None:
@@ -10887,6 +11388,11 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._or_ = or_
             self._type = 'or'
+        elif type_of_union == 'isStaged':
+            if is_staged is None:
+                raise ValueError('a union value must not be None')
+            self._is_staged = is_staged
+            self._type = 'isStaged'
 
     @builtins.property
     def search_text(self) -> Optional[str]:
@@ -10912,6 +11418,10 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
     def or_(self) -> Optional[List["scout_asset_api_SearchAssetsQuery"]]:
         return self._or_
 
+    @builtins.property
+    def is_staged(self) -> Optional[bool]:
+        return self._is_staged
+
     def accept(self, visitor) -> Any:
         if not isinstance(visitor, scout_asset_api_SearchAssetsQueryVisitor):
             raise ValueError('{} is not an instance of scout_asset_api_SearchAssetsQueryVisitor'.format(visitor.__class__.__name__))
@@ -10927,6 +11437,8 @@ class scout_asset_api_SearchAssetsQuery(ConjureUnionType):
             return visitor._and(self.and_)
         if self._type == 'or' and self.or_ is not None:
             return visitor._or(self.or_)
+        if self._type == 'isStaged' and self.is_staged is not None:
+            return visitor._is_staged(self.is_staged)
 
 
 scout_asset_api_SearchAssetsQuery.__name__ = "SearchAssetsQuery"
@@ -10958,6 +11470,10 @@ class scout_asset_api_SearchAssetsQueryVisitor:
 
     @abstractmethod
     def _or(self, or_: List["scout_asset_api_SearchAssetsQuery"]) -> Any:
+        pass
+
+    @abstractmethod
+    def _is_staged(self, is_staged: bool) -> Any:
         pass
 
 
@@ -13144,14 +13660,16 @@ class scout_catalog_CustomTimestamp(ConjureBeanType):
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
             'format': ConjureFieldDefinition('format', str),
-            'default_year': ConjureFieldDefinition('defaultYear', OptionalTypeWrapper[int])
+            'default_year': ConjureFieldDefinition('defaultYear', OptionalTypeWrapper[int]),
+            'default_day_of_year': ConjureFieldDefinition('defaultDayOfYear', OptionalTypeWrapper[int])
         }
 
-    __slots__: List[str] = ['_format', '_default_year']
+    __slots__: List[str] = ['_format', '_default_year', '_default_day_of_year']
 
-    def __init__(self, format: str, default_year: Optional[int] = None) -> None:
+    def __init__(self, format: str, default_day_of_year: Optional[int] = None, default_year: Optional[int] = None) -> None:
         self._format = format
         self._default_year = default_year
+        self._default_day_of_year = default_day_of_year
 
     @builtins.property
     def format(self) -> str:
@@ -13166,6 +13684,13 @@ class scout_catalog_CustomTimestamp(ConjureBeanType):
         Year is accepted as an optional field for cases like IRIG time format, and will be assumed as current year if not provided.
         """
         return self._default_year
+
+    @builtins.property
+    def default_day_of_year(self) -> Optional[int]:
+        """
+        Default day of year is accepted as an optional field for cases like IRIG time format and will be overridden by day of year in time format.
+        """
+        return self._default_day_of_year
 
 
 scout_catalog_CustomTimestamp.__name__ = "CustomTimestamp"
@@ -13182,7 +13707,7 @@ class scout_catalog_Dataset(ConjureBeanType):
             'name': ConjureFieldDefinition('name', str),
             'handle': ConjureFieldDefinition('handle', OptionalTypeWrapper[scout_catalog_Handle]),
             'description': ConjureFieldDefinition('description', OptionalTypeWrapper[str]),
-            'origin_metadata': ConjureFieldDefinition('originMetadata', OptionalTypeWrapper[scout_catalog_DatasetOriginMetadata]),
+            'origin_metadata': ConjureFieldDefinition('originMetadata', scout_catalog_DatasetOriginMetadata),
             'bounds': ConjureFieldDefinition('bounds', OptionalTypeWrapper[scout_catalog_Bounds]),
             'properties': ConjureFieldDefinition('properties', Dict[datasource_PropertyName, datasource_PropertyValue]),
             'labels': ConjureFieldDefinition('labels', List[datasource_Label]),
@@ -13191,7 +13716,7 @@ class scout_catalog_Dataset(ConjureBeanType):
 
     __slots__: List[str] = ['_rid', '_name', '_handle', '_description', '_origin_metadata', '_bounds', '_properties', '_labels', '_timestamp_type']
 
-    def __init__(self, labels: List[str], name: str, properties: Dict[str, str], rid: str, timestamp_type: "scout_catalog_WeakTimestampType", bounds: Optional["scout_catalog_Bounds"] = None, description: Optional[str] = None, handle: Optional["scout_catalog_Handle"] = None, origin_metadata: Optional["scout_catalog_DatasetOriginMetadata"] = None) -> None:
+    def __init__(self, labels: List[str], name: str, origin_metadata: "scout_catalog_DatasetOriginMetadata", properties: Dict[str, str], rid: str, timestamp_type: "scout_catalog_WeakTimestampType", bounds: Optional["scout_catalog_Bounds"] = None, description: Optional[str] = None, handle: Optional["scout_catalog_Handle"] = None) -> None:
         self._rid = rid
         self._name = name
         self._handle = handle
@@ -13219,7 +13744,7 @@ class scout_catalog_Dataset(ConjureBeanType):
         return self._description
 
     @builtins.property
-    def origin_metadata(self) -> Optional["scout_catalog_DatasetOriginMetadata"]:
+    def origin_metadata(self) -> "scout_catalog_DatasetOriginMetadata":
         return self._origin_metadata
 
     @builtins.property
@@ -13434,26 +13959,44 @@ class scout_catalog_DatasetOriginMetadata(ConjureBeanType):
 
     @builtins.property
     def path(self) -> Optional[str]:
+        """
+        Deprecated in favor of FileOriginMetadata
+        """
         return self._path
 
     @builtins.property
     def x_series_is_absolute(self) -> Optional[bool]:
+        """
+        Deprecated in favor of FileOriginMetadata
+        """
         return self._x_series_is_absolute
 
     @builtins.property
     def schema_directive_path(self) -> Optional[str]:
+        """
+        Deprecated in favor of FileOriginMetadata
+        """
         return self._schema_directive_path
 
     @builtins.property
     def x_series_column_name(self) -> Optional[str]:
+        """
+        Deprecated in favor of FileOriginMetadata
+        """
         return self._x_series_column_name
 
     @builtins.property
     def x_series_time_unit(self) -> Optional["api_TimeUnit"]:
+        """
+        Deprecated in favor of FileOriginMetadata
+        """
         return self._x_series_time_unit
 
     @builtins.property
     def timestamp_metadata(self) -> Optional["scout_catalog_TimestampMetadata"]:
+        """
+        Deprecated in favor of FileOriginMetadata
+        """
         return self._timestamp_metadata
 
     @builtins.property
@@ -13501,9 +14044,9 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
             'display_name': ConjureFieldDefinition('displayName', str),
             'metadata': ConjureFieldDefinition('metadata', OptionalTypeWrapper[Dict[str, str]]),
             'handle': ConjureFieldDefinition('handle', OptionalTypeWrapper[scout_catalog_Handle]),
-            'origin_metadata': ConjureFieldDefinition('originMetadata', OptionalTypeWrapper[scout_catalog_DatasetOriginMetadata]),
             'ingest_date': ConjureFieldDefinition('ingestDate', str),
             'ingest_status': ConjureFieldDefinition('ingestStatus', OptionalTypeWrapper[scout_catalog_IngestStatus]),
+            'origin_metadata': ConjureFieldDefinition('originMetadata', scout_catalog_DatasetOriginMetadata),
             'last_ingest_status': ConjureFieldDefinition('lastIngestStatus', scout_catalog_IngestStatusV2),
             'retention_policy': ConjureFieldDefinition('retentionPolicy', scout_catalog_RetentionPolicy),
             'source': ConjureFieldDefinition('source', OptionalTypeWrapper[str]),
@@ -13514,9 +14057,9 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
             'granularity': ConjureFieldDefinition('granularity', api_Granularity)
         }
 
-    __slots__: List[str] = ['_rid', '_uuid', '_name', '_description', '_display_name', '_metadata', '_handle', '_origin_metadata', '_ingest_date', '_ingest_status', '_last_ingest_status', '_retention_policy', '_source', '_bounds', '_timestamp_type', '_labels', '_properties', '_granularity']
+    __slots__: List[str] = ['_rid', '_uuid', '_name', '_description', '_display_name', '_metadata', '_handle', '_ingest_date', '_ingest_status', '_origin_metadata', '_last_ingest_status', '_retention_policy', '_source', '_bounds', '_timestamp_type', '_labels', '_properties', '_granularity']
 
-    def __init__(self, display_name: str, granularity: "api_Granularity", ingest_date: str, labels: List[str], last_ingest_status: "scout_catalog_IngestStatusV2", name: str, properties: Dict[str, str], retention_policy: "scout_catalog_RetentionPolicy", rid: str, timestamp_type: "scout_catalog_WeakTimestampType", uuid: str, bounds: Optional["scout_catalog_Bounds"] = None, description: Optional[str] = None, handle: Optional["scout_catalog_Handle"] = None, ingest_status: Optional["scout_catalog_IngestStatus"] = None, metadata: Optional[Dict[str, str]] = None, origin_metadata: Optional["scout_catalog_DatasetOriginMetadata"] = None, source: Optional[str] = None) -> None:
+    def __init__(self, display_name: str, granularity: "api_Granularity", ingest_date: str, labels: List[str], last_ingest_status: "scout_catalog_IngestStatusV2", name: str, origin_metadata: "scout_catalog_DatasetOriginMetadata", properties: Dict[str, str], retention_policy: "scout_catalog_RetentionPolicy", rid: str, timestamp_type: "scout_catalog_WeakTimestampType", uuid: str, bounds: Optional["scout_catalog_Bounds"] = None, description: Optional[str] = None, handle: Optional["scout_catalog_Handle"] = None, ingest_status: Optional["scout_catalog_IngestStatus"] = None, metadata: Optional[Dict[str, str]] = None, source: Optional[str] = None) -> None:
         self._rid = rid
         self._uuid = uuid
         self._name = name
@@ -13524,9 +14067,9 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
         self._display_name = display_name
         self._metadata = metadata
         self._handle = handle
-        self._origin_metadata = origin_metadata
         self._ingest_date = ingest_date
         self._ingest_status = ingest_status
+        self._origin_metadata = origin_metadata
         self._last_ingest_status = last_ingest_status
         self._retention_policy = retention_policy
         self._source = source
@@ -13565,16 +14108,16 @@ class scout_catalog_EnrichedDataset(ConjureBeanType):
         return self._handle
 
     @builtins.property
-    def origin_metadata(self) -> Optional["scout_catalog_DatasetOriginMetadata"]:
-        return self._origin_metadata
-
-    @builtins.property
     def ingest_date(self) -> str:
         return self._ingest_date
 
     @builtins.property
     def ingest_status(self) -> Optional["scout_catalog_IngestStatus"]:
         return self._ingest_status
+
+    @builtins.property
+    def origin_metadata(self) -> "scout_catalog_DatasetOriginMetadata":
+        return self._origin_metadata
 
     @builtins.property
     def last_ingest_status(self) -> "scout_catalog_IngestStatusV2":
@@ -18539,7 +19082,7 @@ scout_checklistexecution_api_ChecklistExecutionService.__module__ = "scout_servi
 
 class scout_checklistexecution_api_ChecklistLiveStatusRequest(ConjureBeanType):
     """
-    If commit is not provided, the latest commit on main will be used.
+    If commit is not provided, the latest commit on main will be used. At least one of runRid or assetRid must be provided, but not both.
     """
 
     @builtins.classmethod
@@ -18547,15 +19090,17 @@ class scout_checklistexecution_api_ChecklistLiveStatusRequest(ConjureBeanType):
         return {
             'checklist_rid': ConjureFieldDefinition('checklistRid', scout_rids_api_ChecklistRid),
             'commit': ConjureFieldDefinition('commit', OptionalTypeWrapper[scout_versioning_api_CommitId]),
-            'run_rid': ConjureFieldDefinition('runRid', scout_run_api_RunRid)
+            'run_rid': ConjureFieldDefinition('runRid', OptionalTypeWrapper[scout_run_api_RunRid]),
+            'asset_rid': ConjureFieldDefinition('assetRid', OptionalTypeWrapper[scout_rids_api_AssetRid])
         }
 
-    __slots__: List[str] = ['_checklist_rid', '_commit', '_run_rid']
+    __slots__: List[str] = ['_checklist_rid', '_commit', '_run_rid', '_asset_rid']
 
-    def __init__(self, checklist_rid: str, run_rid: str, commit: Optional[str] = None) -> None:
+    def __init__(self, checklist_rid: str, asset_rid: Optional[str] = None, commit: Optional[str] = None, run_rid: Optional[str] = None) -> None:
         self._checklist_rid = checklist_rid
         self._commit = commit
         self._run_rid = run_rid
+        self._asset_rid = asset_rid
 
     @builtins.property
     def checklist_rid(self) -> str:
@@ -18566,8 +19111,12 @@ class scout_checklistexecution_api_ChecklistLiveStatusRequest(ConjureBeanType):
         return self._commit
 
     @builtins.property
-    def run_rid(self) -> str:
+    def run_rid(self) -> Optional[str]:
         return self._run_rid
+
+    @builtins.property
+    def asset_rid(self) -> Optional[str]:
+        return self._asset_rid
 
 
 scout_checklistexecution_api_ChecklistLiveStatusRequest.__name__ = "ChecklistLiveStatusRequest"
@@ -49539,17 +50088,26 @@ class scout_integrations_api_NotificationConfiguration(ConjureBeanType):
     @builtins.classmethod
     def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
         return {
-            'integration_rid': ConjureFieldDefinition('integrationRid', scout_integrations_api_IntegrationRid)
+            'integration_rid': ConjureFieldDefinition('integrationRid', scout_integrations_api_IntegrationRid),
+            'appended_workbook_rid': ConjureFieldDefinition('appendedWorkbookRid', OptionalTypeWrapper[scout_rids_api_NotebookRid])
         }
 
-    __slots__: List[str] = ['_integration_rid']
+    __slots__: List[str] = ['_integration_rid', '_appended_workbook_rid']
 
-    def __init__(self, integration_rid: str) -> None:
+    def __init__(self, integration_rid: str, appended_workbook_rid: Optional[str] = None) -> None:
         self._integration_rid = integration_rid
+        self._appended_workbook_rid = appended_workbook_rid
 
     @builtins.property
     def integration_rid(self) -> str:
         return self._integration_rid
+
+    @builtins.property
+    def appended_workbook_rid(self) -> Optional[str]:
+        """
+        If provided, appends a link to the workbook specified by the RID to the notification.
+        """
+        return self._appended_workbook_rid
 
 
 scout_integrations_api_NotificationConfiguration.__name__ = "NotificationConfiguration"
@@ -49716,6 +50274,35 @@ scout_integrations_api_UpdateIntegrationRequest.__qualname__ = "UpdateIntegratio
 scout_integrations_api_UpdateIntegrationRequest.__module__ = "scout_service_api.scout_integrations_api"
 
 
+class scout_internal_search_api_BooleanField(ConjureBeanType):
+
+    @builtins.classmethod
+    def _fields(cls) -> Dict[str, ConjureFieldDefinition]:
+        return {
+            'name': ConjureFieldDefinition('name', str),
+            'value': ConjureFieldDefinition('value', bool)
+        }
+
+    __slots__: List[str] = ['_name', '_value']
+
+    def __init__(self, name: str, value: bool) -> None:
+        self._name = name
+        self._value = value
+
+    @builtins.property
+    def name(self) -> str:
+        return self._name
+
+    @builtins.property
+    def value(self) -> bool:
+        return self._value
+
+
+scout_internal_search_api_BooleanField.__name__ = "BooleanField"
+scout_internal_search_api_BooleanField.__qualname__ = "BooleanField"
+scout_internal_search_api_BooleanField.__module__ = "scout_service_api.scout_internal_search_api"
+
+
 class scout_internal_search_api_DateTimeField(ConjureBeanType):
 
     @builtins.classmethod
@@ -49813,6 +50400,7 @@ class scout_internal_search_api_SearchQuery(ConjureUnionType):
     _string_field: Optional["scout_internal_search_api_StringField"] = None
     _timestamp_field: Optional["scout_internal_search_api_TimestampField"] = None
     _long_field: Optional["scout_internal_search_api_LongField"] = None
+    _boolean_field: Optional["scout_internal_search_api_BooleanField"] = None
     _exact_match: Optional[str] = None
     _search_text: Optional[str] = None
     _label: Optional[str] = None
@@ -49827,6 +50415,7 @@ class scout_internal_search_api_SearchQuery(ConjureUnionType):
             'string_field': ConjureFieldDefinition('stringField', scout_internal_search_api_StringField),
             'timestamp_field': ConjureFieldDefinition('timestampField', scout_internal_search_api_TimestampField),
             'long_field': ConjureFieldDefinition('longField', scout_internal_search_api_LongField),
+            'boolean_field': ConjureFieldDefinition('booleanField', scout_internal_search_api_BooleanField),
             'exact_match': ConjureFieldDefinition('exactMatch', str),
             'search_text': ConjureFieldDefinition('searchText', str),
             'label': ConjureFieldDefinition('label', scout_run_api_Label),
@@ -49841,6 +50430,7 @@ class scout_internal_search_api_SearchQuery(ConjureUnionType):
             string_field: Optional["scout_internal_search_api_StringField"] = None,
             timestamp_field: Optional["scout_internal_search_api_TimestampField"] = None,
             long_field: Optional["scout_internal_search_api_LongField"] = None,
+            boolean_field: Optional["scout_internal_search_api_BooleanField"] = None,
             exact_match: Optional[str] = None,
             search_text: Optional[str] = None,
             label: Optional[str] = None,
@@ -49850,7 +50440,7 @@ class scout_internal_search_api_SearchQuery(ConjureUnionType):
             type_of_union: Optional[str] = None
             ) -> None:
         if type_of_union is None:
-            if (date_time_field is not None) + (string_field is not None) + (timestamp_field is not None) + (long_field is not None) + (exact_match is not None) + (search_text is not None) + (label is not None) + (property is not None) + (and_ is not None) + (or_ is not None) != 1:
+            if (date_time_field is not None) + (string_field is not None) + (timestamp_field is not None) + (long_field is not None) + (boolean_field is not None) + (exact_match is not None) + (search_text is not None) + (label is not None) + (property is not None) + (and_ is not None) + (or_ is not None) != 1:
                 raise ValueError('a union must contain a single member')
 
             if date_time_field is not None:
@@ -49865,6 +50455,9 @@ class scout_internal_search_api_SearchQuery(ConjureUnionType):
             if long_field is not None:
                 self._long_field = long_field
                 self._type = 'longField'
+            if boolean_field is not None:
+                self._boolean_field = boolean_field
+                self._type = 'booleanField'
             if exact_match is not None:
                 self._exact_match = exact_match
                 self._type = 'exactMatch'
@@ -49904,6 +50497,11 @@ class scout_internal_search_api_SearchQuery(ConjureUnionType):
                 raise ValueError('a union value must not be None')
             self._long_field = long_field
             self._type = 'longField'
+        elif type_of_union == 'booleanField':
+            if boolean_field is None:
+                raise ValueError('a union value must not be None')
+            self._boolean_field = boolean_field
+            self._type = 'booleanField'
         elif type_of_union == 'exactMatch':
             if exact_match is None:
                 raise ValueError('a union value must not be None')
@@ -49952,6 +50550,10 @@ class scout_internal_search_api_SearchQuery(ConjureUnionType):
         return self._long_field
 
     @builtins.property
+    def boolean_field(self) -> Optional["scout_internal_search_api_BooleanField"]:
+        return self._boolean_field
+
+    @builtins.property
     def exact_match(self) -> Optional[str]:
         """
         Performs case insensitive exact match search on the title.
@@ -49989,6 +50591,8 @@ class scout_internal_search_api_SearchQuery(ConjureUnionType):
             return visitor._timestamp_field(self.timestamp_field)
         if self._type == 'longField' and self.long_field is not None:
             return visitor._long_field(self.long_field)
+        if self._type == 'booleanField' and self.boolean_field is not None:
+            return visitor._boolean_field(self.boolean_field)
         if self._type == 'exactMatch' and self.exact_match is not None:
             return visitor._exact_match(self.exact_match)
         if self._type == 'searchText' and self.search_text is not None:
@@ -50024,6 +50628,10 @@ class scout_internal_search_api_SearchQueryVisitor:
 
     @abstractmethod
     def _long_field(self, long_field: "scout_internal_search_api_LongField") -> Any:
+        pass
+
+    @abstractmethod
+    def _boolean_field(self, boolean_field: "scout_internal_search_api_BooleanField") -> Any:
         pass
 
     @abstractmethod
@@ -59912,6 +60520,80 @@ including the dataSourceRid query parameter.
 
         return
 
+    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: Any) -> None:
+        """
+        Synchronously writes batches of records to a Nominal data source.
+
+Has the same functionality as writeBatches, but is encoded using the Prometheus remote write
+format. We follow the specification defined here: https://prometheus.io/docs/specs/remote_write_spec/
+There are a few notable caveats:
+  1. Must be content encoded as application/x-protobuf
+  2. Must be compressed using snappy compression
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/octet-stream',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'dataSourceRid': data_source_rid,
+        }
+
+        _data: Any = request
+
+        _path = '/storage/writer/v1/prometheus/{dataSourceRid}'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'POST',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            data=_data)
+
+        return
+
+    def prometheus_remote_write_health_check(self, auth_header: str, data_source_rid: str) -> bool:
+        """
+        Performs a health check for prometheus remote write Vector sink. All this endpoint does
+is verify if the caller is authenticated and the server is online. Once Vector allows the Prometheus
+remote write endpoint to configure the healthcheck url, we can remove this endpoint.
+
+See: https://github.com/vectordotdev/vector/issues/8279
+        """
+
+        _headers: Dict[str, Any] = {
+            'Accept': 'application/json',
+            'Authorization': auth_header,
+        }
+
+        _params: Dict[str, Any] = {
+        }
+
+        _path_params: Dict[str, Any] = {
+            'dataSourceRid': data_source_rid,
+        }
+
+        _json: Any = None
+
+        _path = '/storage/writer/v1/prometheus/{dataSourceRid}'
+        _path = _path.format(**_path_params)
+
+        _response: Response = self._request(
+            'GET',
+            self._uri + _path,
+            params=_params,
+            headers=_headers,
+            json=_json)
+
+        _decoder = ConjureDecoder()
+        return _decoder.decode(_response.json(), bool, self._return_none_for_unknown_union_types)
+
 
 storage_writer_api_NominalChannelWriterService.__name__ = "NominalChannelWriterService"
 storage_writer_api_NominalChannelWriterService.__qualname__ = "NominalChannelWriterService"
@@ -60932,9 +61614,6 @@ class timeseries_archetype_api_UpdateSeriesArchetypeMetadataRequest(ConjureBeanT
 
     @builtins.property
     def unit(self) -> Optional[str]:
-        """
-        Deprecated. Use unitUpdate instead.
-        """
         return self._unit
 
     @builtins.property
