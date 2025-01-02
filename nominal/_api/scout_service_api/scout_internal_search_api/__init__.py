@@ -1,5 +1,6 @@
 # coding=utf-8
 from .._impl import (
+    scout_internal_search_api_BooleanField as BooleanField,
     scout_internal_search_api_DateTimeField as DateTimeField,
     scout_internal_search_api_LongField as LongField,
     scout_internal_search_api_Operator as Operator,

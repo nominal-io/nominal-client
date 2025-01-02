@@ -1,5 +1,64 @@
 # Changelog
 
+## [1.22.0](https://github.com/nominal-io/nominal-client/compare/v1.21.0...v1.22.0) (2024-12-20)
+
+
+### Features
+
+* add run.add_asset() ([#180](https://github.com/nominal-io/nominal-client/issues/180)) ([e6a292b](https://github.com/nominal-io/nominal-client/commit/e6a292ba4f3cf84f03126a1e51d2f29d2abfe533))
+* add streaming checklists ([#126](https://github.com/nominal-io/nominal-client/issues/126)) ([3093a4c](https://github.com/nominal-io/nominal-client/commit/3093a4c57ed03ec4b56de9f39d09fd86d58a5137))
+
+
+### Bug Fixes
+
+* fix __from__conjure ([#177](https://github.com/nominal-io/nominal-client/issues/177)) ([c436015](https://github.com/nominal-io/nominal-client/commit/c436015b3ba4b7ab527b9996a93aea6bfd9f0c90))
+* issues of post merge review of [#106](https://github.com/nominal-io/nominal-client/issues/106) ([#151](https://github.com/nominal-io/nominal-client/issues/151)) ([e6ff256](https://github.com/nominal-io/nominal-client/commit/e6ff256c5ec90729a6a279c59e90e71e8ea53753))
+* remove available_tag_values from create streaming connection and expose get connection ([#179](https://github.com/nominal-io/nominal-client/issues/179)) ([cdea621](https://github.com/nominal-io/nominal-client/commit/cdea6211568b100d5bafa5e2b1feef022cd0a802))
+
+## [1.21.0](https://github.com/nominal-io/nominal-client/compare/v1.20.0...v1.21.0) (2024-12-16)
+
+
+### Features
+
+* add channel name delimiter to file ingest ([#169](https://github.com/nominal-io/nominal-client/issues/169)) ([be389f4](https://github.com/nominal-io/nominal-client/commit/be389f466437c0633372856d0646276025997cdc))
+
+## [1.20.0](https://github.com/nominal-io/nominal-client/compare/v1.19.0...v1.20.0) (2024-12-16)
+
+
+### Features
+
+* rename --desc to --description ([#170](https://github.com/nominal-io/nominal-client/issues/170)) ([b9827be](https://github.com/nominal-io/nominal-client/commit/b9827be06d82d462ad30ba7f435f10d72669a04e))
+* support wider breadth of filetype extensions ([#174](https://github.com/nominal-io/nominal-client/issues/174)) ([d3d8d8c](https://github.com/nominal-io/nominal-client/commit/d3d8d8c4acb0422f5d098659f04ecc4b2164cde9))
+
+
+### Bug Fixes
+
+* fix name of argument for trust store cert ([#173](https://github.com/nominal-io/nominal-client/issues/173)) ([9db6a61](https://github.com/nominal-io/nominal-client/commit/9db6a61dc17396cdf57a9f11a8b14c268c89ba0f))
+* sanitize PR title before use ([#171](https://github.com/nominal-io/nominal-client/issues/171)) ([a341d1b](https://github.com/nominal-io/nominal-client/commit/a341d1b218146a34f7ad0ce0371d4041b1319a0e))
+
+## [1.19.0](https://github.com/nominal-io/nominal-client/compare/v1.18.0...v1.19.0) (2024-12-12)
+
+
+### Features
+
+* simplify dev experience for uploading videos ([#161](https://github.com/nominal-io/nominal-client/issues/161)) ([acedbc0](https://github.com/nominal-io/nominal-client/commit/acedbc074d67f4799b7d0e70886dda3ceed7a27b))
+
+
+### Bug Fixes
+
+* Handle case where data file has extra extension prefixes ([7a0d891](https://github.com/nominal-io/nominal-client/commit/7a0d891f0ad1c5fd45ba995f59f0420d5f5d6390))
+* handle case where data file has extra extension prefixes ([#167](https://github.com/nominal-io/nominal-client/issues/167)) ([7a0d891](https://github.com/nominal-io/nominal-client/commit/7a0d891f0ad1c5fd45ba995f59f0420d5f5d6390))
+
+## [1.18.0](https://github.com/nominal-io/nominal-client/compare/v1.17.0...v1.18.0) (2024-12-10)
+
+
+### Features
+
+* add support for tags in connections and runs ([4003885](https://github.com/nominal-io/nominal-client/commit/4003885d8a664fe9ed8a1c3e0c4deb89be95aa40))
+* add support for tags in connections, runs and assets ([#159](https://github.com/nominal-io/nominal-client/issues/159)) ([4003885](https://github.com/nominal-io/nominal-client/commit/4003885d8a664fe9ed8a1c3e0c4deb89be95aa40))
+* expose trust store path for client_options decorator ([#162](https://github.com/nominal-io/nominal-client/issues/162)) ([ceede7f](https://github.com/nominal-io/nominal-client/commit/ceede7f52df9d23c73f1bbfb84710516701a6635))
+* support string in write stream ([#142](https://github.com/nominal-io/nominal-client/issues/142)) ([b2cbe18](https://github.com/nominal-io/nominal-client/commit/b2cbe182d35e9ac5ea66496e80cd8e4d87f525a2))
+
 ## [1.17.0](https://github.com/nominal-io/nominal-client/compare/v1.16.0...v1.17.0) (2024-12-03)
 
 

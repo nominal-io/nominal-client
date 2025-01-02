@@ -206,7 +206,9 @@ class Asset(HasRid):
         asset = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, asset, fields=self.__dataclass_fields__)
 
-    def add_connection(self, data_scope_name: str, connection: Connection | str) -> None:
+    def add_connection(
+        self, data_scope_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
+    ) -> None:
         """Add a connection to this asset.
 
         Data_scope_name maps "data scope name" (the name within the asset) to a Connection (or connection rid). The same
@@ -219,7 +221,7 @@ class Asset(HasRid):
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                    series_tags={},
+                    series_tags=series_tags or {},
                     offset=None,
                 )
             ]

@@ -125,6 +125,7 @@ def upload_pandas(
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
+    channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -153,6 +154,7 @@ def upload_pandas(
             timestamp_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
+            prefix_tree_delimiter=channel_name_delimiter,
         )
         t.join()
     if wait_until_complete:
@@ -166,6 +168,7 @@ def upload_polars(
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
+    channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -192,6 +195,7 @@ def upload_polars(
             timestamp_type=timestamp_type,
             file_type=FileTypes.CSV,
             description=description,
+            prefix_tree_delimiter=channel_name_delimiter,
         )
         t.join()
     if wait_until_complete:
@@ -205,6 +209,7 @@ def upload_csv(
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
+    channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -218,7 +223,14 @@ def upload_csv(
     """
     conn = get_default_client()
     return _upload_csv(
-        conn, file, name, timestamp_column, timestamp_type, description, wait_until_complete=wait_until_complete
+        conn,
+        file,
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
     )
 
 
@@ -229,6 +241,7 @@ def _upload_csv(
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
     description: str | None = None,
+    channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
@@ -238,6 +251,7 @@ def _upload_csv(
         timestamp_column=timestamp_column,
         timestamp_type=timestamp_type,
         description=description,
+        prefix_tree_delimiter=channel_name_delimiter,
     )
     if wait_until_complete:
         dataset.poll_until_ingestion_completed()
@@ -433,6 +447,16 @@ def search_assets(
     return list(assets)
 
 
+def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
+    """List all Streaming Checklists.
+
+    Args:
+        asset: if provided, only return checklists associated with the given asset.
+    """
+    conn = get_default_client()
+    return conn.list_streaming_checklists(asset)
+
+
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     """Wait until all datasets have completed ingestion.
 
@@ -552,14 +576,20 @@ def upload_mcap_video(
 
 
 def create_streaming_connection(
-    datasource_id: str, connection_name: str, datasource_description: str | None = None
+    datasource_id: str,
+    connection_name: str,
+    datasource_description: str | None = None,
+    *,
+    required_tag_names: list[str] | None = None,
 ) -> Connection:
     """Creates a new datasource and a new connection.
 
     datasource_id: A human readable identifier. Must be unique within an organization.
     """
     conn = get_default_client()
-    return conn.create_streaming_connection(datasource_id, connection_name, datasource_description)
+    return conn.create_streaming_connection(
+        datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
+    )
 
 
 def get_connection(rid: str) -> Connection:

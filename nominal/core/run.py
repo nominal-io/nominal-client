@@ -15,6 +15,7 @@ from nominal._api.scout_service_api import (
 )
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
+from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
@@ -38,6 +39,7 @@ class Run(HasRid):
 
     class _Clients(
         Attachment._Clients,
+        Asset._Clients,
         Connection._Clients,
         Dataset._Clients,
         LogSet._Clients,
@@ -210,6 +212,28 @@ class Run(HasRid):
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
 
+    def add_asset(self, asset: Asset | str) -> None:
+        """Add an asset to this run.
+
+        `asset` can be an `Asset` instance, or asset RID.
+        """
+        if len(self.list_assets()) != 0:
+            raise ValueError("runs cannot have more than one asset")
+
+        asset_rid = rid_from_instance_or_string(asset)
+        request = scout_run_api.UpdateRunRequest(assets=[asset_rid])
+        self._clients.run.update_run(self._clients.auth_header, request, self.rid)
+
+    def _iter_list_assets(self) -> Iterable[Asset]:
+        run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
+        for a in assets.values():
+            yield Asset._from_conjure(self._clients, a)
+
+    def list_assets(self) -> Sequence[Asset]:
+        """List assets associated with this run."""
+        return list(self._iter_list_assets())
+
     def archive(self) -> None:
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
@@ -289,7 +313,9 @@ class Run(HasRid):
         run = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, run, fields=self.__dataclass_fields__)
 
-    def add_connection(self, ref_name: str, connection: Connection | str) -> None:
+    def add_connection(
+        self, ref_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
+    ) -> None:
         """Add a connection to this run.
 
         Ref_name maps "ref name" (the name within the run) to a Connection (or connection rid). The same type of
@@ -300,7 +326,7 @@ class Run(HasRid):
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                series_tags={},
+                series_tags=series_tags or {},
                 offset=None,
             )
         }

@@ -17,12 +17,14 @@ from nominal.core import (
 )
 from nominal.nominal import (
     checklist_builder,
+    create_asset,
     create_run,
     create_run_csv,
     create_streaming_connection,
     download_attachment,
     get_attachment,
     get_checklist,
+    get_connection,
     get_dataset,
     get_default_client,
     get_log_set,
@@ -42,12 +44,14 @@ from nominal.nominal import (
 
 __all__ = [
     "ts",
+    "create_asset",
     "create_run",
     "create_run_csv",
     "checklist_builder",
     "download_attachment",
     "get_attachment",
     "create_streaming_connection",
+    "get_connection",
     "get_checklist",
     "get_dataset",
     "get_default_client",

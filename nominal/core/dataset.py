@@ -162,9 +162,14 @@ class Dataset(HasRid):
 
     def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
-        path, file_type = _verify_csv_path(path)
-        with open(path, "rb") as csv_file:
-            self.add_to_dataset_from_io(csv_file, timestamp_column, timestamp_type, file_type)
+        self.add_data_to_dataset(path, timestamp_column, timestamp_type)
+
+    def add_data_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
+        """Append to a dataset from data on-disk."""
+        path = Path(path)
+        file_type = FileType.from_path_dataset(path)
+        with open(path, "rb") as data_file:
+            self.add_to_dataset_from_io(data_file, timestamp_column, timestamp_type, file_type)
 
     def add_to_dataset_from_io(
         self,
@@ -379,14 +384,6 @@ class Dataset(HasRid):
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             _clients=clients,
         )
-
-
-def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
-    path = Path(path)
-    file_type = FileType.from_path_dataset(path)
-    if file_type.extension not in (".csv", ".csv.gz"):
-        raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
-    return path, file_type
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:

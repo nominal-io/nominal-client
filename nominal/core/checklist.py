@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Literal, Mapping, Protocol, Sequence
 
 from typing_extensions import Self
@@ -8,13 +9,16 @@ from typing_extensions import Self
 from nominal._api.scout_service_api import (
     api,
     scout_api,
+    scout_checklistexecution_api,
     scout_checks_api,
     scout_compute_api,
     scout_compute_representation_api,
+    scout_integrations_api,
     scout_run_api,
 )
 from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import HasRid
+from nominal.core._utils import HasRid, rid_from_instance_or_string
+from nominal.core.asset import Asset
 
 
 # TODO(ritwikdixit): add support for more fields i.e. lineage
@@ -112,6 +116,8 @@ class Checklist(HasRid):
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
         def compute_representation(self) -> scout_compute_representation_api.ComputeRepresentationService: ...
+        @property
+        def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
@@ -133,7 +139,6 @@ class Checklist(HasRid):
             )
         }
 
-        # # TODO(ritwikdixit): remove the need for these extraneous network requests
         variable_names_to_expressions = clients.compute_representation.batch_compute_to_expression(
             clients.auth_header, variable_name_to_graph_map
         )
@@ -169,6 +174,53 @@ class Checklist(HasRid):
             ],
             _clients=clients,
         )
+
+    def execute_streaming(
+        self,
+        assets: Sequence[Asset | str],
+        integration_rids: Sequence[str],
+        *,
+        evaluation_delay: timedelta = timedelta(),
+        recovery_delay: timedelta = timedelta(seconds=15),
+    ) -> None:
+        """Execute the checklist for the given assets.
+        - `assets`: Can be `Asset` instances, or Asset RIDs.
+        - `integration_rids`: Checklist violations will be sent to the specified integrations. At least one integration
+           must be specified. See https://app.gov.nominal.io/settings/integrations for a list of available integrations.
+        - `evaluation_delay`: Delays the evaluation of the streaming checklist. This is useful for when data is delayed.
+        - `recovery_delay`: Specifies the minimum amount of time that must pass before a check can recover from a
+                            failure. Minimum value is 15 seconds.
+        """
+        self._clients.checklist_execution.execute_streaming_checklist(
+            self._clients.auth_header,
+            scout_checklistexecution_api.ExecuteChecklistForAssetsRequest(
+                assets=[rid_from_instance_or_string(asset) for asset in assets],
+                checklist=self.rid,
+                notification_configurations=[
+                    scout_integrations_api.NotificationConfiguration(c) for c in integration_rids
+                ],
+                evaluation_delay=_to_api_duration(evaluation_delay),
+                recovery_delay=_to_api_duration(recovery_delay),
+            ),
+        )
+
+    def stop_streaming(self) -> None:
+        """Stop the checklist."""
+        self._clients.checklist_execution.stop_streaming_checklist(self._clients.auth_header, self.rid)
+
+    def stop_streaming_for_assets(self, assets: Sequence[Asset | str]) -> None:
+        """Stop the checklist for the given assets."""
+        self._clients.checklist_execution.stop_streaming_checklist_for_assets(
+            self._clients.auth_header,
+            scout_checklistexecution_api.StopStreamingChecklistForAssetsRequest(
+                assets=[rid_from_instance_or_string(asset) for asset in assets],
+                checklist=self.rid,
+            ),
+        )
+
+    def reload_streaming(self) -> None:
+        """Reload the checklist."""
+        self._clients.checklist_execution.reload_streaming_checklist(self._clients.auth_header, self.rid)
 
 
 Priority = Literal[0, 1, 2, 3, 4]
@@ -467,3 +519,7 @@ class _VariableLocatorVisitor(scout_checks_api.VariableLocatorVisitor):
         self, timestamp: scout_checks_api.TimestampLocator
     ) -> scout_compute_representation_api.ComputeRepresentationVariableValue | None:
         return None
+
+
+def _to_api_duration(duration: timedelta) -> scout_run_api.Duration:
+    return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)

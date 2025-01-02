@@ -21,6 +21,7 @@ from nominal._api.scout_service_api import (
     ingest_api,
     scout_asset_api,
     scout_catalog,
+    scout_checklistexecution_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -180,6 +181,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a CSV file.
 
@@ -187,19 +189,51 @@ class NominalClient:
 
         See `create_dataset_from_io` for more details.
         """
-        path, file_type = _verify_csv_path(path)
+        return self.create_tabular_dataset(
+            path,
+            name,
+            timestamp_column,
+            timestamp_type,
+            description,
+            labels=labels,
+            properties=properties,
+            prefix_tree_delimiter=prefix_tree_delimiter,
+        )
+
+    def create_tabular_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
+    ) -> Dataset:
+        """Create a dataset from a table-like file (CSV, parquet, etc.).
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_path_dataset(path)
         if name is None:
             name = path.name
-        with open(path, "rb") as csv_file:
+
+        with path.open("rb") as data_file:
             return self.create_dataset_from_io(
-                csv_file,
-                name,
-                timestamp_column,
-                timestamp_type,
-                file_type,
-                description,
+                data_file,
+                name=name,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                description=description,
                 labels=labels,
                 properties=properties,
+                prefix_tree_delimiter=prefix_tree_delimiter,
             )
 
     def create_mcap_dataset(
@@ -270,6 +304,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -287,26 +322,58 @@ class NominalClient:
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
-        request = ingest_api.TriggerFileIngest(
-            destination=ingest_api.IngestDestination(
-                new_dataset=ingest_api.NewDatasetIngestDestination(
-                    labels=list(labels),
-                    properties={} if properties is None else dict(properties),
-                    channel_config=None,  # TODO(alkasm): support offsets
-                    dataset_description=description,
-                    dataset_name=name,
-                )
-            ),
+        request = ingest_api.TriggerIngest(
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
             source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-            source_metadata=ingest_api.IngestSourceMetadata(
-                timestamp_metadata=ingest_api.TimestampMetadata(
-                    series_name=timestamp_column,
-                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                ),
+            channel_config=(
+                None
+                if prefix_tree_delimiter is None
+                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+            ),
+            dataset_description=description,
+            dataset_name=name,
+            timestamp_metadata=ingest_api.TimestampMetadata(
+                series_name=timestamp_column,
+                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             ),
         )
-        response = self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
+        response = self._clients.ingest.trigger_ingest(self._clients.auth_header, request)
         return self.get_dataset(response.dataset_rid)
+
+    def create_video(
+        self,
+        path: Path | str,
+        name: str | None,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Create a video from an h264/h265 encoded video file (mp4, mkv, ts, etc.).
+
+        If name is None, the name of the file will be used.
+
+        See `create_video_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_video(path)
+        if name is None:
+            name = path.name
+
+        with path.open("rb") as data_file:
+            return self.create_video_from_io(
+                data_file,
+                name=name,
+                start=start,
+                frame_timestamps=frame_timestamps,
+                file_type=file_type,
+                description=description,
+                labels=labels,
+                properties=properties,
+            )
 
     def create_video_from_io(
         self,
@@ -671,7 +738,12 @@ class NominalClient:
         return self.get_video(response.outputs[0].target.video_rid)
 
     def create_streaming_connection(
-        self, datasource_id: str, connection_name: str, datasource_description: str | None = None
+        self,
+        datasource_id: str,
+        connection_name: str,
+        datasource_description: str | None = None,
+        *,
+        required_tag_names: list[str] | None = None,
     ) -> Connection:
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
@@ -700,9 +772,9 @@ class NominalClient:
                         separator=".",
                     )
                 ),
-                required_tag_names=[],
+                required_tag_names=required_tag_names or [],
                 available_tag_values={},
-                should_scrape=True,
+                should_scrape=False,
             ),
         )
         return Connection._from_conjure(self._clients, connection_response)
@@ -809,6 +881,35 @@ class NominalClient:
         """
         return list(self._iter_search_assets(search_text, label, property))
 
+    def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
+        """List all Streaming Checklists.
+
+        Args:
+            asset: if provided, only return checklists associated with the given asset.
+        """
+        next_page_token = None
+
+        while True:
+            if asset is None:
+                response = self._clients.checklist_execution.list_streaming_checklist(
+                    self._clients.auth_header,
+                    scout_checklistexecution_api.ListStreamingChecklistRequest(page_token=next_page_token),
+                )
+                yield from response.checklists
+                next_page_token = response.next_page_token
+            else:
+                for_asset_response = self._clients.checklist_execution.list_streaming_checklist_for_asset(
+                    self._clients.auth_header,
+                    scout_checklistexecution_api.ListStreamingChecklistForAssetRequest(
+                        asset_rid=rid_from_instance_or_string(asset), page_token=next_page_token
+                    ),
+                )
+                yield from for_asset_response.checklists
+                next_page_token = for_asset_response.next_page_token
+
+            if next_page_token is None:
+                break
+
 
 def _create_search_runs_query(
     start: datetime | IntegralNanosecondsUTC | None = None,
@@ -835,14 +936,6 @@ def _create_search_runs_query(
         q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
         queries.append(q)
     return scout_run_api.SearchQuery(and_=queries)
-
-
-def _verify_csv_path(path: Path | str) -> tuple[Path, FileType]:
-    path = Path(path)
-    file_type = FileType.from_path_dataset(path)
-    if file_type.extension not in (".csv", ".csv.gz"):
-        raise ValueError(f"file {path} must end with '.csv' or '.csv.gz'")
-    return path, file_type
 
 
 def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:

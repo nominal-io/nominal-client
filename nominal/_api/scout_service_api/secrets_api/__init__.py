@@ -17,7 +17,6 @@ from .._impl import (
     secrets_api_SecretService as SecretService,
     secrets_api_SortField as SortField,
     secrets_api_SortOptions as SortOptions,
-    secrets_api_Token as Token,
     secrets_api_UpdateSecretRequest as UpdateSecretRequest,
 )
 

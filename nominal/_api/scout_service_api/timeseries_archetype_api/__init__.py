@@ -11,7 +11,6 @@ from .._impl import (
     timeseries_archetype_api_NominalLocatorTemplate as NominalLocatorTemplate,
     timeseries_archetype_api_SeriesArchetype as SeriesArchetype,
     timeseries_archetype_api_SeriesArchetypeName as SeriesArchetypeName,
-    timeseries_archetype_api_SeriesArchetypeRid as SeriesArchetypeRid,
     timeseries_archetype_api_TimescaleDbLocatorTemplate as TimescaleDbLocatorTemplate,
     timeseries_archetype_api_TimestreamLocatorTemplate as TimestreamLocatorTemplate,
     timeseries_archetype_api_UpdateSeriesArchetypeMetadataRequest as UpdateSeriesArchetypeMetadataRequest,
