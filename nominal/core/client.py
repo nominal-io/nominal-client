@@ -99,6 +99,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
+        asset: Asset | str | None = None,
     ) -> Run:
         """Create a run."""
         # TODO(alkasm): support links
@@ -112,7 +113,7 @@ class NominalClient:
             start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
-            assets=[],
+            assets=[] if asset is None else [rid_from_instance_or_string(asset)],
         )
         response = self._clients.run.create_run(self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)
