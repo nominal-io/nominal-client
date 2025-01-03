@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 def tdms_with_time_column_to_pandas(path: Path, timestamp_column: str) -> pd.DataFrame:
     group_dfs: list[pd.DataFrame] = []
-    channels_to_export: dict[str, pd.Series[Any]] = {}
 
     with TdmsFile.open(path) as tdms_file:
         for group, time_channel in _get_groups_with_time_channel(tdms_file.groups(), timestamp_column):
+            channels_to_export: dict[str, pd.Series[Any]] = {}
             for channel in _get_export_channels(group.channels(), time_channel, timestamp_column):
                 channel_name = _create_channel_name(group, channel)
                 channels_to_export[channel_name] = pd.Series(data=channel.read_data(), index=time_channel.read_data())
@@ -27,7 +27,8 @@ def tdms_with_time_column_to_pandas(path: Path, timestamp_column: str) -> pd.Dat
 
     # format for nominal upload
     df = functools.reduce(
-        lambda left, right: pd.merge(left, right, left_index=True, right_index=True, how="outer"), group_dfs
+        lambda left, right: pd.merge(left, right, left_index=True, right_index=True, how="outer"),
+        group_dfs,
     )
     df.index = df.index.set_names(timestamp_column, level=None)
     df = df.reset_index()
