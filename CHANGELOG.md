@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.23.0](https://github.com/nominal-io/nominal-client/compare/v1.22.0...v1.23.0) (2025-01-03)
+
+
+### Features
+
+* add asset via run creation instead ([#185](https://github.com/nominal-io/nominal-client/issues/185)) ([7e57ae4](https://github.com/nominal-io/nominal-client/commit/7e57ae4080987f713f71a04afa2c17b43154e670))
+* bump conjure definitions ([#182](https://github.com/nominal-io/nominal-client/issues/182)) ([1987724](https://github.com/nominal-io/nominal-client/commit/1987724f683a44d37ac5979dff6135d045313cbd))
+
+
+### Bug Fixes
+
+* handle duplicated channels in tdms ([#164](https://github.com/nominal-io/nominal-client/issues/164)) ([08529c0](https://github.com/nominal-io/nominal-client/commit/08529c056454d778f7768296d0ad7874ddbbdee7))
+
 ## [1.22.0](https://github.com/nominal-io/nominal-client/compare/v1.21.0...v1.22.0) (2024-12-20)
 
 
