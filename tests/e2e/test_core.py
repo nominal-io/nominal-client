@@ -160,7 +160,7 @@ def test_add_asset_to_run():
     desc = f"core test to add a asset to a run {uuid4()}"
     start, end = _create_random_start_end()
     run = nm.create_run(title, start, end, desc)
-    run.add_asset(asset.rid)
+    run.set_asset(asset.rid)
 
     assets2 = run.list_assets()
     assert len(assets2) == 1
