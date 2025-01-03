@@ -212,13 +212,11 @@ class Run(HasRid):
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
 
-    def add_asset(self, asset: Asset | str) -> None:
-        """Add an asset to this run.
+    def set_asset(self, asset: Asset | str) -> None:
+        """Sets the asset of this run. If the run is associated with an existing asset, it will be replaced.
 
         `asset` can be an `Asset` instance, or asset RID.
         """
-        if len(self.list_assets()) != 0:
-            raise ValueError("runs cannot have more than one asset")
 
         asset_rid = rid_from_instance_or_string(asset)
         request = scout_run_api.UpdateRunRequest(assets=[asset_rid])
