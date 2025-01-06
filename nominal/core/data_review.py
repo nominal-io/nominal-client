@@ -7,7 +7,7 @@ from typing import Protocol, Sequence
 
 from typing_extensions import Self
 
-from nominal._api.scout_service_api import scout_checks_api, scout_datareview_api, scout_integrations_api
+from nominal._api.scout_service_api import scout, scout_checks_api, scout_datareview_api, scout_integrations_api
 from nominal.core import checklist
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
@@ -27,6 +27,8 @@ class DataReview(HasRid):
     class _Clients(HasAuthHeader, Protocol):
         @property
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
+        @property
+        def run(self) -> scout.RunService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, data_review: scout_datareview_api.DataReview) -> Self:
@@ -63,6 +65,13 @@ class DataReview(HasRid):
             sleep(interval.total_seconds())
             review = review.reload()
         return review
+
+    @property
+    def nominal_url(self) -> str:
+        """Returns a link to the page for this Data Review in the Nominal app"""
+        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
+        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
+        return f"https://app.gov.nominal.io/runs/{run.run_number}/?tab=checklists&openChecklistDetails={self.rid}&openCheckExecutionErrorReview="
 
 
 @dataclass(frozen=True)
