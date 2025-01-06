@@ -13,7 +13,6 @@ __all__ = [
     'datasource_pagination_api',
     'event',
     'ingest_api',
-    'openapi',
     'scout',
     'scout_api',
     'scout_asset_api',
@@ -67,5 +66,5 @@ __all__ = [
 
 __conjure_generator_version__ = "4.9.0"
 
-__version__ = "0.486.0+28.g9fa7930"
+__version__ = "0.498.0"
 
