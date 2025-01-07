@@ -298,9 +298,15 @@ class Custom(_ConjureTimestampType):
     """Must be in the format of the `DateTimeFormatter` class in Java."""
     default_year: int | None = None
     """Accepted as an optional field for cases like IRIG time codes, where the year is not present."""
+    default_day_of_year: int | None = None
+    """Accepted as an optional field for cases where the day of the year is not present."""
 
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
-        fmt = ingest_api.CustomTimestamp(format=self.format, default_year=self.default_year)
+        fmt = ingest_api.CustomTimestamp(
+            format=self.format,
+            default_year=self.default_year,
+            default_day_of_year=self.default_day_of_year,
+        )
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(custom_format=fmt))
 
 

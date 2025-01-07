@@ -150,3 +150,25 @@ def test_custom_irig(request, temperature_data):
 
     assert ds.name == name
     assert ds.description == desc
+
+
+def test_custom_day_of_year(request, temperature_data):
+    name = f"dataset-{uuid4()}"
+    desc = f"timestamp test {request.node.name} {uuid4()}"
+
+    def fmt(temp: int, ts: datetime) -> str:
+        return f"{temp},{ts.strftime(r'%H:%M:%S.%f')}"
+
+    csv_data = _create_csv_data(temperature_data, fmt)
+    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
+        ds = nm.upload_csv(
+            "fake_path.csv",
+            name,
+            "timestamp",
+            nm.ts.Custom(r"HH:mm:ss.SSSSSS", default_year=2024, default_day_of_year=1),
+            desc,
+        )
+    ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
+
+    assert ds.name == name
+    assert ds.description == desc
