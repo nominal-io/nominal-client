@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from nominal_api import scout, scout_notebook_api
 from typing_extensions import Self
 
-from nominal._api.scout_service_api import scout, scout_notebook_api
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 

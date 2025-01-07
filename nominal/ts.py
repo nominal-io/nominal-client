@@ -205,9 +205,8 @@ from typing import Literal, Mapping, NamedTuple, Union
 
 import dateutil.parser
 import numpy as np
+from nominal_api import api, ingest_api, scout_run_api
 from typing_extensions import Self, TypeAlias
-
-from nominal._api.scout_service_api import api, ingest_api, scout_run_api
 
 __all__ = [
     "Iso8601",

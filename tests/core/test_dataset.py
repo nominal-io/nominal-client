@@ -3,8 +3,8 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nominal_api.timeseries_logicalseries_api import BatchUpdateLogicalSeriesRequest
 
-from nominal._api.scout_service_api.timeseries_logicalseries_api import BatchUpdateLogicalSeriesRequest
 from nominal.core.channel import Channel
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.unit import Unit

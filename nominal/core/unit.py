@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from nominal_api import api, scout_run_api, scout_units_api
 from typing_extensions import Self
-
-from nominal._api.scout_service_api import api, scout_run_api, scout_units_api
 
 
 @dataclass(frozen=True)
