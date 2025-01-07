@@ -6,9 +6,9 @@ from datetime import timedelta
 from types import MappingProxyType
 from typing import Mapping, Protocol, Sequence
 
+from nominal_api import scout_video, scout_video_api
 from typing_extensions import Self
 
-from nominal._api.scout_service_api import scout_video, scout_video_api
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.exceptions import NominalIngestError, NominalIngestFailed

@@ -10,10 +10,7 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
-from typing_extensions import Self
-
-from nominal import _config
-from nominal._api.scout_service_api import (
+from nominal_api import (
     api,
     attachments_api,
     datasource,
@@ -29,6 +26,9 @@ from nominal._api.scout_service_api import (
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
+from typing_extensions import Self
+
+from nominal import _config
 from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
@@ -99,6 +99,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
+        asset: Asset | str | None = None,
     ) -> Run:
         """Create a run."""
         # TODO(alkasm): support links
@@ -112,7 +113,7 @@ class NominalClient:
             start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
-            assets=[],
+            assets=[] if asset is None else [rid_from_instance_or_string(asset)],
         )
         response = self._clients.run.create_run(self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)

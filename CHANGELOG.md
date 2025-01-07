@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.25.0](https://github.com/nominal-io/nominal-client/compare/v1.24.0...v1.25.0) (2025-01-07)
+
+
+### Features
+
+* migrate to nominal-api package ([#186](https://github.com/nominal-io/nominal-client/issues/186)) ([bbc9336](https://github.com/nominal-io/nominal-client/commit/bbc93369f5420b4862c66cc9c1c99e0ceb04a7ec))
+
+## [1.24.0](https://github.com/nominal-io/nominal-client/compare/v1.23.0...v1.24.0) (2025-01-07)
+
+
+### Features
+
+* add default day of year to custom timestamp format ([#183](https://github.com/nominal-io/nominal-client/issues/183)) ([686a5a7](https://github.com/nominal-io/nominal-client/commit/686a5a770be7b15997c62541fdda18f32f38c4f3))
+
+## [1.23.0](https://github.com/nominal-io/nominal-client/compare/v1.22.0...v1.23.0) (2025-01-03)
+
+
+### Features
+
+* add asset via run creation instead ([#185](https://github.com/nominal-io/nominal-client/issues/185)) ([7e57ae4](https://github.com/nominal-io/nominal-client/commit/7e57ae4080987f713f71a04afa2c17b43154e670))
+* bump conjure definitions ([#182](https://github.com/nominal-io/nominal-client/issues/182)) ([1987724](https://github.com/nominal-io/nominal-client/commit/1987724f683a44d37ac5979dff6135d045313cbd))
+
+
+### Bug Fixes
+
+* handle duplicated channels in tdms ([#164](https://github.com/nominal-io/nominal-client/issues/164)) ([08529c0](https://github.com/nominal-io/nominal-client/commit/08529c056454d778f7768296d0ad7874ddbbdee7))
+
+## [1.22.0](https://github.com/nominal-io/nominal-client/compare/v1.21.0...v1.22.0) (2024-12-20)
+
+
+### Features
+
+* add run.add_asset() ([#180](https://github.com/nominal-io/nominal-client/issues/180)) ([e6a292b](https://github.com/nominal-io/nominal-client/commit/e6a292ba4f3cf84f03126a1e51d2f29d2abfe533))
+* add streaming checklists ([#126](https://github.com/nominal-io/nominal-client/issues/126)) ([3093a4c](https://github.com/nominal-io/nominal-client/commit/3093a4c57ed03ec4b56de9f39d09fd86d58a5137))
+
+
+### Bug Fixes
+
+* fix __from__conjure ([#177](https://github.com/nominal-io/nominal-client/issues/177)) ([c436015](https://github.com/nominal-io/nominal-client/commit/c436015b3ba4b7ab527b9996a93aea6bfd9f0c90))
+* issues of post merge review of [#106](https://github.com/nominal-io/nominal-client/issues/106) ([#151](https://github.com/nominal-io/nominal-client/issues/151)) ([e6ff256](https://github.com/nominal-io/nominal-client/commit/e6ff256c5ec90729a6a279c59e90e71e8ea53753))
+* remove available_tag_values from create streaming connection and expose get connection ([#179](https://github.com/nominal-io/nominal-client/issues/179)) ([cdea621](https://github.com/nominal-io/nominal-client/commit/cdea6211568b100d5bafa5e2b1feef022cd0a802))
+
 ## [1.21.0](https://github.com/nominal-io/nominal-client/compare/v1.20.0...v1.21.0) (2024-12-16)
 
 

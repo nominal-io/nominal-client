@@ -4,9 +4,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Literal, Mapping, Protocol, Sequence
 
-from typing_extensions import Self
-
-from nominal._api.scout_service_api import (
+from nominal_api import (
     api,
     scout_api,
     scout_checklistexecution_api,
@@ -16,6 +14,8 @@ from nominal._api.scout_service_api import (
     scout_integrations_api,
     scout_run_api,
 )
+from typing_extensions import Self
+
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset

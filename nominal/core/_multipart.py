@@ -9,8 +9,8 @@ from queue import Queue
 from typing import BinaryIO, Iterable
 
 import requests
+from nominal_api import ingest_api, upload_api
 
-from nominal._api.scout_service_api import ingest_api, upload_api
 from nominal.core.filetype import FileType
 from nominal.exceptions import NominalMultipartUploadFailed
 

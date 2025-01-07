@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nominal._api.scout_service_api import authentication_api
+from nominal_api import authentication_api
+
 from nominal.core._utils import HasRid
 
 
