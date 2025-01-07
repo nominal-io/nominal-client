@@ -5,12 +5,7 @@ from datetime import timedelta
 from time import sleep
 from typing import Protocol, Sequence
 
-from nominal_api import (
-    scout, 
-    scout_checks_api, 
-    scout_datareview_api, 
-    scout_integrations_api
-)
+from nominal_api import scout, scout_checks_api, scout_datareview_api, scout_integrations_api
 from typing_extensions import Self
 
 from nominal.core import checklist
