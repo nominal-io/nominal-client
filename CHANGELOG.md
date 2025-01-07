@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/nominal-io/nominal-client/compare/v1.24.0...v1.25.0) (2025-01-07)
+
+
+### Features
+
+* migrate to nominal-api package ([#186](https://github.com/nominal-io/nominal-client/issues/186)) ([bbc9336](https://github.com/nominal-io/nominal-client/commit/bbc93369f5420b4862c66cc9c1c99e0ceb04a7ec))
+
 ## [1.24.0](https://github.com/nominal-io/nominal-client/compare/v1.23.0...v1.24.0) (2025-01-07)
 
 
