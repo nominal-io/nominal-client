@@ -18,6 +18,7 @@ from nominal_api import (
     scout_compute_api,
     scout_compute_representation_api,
     scout_dataexport_api,
+    scout_datareview_api,
     scout_datasource,
     scout_datasource_connection,
     scout_video,
@@ -55,6 +56,7 @@ class ClientsBunch:
     template: scout.TemplateService
     notebook: scout.NotebookService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
+    datareview: scout_datareview_api.DataReviewService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -84,6 +86,7 @@ class ClientsBunch:
             template=client_factory(scout.TemplateService),
             notebook=client_factory(scout.NotebookService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
+            datareview=client_factory(scout_datareview_api.DataReviewService),
         )
 
 
