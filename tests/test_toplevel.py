@@ -2,9 +2,9 @@ from unittest import mock
 
 import requests
 from conjure_python_client import ConjureEncoder
+from nominal_api.attachments_api import Attachment as _Attachment
 
 import nominal as nm
-from nominal._api.scout_service_api.attachments_api import Attachment as _Attachment
 
 
 class MockGetAttachmentResponse(requests.Response):

@@ -5,14 +5,14 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, cast
 
-from typing_extensions import Self
-
-from nominal._api.scout_service_api import (
+from nominal_api import (
     attachments_api,
     scout,
     scout_catalog,
     scout_run_api,
 )
+from typing_extensions import Self
+
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset

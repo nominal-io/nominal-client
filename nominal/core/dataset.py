@@ -10,9 +10,7 @@ from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence
 
 import pandas as pd
-from typing_extensions import Self
-
-from nominal._api.scout_service_api import (
+from nominal_api import (
     datasource_api,
     ingest_api,
     scout,
@@ -23,6 +21,8 @@ from nominal._api.scout_service_api import (
     timeseries_logicalseries_api,
     upload_api,
 )
+from typing_extensions import Self
+
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_io

@@ -6,9 +6,7 @@ from datetime import datetime
 from typing import Any, BinaryIO, Protocol, cast
 
 import pandas as pd
-from typing_extensions import Self
-
-from nominal._api.scout_service_api import (
+from nominal_api import (
     api,
     datasource_api,
     scout_compute_api,
@@ -16,7 +14,9 @@ from nominal._api.scout_service_api import (
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
-from nominal._api.scout_service_api.api import Timestamp
+from nominal_api.api import Timestamp
+from typing_extensions import Self
+
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos

@@ -10,10 +10,7 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
-from typing_extensions import Self
-
-from nominal import _config
-from nominal._api.scout_service_api import (
+from nominal_api import (
     api,
     attachments_api,
     datasource,
@@ -29,6 +26,9 @@ from nominal._api.scout_service_api import (
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
+from typing_extensions import Self
+
+from nominal import _config
 from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update

@@ -5,9 +5,7 @@ from functools import partial
 from typing import Protocol
 
 from conjure_python_client import RequestsClient, ServiceConfiguration
-from typing_extensions import Self
-
-from nominal._api.scout_service_api import (
+from nominal_api import (
     attachments_api,
     authentication_api,
     datasource_logset,
@@ -28,6 +26,7 @@ from nominal._api.scout_service_api import (
     timeseries_logicalseries,
     upload_api,
 )
+from typing_extensions import Self
 
 
 @dataclass(frozen=True)

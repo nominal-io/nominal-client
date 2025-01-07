@@ -7,7 +7,7 @@ from datetime import timedelta
 from itertools import groupby
 from typing import Iterable, Mapping, Protocol, Sequence, cast
 
-from nominal._api.scout_service_api import (
+from nominal_api import (
     datasource_api,
     scout_datasource,
     scout_datasource_connection,
@@ -16,6 +16,7 @@ from nominal._api.scout_service_api import (
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
+
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
