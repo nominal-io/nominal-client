@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0](https://github.com/nominal-io/nominal-client/compare/v1.23.0...v1.24.0) (2025-01-07)
+
+
+### Features
+
+* add default day of year to custom timestamp format ([#183](https://github.com/nominal-io/nominal-client/issues/183)) ([686a5a7](https://github.com/nominal-io/nominal-client/commit/686a5a770be7b15997c62541fdda18f32f38c4f3))
+
 ## [1.23.0](https://github.com/nominal-io/nominal-client/compare/v1.22.0...v1.23.0) (2025-01-03)
 
 
