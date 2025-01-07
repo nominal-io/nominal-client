@@ -112,6 +112,12 @@ strict = true
 packages = ["nominal"]
 
 [[tool.mypy.overrides]]
+module = "nominal_api.*"
+implicit_reexport = true
+no_implicit_optional = false
+disable_error_code = ["no-any-return", "no-untyped-def"]
+
+[[tool.mypy.overrides]]
 module = "nptdms"
 ignore_missing_imports = true
 
