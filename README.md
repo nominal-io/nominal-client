@@ -13,7 +13,7 @@ pip install nominal
 ### 💻 Usage
 
 ```py
-import nominal.nominal as nm
+import nominal as nm
 ```
 
 See examples in the [documentation](https://docs.nominal.io/python/quickstart).
