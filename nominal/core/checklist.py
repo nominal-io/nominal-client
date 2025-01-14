@@ -223,13 +223,15 @@ class Checklist(HasRid):
         self._clients.checklist_execution.reload_streaming_checklist(self._clients.auth_header, self.rid)
 
     def archive(self) -> None:
-        """Archive the checklist, preventing it from being viewed in the UI."""
+        """Archive this checklist.
+        Archived checklists are not deleted, but are hidden from the UI.
+        """
         self._clients.checklist.archive(
             self._clients.auth_header, scout_checks_api.ArchiveChecklistsRequest(rids=[self.rid])
         )
 
     def unarchive(self) -> None:
-        """Unarchive the checklist, allowing it to be viewed in the UI."""
+        """Unarchive this checklist, allowing it to be viewed in the UI."""
         self._clients.checklist.unarchive(
             self._clients.auth_header, scout_checks_api.UnarchiveChecklistsRequest(rids=[self.rid])
         )

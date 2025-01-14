@@ -29,11 +29,13 @@ class Workbook(HasRid):
         return f"https://app.gov.nominal.io/workbooks/{self.rid}"
 
     def archive(self) -> None:
-        """Archive the workbook, preventing it from being viewed in the UI."""
+        """Archive this workbook.
+        Archived workbooks are not deleted, but are hidden from the UI.
+        """
         self._clients.notebook.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive the workbook, allowing it to be viewedin the UI."""
+        """Unarchive this workbook, allowing it to be viewed in the UI."""
         self._clients.notebook.unarchive(self._clients.auth_header, self.rid)
 
     @classmethod

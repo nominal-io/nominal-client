@@ -234,7 +234,9 @@ class Connection(HasRid):
         )
 
     def archive(self) -> None:
-        """Archive this connection, hiding it in the UI."""
+        """Archive this connection.
+        Archived connections are not deleted, but are hidden from the UI.
+        """
         self._clients.connection.archive_connection(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:

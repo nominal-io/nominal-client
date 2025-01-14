@@ -67,7 +67,8 @@ class DataReview(HasRid):
         return review
 
     def archive(self) -> None:
-        """Archive the data review, hiding it from the UI.
+        """Archive this data review.
+        Archived data reviews are not deleted, but are hidden from the UI.
 
         NOTE: currently, it is not possible (yet) to unarchive a data review once archived.
         """

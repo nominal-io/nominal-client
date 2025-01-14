@@ -374,11 +374,13 @@ class Dataset(HasRid):
         self._clients.datasource.index_channel_prefix_tree(self._clients.auth_header, request)
 
     def archive(self) -> None:
-        """Archives the dataset, preventing it from showing up in the 'All Datasets' pane in the UI."""
+        """Archive this dataset.
+        Archived datasets are not deleted, but are hidden from the UI.
+        """
         self._clients.catalog.archive_dataset(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchives the dataset, allowing it to show up in the 'All Datasets' pane in the UI."""
+        """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI."""
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
 
     @classmethod
