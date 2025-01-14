@@ -169,6 +169,10 @@ class Asset(HasRid):
         """
         self._clients.assets.archive(self._clients.auth_header, self.rid)
 
+    def unarchive(self) -> None:
+        """Unarchive this asset, allowing it to be viewed in the UI."""
+        self._clients.assets.unarchive(self._clients.auth_header, self.rid)
+
     def remove_data_sources(
         self,
         *,
