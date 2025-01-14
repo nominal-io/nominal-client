@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.26.0](https://github.com/nominal-io/nominal-client/compare/v1.25.0...v1.26.0) (2025-01-14)
+
+
+### Features
+
+* add data-review/batch-initiate endpoint ([#165](https://github.com/nominal-io/nominal-client/issues/165)) ([3e659f5](https://github.com/nominal-io/nominal-client/commit/3e659f56ed39ca0129ae9dfb375673fe72e60a88))
+* allow archiving and unarchiving all possible types from the python SDK ([#191](https://github.com/nominal-io/nominal-client/issues/191)) ([185f789](https://github.com/nominal-io/nominal-client/commit/185f789fc4c148caa1119e9d455a388da4f31003))
+* turn scraping back on for nominal data sources ([#181](https://github.com/nominal-io/nominal-client/issues/181)) ([855018d](https://github.com/nominal-io/nominal-client/commit/855018def3d8cb4edc5851fff8fa7acc710a26e6))
+
+
+### Bug Fixes
+
+* add missing exports ([#190](https://github.com/nominal-io/nominal-client/issues/190)) ([4f1c926](https://github.com/nominal-io/nominal-client/commit/4f1c92625c0e634758c96797568b98168c633457))
+
 ## [1.25.0](https://github.com/nominal-io/nominal-client/compare/v1.24.0...v1.25.0) (2025-01-07)
 
 
