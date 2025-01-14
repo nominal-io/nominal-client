@@ -28,6 +28,14 @@ class Workbook(HasRid):
         # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
         return f"https://app.gov.nominal.io/workbooks/{self.rid}"
 
+    def archive(self) -> None:
+        """Archive the workbook, preventing it from being viewed in the UI."""
+        self._clients.notebook.archive(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive the workbook, allowing it to be viewedin the UI."""
+        self._clients.notebook.unarchive(self._clients.auth_header, self.rid)
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, notebook: scout_notebook_api.Notebook) -> Self:
         return cls(

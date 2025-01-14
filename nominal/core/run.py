@@ -225,6 +225,8 @@ class Run(HasRid):
     def archive(self) -> None:
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
+
+        NOTE: currently, it is not possible (yet) to unarchive a data review once archived.
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
 

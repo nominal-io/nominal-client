@@ -96,7 +96,7 @@ class Video(HasRid):
         self._clients.video.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchives the video, allowing it to show up in the 'All Videos' pane inthe UI."""
+        """Unarchives the video, allowing it to show up in the 'All Videos' pane in the UI."""
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
     @classmethod

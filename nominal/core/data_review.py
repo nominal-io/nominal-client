@@ -66,6 +66,13 @@ class DataReview(HasRid):
             review = review.reload()
         return review
 
+    def archive(self) -> None:
+        """Archive the data review, hiding it from the UI.
+
+        NOTE: currently, it is not possible (yet) to unarchive a data review once archived.
+        """
+        self._clients.datareview.archive_data_review(self._clients.auth_header, self.rid)
+
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Data Review in the Nominal app"""

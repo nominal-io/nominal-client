@@ -75,6 +75,14 @@ class Attachment(HasRid):
         with open(path, "wb") as wf:
             shutil.copyfileobj(self.get_contents(), wf)
 
+    def archive(self) -> None:
+        """Archive the attachment, preventing it from being viewed in the UI."""
+        self._clients.attachment.archive(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive the attachment, allowing it to be viewed in the UI."""
+        self._clients.attachment.unarchive(self._clients.auth_header, self.rid)
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, attachment: attachments_api.Attachment) -> Self:
         return cls(
