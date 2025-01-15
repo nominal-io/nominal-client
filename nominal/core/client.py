@@ -889,7 +889,7 @@ class NominalClient:
         if property:
             warnings.warn(
                 "parameter 'property' of search_assets is deprecated, use 'properties' instead",
-                DeprecationWarning,
+                UserWarning,
                 stacklevel=2,
             )
 
