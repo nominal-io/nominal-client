@@ -3,10 +3,11 @@ name = "nominal"
 version = "1.26.0"
 description = "Automate Nominal workflows in Python"
 authors = [
-    { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io"},
-    { name = "Alexander Hill", email = "alex.hill@nominal.io"},
-    { name = "JP", email = "jack@nominal.io"},
-    { name = "Michael Bauer", email = "michael@nominal.io"},
+    { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
+    { name = "Alexander Hill", email = "alex.hill@nominal.io" },
+    { name = "JP", email = "jack@nominal.io" },
+    { name = "Michael Bauer", email = "michael@nominal.io" },
+    { name = "Drake Eidukas", email = "drake@nominal.io" },
 ]
 license = "MIT"
 readme = "README.md"
