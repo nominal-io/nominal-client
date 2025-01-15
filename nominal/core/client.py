@@ -857,11 +857,11 @@ class NominalClient:
         self,
         search_text: str | None = None,
         label: str | None = None,
-        property: tuple[str, str] | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Iterable[Asset]:
         request = scout_asset_api.SearchAssetsRequest(
             page_size=100,
-            query=_create_search_assets_query(search_text, label, property),
+            query=_create_search_assets_query(search_text, label, properties),
             sort=scout_asset_api.SortOptions(
                 field=scout_asset_api.SortField.CREATED_AT,
                 is_descending=True,
@@ -875,13 +875,20 @@ class NominalClient:
         search_text: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
+        *,
+        properties: Mapping[str, str] | None = None,
     ) -> Sequence[Asset]:
         """Search for assets meeting the specified filters.
-        Filters are ANDed together, e.g. `(asset.label == label) AND (asset.property == property)`
+        Filters are ANDed together, e.g. `(asset.label == label) AND (asset.properties == properties)`
         - `search_text`: search case-insensitive for any of the keywords in all string fields.
         - `property` is a key-value pair, e.g. ("name", "value")
+        - `properties` is a mapping of key-value pairs which must ALL be present on the asset to be included.
         """
-        return list(self._iter_search_assets(search_text, label, property))
+        # back-compat for existing code which used property
+        if property and properties:
+            properties[property[0]] = property[1]
+        
+        return list(self._iter_search_assets(search_text, label, properties))
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
         """List all Streaming Checklists.
@@ -969,7 +976,7 @@ def _logs_to_conjure(
 def _create_search_assets_query(
     search_text: str | None = None,
     label: str | None = None,
-    property: tuple[str, str] | None = None,
+    properties: Mapping[str, str] | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
     queries = []
     if search_text is not None:
@@ -978,8 +985,13 @@ def _create_search_assets_query(
     if label is not None:
         q = scout_asset_api.SearchAssetsQuery(label=label)
         queries.append(q)
-    if property is not None:
-        name, value = property
-        q = scout_asset_api.SearchAssetsQuery(property=scout_run_api.Property(name=name, value=value))
-        queries.append(q)
+    
+    if properties:
+        for name, value in properties.items():
+            queries.append(
+                scout_asset_api.SearchAssetsQuery(
+                    property=scout_run_api.Property(name=name, value=value)
+                )
+            )
+
     return scout_asset_api.SearchAssetsQuery(and_=queries)
