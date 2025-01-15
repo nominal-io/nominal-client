@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO, TextIOBase, TextIOWrapper
@@ -882,11 +883,21 @@ class NominalClient:
         Filters are ANDed together, e.g. `(asset.label == label) AND (asset.properties == properties)`
         - `search_text`: search case-insensitive for any of the keywords in all string fields.
         - `property` is a key-value pair, e.g. ("name", "value")
+            NOTE: this is deprecated. Users should use `properties` instead.
         - `properties` is a mapping of key-value pairs which must ALL be present on the asset to be included.
         """
+        if property:
+            warnings.warn(
+                "parameter 'property' of search_assets is deprecated, use 'properties' instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         # back-compat for existing code which used property
         if property and properties:
             properties = {property[0]: property[1], **properties}
+        elif property:
+            properties = {property[0]: property[1]}
 
         return list(self._iter_search_assets(search_text, label, properties))
 
