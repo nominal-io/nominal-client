@@ -1,67 +1,104 @@
-[tool.poetry]
+[project]
 name = "nominal"
 version = "1.26.0"
 description = "Automate Nominal workflows in Python"
 authors = [
-    "Alexander Reynolds <alex.reynolds@nominal.io>",
-    "Alexander Hill <alex.hill@nominal.io>",
-    "JP <jack@nominal.io>",
-    "Michael Bauer <michael@nominal.io>",
+    { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io"},
+    { name = "Alexander Hill", email = "alex.hill@nominal.io"},
+    { name = "JP", email = "jack@nominal.io"},
+    { name = "Michael Bauer", email = "michael@nominal.io"},
 ]
-readme = "README.md"
 license = "MIT"
-homepage = "https://nominal.io"
-repository = "https://github.com/nominal-io/nominal-client"
-include = ["README.md", "LICENSE", "CHANGELOG.md"]
+readme = "README.md"
 
-[tool.poetry.scripts]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+requires-python = ">=3.9,<4"
+dependencies = [
+    "click>=8,<9",
+    "conjure-python-client>=2.8.0,<3",
+    "nominal-api==0.500.2",
+    "nptdms>=1.9.0,<2",
+    "tabulate>=0.9.0,<0.10",
+    "typing-extensions>=4,<5",
+
+    # Any version is okay for these dependencies
+    "pandas>=0.0.0",
+    "polars>=0.0.0",
+    "python-dateutil>=0.0.0",
+    "pyyaml>=0.0.0",
+    "requests>=0.0.0",
+]
+
+
+[project.urls]
+Homepage = "https://nominal.io"
+Documentation = "https://docs.nominal.io"
+Repository = "https://github.com/nominal-io/nominal-client"
+
+[tool.uv]
+dev-dependencies = [
+    "black>=24.8.0,<25",
+    "jupyter>=1.1.1,<2",
+    "jupyterlab>=4.2.5,<5",
+    "mkdocs-material>=9.5.34,<10",
+    "mkdocs>=1.6.1,<2",
+    "mkdocstrings-python>=1.11.1,<2",
+    "mkdocstrings>=0.26.1,<0.27",
+    "mypy>=1.11.2,<2",
+    "pandas-stubs~=2.0",
+    "pytest-cov>=5.0.0,<6",
+    "pytest>=8.3.2,<9",
+    "types-tabulate>=0.9.0.20240106,<0.10",
+    "ruff>=0.4.2,<0.5",
+    "types-pyyaml>=6.0.12.20240808,<7",
+    "types-requests>=2.32.0.20240712,<3",
+    "mkdocs-click", # Sourced separately from github fork
+    "types-tabulate>=0.9.0.20241207,<0.10",
+]
+
+[tool.uv.sources]
+mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", branch = "alkasm/keep-context-settings" }
+nominal = { workspace = true }
+
+
+[project.optional-dependencies]
+hdf5 = [
+    "h5py>=3.0",
+    "tables>=3.7",
+]
+
+
+[project.scripts]
 nom = 'nominal.cli:nom'
 
-[tool.poetry.dependencies]
-python = "^3.9"
-requests = "*"
-python-dateutil = "*"
-polars = "*"
-conjure-python-client = ">=2.8.0,<3"
-pandas = "*"
-typing-extensions = ">=4,<5"
-click = ">=8,<9"
-pyyaml = "*"
-tabulate = "^0.9.0"
-types-tabulate = "^0.9.0.20240106"
-nptdms = "^1.9.0"
-nominal-api = "0.500.2"
-
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.4.2"
-mypy = "^1.11.2"
-jupyter = "^1.1.1"
-types-requests = "^2.32.0.20240712"
-pandas-stubs = "~2.0"
-pytest = "^8.3.2"
-types-pyyaml = "^6.0.12.20240808"
-mkdocs = "^1.6.1"
-mkdocs-material = "^9.5.34"
-mkdocstrings = "^0.26.1"
-mkdocstrings-python = "^1.11.1"
-black = "^24.8.0"
-mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", rev = "alkasm/keep-context-settings" }
-jupyterlab = "^4.2.5"
-pytest-cov = "^5.0.0"
-
-# hdf5 extras
-h5py = { version = ">=3.0", optional = true }
-tables = { version = ">=3.7", optional = true}
-
-[tool.poetry.extras]
-hdf5 = ["h5py", "tables"]
-
-[tool.distutils.bdist_wheel]
-universal = true
-
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "nominal/*",
+]
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "nominal/*",
+]
 
 [tool.ruff]
 line-length = 120
