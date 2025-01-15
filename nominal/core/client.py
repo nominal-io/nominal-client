@@ -886,8 +886,8 @@ class NominalClient:
         """
         # back-compat for existing code which used property
         if property and properties:
-            properties[property[0]] = property[1]
-        
+            properties = {property[0]: property[1], **properties}
+
         return list(self._iter_search_assets(search_text, label, properties))
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
@@ -985,13 +985,9 @@ def _create_search_assets_query(
     if label is not None:
         q = scout_asset_api.SearchAssetsQuery(label=label)
         queries.append(q)
-    
+
     if properties:
         for name, value in properties.items():
-            queries.append(
-                scout_asset_api.SearchAssetsQuery(
-                    property=scout_run_api.Property(name=name, value=value)
-                )
-            )
+            queries.append(scout_asset_api.SearchAssetsQuery(property=scout_run_api.Property(name=name, value=value)))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
