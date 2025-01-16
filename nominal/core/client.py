@@ -143,12 +143,12 @@ class NominalClient:
         start: str | datetime | IntegralNanosecondsUTC | None = None,
         end: str | datetime | IntegralNanosecondsUTC | None = None,
         name_substring: str | None = None,
-        label: str | None = None,
-        property: tuple[str, str] | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
             page_size=100,
-            query=_create_search_runs_query(start, end, name_substring, label, property),
+            query=_create_search_runs_query(start, end, name_substring, labels, properties),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
@@ -165,14 +165,34 @@ class NominalClient:
         name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
+        *,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
-        - `start` and `end` times are both inclusive
-        - `name_substring`: search for a (case-insensitive) substring in the name
-        - `property` is a key-value pair, e.g. ("name", "value")
+
+        Args:
+            start: Inclusive start time for filtering runs.
+            end: Inclusive end time for filtering runs.
+            name_substring: Searches for a (case-insensitive) substring in the name.
+            label: Deprecated, use labels instead.
+            property: Deprecated, use properties instead.
+            labels: A sequence of labels that must ALL be present on a run to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a run to be included.
+
+        Returns:
+            All runs which match all of the provided conditions
         """
-        return list(self._iter_search_runs(start, end, name_substring, label, property))
+        labels, properties = _handle_deprecated_labels_properties(
+            "search_runs",
+            label,
+            labels,
+            property,
+            properties,
+        )
+
+        return list(self._iter_search_runs(start, end, name_substring, labels, properties))
 
     def create_csv_dataset(
         self,
@@ -857,12 +877,12 @@ class NominalClient:
     def _iter_search_assets(
         self,
         search_text: str | None = None,
-        label: str | None = None,
+        labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Asset]:
         request = scout_asset_api.SearchAssetsRequest(
             page_size=100,
-            query=_create_search_assets_query(search_text, label, properties),
+            query=_create_search_assets_query(search_text, labels, properties),
             sort=scout_asset_api.SortOptions(
                 field=scout_asset_api.SortField.CREATED_AT,
                 is_descending=True,
@@ -877,29 +897,31 @@ class NominalClient:
         label: str | None = None,
         property: tuple[str, str] | None = None,
         *,
+        labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Sequence[Asset]:
         """Search for assets meeting the specified filters.
-        Filters are ANDed together, e.g. `(asset.label == label) AND (asset.properties == properties)`
-        - `search_text`: search case-insensitive for any of the keywords in all string fields.
-        - `property` is a key-value pair, e.g. ("name", "value")
-            NOTE: this is deprecated. Users should use `properties` instead.
-        - `properties` is a mapping of key-value pairs which must ALL be present on the asset to be included.
+        Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
+
+        Args:
+            search_text: case-insensitive search for any of the keywords in all string fields
+            label: Deprecated, use labels instead.
+            property: Deprecated, use properties instead.
+            labels: A sequence of labels that must ALL be present on a asset to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
+
+        Returns:
+            All assets which match all of the provided conditions
         """
-        if property:
-            warnings.warn(
-                "parameter 'property' of search_assets is deprecated, use 'properties' instead",
-                UserWarning,
-                stacklevel=2,
-            )
+        labels, properties = _handle_deprecated_labels_properties(
+            "search_assets",
+            label,
+            labels,
+            property,
+            properties,
+        )
 
-        # back-compat for existing code which used property
-        if property and properties:
-            properties = {property[0]: property[1], **properties}
-        elif property:
-            properties = {property[0]: property[1]}
-
-        return list(self._iter_search_assets(search_text, label, properties))
+        return list(self._iter_search_assets(search_text, labels, properties))
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
         """List all Streaming Checklists.
@@ -942,26 +964,29 @@ def _create_search_runs_query(
     start: str | datetime | IntegralNanosecondsUTC | None = None,
     end: str | datetime | IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
-    label: str | None = None,
-    property: tuple[str, str] | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
 ) -> scout_run_api.SearchQuery:
     queries = []
     if start is not None:
-        q = scout_run_api.SearchQuery(start_time_inclusive=_SecondsNanos.from_flexible(start).to_scout_run_api())
-        queries.append(q)
+        start_time = _SecondsNanos.from_flexible(start).to_scout_run_api()
+        queries.append(scout_run_api.SearchQuery(start_time_inclusive=start_time))
+
     if end is not None:
-        q = scout_run_api.SearchQuery(end_time_inclusive=_SecondsNanos.from_flexible(end).to_scout_run_api())
-        queries.append(q)
+        end_time = _SecondsNanos.from_flexible(end).to_scout_run_api()
+        queries.append(scout_run_api.SearchQuery(end_time_inclusive=end_time))
+
     if name_substring is not None:
-        q = scout_run_api.SearchQuery(exact_match=name_substring)
-        queries.append(q)
-    if label is not None:
-        q = scout_run_api.SearchQuery(label=label)
-        queries.append(q)
-    if property is not None:
-        name, value = property
-        q = scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value))
-        queries.append(q)
+        queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
+
+    if labels:
+        for label in labels:
+            queries.append(scout_run_api.SearchQuery(label=label))
+
+    if properties:
+        for name, value in properties.items():
+            queries.append(scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value)))
+
     return scout_run_api.SearchQuery(and_=queries)
 
 
@@ -986,19 +1011,53 @@ def _logs_to_conjure(
 
 def _create_search_assets_query(
     search_text: str | None = None,
-    label: str | None = None,
+    labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
     queries = []
     if search_text is not None:
-        q = scout_asset_api.SearchAssetsQuery(search_text=search_text)
-        queries.append(q)
-    if label is not None:
-        q = scout_asset_api.SearchAssetsQuery(label=label)
-        queries.append(q)
+        queries.append(scout_asset_api.SearchAssetsQuery(search_text=search_text))
+
+    if labels is not None:
+        for label in labels:
+            queries.append(scout_asset_api.SearchAssetsQuery(label=label))
 
     if properties:
         for name, value in properties.items():
             queries.append(scout_asset_api.SearchAssetsQuery(property=scout_run_api.Property(name=name, value=value)))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
+
+
+def _handle_deprecated_labels_properties(
+    function_name: str,
+    label: str | None,
+    labels: Sequence[str] | None,
+    property: tuple[str, str] | None,
+    properties: Mapping[str, str] | None,
+) -> tuple[Sequence[str], Mapping[str, str]]:
+    if labels is None:
+        labels = []
+
+    # back-compat for existing code which used label
+    if label:
+        warnings.warn(
+            f"parameter 'label' of {function_name} is deprecated, use 'labels' instead",
+            UserWarning,
+            stacklevel=2,
+        )
+        labels = [label, *labels]
+
+    if properties is None:
+        properties = {}
+
+    # back-compat for existing code which used property
+    if property:
+        warnings.warn(
+            f"parameter 'property' of {function_name} is deprecated, use 'properties' instead",
+            UserWarning,
+            stacklevel=2,
+        )
+        properties = {property[0]: property[1], **properties}
+
+    return labels, properties
