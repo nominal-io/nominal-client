@@ -140,8 +140,8 @@ class NominalClient:
 
     def _iter_search_runs(
         self,
-        start: datetime | IntegralNanosecondsUTC | None = None,
-        end: datetime | IntegralNanosecondsUTC | None = None,
+        start: str | datetime | IntegralNanosecondsUTC | None = None,
+        end: str | datetime | IntegralNanosecondsUTC | None = None,
         name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
@@ -160,8 +160,8 @@ class NominalClient:
     @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
         self,
-        start: datetime | IntegralNanosecondsUTC | None = None,
-        end: datetime | IntegralNanosecondsUTC | None = None,
+        start: str | datetime | IntegralNanosecondsUTC | None = None,
+        end: str | datetime | IntegralNanosecondsUTC | None = None,
         name_substring: str | None = None,
         label: str | None = None,
         property: tuple[str, str] | None = None,
@@ -939,8 +939,8 @@ class NominalClient:
 
 
 def _create_search_runs_query(
-    start: datetime | IntegralNanosecondsUTC | None = None,
-    end: datetime | IntegralNanosecondsUTC | None = None,
+    start: str | datetime | IntegralNanosecondsUTC | None = None,
+    end: str | datetime | IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,

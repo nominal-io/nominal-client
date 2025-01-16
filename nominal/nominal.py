@@ -331,7 +331,7 @@ def search_runs(
     name_substring: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
-) -> list[Run]:
+) -> Sequence[Run]:
     """Search for runs meeting the specified filters.
 
     Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
@@ -339,17 +339,14 @@ def search_runs(
     - `name_substring`: search for a (case-insensitive) substring in the name
     - `property` is a key-value pair, e.g. ("name", "value")
     """
-    if all([v is None for v in (start, end, name_substring, label, property)]):
-        raise ValueError("must provide one of: start, end, name_substring, label, or property")
     conn = get_default_client()
-    runs = conn.search_runs(
-        start=None if start is None else ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
-        end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
-        name_substring=name_substring,
-        label=label,
-        property=property,
+    return conn.search_runs(
+        start=start, 
+        end=end, 
+        name_substring=name_substring, 
+        label=label, 
+        property=property
     )
-    return list(runs)
 
 
 def upload_attachment(
@@ -424,28 +421,28 @@ def get_asset(rid: str) -> Asset:
     conn = get_default_client()
     return conn.get_asset(rid)
 
-
+@deprecate_keyword_argument("properties", "property")
 def search_assets(
     *,
     search_text: str | None = None,
     label: str | None = None,
     property: tuple[str, str] | None = None,
-) -> list[Asset]:
+    properties: Mapping[str, str] | None = None
+) -> Sequence[Asset]:
     """Search for assets meeting the specified filters.
-
-    Filters are ANDed together, e.g. `(asset.label == label) AND (asset.property == property)`
+    Filters are ANDed together, e.g. `(asset.label == label) AND (asset.properties == properties)`
     - `search_text`: search case-insensitive for any of the keywords in all string fields.
     - `property` is a key-value pair, e.g. ("name", "value")
+        NOTE: this is deprecated. Users should use `properties` instead.
+    - `properties` is a mapping of key-value pairs which must ALL be present on the asset to be included.
     """
-    if all([v is None for v in (search_text, label, property)]):
-        raise ValueError("must provide one of: start, end, search_text, label, or property")
     conn = get_default_client()
-    assets = conn.search_assets(
-        search_text=search_text,
-        label=label,
-        property=property,
+    return conn.search_assets(
+        search_text=search_text, 
+        label=label, 
+        property=property, 
+        properties=properties
     )
-    return list(assets)
 
 
 def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
