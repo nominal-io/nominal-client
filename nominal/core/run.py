@@ -279,16 +279,9 @@ class Run(HasRid):
             for old_label in run.labels:
                 new_labels.append(old_label)
             run = run.update(labels=new_labels)
-            
-        NOTE: currently, it is only possible to add or change an asset associated with a Run,
-              but not yet possible to remove assets altogether from a run by providing an empty list.
-              This behavior differs from labels and properties, where empty containers clear the respective
-              field from the Run.
         """
-        # TODO: update to passing None to the request once this becomes a no-op in the backend
-        if assets is None:
-            assets = self.list_assets()
-            
+        if assets:
+            assets = [rid_from_instance_or_string(asset) for asset in assets]
         request = scout_run_api.UpdateRunRequest(
             description=description,
             labels=None if labels is None else list(labels),
@@ -296,7 +289,7 @@ class Run(HasRid):
             start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
-            assets=[rid_from_instance_or_string(asset) for asset in assets],
+            assets=assets,
         )
         response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._clients, response)
@@ -307,7 +300,7 @@ class Run(HasRid):
         self,
         *,
         ref_names: Sequence[str] | None = None,
-        data_sources: Sequence[Connection | Dataset | Video | str] | None = None,
+        data_sources: Sequence[Connection | Dataset | Video | Asset | str] | None = None,
     ) -> None:
         """Remove data sources from this run.
 
@@ -317,6 +310,12 @@ class Run(HasRid):
         data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
 
         conjure_run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+
+        asset_rids_to_keep = [
+            asset.rid
+            for asset in conjure_run.assets
+            if asset.rid not in data_sources
+        ]
 
         data_sources_to_keep = {
             ref_name: scout_run_api.CreateRunDataSource(
@@ -332,7 +331,7 @@ class Run(HasRid):
         response = self._clients.run.update_run(
             self._clients.auth_header,
             scout_run_api.UpdateRunRequest(
-                assets=[],
+                assets=asset_rids_to_keep,
                 data_sources=data_sources_to_keep,
             ),
             self.rid,
