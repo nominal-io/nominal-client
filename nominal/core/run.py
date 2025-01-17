@@ -212,6 +212,33 @@ class Run(HasRid):
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
 
+    def add_to_asset(self, asset: Asset | str, remove_existing: bool = False) -> Self:
+        """Add the run to the given Asset.
+        
+        NOTE: this will unassociate any datasets from the run, which will instead point to the asset,
+              which should itself have datasets associated with it.
+              
+        NOTE: currently, it is not supported for a run to be associated with more than one asset at
+              a time. An error will be raised if a run is added to an asset while already being associated
+              with another asset unless remove_existing=True is provided
+              
+        Args:
+            asset: Asset (or asset RID) to associate with the run
+            remove_existing: If true, remove any existing assets from the run before adding the new asset.
+            
+        Returns:
+            Updated Run object
+        """
+        asset_rid_to_add = rid_from_instance_or_string(asset)
+        
+        new_asset_rids = [asset_rid_to_add]
+        if not remove_existing:
+            # deduplicate rids, in case this run was already associated with the asset its being added to
+            new_asset_rids.extend([asset.rid for asset in self.list_assets()])    
+            new_asset_rids = list(set(new_asset_rids))
+        
+        return self.update(assets=new_asset_rids)
+
     def _iter_list_assets(self) -> Iterable[Asset]:
         run = self._clients.run.get_run(self._clients.auth_header, self.rid)
         assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
@@ -239,19 +266,29 @@ class Run(HasRid):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
+        assets: Sequence[Asset | str] | None = None,
     ) -> Self:
         """Replace run metadata.
         Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
-        Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+        NOTE: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
 
             new_labels = ["new-label-a", "new-label-b"]
             for old_label in run.labels:
                 new_labels.append(old_label)
             run = run.update(labels=new_labels)
+            
+        NOTE: currently, it is only possible to add or change an asset associated with a Run,
+              but not yet possible to remove assets altogether from a run by providing an empty list.
+              This behavior differs from labels and properties, where empty containers clear the respective
+              field from the Run.
         """
+        # TODO: update to passing None to the request once this becomes a no-op in the backend
+        if assets is None:
+            assets = self.list_assets()
+            
         request = scout_run_api.UpdateRunRequest(
             description=description,
             labels=None if labels is None else list(labels),
@@ -259,7 +296,7 @@ class Run(HasRid):
             start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
-            assets=[],
+            assets=[rid_from_instance_or_string(asset) for asset in assets],
         )
         response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._clients, response)
