@@ -1047,7 +1047,7 @@ def _handle_deprecated_labels_properties(
         labels = [label]
     elif labels is None:
         labels = []
-        
+
     if all([property, properties]):
         raise ValueError(f"Cannot use both property and propertiess for {function_name}.")
     elif property:
