@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.27.0](https://github.com/nominal-io/nominal-client/compare/v1.26.0...v1.27.0) (2025-01-17)
+
+
+### Features
+
+* allow searching for multiple properties on an asset ([#194](https://github.com/nominal-io/nominal-client/issues/194)) ([ed0d9f9](https://github.com/nominal-io/nominal-client/commit/ed0d9f9026d801c15751bc31efd3b4bb19eac1b4))
+* allow uniformly filtering for multiple labels / properties for runs / assets ([#195](https://github.com/nominal-io/nominal-client/issues/195)) ([4ab9afd](https://github.com/nominal-io/nominal-client/commit/4ab9afd3f6bf7fc38a790da720e1c707ca36d572))
+* switch from poetry to uv for environment management, and poetry to hatch for build backend ([#192](https://github.com/nominal-io/nominal-client/issues/192)) ([0300415](https://github.com/nominal-io/nominal-client/commit/030041524fa18e6c5c568922bd203bcb9e3c9a2c))
+
 ## [1.26.0](https://github.com/nominal-io/nominal-client/compare/v1.25.0...v1.26.0) (2025-01-14)
 
 
