@@ -1036,28 +1036,28 @@ def _handle_deprecated_labels_properties(
     property: tuple[str, str] | None,
     properties: Mapping[str, str] | None,
 ) -> tuple[Sequence[str], Mapping[str, str]]:
-    if labels is None:
-        labels = []
-
-    # back-compat for existing code which used label
-    if label:
+    if all([label, labels]):
+        raise ValueError(f"Cannot use both label and labels for {function_name}.")
+    elif label:
         warnings.warn(
             f"parameter 'label' of {function_name} is deprecated, use 'labels' instead",
             UserWarning,
             stacklevel=2,
         )
-        labels = [label, *labels]
-
-    if properties is None:
-        properties = {}
-
-    # back-compat for existing code which used property
-    if property:
+        labels = [label]
+    elif labels is None:
+        labels = []
+        
+    if all([property, properties]):
+        raise ValueError(f"Cannot use both property and propertiess for {function_name}.")
+    elif property:
         warnings.warn(
             f"parameter 'property' of {function_name} is deprecated, use 'properties' instead",
             UserWarning,
             stacklevel=2,
         )
-        properties = {property[0]: property[1], **properties}
+        properties = {property[0]: property[1]}
+    elif properties is None:
+        properties = {}
 
     return labels, properties
