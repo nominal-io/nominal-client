@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.28.0](https://github.com/nominal-io/nominal-client/compare/v1.27.0...v1.28.0) (2025-01-23)
+
+
+### Features
+
+* allow --token when default token path doesn't exist in CLI ([#198](https://github.com/nominal-io/nominal-client/issues/198)) ([565ab0c](https://github.com/nominal-io/nominal-client/commit/565ab0c08727ef23fc8f40283ddf03a505d4d2dc))
+* forward client CA cert bundle to requests when pushing artifacts to storage ([#200](https://github.com/nominal-io/nominal-client/issues/200)) ([615b405](https://github.com/nominal-io/nominal-client/commit/615b405a60596419775edcb26bc9b9b106f7f58c))
+
 ## [1.27.0](https://github.com/nominal-io/nominal-client/compare/v1.26.0...v1.27.0) (2025-01-17)
 
 
