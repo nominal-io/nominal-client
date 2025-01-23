@@ -36,9 +36,9 @@ def _sign_and_upload_part_job(
             extra={"key": key, "part": part, "upload_id": upload_id, "response.url": response.url},
         )
         put_response = requests.put(
-            response.url, 
-            data=data, 
-            headers=response.headers, 
+            response.url,
+            data=data,
+            headers=response.headers,
             verify=upload_client._verify,
         )
         logger.debug(
