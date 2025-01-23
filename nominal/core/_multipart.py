@@ -35,7 +35,12 @@ def _sign_and_upload_part_job(
             "successfully signed multipart upload part",
             extra={"key": key, "part": part, "upload_id": upload_id, "response.url": response.url},
         )
-        put_response = requests.put(response.url, data=data, headers=response.headers)
+        put_response = requests.put(
+            response.url,
+            data=data,
+            headers=response.headers,
+            verify=upload_client._verify,
+        )
         logger.debug(
             "put multipart upload part",
             extra={"url": response.url, "size": len(data), "status_code": put_response.status_code},
