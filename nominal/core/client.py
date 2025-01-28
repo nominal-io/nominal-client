@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
+import typing_extensions
+from ..config import NominalConfig, Profile
 from nominal_api import (
     api,
     attachments_api,
@@ -65,8 +67,41 @@ class NominalClient:
     _clients: ClientsBunch = field(repr=False)
 
     @classmethod
+    def from_profile(
+        cls, profile: str, *, trust_store_path: str | None = None, timeout: timedelta = timedelta(seconds=30)
+    ) -> Self:
+        config = NominalConfig.from_yaml()
+        prof = config.get_profile(profile)
+        return cls.from_url(prof.base_url, prof.token, trust_store_path=trust_store_path, timeout=timeout)
+
+    @classmethod
+    def from_url(
+        cls,
+        base_url: str,
+        token: str,
+        *,
+        trust_store_path: str | None,
+        timeout: timedelta = timedelta(seconds=30),
+    ) -> Self:
+        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
+        cfg = ServiceConfiguration(
+            uris=[base_url],
+            security=SslConfiguration(trust_store_path=trust_store_path),
+            connect_timeout=timeout.total_seconds(),
+        )
+        agent = construct_user_agent_string()
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
+
+    @classmethod
+    @typing_extensions.deprecated(
+        "The `create` method is deprecated. Use `from_profile` or `from_url` instead.", category=UserWarning
+    )
     def create(
-        cls, base_url: str, token: str | None, trust_store_path: str | None = None, connect_timeout: float = 30
+        cls,
+        base_url: str,
+        token: str | None = None,
+        trust_store_path: str | None = None,
+        connect_timeout: float = 30,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -75,16 +110,18 @@ class NominalClient:
         trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
             certifi's trust store is used.
         """
+        import warnings
+
+        warnings.warn(
+            "The `create` method is deprecated. Use `from_profile` or `from_url` instead.",
+            UserWarning,
+            stacklevel=2,
+        )
         if token is None:
             token = _config.get_token(base_url)
-        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
-        cfg = ServiceConfiguration(
-            uris=[base_url],
-            security=SslConfiguration(trust_store_path=trust_store_path),
-            connect_timeout=connect_timeout,
+        return cls.from_url(
+            base_url, token, trust_store_path=trust_store_path, timeout=timedelta(seconds=connect_timeout)
         )
-        agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""

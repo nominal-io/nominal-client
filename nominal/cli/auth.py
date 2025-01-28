@@ -3,7 +3,7 @@ from __future__ import annotations
 import click
 from conjure_python_client import ConjureHTTPError
 
-from nominal import NominalClient, _config
+from nominal import NominalClient, config, _config as deprecated_config
 from nominal.cli.util.global_decorators import global_options
 
 
@@ -43,7 +43,53 @@ def _validate_token_url(token: str, base_url: str) -> None:
 @global_options
 def set_token(token: str, base_url: str) -> None:
     """Update the token for a given URL in the Nominal config file"""
-    path = _config._DEFAULT_NOMINAL_CONFIG_PATH
+    path = deprecated_config._DEFAULT_NOMINAL_CONFIG_PATH
     _validate_token_url(token, base_url)
-    _config.set_token(base_url, token)
+    deprecated_config.set_token(base_url, token)
     click.secho(f"Successfully set token for '{base_url}' in {path}", fg="green")
+
+
+@auth_cmd.command()
+def migrate():
+    deprecated_cfg = deprecated_config.NominalConfig.from_yaml()
+    profiles = {}
+    for url, token in deprecated_cfg.environments.items():
+        if click.prompt(f"Add profile for {url}?", default="y", type=bool):
+            name = click.prompt("profile name")
+            new_url = click.prompt("base url", default=f"https://{url}")
+            new_token = click.prompt("token", default=token)
+            if click.prompt("Validate connection?", default="y", type=bool):
+                _validate_token_url(new_token, new_url)
+            profiles[name] = config.Profile(new_url, new_token)
+    new_cfg = config.NominalConfig(profiles=profiles)
+    new_cfg.to_yaml()
+
+
+@auth_cmd.group()
+def profile():
+    pass
+
+
+@profile.command()
+@click.option("-p", "--profile", prompt=True, help="profile name")
+@click.option("-u", "--base-url", default="https://api.gov.nominal.io/api", prompt=True)
+@click.option("-t", "--token", required=True, prompt=True, help="bearer token or api key")
+@global_options
+def add(profile: str, base_url: str, token: str) -> None:
+    """Add a profile to your Nominal config"""
+    cfg = config.NominalConfig.from_yaml()
+    _validate_token_url(token, base_url)
+    cfg.profiles[profile] = config.Profile(base_url, token)
+    cfg.to_yaml()
+    click.secho(f"Added profile {profile} to {config._DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")
+
+
+@profile.command()
+@click.option("-p", "--profile", prompt=True)
+@global_options
+def remove(profile: str) -> None:
+    """Remove a profile from your Nominal config"""
+    cfg = config.NominalConfig.from_yaml()
+    if profile in cfg.profiles:
+        del cfg.profiles[profile]
+    click.secho(f"Removed profile {profile} from {config._DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")
