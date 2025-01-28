@@ -116,5 +116,5 @@ __all__ = [
 try:
     __version__ = importlib.metadata.version("nominal")
 except importlib.metadata.PackageNotFoundError:
-    __version__ = ""
+    __version__ = "unknown"
 del importlib
