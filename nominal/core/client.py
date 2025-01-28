@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import gzip
 import json
 import logging
+import os
+import tempfile
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -212,16 +215,43 @@ class NominalClient:
 
         See `create_dataset_from_io` for more details.
         """
-        return self.create_tabular_dataset(
-            path,
-            name,
-            timestamp_column,
-            timestamp_type,
-            description,
-            labels=labels,
-            properties=properties,
-            prefix_tree_delimiter=prefix_tree_delimiter,
-        )
+        # Compress raw CSV prior to upload
+        _, ext = os.path.splitext(path)
+        if ext.lower() == ".csv":
+            with tempfile.NamedTemporaryFile(prefix="nominal_", suffix=".csv.gz") as gz:
+                with gzip.GzipFile(fileobj=gz, mode="wb") as compressor:
+                    # Compress file to a temporary file in 5MB chunks
+                    with open(path, "rb") as fh:
+                        while True:
+                            chunk = fh.read(1024 * 1024 * 5)  # Read in chunks
+                            if not chunk:
+                                break
+                            compressor.write(chunk)
+                gz.seek(0)
+
+                ds = self.create_tabular_dataset(
+                    gz.name,
+                    name,
+                    timestamp_column,
+                    timestamp_type,
+                    description,
+                    labels=labels,
+                    properties=properties,
+                    prefix_tree_delimiter=prefix_tree_delimiter,
+                )
+        else:
+            ds = self.create_tabular_dataset(
+                path,
+                name,
+                timestamp_column,
+                timestamp_type,
+                description,
+                labels=labels,
+                properties=properties,
+                prefix_tree_delimiter=prefix_tree_delimiter,
+            )
+
+        return ds
 
     def create_tabular_dataset(
         self,
