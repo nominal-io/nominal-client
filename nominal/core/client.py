@@ -223,6 +223,49 @@ class NominalClient:
             prefix_tree_delimiter=prefix_tree_delimiter,
         )
 
+    def create_ardupilot_dataflash_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from an ArduPilot DataFlash log file.
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileTypes.DATAFLASH
+        if name is None:
+            name = path.name
+
+        with open(path, "rb") as f:
+            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
+
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                dataflash=ingest_api.DataflashOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                    target=ingest_api.DatasetIngestTarget(
+                        new=ingest_api.NewDatasetIngestDestination(
+                            labels=list(labels),
+                            properties={} if properties is None else dict(properties),
+                            dataset_description=description,
+                            dataset_name=name,
+                        )
+                    ),
+                )
+            ),
+        )
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.dataset is None:
+            raise NominalIngestError("error ingesting dataflash: no dataset created")
+        return self.get_dataset(response.details.dataset.dataset_rid)
+
     def create_tabular_dataset(
         self,
         path: Path | str,
@@ -339,7 +382,6 @@ class NominalClient:
             "relative_{unit}": relative timestamps (floats or ints),
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
         """
-        # TODO(alkasm): create dataset from file/path
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 

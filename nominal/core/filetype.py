@@ -72,6 +72,7 @@ class FileTypes:
     BINARY: FileType = FileType("", "application/octet-stream")
     CSV: FileType = FileType(".csv", "text/csv")
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
+    DATAFLASH: FileType = FileType(".bin", "application/octet-stream")
     JSON: FileType = FileType(".json", "application/json")
     MKV: FileType = FileType(".mkv", "video/x-matroska")
     MP4: FileType = FileType(".mp4", "video/mp4")
