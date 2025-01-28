@@ -1,3 +1,5 @@
+import importlib.metadata
+
 from nominal import ts
 from nominal.core import (
     Asset,
@@ -107,4 +109,12 @@ __all__ = [
     "CheckViolation",
     "DataReviewBuilder",
     "WriteStream",
+    "__version__",
 ]
+
+
+try:
+    __version__ = importlib.metadata.version("nominal")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "unknown"
+del importlib
