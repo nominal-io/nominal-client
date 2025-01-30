@@ -98,11 +98,10 @@ class NominalClient:
         Returns:
             A new NominalClient instance configured with the profile settings
         """
-        config = _config.get_profile_config(profile_name)
+        config = _config.get_profile(profile_name)
         return cls.create(
-            base_url=config.base_url,
+            base_url=config.url,
             token=config.token,
-            trust_store_path=config.trust_store_path,
             connect_timeout=connect_timeout,
         )
 

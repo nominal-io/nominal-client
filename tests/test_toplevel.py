@@ -78,7 +78,9 @@ def test_default_connection(mock_get: mock.Mock, token: str) -> None:
         nm.nominal._global_base_url = original_base_url
 
 
-@mock.patch("nominal._config.get_profile", return_value=ProfileConfig(url="test-profile-url", token="test-profile-token"))
+@mock.patch(
+    "nominal._config.get_profile", return_value=ProfileConfig(url="test-profile-url", token="test-profile-token")
+)
 @mock.patch("requests.Session.request", return_value=MockGetAttachmentResponseWithProfile())
 def test_profile_connection(mock_get: mock.Mock, mock_profile: mock.Mock) -> None:
     """Test that using a profile correctly sets the connection parameters.
@@ -95,4 +97,3 @@ def test_profile_connection(mock_get: mock.Mock, mock_profile: mock.Mock) -> Non
     assert call.args[0] == "GET"
     assert call.args[1].startswith("https://test-profile-url")
     assert call.kwargs["headers"]["Authorization"].endswith("test-profile-token")
-

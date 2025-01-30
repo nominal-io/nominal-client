@@ -5,8 +5,7 @@ from click.testing import CliRunner
 from conjure_python_client import ConjureHTTPError
 from requests import HTTPError
 
-from nominal.cli.auth import auth_cmd, get_profile, list_profiles, set_profile, set_token
-from nominal._config import NominalConfig, ProfileConfig
+from nominal.cli.auth import set_token
 
 
 @pytest.fixture()

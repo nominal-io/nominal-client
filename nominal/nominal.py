@@ -48,16 +48,17 @@ def set_base_url(base_url: str) -> None:
     For staging environments: "https://api-staging.gov.nominal.io/api".
     For local development: "https://api.nominal.test".
     """
-    _config.get_token(base_url) # @vtupuri - why is this needed? error checking?
+    _config.get_token(base_url)  # @vtupuri - why is this needed? error checking?
 
     global _global_base_url
     _global_base_url = base_url
 
+
 def set_profile(name: str, url: str, token: str) -> None:
     """Set a named profile configuration.
-    
+
     Use in conjunction with `get_client_from_profile()`.
-    
+
     Args:
         name: Name of the profile configuration
         url: Base URL for the Nominal API (e.g. "https://api.gov.nominal.io/api")
@@ -73,13 +74,15 @@ def set_token(base_url: str, token: str) -> None:
     """
     _config.set_token(base_url, token)
 
+
 def get_client_from_profile(profile_name: str) -> NominalClient:
     """Get a client using a named profile configuration.
-    
+
     Profiles can be set using `nom auth set-profile` or programmatically with `nominal.set_profile()`.
     """
     profile = _config.get_profile(profile_name)
     return _get_or_create_connection(f"https://{profile.url}", profile.token)
+
 
 def get_default_client() -> NominalClient:
     """Retrieve the default client to the Nominal platform."""
@@ -89,17 +92,19 @@ def get_default_client() -> NominalClient:
 
 def get_user(*, profile: str | None = None) -> User:
     """Retrieve the user associated with the client.
-    
+
     Args:
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
     return conn.get_user()
 
+
 def get_user_from_profile(profile_name: str) -> User:
     """Retrieve the user associated with a named profile configuration."""
     conn = get_client_from_profile(profile_name)
     return conn.get_user()
+
 
 def upload_tdms(
     file: Path | str,
@@ -207,8 +212,15 @@ def upload_polars(
     """Create a dataset in the Nominal platform from a polars.DataFrame.
 
     Args:
-        profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+        df: The polars DataFrame to upload
+        name: Name for the dataset
+        timestamp_column: Name of the column containing timestamps
+        timestamp_type: Type of the timestamp values
+        description: Optional description for the dataset
+        channel_name_delimiter: Optional delimiter for channel name hierarchy
+        wait_until_complete: If True, wait for ingestion to complete before returning
+        profile: Optional profile name to use for authentication. If None, uses the default client
+
     If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
@@ -252,8 +264,15 @@ def upload_csv(
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file.
 
     Args:
-        profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+        file: Path to the CSV file
+        name: Name for the dataset. If None, uses the filename
+        timestamp_column: Name of the column containing timestamps
+        timestamp_type: Type of the timestamp values
+        description: Optional description for the dataset
+        channel_name_delimiter: Optional delimiter for channel name hierarchy
+        wait_until_complete: If True, wait for ingestion to complete before returning
+        profile: Optional profile name to use for authentication. If None, uses the default client
+
     If `name` is None, the dataset is created with the name of the file.
 
     If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
@@ -299,8 +318,9 @@ def _upload_csv(
 
 def get_dataset(rid: str, *, profile: str | None = None) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID.
-    
+
     Args:
+        rid: Resource ID of the dataset to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -318,8 +338,12 @@ def create_run(
     """Create a run in the Nominal platform.
 
     Args:
+        name: Name of the run
+        start: Start time of the run
+        end: End time of the run, or None if ongoing
+        description: Optional description for the run
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+
     If the run has no end (for example, if it is ongoing), use `end=None`.
 
     To add a dataset to the run, use `run.add_dataset()`.
@@ -345,8 +369,13 @@ def create_run_csv(
     """Create a dataset from a CSV file, and create a run based on it.
 
     Args:
+        file: Path to the CSV file
+        name: Name for the run
+        timestamp_column: Name of the column containing timestamps
+        timestamp_type: Type of the timestamp values
+        description: Optional description for the run
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+
     This is a convenience function that combines `upload_csv()` and `create_run()` and can only be used with absolute
     timestamps. For relative timestamps or custom formats, use `upload_dataset()` and `create_run()` separately.
 
@@ -371,8 +400,9 @@ def create_run_csv(
 
 def get_run(rid: str, *, profile: str | None = None) -> Run:
     """Retrieve a run from the Nominal platform by its RID.
-    
+
     Args:
+        rid: Resource ID of the run to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -395,7 +425,7 @@ def search_runs(
 
     Args:
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+
     Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
 
     Args:
@@ -430,8 +460,11 @@ def upload_attachment(
     profile: str | None = None,
 ) -> Attachment:
     """Upload an attachment to the Nominal platform.
-    
+
     Args:
+        file: Path to the file to upload
+        name: Name for the attachment
+        description: Optional description for the attachment
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     path = Path(file)
@@ -443,8 +476,9 @@ def upload_attachment(
 
 def get_attachment(rid: str, *, profile: str | None = None) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID.
-    
+
     Args:
+        rid: Resource ID of the attachment to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -453,8 +487,9 @@ def get_attachment(rid: str, *, profile: str | None = None) -> Attachment:
 
 def get_log_set(rid: str, *, profile: str | None = None) -> LogSet:
     """Retrieve a log set from the Nominal platform by its RID.
-    
+
     Args:
+        rid: Resource ID of the log set to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -463,8 +498,10 @@ def get_log_set(rid: str, *, profile: str | None = None) -> LogSet:
 
 def download_attachment(rid: str, file: Path | str, *, profile: str | None = None) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`.
-    
+
     Args:
+        rid: Resource ID of the attachment to retrieve
+        file: Path where the attachment should be saved
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -481,8 +518,12 @@ def upload_video(
     profile: str | None = None,
 ) -> Video:
     """Upload a video to Nominal from a file.
-    
+
     Args:
+        file: Path to the video file
+        name: Name for the video
+        start: Start time of the video
+        description: Optional description for the video
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -500,8 +541,9 @@ def upload_video(
 
 def get_video(rid: str, *, profile: str | None = None) -> Video:
     """Retrieve a video from the Nominal platform by its RID.
-    
+
     Args:
+        rid: Resource ID of the video to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -517,8 +559,12 @@ def create_asset(
     profile: str | None = None,
 ) -> Asset:
     """Create an asset.
-    
+
     Args:
+        name: Name of the asset
+        description: Optional description for the asset
+        properties: Optional key-value properties to attach to the asset
+        labels: Optional sequence of labels to attach to the asset
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -527,8 +573,9 @@ def create_asset(
 
 def get_asset(rid: str, *, profile: str | None = None) -> Asset:
     """Retrieve an asset by its RID.
-    
+
     Args:
+        rid: Resource ID of the asset to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -550,7 +597,7 @@ def search_assets(
 
     Args:
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+
     Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
 
     Args:
@@ -640,8 +687,12 @@ def checklist_builder(
     """Create a checklist builder to add checks and variables, and publish the checklist to Nominal.
 
     Args:
+        name: Name of the checklist
+        description: Optional description for the checklist
+        assignee_email: Email of the user to assign the checklist to
+        default_ref_name: Optional default reference name for the checklist
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+
     If assignee_email is None, the checklist is assigned to the user executing the code.
 
     Example:
@@ -667,9 +718,10 @@ def checklist_builder(
 
 
 def get_checklist(checklist_rid: str, *, profile: str | None = None) -> Checklist:
-    """Retrieve a checklist by its RID.
-    
+    """Retrieve a checklist from the Nominal platform by its RID.
+
     Args:
+        checklist_rid: Resource ID of the checklist to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -688,8 +740,13 @@ def upload_mcap_video(
     """Create a video in the Nominal platform from a topic in a mcap file.
 
     Args:
+        file: Path to the mcap file
+        topic: Topic name containing the video data
+        name: Name for the video. If None, uses the filename
+        description: Optional description for the video
+        wait_until_complete: If True, wait for ingestion to complete before returning
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+
     If `name` is None, the video is created with the name of the file.
 
     If `wait_until_complete=True` (the default), this function waits until the video has completed ingestion before
@@ -726,9 +783,11 @@ def create_streaming_connection(
     """Creates a new datasource and a new connection.
 
     Args:
+        datasource_id: A human readable identifier. Must be unique within an organization
+        connection_name: Name for the connection
+        datasource_description: Optional description for the datasource
+        required_tag_names: Optional list of required tag names
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
-    datasource_id: A human readable identifier. Must be unique within an organization.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
     return conn.create_streaming_connection(
@@ -738,8 +797,9 @@ def create_streaming_connection(
 
 def get_connection(rid: str, *, profile: str | None = None) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID.
-    
+
     Args:
+        rid: Resource ID of the connection to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
@@ -758,10 +818,12 @@ def create_workbook_from_template(
     """Creates a new workbook from a template.
 
     Args:
+        template_rid: The template to use for the workbook
+        run_rid: The run to associate the workbook with
+        title: Optional title for the workbook
+        description: Optional description for the workbook
+        is_draft: If True, create as a draft workbook
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
-    template_rid: The template to use for the workbook.
-    run_rid: The run to associate the workbook with.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
     return conn.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
@@ -778,8 +840,12 @@ def create_log_set(
     """Create an immutable log set with the given logs.
 
     Args:
+        name: Name for the log set
+        logs: Collection of logs to include
+        timestamp_type: Type of timestamps in the logs ('absolute' or 'relative')
+        description: Optional description for the log set
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+
     The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
     or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
     """
@@ -792,7 +858,7 @@ def data_review_builder(*, profile: str | None = None) -> DataReviewBuilder:
 
     Args:
         profile: Optional profile name to use for authentication. If None, uses the default client.
-        
+
     Example:
     -------
     ```python
@@ -812,10 +878,10 @@ def data_review_builder(*, profile: str | None = None) -> DataReviewBuilder:
 
 def get_data_review(rid: str, *, profile: str | None = None) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID.
-    
+
     Args:
+        rid: Resource ID of the data review to retrieve
         profile: Optional profile name to use for authentication. If None, uses the default client.
     """
     conn = get_client_from_profile(profile) if profile else get_default_client()
     return conn.get_data_review(rid)
- 

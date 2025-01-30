@@ -43,7 +43,7 @@ def _validate_token_url(token: str, base_url: str) -> None:
 @global_options
 def set_token(token: str, base_url: str) -> None:
     """[Deprecated] Update the token for a given URL in the Nominal config file.
-    
+
     This command is deprecated. Please use 'auth set-profile' instead, which provides
     better profile management and configuration options.
     """
@@ -82,7 +82,7 @@ def list_profiles() -> None:
     if not cfg.profiles:
         click.secho("No profiles configured", fg="yellow")
         return
-    
+
     click.secho("Configured profiles:", fg="green")
     for name, profile in cfg.profiles.items():
         click.echo(f"  {name}:")

@@ -20,14 +20,18 @@ class ProfileConfig:
 
 @dataclass
 class NominalConfig:
-    environments: dict[str, str] = None
+    environments: dict[str, str]
     """environments map base_urls (with no scheme) to auth tokens (legacy support)"""
-    profiles: dict[str, ProfileConfig] = None
+    profiles: dict[str, ProfileConfig]
     """profiles map profile names to profile configurations"""
-    
-    def __post_init__(self):
-        self.environments = self.environments or {}
-        self.profiles = self.profiles or {}
+
+    def __init__(
+        self,
+        environments: dict[str, str] | None = None,
+        profiles: dict[str, ProfileConfig] | None = None,
+    ) -> None:
+        self.environments = environments or {}
+        self.profiles = profiles or {}
 
     @classmethod
     def from_yaml(cls, path: Path = _DEFAULT_NOMINAL_CONFIG_PATH) -> Self:
