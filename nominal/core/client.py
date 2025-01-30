@@ -87,6 +87,25 @@ class NominalClient:
         agent = construct_user_agent_string()
         return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
 
+    @classmethod
+    def from_profile(cls, profile_name: str, connect_timeout: float = 30) -> Self:
+        """Create a connection to the Nominal platform using a named profile.
+
+        Args:
+            profile_name: Name of the profile to use from ~/.nominal.yml
+            connect_timeout: Connection timeout in seconds
+
+        Returns:
+            A new NominalClient instance configured with the profile settings
+        """
+        config = _config.get_profile_config(profile_name)
+        return cls.create(
+            base_url=config.base_url,
+            token=config.token,
+            trust_store_path=config.trust_store_path,
+            connect_timeout=connect_timeout,
+        )
+
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
         return _get_user(self._clients.auth_header, self._clients.authentication)
