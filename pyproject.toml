@@ -29,6 +29,7 @@ dependencies = [
     "nptdms>=1.9.0,<2",
     "tabulate>=0.9.0,<0.10",
     "typing-extensions>=4,<5",
+    "protobuf>=4.25.0",  # Protocol Buffers core library
 
     # Any version is okay for these dependencies
     "pandas>=0.0.0",
@@ -63,6 +64,8 @@ dev-dependencies = [
     "types-requests>=2.32.0.20240712,<3",
     "mkdocs-click", # Sourced separately from github fork
     "types-tabulate>=0.9.0.20241207,<0.10",
+    "grpcio-tools>=1.65",
+    "hatchling>=1.27.0",
 ]
 
 [tool.uv.sources]
@@ -98,11 +101,15 @@ include = [
     "LICENSE",
     "CHANGELOG.md",
     "nominal/*",
+    "nominal/protos/*_pb2.py",  # Include generated protobuf files
 ]
 
 [tool.ruff]
 line-length = 120
 include = ["nominal/**/*.py", "tests/**/*.py"]
+exclude = [
+    "*_pb2.py",  # Excludes all protobuf generated files
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -170,3 +177,6 @@ testpaths = ["tests"]
 # make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
 addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"
+
+[tool.hatch.build.hooks.custom]
+path = "scripts/build_protos.py"
