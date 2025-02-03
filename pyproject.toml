@@ -25,7 +25,7 @@ requires-python = ">=3.9,<4"
 dependencies = [
     "click>=8,<9",
     "conjure-python-client>=2.8.0,<3",
-    "nominal-api==0.500.2",
+    "nominal-api==0.531.0",
     "nptdms>=1.9.0,<2",
     "tabulate>=0.9.0,<0.10",
     "typing-extensions>=4,<5",
@@ -61,7 +61,7 @@ dev-dependencies = [
     "ruff>=0.4.2,<0.5",
     "types-pyyaml>=6.0.12.20240808,<7",
     "types-requests>=2.32.0.20240712,<3",
-    "mkdocs-click", # Sourced separately from github fork
+    "mkdocs-click",                         # Sourced separately from github fork
     "types-tabulate>=0.9.0.20241207,<0.10",
 ]
 
@@ -71,11 +71,7 @@ nominal = { workspace = true }
 
 
 [project.optional-dependencies]
-hdf5 = [
-    "h5py>=3.0",
-    "tables>=3.7",
-]
-
+hdf5 = ["h5py>=3.0", "tables>=3.7"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
@@ -85,20 +81,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
-include = [
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md",
-    "nominal/*",
-]
+include = ["README.md", "LICENSE", "CHANGELOG.md", "nominal/*"]
 
 [tool.hatch.build.targets.wheel]
-include = [
-    "README.md",
-    "LICENSE",
-    "CHANGELOG.md",
-    "nominal/*",
-]
+include = ["README.md", "LICENSE", "CHANGELOG.md", "nominal/*"]
 
 [tool.ruff]
 line-length = 120
@@ -121,12 +107,12 @@ select = [
     "FIX",  # Flake8-FIXme
     "PL",   # PyLinT
     "NPY",  # NumPY
-    "T100"  # debugger
+    "T100", # debugger
 ]
 
 extend-select = [
-    "D417"  # no missing arguments
-]  
+    "D417", # no missing arguments
+]
 ignore = [
     "FIX002",  # Ignore TODOs
     "D203",    # one-blank-line-before-class
@@ -135,13 +121,13 @@ ignore = [
     "D103",    # missing-class-docstring
     "D102",    # missing-public-method-docstring
     "D101",    # missing-public-class-docstring
-    "D100",    # missing-module-docstring 
+    "D100",    # missing-module-docstring
     "D104",    # missing-package-docstring
     "D400",    # doc line ends in period
     "D415",    # doc line ends in punctuation
     "D401",    # imperative mood
     "PLW0603", # globals
-    "PLR2004",  # magic values
+    "PLR2004", # magic values
 ]
 
 [tool.mypy]
