@@ -128,7 +128,8 @@ class DataReviewBuilder:
         """
         request = scout_datareview_api.BatchInitiateDataReviewRequest(
             notification_configurations=[
-                scout_integrations_api.NotificationConfiguration(c) for c in self._integration_rids
+                scout_integrations_api.NotificationConfiguration(integration_rid=rid, tags=[])
+                for rid in self._integration_rids
             ],
             requests=self._requests,
         )

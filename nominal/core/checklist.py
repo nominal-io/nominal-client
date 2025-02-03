@@ -197,7 +197,8 @@ class Checklist(HasRid):
                 assets=[rid_from_instance_or_string(asset) for asset in assets],
                 checklist=self.rid,
                 notification_configurations=[
-                    scout_integrations_api.NotificationConfiguration(c) for c in integration_rids
+                    scout_integrations_api.NotificationConfiguration(integration_rid=rid, tags=[])
+                    for rid in integration_rids
                 ],
                 evaluation_delay=_to_api_duration(evaluation_delay),
                 recovery_delay=_to_api_duration(recovery_delay),
@@ -454,6 +455,9 @@ class _ComputeNodeVisitor(scout_compute_api.ComputeNodeVisitor):
 
     def _ranges(self, ranges: scout_compute_api.RangeSeries) -> scout_compute_representation_api.Node:
         return scout_compute_representation_api.Node(range_series=ranges)
+
+    def _log(self, log_series: scout_compute_api.LogSeries) -> scout_compute_representation_api.Node:
+        raise ValueError("Log series nodes are not yet supported by the client library")
 
     def _raw(self, raw: scout_compute_api.Reference) -> scout_compute_representation_api.Node:
         raise ValueError("Raw nodes are not yet supported by the client library")
