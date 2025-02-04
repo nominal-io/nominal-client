@@ -17,6 +17,7 @@ from nominal_api import (
     timeseries_logicalseries_api,
 )
 
+from nominal_api_protos.nominal_write_pb2 import WriteRequestNominal, Series, Points, DoublePoint, DoublePoints, StringPoint, StringPoints, Channel
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
@@ -194,41 +195,43 @@ class Connection(HasRid):
 
         api_batches = [list(api_batch) for _, api_batch in api_batched]
 
-        def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.Points:
-            if isinstance(api_batch[0].value, str):
-                return storage_writer_api.Points(
-                    string=[
-                        storage_writer_api.StringPoint(
-                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                            value=cast(str, item.value),
-                        )
-                        for item in api_batch
-                    ]
-                )
-            if isinstance(api_batch[0].value, float):
-                return storage_writer_api.Points(
-                    double=[
-                        storage_writer_api.DoublePoint(
-                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                            value=cast(float, item.value),
-                        )
-                        for item in api_batch
-                    ]
-                )
-            raise ValueError("only float and string are supported types for value")
+        def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
+            points = Points()
+            
+            # Check first value to determine type
+            sample_value = api_batch[0].value
+            if isinstance(sample_value, str):
+                string_points = StringPoints()
+                for item in api_batch:
+                    point = StringPoint()
+                    point.timestamp.CopyFrom(_SecondsNanos.from_flexible(item.timestamp).to_proto())
+                    point.value = item.value
+                    string_points.points.append(point)
+                points.string_points = string_points
+            elif isinstance(sample_value, float):
+                double_points = DoublePoints()
+                for item in api_batch:
+                    point = DoublePoint()
+                    point.timestamp.CopyFrom(_SecondsNanos.from_flexible(item.timestamp).to_proto())
+                    point.value = item.value
+                    double_points.points.append(point)
+                points.double_points = double_points
+            else:
+                raise ValueError("only float and string are supported types for value")
+            return points
 
-        request = storage_writer_api.WriteBatchesRequest(
-            data_source_rid=self._nominal_data_source_rid,
-            batches=[
-                storage_writer_api.RecordsBatch(
-                    channel=api_batch[0].channel_name,
-                    points=make_points(api_batch),
+        request = WriteRequestNominal(
+            series=[
+                Series(
+                    channel=Channel(name=api_batch[0].channel_name),
+                    points=make_points_proto(api_batch),
                     tags=api_batch[0].tags or {},
                 )
                 for api_batch in api_batches
-            ],
+            ]
         )
-        self._clients.storage_writer.write_batches(
+        
+        self._clients.storage_writer.write_nominal_batches(
             self._clients.auth_header,
             request,
         )
