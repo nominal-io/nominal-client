@@ -227,14 +227,10 @@ class Connection(HasRid):
         request = WriteRequestNominal()
         for api_batch in api_batches:
             series_msg = Series()
-            # Instead of creating a new Channel instance and calling CopyFrom,
-            # assign the channel name directly.
             series_msg.channel.name = api_batch[0].channel_name
 
-            # Build and assign points
             points_msg = make_points_proto(api_batch)
             series_msg.points.CopyFrom(points_msg)
-            # Assign tags, if any
             if api_batch[0].tags:
                 for key, value in api_batch[0].tags.items():
                     series_msg.tags[key] = value
