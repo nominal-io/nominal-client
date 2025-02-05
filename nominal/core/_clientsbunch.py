@@ -30,6 +30,11 @@ from nominal_api import (
 from typing_extensions import Self
 
 
+class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
+    def _amend_request_kwargs(self, kwargs) -> None:
+        super()._amend_request_kwargs(kwargs)
+        kwargs["headers"]["Content-Type"] = "application/x-protobuf"
+
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
@@ -57,6 +62,7 @@ class ClientsBunch:
     notebook: scout.NotebookService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
+    proto_write_service: ProtoWriteService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -87,6 +93,7 @@ class ClientsBunch:
             notebook=client_factory(scout.NotebookService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
+            proto_write_service=client_factory(ProtoWriteService),
         )
 
 

@@ -12,7 +12,6 @@ from nominal_api import (
     scout_datasource,
     scout_datasource_connection,
     scout_datasource_connection_api,
-    storage_writer_api,
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
@@ -24,7 +23,7 @@ from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, WriteStream
 from nominal.ts import _SecondsNanos
-
+from nominal.core._clientsbunch import ProtoWriteService
 
 @dataclass(frozen=True)
 class Connection(HasRid):
@@ -43,7 +42,8 @@ class Connection(HasRid):
         @property
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
-        def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
+        def proto_write_service(self) -> ProtoWriteService: ...
+
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection:
@@ -236,7 +236,7 @@ class Connection(HasRid):
                     series_msg.tags[key] = value
             request.series.append(series_msg)
         
-        self._clients.storage_writer.write_nominal_batches(
+        self._clients.proto_write_service.write_nominal_batches(
             self._clients.auth_header,
             request,
         )
