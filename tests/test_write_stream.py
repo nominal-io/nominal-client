@@ -51,7 +51,7 @@ def test_process_batch_double_points(mock_connection):
     mock_connection._process_batch(batch)
 
     # Get the actual request that was sent
-    actual_request = mock_connection._clients.storage_writer.write_nominal_batches.call_args[0][1]
+    actual_request = mock_connection._clients.proto_write_service.write_nominal_batches.call_args[0][1]
 
     # Verify it's the correct type
     assert isinstance(actual_request, WriteRequestNominal)
@@ -95,7 +95,7 @@ def test_process_batch_string_points(mock_connection):
     mock_connection._process_batch(batch)
 
     # Get the actual request that was sent
-    actual_request = mock_connection._clients.storage_writer.write_nominal_batches.call_args[0][1]
+    actual_request = mock_connection._clients.proto_write_service.write_nominal_batches.call_args[0][1]
 
     # Verify series structure
     assert len(actual_request.series) == 1
@@ -125,7 +125,7 @@ def test_process_batch_with_tags(mock_connection):
     mock_connection._process_batch(batch)
 
     # Get the actual request that was sent
-    actual_request = mock_connection._clients.storage_writer.write_nominal_batches.call_args[0][1]
+    actual_request = mock_connection._clients.proto_write_service.write_nominal_batches.call_args[0][1]
 
     # Verify tags were included
     assert len(actual_request.series) == 1

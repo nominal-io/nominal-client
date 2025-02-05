@@ -15,9 +15,10 @@ from nominal_api import (
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
-import nominal_api_protos.nominal_write_pb2 as nominal_write_pb2
 
-from nominal_api_protos.nominal_write_pb2 import WriteRequestNominal, Series, Points, DoublePoint, DoublePoints, StringPoint, StringPoints, Channel
+from google.protobuf.timestamp_pb2 import Timestamp
+
+from nominal_api_protos.nominal_write_pb2 import WriteRequestNominal, Series, Points, DoublePoint, DoublePoints, StringPoint, StringPoints, Channel as NominalChannel
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
@@ -196,45 +197,32 @@ class Connection(HasRid):
         api_batches = [list(api_batch) for _, api_batch in api_batched]
 
         def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
-            points = Points()
             # Check first value to determine type
             sample_value = api_batch[0].value
             if isinstance(sample_value, str):
-                string_points = StringPoints()
-                for item in api_batch:
-                    point = StringPoint()
-                    seconds_nanos = _SecondsNanos.from_flexible(item.timestamp)
-                    point.timestamp.seconds = seconds_nanos.seconds
-                    point.timestamp.nanos = seconds_nanos.nanos
-                    point.value = item.value
-                    string_points.points.append(point)
-                points.string_points.CopyFrom(string_points)
+                return Points(string_points=StringPoints(points=[
+                    StringPoint(
+                        timestamp=_make_timestamp(item.timestamp),
+                        value=item.value
+                    ) for item in api_batch
+                ]))
             elif isinstance(sample_value, float):
-                double_points = DoublePoints()
-                for item in api_batch:
-                    point = DoublePoint()
-                    seconds_nanos = _SecondsNanos.from_flexible(item.timestamp)
-                    point.timestamp.seconds = seconds_nanos.seconds
-                    point.timestamp.nanos = seconds_nanos.nanos
-                    point.value = item.value
-                    double_points.points.append(point)
-                points.double_points.CopyFrom(double_points)
+                return Points(double_points=DoublePoints(points=[
+                    DoublePoint(
+                        timestamp=_make_timestamp(item.timestamp),
+                        value=item.value
+                    ) for item in api_batch
+                ]))
             else:
                 raise ValueError("only float and string are supported types for value")
-            return points
 
-        # Build WriteRequestNominal with properly initialized Series messages
-        request = WriteRequestNominal()
-        for api_batch in api_batches:
-            series_msg = Series()
-            series_msg.channel.name = api_batch[0].channel_name
-
-            points_msg = make_points_proto(api_batch)
-            series_msg.points.CopyFrom(points_msg)
-            if api_batch[0].tags:
-                for key, value in api_batch[0].tags.items():
-                    series_msg.tags[key] = value
-            request.series.append(series_msg)
+        request = WriteRequestNominal(series=[
+            Series(
+                channel=NominalChannel(name=api_batch[0].channel_name),
+                points=make_points_proto(api_batch),
+                tags=api_batch[0].tags or {}
+            ) for api_batch in api_batches
+        ])
         
         self._clients.proto_write_service.write_nominal_batches(
             self._clients.auth_header,
@@ -266,3 +254,7 @@ def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
     # {color: [red, green], size: [S, M, L]} -> [{color: red, size: S}, {color: red, size: M}, ...,
     #                                            {color: green, size: L}]
     return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]
+
+def _make_timestamp(timestamp) -> Timestamp:
+    seconds_nanos = _SecondsNanos.from_flexible(timestamp)
+    return Timestamp(seconds=seconds_nanos.seconds, nanos=seconds_nanos.nanos)
