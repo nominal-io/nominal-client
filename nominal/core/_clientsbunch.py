@@ -54,7 +54,6 @@ class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
 
         _response: Response = self._request("POST", self._uri + _path, params=_params, headers=_headers, data=_data)
 
-
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: Any) -> None:
         _headers: Dict[str, Any] = {
             "Accept": "application/json",
@@ -74,7 +73,6 @@ class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
         _path = _path.format(**_path_params)
 
         _response: Response = self._request("POST", self._uri + _path, params=_params, headers=_headers, data=_data)
-
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,6 @@ from datetime import timedelta
 from itertools import groupby
 from typing import Iterable, Mapping, Protocol, Sequence
 
-from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api import (
     datasource_api,
     scout_datasource,
@@ -272,6 +271,7 @@ def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
     return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]
 
 
-def _make_timestamp(timestamp) -> Timestamp:
+def _make_timestamp(timestamp) -> dict:
+    """Convert timestamp to protobuf Timestamp format manually."""
     seconds_nanos = _SecondsNanos.from_flexible(timestamp)
-    return Timestamp(seconds=seconds_nanos.seconds, nanos=seconds_nanos.nanos)
+    return {"seconds": seconds_nanos.seconds, "nanos": seconds_nanos.nanos}
