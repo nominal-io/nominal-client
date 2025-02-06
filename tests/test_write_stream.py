@@ -10,6 +10,7 @@ from nominal_api_protos.nominal_write_pb2 import (
 from nominal.core.connection import Connection
 from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
+from nominal.core.batch_processor import process_batch
 
 
 @pytest.fixture(autouse=True)
@@ -49,8 +50,13 @@ def test_process_batch_double_points(mock_connection):
         BatchItem("test_channel", timestamp + timedelta(seconds=1), 43.0),
     ]
 
-    # Process the batch
-    mock_connection._process_batch(batch)
+    # Process the batch using the imported process_batch function
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write_service=mock_connection._clients.proto_write_service,
+    )
 
     # Get the actual request that was sent
     mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
@@ -101,8 +107,13 @@ def test_process_batch_string_points(mock_connection):
         BatchItem("test_channel", timestamp + timedelta(seconds=1), "value2"),
     ]
 
-    # Process the batch
-    mock_connection._process_batch(batch)
+    # Process the batch using the imported process_batch function
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write_service=mock_connection._clients.proto_write_service,
+    )
 
     # Get the actual request that was sent
     mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
@@ -139,8 +150,13 @@ def test_process_batch_with_tags(mock_connection):
         BatchItem("test_channel", timestamp + timedelta(seconds=1), 43.0, {"tag1": "value1"}),
     ]
 
-    # Process the batch
-    mock_connection._process_batch(batch)
+    # Process the batch using the imported process_batch function
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write_service=mock_connection._clients.proto_write_service,
+    )
 
     # Get the actual request that was sent
     mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
@@ -167,4 +183,66 @@ def test_process_batch_invalid_type(mock_connection):
 
     # Verify it raises the correct error
     with pytest.raises(ValueError, match="only float and string are supported types for value"):
-        mock_connection._process_batch(batch)
+        process_batch(
+            batch=batch,
+            nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+            auth_header=mock_connection._clients.auth_header,
+            proto_write_service=mock_connection._clients.proto_write_service,
+        )
+
+
+def test_process_batch_multiple_channels(mock_connection):
+    # Create test data with multiple channels
+    timestamp = datetime.now()
+    batch = [
+        BatchItem("channel1", timestamp, 42.0),
+        BatchItem("channel1", timestamp + timedelta(seconds=1), 43.0),
+        BatchItem("channel2", timestamp, "value1"),
+        BatchItem("channel2", timestamp + timedelta(seconds=1), "value2"),
+        BatchItem("channel3", timestamp, 100.0, {"tag1": "value1"}),
+    ]
+
+    # Process the batch
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write_service=mock_connection._clients.proto_write_service,
+    )
+
+    # Get the actual request that was sent
+    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write.assert_called_once()
+
+    # Check the basic arguments
+    kwargs = mock_write.call_args.kwargs
+    assert kwargs["auth_header"] == "test-auth-header"
+    assert kwargs["data_source_rid"] == "test-datasource-rid"
+    actual_request = kwargs["request"]
+
+    # Verify we have three series
+    assert len(actual_request.series) == 3
+
+    # Check channel1 (double points)
+    series1 = [s for s in actual_request.series if s.channel.name == "channel1"][0]
+    assert series1.points.HasField("double_points")
+    double_points = series1.points.double_points.points
+    assert len(double_points) == 2
+    assert double_points[0].value == 42.0
+    assert double_points[1].value == 43.0
+
+    # Check channel2 (string points)
+    series2 = [s for s in actual_request.series if s.channel.name == "channel2"][0]
+    assert series2.points.HasField("string_points")
+    string_points = series2.points.string_points.points
+    assert len(string_points) == 2
+    assert string_points[0].value == "value1"
+    assert string_points[1].value == "value2"
+
+    # Check channel3 (double points with tags)
+    series3 = [s for s in actual_request.series if s.channel.name == "channel3"][0]
+    assert series3.points.HasField("double_points")
+    assert series3.tags == {"tag1": "value1"}
+    double_points = series3.points.double_points.points
+    assert len(double_points) == 1
+    assert double_points[0].value == 100.0

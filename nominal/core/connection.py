@@ -153,6 +153,8 @@ class Connection(HasRid):
         return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
 
     def get_write_stream(self, batch_size: int = 10, max_wait: timedelta = timedelta(seconds=5)) -> WriteStream:
+        from nominal.core.batch_processor import process_batch
+
         """Stream to write non-blocking messages to a datasource.
 
         Args:
@@ -181,73 +183,10 @@ class Connection(HasRid):
 
         """
         if self._nominal_data_source_rid is not None:
-            return WriteStream.create(batch_size, max_wait, self._process_batch)
+            return WriteStream.create(batch_size, max_wait, process_batch)
         else:
             raise ValueError("Writing not implemented for this connection type")
 
-    def _process_batch(self, batch: Sequence[BatchItem]) -> None:
-        """Process a batch of items to write."""
-        from nominal_api_protos.nominal_write_pb2 import (
-                    Channel as NominalChannel,
-                )
-        from nominal_api_protos.nominal_write_pb2 import (
-            DoublePoint,
-            DoublePoints,
-            Points,
-            Series,
-            StringPoint,
-            StringPoints,
-            WriteRequestNominal,
-        )
-        
-        
-
-        api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
-
-        if self._nominal_data_source_rid is None:
-            raise ValueError("Writing not implemented for this connection type")
-        api_batches = [list(api_batch) for _, api_batch in api_batched]
-
-        def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
-            # Check first value to determine type
-            sample_value = api_batch[0].value
-            if isinstance(sample_value, str):
-                return Points(
-                    string_points=StringPoints(
-                        points=[
-                            StringPoint(timestamp=_make_timestamp(item.timestamp), value=item.value)
-                            for item in api_batch
-                        ]
-                    )
-                )
-            elif isinstance(sample_value, float):
-                return Points(
-                    double_points=DoublePoints(
-                        points=[
-                            DoublePoint(timestamp=_make_timestamp(item.timestamp), value=item.value)
-                            for item in api_batch
-                        ]
-                    )
-                )
-            else:
-                raise ValueError("only float and string are supported types for value")
-
-        request = WriteRequestNominal(
-            series=[
-                Series(
-                    channel=NominalChannel(name=api_batch[0].channel_name),
-                    points=make_points_proto(api_batch),
-                    tags=api_batch[0].tags or {},
-                )
-                for api_batch in api_batches
-            ]
-        )
-
-        self._clients.proto_write_service.write_nominal_batches(
-            auth_header=self._clients.auth_header,
-            data_source_rid=self._nominal_data_source_rid,
-            request=request,
-        )
 
     def archive(self) -> None:
         """Archive this connection.
@@ -265,18 +204,9 @@ def _get_connections(
 ) -> Sequence[scout_datasource_connection_api.Connection]:
     return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
 
-
-def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]], str]:
-    return item.channel_name, sorted(item.tags.items()) if item.tags is not None else [], type(item.value).__name__
-
-
 def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
     # {color: [red, green], size: [S, M, L]} -> [{color: red, size: S}, {color: red, size: M}, ...,
     #                                            {color: green, size: L}]
     return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]
 
 
-def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> dict[str, int]:
-    """Convert timestamp to protobuf Timestamp format manually."""
-    seconds_nanos = _SecondsNanos.from_flexible(timestamp)
-    return {"seconds": seconds_nanos.seconds, "nanos": seconds_nanos.nanos}
