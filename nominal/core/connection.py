@@ -5,40 +5,8 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from itertools import groupby
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
-
-if TYPE_CHECKING:
-    from nominal_api_protos.nominal_write_pb2 import (
-        Channel as NominalChannel,
-    )
-    from nominal_api_protos.nominal_write_pb2 import (
-        DoublePoint,
-        DoublePoints,
-        Points,
-        Series,
-        StringPoint,
-        StringPoints,
-        WriteRequestNominal,
-    )
-
-try:
-    from nominal_api_protos.nominal_write_pb2 import (
-        Channel as NominalChannel,
-    )
-    from nominal_api_protos.nominal_write_pb2 import (
-        DoublePoint,
-        DoublePoints,
-        Points,
-        Series,
-        StringPoint,
-        StringPoints,
-        WriteRequestNominal,
-    )
-
-    HAS_PROTOS = True
-except ImportError:
-    HAS_PROTOS = False
-
+from typing import Iterable, Mapping, Protocol, Sequence
+import time
 from nominal_api import (
     datasource_api,
     scout_datasource,
@@ -212,11 +180,6 @@ class Connection(HasRid):
             ```
 
         """
-        if not HAS_PROTOS:
-            raise ImportError(
-                "The proto write functionality requires the 'proto' extra. "
-                "Install it with: pip install nominal[proto]"
-            )
         if self._nominal_data_source_rid is not None:
             return WriteStream.create(batch_size, max_wait, self._process_batch)
         else:
@@ -224,11 +187,21 @@ class Connection(HasRid):
 
     def _process_batch(self, batch: Sequence[BatchItem]) -> None:
         """Process a batch of items to write."""
-        if not HAS_PROTOS:
-            raise ImportError(
-                "The proto write functionality requires the 'proto' extra. "
-                "Install it with: pip install nominal[proto]"
-            )
+        from nominal_api_protos.nominal_write_pb2 import (
+                    Channel as NominalChannel,
+                )
+        from nominal_api_protos.nominal_write_pb2 import (
+            DoublePoint,
+            DoublePoints,
+            Points,
+            Series,
+            StringPoint,
+            StringPoints,
+            WriteRequestNominal,
+        )
+        
+        
+
         api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
 
         if self._nominal_data_source_rid is None:
