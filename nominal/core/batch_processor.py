@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from itertools import groupby
-from typing import Sequence
+from typing import Any, Sequence
 
 from nominal_api_protos.nominal_write_pb2 import (
     Channel as NominalChannel,
+)
+from nominal_api_protos.nominal_write_pb2 import (
     DoublePoint,
     DoublePoints,
     Points,
@@ -16,14 +18,19 @@ from nominal_api_protos.nominal_write_pb2 import (
 )
 
 from nominal.core.stream import BatchItem
-from nominal.ts import _SecondsNanos, IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]], str]:
     return item.channel_name, sorted(item.tags.items()) if item.tags is not None else [], type(item.value).__name__
 
 
-def process_batch(batch: Sequence[BatchItem], nominal_data_source_rid: str | None, auth_header: str, proto_write_service) -> None:
+def process_batch(
+    batch: Sequence[BatchItem],
+    nominal_data_source_rid: str | None,
+    auth_header: str,
+    proto_write_service: Any,
+) -> None:
     """Process a batch of items to write."""
     api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
 
@@ -38,8 +45,7 @@ def process_batch(batch: Sequence[BatchItem], nominal_data_source_rid: str | Non
             return Points(
                 string_points=StringPoints(
                     points=[
-                        StringPoint(timestamp=_make_timestamp(item.timestamp), value=item.value)
-                        for item in api_batch
+                        StringPoint(timestamp=_make_timestamp(item.timestamp), value=item.value) for item in api_batch
                     ]
                 )
             )
@@ -47,8 +53,7 @@ def process_batch(batch: Sequence[BatchItem], nominal_data_source_rid: str | Non
             return Points(
                 double_points=DoublePoints(
                     points=[
-                        DoublePoint(timestamp=_make_timestamp(item.timestamp), value=item.value)
-                        for item in api_batch
+                        DoublePoint(timestamp=_make_timestamp(item.timestamp), value=item.value) for item in api_batch
                     ]
                 )
             )
@@ -70,7 +75,8 @@ def process_batch(batch: Sequence[BatchItem], nominal_data_source_rid: str | Non
         auth_header=auth_header,
         data_source_rid=nominal_data_source_rid,
         request=request,
-    ) 
+    )
+
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> dict[str, int]:
     """Convert timestamp to protobuf Timestamp format manually."""

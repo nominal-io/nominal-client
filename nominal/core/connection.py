@@ -3,10 +3,9 @@ from __future__ import annotations
 import itertools
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from itertools import groupby
+from datetime import timedelta
 from typing import Iterable, Mapping, Protocol, Sequence
-import time
+
 from nominal_api import (
     datasource_api,
     scout_datasource,
@@ -19,8 +18,7 @@ from nominal_api import (
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
-from nominal.core.stream import BatchItem, WriteStream
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.core.stream import WriteStream
 
 
 @dataclass(frozen=True)
@@ -183,10 +181,18 @@ class Connection(HasRid):
 
         """
         if self._nominal_data_source_rid is not None:
-            return WriteStream.create(batch_size, max_wait, process_batch)
+            return WriteStream.create(
+                batch_size,
+                max_wait,
+                lambda batch: process_batch(
+                    batch=batch,
+                    nominal_data_source_rid=self._nominal_data_source_rid,
+                    auth_header=self._clients.auth_header,
+                    proto_write_service=self._clients.proto_write_service,
+                ),
+            )
         else:
             raise ValueError("Writing not implemented for this connection type")
-
 
     def archive(self) -> None:
         """Archive this connection.
@@ -204,9 +210,8 @@ def _get_connections(
 ) -> Sequence[scout_datasource_connection_api.Connection]:
     return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
 
+
 def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
     # {color: [red, green], size: [S, M, L]} -> [{color: red, size: S}, {color: red, size: M}, ...,
     #                                            {color: green, size: L}]
     return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]
-
-

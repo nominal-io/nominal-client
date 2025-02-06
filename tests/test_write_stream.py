@@ -7,10 +7,10 @@ from nominal_api_protos.nominal_write_pb2 import (
     WriteRequestNominal,
 )
 
+from nominal.core.batch_processor import process_batch
 from nominal.core.connection import Connection
 from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
-from nominal.core.batch_processor import process_batch
 
 
 @pytest.fixture(autouse=True)
@@ -246,3 +246,45 @@ def test_process_batch_multiple_channels(mock_connection):
     double_points = series3.points.double_points.points
     assert len(double_points) == 1
     assert double_points[0].value == 100.0
+
+
+def test_multiple_write_streams(mock_connection):
+    # Create test data
+    timestamp = datetime.now()
+
+    # First stream
+    with mock_connection.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1)) as stream1:
+        stream1.enqueue("channel1", timestamp, 42.0)
+        stream1.enqueue("channel1", timestamp + timedelta(seconds=1), 43.0)
+        # Force a small sleep to allow the batch to be processed
+
+    # Second stream
+    with mock_connection.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1)) as stream2:
+        stream2.enqueue("channel2", timestamp, "value1")
+        stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
+
+    # Verify both streams wrote their data
+    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    assert mock_write.call_count == 2
+    # return
+    # Check first call (stream1)
+    first_call = mock_write.call_args_list[0].kwargs
+    first_request = first_call["request"]
+    assert len(first_request.series) == 1
+    assert first_request.series[0].channel.name == "channel1"
+    assert first_request.series[0].points.HasField("double_points")
+    double_points = first_request.series[0].points.double_points.points
+    assert len(double_points) == 2
+    assert double_points[0].value == 42.0
+    assert double_points[1].value == 43.0
+
+    # Check second call (stream2)
+    second_call = mock_write.call_args_list[1].kwargs
+    second_request = second_call["request"]
+    assert len(second_request.series) == 1
+    assert second_request.series[0].channel.name == "channel2"
+    assert second_request.series[0].points.HasField("string_points")
+    string_points = second_request.series[0].points.string_points.points
+    assert len(string_points) == 2
+    assert string_points[0].value == "value1"
+    assert string_points[1].value == "value2"
