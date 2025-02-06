@@ -47,18 +47,6 @@ from nominal_api import (
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
-from nominal_api_protos.nominal_write_pb2 import (
-    Channel as NominalChannel,
-)
-from nominal_api_protos.nominal_write_pb2 import (
-    DoublePoint,
-    DoublePoints,
-    Points,
-    Series,
-    StringPoint,
-    StringPoints,
-    WriteRequestNominal,
-)
 
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
