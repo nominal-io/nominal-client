@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 if TYPE_CHECKING:
     from nominal_api_protos.nominal_write_pb2 import (
         Channel as NominalChannel,
+    )
+    from nominal_api_protos.nominal_write_pb2 import (
         DoublePoint,
         DoublePoints,
         Points,
@@ -22,6 +24,8 @@ if TYPE_CHECKING:
 try:
     from nominal_api_protos.nominal_write_pb2 import (
         Channel as NominalChannel,
+    )
+    from nominal_api_protos.nominal_write_pb2 import (
         DoublePoint,
         DoublePoints,
         Points,
@@ -30,6 +34,7 @@ try:
         StringPoints,
         WriteRequestNominal,
     )
+
     HAS_PROTOS = True
 except ImportError:
     HAS_PROTOS = False
