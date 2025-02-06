@@ -25,6 +25,7 @@ def mock_clients():
     clients = MagicMock()
     clients.storage_writer = MagicMock()
     clients.auth_header = "test-auth-header"
+    clients.proto_write_service = MagicMock()
     return clients
 
 
@@ -52,7 +53,14 @@ def test_process_batch_double_points(mock_connection):
     mock_connection._process_batch(batch)
 
     # Get the actual request that was sent
-    actual_request = mock_connection._clients.proto_write_service.write_nominal_batches.call_args[0][1]
+    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write.assert_called_once()
+
+    # Check the arguments using kwargs instead of args
+    kwargs = mock_write.call_args.kwargs
+    assert kwargs["auth_header"] == "test-auth-header"
+    assert kwargs["data_source_rid"] == "test-datasource-rid"
+    actual_request = kwargs["request"]
 
     # Verify it's the correct type
     assert isinstance(actual_request, WriteRequestNominal)
@@ -97,7 +105,14 @@ def test_process_batch_string_points(mock_connection):
     mock_connection._process_batch(batch)
 
     # Get the actual request that was sent
-    actual_request = mock_connection._clients.proto_write_service.write_nominal_batches.call_args[0][1]
+    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write.assert_called_once()
+
+    # Check the arguments using kwargs instead of args
+    kwargs = mock_write.call_args.kwargs
+    assert kwargs["auth_header"] == "test-auth-header"
+    assert kwargs["data_source_rid"] == "test-datasource-rid"
+    actual_request = kwargs["request"]
 
     # Verify series structure
     assert len(actual_request.series) == 1
@@ -128,7 +143,14 @@ def test_process_batch_with_tags(mock_connection):
     mock_connection._process_batch(batch)
 
     # Get the actual request that was sent
-    actual_request = mock_connection._clients.proto_write_service.write_nominal_batches.call_args[0][1]
+    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write.assert_called_once()
+
+    # Check the arguments using kwargs instead of args
+    kwargs = mock_write.call_args.kwargs
+    assert kwargs["auth_header"] == "test-auth-header"
+    assert kwargs["data_source_rid"] == "test-datasource-rid"
+    actual_request = kwargs["request"]
 
     # Verify tags were included
     assert len(actual_request.series) == 1
