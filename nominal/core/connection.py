@@ -5,8 +5,9 @@ import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
 from itertools import groupby
-from typing import Iterable, Mapping, Protocol, Sequence, cast
+from typing import Iterable, Mapping, Protocol, Sequence
 
+from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api import (
     datasource_api,
     scout_datasource,
@@ -15,16 +16,25 @@ from nominal_api import (
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
+from nominal_api_protos.nominal_write_pb2 import (
+    Channel as NominalChannel,
+)
+from nominal_api_protos.nominal_write_pb2 import (
+    DoublePoint,
+    DoublePoints,
+    Points,
+    Series,
+    StringPoint,
+    StringPoints,
+    WriteRequestNominal,
+)
 
-from google.protobuf.timestamp_pb2 import Timestamp
-
-from nominal_api_protos.nominal_write_pb2 import WriteRequestNominal, Series, Points, DoublePoint, DoublePoints, StringPoint, StringPoints, Channel as NominalChannel
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, WriteStream
 from nominal.ts import _SecondsNanos
-from nominal.core._clientsbunch import ProtoWriteService
+
 
 @dataclass(frozen=True)
 class Connection(HasRid):
@@ -44,7 +54,6 @@ class Connection(HasRid):
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
         def proto_write_service(self) -> ProtoWriteService: ...
-
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection:
@@ -200,30 +209,37 @@ class Connection(HasRid):
             # Check first value to determine type
             sample_value = api_batch[0].value
             if isinstance(sample_value, str):
-                return Points(string_points=StringPoints(points=[
-                    StringPoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=item.value
-                    ) for item in api_batch
-                ]))
+                return Points(
+                    string_points=StringPoints(
+                        points=[
+                            StringPoint(timestamp=_make_timestamp(item.timestamp), value=item.value)
+                            for item in api_batch
+                        ]
+                    )
+                )
             elif isinstance(sample_value, float):
-                return Points(double_points=DoublePoints(points=[
-                    DoublePoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=item.value
-                    ) for item in api_batch
-                ]))
+                return Points(
+                    double_points=DoublePoints(
+                        points=[
+                            DoublePoint(timestamp=_make_timestamp(item.timestamp), value=item.value)
+                            for item in api_batch
+                        ]
+                    )
+                )
             else:
                 raise ValueError("only float and string are supported types for value")
 
-        request = WriteRequestNominal(series=[
-            Series(
-                channel=NominalChannel(name=api_batch[0].channel_name),
-                points=make_points_proto(api_batch),
-                tags=api_batch[0].tags or {}
-            ) for api_batch in api_batches
-        ])
-        
+        request = WriteRequestNominal(
+            series=[
+                Series(
+                    channel=NominalChannel(name=api_batch[0].channel_name),
+                    points=make_points_proto(api_batch),
+                    tags=api_batch[0].tags or {},
+                )
+                for api_batch in api_batches
+            ]
+        )
+
         self._clients.proto_write_service.write_nominal_batches(
             self._clients.auth_header,
             request,
@@ -254,6 +270,7 @@ def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
     # {color: [red, green], size: [S, M, L]} -> [{color: red, size: S}, {color: red, size: M}, ...,
     #                                            {color: green, size: L}]
     return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]
+
 
 def _make_timestamp(timestamp) -> Timestamp:
     seconds_nanos = _SecondsNanos.from_flexible(timestamp)

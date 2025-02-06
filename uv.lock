@@ -1568,6 +1568,9 @@ hdf5 = [
     { name = "h5py" },
     { name = "tables" },
 ]
+proto = [
+    { name = "nominal-api-protos" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1594,7 +1597,8 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
-    { name = "nominal-api", specifier = "==0.531.0" },
+    { name = "nominal-api", specifier = "==0.542.0" },
+    { name = "nominal-api-protos", marker = "extra == 'proto'", specifier = ">=0.0.0" },
     { name = "nptdms", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
     { name = "polars", specifier = ">=0.0.0" },
@@ -1629,15 +1633,27 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.531.0"
+version = "0.542.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/58/9bc0110079d5c525ca307d87b744c506e0cc578683dd016bb58bef962a1c/nominal_api-0.531.0.tar.gz", hash = "sha256:77bc9f4693660404736ecc9d2c7cadf396bb8061c2057ed9731f1ea79032fbb8", size = 279182 }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/a5/3d98de853fadb6a46332071a3d0c6d9d45a7da914095ba838d8c3172cf0c/nominal_api-0.542.0.tar.gz", hash = "sha256:20aeb13119238322ca82ed7d5b87bf58ef27e8b02a7ba0a04007de4b8ca3d001", size = 284923 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/26/77983d3957887e643ba4fc223e340e5b7d5e452d63e5e6a61958e678e69f/nominal_api-0.531.0-py3-none-any.whl", hash = "sha256:950e17029c148a300a2f8849060e4a9735b7f53232f2bc19fc79331230fa498e", size = 298799 },
+    { url = "https://files.pythonhosted.org/packages/32/38/77795dc868e6643033c017fb684db2ab544e46bfb3dc92677a4efbf712e2/nominal_api-0.542.0-py3-none-any.whl", hash = "sha256:e7936ce8b2df15d83a6ba7998f1263a66651a7e44a40f60de024e88f7319b88f", size = 304832 },
+]
+
+[[package]]
+name = "nominal-api-protos"
+version = "0.546.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/65/14/173b7ff818a8ea00f2791f965182ea7aa9bb5d7ff451f8726a5ffd81ca63/nominal_api_protos-0.546.0.tar.gz", hash = "sha256:90e0142e3bed5f43cf69f72dac8108f2dc6cdf68e31867b0eec8865cc5fd570a", size = 3032 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/1c/d8d7c51cc5c304033537516d7ae31c2cf1e96e44524ac161bbc61899bff7/nominal_api_protos-0.546.0-py3-none-any.whl", hash = "sha256:e8440cccaac2a0bfc3c9fd0d79270a62fc1a3a93d35f67b2bb924091724c4bd9", size = 5033 },
 ]
 
 [[package]]
@@ -1960,6 +1976,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2d/4f/feb5e137aff82f7c7f3248267b97451da3644f6cdc218edfe549fb354127/prompt_toolkit-3.0.48.tar.gz", hash = "sha256:d6623ab0477a80df74e646bdbc93621143f5caf104206aa29294d53de1a03d90", size = 424684 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/6a/fd08d94654f7e67c52ca30523a178b3f8ccc4237fce4be90d39c938a831a/prompt_toolkit-3.0.48-py3-none-any.whl", hash = "sha256:f49a827f90062e411f1ce1f854f2aedb3c23353244f8108b89283587397ac10e", size = 386595 },
+]
+
+[[package]]
+name = "protobuf"
+version = "5.29.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f7/d1/e0a911544ca9993e0f17ce6d3cc0932752356c1b0a834397f28e63479344/protobuf-5.29.3.tar.gz", hash = "sha256:5da0f41edaf117bde316404bad1a486cb4ededf8e4a54891296f648e8e076620", size = 424945 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/7a/1e38f3cafa022f477ca0f57a1f49962f21ad25850c3ca0acd3b9d0091518/protobuf-5.29.3-cp310-abi3-win32.whl", hash = "sha256:3ea51771449e1035f26069c4c7fd51fba990d07bc55ba80701c78f886bf9c888", size = 422708 },
+    { url = "https://files.pythonhosted.org/packages/61/fa/aae8e10512b83de633f2646506a6d835b151edf4b30d18d73afd01447253/protobuf-5.29.3-cp310-abi3-win_amd64.whl", hash = "sha256:a4fa6f80816a9a0678429e84973f2f98cbc218cca434abe8db2ad0bffc98503a", size = 434508 },
+    { url = "https://files.pythonhosted.org/packages/dd/04/3eaedc2ba17a088961d0e3bd396eac764450f431621b58a04ce898acd126/protobuf-5.29.3-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:a8434404bbf139aa9e1300dbf989667a83d42ddda9153d8ab76e0d5dcaca484e", size = 417825 },
+    { url = "https://files.pythonhosted.org/packages/4f/06/7c467744d23c3979ce250397e26d8ad8eeb2bea7b18ca12ad58313c1b8d5/protobuf-5.29.3-cp38-abi3-manylinux2014_aarch64.whl", hash = "sha256:daaf63f70f25e8689c072cfad4334ca0ac1d1e05a92fc15c54eb9cf23c3efd84", size = 319573 },
+    { url = "https://files.pythonhosted.org/packages/a8/45/2ebbde52ad2be18d3675b6bee50e68cd73c9e0654de77d595540b5129df8/protobuf-5.29.3-cp38-abi3-manylinux2014_x86_64.whl", hash = "sha256:c027e08a08be10b67c06bf2370b99c811c466398c357e615ca88c91c07f0910f", size = 319672 },
+    { url = "https://files.pythonhosted.org/packages/85/a6/bf65a38f8be5ab8c3b575822acfd338702fdf7ac9abd8c81630cc7c9f4bd/protobuf-5.29.3-cp39-cp39-win32.whl", hash = "sha256:0eb32bfa5219fc8d4111803e9a690658aa2e6366384fd0851064b963b6d1f2a7", size = 422676 },
+    { url = "https://files.pythonhosted.org/packages/ac/e2/48d46adc86369ff092eaece3e537f76b3baaab45ca3dde257838cde831d2/protobuf-5.29.3-cp39-cp39-win_amd64.whl", hash = "sha256:6ce8cc3389a20693bfde6c6562e03474c40851b44975c9b2bf6df7d8c4f864da", size = 434593 },
+    { url = "https://files.pythonhosted.org/packages/fd/b2/ab07b09e0f6d143dfb839693aa05765257bceaa13d03bf1a696b78323e7a/protobuf-5.29.3-py3-none-any.whl", hash = "sha256:0a18ed4a24198528f2333802eb075e59dea9d679ab7a6c5efb017a59004d849f", size = 172550 },
 ]
 
 [[package]]
