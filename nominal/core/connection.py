@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import logging
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from itertools import groupby
 from typing import Iterable, Mapping, Protocol, Sequence
 
@@ -32,7 +32,7 @@ from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, WriteStream
-from nominal.ts import _SecondsNanos
+from nominal.ts import _SecondsNanos, IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)
@@ -240,8 +240,9 @@ class Connection(HasRid):
         )
 
         self._clients.proto_write_service.write_nominal_batches(
-            self._clients.auth_header,
-            request,
+            auth_header=self._clients.auth_header,
+            data_source_rid=self._nominal_data_source_rid,
+            request=request,
         )
 
     def archive(self) -> None:
@@ -271,7 +272,7 @@ def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
     return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]
 
 
-def _make_timestamp(timestamp) -> dict:
+def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> dict[str, int]:
     """Convert timestamp to protobuf Timestamp format manually."""
     seconds_nanos = _SecondsNanos.from_flexible(timestamp)
     return {"seconds": seconds_nanos.seconds, "nanos": seconds_nanos.nanos}
