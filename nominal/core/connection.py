@@ -32,7 +32,7 @@ from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, WriteStream
-from nominal.ts import _SecondsNanos, IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
