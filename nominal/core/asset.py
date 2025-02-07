@@ -238,6 +238,9 @@ class Asset(HasRid):
         The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
         """
         data_scope_names = data_scope_names or []
+
+        if isinstance(data_sources, str):
+            data_sources = [data_sources]
         data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
 
         conjure_asset = self._get_asset()
