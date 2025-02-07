@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
 
-from conjure_python_client import RequestsClient, ServiceConfiguration
+from conjure_python_client import RequestsClient, Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
@@ -33,13 +33,10 @@ from nominal_api import (
     timeseries_logicalseries,
     upload_api,
 )
-from requests.adapters import (
-    Response,
-)
 from typing_extensions import Self
 
 
-class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
+class ProtoWriteService(Service):
     def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: WriteRequestNominal) -> None:
         _headers = {
             "Accept": "application/json",
@@ -47,9 +44,7 @@ class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
-        _response: Response = self._request(
-            "POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString()
-        )
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: WriteRequest) -> None:
         _headers = {
@@ -58,9 +53,7 @@ class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/prometheus/{data_source_rid}"
-        _response: Response = self._request(
-            "POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString()
-        )
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
 
 
 @dataclass(frozen=True)
