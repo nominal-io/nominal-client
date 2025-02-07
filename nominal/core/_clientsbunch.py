@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nominal_api_protos.nominal_write_pb2 import WriteRequestNominal
+    from nominal_api_protos.prometheus_remote_write_pb2 import WriteRequest
+
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, Protocol
+from typing import Protocol
 
 from conjure_python_client import RequestsClient, ServiceConfiguration
 from nominal_api import (
@@ -34,45 +40,27 @@ from typing_extensions import Self
 
 
 class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
-    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: Any) -> None:
-        _headers: Dict[str, Any] = {
+    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: WriteRequestNominal) -> None:
+        _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
+        _path = f"/storage/writer/v1/nominal/{data_source_rid}"
+        _response: Response = self._request(
+            "POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString()
+        )
 
-        _params: Dict[str, Any] = {}
-
-        _path_params: Dict[str, Any] = {
-            "dataSourceRid": data_source_rid,
-        }
-
-        _data: bytes = request.SerializeToString()
-
-        _path = "/storage/writer/v1/nominal/{dataSourceRid}"
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request("POST", self._uri + _path, params=_params, headers=_headers, data=_data)
-
-    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: Any) -> None:
-        _headers: Dict[str, Any] = {
+    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: WriteRequest) -> None:
+        _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
-
-        _params: Dict[str, Any] = {}
-
-        _path_params: Dict[str, Any] = {
-            "dataSourceRid": data_source_rid,
-        }
-
-        _data: bytes = request.SerializeToString()
-
-        _path = "/storage/writer/v1/prometheus/{dataSourceRid}"
-        _path = _path.format(**_path_params)
-
-        _response: Response = self._request("POST", self._uri + _path, params=_params, headers=_headers, data=_data)
+        _path = f"/storage/writer/v1/prometheus/{data_source_rid}"
+        _response: Response = self._request(
+            "POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString()
+        )
 
 
 @dataclass(frozen=True)
