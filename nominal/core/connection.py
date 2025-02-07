@@ -139,7 +139,7 @@ class Connection(HasRid):
         series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
         return Channel._from_conjure_logicalseries_api(self._clients, series)
 
-    def get_nominal_write_stream(self, batch_size: int = 10, max_wait_sec: int = 5) -> WriteStream:
+    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
         """get_nominal_write_stream is deprecated and will be removed in a future version,
         use get_write_stream instead.
         """
@@ -153,7 +153,7 @@ class Connection(HasRid):
         )
         return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
 
-    def get_write_stream(self, batch_size: int = 10, max_wait: timedelta = timedelta(seconds=5)) -> WriteStream:
+    def get_write_stream(self, batch_size: int = 50_000, max_wait: timedelta = timedelta(seconds=1)) -> WriteStream:
         """Stream to write non-blocking messages to a datasource.
 
         Args:
