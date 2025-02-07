@@ -34,7 +34,10 @@ from typing_extensions import Self
 
 
 class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
-    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: Any) -> None:
+    from nominal_api_protos.nominal_write_pb2 import WriteRequestNominal
+    from nominal_api_protos.prometheus_remote_write_pb2 import WriteRequest
+
+    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: WriteRequestNominal) -> None:
         _headers: Dict[str, Any] = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
@@ -47,14 +50,14 @@ class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
             "dataSourceRid": data_source_rid,
         }
 
-        _data: Any = request
+        _data: bytes = request.SerializeToString()
 
         _path = "/storage/writer/v1/nominal/{dataSourceRid}"
         _path = _path.format(**_path_params)
 
         _response: Response = self._request("POST", self._uri + _path, params=_params, headers=_headers, data=_data)
 
-    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: Any) -> None:
+    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: WriteRequest) -> None:
         _headers: Dict[str, Any] = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
@@ -67,7 +70,7 @@ class ProtoWriteService(storage_writer_api.NominalChannelWriterService):
             "dataSourceRid": data_source_rid,
         }
 
-        _data: Any = request
+        _data: bytes = request.SerializeToString()
 
         _path = "/storage/writer/v1/prometheus/{dataSourceRid}"
         _path = _path.format(**_path_params)

@@ -145,6 +145,10 @@ module = "nptdms"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "google.protobuf"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "nominal_api_protos.*"
 ignore_missing_imports = true
 

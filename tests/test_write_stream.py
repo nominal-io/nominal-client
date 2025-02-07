@@ -43,8 +43,8 @@ def mock_connection(mock_clients):
 
 
 def test_process_batch_double_points(mock_connection):
-    # Create test data
-    timestamp = datetime.now()
+    # Create test data with fixed timestamp
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
         BatchItem("test_channel", timestamp, 42.0),
         BatchItem("test_channel", timestamp + timedelta(seconds=1), 43.0),
@@ -100,8 +100,8 @@ def test_process_batch_double_points(mock_connection):
 
 
 def test_process_batch_string_points(mock_connection):
-    # Create test data
-    timestamp = datetime.now()
+    # Create test data with fixed timestamp
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
         BatchItem("test_channel", timestamp, "value1"),
         BatchItem("test_channel", timestamp + timedelta(seconds=1), "value2"),
@@ -143,8 +143,8 @@ def test_process_batch_string_points(mock_connection):
 
 
 def test_process_batch_with_tags(mock_connection):
-    # Create test data with tags
-    timestamp = datetime.now()
+    # Create test data with fixed timestamp
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
         BatchItem("test_channel", timestamp, 42.0, {"tag1": "value1"}),
         BatchItem("test_channel", timestamp + timedelta(seconds=1), 43.0, {"tag1": "value1"}),
@@ -175,8 +175,8 @@ def test_process_batch_with_tags(mock_connection):
 
 
 def test_process_batch_invalid_type(mock_connection):
-    # Create test data with invalid type
-    timestamp = datetime.now()
+    # Create test data with fixed timestamp
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
         BatchItem("test_channel", timestamp, [1, 2, 3]),  # Lists are not supported
     ]
@@ -192,8 +192,8 @@ def test_process_batch_invalid_type(mock_connection):
 
 
 def test_process_batch_multiple_channels(mock_connection):
-    # Create test data with multiple channels
-    timestamp = datetime.now()
+    # Create test data with fixed timestamp
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
         BatchItem("channel1", timestamp, 42.0),
         BatchItem("channel1", timestamp + timedelta(seconds=1), 43.0),
@@ -249,8 +249,8 @@ def test_process_batch_multiple_channels(mock_connection):
 
 
 def test_multiple_write_streams(mock_connection):
-    # Create test data
-    timestamp = datetime.now()
+    # Create test data with fixed timestamp
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     # First stream
     with mock_connection.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1)) as stream1:

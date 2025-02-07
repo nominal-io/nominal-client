@@ -151,7 +151,11 @@ class Connection(HasRid):
         return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
 
     def get_write_stream(self, batch_size: int = 10, max_wait: timedelta = timedelta(seconds=5)) -> WriteStream:
-        from nominal.core.batch_processor import process_batch
+        # inlined to avoid nominal-api-protos import dependency for all references to this file
+        try:
+            from nominal.core.batch_processor import process_batch
+        except ImportError:
+            raise ImportError("nominal-api-protos is required to use get_write_stream")
 
         """Stream to write non-blocking messages to a datasource.
 
