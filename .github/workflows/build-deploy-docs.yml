@@ -42,6 +42,7 @@ jobs:
       - name: Build docs
         run: |
           just build-docs
+          uv pip install '.[hdf5,proto]'
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
