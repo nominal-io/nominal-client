@@ -178,6 +178,11 @@ class Connection(HasRid):
             ```
 
         """
+        try:
+            from nominal.core.batch_processor import process_batch
+        except ImportError:
+            raise ImportError("nominal-api-protos is required to use get_write_stream")
+
         if self._nominal_data_source_rid is not None:
             return WriteStream.create(
                 batch_size,
