@@ -83,7 +83,7 @@ class ClientsBunch:
     notebook: scout.NotebookService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
-    proto_write_service: ProtoWriteService
+    proto_write: ProtoWriteService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -114,7 +114,7 @@ class ClientsBunch:
             notebook=client_factory(scout.NotebookService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
-            proto_write_service=client_factory(ProtoWriteService),
+            proto_write=client_factory(ProtoWriteService),
         )
 
 

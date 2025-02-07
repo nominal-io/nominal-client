@@ -64,7 +64,7 @@ def process_batch(
     batch: Sequence[BatchItem],
     nominal_data_source_rid: str | None,
     auth_header: str,
-    proto_write_service: ProtoWriteService,
+    proto_write: ProtoWriteService,
 ) -> None:
     """Process a batch of items to write."""
     api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
@@ -76,7 +76,7 @@ def process_batch(
 
     request = create_write_request(api_batches)
 
-    proto_write_service.write_nominal_batches(
+    proto_write.write_nominal_batches(
         auth_header=auth_header,
         data_source_rid=nominal_data_source_rid,
         request=request,

@@ -26,7 +26,7 @@ def mock_clients():
     clients = MagicMock()
     clients.storage_writer = MagicMock()
     clients.auth_header = "test-auth-header"
-    clients.proto_write_service = MagicMock()
+    clients.proto_write = MagicMock()
     return clients
 
 
@@ -55,11 +55,11 @@ def test_process_batch_double_points(mock_connection):
         batch=batch,
         nominal_data_source_rid=mock_connection._nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
-        proto_write_service=mock_connection._clients.proto_write_service,
+        proto_write=mock_connection._clients.proto_write,
     )
 
     # Get the actual request that was sent
-    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
     mock_write.assert_called_once()
 
     # Check the arguments using kwargs instead of args
@@ -112,11 +112,11 @@ def test_process_batch_string_points(mock_connection):
         batch=batch,
         nominal_data_source_rid=mock_connection._nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
-        proto_write_service=mock_connection._clients.proto_write_service,
+        proto_write=mock_connection._clients.proto_write,
     )
 
     # Get the actual request that was sent
-    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
     mock_write.assert_called_once()
 
     # Check the arguments using kwargs instead of args
@@ -155,11 +155,11 @@ def test_process_batch_with_tags(mock_connection):
         batch=batch,
         nominal_data_source_rid=mock_connection._nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
-        proto_write_service=mock_connection._clients.proto_write_service,
+        proto_write=mock_connection._clients.proto_write,
     )
 
     # Get the actual request that was sent
-    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
     mock_write.assert_called_once()
 
     # Check the arguments using kwargs instead of args
@@ -187,7 +187,7 @@ def test_process_batch_invalid_type(mock_connection):
             batch=batch,
             nominal_data_source_rid=mock_connection._nominal_data_source_rid,
             auth_header=mock_connection._clients.auth_header,
-            proto_write_service=mock_connection._clients.proto_write_service,
+            proto_write=mock_connection._clients.proto_write,
         )
 
 
@@ -207,11 +207,11 @@ def test_process_batch_multiple_channels(mock_connection):
         batch=batch,
         nominal_data_source_rid=mock_connection._nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
-        proto_write_service=mock_connection._clients.proto_write_service,
+        proto_write=mock_connection._clients.proto_write,
     )
 
     # Get the actual request that was sent
-    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
     mock_write.assert_called_once()
 
     # Check the basic arguments
@@ -264,7 +264,7 @@ def test_multiple_write_streams(mock_connection):
         stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
 
     # Verify both streams wrote their data
-    mock_write = mock_connection._clients.proto_write_service.write_nominal_batches
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
     assert mock_write.call_count == 2
     # return
     # Check first call (stream1)

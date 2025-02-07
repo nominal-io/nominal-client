@@ -1568,7 +1568,7 @@ hdf5 = [
     { name = "h5py" },
     { name = "tables" },
 ]
-proto = [
+protos = [
     { name = "nominal-api-protos" },
 ]
 
@@ -1599,7 +1599,7 @@ requires-dist = [
     { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
     { name = "nominal-api", specifier = "==0.542.0" },
-    { name = "nominal-api-protos", marker = "extra == 'proto'", specifier = ">=0.0.0" },
+    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.0.0" },
     { name = "nptdms", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
     { name = "polars", specifier = ">=0.0.0" },

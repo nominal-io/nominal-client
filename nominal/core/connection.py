@@ -38,7 +38,7 @@ class Connection(HasRid):
         @property
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
-        def proto_write_service(self) -> ProtoWriteService: ...
+        def proto_write(self) -> ProtoWriteService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection:
@@ -192,7 +192,7 @@ class Connection(HasRid):
                     batch=batch,
                     nominal_data_source_rid=self._nominal_data_source_rid,
                     auth_header=self._clients.auth_header,
-                    proto_write_service=self._clients.proto_write_service,
+                    proto_write=self._clients.proto_write,
                 ),
             )
         else:
