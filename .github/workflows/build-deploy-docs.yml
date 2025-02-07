@@ -36,8 +36,6 @@ jobs:
       - name: Install dependencies
         run: |
           just install
-          uv pip install '.[hdf5,proto]'
-
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5

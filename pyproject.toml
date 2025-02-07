@@ -145,10 +145,6 @@ disable_error_code = ["no-any-return", "no-untyped-def"]
 module = "nptdms"
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = "nominal_api_protos.*"
-ignore_missing_imports = true
-
 [tool.pytest.ini_options]
 filterwarnings = [
     "error", # transform all warnings into errors, except ignore: ones.

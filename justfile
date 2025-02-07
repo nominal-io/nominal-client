@@ -7,6 +7,8 @@ default:
 # development install with dependencies
 install:
     uv sync
+    uv pip install '.[hdf5,proto]'
+
 
 # Execute the python CLI
 cli *args='--help':
