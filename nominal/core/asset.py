@@ -18,7 +18,9 @@ from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
 
-ScopeList: TypeAlias = list[tuple[str, Connection | Dataset | LogSet | Video]]
+ScopeTupleList: TypeAlias = list[tuple[str, Connection | Dataset | LogSet | Video]]
+ScopeList: TypeAlias = list[Connection | Dataset | LogSet | Video | str]
+ScopeSequence: TypeAlias = Sequence[Connection | Dataset | LogSet | Video | str]
 
 
 @dataclass(frozen=True)
@@ -197,16 +199,16 @@ class Asset(HasRid):
             for (scope, rid) in scope_rid.items()
         ]
 
-    def list_data_scopes(self) -> ScopeList:
+    def list_data_scopes(self) -> ScopeTupleList:
         """List scopes associated with this asset.
         Returns (data_scope_name, scope) pairs, where scope can be
         a dataset, connection, video, or logset.
         """
         return (
-            cast(ScopeList, self.list_datasets()) +
-            cast(ScopeList, self.list_connections()) +
-            cast(ScopeList, self.list_logsets()) +
-            cast(ScopeList, self.list_videos())
+            cast(ScopeTupleList, self.list_datasets()) +
+            cast(ScopeTupleList, self.list_connections()) +
+            cast(ScopeTupleList, self.list_logsets()) +
+            cast(ScopeTupleList, self.list_videos())
         )
 
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
@@ -303,6 +305,33 @@ class Asset(HasRid):
         )
         asset = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, asset, fields=self.__dataclass_fields__)
+
+    # Newer alias to replace remove_data_sources
+    def remove_data_scopes(
+        self,
+        *,
+        names: Sequence[str] | None = None,
+        rids: Sequence[str] | str | None = None,
+        scopes: ScopeSequence | None = None,
+    ) -> None:
+        """Remove data scopes from this asset.
+
+        Scopes can be specified either by their names, their rids, or the
+        scope objects themselves.
+        """
+        data_sources : ScopeList = []
+        if rids is not None:
+            if isinstance(rids, str):
+                data_sources.extend([rids])
+            else:
+                data_sources.extend(list(rids))
+        if scopes is not None:
+            data_sources.extend(list(scopes))
+
+        self.remove_data_sources(
+            data_scope_names=[names] if isinstance(names, str) else names,
+            data_sources=data_sources
+        )
 
     def add_connection(
         self, data_scope_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
