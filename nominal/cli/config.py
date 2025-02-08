@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 import dataclasses
 
 import click
 
-from nominal import config, _config as _deprecated_config
+from nominal import _config as _deprecated_config
+from nominal import config
 from nominal.cli.util.global_decorators import global_options
 from nominal.cli.util.verify_connection import validate_token_url
 
@@ -40,7 +42,9 @@ def remove(profile: str) -> None:
 
 @config_cmd.command()
 def migrate():
-    """Interactively migrate deprecated environment-based config at ~/.nominal.yml to new profile-based config at ~/.config/nominal/config.yml"""
+    """Interactively migrate deprecated environment-based config at ~/.nominal.yml
+    to new profile-based config at ~/.config/nominal/config.yml
+    """
     deprecated_cfg = _deprecated_config.NominalConfig.from_yaml()
     profiles = {}
     for url, token in deprecated_cfg.environments.items():

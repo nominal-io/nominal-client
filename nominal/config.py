@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import logging
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Literal, Mapping
@@ -10,11 +10,12 @@ import yaml
 from typing_extensions import Self  # typing.Self in 3.11+
 
 from nominal._config import (
-    NominalConfigV1,
     _DEFAULT_NOMINAL_CONFIG_PATH as DEPRECATED_NOMINAL_CONFIG_PATH,
 )
+from nominal._config import (
+    NominalConfigV1,
+)
 from nominal.exceptions import NominalConfigError
-
 
 _DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.config/nominal/config.yml").expanduser().resolve()
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ class NominalConfig:
     def from_yaml(cls, path: Path = _DEFAULT_NOMINAL_CONFIG_PATH) -> Self:
         if not path.exists():
             if DEPRECATED_NOMINAL_CONFIG_PATH.exists():
-                _migrate_deprecated_config()
+                _auto_migrate_deprecated_config()
             raise FileNotFoundError(
                 f"no config file found at {_DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config profile add`"
             )
@@ -90,8 +91,8 @@ class _NominalConfigMigrationError(NominalConfigError):
     """Unable to automatically migrate v1 config to v2"""
 
 
-def _migrate_deprecated_config() -> None:
-    logger.info("migrating deprecated config to v2")
+def _auto_migrate_deprecated_config() -> None:
+    logger.info("attempting to auto-migrate deprecated config to v2")
 
     prod_url = "api.gov.nominal.io/api"
     staging_url = "api-staging.gov.nominal.io/api"

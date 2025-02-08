@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
-from conjure_python_client import ServiceConfiguration, SslConfiguration
 import typing_extensions
+from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
     attachments_api,
@@ -80,7 +80,7 @@ class NominalClient:
             profile: profile name in your Nominal config.
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
-            connect_timeout: Request connection timeout.
+            timeout: Request connection timeout.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -100,7 +100,9 @@ class NominalClient:
         Args:
             base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
             token: A user token or API key to authenticate with.
-            connect_timeout: Request connection timeout.
+            trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
+                certifi's trust store is used.
+            timeout: Request connection timeout.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         cfg = ServiceConfiguration(

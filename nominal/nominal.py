@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import datetime
-from functools import cache, partial
+from functools import partial
 from pathlib import Path
 from threading import Thread
 from types import MappingProxyType
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
+
 import typing_extensions
 
 from nominal import Connection, ts
