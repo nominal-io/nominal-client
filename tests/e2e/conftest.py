@@ -24,8 +24,8 @@ def base_url(pytestconfig):
 
 
 @pytest.fixture(scope="session")
-def client(base_url, auth_token) -> Iterator[None]:
-    return NominalClient.create(base_url=base_url, token=auth_token)
+def client(base_url, auth_token) -> NominalClient:
+    return NominalClient.from_url(base_url=base_url, token=auth_token)
 
 
 @pytest.fixture(scope="session", autouse=True)
