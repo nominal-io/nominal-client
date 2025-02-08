@@ -36,11 +36,6 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-@cache
-def _get_or_create_connection(base_url: str, token: str) -> NominalClient:
-    return NominalClient.from_url(base_url, token)
-
-
 @typing_extensions.deprecated(
     """`set_base_url` is deprecated and will be removed in a future version.
     Currently it will change the base_url of the 'default' profile.

@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 import logging
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal
+from typing import Literal, Mapping
 
 import yaml
 from typing_extensions import Self  # typing.Self in 3.11+
@@ -43,10 +43,10 @@ class NominalConfig:
 
     For production environments, the typical URL is: https://api.gov.nominal.io/api
     For staging environments, the typical URL is: https://api-staging.gov.nominal.io/api
-    For local development, the typical URL is: https://api.nominal.test
+    For local development, the typical URL is: https://api.nominal.test (note the lack of the /api suffix)
     """
 
-    profiles: MappingProxyType[str, ConfigProfile]
+    profiles: Mapping[str, ConfigProfile]
     version: Literal[2]
 
     @classmethod
@@ -55,7 +55,7 @@ class NominalConfig:
             if DEPRECATED_NOMINAL_CONFIG_PATH.exists():
                 _migrate_deprecated_config()
             raise FileNotFoundError(
-                f"no config file found at {_DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom auth profile add`"
+                f"no config file found at {_DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config profile add`"
             )
         with open(path) as f:
             obj = yaml.safe_load(f)
@@ -77,7 +77,7 @@ class NominalConfig:
     def get_profile(self, name: str) -> ConfigProfile:
         if name in self.profiles:
             return self.profiles[name]
-        raise NominalConfigError(f"profile {name!r} not found in config: add with `nom auth profile add`")
+        raise NominalConfigError(f"profile {name!r} not found in config: add with `nom config profile add`")
 
 
 @dataclass(frozen=True)
@@ -113,7 +113,7 @@ def _migrate_deprecated_config() -> None:
         logger.debug(f"creating profile 'default' from the {prod_url} environment: {profiles['default']}")
     # otherwise, not obvious how to migrate
     else:
-        raise _NominalConfigMigrationError()
+        raise _NominalConfigMigrationError("unable to automatically migrate v1 config to v2: use `nom config migrate`")
 
     if staging_url in env:
         profiles["staging"] = ConfigProfile(base_url=f"https://{staging_url}", token=env.pop(staging_url))
