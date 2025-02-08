@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
     attachments_api,
@@ -11,7 +11,7 @@ from nominal_api import (
     scout_catalog,
     scout_run_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, TypeAlias
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import Link, _build_links
@@ -22,9 +22,9 @@ from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
-ScopeTupleList: TypeAlias = list[tuple[str, Connection | Dataset | LogSet | Video]]
-ScopeList: TypeAlias = list[Connection | Dataset | LogSet | Video | str]
-ScopeSequence: TypeAlias = Sequence[Connection | Dataset | LogSet | Video | str]
+ScopeTupleList: TypeAlias = "list[tuple[str, Connection | Dataset | LogSet | Video]]"
+ScopeList: TypeAlias = "list[Connection | Dataset | LogSet | Video | str]"
+ScopeSequence: TypeAlias = "Sequence[Connection | Dataset | LogSet | Video | str]"
 
 
 @dataclass(frozen=True)
