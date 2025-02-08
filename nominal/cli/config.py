@@ -11,7 +11,7 @@ from nominal.cli.util.verify_connection import validate_token_url
 
 
 @click.group(name="config")
-def config_cmd():
+def config_cmd() -> None:
     pass
 
 
@@ -41,7 +41,7 @@ def remove(profile: str) -> None:
 
 
 @config_cmd.command()
-def migrate():
+def migrate() -> None:
     """Interactively migrate deprecated environment-based config at ~/.nominal.yml
     to new profile-based config at ~/.config/nominal/config.yml
     """
