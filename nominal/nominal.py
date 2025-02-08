@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 @typing_extensions.deprecated(
     """`set_base_url` is deprecated and will be removed in a future version.
     Currently it will change the base_url of the 'default' profile.
-    Use `nom auth profile` at the command line to edit connection profiles instead.""",
+    Use `nom config profile` at the command line to edit connection profiles instead.""",
     category=UserWarning,
 )
 def set_base_url(base_url: str) -> None:
@@ -53,7 +53,7 @@ def set_base_url(base_url: str) -> None:
 @typing_extensions.deprecated(
     """`set_token` is deprecated and will be removed in a future version.
     Currently it will change the base_url and token of the 'default' profile.
-    Use `nom auth profile` at the command line to edit connection profiles instead.""",
+    Use `nom config profile` at the command line to edit connection profiles instead.""",
     category=UserWarning,
 )
 def set_token(base_url: str, token: str) -> None:
