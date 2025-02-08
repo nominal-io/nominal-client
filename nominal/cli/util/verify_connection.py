@@ -19,7 +19,7 @@ def validate_token_url(token: str, base_url: str) -> None:
         err_msg = "The base_url may be incorrect. Ensure the url is using the api subdomain (not the app)."
     elif status_code != 200:
         err_msg = (
-            f"There is a misconfiguration between the base_url and token. Ensure you use the api subdomain, "
+            f"There is likely a misconfiguration between the base_url and token. Ensure you use the api subdomain, "
             f"and create a new token: {docs_link} ({status_code})"
         )
     if err_msg:

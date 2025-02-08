@@ -15,7 +15,7 @@ def runner():
 
 @pytest.fixture()
 def mock_client():
-    with patch("nominal.NominalClient.create") as mock_create:
+    with patch("nominal.NominalClient.from_url") as mock_create:
         mock_client = MagicMock()
         mock_create.return_value = mock_client
         yield mock_client
@@ -34,7 +34,7 @@ def test_invalid_token(mock_client: MagicMock, runner: CliRunner):
 
     result = runner.invoke(set_token, ["-t", "invalid-token", "-u", "https://api.gov.nominal.io/api"])
 
-    assert "Your authorization token seems to be incorrect" in result.output
+    assert "The authorization token may be invalid" in result.output
     assert result.exit_code == 1
 
 
@@ -43,7 +43,7 @@ def test_invalid_url(mock_client: MagicMock, runner: CliRunner):
 
     result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://invalid-url"])
 
-    assert "Your base_url is not correct" in result.output
+    assert "The base_url may be incorrect" in result.output
     assert result.exit_code == 1
 
 
@@ -52,7 +52,7 @@ def test_bad_request(mock_client: MagicMock, runner: CliRunner):
 
     result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://api.gov.nominal.io/api"])
 
-    assert "misconfiguration between your base_url and token" in result.output
+    assert "misconfiguration between the base_url and token" in result.output
     assert result.exit_code == 1
 
 
