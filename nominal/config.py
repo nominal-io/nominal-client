@@ -38,7 +38,7 @@ class NominalConfig:
         base_url: https://api-staging.gov.nominal.io/api
         token: eyJ...
       dev:
-        base_url: http://api.nominal.test
+        base_url: https://api.nominal.test
         token: eyJ...
 
 
