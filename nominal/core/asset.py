@@ -104,74 +104,75 @@ class Asset(HasRid):
             raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
         return response[self.rid]
 
-    def _iter_list_scopes(
-        self, scope_types: tuple[Literal["dataset", "logset", "connection", "video"], ...] | None = None
-    ) -> Iterable[tuple[str, Dataset | Video | Connection | LogSet]]:
+    def _scope_rid(self, stype : Literal['dataset', 'video', 'connection', 'logset']) -> dict[str, str]:
         asset = self._get_asset()
+        rid_attrib = {
+            "dataset": "dataset",
+            "logset": "log_set",
+            "connection": "connection",
+            "video": "video"
+        }
+        return {
+            scope.data_scope_name: cast(str, getattr(scope.data_source, rid_attrib[stype]))
+            for scope in asset.data_scopes
+            if scope.data_source.type == stype
+        }
 
-        rid_attrib = {"dataset": "dataset", "logset": "log_set", "connection": "connection", "video": "video"}
-
-        if scope_types is None:
-            scope_types = tuple(rid_attrib)
-
-        scopes_by_type = defaultdict(list)
-
-        for scope in asset.data_scopes:
-            stype = scope.data_source.type.lower()
-            dataset_rid = cast(str, getattr(scope.data_source, rid_attrib[stype]))
-            scopes_by_type[stype].append((scope.data_scope_name, dataset_rid))
-
-        datasets = {}
-        if "dataset" in scope_types:
-            datasets.update(
-                {
-                    ds.rid: Dataset._from_conjure(self._clients, ds)
-                    for ds in _get_datasets(
-                        self._clients.auth_header,
-                        self._clients.catalog,
-                        (rid for (scope, rid) in scopes_by_type["dataset"]),
-                    )
-                }
-            )
-
-        connections = {}
-        if "connection" in scope_types:
-            connections.update(
-                {
-                    connection.rid: Connection._from_conjure(self._clients, connection)
-                    for connection in _get_connections(
-                        self._clients, (rid for (scope, rid) in scopes_by_type["connection"])
-                    )
-                }
-            )
-
-        logsets = {}
-        if "logset" in scope_types:
-            for scope, rid in scopes_by_type["logset"]:
-                logset_meta = _get_log_set(self._clients, rid)
-                logsets[logset_meta.rid] = LogSet._from_conjure(self._clients, logset_meta)
-
-        videos = {}
-        if "video" in scope_types:
-            for scope, rid in scopes_by_type["video"]:
-                video_meta = _get_video(self._clients, rid)
-                videos[video_meta.rid] = Video._from_conjure(self._clients, video_meta)
-
-        for scopes in (datasets, connections, logsets, videos):
-            yield from scopes.items()
-
-    def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
+    def list_datasets(self) -> list[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
         Returns (data_scope_name, dataset) pairs for each dataset.
         """
-        return list(self._iter_list_scopes(scope_types=("dataset")))
+        scope_rid = self._scope_rid(stype='dataset')
+        datasets_meta = _get_datasets(
+            self._clients.auth_header,
+            self._clients.catalog,
+            scope_rid.values()
+        )
+        return [
+            (scope, Dataset._from_conjure(self._clients, ds))
+            for (scope, ds) in zip(scope_rid.keys(), datasets_meta)
+        ]
 
-    def list_data_sources(self) -> Sequence[tuple[str, Connection | Dataset | LogSet | Video]]:
-        """List the data sources associated with this asset.
-        Returns (data_scope_name, scope) pairs for each dataset,
-        where scope can be a Dataset, LogSet, Video, or Connection.
+    def list_connections(self) -> list[tuple[str, Connection]]:
+        """List the connections associated with this asset.
+        Returns (data_scope_name, connection) pairs for each connection.
         """
-        return list(self._iter_list_scopes())
+        scope_rid = self._scope_rid(stype='connection')
+        connections_meta = _get_connections(
+            self._clients,
+            scope_rid.values()
+        )
+        return [
+            (scope, Connection._from_conjure(self._clients, connection))
+            for (scope, connection) in zip(scope_rid.keys(), connections_meta)
+        ]
+
+    def list_videos(self) -> list[tuple[str, Video]]:
+        """List the videos associated with this asset.
+        Returns (data_scope_name, dataset) pairs for each video.
+        """
+        scope_rid = self._scope_rid(stype='video')
+        return [
+            (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
+            for (scope, rid) in scope_rid.items()
+        ]
+
+    def list_logsets(self) -> list[tuple[str, LogSet]]:
+        """List the logsets associated with this asset.
+        Returns (data_scope_name, logset) pairs for each logset.
+        """
+        scope_rid = self._scope_rid(stype='logset')
+        return [
+            (scope, LogSet._from_conjure(self._clients, _get_log_set(self._clients, rid)))
+            for (scope, rid) in scope_rid.items()
+        ]
+
+    def list_data_scopes(self) -> list[tuple[str, Connection | Dataset | LogSet | Video]]:
+        """List scopes associated with this asset.
+        Returns (data_scope_name, scope) pairs, where scope can be
+        a dataset, connection, video, or logset.
+        """
+        return self.list_datasets() + self.list_connections() + self.list_logsets() + self.list_videos()
 
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this asset.
