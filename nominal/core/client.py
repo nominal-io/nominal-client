@@ -11,7 +11,6 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 import typing_extensions
-from ..config import NominalConfig, Profile
 from nominal_api import (
     api,
     attachments_api,
@@ -30,8 +29,9 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal import _config
+from nominal import _config as _deprecated_config
 from nominal._utils import deprecate_keyword_argument
+from nominal.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
@@ -68,8 +68,20 @@ class NominalClient:
 
     @classmethod
     def from_profile(
-        cls, profile: str, *, trust_store_path: str | None = None, timeout: timedelta = timedelta(seconds=30)
+        cls,
+        profile: str,
+        *,
+        trust_store_path: str | None = None,
+        timeout: timedelta = timedelta(seconds=30),
     ) -> Self:
+        """Create a connection to the Nominal platform from a named profile in the Nominal client config.
+
+        Args:
+            profile: profile name in your Nominal config.
+            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
+                certifi's trust store is used.
+            connect_timeout: Request connection timeout.
+        """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
         return cls.from_url(prof.base_url, prof.token, trust_store_path=trust_store_path, timeout=timeout)
@@ -80,9 +92,16 @@ class NominalClient:
         base_url: str,
         token: str,
         *,
-        trust_store_path: str | None,
+        trust_store_path: str | None = None,
         timeout: timedelta = timedelta(seconds=30),
     ) -> Self:
+        """Create a connection to the Nominal platform.
+
+        Args:
+            base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+            token: A user token or API key to authenticate with.
+            connect_timeout: Request connection timeout.
+        """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         cfg = ServiceConfiguration(
             uris=[base_url],
@@ -105,10 +124,12 @@ class NominalClient:
     ) -> Self:
         """Create a connection to the Nominal platform.
 
-        base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-        token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
-        trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
-            certifi's trust store is used.
+        Args:
+            base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+            token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
+            trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
+                certifi's trust store is used.
+            connect_timeout: Request connection timeout, in seconds.
         """
         import warnings
 
@@ -118,7 +139,7 @@ class NominalClient:
             stacklevel=2,
         )
         if token is None:
-            token = _config.get_token(base_url)
+            token = _deprecated_config.get_token(base_url)
         return cls.from_url(
             base_url, token, trust_store_path=trust_store_path, timeout=timedelta(seconds=connect_timeout)
         )
