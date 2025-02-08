@@ -5,7 +5,6 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 from threading import Thread
-from types import MappingProxyType
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
 import typing_extensions
@@ -40,28 +39,28 @@ if TYPE_CHECKING:
 @typing_extensions.deprecated(
     """`set_base_url` is deprecated and will be removed in a future version.
     Currently it will change the base_url of the 'default' profile.
-    Use `nom config profile` at the command line to edit connection profiles instead.""",
+    Use `nom config` at the command line to edit connection profiles instead.""",
     category=UserWarning,
 )
 def set_base_url(base_url: str) -> None:
     cfg = NominalConfig.from_yaml()
     profile = cfg.get_profile("default")
     new_profile = dataclasses.replace(profile, base_url=base_url)
-    new_cfg = dataclasses.replace(cfg, profiles=MappingProxyType({**cfg.profiles, "default": new_profile}))
+    new_cfg = dataclasses.replace(cfg, profiles={**cfg.profiles, "default": new_profile})
     new_cfg.to_yaml()
 
 
 @typing_extensions.deprecated(
     """`set_token` is deprecated and will be removed in a future version.
     Currently it will change the base_url and token of the 'default' profile.
-    Use `nom config profile` at the command line to edit connection profiles instead.""",
+    Use `nom config` at the command line to edit connection profiles instead.""",
     category=UserWarning,
 )
 def set_token(base_url: str, token: str) -> None:
     cfg = NominalConfig.from_yaml()
     profile = cfg.get_profile("default")
     new_profile = dataclasses.replace(profile, base_url=base_url, token=token)
-    new_cfg = dataclasses.replace(cfg, profiles=MappingProxyType({**cfg.profiles, "default": new_profile}))
+    new_cfg = dataclasses.replace(cfg, profiles={**cfg.profiles, "default": new_profile})
     new_cfg.to_yaml()
 
 

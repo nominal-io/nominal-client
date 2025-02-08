@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from types import MappingProxyType
 from typing import Literal, Mapping
 
 import yaml
@@ -12,9 +11,7 @@ from typing_extensions import Self  # typing.Self in 3.11+
 from nominal._config import (
     _DEFAULT_NOMINAL_CONFIG_PATH as DEPRECATED_NOMINAL_CONFIG_PATH,
 )
-from nominal._config import (
-    NominalConfigV1,
-)
+from nominal._config import NominalConfigV1
 from nominal.exceptions import NominalConfigError
 
 _DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.config/nominal/config.yml").expanduser().resolve()
@@ -55,9 +52,10 @@ class NominalConfig:
         if not path.exists():
             if DEPRECATED_NOMINAL_CONFIG_PATH.exists():
                 _auto_migrate_deprecated_config()
-            raise FileNotFoundError(
-                f"no config file found at {_DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config profile add`"
-            )
+            else:
+                raise FileNotFoundError(
+                    f"no config file found at {_DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config add-profile`"
+                )
         with open(path) as f:
             obj = yaml.safe_load(f)
         if "version" not in obj:
@@ -68,7 +66,7 @@ class NominalConfig:
         if version != 2:
             raise NominalConfigError(f"unsupported config version: {version}")
         profiles = {name: ConfigProfile(**params) for name, params in obj["profiles"].items()}
-        return cls(version=2, profiles=MappingProxyType(profiles))
+        return cls(version=2, profiles=profiles)
 
     def to_yaml(self, path: Path = _DEFAULT_NOMINAL_CONFIG_PATH) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,7 +76,7 @@ class NominalConfig:
     def get_profile(self, name: str) -> ConfigProfile:
         if name in self.profiles:
             return self.profiles[name]
-        raise NominalConfigError(f"profile {name!r} not found in config: add with `nom config profile add`")
+        raise NominalConfigError(f"profile {name!r} not found in config: add with `nom config add-profile`")
 
 
 @dataclass(frozen=True)
@@ -127,7 +125,7 @@ def _auto_migrate_deprecated_config() -> None:
         profiles[url] = ConfigProfile(base_url=f"https://{url}", token=token)
         logger.debug(f"creating profile '{url}' from the {url} environment: {profiles[url]}")
 
-    cfg = NominalConfig(version=2, profiles=MappingProxyType(profiles))
+    cfg = NominalConfig(version=2, profiles=profiles)
     logger.info(f"migrating deprecated config to new config: {cfg}")
     cfg.to_yaml()
     logger.warning(
