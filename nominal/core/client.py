@@ -8,10 +8,8 @@ from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
-import warnings
 
 import certifi
-import typing_extensions
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
@@ -31,7 +29,6 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal import _config as _deprecated_config
 from nominal._utils import deprecate_keyword_argument
 from nominal.config import NominalConfig, _get_profile_matching_url
 from nominal.core._clientsbunch import ClientsBunch
@@ -111,14 +108,13 @@ class NominalClient:
         Raises:
             NominalConfigError: If the `token` is None and no profile is found for the given `base_url`.
         """
-
         # TODO(alkasm): remove token=None
         # TODO(alkasm): make trust_store_path and connect_timeout keyword-only
         # TODO(alkasm): deprecate floating point timeout
         if token is None:
             warnings.warn(
-                f"using NominalClient.create(..., token=None) is deprecated and will be removed in a future version. "
-                f"instead configure profiles with the CLI `nom config` and use `NominalClient.from_profile`.",
+                "using NominalClient.create(..., token=None) is deprecated and will be removed in a future version. "
+                "instead configure profiles with the CLI `nom config` and use `NominalClient.from_profile`.",
                 UserWarning,
                 stacklevel=2,
             )

@@ -15,7 +15,7 @@ def runner():
 
 @pytest.fixture()
 def mock_client():
-    with patch("nominal.NominalClient.from_url") as mock_create:
+    with patch("nominal.NominalClient.create") as mock_create:
         mock_client = MagicMock()
         mock_create.return_value = mock_client
         yield mock_client

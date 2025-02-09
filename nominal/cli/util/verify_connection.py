@@ -10,7 +10,7 @@ def validate_token_url(token: str, base_url: str) -> None:
     status_code = 200
     err_msg = ""
     try:
-        NominalClient.from_url(base_url, token).get_user()
+        NominalClient.create(base_url, token).get_user()
     except ConjureHTTPError as err:
         status_code = err.response.status_code
     if status_code == 401:

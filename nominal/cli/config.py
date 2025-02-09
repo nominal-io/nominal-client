@@ -15,7 +15,7 @@ def config_cmd() -> None:
     pass
 
 
-@config_cmd.group()
+@config_cmd.group(name="profile")
 def profile_cmd() -> None:
     pass
 
@@ -39,7 +39,7 @@ def add_profile(profile: str, base_url: str, token: str) -> None:
 
 
 @profile_cmd.command("remove")
-@click.option("profile")
+@click.argument("profile")
 @global_options
 def remove_profile(profile: str) -> None:
     """Remove a profile from your Nominal config"""
