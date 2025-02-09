@@ -111,7 +111,7 @@ class NominalClient:
             NominalConfigError: If the `token` is None and no profile is found for the given `base_url`.
         """
 
-        # TODO(alkasm): deprecate token=None
+        # TODO(alkasm): remove token=None
         # TODO(alkasm): make trust_store_path and connect_timeout keyword-only
         # TODO(alkasm): deprecate floating point timeout
         if token is None:
