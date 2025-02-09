@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
+import warnings
 
 import certifi
 import typing_extensions
@@ -31,7 +32,7 @@ from typing_extensions import Self
 
 from nominal import _config as _deprecated_config
 from nominal._utils import deprecate_keyword_argument
-from nominal.config import NominalConfig
+from nominal.config import NominalConfig, _get_profile_matching_url
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
@@ -72,79 +73,67 @@ class NominalClient:
         profile: str,
         *,
         trust_store_path: str | None = None,
-        timeout: timedelta = timedelta(seconds=30),
+        connect_timeout: timedelta = timedelta(seconds=30),
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal client config.
 
         Args:
-            profile: profile name in your Nominal config.
+            profile: profile name in the Nominal config.
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
-            timeout: Request connection timeout.
+            connect_timeout: Request connection timeout.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
-        return cls.from_url(prof.base_url, prof.token, trust_store_path=trust_store_path, timeout=timeout)
+        return cls.create(prof.base_url, prof.token, trust_store_path=trust_store_path, connect_timeout=connect_timeout)
 
     @classmethod
-    def from_url(
-        cls,
-        base_url: str,
-        token: str,
-        *,
-        trust_store_path: str | None = None,
-        timeout: timedelta = timedelta(seconds=30),
-    ) -> Self:
-        """Create a connection to the Nominal platform.
-
-        Args:
-            base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-            token: A user token or API key to authenticate with.
-            trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
-                certifi's trust store is used.
-            timeout: Request connection timeout.
-        """
-        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
-        cfg = ServiceConfiguration(
-            uris=[base_url],
-            security=SslConfiguration(trust_store_path=trust_store_path),
-            connect_timeout=timeout.total_seconds(),
-        )
-        agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
-
-    @classmethod
-    @typing_extensions.deprecated(
-        "The `create` method is deprecated. Use `from_profile` or `from_url` instead.", category=UserWarning
-    )
     def create(
         cls,
         base_url: str,
         token: str | None = None,
         trust_store_path: str | None = None,
-        connect_timeout: float = 30,
+        connect_timeout: timedelta | float = timedelta(seconds=30),
     ) -> Self:
         """Create a connection to the Nominal platform.
 
+        See also: `NominalClient.from_profile`.
+
         Args:
             base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-            token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
+            token: An API key or bearer token to authenticate with. If None (deprecated), searches for a profile
+                with the given `base_url` in the Nominal config.
             trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout, in seconds.
-        """
-        import warnings
 
-        warnings.warn(
-            "The `create` method is deprecated. Use `from_profile` or `from_url` instead.",
-            UserWarning,
-            stacklevel=2,
-        )
+        Raises:
+            NominalConfigError: If the `token` is None and no profile is found for the given `base_url`.
+        """
+
+        # TODO(alkasm): deprecate token=None
+        # TODO(alkasm): make trust_store_path and connect_timeout keyword-only
+        # TODO(alkasm): deprecate floating point timeout
         if token is None:
-            token = _deprecated_config.get_token(base_url)
-        return cls.from_url(
-            base_url, token, trust_store_path=trust_store_path, timeout=timedelta(seconds=connect_timeout)
+            warnings.warn(
+                f"using NominalClient.create(..., token=None) is deprecated and will be removed in a future version. "
+                f"instead configure profiles with the CLI `nom config` and use `NominalClient.from_profile`.",
+                UserWarning,
+                stacklevel=2,
+            )
+            _config = NominalConfig.from_yaml()
+            _, _profile = _get_profile_matching_url(_config, base_url)
+            token = _profile.token
+
+        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
+        timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
+        cfg = ServiceConfiguration(
+            uris=[base_url],
+            security=SslConfiguration(trust_store_path=trust_store_path),
+            connect_timeout=timeout_seconds,
         )
+        agent = construct_user_agent_string()
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""

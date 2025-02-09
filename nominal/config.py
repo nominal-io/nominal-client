@@ -11,7 +11,7 @@ from typing_extensions import Self  # typing.Self in 3.11+
 from nominal._config import (
     _DEFAULT_NOMINAL_CONFIG_PATH as DEPRECATED_NOMINAL_CONFIG_PATH,
 )
-from nominal._config import NominalConfigV1
+from nominal._config import NominalConfigV1, _strip_scheme
 from nominal.exceptions import NominalConfigError
 
 _DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.config/nominal/config.yml").expanduser().resolve()
@@ -90,7 +90,7 @@ class _NominalConfigMigrationError(NominalConfigError):
 
 
 def _auto_migrate_deprecated_config() -> None:
-    logger.info("attempting to auto-migrate deprecated config to v2")
+    logger.info("attempting to auto-migrate deprecated v1 config to v2")
 
     prod_url = "api.gov.nominal.io/api"
     staging_url = "api-staging.gov.nominal.io/api"
@@ -132,3 +132,18 @@ def _auto_migrate_deprecated_config() -> None:
         f"we recommend deleting deprecated config file {DEPRECATED_NOMINAL_CONFIG_PATH} containing {deprecated_cfg}"
     )
     logger.info(f"successfully migrated over to the v2 nominal config at {_DEFAULT_NOMINAL_CONFIG_PATH}")
+
+
+def _is_same_url(url1: str, url2: str) -> bool:
+    return _strip_scheme(url1) == _strip_scheme(url2)
+
+
+def _get_profile_matching_url(cfg: NominalConfig, url: str) -> tuple[str, ConfigProfile]:
+    matches = {name: profile for name, profile in cfg.profiles.items() if _is_same_url(profile.base_url, url)}
+    if len(matches) == 1:
+        return matches.popitem()
+    elif len(matches) > 1:
+        raise NominalConfigError(
+            f"more than one profile contains url {url!r}; use `nominal.set_current_profile` to set the current profile."
+        )
+    raise NominalConfigError(f"no profile contains url {url!r}; use `nom config` to add a profile.")
