@@ -12,7 +12,7 @@ def auth_cmd() -> None:
     pass
 
 
-@auth_cmd.command()
+@auth_cmd.command(help="deprecated, use `nom config profile add` instead")
 @click.option("-u", "--base-url", default="https://api.gov.nominal.io/api", prompt=True)
 @click.option(
     "-t", "--token", required=True, prompt=True, help="access token, can be found in /sandbox on your Nominal instance"
