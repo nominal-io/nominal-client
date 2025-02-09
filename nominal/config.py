@@ -14,7 +14,7 @@ from nominal._config import (
 from nominal._config import NominalConfigV1, _strip_scheme
 from nominal.exceptions import NominalConfigError
 
-_DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.config/nominal/config.yml").expanduser().resolve()
+DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.config/nominal/config.yml").expanduser().resolve()
 logger = logging.getLogger(__name__)
 
 
@@ -48,13 +48,13 @@ class NominalConfig:
     version: Literal[2]
 
     @classmethod
-    def from_yaml(cls, path: Path = _DEFAULT_NOMINAL_CONFIG_PATH) -> Self:
+    def from_yaml(cls, path: Path = DEFAULT_NOMINAL_CONFIG_PATH) -> Self:
         if not path.exists():
             if DEPRECATED_NOMINAL_CONFIG_PATH.exists():
                 _auto_migrate_deprecated_config()
             else:
                 raise FileNotFoundError(
-                    f"no config file found at {_DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config add-profile`"
+                    f"no config file found at {DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config add-profile`"
                 )
         with open(path) as f:
             obj = yaml.safe_load(f)
@@ -68,7 +68,7 @@ class NominalConfig:
         profiles = {name: ConfigProfile(**params) for name, params in obj["profiles"].items()}
         return cls(version=2, profiles=profiles)
 
-    def to_yaml(self, path: Path = _DEFAULT_NOMINAL_CONFIG_PATH) -> None:
+    def to_yaml(self, path: Path = DEFAULT_NOMINAL_CONFIG_PATH) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             yaml.dump(asdict(self), f)
@@ -131,7 +131,7 @@ def _auto_migrate_deprecated_config() -> None:
     logger.warning(
         f"we recommend deleting deprecated config file {DEPRECATED_NOMINAL_CONFIG_PATH} containing {deprecated_cfg}"
     )
-    logger.info(f"successfully migrated over to the v2 nominal config at {_DEFAULT_NOMINAL_CONFIG_PATH}")
+    logger.info(f"successfully migrated over to the v2 nominal config at {DEFAULT_NOMINAL_CONFIG_PATH}")
 
 
 def _is_same_url(url1: str, url2: str) -> bool:
