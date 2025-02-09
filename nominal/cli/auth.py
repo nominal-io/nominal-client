@@ -1,4 +1,5 @@
 from __future__ import annotations
+import warnings
 
 import click
 
@@ -20,6 +21,11 @@ def auth_cmd() -> None:
 @global_options
 def set_token(token: str, base_url: str) -> None:
     """Update the token for a given URL in the Nominal config file"""
+    warnings.warn(
+        "nom auth set-token is deprecated, use `nom config profile add` instead",
+        UserWarning,
+        stacklevel=2,
+    )
     path = _deprecated_config._DEFAULT_NOMINAL_CONFIG_PATH
     validate_token_url(token, base_url)
     _deprecated_config.set_token(base_url, token)
