@@ -108,7 +108,7 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     token_path_option = click.option(
         "--token-path",
         default=_DEFAULT_NOMINAL_CONFIG_PATH,
-        type=click.Path(dir_okay=False, exists=True, resolve_path=True, path_type=pathlib.Path),
+        type=click.Path(dir_okay=False, resolve_path=True, path_type=pathlib.Path),
         show_default=True,
         help="Path to the yaml file containing the Nominal access token for authenticating with the API",
     )
@@ -137,10 +137,17 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
         trust_store_path: pathlib.Path | None,
         **kwargs: Param.kwargs,
     ) -> T:
-        api_token = get_token(base_url, token_path.expanduser().resolve()) if token is None else token
+        if token is None:
+            if token_path.exists():
+                token = get_token(base_url, token_path)
+            else:
+                raise ValueError(
+                    f"Cannot instantiate client: no token provided and token path {token_path} does not exist."
+                )
+
         client = NominalClient.create(
             base_url,
-            api_token,
+            token=token,
             trust_store_path=str(trust_store_path) if trust_store_path else None,
         )
         kwargs["client"] = client

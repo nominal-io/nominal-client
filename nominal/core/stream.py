@@ -19,7 +19,7 @@ def __getattr__(name: str) -> Any:
     if name == "NominalWriteStream":
         warnings.warn(
             "NominalWriteStream is deprecated, use WriteStream instead",
-            DeprecationWarning,
+            UserWarning,
             stacklevel=2,
         )
         return WriteStream

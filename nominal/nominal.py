@@ -371,26 +371,37 @@ def search_runs(
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
     label: str | None = None,
+    labels: Sequence[str] | None = None,
     property: tuple[str, str] | None = None,
-) -> list[Run]:
+    properties: Mapping[str, str] | None = None,
+) -> Sequence[Run]:
     """Search for runs meeting the specified filters.
-
     Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
-    - `start` and `end` times are both inclusive
-    - `name_substring`: search for a (case-insensitive) substring in the name
-    - `property` is a key-value pair, e.g. ("name", "value")
+
+    Args:
+        start: Inclusive start time for filtering runs.
+        end: Inclusive end time for filtering runs.
+        name_substring: Searches for a (case-insensitive) substring in the name
+        label: Deprecated, use labels instead.
+        labels: A sequence of labels that must ALL be present on a run to be included.
+        property: Deprecated, use properties instead.
+        properties: A mapping of key-value pairs that must ALL be present on a run to be included.
+
+    Returns:
+        All runs which match all of the provided conditions
     """
     if all([v is None for v in (start, end, name_substring, label, property)]):
         raise ValueError("must provide one of: start, end, name_substring, label, or property")
     client = get_client()
-    runs = client.search_runs(
+    return client.search_runs(
         start=None if start is None else ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
         end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         name_substring=name_substring,
         label=label,
+        labels=labels,
         property=property,
+        properties=properties,
     )
-    return list(runs)
 
 
 def upload_attachment(
@@ -466,27 +477,39 @@ def get_asset(rid: str) -> Asset:
     return client.get_asset(rid)
 
 
+@deprecate_keyword_argument("properties", "property")
+@deprecate_keyword_argument("labels", "label")
 def search_assets(
     *,
     search_text: str | None = None,
     label: str | None = None,
+    labels: Sequence[str] | None = None,
     property: tuple[str, str] | None = None,
-) -> list[Asset]:
+    properties: Mapping[str, str] | None = None,
+) -> Sequence[Asset]:
     """Search for assets meeting the specified filters.
+    Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
 
-    Filters are ANDed together, e.g. `(asset.label == label) AND (asset.property == property)`
-    - `search_text`: search case-insensitive for any of the keywords in all string fields.
-    - `property` is a key-value pair, e.g. ("name", "value")
+    Args:
+        search_text: case-insensitive search for any of the keywords in all string fields
+        label: Deprecated, use labels instead.
+        labels: A sequence of labels that must ALL be present on a asset to be included.
+        property: Deprecated, use properties instead.
+        properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
+
+    Returns:
+        All assets which match all of the provided conditions
     """
     if all([v is None for v in (search_text, label, property)]):
         raise ValueError("must provide one of: start, end, search_text, label, or property")
     client = get_client()
-    assets = client.search_assets(
+    return client.search_assets(
         search_text=search_text,
         label=label,
         property=property,
+        labels=labels,
+        properties=properties,
     )
-    return list(assets)
 
 
 def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:

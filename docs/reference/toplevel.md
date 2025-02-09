@@ -16,11 +16,11 @@
       - "!Log"
       - "!LogSet"
       - "!User"
-      - "!Workbook",
-      - "!DataReview",
-      - "!CheckViolation",
-      - "!DataReviewBuilder",
-      - "!WriteStream",
+      - "!Workbook"
+      - "!DataReview"
+      - "!CheckViolation"
+      - "!DataReviewBuilder"
+      - "!WriteStream"
 
 <!--
   Eventually we can use `summary` over `filters` when it moves from Sponsors only to GA:
