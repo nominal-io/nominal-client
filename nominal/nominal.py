@@ -390,8 +390,6 @@ def search_runs(
     Returns:
         All runs which match all of the provided conditions
     """
-    if all([v is None for v in (start, end, name_substring, label, property)]):
-        raise ValueError("must provide one of: start, end, name_substring, label, or property")
     client = get_client()
     return client.search_runs(
         start=None if start is None else ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
@@ -500,8 +498,6 @@ def search_assets(
     Returns:
         All assets which match all of the provided conditions
     """
-    if all([v is None for v in (search_text, label, property)]):
-        raise ValueError("must provide one of: start, end, search_text, label, or property")
     client = get_client()
     return client.search_assets(
         search_text=search_text,
