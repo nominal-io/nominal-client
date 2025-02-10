@@ -3,9 +3,10 @@ from __future__ import annotations
 import importlib.metadata
 import platform
 import sys
-from typing import Iterable, Protocol, TypeVar, runtime_checkable
+from typing import Iterable, Protocol, Sequence, TypeVar, runtime_checkable
 
 from nominal._utils import logger
+from nominal.core.stream import BatchItem
 
 T = TypeVar("T")
 
@@ -13,6 +14,10 @@ T = TypeVar("T")
 @runtime_checkable
 class HasRid(Protocol):
     rid: str
+
+
+def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]], str]:
+    return item.channel_name, sorted(item.tags.items()) if item.tags is not None else [], type(item.value).__name__
 
 
 def rid_from_instance_or_string(value: HasRid | str) -> str:

@@ -17,8 +17,7 @@ from nominal_api import (
 )
 
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
-from nominal.core._utils import HasRid
-from nominal.core.batch_processor import _to_api_batch_key
+from nominal.core._utils import HasRid, _to_api_batch_key
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, WriteStream
 from nominal.ts import _SecondsNanos

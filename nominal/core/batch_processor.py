@@ -19,12 +19,9 @@ from nominal_api_protos.nominal_write_pb2 import (
 )
 
 from nominal.core._clientsbunch import ProtoWriteService
+from nominal.core._utils import _to_api_batch_key
 from nominal.core.stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
-
-
-def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]], str]:
-    return item.channel_name, sorted(item.tags.items()) if item.tags is not None else [], type(item.value).__name__
 
 
 def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
