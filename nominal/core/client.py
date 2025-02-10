@@ -341,18 +341,27 @@ class NominalClient:
             file_type=FileTypes.MCAP,
         )
         source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
-        request = ingest_api.IngestMcapRequest(
-            channel_config=[],
-            channels=channels,
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            sources=[source],
-            description=description,
-            title=name,
+        request = ingest_api.IngestRequest(
+            ingest_api.IngestOptions(
+                mcap_protobuf_timeseries=ingest_api.McapProtobufTimeseriesOpts(
+                    source=source,
+                    target=ingest_api.DatasetIngestTarget(
+                        new=ingest_api.NewDatasetIngestDestination(
+                            dataset_name=name,
+                            dataset_description=description,
+                            properties={} if properties is None else dict(properties),
+                            labels=list(labels),
+                            channel_config=None,
+                        )
+                    ),
+                    channel_filter=channels,
+                    timestamp_type=ingest_api.McapTimestampType(ingest_api.LogTime()),
+                )
+            )
         )
-        resp = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
-        if resp.outputs:
-            dataset_rid = resp.outputs[0].target.dataset_rid
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if resp.details.dataset is not None:
+            dataset_rid = resp.details.dataset.dataset_rid
             if dataset_rid is not None:
                 dataset = self.get_dataset(dataset_rid)
                 return dataset

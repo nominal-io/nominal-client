@@ -11,6 +11,7 @@ from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence
 
 import pandas as pd
 from nominal_api import (
+    api,
     datasource_api,
     ingest_api,
     scout,
@@ -25,7 +26,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import upload_multipart_io
+from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.channel import Channel, _get_series_values_csv
 from nominal.core.filetype import FileType, FileTypes
@@ -208,6 +209,49 @@ class Dataset(HasRid):
             ),
         )
         self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
+
+    def add_mcap_to_dataset(
+        self,
+        path: Path | str,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+    ) -> None:
+        """Add an MCAP file to an existing dataset."""
+        self.poll_until_ingestion_completed()
+        mcap_path = Path(path)
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            mcap_path,
+            self._clients.upload,
+            file_type=FileTypes.MCAP,
+        )
+        source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+
+        channels = ingest_api.McapChannels(all=api.Empty())
+        if include_topics is not None and exclude_topics is not None:
+            include_topics = [t for t in include_topics if t not in exclude_topics]
+        if include_topics is not None:
+            channels = ingest_api.McapChannels(
+                include=[api.McapChannelLocator(topic=topic) for topic in include_topics]
+            )
+        elif exclude_topics is not None:
+            channels = ingest_api.McapChannels(
+                exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics]
+            )
+
+        request = ingest_api.IngestRequest(
+            ingest_api.IngestOptions(
+                mcap_protobuf_timeseries=ingest_api.McapProtobufTimeseriesOpts(
+                    source=source,
+                    target=ingest_api.DatasetIngestTarget(
+                        existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+                    ),
+                    channel_filter=channels,
+                    timestamp_type=ingest_api.McapTimestampType(ingest_api.LogTime()),
+                )
+            )
+        )
+        self._clients.ingest.ingest(self._clients.auth_header, request)
 
     def get_channel(self, name: str) -> Channel:
         for channel in self.get_channels(exact_match=[name]):
