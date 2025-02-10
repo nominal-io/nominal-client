@@ -162,7 +162,7 @@ class Connection(HasRid):
         ----
             batch_size (int): How big the batch can get before writing to Nominal. Default 10
             max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
-            use_protos (bool): Whether to use the storage writer API or the batch processor. Default False
+            use_protos (bool): Whether to send messages over the proto write service (true) or the storage writer API (false). Default False
 
         Examples:
         --------
