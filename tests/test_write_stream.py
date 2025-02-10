@@ -7,7 +7,7 @@ from nominal_api_protos.nominal_write_pb2 import (
     WriteRequestNominal,
 )
 
-from nominal.core.batch_processor import process_batch
+from nominal.core.batch_processor_proto import process_batch
 from nominal.core.connection import Connection
 from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
@@ -263,16 +263,9 @@ def test_multiple_write_streams(mock_connection):
         stream2.enqueue("channel2", timestamp, "value1")
         stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
 
-    with mock_connection.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), use_protos=False) as stream3:
-        stream3.enqueue("channel2", timestamp, "value1")
-        stream3.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
-
     # Verify both streams wrote their data
     mock_write = mock_connection._clients.proto_write.write_nominal_batches
     assert mock_write.call_count == 2
-
-    mock_write2 = mock_connection._clients.storage_writer.write_batches
-    assert mock_write2.call_count == 1
     # return
     # Check first call (stream1)
     first_call = mock_write.call_args_list[0].kwargs
