@@ -1599,7 +1599,7 @@ requires-dist = [
     { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
     { name = "nominal-api", specifier = "==0.542.0" },
-    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.0.0" },
+    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.549.0" },
     { name = "nptdms", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
     { name = "polars", specifier = ">=0.0.0" },
@@ -1648,14 +1648,14 @@ wheels = [
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.546.0"
+version = "0.549.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/65/14/173b7ff818a8ea00f2791f965182ea7aa9bb5d7ff451f8726a5ffd81ca63/nominal_api_protos-0.546.0.tar.gz", hash = "sha256:90e0142e3bed5f43cf69f72dac8108f2dc6cdf68e31867b0eec8865cc5fd570a", size = 3032 }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/b3/4e2f74391e82d171c79f3f28a17ce9b9a2e0bfb2d6a25368836ba347f6c4/nominal_api_protos-0.549.0.tar.gz", hash = "sha256:4a619c18b60dcfda2f6ff0582eed24788db2818d1bda02a139800db2c8e2f346", size = 3072 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/1c/d8d7c51cc5c304033537516d7ae31c2cf1e96e44524ac161bbc61899bff7/nominal_api_protos-0.546.0-py3-none-any.whl", hash = "sha256:e8440cccaac2a0bfc3c9fd0d79270a62fc1a3a93d35f67b2bb924091724c4bd9", size = 5033 },
+    { url = "https://files.pythonhosted.org/packages/fa/17/4b4014c78f515f62af8c8216d5a803455dffe9f83f0f8cf7621774b1920f/nominal_api_protos-0.549.0-py3-none-any.whl", hash = "sha256:7d29f163ee26e5c0a28cf32cc307d6501085ff8e3424fc6745f3bebc9a1e2ef4", size = 5178 },
 ]
 
 [[package]]

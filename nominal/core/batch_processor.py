@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from itertools import groupby
-from typing import Sequence
+from typing import Sequence, cast
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api_protos.nominal_write_pb2 import (
@@ -33,13 +33,25 @@ def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
     if isinstance(sample_value, str):
         return Points(
             string_points=StringPoints(
-                points=[StringPoint(timestamp=_make_timestamp(item.timestamp), value=item.value) for item in api_batch]
+                points=[
+                    StringPoint(
+                        timestamp=_make_timestamp(item.timestamp),
+                        value=cast(str, item.value),
+                    )
+                    for item in api_batch
+                ]
             )
         )
     elif isinstance(sample_value, float):
         return Points(
             double_points=DoublePoints(
-                points=[DoublePoint(timestamp=_make_timestamp(item.timestamp), value=item.value) for item in api_batch]
+                points=[
+                    DoublePoint(
+                        timestamp=_make_timestamp(item.timestamp),
+                        value=cast(float, item.value),
+                    )
+                    for item in api_batch
+                ]
             )
         )
     else:

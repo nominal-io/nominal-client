@@ -4,21 +4,24 @@ import itertools
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
     datasource_api,
     scout_datasource,
     scout_datasource_connection,
     scout_datasource_connection_api,
+    storage_writer_api,
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
 
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
+from nominal.core.batch_processor import _to_api_batch_key
 from nominal.core.channel import Channel
-from nominal.core.stream import WriteStream
+from nominal.core.stream import BatchItem, WriteStream
+from nominal.ts import _SecondsNanos
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,8 @@ class Connection(HasRid):
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
         def proto_write(self) -> ProtoWriteService: ...
+        @property
+        def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection:
@@ -150,13 +155,16 @@ class Connection(HasRid):
         )
         return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
 
-    def get_write_stream(self, batch_size: int = 50_000, max_wait: timedelta = timedelta(seconds=1)) -> WriteStream:
+    def get_write_stream(
+        self, batch_size: int = 50_000, max_wait: timedelta = timedelta(seconds=1), use_protos: bool = False
+    ) -> WriteStream:
         """Stream to write non-blocking messages to a datasource.
 
         Args:
         ----
             batch_size (int): How big the batch can get before writing to Nominal. Default 10
             max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
+            use_protos (bool): Whether to use the storage writer API or the batch processor. Default False
 
         Examples:
         --------
@@ -178,24 +186,78 @@ class Connection(HasRid):
             ```
 
         """
+        if self._nominal_data_source_rid is None:
+            raise ValueError("Writing not implemented for this connection type")
+
+        if not use_protos:
+            return WriteStream.create(
+                batch_size,
+                max_wait,
+                self._process_batch,
+            )
+
         try:
             from nominal.core.batch_processor import process_batch
         except ImportError:
             raise ImportError("nominal-api-protos is required to use get_write_stream")
 
-        if self._nominal_data_source_rid is not None:
-            return WriteStream.create(
-                batch_size,
-                max_wait,
-                lambda batch: process_batch(
-                    batch=batch,
-                    nominal_data_source_rid=self._nominal_data_source_rid,
-                    auth_header=self._clients.auth_header,
-                    proto_write=self._clients.proto_write,
-                ),
-            )
-        else:
+        return WriteStream.create(
+            batch_size,
+            max_wait,
+            lambda batch: process_batch(
+                batch=batch,
+                nominal_data_source_rid=self._nominal_data_source_rid,
+                auth_header=self._clients.auth_header,
+                proto_write=self._clients.proto_write,
+            ),
+        )
+
+    def _process_batch(self, batch: Sequence[BatchItem]) -> None:
+        api_batched = itertools.groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
+
+        if self._nominal_data_source_rid is None:
             raise ValueError("Writing not implemented for this connection type")
+
+        api_batches = [list(api_batch) for _, api_batch in api_batched]
+
+        def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.Points:
+            if isinstance(api_batch[0].value, str):
+                return storage_writer_api.Points(
+                    string=[
+                        storage_writer_api.StringPoint(
+                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                            value=cast(str, item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
+            if isinstance(api_batch[0].value, float):
+                return storage_writer_api.Points(
+                    double=[
+                        storage_writer_api.DoublePoint(
+                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                            value=cast(float, item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
+            raise ValueError("only float and string are supported types for value")
+
+        request = storage_writer_api.WriteBatchesRequest(
+            data_source_rid=self._nominal_data_source_rid,
+            batches=[
+                storage_writer_api.RecordsBatch(
+                    channel=api_batch[0].channel_name,
+                    points=make_points(api_batch),
+                    tags=api_batch[0].tags or {},
+                )
+                for api_batch in api_batches
+            ],
+        )
+        self._clients.storage_writer.write_batches(
+            self._clients.auth_header,
+            request,
+        )
 
     def archive(self) -> None:
         """Archive this connection.
