@@ -5,10 +5,8 @@ from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
-    attachments_api,
     scout_asset_api,
     scout_assets,
-    scout_catalog,
     scout_run_api,
 )
 from typing_extensions import Self, TypeAlias
@@ -37,13 +35,17 @@ class Asset(HasRid):
 
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(
+        Dataset._Clients,
+        Connection._Clients,
+        Video._Clients,
+        LogSet._Clients,
+        Attachment._Clients,
+        HasAuthHeader,
+        Protocol,
+    ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
-        @property
-        def attachment(self) -> attachments_api.AttachmentService: ...
-        @property
-        def catalog(self) -> scout_catalog.CatalogService: ...
 
     def update(
         self,
@@ -127,11 +129,9 @@ class Asset(HasRid):
         Returns (data_scope_name, dataset) pairs for each dataset.
         """
         scope_rid = self._scope_rid(stype="dataset")
-        _clients = cast(Dataset._Clients, self._clients)
-        datasets_meta = _get_datasets(_clients.auth_header, _clients.catalog, scope_rid.values())
+        datasets_meta = _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
         return [
-            (scope, Dataset._from_conjure(cast(Dataset._Clients, self._clients), ds))
-            for (scope, ds) in zip(scope_rid.keys(), datasets_meta)
+            (scope, Dataset._from_conjure(self._clients, ds)) for (scope, ds) in zip(scope_rid.keys(), datasets_meta)
         ]
 
     def list_connections(self) -> list[tuple[str, Connection]]:
@@ -139,10 +139,9 @@ class Asset(HasRid):
         Returns (data_scope_name, connection) pairs for each connection.
         """
         scope_rid = self._scope_rid(stype="connection")
-        _clients = cast(Connection._Clients, self._clients)
-        connections_meta = _get_connections(_clients, list(scope_rid.values()))
+        connections_meta = _get_connections(self._clients, list(scope_rid.values()))
         return [
-            (scope, Connection._from_conjure(cast(Connection._Clients, self._clients), connection))
+            (scope, Connection._from_conjure(self._clients, connection))
             for (scope, connection) in zip(scope_rid.keys(), connections_meta)
         ]
 
@@ -151,17 +150,19 @@ class Asset(HasRid):
         Returns (data_scope_name, dataset) pairs for each video.
         """
         scope_rid = self._scope_rid(stype="video")
-        _clients = cast(Video._Clients, self._clients)
-        return [(scope, Video._from_conjure(_clients, _get_video(_clients, rid))) for (scope, rid) in scope_rid.items()]
+        return [
+            (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
+            for (scope, rid) in scope_rid.items()
+        ]
 
     def list_logsets(self) -> list[tuple[str, LogSet]]:
         """List the logsets associated with this asset.
         Returns (data_scope_name, logset) pairs for each logset.
         """
         scope_rid = self._scope_rid(stype="logset")
-        _clients = cast(LogSet._Clients, self._clients)
         return [
-            (scope, LogSet._from_conjure(_clients, _get_log_set(_clients, rid))) for (scope, rid) in scope_rid.items()
+            (scope, LogSet._from_conjure(self._clients, _get_log_set(self._clients, rid)))
+            for (scope, rid) in scope_rid.items()
         ]
 
     def list_data_scopes(self) -> ScopeTupleList:
