@@ -187,7 +187,7 @@ class Connection(HasRid):
         if not use_protos:
             warnings.warn(
                 "Using the batch processor without protos is deprecated and will be removed in a future version, "
-                "use get_write_stream(use_protos=True) instead.",
+                "use get_write_stream(..., use_protos=True) instead.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -202,7 +202,7 @@ class Connection(HasRid):
         try:
             from nominal.core.batch_processor_proto import process_batch
         except ImportError:
-            raise ImportError("nominal-api-protos is required to use get_write_stream")
+            raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
 
         return WriteStream.create(
             batch_size,
