@@ -5,7 +5,7 @@ import logging
 import warnings
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Literal, Mapping, Protocol, Sequence
 
 from nominal_api import (
     datasource_api,
@@ -154,7 +154,10 @@ class Connection(HasRid):
         return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
 
     def get_write_stream(
-        self, batch_size: int = 50_000, max_wait: timedelta = timedelta(seconds=1), use_protos: bool = False
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+        data_format: Literal["json", "protobuf"] = "json",
     ) -> WriteStream:
         """Stream to write non-blocking messages to a datasource.
 
@@ -162,7 +165,7 @@ class Connection(HasRid):
         ----
             batch_size (int): How big the batch can get before writing to Nominal. Default 10
             max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
-            use_protos (bool): Send data as protobufs (True) or as json (False - legacy). Default False
+            data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
 
         Examples:
         --------
@@ -184,10 +187,10 @@ class Connection(HasRid):
             ```
 
         """
-        if not use_protos:
+        if data_format == "json":
             warnings.warn(
                 "Using the batch processor without protos is deprecated and will be removed in a future version, "
-                "use get_write_stream(..., use_protos=True) instead.",
+                "use get_write_stream(..., data_format='protobuf') instead.",
                 UserWarning,
                 stacklevel=2,
             )

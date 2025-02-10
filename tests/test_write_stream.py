@@ -253,13 +253,17 @@ def test_multiple_write_streams(mock_connection):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     # First stream
-    with mock_connection.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), use_protos=True) as stream1:
+    with mock_connection.get_write_stream(
+        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
+    ) as stream1:
         stream1.enqueue("channel1", timestamp, 42.0)
         stream1.enqueue("channel1", timestamp + timedelta(seconds=1), 43.0)
         # Force a small sleep to allow the batch to be processed
 
     # Second stream
-    with mock_connection.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), use_protos=True) as stream2:
+    with mock_connection.get_write_stream(
+        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
+    ) as stream2:
         stream2.enqueue("channel2", timestamp, "value1")
         stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
 
