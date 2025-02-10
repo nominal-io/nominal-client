@@ -82,7 +82,7 @@ def process_batch(
 
     if nominal_data_source_rid is None:
         raise ValueError("Writing not implemented for this connection type")
-
+    
     request = create_write_request(api_batches)
 
     proto_write.write_nominal_batches(
