@@ -9,7 +9,7 @@ from nominal_api import (
     scout_assets,
     scout_run_api,
 )
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self, TypeAlias, deprecated
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import Link, _build_links
@@ -169,8 +169,7 @@ class Asset(HasRid):
         Returns (data_scope_name, scope) pairs, where scope can be
         a dataset, connection, video, or logset.
         """
-        return (*self.list_datasets(), *self.list_connections(),
-                *self.list_logsets(), *self.list_videos())
+        return (*self.list_datasets(), *self.list_connections(), *self.list_logsets(), *self.list_videos())
 
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this asset.
@@ -226,16 +225,12 @@ class Asset(HasRid):
         """Unarchive this asset, allowing it to be viewed in the UI."""
         self._clients.assets.unarchive(self._clients.auth_header, self.rid)
 
-    def remove_data_sources(
+    def _remove_data_sources(
         self,
         *,
         data_scope_names: Sequence[str] | None = None,
         data_sources: Sequence[Connection | Dataset | LogSet | Video | str] | None = None,
     ) -> None:
-        """Remove data sources from this asset.
-
-        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
-        """
         data_scope_names = data_scope_names or []
 
         if isinstance(data_sources, str):
@@ -268,7 +263,20 @@ class Asset(HasRid):
         asset = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, asset, fields=self.__dataclass_fields__)
 
-    # Newer alias to replace remove_data_sources
+    @deprecated("Use `remove_data_scopes` instead")
+    def remove_data_sources(
+        self,
+        *,
+        data_scope_names: Sequence[str] | None = None,
+        data_sources: Sequence[Connection | Dataset | LogSet | Video | str] | None = None,
+    ) -> None:
+        """Remove data sources from this asset.
+
+        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
+        """
+        self._remove_data_sources(data_scope_names=data_scope_names, data_sources=data_sources)
+
+    # Newer alias to replace `remove_data_sources`
     def remove_data_scopes(
         self,
         *,
@@ -281,8 +289,6 @@ class Asset(HasRid):
         Scopes can be specified either by their names, their rids, or the
         scope objects themselves.
         """
-        data_sources: ScopeSeq = []
-
         if isinstance(rids, str):
             raise ValueError("Expected rids to be a sequence, not a string")
 
@@ -291,10 +297,7 @@ class Asset(HasRid):
         if scopes is None:
             scopes = []
 
-        self.remove_data_sources(
-            data_scope_names=names,
-            data_sources=[*rids, *scopes]
-        )
+        self._remove_data_sources(data_scope_names=names, data_sources=[*rids, *scopes])
 
     def add_connection(
         self, data_scope_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
