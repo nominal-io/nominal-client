@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nominal_api_protos.nominal_write_pb2 import WriteRequestNominal
+    from nominal_api_protos.prometheus_remote_write_pb2 import WriteRequest
+
 from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
 
-from conjure_python_client import RequestsClient, ServiceConfiguration
+from conjure_python_client import RequestsClient, Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
@@ -28,6 +34,26 @@ from nominal_api import (
     upload_api,
 )
 from typing_extensions import Self
+
+
+class ProtoWriteService(Service):
+    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: WriteRequestNominal) -> None:
+        _headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-protobuf",
+            "Authorization": auth_header,
+        }
+        _path = f"/storage/writer/v1/nominal/{data_source_rid}"
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
+
+    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: WriteRequest) -> None:
+        _headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-protobuf",
+            "Authorization": auth_header,
+        }
+        _path = f"/storage/writer/v1/prometheus/{data_source_rid}"
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
 
 
 @dataclass(frozen=True)
@@ -57,6 +83,7 @@ class ClientsBunch:
     notebook: scout.NotebookService
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
+    proto_write: ProtoWriteService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -87,6 +114,7 @@ class ClientsBunch:
             notebook=client_factory(scout.NotebookService),
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
+            proto_write=client_factory(ProtoWriteService),
         )
 
 
