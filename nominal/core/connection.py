@@ -188,12 +188,6 @@ class Connection(HasRid):
 
         """
         if data_format == "json":
-            warnings.warn(
-                "Using the batch processor without protos is deprecated and will be removed in a future version, "
-                "use get_write_stream(..., data_format='protobuf') instead.",
-                UserWarning,
-                stacklevel=2,
-            )
             return WriteStream.create(
                 batch_size,
                 max_wait,
