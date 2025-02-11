@@ -41,7 +41,7 @@ from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
 from nominal.core.connection import Connection
 from nominal.core.data_review import DataReview, DataReviewBuilder
-from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
@@ -321,18 +321,6 @@ class NominalClient:
 
         See `create_dataset_from_io` for more details on the other arguments.
         """
-        channels = ingest_api.McapChannels(all=api.Empty())
-        if include_topics is not None and exclude_topics is not None:
-            include_topics = [t for t in include_topics if t not in exclude_topics]
-        if include_topics is not None:
-            channels = ingest_api.McapChannels(
-                include=[api.McapChannelLocator(topic=topic) for topic in include_topics]
-            )
-        elif exclude_topics is not None:
-            channels = ingest_api.McapChannels(
-                exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics]
-            )
-
         mcap_path = Path(path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,
@@ -340,19 +328,20 @@ class NominalClient:
             self._clients.upload,
             file_type=FileTypes.MCAP,
         )
-        source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
-        request = ingest_api.IngestMcapRequest(
-            channel_config=[],
-            channels=channels,
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            sources=[source],
-            description=description,
-            title=name,
+        channels = _create_mcap_channels(include_topics, exclude_topics)
+        target = ingest_api.DatasetIngestTarget(
+            new=ingest_api.NewDatasetIngestDestination(
+                dataset_name=name,
+                dataset_description=description,
+                properties={} if properties is None else dict(properties),
+                labels=list(labels),
+                channel_config=None,
+            )
         )
-        resp = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
-        if resp.outputs:
-            dataset_rid = resp.outputs[0].target.dataset_rid
+        request = _create_ingest_request(s3_path, channels, target)
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if resp.details.dataset is not None:
+            dataset_rid = resp.details.dataset.dataset_rid
             if dataset_rid is not None:
                 dataset = self.get_dataset(dataset_rid)
                 return dataset
