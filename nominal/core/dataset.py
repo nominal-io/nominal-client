@@ -225,32 +225,11 @@ class Dataset(HasRid):
             self._clients.upload,
             file_type=FileTypes.MCAP,
         )
-        source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
-
-        channels = ingest_api.McapChannels(all=api.Empty())
-        if include_topics is not None and exclude_topics is not None:
-            include_topics = [t for t in include_topics if t not in exclude_topics]
-        if include_topics is not None:
-            channels = ingest_api.McapChannels(
-                include=[api.McapChannelLocator(topic=topic) for topic in include_topics]
-            )
-        elif exclude_topics is not None:
-            channels = ingest_api.McapChannels(
-                exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics]
-            )
-
-        request = ingest_api.IngestRequest(
-            ingest_api.IngestOptions(
-                mcap_protobuf_timeseries=ingest_api.McapProtobufTimeseriesOpts(
-                    source=source,
-                    target=ingest_api.DatasetIngestTarget(
-                        existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
-                    ),
-                    channel_filter=channels,
-                    timestamp_type=ingest_api.McapTimestampType(ingest_api.LogTime()),
-                )
-            )
+        channels = _create_mcap_channels(include_topics, exclude_topics)
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
+        request = _create_ingest_request(s3_path, channels, target)
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
     def get_channel(self, name: str) -> Channel:
@@ -477,3 +456,32 @@ def _get_dataset(
     if len(datasets) > 1:
         raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
     return datasets[0]
+
+
+def _create_ingest_request(
+    s3_path: str, channels: ingest_api.McapChannels, target: ingest_api.DatasetIngestTarget
+) -> ingest_api.IngestRequest:
+    return ingest_api.IngestRequest(
+        ingest_api.IngestOptions(
+            mcap_protobuf_timeseries=ingest_api.McapProtobufTimeseriesOpts(
+                source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                target=target,
+                channel_filter=channels,
+                timestamp_type=ingest_api.McapTimestampType(ingest_api.LogTime()),
+            )
+        )
+    )
+
+
+def _create_mcap_channels(
+    include_topics: Iterable[str] | None = None,
+    exclude_topics: Iterable[str] | None = None,
+) -> ingest_api.McapChannels:
+    channels = ingest_api.McapChannels(all=api.Empty())
+    if include_topics is not None and exclude_topics is not None:
+        include_topics = [t for t in include_topics if t not in exclude_topics]
+    if include_topics is not None:
+        channels = ingest_api.McapChannels(include=[api.McapChannelLocator(topic=topic) for topic in include_topics])
+    elif exclude_topics is not None:
+        channels = ingest_api.McapChannels(exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics])
+    return channels
