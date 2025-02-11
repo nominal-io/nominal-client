@@ -9,7 +9,7 @@ from nominal.core.dataset import Dataset
 from nominal.core.filetype import FileTypes
 
 
-def upload_pandas(
+def upload_dataframe(
     client: NominalClient,
     df: pd.DataFrame,
     name: str,

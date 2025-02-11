@@ -3,12 +3,12 @@ from __future__ import annotations
 import dataclasses
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
 import typing_extensions
 
 from nominal import Connection, ts
-from nominal._utils import deprecate_keyword_argument, reader_writer
+from nominal._utils import deprecate_keyword_argument
 from nominal.config import ConfigProfile, NominalConfig, _get_profile_matching_url
 from nominal.core import (
     Asset,
@@ -27,6 +27,10 @@ from nominal.core import (
     poll_until_ingestion_completed,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder
+
+if TYPE_CHECKING:
+    import pandas as pd
+    import polars as pl
 
 
 _current_profile: str = "default"
@@ -550,3 +554,114 @@ def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
     client = get_client()
     return client.get_data_review(rid)
+
+
+# thirdparty modules
+
+
+@typing_extensions.deprecated(
+    "`nominal.upload_pandas(...)` is deprecated; "
+    "use `nominal.thirdparty.pandas.upload_dataframe(client, ...)` instead"
+)
+def upload_pandas(
+    df: pd.DataFrame,
+    name: str,
+    timestamp_column: str,
+    timestamp_type: ts._AnyTimestampType,
+    description: str | None = None,
+    channel_name_delimiter: str | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    """Create a dataset in the Nominal platform from a pandas.DataFrame.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
+    from nominal.thirdparty.pandas import upload_dataframe
+
+    client = get_client()
+    return upload_dataframe(
+        client,
+        df,
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
+    )
+
+
+@typing_extensions.deprecated(
+    "`nominal.upload_polars(...)` is deprecated; use `nominal.thirdparty.polars.upload_dataframe(client, ...)` instead"
+)
+def upload_polars(
+    client: NominalClient,
+    df: pl.DataFrame,
+    name: str,
+    timestamp_column: str,
+    timestamp_type: ts._AnyTimestampType,
+    description: str | None = None,
+    channel_name_delimiter: str | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    """Create a dataset in the Nominal platform from a polars.DataFrame.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
+    from nominal.thirdparty.polars import upload_dataframe
+
+    client = get_client()
+    return upload_dataframe(
+        client,
+        df,
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
+    )
+
+
+@typing_extensions.deprecated(
+    "`nominal.upload_tdms(...)` is deprecated; use `nominal.thirdparty.tdms.upload_tdms(client, ...)` instead"
+)
+def upload_tdms(
+    file: Path | str,
+    name: str | None = None,
+    description: str | None = None,
+    timestamp_column: str | None = None,
+    timestamp_type: ts._AnyTimestampType | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    """Create a dataset in the Nominal platform from a tdms file.
+
+    If `name` is None, the dataset is created with the name of the file with a .csv suffix.
+
+    If 'timestamp_column' is provided, it must be present in every group and the length of all data columns must be
+    equal to (and aligned with) with 'timestamp_column'.
+
+    If 'timestamp_column' is None, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
+    property to be included in the dataset.
+
+    Note that both 'timestamp_column' and 'timestamp_type' must be included together, or excluded together.
+
+    Channels will be named as f"{group_name}.{channel_name}" with spaces replaced with underscores.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
+    from nominal.thirdparty.tdms import upload_tdms
+
+    client = get_client()
+    return upload_tdms(
+        client, file, name, description, timestamp_column, timestamp_type, wait_until_complete=wait_until_complete
+    )

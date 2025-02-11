@@ -12,7 +12,7 @@ from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 from nominal import ts
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
-from nominal.thirdparty.pandas import upload_pandas
+from nominal.thirdparty.pandas import upload_dataframe
 
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def upload_tdms(
 
     path = Path(file)
     upload_func = functools.partial(
-        upload_pandas,
+        upload_dataframe,
         name=name if name is not None else path.with_suffix(".csv").name,
         description=description,
         wait_until_complete=wait_until_complete,

@@ -9,7 +9,7 @@ from nominal.core.dataset import Dataset
 from nominal.core.filetype import FileTypes
 
 
-def upload_polars(
+def upload_dataframe(
     client: NominalClient,
     df: pl.DataFrame,
     name: str,
