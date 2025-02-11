@@ -7,7 +7,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import timedelta, datetime
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, Type
-from queue import Queue
+from queue import Queue, Empty
 import threading
 import time
 
@@ -28,7 +28,7 @@ from nominal.core.stream import WriteStream
 from nominal.ts import IntegralNanosecondsUTC
 
 
-@dataclass(frozen=True)
+@dataclass()
 class Connection(HasRid):
     rid: str
     name: str
@@ -167,7 +167,7 @@ class BatchItem:
     value: float | str
     tags: dict[str, str] | None = None
 
-@dataclass(frozen=True)
+@dataclass()
 class NominalStreamingConnection(Connection):
     nominal_data_source_rid: str
     _batch_size: int = field(default=50_000)
@@ -213,7 +213,7 @@ class NominalStreamingConnection(Connection):
                 item = self._item_queue.get(timeout=timeout)
                 batch.append(item)
                 self._item_queue.task_done()
-            except Queue.Empty:
+            except Empty:
                 pass
 
             if len(batch) >= self._batch_size or time.time() >= next_batch_time:
@@ -251,7 +251,7 @@ class NominalStreamingConnection(Connection):
                     raise Exception(f"Batch processing failed: {e}")
                 finally:
                     self._batch_queue.task_done()
-            except Queue.Empty:
+            except Empty:
                 continue
 
     def write(
@@ -263,7 +263,7 @@ class NominalStreamingConnection(Connection):
     ) -> None:
         """Write a single value to a channel."""
         if self._batch_thread is None:
-            raise RuntimeError("Streaming not started. Call start_streaming() first")
+            raise RuntimeError("Streaming not started. Call connection_obj.start_streaming() first")
         item = BatchItem(channel_name, timestamp, value, tags)
         self._item_queue.put(item)
 
