@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import itertools
 import logging
+from types import TracebackType
 import warnings
 from dataclasses import dataclass, field
-from datetime import timedelta
-from typing import Iterable, Literal, Mapping, Protocol, Sequence
+from datetime import timedelta, datetime
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, Type
+from queue import Queue
+import threading
+import time
 
 from nominal_api import (
     datasource_api,
@@ -16,12 +20,12 @@ from nominal_api import (
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
-
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
 from nominal.core.stream import WriteStream
+from nominal.ts import IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)
@@ -31,7 +35,6 @@ class Connection(HasRid):
     description: str | None
     _tags: Mapping[str, Sequence[str]]
     _clients: _Clients = field(repr=False)
-    _nominal_data_source_rid: str | None = None
 
     class _Clients(Channel._Clients, HasAuthHeader, Protocol):
         @property
@@ -41,21 +44,26 @@ class Connection(HasRid):
         @property
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
-        def proto_write(self) -> ProtoWriteService: ...
-        @property
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection:
+    def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection | NominalStreamingConnection:
+        """Factory method to create the appropriate Connection subclass based on connection details"""
+        if response.connection_details.nominal is not None:
+            return NominalStreamingConnection(
+                rid=response.rid,
+                name=response.display_name,
+                description=response.description,
+                _tags=response.available_tag_values,
+                _clients=clients,
+                nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
+            )
         return cls(
             rid=response.rid,
             name=response.display_name,
             description=response.description,
             _tags=response.available_tag_values,
             _clients=clients,
-            _nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid
-            if response.connection_details.nominal is not None
-            else None,
         )
 
     def _get_series_achetypes_paginated(self) -> Iterable[datasource_api.ChannelMetadata]:
@@ -141,13 +149,156 @@ class Connection(HasRid):
         series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
         return Channel._from_conjure_logicalseries_api(self._clients, series)
 
-    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
-        """get_nominal_write_stream is deprecated and will be removed in a future version,
-        use get_write_stream instead.
+    def archive(self) -> None:
+        """Archive this connection.
+        Archived connections are not deleted, but are hidden from the UI.
         """
+        self._clients.connection.archive_connection(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive this connection, making it visible in the UI."""
+        self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
+
+
+@dataclass(frozen=True)
+class BatchItem:
+    channel_name: str
+    timestamp: str | datetime | IntegralNanosecondsUTC
+    value: float | str
+    tags: dict[str, str] | None = None
+
+@dataclass(frozen=True)
+class NominalStreamingConnection(Connection):
+    nominal_data_source_rid: str
+    _batch_size: int = field(default=50_000)
+    _max_wait: timedelta = field(default=timedelta(seconds=1))
+    _item_queue: Queue[BatchItem] = field(default_factory=Queue, repr=False)
+    _batch_queue: Queue[list[BatchItem]] = field(default_factory=Queue, repr=False)
+    _stop: threading.Event = field(default_factory=threading.Event, repr=False)
+    _batch_thread: threading.Thread | None = field(default=None, repr=False)
+    _process_thread: threading.Thread | None = field(default=None, repr=False)
+
+    def start_streaming(self, data_format: Literal["json", "protobuf"] = "json") -> None:
+        """Start the streaming threads."""
+        if self._batch_thread is not None or self._process_thread is not None:
+            raise RuntimeError("Streaming already started")
+
+        self._batch_thread = threading.Thread(target=self._batch_worker, daemon=True)
+        self._process_thread = threading.Thread(target=self._process_worker, args=(data_format,), daemon=True)
+        self._batch_thread.start()
+        self._process_thread.start()
+
+    def stop_streaming(self, wait: bool = True) -> None:
+        """Stop the streaming threads."""
+        self._stop.set()
+        if wait and self._batch_thread and self._process_thread:
+            self._item_queue.join()
+            self._batch_queue.join()
+            self._batch_thread.join()
+            self._process_thread.join()
+            self._batch_thread = None
+            self._process_thread = None
+            self._stop.clear()
+
+    def _batch_worker(self) -> None:
+        """Worker that creates batches from individual items."""
+        batch: list[BatchItem] = []
+        next_batch_time = time.time() + self._max_wait.total_seconds()
+
+        while not self._stop.is_set():
+            now = time.time()
+            timeout = max(0, next_batch_time - now)
+            
+            try:
+                item = self._item_queue.get(timeout=timeout)
+                batch.append(item)
+                self._item_queue.task_done()
+            except Queue.Empty:
+                pass
+
+            if len(batch) >= self._batch_size or time.time() >= next_batch_time:
+                if batch:
+                    self._batch_queue.put(batch)
+                    batch = []
+                next_batch_time = time.time() + self._max_wait.total_seconds()
+
+        # Flush remaining items
+        if batch:
+            self._batch_queue.put(batch)
+
+    def _process_worker(self, data_format: Literal["json", "protobuf"]) -> None:
+        """Worker that processes batches."""
+        while not self._stop.is_set():
+            try:
+                batch = self._batch_queue.get(timeout=0.1)
+                try:
+                    if data_format == "json":
+                        process_batch_legacy(
+                            batch, 
+                            self.nominal_data_source_rid, 
+                            self._clients.auth_header, 
+                            self._clients.storage_writer
+                        )
+                    else:
+                        from nominal.core.batch_processor_proto import process_batch
+                        process_batch(
+                            batch=batch,
+                            nominal_data_source_rid=self.nominal_data_source_rid,
+                            auth_header=self._clients.auth_header,
+                            proto_write=self._clients.proto_write,
+                        )
+                except Exception as e:
+                    raise Exception(f"Batch processing failed: {e}")
+                finally:
+                    self._batch_queue.task_done()
+            except Queue.Empty:
+                continue
+
+    def write(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: float | str,
+        tags: dict[str, str] | None = None,
+    ) -> None:
+        """Write a single value to a channel."""
+        if self._batch_thread is None:
+            raise RuntimeError("Streaming not started. Call start_streaming() first")
+        item = BatchItem(channel_name, timestamp, value, tags)
+        self._item_queue.put(item)
+
+    def write_batch(
+        self,
+        channel_name: str,
+        timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
+        values: Sequence[float | str],
+        tags: dict[str, str] | None = None,
+    ) -> None:
+        """Write multiple values to a channel."""
+        if len(timestamps) != len(values):
+            raise ValueError(
+                f"Expected equal numbers of timestamps and values! Received: {len(timestamps)} vs. {len(values)}"
+            )
+        for timestamp, value in zip(timestamps, values):
+            self.write(channel_name, timestamp, value, tags)
+
+    def __enter__(self) -> NominalStreamingConnection:
+        self.start_streaming()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.stop_streaming()
+
+    # Deprecated methods for backward compatibility
+    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
         warnings.warn(
-            "get_nominal_write_stream is deprecated and will be removed in a future version,"
-            "use get_write_stream instead.",
+            "get_nominal_write_stream is deprecated and will be removed in a future version. "
+            "Use start_streaming() and write() methods instead.",
             UserWarning,
             stacklevel=2,
         )
@@ -159,68 +310,14 @@ class Connection(HasRid):
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf"] = "json",
     ) -> WriteStream:
-        """Stream to write non-blocking messages to a datasource.
-
-        Args:
-        ----
-            batch_size (int): How big the batch can get before writing to Nominal. Default 10
-            max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
-            data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
-
-        Examples:
-        --------
-            Standard Usage:
-            ```py
-            with connection.get_write_stream() as stream:
-                stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
-                stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
-                ...
-            ```
-
-            Without a context manager:
-            ```py
-            stream = connection.get_write_stream()
-            stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
-            stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
-            ...
-            stream.close()
-            ```
-
-        """
-        if data_format == "json":
-            return WriteStream.create(
-                batch_size,
-                max_wait,
-                lambda batch: process_batch_legacy(
-                    batch, self._nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
-                ),
-            )
-
-        try:
-            from nominal.core.batch_processor_proto import process_batch
-        except ImportError:
-            raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
-
-        return WriteStream.create(
-            batch_size,
-            max_wait,
-            lambda batch: process_batch(
-                batch=batch,
-                nominal_data_source_rid=self._nominal_data_source_rid,
-                auth_header=self._clients.auth_header,
-                proto_write=self._clients.proto_write,
-            ),
+        warnings.warn(
+            "get_write_stream is deprecated and will be removed in a future version. "
+            "Use start_streaming() and write() methods instead.",
+            UserWarning,
+            stacklevel=2,
         )
-
-    def archive(self) -> None:
-        """Archive this connection.
-        Archived connections are not deleted, but are hidden from the UI.
-        """
-        self._clients.connection.archive_connection(self._clients.auth_header, self.rid)
-
-    def unarchive(self) -> None:
-        """Unarchive this connection, making it visible in the UI."""
-        self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
+        # Return legacy WriteStream for backward compatibility
+        return WriteStream.create(batch_size, max_wait, lambda batch: self._process_batch(batch))
 
 
 def _get_connections(
