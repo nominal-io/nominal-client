@@ -20,9 +20,8 @@ from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
-ScopeTupleList: TypeAlias = "list[tuple[str, Connection | Dataset | LogSet | Video]]"
-ScopeList: TypeAlias = "list[Connection | Dataset | LogSet | Video | str]"
-ScopeSequence: TypeAlias = "Sequence[Connection | Dataset | LogSet | Video | str]"
+ScopeTupleSeq: TypeAlias = "Sequence[tuple[str, Connection | Dataset | LogSet | Video]]"
+ScopeSeq: TypeAlias = "Sequence[Connection | Dataset | LogSet | Video | str]"
 
 
 @dataclass(frozen=True)
@@ -165,17 +164,13 @@ class Asset(HasRid):
             for (scope, rid) in scope_rid.items()
         ]
 
-    def list_data_scopes(self) -> ScopeTupleList:
+    def list_data_scopes(self) -> ScopeTupleSeq:
         """List scopes associated with this asset.
         Returns (data_scope_name, scope) pairs, where scope can be
         a dataset, connection, video, or logset.
         """
-        return (
-            cast(ScopeTupleList, self.list_datasets())
-            + cast(ScopeTupleList, self.list_connections())
-            + cast(ScopeTupleList, self.list_logsets())
-            + cast(ScopeTupleList, self.list_videos())
-        )
+        return (*self.list_datasets(), *self.list_connections(),
+                *self.list_logsets(), *self.list_videos())
 
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this asset.
@@ -235,7 +230,7 @@ class Asset(HasRid):
         self,
         *,
         data_scope_names: Sequence[str] | None = None,
-        data_sources: Sequence[Connection | Dataset | LogSet | Video | str] | str | None = None,
+        data_sources: Sequence[Connection | Dataset | LogSet | Video | str] | None = None,
     ) -> None:
         """Remove data sources from this asset.
 
@@ -244,7 +239,8 @@ class Asset(HasRid):
         data_scope_names = data_scope_names or []
 
         if isinstance(data_sources, str):
-            data_sources = [data_sources]
+            raise RuntimeError("Expect `data_sources` to be a sequence, not a string")
+
         data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
 
         conjure_asset = self._get_asset()
@@ -277,25 +273,27 @@ class Asset(HasRid):
         self,
         *,
         names: Sequence[str] | None = None,
-        rids: Sequence[str] | str | None = None,
-        scopes: ScopeSequence | None = None,
+        rids: Sequence[str] | None = None,
+        scopes: ScopeSeq | None = None,
     ) -> None:
         """Remove data scopes from this asset.
 
         Scopes can be specified either by their names, their rids, or the
         scope objects themselves.
         """
-        data_sources: ScopeList = []
-        if rids is not None:
-            if isinstance(rids, str):
-                data_sources.extend([rids])
-            else:
-                data_sources.extend(list(rids))
-        if scopes is not None:
-            data_sources.extend(list(scopes))
+        data_sources: ScopeSeq = []
+
+        if isinstance(rids, str):
+            raise ValueError("Expected rids to be a sequence, not a string")
+
+        if rids is None:
+            rids = []
+        if scopes is None:
+            scopes = []
 
         self.remove_data_sources(
-            data_scope_names=[names] if isinstance(names, str) else names, data_sources=data_sources
+            data_scope_names=names,
+            data_sources=[*rids, *scopes]
         )
 
     def add_connection(
