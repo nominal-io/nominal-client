@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import datetime
-from functools import partial
 from pathlib import Path
-from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 import typing_extensions
 
@@ -19,7 +17,6 @@ from nominal.core import (
     ChecklistBuilder,
     Dataset,
     FileType,
-    FileTypes,
     Log,
     LogSet,
     NominalClient,
@@ -31,9 +28,6 @@ from nominal.core import (
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder
 
-if TYPE_CHECKING:
-    import pandas as pd
-    import polars as pl
 
 _current_profile: str = "default"
 
@@ -115,136 +109,6 @@ def get_user() -> User:
     return client.get_user()
 
 
-def upload_tdms(
-    file: Path | str,
-    name: str | None = None,
-    description: str | None = None,
-    timestamp_column: str | None = None,
-    timestamp_type: ts._AnyTimestampType | None = None,
-    *,
-    wait_until_complete: bool = True,
-) -> Dataset:
-    """Create a dataset in the Nominal platform from a tdms file.
-
-    If `name` is None, the dataset is created with the name of the file with a .csv suffix.
-
-    If 'timestamp_column' is provided, it must be present in every group and the length of all data columns must be
-    equal to (and aligned with) with 'timestamp_column'.
-
-    If 'timestamp_column' is None, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
-    property to be included in the dataset.
-
-    Note that both 'timestamp_column' and 'timestamp_type' must be included together, or excluded together.
-
-    Channels will be named as f"{group_name}.{channel_name}" with spaces replaced with underscores.
-
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
-    from nominal import _tdms
-
-    path = Path(file)
-    upload_func = partial(
-        upload_pandas,
-        name=name if name is not None else path.with_suffix(".csv").name,
-        description=description,
-        wait_until_complete=wait_until_complete,
-    )
-    if timestamp_column is not None and timestamp_type is not None:
-        df = _tdms.tdms_with_time_column_to_pandas(path, timestamp_column)
-        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
-    elif timestamp_column is None and timestamp_type is None:
-        timestamp_column = "time_ns"
-        df = _tdms.tdms_with_waveform_props_to_pandas(path, timestamp_column)
-        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
-    raise ValueError("'timestamp_column' and 'timestamp_type' must be included together, or excluded together.")
-
-
-def upload_pandas(
-    df: pd.DataFrame,
-    name: str,
-    timestamp_column: str,
-    timestamp_type: ts._AnyTimestampType,
-    description: str | None = None,
-    channel_name_delimiter: str | None = None,
-    *,
-    wait_until_complete: bool = True,
-) -> Dataset:
-    """Create a dataset in the Nominal platform from a pandas.DataFrame.
-
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
-    client = get_client()
-
-    # TODO(alkasm): use parquet instead of CSV as an intermediary
-
-    def write_and_close(df: pd.DataFrame, w: BinaryIO) -> None:
-        df.to_csv(w)
-        w.close()
-
-    with reader_writer() as (reader, writer):
-        # write the dataframe to CSV in another thread
-        t = Thread(target=write_and_close, args=(df, writer))
-        t.start()
-        dataset = client.create_dataset_from_io(
-            reader,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
-            description=description,
-            prefix_tree_delimiter=channel_name_delimiter,
-        )
-        t.join()
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
-    return dataset
-
-
-def upload_polars(
-    df: pl.DataFrame,
-    name: str,
-    timestamp_column: str,
-    timestamp_type: ts._AnyTimestampType,
-    description: str | None = None,
-    channel_name_delimiter: str | None = None,
-    *,
-    wait_until_complete: bool = True,
-) -> Dataset:
-    """Create a dataset in the Nominal platform from a polars.DataFrame.
-
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
-    client = get_client()
-
-    def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
-        df.write_csv(w)
-        w.close()
-
-    with reader_writer() as (reader, writer):
-        # write the dataframe to CSV in another thread
-        t = Thread(target=write_and_close, args=(df, writer))
-        t.start()
-        dataset = client.create_dataset_from_io(
-            reader,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
-            description=description,
-            prefix_tree_delimiter=channel_name_delimiter,
-        )
-        t.join()
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
-    return dataset
-
-
 def upload_csv(
     file: Path | str,
     name: str | None,
@@ -264,29 +128,6 @@ def upload_csv(
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
     client = get_client()
-    return _upload_csv(
-        client,
-        file,
-        name,
-        timestamp_column,
-        timestamp_type,
-        description,
-        channel_name_delimiter,
-        wait_until_complete=wait_until_complete,
-    )
-
-
-def _upload_csv(
-    client: NominalClient,
-    file: Path | str,
-    name: str | None,
-    timestamp_column: str,
-    timestamp_type: ts._AnyTimestampType,
-    description: str | None = None,
-    channel_name_delimiter: str | None = None,
-    *,
-    wait_until_complete: bool = True,
-) -> Dataset:
     dataset = client.create_csv_dataset(
         file,
         name,

@@ -9,10 +9,62 @@ import numpy as np
 import pandas as pd
 from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 
+from nominal import ts
+from nominal.core.client import NominalClient
+from nominal.core.dataset import Dataset
+from nominal.thirdparty.pandas import upload_pandas
+
+
 logger = logging.getLogger(__name__)
 
 
-def tdms_with_time_column_to_pandas(path: Path, timestamp_column: str) -> pd.DataFrame:
+def upload_tdms(
+    client: NominalClient,
+    file: Path | str,
+    name: str | None = None,
+    description: str | None = None,
+    timestamp_column: str | None = None,
+    timestamp_type: ts._AnyTimestampType | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    """Create a dataset in the Nominal platform from a tdms file.
+
+    If `name` is None, the dataset is created with the name of the file with a .csv suffix.
+
+    If 'timestamp_column' is provided, it must be present in every group and the length of all data columns must be
+    equal to (and aligned with) with 'timestamp_column'.
+
+    If 'timestamp_column' is None, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
+    property to be included in the dataset.
+
+    Note that both 'timestamp_column' and 'timestamp_type' must be included together, or excluded together.
+
+    Channels will be named as f"{group_name}.{channel_name}" with spaces replaced with underscores.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
+
+    path = Path(file)
+    upload_func = functools.partial(
+        upload_pandas,
+        name=name if name is not None else path.with_suffix(".csv").name,
+        description=description,
+        wait_until_complete=wait_until_complete,
+    )
+    if timestamp_column is not None and timestamp_type is not None:
+        df = _tdms_with_time_column_to_pandas(path, timestamp_column)
+        return upload_func(client, df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
+    elif timestamp_column is None and timestamp_type is None:
+        timestamp_column = "time_ns"
+        df = _tdms_with_waveform_props_to_pandas(path, timestamp_column)
+        return upload_func(client, df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
+    raise ValueError("'timestamp_column' and 'timestamp_type' must be included together, or excluded together.")
+
+
+def _tdms_with_time_column_to_pandas(path: Path, timestamp_column: str) -> pd.DataFrame:
     group_dfs: list[pd.DataFrame] = []
 
     with TdmsFile.open(path) as tdms_file:
@@ -36,7 +88,7 @@ def tdms_with_time_column_to_pandas(path: Path, timestamp_column: str) -> pd.Dat
     return df
 
 
-def tdms_with_waveform_props_to_pandas(path: Path, timestamp_column: str) -> pd.DataFrame:
+def _tdms_with_waveform_props_to_pandas(path: Path, timestamp_column: str) -> pd.DataFrame:
     channels_to_export: dict[str, pd.Series[Any]] = {}
     with TdmsFile.open(path) as tdms_file:
         group: TdmsGroup
