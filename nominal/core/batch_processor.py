@@ -36,16 +36,13 @@ def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.Points:
 
 def process_batch_legacy(
     batch: Sequence[BatchItem],
-    nominal_data_source_rid: str | None,
+    nominal_data_source_rid: str,
     auth_header: str,
     storage_writer: storage_writer_api.NominalChannelWriterService,
 ) -> None:
     api_batched = itertools.groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
 
     api_batches = [list(api_batch) for _, api_batch in api_batched]
-    if nominal_data_source_rid is None:
-        raise ValueError("Writing not implemented for this connection type")
-
     request = storage_writer_api.WriteBatchesRequest(
         data_source_rid=nominal_data_source_rid,
         batches=[

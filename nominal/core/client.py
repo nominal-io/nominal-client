@@ -796,23 +796,30 @@ class NominalClient:
         datasource_id: str,
         connection_name: str,
         datasource_description: str | None = None,
+        nominal_data_source_rid: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
     ) -> Connection:
-        datasource_response = self._clients.storage.create(
-            self._clients.auth_header,
-            storage_datasource_api.CreateNominalDataSourceRequest(
+        if nominal_data_source_rid is None:
+            datasource_response = self._clients.storage.create(
+                self._clients.auth_header,
+                storage_datasource_api.CreateNominalDataSourceRequest(
                 id=datasource_id,
                 description=datasource_description,
-            ),
-        )
+                ),  
+            )
+        else:
+            datasource_response = self._clients.storage.get(self._clients.auth_header, nominal_data_source_rid)
+            if datasource_response is None:
+                raise ValueError(f"no datasource found with RID {nominal_data_source_rid!r}")
+
         connection_response = self._clients.connection.create_connection(
             self._clients.auth_header,
             scout_datasource_connection_api.CreateConnection(
                 name=connection_name,
                 connection_details=scout_datasource_connection_api.ConnectionDetails(
                     nominal=scout_datasource_connection_api.NominalConnectionDetails(
-                        nominal_data_source_rid=datasource_response.rid
+                        nominal_data_source_rid=nominal_data_source_rid or datasource_response.rid
                     ),
                 ),
                 metadata={},

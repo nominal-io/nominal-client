@@ -71,7 +71,7 @@ def create_write_request(api_batches: list[list[BatchItem]]) -> WriteRequestNomi
 
 def process_batch(
     batch: Sequence[BatchItem],
-    nominal_data_source_rid: str | None,
+    nominal_data_source_rid: str,
     auth_header: str,
     proto_write: ProtoWriteService,
 ) -> None:
@@ -80,9 +80,7 @@ def process_batch(
 
     api_batches = [list(api_batch) for _, api_batch in api_batched]
 
-    if nominal_data_source_rid is None:
-        raise ValueError("Writing not implemented for this connection type")
-
+    request = create_write_request(api_batches)
     request = create_write_request(api_batches)
 
     proto_write.write_nominal_batches(
