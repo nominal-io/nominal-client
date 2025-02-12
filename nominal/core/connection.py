@@ -242,7 +242,7 @@ class NominalStreamingConnection(Connection):
     def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
         warnings.warn(
             "get_nominal_write_stream is deprecated and will be removed in a future version. "
-            "Use start_streaming() and write() methods instead.",
+            "Use get_write_stream_v2() instead.",
             UserWarning,
             stacklevel=2,
         )
