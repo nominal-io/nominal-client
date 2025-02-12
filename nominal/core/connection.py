@@ -23,8 +23,7 @@ from nominal.core._utils import HasRid
 from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, WriteStream
-from nominal.core.stream_v2 import WriteStreamV2
-from nominal.ts import BackpressureMode
+from nominal.core.stream_v2 import BackpressureMode, WriteStreamV2
 
 
 @dataclass(frozen=True)
@@ -51,10 +50,10 @@ class Connection(HasRid):
     @classmethod
     def _from_conjure(
         cls, clients: _Clients, response: scout_datasource_connection_api.Connection
-    ) -> Connection | NominalStreamingConnection:
+    ) -> Connection | StreamingConnection:
         """Factory method to create the appropriate Connection subclass based on connection details"""
         if response.connection_details.nominal is not None:
-            return NominalStreamingConnection(
+            return StreamingConnection(
                 rid=response.rid,
                 name=response.display_name,
                 description=response.description,
@@ -165,7 +164,7 @@ class Connection(HasRid):
 
 
 @dataclass(frozen=True)
-class NominalStreamingConnection(Connection):
+class StreamingConnection(Connection):
     nominal_data_source_rid: str
 
     def process_batch(self, batch: Sequence[BatchItem], data_format: Literal["json", "protobuf"] = "json") -> None:
@@ -186,11 +185,11 @@ class NominalStreamingConnection(Connection):
 
     def get_write_stream_v2(
         self,
-        batch_size: int = 50_000,
+        max_batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf"] = "json",
         backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
-        maxsize: int = 0,
+        max_queue_size: int = 0,
         max_workers: int = 4,
     ) -> WriteStreamV2:
         """Stream to write non-blocking messages to a datasource.
@@ -211,10 +210,10 @@ class NominalStreamingConnection(Connection):
                 process_batch=lambda batch: process_batch_legacy(
                     batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
                 ),
-                batch_size=batch_size,
+                max_batch_size=max_batch_size,
                 max_wait=max_wait,
                 backpressure_mode=backpressure_mode,
-                maxsize=maxsize,
+                max_queue_size=max_queue_size,
                 executor=executor,
             )
 
@@ -230,7 +229,7 @@ class NominalStreamingConnection(Connection):
                 auth_header=self._clients.auth_header,
                 proto_write=self._clients.proto_write,
             ),
-            batch_size=batch_size,
+            batch_size=max_batch_size,
             max_wait=max_wait,
             backpressure_mode=backpressure_mode,
             maxsize=maxsize,

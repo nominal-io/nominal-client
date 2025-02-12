@@ -64,7 +64,7 @@ def spawn_batching_thread(
     items: ReadQueue[_T],
     max_batch_size: int,
     max_batch_duration: timedelta,
-    maxsize: int = 0,
+    max_queue_size: int = 0,
 ) -> tuple[threading.Thread, ReadQueue[list[_T]]]:
     """Enqueue items from a queue into batches in a separate thread.
 
@@ -72,9 +72,9 @@ def spawn_batching_thread(
         items: input queue
         max_batch_size: maximum number of items in a batch
         max_batch_duration: maximum time between items in a batch
-        maxsize: maximum size of the batch queue (0 for unlimited)
+        max_queue_size: maximum size of the batch queue (0 for unlimited)
     """
-    batches: Queue[list[_T]] = Queue(maxsize=maxsize)
+    batches: Queue[list[_T]] = Queue(maxsize=max_queue_size)
     batching_thread = threading.Thread(
         target=_enqueue_timed_batches, args=(items, batches, max_batch_size, max_batch_duration), daemon=True
     )

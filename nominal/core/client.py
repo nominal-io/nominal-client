@@ -809,10 +809,11 @@ class NominalClient:
                 ),
             )
         else:
-            datasource_response = self._clients.storage.batch_get(self._clients.auth_header, [nominal_data_source_rid])[
-                0
-            ]
-            if datasource_response is None:
+            try:
+                datasource_response = self._clients.storage.batch_get(
+                    self._clients.auth_header, [nominal_data_source_rid]
+                )[0]
+            except IndexError:
                 raise ValueError(f"no datasource found with RID {nominal_data_source_rid!r}")
 
         connection_response = self._clients.connection.create_connection(

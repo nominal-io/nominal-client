@@ -8,7 +8,7 @@ from nominal_api_protos.nominal_write_pb2 import (
 )
 
 from nominal.core.batch_processor_proto import process_batch
-from nominal.core.connection import NominalStreamingConnection
+from nominal.core.connection import StreamingConnection
 from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
 
@@ -32,7 +32,7 @@ def mock_clients():
 
 @pytest.fixture
 def mock_connection(mock_clients):
-    return NominalStreamingConnection(
+    return StreamingConnection(
         rid="test-connection-rid",
         name="Test Connection",
         description="A connection for testing",
