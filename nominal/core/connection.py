@@ -25,7 +25,7 @@ from nominal.core.stream import BatchItem, WriteStream
 from nominal.core.stream_v2 import WriteStreamV2
 
 
-@dataclass()
+@dataclass(frozen=True)
 class Connection(HasRid):
     rid: str 
     name: str
@@ -162,7 +162,7 @@ class Connection(HasRid):
         self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
 
 
-@dataclass()
+@dataclass(frozen=True)
 class NominalStreamingConnection(Connection):
     nominal_data_source_rid: str
 
