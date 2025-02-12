@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import logging
 import threading
 import time
 from datetime import timedelta
 from queue import Empty, Full, Queue, ShutDown
 from typing import Iterable, Protocol, TypeVar
+from abc import ABC, abstractmethod
 
 from nominal.ts import BackpressureMode
 
@@ -105,36 +107,42 @@ def enqueue_iterable(iterable: Iterable[_T], q: WriteQueue[_T]) -> None:
     q.shutdown()
 
 
-class BackpressureQueue(Queue[_T]):
-    """A queue that implements different backpressure strategies."""
-
-    def __init__(self, maxsize: int = 0, mode: BackpressureMode = BackpressureMode.BLOCK):
-        """Initialize the queue with a maximum size and a backpressure mode."""
-        super().__init__(maxsize=maxsize)
-        self.mode = mode
-
+class BackpressureQueue(ABC, Queue[_T]):
+    """Abstract base class for queues with different backpressure strategies."""
+    
+    @abstractmethod
     def put_with_backpressure(self, item: _T) -> None:
-        """Put an item in the queue using the configured backpressure strategy."""
-        if self.maxsize == 0 or self.mode == BackpressureMode.BLOCK:
-            self.put(item)
-            return
+        """Put an item in the queue using the specific backpressure strategy."""
+        pass
 
-        try:
-            if self.mode == BackpressureMode.DROP_NEWEST:
-                try:
-                    self.put_nowait(item)
-                except Full:
-                    logger.warning("Queue full, dropping new item due to backpressure mode")
-            elif self.mode == BackpressureMode.DROP_OLDEST:
-                while True:
-                    try:
-                        self.put_nowait(item)
-                        break
-                    except Full:
-                        try:
-                            self.get_nowait()
-                        except Empty:
-                            continue
-        except Exception as e:
-            logger.error(f"Unexpected error during enqueue: {e}")
-            raise
+
+class BlockingQueue(BackpressureQueue[_T]):
+    """Queue that blocks when full."""
+    
+    def put_with_backpressure(self, item: _T) -> None:
+        self.put(item)
+
+
+class DropNewestQueue(BackpressureQueue[_T]):
+    """Queue that drops new items when full."""
+    
+    def put_with_backpressure(self, item: _T) -> None:
+        with self.mutex:
+            if self._qsize() < self.maxsize:
+                self._put(item)
+                self.not_empty.notify()
+            else:
+                logger.warning("Queue full, dropping new item")
+
+
+class DropOldestQueue(BackpressureQueue[_T]):
+    """Queue that drops oldest items when full (ring buffer)."""
+    
+    def put_with_backpressure(self, item: _T) -> None:
+        with self.mutex:
+            while self._qsize() >= self.maxsize:
+                self._get()
+                self.task_done()
+            self._put(item)
+            self.unfinished_tasks += 1
+            self.not_empty.notify()

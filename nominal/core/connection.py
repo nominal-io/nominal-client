@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import itertools
 import logging
 import warnings
@@ -24,8 +25,6 @@ from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, WriteStream
 from nominal.core.stream_v2 import WriteStreamV2
 from nominal.ts import BackpressureMode
-
-import concurrent.futures
 
 
 @dataclass(frozen=True)
@@ -203,12 +202,10 @@ class NominalStreamingConnection(Connection):
             data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
             backpressure_mode (BackpressureMode): How to handle queue overflow. Default BLOCK
             maxsize (int): Maximum number of items that can be queued (0 for unlimited). Default 0
+            max_workers (int): Maximum number of threads to use for parallel processing. Default 4
         """
-        executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=max_workers, 
-            thread_name_prefix="nominal-writer"
-        )
-        
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="nominal-writer")
+
         if data_format == "json":
             return WriteStreamV2.create(
                 process_batch=lambda batch: process_batch_legacy(
