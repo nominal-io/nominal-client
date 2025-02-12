@@ -238,7 +238,7 @@ class NominalClient:
         """
         path = Path(path)
         if name is None:
-            name = path.name
+            name = path.stem.split(".")[0]
 
         source = self._create_source_from_path(path, name, FileTypes.DATAFLASH)
         request = ingest_api.IngestRequest(
@@ -270,7 +270,7 @@ class NominalClient:
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
         if name is None:
-            name = path.name
+            name = path.stem.split(".")[0]
 
         source = self._create_source_from_path(path, name, file_type)
         request = ingest_api.IngestRequest(
@@ -309,7 +309,7 @@ class NominalClient:
         """
         path = Path(path)
         if name is None:
-            name = path.name
+            name = path.stem.split(".")[0]
 
         source = self._create_source_from_path(path, name, FileTypes.MCAP)
         channels = _create_mcap_channels(include_topics, exclude_topics)
@@ -393,7 +393,7 @@ class NominalClient:
         path = Path(path)
         file_type = FileType.from_video(path)
         if name is None:
-            name = path.name
+            name = path.stem.split(".")[0]
 
         with path.open("rb") as data_file:
             return self.create_video_from_io(
