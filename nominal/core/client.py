@@ -273,20 +273,17 @@ class NominalClient:
             name = path.name
 
         source = self._create_source_from_path(path, name, file_type)
-        request = ingest_api.TriggerIngest(
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            source=source,
-            channel_config=(
-                None
-                if prefix_tree_delimiter is None
-                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-            ),
-            dataset_description=description,
-            dataset_name=name,
-            timestamp_metadata=ingest_api.TimestampMetadata(
-                series_name=timestamp_column,
-                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                csv=ingest_api.CsvOpts(
+                    source=source,
+                    target=self._create_dataset_target(name, description, labels, properties),
+                    timestamp_metadata=ingest_api.TimestampMetadata(
+                        series_name=timestamp_column,
+                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+                    ),
+                    channel_prefix=prefix_tree_delimiter,
+                )
             ),
         )
         return self._create_dataset_from_request(request)
