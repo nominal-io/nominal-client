@@ -4,22 +4,19 @@ import concurrent.futures
 import enum
 import logging
 import threading
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Callable, Self, Sequence, Type
+from typing import Callable, Sequence, Type
+from typing_extensions import Self
 
 from nominal.core.queueing import (
-    BackpressureQueue,
-    BlockingQueue,
-    DropNewestQueue,
-    DropOldestQueue,
     ReadQueue,
     iter_queue,
     spawn_batching_thread,
 )
 from nominal.core.stream import BatchItem
+from nominal.core.streaming_queue import StreamingQueue
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
@@ -37,11 +34,12 @@ class WriteStreamV2:
     max_batch_size: int = 50_000
     max_wait: timedelta = timedelta(seconds=1)
     max_queue_size: int = 0  # Default to unlimited queue size
-    _item_queue: BackpressureQueue[BatchItem] = field(init=False)
+    _item_queue: StreamingQueue[BatchItem] = field(init=False)
     _batch_queue: ReadQueue[Sequence[BatchItem]] | None = field(default=None)
     _batch_thread: threading.Thread | None = field(default=None)
     _process_thread: threading.Thread | None = field(default=None)
     _executor: concurrent.futures.Executor | None = field(default=None)
+    backpressure_mode: BackpressureMode = field(default=BackpressureMode.BLOCK)
 
     @classmethod
     def create(
@@ -72,21 +70,15 @@ class WriteStreamV2:
             max_wait=max_wait,
             max_queue_size=max_queue_size,
             _executor=executor,
+            backpressure_mode=backpressure_mode,
         )
 
-        # Initialize queues - if maxsize=0, both queues will be unlimited
+        # Initialize queues
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
-        # Create the appropriate queue type based on backpressure mode
-        queue_classes: Mapping[BackpressureMode, Type[BackpressureQueue[BatchItem]]] = {
-            BackpressureMode.BLOCK: BlockingQueue[BatchItem],
-            BackpressureMode.DROP_NEWEST: DropNewestQueue[BatchItem],
-            BackpressureMode.DROP_OLDEST: DropOldestQueue[BatchItem],
-        }
-        queue_class: Type[BackpressureQueue[BatchItem]] = queue_classes[backpressure_mode]
-
-        instance._item_queue = queue_class(maxsize=item_maxsize)
+        # Create a single StreamingQueue instance
+        instance._item_queue = StreamingQueue(maxsize=item_maxsize)
 
         # Start the streaming threads
         instance._batch_thread, instance._batch_queue = spawn_batching_thread(
@@ -111,7 +103,7 @@ class WriteStreamV2:
             self._batch_thread = None
             self._process_thread = None
             self._batch_queue = None
-            self._item_queue = BlockingQueue()
+            self._item_queue = StreamingQueue()
             self._executor = None
 
     def _process_worker(self) -> None:
@@ -147,7 +139,13 @@ class WriteStreamV2:
     ) -> None:
         """Write a single value."""
         item = BatchItem(channel_name, timestamp, value, tags)
-        self._item_queue.put_with_backpressure(item)
+
+        if self.backpressure_mode == BackpressureMode.DROP_NEWEST:
+            self._item_queue.put_drop_newest(item)
+        elif self.backpressure_mode == BackpressureMode.DROP_OLDEST:
+            self._item_queue.put_drop_oldest(item)
+        else:  # BLOCK mode
+            self._item_queue.put(item)
 
     def enqueue_batch(
         self,
