@@ -196,11 +196,11 @@ class StreamingConnection(Connection):
 
         Args:
         ----
-            batch_size (int): How big the batch can get before writing to Nominal. Default 50,000
+            max_batch_size (int): How big the batch can get before writing to Nominal. Default 50,000
             max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 1 second
             data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
             backpressure_mode (BackpressureMode): How to handle queue overflow. Default BLOCK
-            maxsize (int): Maximum number of items that can be queued (0 for unlimited). Default 0
+            max_queue_size (int): Maximum number of items that can be queued (0 for unlimited). Default 0
             max_workers (int): Maximum number of threads to use for parallel processing. Default 4
         """
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="nominal-writer")
@@ -229,10 +229,10 @@ class StreamingConnection(Connection):
                 auth_header=self._clients.auth_header,
                 proto_write=self._clients.proto_write,
             ),
-            batch_size=max_batch_size,
+            max_batch_size=max_batch_size,
             max_wait=max_wait,
             backpressure_mode=backpressure_mode,
-            maxsize=maxsize,
+            max_queue_size=max_queue_size,
             executor=executor,
         )
 

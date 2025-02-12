@@ -57,9 +57,9 @@ class WriteStreamV2:
 
         Args:
             process_batch: Function to process batches of items
-            batch_size: How many items to accumulate before processing
+            max_batch_size: How many items to accumulate before processing
             max_wait: Maximum time to wait before processing a partial batch
-            maxsize: Maximum number of items that can be queued (0 for unlimited)
+            max_queue_size: Maximum number of items that can be queued (0 for unlimited)
             backpressure_mode: How to handle queue overflow:
                 - BLOCK: Block until space is available (default)
                 - DROP_NEWEST: Drop new items when queue is full
