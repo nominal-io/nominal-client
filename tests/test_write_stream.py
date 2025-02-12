@@ -8,7 +8,7 @@ from nominal_api_protos.nominal_write_pb2 import (
 )
 
 from nominal.core.batch_processor_proto import process_batch
-from nominal.core.connection import Connection
+from nominal.core.connection import NominalStreamingConnection
 from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
 
@@ -32,13 +32,13 @@ def mock_clients():
 
 @pytest.fixture
 def mock_connection(mock_clients):
-    return Connection(
+    return NominalStreamingConnection(
         rid="test-connection-rid",
         name="Test Connection",
         description="A connection for testing",
         _tags={},
         _clients=mock_clients,
-        _nominal_data_source_rid="test-datasource-rid",
+        nominal_data_source_rid="test-datasource-rid",
     )
 
 
@@ -53,7 +53,7 @@ def test_process_batch_double_points(mock_connection):
     # Process the batch using the imported process_batch function
     process_batch(
         batch=batch,
-        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
         proto_write=mock_connection._clients.proto_write,
     )
@@ -110,7 +110,7 @@ def test_process_batch_string_points(mock_connection):
     # Process the batch using the imported process_batch function
     process_batch(
         batch=batch,
-        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
         proto_write=mock_connection._clients.proto_write,
     )
@@ -153,7 +153,7 @@ def test_process_batch_with_tags(mock_connection):
     # Process the batch using the imported process_batch function
     process_batch(
         batch=batch,
-        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
         proto_write=mock_connection._clients.proto_write,
     )
@@ -185,7 +185,7 @@ def test_process_batch_invalid_type(mock_connection):
     with pytest.raises(ValueError, match="only float and string are supported types for value"):
         process_batch(
             batch=batch,
-            nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+            nominal_data_source_rid=mock_connection.nominal_data_source_rid,
             auth_header=mock_connection._clients.auth_header,
             proto_write=mock_connection._clients.proto_write,
         )
@@ -205,7 +205,7 @@ def test_process_batch_multiple_channels(mock_connection):
     # Process the batch
     process_batch(
         batch=batch,
-        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
         proto_write=mock_connection._clients.proto_write,
     )

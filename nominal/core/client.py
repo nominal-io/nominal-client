@@ -804,12 +804,14 @@ class NominalClient:
             datasource_response = self._clients.storage.create(
                 self._clients.auth_header,
                 storage_datasource_api.CreateNominalDataSourceRequest(
-                id=datasource_id,
-                description=datasource_description,
-                ),  
+                    id=datasource_id,
+                    description=datasource_description,
+                ),
             )
         else:
-            datasource_response = self._clients.storage.get(self._clients.auth_header, nominal_data_source_rid)
+            datasource_response = self._clients.storage.batch_get(self._clients.auth_header, [nominal_data_source_rid])[
+                0
+            ]
             if datasource_response is None:
                 raise ValueError(f"no datasource found with RID {nominal_data_source_rid!r}")
 

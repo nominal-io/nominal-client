@@ -4,9 +4,8 @@ import itertools
 import logging
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from types import TracebackType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, Type
+from datetime import timedelta
+from typing import Iterable, Literal, Mapping, Protocol, Sequence
 
 from nominal_api import (
     datasource_api,
@@ -22,15 +21,13 @@ from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
-from nominal.core.stream import WriteStream
-from nominal.core.stream_v2 import StreamingManager
-from nominal.ts import IntegralNanosecondsUTC
-from nominal.core.stream import BatchItem
+from nominal.core.stream import BatchItem, WriteStream
+from nominal.core.stream_v2 import WriteStreamV2
 
 
 @dataclass()
 class Connection(HasRid):
-    rid: str # THIS IS THE RID OF THE CONNECTION, NOT THE DATA SOURCE
+    rid: str 
     name: str
     description: str | None
     _tags: Mapping[str, Sequence[str]]
@@ -48,6 +45,7 @@ class Connection(HasRid):
 
         @property
         def proto_write(self) -> ProtoWriteService: ...
+
     @classmethod
     def _from_conjure(
         cls, clients: _Clients, response: scout_datasource_connection_api.Connection
@@ -60,7 +58,7 @@ class Connection(HasRid):
                 description=response.description,
                 _tags=response.available_tag_values,
                 _clients=clients,
-                nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid, # THIS IS THE RID OF THE DATA SOURCE, NOT THE CONNECTION
+                nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
             )
         return cls(
             rid=response.rid,
@@ -163,10 +161,10 @@ class Connection(HasRid):
         """Unarchive this connection, making it visible in the UI."""
         self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
 
+
 @dataclass()
 class NominalStreamingConnection(Connection):
     nominal_data_source_rid: str
-    _stream_manager: StreamingManager | None = field(default=None, repr=False)
 
     def process_batch(self, batch: Sequence[BatchItem], data_format: Literal["json", "protobuf"] = "json") -> None:
         """Process a batch of items."""
@@ -184,69 +182,61 @@ class NominalStreamingConnection(Connection):
                 proto_write=self._clients.proto_write,
             )
 
-    def start_streaming(
+    def get_write_stream_v2(
         self,
-        data_format: Literal["json", "protobuf"] = "json",
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-    ) -> None:
-        """Start the streaming threads."""
-        if self._stream_manager is None:
-            self._stream_manager = StreamingManager(
-                processor=self.process_batch, batch_size=batch_size, max_wait=max_wait
+        data_format: Literal["json", "protobuf"] = "json",
+    ) -> WriteStreamV2:
+        """Stream to write non-blocking messages to a datasource.
+
+        Args:
+        ----
+            batch_size (int): How big the batch can get before writing to Nominal. Default 50,000
+            max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 1 second
+            data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
+
+        Examples:
+        --------
+            Standard Usage:
+            ```py
+            with connection.get_write_stream_v2() as stream:
+                stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
+                stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
+                ...
+            ```
+
+            Without a context manager:
+            ```py
+            stream = connection.get_write_stream_v2()
+            stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
+            stream.close()
+            ```
+        """
+        if data_format == "json":
+            return WriteStreamV2.create(
+                process_batch=lambda batch: process_batch_legacy(
+                    batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
+                ),
+                batch_size=batch_size,
+                max_wait=max_wait,
             )
-        self._stream_manager.start(data_format)
 
-    def stop_streaming(self, wait: bool = True) -> None:
-        """Stop the streaming threads."""
-        if self._stream_manager:
-            self._stream_manager.stop()
-            self._stream_manager = None
+        try:
+            from nominal.core.batch_processor_proto import process_batch
+        except ImportError:
+            raise ImportError("nominal-api-protos is required to use get_write_stream_v2 with data_format='protobuf'")
 
-    def write(
-        self,
-        channel_name: str,
-        timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: float | str,
-        tags: dict[str, str] | None = None,
-    ) -> None:
-        """Write a single value to a channel."""
-        if self._stream_manager is None:
-            raise RuntimeError("Streaming not started. Call start_streaming() first")
-        self._stream_manager.write(channel_name, timestamp, value, tags)
-
-    def write_batch(
-        self,
-        channel_name: str,
-        timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
-        values: Sequence[float | str],
-        tags: dict[str, str] | None = None,
-    ) -> None:
-        """Write multiple values to a channel."""
-        if self._stream_manager is None:
-            raise RuntimeError("Streaming not started. Call start_streaming() first")
-        self._stream_manager.write_batch(channel_name, timestamps, values, tags)
-
-    def __enter__(self) -> NominalStreamingConnection:
-        self.start_streaming()
-        return self
-
-    def __exit__(
-        self,
-        exc_type: Type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self.stop_streaming()
-
-    def __del__(self) -> None:
-        """Ensure streaming is stopped when the object is garbage collected."""
-        if self._stream_manager is not None:
-            logging.warning(
-                "NominalStreamingConnection was not properly stopped. "
-                "Please use stop_streaming() or context manager to ensure proper cleanup."
-            )
-            self.stop_streaming(wait=False)  # Don't wait during garbage collection
+        return WriteStreamV2.create(
+            process_batch=lambda batch: process_batch(
+                batch=batch,
+                nominal_data_source_rid=self.nominal_data_source_rid,
+                auth_header=self._clients.auth_header,
+                proto_write=self._clients.proto_write,
+            ),
+            batch_size=batch_size,
+            max_wait=max_wait,
+        )
 
     # Deprecated methods for backward compatibility
     def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
