@@ -1021,8 +1021,8 @@ class NominalClient:
                 raise NominalIngestError("error ingesting: no dataset created")
             return self.get_dataset(response.details.dataset.dataset_rid)
         else:
-            response2 = self._clients.ingest.trigger_ingest(self._clients.auth_header, request)
-            return self.get_dataset(response2.dataset_rid)
+            trigger_ingest_response = self._clients.ingest.trigger_ingest(self._clients.auth_header, request)
+            return self.get_dataset(trigger_ingest_response.dataset_rid)
 
 
 def _create_search_runs_query(
