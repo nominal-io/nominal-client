@@ -7,17 +7,20 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Callable, Sequence, Type, overload
+from typing import Callable, Sequence, Type
 
 from typing_extensions import Self
 
 from nominal.core.queueing import (
+    BackpressureQueue,
+    BlockingQueue,
+    DropNewestQueue,
+    DropOldestQueue,
     ReadQueue,
     iter_queue,
     spawn_batching_thread,
 )
 from nominal.core.stream import BatchItem
-from nominal.core.streaming_queue import StreamingQueue
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
@@ -35,7 +38,7 @@ class WriteStreamV2:
     max_batch_size: int = 50_000
     max_wait: timedelta = timedelta(seconds=1)
     max_queue_size: int = 0  # Default to unlimited queue size
-    _item_queue: StreamingQueue[BatchItem] = field(init=False)
+    _item_queue: BackpressureQueue[BatchItem] = field(init=False)
     _batch_queue: ReadQueue[Sequence[BatchItem]] | None = field(default=None)
     _batch_thread: threading.Thread | None = field(default=None)
     _process_thread: threading.Thread | None = field(default=None)
@@ -78,10 +81,15 @@ class WriteStreamV2:
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
-        # Create a single StreamingQueue instance
-        instance._item_queue = StreamingQueue(maxsize=item_maxsize)
+        # Choose the correct queue according to backpressure_mode.
+        if backpressure_mode == BackpressureMode.DROP_NEWEST:
+            instance._item_queue = DropNewestQueue(maxsize=item_maxsize)
+        elif backpressure_mode == BackpressureMode.DROP_OLDEST:
+            instance._item_queue = DropOldestQueue(maxsize=item_maxsize)
+        else:  # BLOCK mode
+            instance._item_queue = BlockingQueue(maxsize=item_maxsize)
 
-        # Start the streaming threads
+        # Start the streaming threads for batching and processing.
         instance._batch_thread, instance._batch_queue = spawn_batching_thread(
             instance._item_queue,
             instance.max_batch_size,
@@ -104,7 +112,7 @@ class WriteStreamV2:
             self._batch_thread = None
             self._process_thread = None
             self._batch_queue = None
-            self._item_queue = StreamingQueue()
+            self._item_queue = BlockingQueue()  # Reset or reinitialize as needed
             self._executor = None
 
     def _process_worker(self) -> None:
@@ -131,7 +139,6 @@ class WriteStreamV2:
                 except Exception as e:
                     logger.error(f"Batch processing failed: {e}")
 
-    @overload
     def enqueue(
         self,
         channel_name: str,
@@ -141,13 +148,8 @@ class WriteStreamV2:
     ) -> None:
         """Write a single value."""
         item = BatchItem(channel_name, timestamp, value, tags)
-
-        if self.backpressure_mode == BackpressureMode.DROP_NEWEST:
-            self._item_queue.put_drop_newest(item)
-        elif self.backpressure_mode == BackpressureMode.DROP_OLDEST:
-            self._item_queue.put_drop_oldest(item)
-        else:  # BLOCK mode
-            self._item_queue.put(item)
+        # Simply use the queue's built-in backpressure logic.
+        self._item_queue.put_with_backpressure(item)
 
     def enqueue_batch(
         self,
@@ -171,7 +173,7 @@ class WriteStreamV2:
     ) -> None:
         """Write multiple channel values using a flattened dictionary.
 
-        Each key in the dictionary is treated as a channel name and 
+        Each key in the dictionary is treated as a channel name and
         the corresponding value is enqueued with the provided timestamp.
 
         Args:

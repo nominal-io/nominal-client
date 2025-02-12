@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import timedelta
 from typing import Iterable, Protocol, TypeVar
@@ -91,3 +92,51 @@ def enqueue_iterable(iterable: Iterable[_T], q: WriteQueue[_T]) -> None:
     for item in iterable:
         q.put(item)
     q.shutdown()
+
+
+class BackpressureQueue(ABC, StreamingQueue[_T]):
+    """Abstract base class for queues with different backpressure strategies."""
+
+    @abstractmethod
+    def put_with_backpressure(self, item: _T) -> None:
+        """Put an item in the queue using the specific backpressure strategy."""
+        pass
+
+
+class BlockingQueue(BackpressureQueue[_T]):
+    """Queue that blocks when full."""
+
+    def put_with_backpressure(self, item: _T) -> None:
+        self.put(item)
+
+
+class DropNewestQueue(BackpressureQueue[_T]):
+    """Queue that drops new items when full."""
+
+    def put_with_backpressure(self, item: _T) -> None:
+        """Put an item in the queue, dropping it if the queue is full."""
+        with self.mutex:  # should I use self.not_full (the condition lock)?
+            if self.is_shutdown:
+                raise ShutDown
+            if self._qsize() < self.maxsize:
+                self._put(item)
+                self.unfinished_tasks += 1
+                self.not_empty.notify()
+            else:
+                logger.warning("Queue full, dropping new item")
+
+
+class DropOldestQueue(BackpressureQueue[_T]):
+    """Queue that drops oldest items when full (ring buffer)."""
+
+    def put_with_backpressure(self, item: _T) -> None:
+        """Put an item in the queue, removing oldest items if the queue is full."""
+        with self.mutex:
+            if self.is_shutdown:
+                raise ShutDown
+            while self._qsize() >= self.maxsize:
+                self._get()
+                self.unfinished_tasks -= 1
+            self._put(item)
+            self.unfinished_tasks += 1
+            self.not_empty.notify()
