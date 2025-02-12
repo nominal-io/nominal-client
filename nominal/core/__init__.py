@@ -13,6 +13,7 @@ from nominal.core.stream import WriteStream
 from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
+from nominal.core.stream_v2 import WriteStreamV2
 
 __all__ = [
     "Asset",
@@ -37,4 +38,5 @@ __all__ = [
     "CheckViolation",
     "DataReviewBuilder",
     "WriteStream",
+    "WriteStreamV2",
 ]

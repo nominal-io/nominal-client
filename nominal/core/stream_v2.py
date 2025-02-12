@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Callable, Self, Sequence, Type
+import concurrent.futures
 
 from nominal.core.queueing import BackpressureQueue, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
@@ -25,14 +26,16 @@ class WriteStreamV2:
     _batch_queue: ReadQueue[Sequence[BatchItem]] | None = field(default=None)
     _batch_thread: threading.Thread | None = field(default=None)
     _process_thread: threading.Thread | None = field(default=None)
+    _executor: concurrent.futures.Executor | None = field(default=None)
 
     @classmethod
     def create(
         cls,
         process_batch: Callable[[Sequence[BatchItem]], None],
+        executor: concurrent.futures.Executor | None = None,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        maxsize: int = 0,  # Default to unlimited
+        maxsize: int = 0,
         backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
     ) -> Self:
         """Create a new WriteStreamV2 instance.
@@ -46,6 +49,7 @@ class WriteStreamV2:
                 - BLOCK: Block until space is available (default)
                 - DROP_NEWEST: Drop new items when queue is full
                 - DROP_OLDEST: Drop oldest items when queue is full (ring buffer)
+            executor: executor for parallel batch processing.
         """
         instance = cls(
             _process_batch=process_batch,
@@ -53,6 +57,7 @@ class WriteStreamV2:
             max_wait=max_wait,
             maxsize=maxsize,
             backpressure_mode=backpressure_mode,
+            _executor=executor,
         )
 
         # Initialize queues - if maxsize=0, both queues will be unlimited
@@ -85,18 +90,31 @@ class WriteStreamV2:
             self._process_thread = None
             self._batch_queue = None
             self._item_queue = BackpressureQueue[BatchItem]()  # Reset to clean state
+            self._executor = None
 
     def _process_worker(self) -> None:
         """Worker that processes batches."""
         if not self._batch_queue:
             return
 
+        futures = []
         for batch in iter_queue(self._batch_queue):
-            try:
-                self._process_batch(batch)
-            except Exception as e:
-                logger.error(f"Batch processing failed: {e}")
-                continue
+            if self._executor is not None:
+                future = self._executor.submit(self._process_batch, batch)
+                futures.append(future)
+            else:
+                try:
+                    self._process_batch(batch)
+                except Exception as e:
+                    logger.error(f"Batch processing failed: {e}")
+        # Wait for any remaining futures to complete
+        if futures:
+            concurrent.futures.wait(futures)
+            for future in futures:
+                try:
+                    future.result()  # Raise any exceptions that occurred
+                except Exception as e:
+                    logger.error(f"Batch processing failed: {e}")
 
     def enqueue(
         self,
