@@ -115,15 +115,15 @@ class DropNewestQueue(BackpressureQueue[_T]):
 
     def put_with_backpressure(self, item: _T) -> None:
         """Put an item in the queue, dropping it if the queue is full."""
-        with self.mutex:  # should I use self.not_full (the condition lock)?
-            if self.is_shutdown:
-                raise ShutDown
-            if self._qsize() < self.maxsize:
-                self._put(item)
-                self.unfinished_tasks += 1
-                self.not_empty.notify()
-            else:
+        with self.not_full:
+            if self._shutdown:
+                raise ShutDown("Queue has been shut down")
+            if self.maxsize > 0 and self._qsize() >= self.maxsize:
                 logger.warning("Queue full, dropping new item")
+                return  # the item is dropped
+            self._put(item)
+            self.unfinished_tasks += 1
+            self.not_empty.notify()
 
 
 class DropOldestQueue(BackpressureQueue[_T]):
@@ -131,12 +131,13 @@ class DropOldestQueue(BackpressureQueue[_T]):
 
     def put_with_backpressure(self, item: _T) -> None:
         """Put an item in the queue, removing oldest items if the queue is full."""
-        with self.mutex:
-            if self.is_shutdown:
-                raise ShutDown
-            while self._qsize() >= self.maxsize:
-                self._get()
-                self.unfinished_tasks -= 1
+        with self.not_full:
+            if self._shutdown:
+                raise ShutDown("Queue has been shut down")
+            if self.maxsize > 0:
+                while self._qsize() >= self.maxsize:
+                    self._get()
+                    self.unfinished_tasks -= 1
             self._put(item)
             self.unfinished_tasks += 1
             self.not_empty.notify()

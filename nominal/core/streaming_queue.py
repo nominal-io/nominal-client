@@ -123,32 +123,3 @@ class StreamingQueue(Queue[T], Generic[T]):
                 self.all_tasks_done.notify_all()
             self.not_empty.notify_all()
             self.not_full.notify_all()
-
-    def put_drop_newest(self, item: T) -> None:
-        """Put an item into the queue with a "drop-newest" backpressure strategy.
-        If the queue is full, simply drop the new item and log a warning.
-        """
-        with self.not_full:
-            if self._shutdown:
-                raise ShutDown("Queue has been shut down")
-            if self.maxsize > 0 and self._qsize() >= self.maxsize:
-                logger.warning("Queue full, dropping new item")
-                return  # the item is dropped
-            self._put(item)
-            self.unfinished_tasks += 1
-            self.not_empty.notify()
-
-    def put_drop_oldest(self, item: T) -> None:
-        """Put an item into the queue with a "drop-oldest" backpressure strategy.
-        If the queue is full, remove oldest item(s) until space becomes available.
-        """
-        with self.not_full:
-            if self._shutdown:
-                raise ShutDown("Queue has been shut down")
-            if self.maxsize > 0:
-                while self._qsize() >= self.maxsize:
-                    self._get()
-                    self.unfinished_tasks -= 1
-            self._put(item)
-            self.unfinished_tasks += 1
-            self.not_empty.notify()
