@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
 
+import snappy  # <-- added import for snappy compression
+
 from conjure_python_client import RequestsClient, Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
@@ -41,19 +43,23 @@ class ProtoWriteService(Service):
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
+            "Content-Encoding": "snappy",  # added header to indicate snappy compression
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
-        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
+        compressed_data = snappy.compress(request.SerializeToString())  # compress the payload
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=compressed_data)
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: WriteRequest) -> None:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
+            "Content-Encoding": "snappy",  # added header to indicate snappy compression
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/prometheus/{data_source_rid}"
-        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
+        compressed_data = snappy.compress(request.SerializeToString())  # compress the payload
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=compressed_data)
 
 
 @dataclass(frozen=True)
