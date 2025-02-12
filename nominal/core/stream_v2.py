@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Callable, Sequence, Type
+
 from typing_extensions import Self
 
 from nominal.core.queueing import (
