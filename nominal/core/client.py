@@ -33,7 +33,7 @@ from nominal import _config
 from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import upload_multipart_file, upload_multipart_io
+from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -41,7 +41,7 @@ from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, ChecklistBuilder
 from nominal.core.connection import Connection
 from nominal.core.data_review import DataReview, DataReviewBuilder
-from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_mcap_channels, _get_dataset, _get_datasets
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
@@ -235,36 +235,21 @@ class NominalClient:
         """Create a dataset from an ArduPilot DataFlash log file.
 
         If name is None, the name of the file will be used.
-
-        See `create_dataset_from_io` for more details.
         """
         path = Path(path)
-        file_type = FileTypes.DATAFLASH
         if name is None:
             name = path.name
 
-        with open(path, "rb") as f:
-            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
-
+        source = self._create_source_from_path(path, name, FileTypes.DATAFLASH)
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 dataflash=ingest_api.DataflashOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        new=ingest_api.NewDatasetIngestDestination(
-                            labels=list(labels),
-                            properties={} if properties is None else dict(properties),
-                            dataset_description=description,
-                            dataset_name=name,
-                        )
-                    ),
+                    source=source,
+                    target=self._create_dataset_target(name, description, labels, properties),
                 )
             ),
         )
-        response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if response.details.dataset is None:
-            raise NominalIngestError("error ingesting dataflash: no dataset created")
-        return self.get_dataset(response.details.dataset.dataset_rid)
+        return self._create_dataset_from_request(request)
 
     def create_tabular_dataset(
         self,
@@ -281,26 +266,30 @@ class NominalClient:
         """Create a dataset from a table-like file (CSV, parquet, etc.).
 
         If name is None, the name of the file will be used.
-
-        See `create_dataset_from_io` for more details.
         """
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
         if name is None:
             name = path.name
 
-        with path.open("rb") as data_file:
-            return self.create_dataset_from_io(
-                data_file,
-                name=name,
-                timestamp_column=timestamp_column,
-                timestamp_type=timestamp_type,
-                file_type=file_type,
-                description=description,
-                labels=labels,
-                properties=properties,
-                prefix_tree_delimiter=prefix_tree_delimiter,
-            )
+        source = self._create_source_from_path(path, name, file_type)
+        request = ingest_api.TriggerIngest(
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+            source=source,
+            channel_config=(
+                None
+                if prefix_tree_delimiter is None
+                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+            ),
+            dataset_description=description,
+            dataset_name=name,
+            timestamp_metadata=ingest_api.TimestampMetadata(
+                series_name=timestamp_column,
+                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+            ),
+        )
+        return self._create_dataset_from_request(request)
 
     def create_mcap_dataset(
         self,
@@ -321,32 +310,24 @@ class NominalClient:
 
         See `create_dataset_from_io` for more details on the other arguments.
         """
-        mcap_path = Path(path)
-        s3_path = upload_multipart_file(
-            self._clients.auth_header,
-            mcap_path,
-            self._clients.upload,
-            file_type=FileTypes.MCAP,
-        )
+        path = Path(path)
+        if name is None:
+            name = path.name
+
+        source = self._create_source_from_path(path, name, FileTypes.MCAP)
         channels = _create_mcap_channels(include_topics, exclude_topics)
-        target = ingest_api.DatasetIngestTarget(
-            new=ingest_api.NewDatasetIngestDestination(
-                dataset_name=name,
-                dataset_description=description,
-                properties={} if properties is None else dict(properties),
-                labels=list(labels),
-                channel_config=None,
-            )
+        target = self._create_dataset_target(name, description, labels, properties)
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                mcap_protobuf_timeseries=ingest_api.McapProtobufTimeseriesOpts(
+                    source=source,
+                    target=target,
+                    channel_filter=channels,
+                    timestamp_type=ingest_api.McapTimestampType(ingest_api.LogTime()),
+                )
+            ),
         )
-        request = _create_ingest_request(s3_path, channels, target)
-        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if resp.details.dataset is not None:
-            dataset_rid = resp.details.dataset.dataset_rid
-            if dataset_rid is not None:
-                dataset = self.get_dataset(dataset_rid)
-                return dataset
-            raise NominalIngestError("error ingesting mcap: no dataset rid")
-        raise NominalIngestError("error ingesting mcap: no dataset created")
+        return self._create_dataset_from_request(request)
 
     def create_dataset_from_io(
         self,
@@ -796,23 +777,32 @@ class NominalClient:
         datasource_id: str,
         connection_name: str,
         datasource_description: str | None = None,
+        nominal_data_source_rid: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
     ) -> Connection:
-        datasource_response = self._clients.storage.create(
-            self._clients.auth_header,
-            storage_datasource_api.CreateNominalDataSourceRequest(
-                id=datasource_id,
-                description=datasource_description,
-            ),
-        )
+        if nominal_data_source_rid is None:
+            datasource_response = self._clients.storage.create(
+                self._clients.auth_header,
+                storage_datasource_api.CreateNominalDataSourceRequest(
+                    id=datasource_id,
+                    description=datasource_description,
+                ),
+            )
+        else:
+            datasource_response = self._clients.storage.batch_get(self._clients.auth_header, [nominal_data_source_rid])[
+                0
+            ]
+            if datasource_response is None:
+                raise ValueError(f"no datasource found with RID {nominal_data_source_rid!r}")
+
         connection_response = self._clients.connection.create_connection(
             self._clients.auth_header,
             scout_datasource_connection_api.CreateConnection(
                 name=connection_name,
                 connection_details=scout_datasource_connection_api.ConnectionDetails(
                     nominal=scout_datasource_connection_api.NominalConnectionDetails(
-                        nominal_data_source_rid=datasource_response.rid
+                        nominal_data_source_rid=nominal_data_source_rid or datasource_response.rid
                     ),
                 ),
                 metadata={},
@@ -990,87 +980,49 @@ class NominalClient:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
 
-    def create_dataset_from_gcs(
-        self,
-        gcs_path: str,
-        name: str,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-        description: str | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        prefix_tree_delimiter: str | None = None,
-    ) -> Dataset:
-        """Create a dataset from a file in Google Cloud Storage.
+    def _create_source_from_path(self, path: Path | str, name: str, file_type: FileType) -> ingest_api.IngestSource:
+        """Helper to create an IngestSource from either a local file or GCS path."""
+        path_str = str(path)
+        if path_str.startswith("gs://"):
+            return ingest_api.IngestSource(gcs=ingest_api.GcsIngestSource(path=path_str))
+        else:
+            with open(path, "rb") as f:
+                s3_path = upload_multipart_io(
+                    self._clients.auth_header,
+                    f,
+                    name,
+                    file_type,
+                    self._clients.upload,
+                )
+                return ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
 
-        The file must be one of:
-        * CSV (*.csv)
-        * Compressed CSV (*.csv.gz)
-        * Parquet (*.parquet)
-        * Parquet archives (*.parquet.tar, *.parquet.tar.gz, *.parquet.zip)
-        """
-        target = ingest_api.DatasetIngestTarget(
+    def _create_dataset_target(
+        self,
+        name: str,
+        description: str | None,
+        labels: Sequence[str],
+        properties: Mapping[str, str] | None,
+    ) -> ingest_api.DatasetIngestTarget:
+        """Helper to create a DatasetIngestTarget with common parameters."""
+        return ingest_api.DatasetIngestTarget(
             new=ingest_api.NewDatasetIngestDestination(
-                dataset_name=name,
-                dataset_description=description,
-                properties={} if properties is None else dict(properties),
                 labels=list(labels),
-                channel_config=(
-                    None
-                    if prefix_tree_delimiter is None
-                    else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-                ),
+                properties={} if properties is None else dict(properties),
+                dataset_description=description,
+                dataset_name=name,
             )
         )
-        return self._ingest_gcs(gcs_path, target, timestamp_column, timestamp_type)
 
-    def ingest_gcs_to_dataset(
-        self,
-        gcs_path: str,
-        dataset_rid: str,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-    ) -> Dataset:
-        """Ingest data from a Google Cloud Storage file into an existing dataset.
-
-        The file must be one of:
-        * CSV (*.csv)
-        * Compressed CSV (*.csv.gz)
-        * Parquet (*.parquet)
-        * Parquet archives (*.parquet.tar, *.parquet.tar.gz, *.parquet.zip)
-        """
-        target = ingest_api.DatasetIngestTarget(
-            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=dataset_rid)
-        )
-        return self._ingest_gcs(gcs_path, target, timestamp_column, timestamp_type)
-
-    def _ingest_gcs(
-        self,
-        gcs_path: str,
-        target: ingest_api.DatasetIngestTarget,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-    ) -> Dataset:
-        """Internal helper for GCS ingestion."""
-        response = self._clients.ingest.ingest(
-            self._clients.auth_header,
-            ingest_api.IngestRequest(
-                options=ingest_api.IngestOptions(
-                    csv=ingest_api.CsvOpts(
-                        source=ingest_api.IngestSource(gcs=ingest_api.GcsIngestSource(path=gcs_path)),
-                        target=target,
-                        timestamp_metadata=ingest_api.TimestampMetadata(
-                            series_name=timestamp_column,
-                            timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                        ),
-                    )
-                ),
-            ),
-        )
-        if response.details.dataset is None:
-            raise NominalIngestError("error ingesting from GCS: no dataset ingested")
-        return self.get_dataset(response.details.dataset.dataset_rid)
+    def _create_dataset_from_request(self, request: ingest_api.IngestRequest | ingest_api.TriggerIngest) -> Dataset:
+        """Helper to create a dataset from an ingest request and handle the response."""
+        if isinstance(request, ingest_api.IngestRequest):
+            response = self._clients.ingest.ingest(self._clients.auth_header, request)
+            if response.details.dataset is None:
+                raise NominalIngestError("error ingesting: no dataset created")
+            return self.get_dataset(response.details.dataset.dataset_rid)
+        else:
+            response2 = self._clients.ingest.trigger_ingest(self._clients.auth_header, request)
+            return self.get_dataset(response2.dataset_rid)
 
 
 def _create_search_runs_query(
