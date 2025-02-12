@@ -81,8 +81,6 @@ def process_batch(
     api_batches = [list(api_batch) for _, api_batch in api_batched]
 
     request = create_write_request(api_batches)
-    request = create_write_request(api_batches)
-
     proto_write.write_nominal_batches(
         auth_header=auth_header,
         data_source_rid=nominal_data_source_rid,

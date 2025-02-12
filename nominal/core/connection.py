@@ -190,7 +190,7 @@ class StreamingConnection(Connection):
         data_format: Literal["json", "protobuf"] = "json",
         backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
         max_queue_size: int = 0,
-        max_workers: int = 4,
+        max_workers: int = 10,
     ) -> WriteStreamV2:
         """Stream to write non-blocking messages to a datasource.
 
