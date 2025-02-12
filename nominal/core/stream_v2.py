@@ -3,12 +3,21 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Callable, Self, Sequence, Type
 
-from nominal.core.queueing import BackpressureQueue, ReadQueue, iter_queue, spawn_batching_thread, BlockingQueue, DropNewestQueue, DropOldestQueue
+from nominal.core.queueing import (
+    BackpressureQueue,
+    BlockingQueue,
+    DropNewestQueue,
+    DropOldestQueue,
+    ReadQueue,
+    iter_queue,
+    spawn_batching_thread,
+)
 from nominal.core.stream import BatchItem
 from nominal.ts import BackpressureMode, IntegralNanosecondsUTC
 
@@ -21,7 +30,7 @@ class WriteStreamV2:
     batch_size: int = 50_000
     max_wait: timedelta = timedelta(seconds=1)
     maxsize: int = 0  # Default to unlimited queue size
-    _item_queue: BackpressureQueue[BatchItem] = field(default_factory=BlockingQueue)
+    _item_queue: BackpressureQueue[BatchItem] = field(init=False)
     _batch_queue: ReadQueue[Sequence[BatchItem]] | None = field(default=None)
     _batch_thread: threading.Thread | None = field(default=None)
     _process_thread: threading.Thread | None = field(default=None)
@@ -63,13 +72,14 @@ class WriteStreamV2:
         batch_maxsize = (maxsize // batch_size) if maxsize > 0 else 0
 
         # Create the appropriate queue type based on backpressure mode
-        queue_class = {
-            BackpressureMode.BLOCK: BlockingQueue,
-            BackpressureMode.DROP_NEWEST: DropNewestQueue,
-            BackpressureMode.DROP_OLDEST: DropOldestQueue,
-        }[backpressure_mode]
-        
-        instance._item_queue = queue_class[BatchItem](maxsize=item_maxsize)
+        queue_classes: Mapping[BackpressureMode, Type[BackpressureQueue[BatchItem]]] = {
+            BackpressureMode.BLOCK: BlockingQueue[BatchItem],
+            BackpressureMode.DROP_NEWEST: DropNewestQueue[BatchItem],
+            BackpressureMode.DROP_OLDEST: DropOldestQueue[BatchItem],
+        }
+        queue_class: Type[BackpressureQueue[BatchItem]] = queue_classes[backpressure_mode]
+
+        instance._item_queue = queue_class(maxsize=item_maxsize)
 
         # Start the streaming threads
         instance._batch_thread, instance._batch_queue = spawn_batching_thread(
@@ -94,7 +104,7 @@ class WriteStreamV2:
             self._batch_thread = None
             self._process_thread = None
             self._batch_queue = None
-            self._item_queue = BackpressureQueue[BatchItem]()  # Reset to clean state
+            self._item_queue = BlockingQueue()
             self._executor = None
 
     def _process_worker(self) -> None:

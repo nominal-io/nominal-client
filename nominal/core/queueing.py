@@ -3,12 +3,10 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import timedelta
-from queue import Empty, Full, Queue, ShutDown
-from typing import Iterable, Protocol, TypeVar
 from abc import ABC, abstractmethod
-
-from nominal.ts import BackpressureMode
+from datetime import timedelta
+from queue import Empty, Queue, ShutDown
+from typing import Iterable, Protocol, TypeVar
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
@@ -109,7 +107,7 @@ def enqueue_iterable(iterable: Iterable[_T], q: WriteQueue[_T]) -> None:
 
 class BackpressureQueue(ABC, Queue[_T]):
     """Abstract base class for queues with different backpressure strategies."""
-    
+
     @abstractmethod
     def put_with_backpressure(self, item: _T) -> None:
         """Put an item in the queue using the specific backpressure strategy."""
@@ -118,18 +116,22 @@ class BackpressureQueue(ABC, Queue[_T]):
 
 class BlockingQueue(BackpressureQueue[_T]):
     """Queue that blocks when full."""
-    
+
     def put_with_backpressure(self, item: _T) -> None:
         self.put(item)
 
 
 class DropNewestQueue(BackpressureQueue[_T]):
     """Queue that drops new items when full."""
-    
+
     def put_with_backpressure(self, item: _T) -> None:
-        with self.mutex:
+        """Put an item in the queue, dropping it if the queue is full."""
+        with self.mutex:  # should I use self.not_full (the condition lock)?
+            if self.is_shutdown:
+                raise ShutDown
             if self._qsize() < self.maxsize:
                 self._put(item)
+                self.unfinished_tasks += 1
                 self.not_empty.notify()
             else:
                 logger.warning("Queue full, dropping new item")
@@ -137,12 +139,15 @@ class DropNewestQueue(BackpressureQueue[_T]):
 
 class DropOldestQueue(BackpressureQueue[_T]):
     """Queue that drops oldest items when full (ring buffer)."""
-    
+
     def put_with_backpressure(self, item: _T) -> None:
+        """Put an item in the queue, removing oldest items if the queue is full."""
         with self.mutex:
+            if self.is_shutdown:
+                raise ShutDown
             while self._qsize() >= self.maxsize:
                 self._get()
-                self.task_done()
+                self.unfinished_tasks -= 1
             self._put(item)
             self.unfinished_tasks += 1
             self.not_empty.notify()
