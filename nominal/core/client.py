@@ -1003,39 +1003,74 @@ class NominalClient:
         prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a file in Google Cloud Storage.
-        
+
         The file must be one of:
         * CSV (*.csv)
         * Compressed CSV (*.csv.gz)
         * Parquet (*.parquet)
         * Parquet archives (*.parquet.tar, *.parquet.tar.gz, *.parquet.zip)
         """
-        request = ingest_api.TriggerFileIngest(
-            source=ingest_api.IngestSource(
-                gcs=ingest_api.GcsIngestSource(path=gcs_path)
-            ),
-            source_metadata=ingest_api.IngestSourceMetadata(
-                timestamp_metadata=ingest_api.TimestampMetadata(
-                    series_name=timestamp_column,
-                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+        target = ingest_api.DatasetIngestTarget(
+            new=ingest_api.NewDatasetIngestDestination(
+                dataset_name=name,
+                dataset_description=description,
+                properties={} if properties is None else dict(properties),
+                labels=list(labels),
+                channel_config=(
+                    None
+                    if prefix_tree_delimiter is None
+                    else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+                ),
+            )
+        )
+        return self._ingest_gcs(gcs_path, target, timestamp_column, timestamp_type)
+
+    def ingest_gcs_to_dataset(
+        self,
+        gcs_path: str,
+        dataset_rid: str,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> Dataset:
+        """Ingest data from a Google Cloud Storage file into an existing dataset.
+
+        The file must be one of:
+        * CSV (*.csv)
+        * Compressed CSV (*.csv.gz)
+        * Parquet (*.parquet)
+        * Parquet archives (*.parquet.tar, *.parquet.tar.gz, *.parquet.zip)
+        """
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=dataset_rid)
+        )
+        return self._ingest_gcs(gcs_path, target, timestamp_column, timestamp_type)
+
+    def _ingest_gcs(
+        self,
+        gcs_path: str,
+        target: ingest_api.DatasetIngestTarget,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> Dataset:
+        """Internal helper for GCS ingestion."""
+        response = self._clients.ingest.ingest(
+            self._clients.auth_header,
+            ingest_api.IngestRequest(
+                options=ingest_api.IngestOptions(
+                    csv=ingest_api.CsvOpts(
+                        source=ingest_api.IngestSource(gcs=ingest_api.GcsIngestSource(path=gcs_path)),
+                        target=target,
+                        timestamp_metadata=ingest_api.TimestampMetadata(
+                            series_name=timestamp_column,
+                            timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+                        ),
+                    )
                 ),
             ),
-            destination=ingest_api.IngestDestination(
-                new_dataset=ingest_api.NewDatasetIngestDestination(
-                    dataset_name=name,
-                    dataset_description=description,
-                    properties={} if properties is None else dict(properties),
-                    labels=list(labels),
-                    channel_config=(
-                        None
-                        if prefix_tree_delimiter is None
-                        else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-                    ),
-                )
-            ),
         )
-        response = self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
-        return self.get_dataset(response.dataset_rid)
+        if response.details.dataset is None:
+            raise NominalIngestError("error ingesting from GCS: no dataset ingested")
+        return self.get_dataset(response.details.dataset.dataset_rid)
 
 
 def _create_search_runs_query(
