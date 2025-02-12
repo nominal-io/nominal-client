@@ -197,6 +197,7 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 from __future__ import annotations
 
 import abc
+import enum
 import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -462,3 +463,9 @@ _MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807)
 The maximum valid timestamp that can be represented in the APIs: 2262-04-11 19:47:16.854775807.
 The backend converts to long nanoseconds, and the maximum long (int64) value is 9,223,372,036,854,775,807.
 """
+
+
+class BackpressureMode(enum.Enum):
+    BLOCK = "block"
+    DROP_NEWEST = "drop_newest"
+    DROP_OLDEST = "drop_oldest"

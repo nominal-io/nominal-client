@@ -2,8 +2,10 @@ import logging
 import threading
 import time
 from datetime import timedelta
-from queue import Empty, Queue, ShutDown
+from queue import Empty, Full, Queue, ShutDown
 from typing import Iterable, Protocol, TypeVar
+
+from nominal.ts import BackpressureMode
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
@@ -58,7 +60,10 @@ def _enqueue_timed_batches(
 
 
 def spawn_batching_thread(
-    items: ReadQueue[_T], max_batch_size: int, max_batch_duration: timedelta
+    items: ReadQueue[_T],
+    max_batch_size: int,
+    max_batch_duration: timedelta,
+    maxsize: int = 0,
 ) -> tuple[threading.Thread, ReadQueue[list[_T]]]:
     """Enqueue items from a queue into batches in a separate thread.
 
@@ -66,8 +71,9 @@ def spawn_batching_thread(
         items: input queue
         max_batch_size: maximum number of items in a batch
         max_batch_duration: maximum time between items in a batch
+        maxsize: maximum size of the batch queue (0 for unlimited)
     """
-    batches: Queue[list[_T]] = Queue()
+    batches: Queue[list[_T]] = Queue(maxsize=maxsize)
     batching_thread = threading.Thread(
         target=_enqueue_timed_batches, args=(items, batches, max_batch_size, max_batch_duration), daemon=True
     )
@@ -96,3 +102,38 @@ def enqueue_iterable(iterable: Iterable[_T], q: WriteQueue[_T]) -> None:
     for item in iterable:
         q.put(item)
     q.shutdown()
+
+
+class BackpressureQueue(Queue[_T]):
+    """A queue that implements different backpressure strategies."""
+
+    def __init__(self, maxsize: int = 0, mode: BackpressureMode = BackpressureMode.BLOCK):
+        """Initialize the queue with a maximum size and a backpressure mode."""
+        super().__init__(maxsize=maxsize)
+        self.mode = mode
+
+    def put_with_backpressure(self, item: _T) -> None:
+        """Put an item in the queue using the configured backpressure strategy."""
+        if self.maxsize == 0 or self.mode == BackpressureMode.BLOCK:
+            self.put(item)
+            return
+
+        try:
+            if self.mode == BackpressureMode.DROP_NEWEST:
+                try:
+                    self.put_nowait(item)
+                except Full:
+                    logger.warning("Queue full, dropping new item due to backpressure mode")
+            elif self.mode == BackpressureMode.DROP_OLDEST:
+                while True:
+                    try:
+                        self.put_nowait(item)
+                        break
+                    except Full:
+                        try:
+                            self.get_nowait()
+                        except Empty:
+                            continue
+        except Exception as e:
+            logger.error(f"Unexpected error during enqueue: {e}")
+            raise

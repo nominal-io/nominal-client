@@ -4,13 +4,12 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from queue import Queue
 from types import TracebackType
 from typing import Callable, Self, Sequence, Type
 
-from nominal.core.queueing import ReadQueue, iter_queue, spawn_batching_thread
+from nominal.core.queueing import BackpressureQueue, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import BackpressureMode, IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +19,12 @@ class WriteStreamV2:
     _process_batch: Callable[[Sequence[BatchItem]], None]
     batch_size: int = 50_000
     max_wait: timedelta = timedelta(seconds=1)
-    _item_queue: Queue[BatchItem] = field(default_factory=lambda: Queue[BatchItem]())
-    _batch_queue: ReadQueue[Sequence[BatchItem]] | None = None
-    _batch_thread: threading.Thread | None = None
-    _process_thread: threading.Thread | None = None
+    maxsize: int = 0  # Default to unlimited queue size
+    backpressure_mode: BackpressureMode = BackpressureMode.BLOCK
+    _item_queue: BackpressureQueue[BatchItem] = field(default_factory=BackpressureQueue)
+    _batch_queue: ReadQueue[Sequence[BatchItem]] | None = field(default=None)
+    _batch_thread: threading.Thread | None = field(default=None)
+    _process_thread: threading.Thread | None = field(default=None)
 
     @classmethod
     def create(
@@ -31,6 +32,8 @@ class WriteStreamV2:
         process_batch: Callable[[Sequence[BatchItem]], None],
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
+        maxsize: int = 0,  # Default to unlimited
+        backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
     ) -> Self:
         """Create a new WriteStreamV2 instance.
 
@@ -38,16 +41,32 @@ class WriteStreamV2:
             process_batch: Function to process batches of items
             batch_size: How many items to accumulate before processing
             max_wait: Maximum time to wait before processing a partial batch
+            maxsize: Maximum number of items that can be queued (0 for unlimited)
+            backpressure_mode: How to handle queue overflow:
+                - BLOCK: Block until space is available (default)
+                - DROP_NEWEST: Drop new items when queue is full
+                - DROP_OLDEST: Drop oldest items when queue is full (ring buffer)
         """
         instance = cls(
             _process_batch=process_batch,
             batch_size=batch_size,
             max_wait=max_wait,
+            maxsize=maxsize,
+            backpressure_mode=backpressure_mode,
         )
+
+        # Initialize queues - if maxsize=0, both queues will be unlimited
+        item_maxsize = maxsize if maxsize > 0 else 0
+        batch_maxsize = (maxsize // batch_size) if maxsize > 0 else 0
+
+        instance._item_queue = BackpressureQueue[BatchItem](maxsize=item_maxsize, mode=backpressure_mode)
 
         # Start the streaming threads
         instance._batch_thread, instance._batch_queue = spawn_batching_thread(
-            instance._item_queue, instance.batch_size, instance.max_wait
+            instance._item_queue,
+            instance.batch_size,
+            instance.max_wait,
+            maxsize=batch_maxsize,
         )
         instance._process_thread = threading.Thread(target=instance._process_worker, daemon=True)
         instance._process_thread.start()
@@ -65,7 +84,7 @@ class WriteStreamV2:
             self._batch_thread = None
             self._process_thread = None
             self._batch_queue = None
-            self._item_queue = Queue[BatchItem]()  # Reset to clean state
+            self._item_queue = BackpressureQueue[BatchItem]()  # Reset to clean state
 
     def _process_worker(self) -> None:
         """Worker that processes batches."""
@@ -88,7 +107,7 @@ class WriteStreamV2:
     ) -> None:
         """Write a single value."""
         item = BatchItem(channel_name, timestamp, value, tags)
-        self._item_queue.put(item)
+        self._item_queue.put_with_backpressure(item)
 
     def enqueue_batch(
         self,

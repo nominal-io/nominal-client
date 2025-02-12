@@ -609,7 +609,11 @@ def create_streaming_connection(
     """
     conn = get_default_client()
     return conn.create_streaming_connection(
-        datasource_id, connection_name, datasource_description, nominal_data_source_rid, required_tag_names=required_tag_names
+        datasource_id,
+        connection_name,
+        datasource_description,
+        nominal_data_source_rid,
+        required_tag_names=required_tag_names,
     )
 
 

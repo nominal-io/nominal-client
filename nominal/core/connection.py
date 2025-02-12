@@ -23,11 +23,12 @@ from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
 from nominal.core.stream import BatchItem, WriteStream
 from nominal.core.stream_v2 import WriteStreamV2
+from nominal.ts import BackpressureMode
 
 
 @dataclass(frozen=True)
 class Connection(HasRid):
-    rid: str 
+    rid: str
     name: str
     description: str | None
     _tags: Mapping[str, Sequence[str]]
@@ -187,6 +188,8 @@ class NominalStreamingConnection(Connection):
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf"] = "json",
+        backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
+        maxsize: int = 0,
     ) -> WriteStreamV2:
         """Stream to write non-blocking messages to a datasource.
 
@@ -195,6 +198,8 @@ class NominalStreamingConnection(Connection):
             batch_size (int): How big the batch can get before writing to Nominal. Default 50,000
             max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 1 second
             data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
+            backpressure_mode (BackpressureMode): How to handle queue overflow. Default BLOCK
+            maxsize (int): Maximum number of items that can be queued (0 for unlimited). Default 0
 
         Examples:
         --------
@@ -220,6 +225,8 @@ class NominalStreamingConnection(Connection):
                 ),
                 batch_size=batch_size,
                 max_wait=max_wait,
+                backpressure_mode=backpressure_mode,
+                maxsize=maxsize,
             )
 
         try:
