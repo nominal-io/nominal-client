@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Callable, Sequence, Type
+from typing import Callable, Sequence, Type, overload
 
 from typing_extensions import Self
 
@@ -131,6 +131,7 @@ class WriteStreamV2:
                 except Exception as e:
                     logger.error(f"Batch processing failed: {e}")
 
+    @overload
     def enqueue(
         self,
         channel_name: str,
@@ -162,6 +163,23 @@ class WriteStreamV2:
             )
         for timestamp, value in zip(timestamps, values):
             self.enqueue(channel_name, timestamp, value, tags)
+
+    def enqueue_from_dict(
+        self,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        flattened_dict: dict[str, float | str],
+    ) -> None:
+        """Write multiple channel values using a flattened dictionary.
+
+        Each key in the dictionary is treated as a channel name and 
+        the corresponding value is enqueued with the provided timestamp.
+
+        Args:
+            timestamp: The common timestamp to use for all enqueued items.
+            flattened_dict: A dictionary mapping channel names to their values.
+        """
+        for channel, value in flattened_dict.items():
+            self.enqueue(channel, timestamp, value)
 
     def __enter__(self) -> WriteStreamV2:
         """Create the stream as a context manager."""
