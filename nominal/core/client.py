@@ -67,7 +67,12 @@ class NominalClient:
 
     @classmethod
     def create(
-        cls, base_url: str, token: str | None, trust_store_path: str | None = None, connect_timeout: float = 30
+        cls,
+        base_url: str,
+        token: str | None,
+        trust_store_path: str | None = None,
+        connect_timeout: float = 30,
+        read_timeout: float = 300,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -83,6 +88,7 @@ class NominalClient:
             uris=[base_url],
             security=SslConfiguration(trust_store_path=trust_store_path),
             connect_timeout=connect_timeout,
+            read_timeout=read_timeout,
         )
         agent = construct_user_agent_string()
         return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
