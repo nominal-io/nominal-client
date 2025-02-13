@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
 
-
 from conjure_python_client import RequestsClient, Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,

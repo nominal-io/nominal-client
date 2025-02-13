@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import concurrent.futures
 import itertools
 import logging
 import warnings
@@ -205,6 +204,7 @@ class StreamingConnection(Connection):
         """
         if data_format == "json":
             return WriteStreamV2.create(
+                nominal_data_source_rid=self.nominal_data_source_rid,
                 process_batch=lambda batch: process_batch_legacy(
                     batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
                 ),
@@ -221,13 +221,13 @@ class StreamingConnection(Connection):
             raise ImportError("nominal-api-protos is required to use get_write_stream_v2 with data_format='protobuf'")
 
         return WriteStreamV2.create(
+            nominal_data_source_rid=self.nominal_data_source_rid,
             process_batch=process_batch_worker,
             max_batch_size=max_batch_size,
             max_wait=max_wait,
             backpressure_mode=backpressure_mode,
             max_queue_size=max_queue_size,
             client_factory=lambda: self._clients.proto_write,
-            nominal_data_source_rid=self.nominal_data_source_rid,
             auth_header=self._clients.auth_header,
             max_workers=max_workers,
         )

@@ -11,6 +11,7 @@ from typing import Callable, Sequence, Type
 
 from typing_extensions import Self
 
+from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core.queueing import (
     BackpressureQueue,
     BlockingQueue,
@@ -21,9 +22,8 @@ from nominal.core.queueing import (
     spawn_batching_thread,
 )
 from nominal.core.stream import BatchItem
-from nominal.ts import IntegralNanosecondsUTC
-from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core.worker_pool import ProcessPoolManager
+from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,7 @@ class WriteStreamV2:
     @classmethod
     def create(
         cls,
+        nominal_data_source_rid: str,
         process_batch: Callable[[Sequence[BatchItem]], None],
         executor: concurrent.futures.Executor | None = None,
         max_batch_size: int = 50_000,
@@ -57,7 +58,6 @@ class WriteStreamV2:
         max_queue_size: int = 0,
         backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
         client_factory: Callable[[], ProtoWriteService] | None = None,
-        nominal_data_source_rid: str | None = None,
         auth_header: str | None = None,
         max_workers: int = 2,
     ) -> Self:
@@ -76,14 +76,19 @@ class WriteStreamV2:
             client_factory: Factory function to create ProtoWriteService instances
             nominal_data_source_rid: Nominal data source rid
             auth_header: Authentication header
+            max_workers: Maximum number of worker threads for parallel processing
         """
         if executor is not None and any([client_factory, nominal_data_source_rid, auth_header]):
             raise ValueError("Cannot specify both executor and client factory parameters")
-            
+
         if client_factory is not None:
             if not all([nominal_data_source_rid, auth_header]):
                 raise ValueError("Must specify all client parameters when using client_factory")
-            
+
+            # Add type assertion to handle None cases
+            assert nominal_data_source_rid is not None
+            assert auth_header is not None
+
             executor = ProcessPoolManager(
                 max_workers=max_workers,
                 client_factory=client_factory,
@@ -132,12 +137,12 @@ class WriteStreamV2:
         if wait and self._batch_thread and self._process_thread:
             self._batch_thread.join()
             self._process_thread.join()
-            
+
             if isinstance(self._executor, ProcessPoolManager):
                 self._executor.shutdown()
             elif self._executor is not None:
                 self._executor.shutdown(wait=True)
-                
+
             self._batch_thread = None
             self._process_thread = None
             self._batch_queue = None
