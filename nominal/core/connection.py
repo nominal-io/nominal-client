@@ -202,19 +202,6 @@ class StreamingConnection(Connection):
             max_queue_size (int): Maximum number of items that can be queued (0 for unlimited). Default 0
             max_workers (int): Maximum number of threads to use for parallel processing. Default 4
         """
-        if data_format == "json":
-            return WriteStreamV2.create(
-                nominal_data_source_rid=self.nominal_data_source_rid,
-                process_batch=lambda batch: process_batch_legacy(
-                    batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
-                ),
-                max_batch_size=max_batch_size,
-                max_wait=max_wait,
-                backpressure_mode=backpressure_mode,
-                max_queue_size=max_queue_size,
-                max_workers=max_workers,
-            )
-
         try:
             from nominal.core.worker_pool import process_batch_worker
         except ImportError:

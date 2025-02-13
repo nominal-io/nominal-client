@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Callable, Sequence, Type
+from typing import TYPE_CHECKING, Callable, Sequence, Type
 
 from typing_extensions import Self
 
@@ -22,7 +22,10 @@ from nominal.core.queueing import (
     spawn_batching_thread,
 )
 from nominal.core.stream import BatchItem
-from nominal.core.worker_pool import ProcessPoolManager
+
+if TYPE_CHECKING:
+    from nominal.core.worker_pool import ProcessPoolManager
+
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
@@ -52,7 +55,6 @@ class WriteStreamV2:
         cls,
         nominal_data_source_rid: str,
         process_batch: Callable[[Sequence[BatchItem]], None],
-        executor: concurrent.futures.Executor | None = None,
         max_batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         max_queue_size: int = 0,
@@ -78,9 +80,6 @@ class WriteStreamV2:
             auth_header: Authentication header
             max_workers: Maximum number of worker threads for parallel processing
         """
-        if executor is not None and any([client_factory, nominal_data_source_rid, auth_header]):
-            raise ValueError("Cannot specify both executor and client factory parameters")
-
         if client_factory is not None:
             if not all([nominal_data_source_rid, auth_header]):
                 raise ValueError("Must specify all client parameters when using client_factory")
