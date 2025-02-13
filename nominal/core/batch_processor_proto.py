@@ -5,6 +5,7 @@ import multiprocessing
 from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
+import concurrent.futures
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api_protos.nominal_write_pb2 import (
@@ -76,21 +77,38 @@ def process_batch(
     nominal_data_source_rid: str,
     auth_header: str,
     proto_write: ProtoWriteService,
+    max_series_per_request: int = 10000,  # New parameter to control request size
 ) -> None:
     """Process a batch of items to write."""
-    # Add process-aware logging
     logger = logging.getLogger(__name__)
     logger.debug(f"Processing batch of {len(batch)} items in process {multiprocessing.current_process().name}")
 
+    # Group items by channel/tags
     api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
     api_batches = [list(api_batch) for _, api_batch in api_batched]
+    
+    # Split into smaller requests
+    requests = []
+    for i in range(0, len(api_batches), max_series_per_request):
+        chunk = api_batches[i:i + max_series_per_request]
+        request = create_write_request(chunk)
+        requests.append(request)
 
-    request = create_write_request(api_batches)
-    proto_write.write_nominal_batches(
-        auth_header=auth_header,
-        data_source_rid=nominal_data_source_rid,
-        request=request,
-    )
+    # Use ThreadPoolExecutor for parallel network requests
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(
+                proto_write.write_nominal_batches,
+                auth_header=auth_header,
+                data_source_rid=nominal_data_source_rid,
+                request=request
+            )
+            for request in requests
+        ]
+        
+        # Wait for all requests to complete and raise any errors
+        for future in concurrent.futures.as_completed(futures):
+            future.result()  # This will raise any exceptions that occurred
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:
