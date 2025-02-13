@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import TYPE_CHECKING, Callable, Sequence, Type
+from typing import Callable, Sequence, Type
 
 from typing_extensions import Self
 
@@ -25,7 +25,6 @@ from nominal.core.stream import BatchItem
 
 # if TYPE_CHECKING:
 from nominal.core.worker_pool import ProcessPoolManager
-
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
