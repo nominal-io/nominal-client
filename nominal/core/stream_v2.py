@@ -23,8 +23,8 @@ from nominal.core.queueing import (
 )
 from nominal.core.stream import BatchItem
 
-if TYPE_CHECKING:
-    from nominal.core.worker_pool import ProcessPoolManager
+# if TYPE_CHECKING:
+from nominal.core.worker_pool import ProcessPoolManager
 
 from nominal.ts import IntegralNanosecondsUTC
 

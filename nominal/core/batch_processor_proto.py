@@ -77,7 +77,7 @@ def process_batch(
     nominal_data_source_rid: str,
     auth_header: str,
     proto_write: ProtoWriteService,
-    max_series_per_request: int = 10000,  # New parameter to control request size
+    max_series_per_request: int = 20000,  # New parameter to control request size
 ) -> None:
     """Process a batch of items to write."""
     logger = logging.getLogger(__name__)
