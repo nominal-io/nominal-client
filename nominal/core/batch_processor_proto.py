@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
+import logging
+import multiprocessing
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from nominal_api_protos.nominal_write_pb2 import (
@@ -76,8 +78,11 @@ def process_batch(
     proto_write: ProtoWriteService,
 ) -> None:
     """Process a batch of items to write."""
+    # Add process-aware logging
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Processing batch of {len(batch)} items in process {multiprocessing.current_process().name}")
+    
     api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
-
     api_batches = [list(api_batch) for _, api_batch in api_batched]
 
     request = create_write_request(api_batches)

@@ -203,8 +203,6 @@ class StreamingConnection(Connection):
             max_queue_size (int): Maximum number of items that can be queued (0 for unlimited). Default 0
             max_workers (int): Maximum number of threads to use for parallel processing. Default 4
         """
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="nominal-writer")
-
         if data_format == "json":
             return WriteStreamV2.create(
                 process_batch=lambda batch: process_batch_legacy(
@@ -214,26 +212,22 @@ class StreamingConnection(Connection):
                 max_wait=max_wait,
                 backpressure_mode=backpressure_mode,
                 max_queue_size=max_queue_size,
-                executor=executor,
             )
 
         try:
-            from nominal.core.batch_processor_proto import process_batch
+            from nominal.core.worker_pool import process_batch_worker
         except ImportError:
             raise ImportError("nominal-api-protos is required to use get_write_stream_v2 with data_format='protobuf'")
 
         return WriteStreamV2.create(
-            process_batch=lambda batch: process_batch(
-                batch=batch,
-                nominal_data_source_rid=self.nominal_data_source_rid,
-                auth_header=self._clients.auth_header,
-                proto_write=self._clients.proto_write,
-            ),
+            process_batch=process_batch_worker,
             max_batch_size=max_batch_size,
             max_wait=max_wait,
             backpressure_mode=backpressure_mode,
             max_queue_size=max_queue_size,
-            executor=executor,
+            client_factory=lambda: self._clients.proto_write,
+            nominal_data_source_rid=self.nominal_data_source_rid,
+            auth_header=self._clients.auth_header,
         )
 
     # Deprecated methods for backward compatibility

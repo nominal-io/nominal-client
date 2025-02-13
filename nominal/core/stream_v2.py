@@ -22,6 +22,8 @@ from nominal.core.queueing import (
 )
 from nominal.core.stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC
+from nominal.core._clientsbunch import ProtoWriteService
+from nominal.core.worker_pool import ProcessPoolManager
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,9 @@ class WriteStreamV2:
         max_wait: timedelta = timedelta(seconds=1),
         max_queue_size: int = 0,
         backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
+        client_factory: Callable[[], ProtoWriteService] | None = None,
+        nominal_data_source_rid: str | None = None,
+        auth_header: str | None = None,
     ) -> Self:
         """Create a new WriteStreamV2 instance.
 
@@ -67,7 +72,24 @@ class WriteStreamV2:
                 - DROP_NEWEST: Drop new items when queue is full
                 - DROP_OLDEST: Drop oldest items when queue is full (ring buffer)
             executor: executor for parallel batch processing.
+            client_factory: Factory function to create ProtoWriteService instances
+            nominal_data_source_rid: Nominal data source rid
+            auth_header: Authentication header
         """
+        if executor is not None and any([client_factory, nominal_data_source_rid, auth_header]):
+            raise ValueError("Cannot specify both executor and client factory parameters")
+            
+        if client_factory is not None:
+            if not all([nominal_data_source_rid, auth_header]):
+                raise ValueError("Must specify all client parameters when using client_factory")
+            
+            executor = ProcessPoolManager(
+                max_workers=2,
+                client_factory=client_factory,
+                nominal_data_source_rid=nominal_data_source_rid,
+                auth_header=auth_header,
+            )
+
         instance = cls(
             _process_batch=process_batch,
             max_batch_size=max_batch_size,
@@ -104,15 +126,21 @@ class WriteStreamV2:
     def close(self, wait: bool = True) -> None:
         """Stop the streaming threads."""
         if self._item_queue:
-            self._item_queue.shutdown()  # Graceful shutdown
+            self._item_queue.shutdown()
 
         if wait and self._batch_thread and self._process_thread:
             self._batch_thread.join()
             self._process_thread.join()
+            
+            if isinstance(self._executor, ProcessPoolManager):
+                self._executor.shutdown()
+            elif self._executor is not None:
+                self._executor.shutdown(wait=True)
+                
             self._batch_thread = None
             self._process_thread = None
             self._batch_queue = None
-            self._item_queue = BlockingQueue()  # Reset or reinitialize as needed
+            self._item_queue = BlockingQueue()
             self._executor = None
 
     def _process_worker(self) -> None:
