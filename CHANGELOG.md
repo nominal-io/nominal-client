@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.0](https://github.com/nominal-io/nominal-client/compare/v1.29.0...v1.30.0) (2025-02-13)
+
+
+### Features
+
+* add links to Run.update and Asset.update ([#215](https://github.com/nominal-io/nominal-client/issues/215)) ([9fea28e](https://github.com/nominal-io/nominal-client/commit/9fea28e4eb70085e51ac5e20e6cb78cc039a96dc))
+
 ## [1.29.0](https://github.com/nominal-io/nominal-client/compare/v1.28.0...v1.29.0) (2025-02-11)
 
 
