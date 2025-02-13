@@ -8,6 +8,7 @@ from nominal_api import attachments_api, scout_asset_api, scout_assets, scout_ru
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._conjure_utils import Link, _build_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection
@@ -39,10 +40,13 @@ class Asset(HasRid):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
+        links: Sequence[str] | Sequence[Link] | None = None,
     ) -> Self:
         """Replace asset metadata.
         Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Links can be URLs or tuples of (URL, name).
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
@@ -57,6 +61,7 @@ class Asset(HasRid):
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
             title=name,
+            links=_build_links(links),
         )
         response = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
         asset = self.__class__._from_conjure(self._clients, response)
