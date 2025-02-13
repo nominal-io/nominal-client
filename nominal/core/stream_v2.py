@@ -59,6 +59,7 @@ class WriteStreamV2:
         client_factory: Callable[[], ProtoWriteService] | None = None,
         nominal_data_source_rid: str | None = None,
         auth_header: str | None = None,
+        max_workers: int = 2,
     ) -> Self:
         """Create a new WriteStreamV2 instance.
 
@@ -84,7 +85,7 @@ class WriteStreamV2:
                 raise ValueError("Must specify all client parameters when using client_factory")
             
             executor = ProcessPoolManager(
-                max_workers=2,
+                max_workers=max_workers,
                 client_factory=client_factory,
                 nominal_data_source_rid=nominal_data_source_rid,
                 auth_header=auth_header,

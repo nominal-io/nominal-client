@@ -212,6 +212,7 @@ class StreamingConnection(Connection):
                 max_wait=max_wait,
                 backpressure_mode=backpressure_mode,
                 max_queue_size=max_queue_size,
+                max_workers=max_workers,
             )
 
         try:
@@ -228,6 +229,7 @@ class StreamingConnection(Connection):
             client_factory=lambda: self._clients.proto_write,
             nominal_data_source_rid=self.nominal_data_source_rid,
             auth_header=self._clients.auth_header,
+            max_workers=max_workers,
         )
 
     # Deprecated methods for backward compatibility
