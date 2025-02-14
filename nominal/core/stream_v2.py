@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import concurrent.futures
-import enum
 import logging
 import threading
-import warnings
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from queue import Queue
 from types import TracebackType
 from typing import Callable, Sequence, Type
 
@@ -15,8 +14,6 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core.queueing import (
-    BackpressureQueue,
-    BlockingQueue,
     QueueShutdown,
     ReadQueue,
     iter_queue,
@@ -31,24 +28,17 @@ from nominal.ts import IntegralNanosecondsUTC
 logger = logging.getLogger(__name__)
 
 
-class BackpressureMode(enum.Enum):
-    BLOCK = "block"
-    DROP_NEWEST = "drop_newest"
-    DROP_OLDEST = "drop_oldest"
-
-
 @dataclass()
 class WriteStreamV2:
     _process_batch: Callable[[Sequence[BatchItem]], None]
-    max_batch_size: int
-    max_wait: timedelta
-    max_queue_size: int
-    backpressure_mode: BackpressureMode
-    _item_queue: BackpressureQueue[BatchItem | QueueShutdown] = field(init=False)
-    _batch_queue: ReadQueue[Sequence[BatchItem]] | None = field(default=None)
-    _batch_thread: threading.Thread | None = field(default=None)
+    _max_batch_size: int
+    _max_wait: timedelta
+    _max_queue_size: int
+    _item_queue: Queue[BatchItem | QueueShutdown]
+    _batch_queue: ReadQueue[Sequence[BatchItem]]
+    _batch_thread: threading.Thread
+    _executor: concurrent.futures.Executor
     _process_thread: threading.Thread | None = field(default=None)
-    _executor: concurrent.futures.Executor | None = field(default=None)
 
     @classmethod
     def create(
@@ -58,7 +48,6 @@ class WriteStreamV2:
         max_batch_size: int,
         max_wait: timedelta,
         max_queue_size: int,
-        backpressure_mode: BackpressureMode,
         client_factory: Callable[[], ProtoWriteService],
         auth_header: str,
         max_workers: int,
@@ -86,34 +75,33 @@ class WriteStreamV2:
             proto_write=client_factory(),
         )
 
-        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=worker_init, initargs=(context,))
+        stream = ProcessPoolExecutor(max_workers=max_workers, initializer=worker_init, initargs=(context,))
 
-        instance = cls(
-            _process_batch=process_batch,
-            max_batch_size=max_batch_size,
-            max_wait=max_wait,
-            max_queue_size=max_queue_size,
-            _executor=executor,
-            backpressure_mode=backpressure_mode,
-        )
-
-        # Initialize queues
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
-        if backpressure_mode != BackpressureMode.BLOCK:
-            warnings.warn("We dont support non-blocking backpressure mode yet.")
+        item_queue: Queue[BatchItem | QueueShutdown] = Queue(maxsize=item_maxsize)
 
-        instance._item_queue = BlockingQueue(maxsize=item_maxsize)
-
-        # Start the streaming threads for batching and processing.
-        instance._batch_thread, instance._batch_queue = spawn_batching_thread(
-            instance._item_queue,
-            instance.max_batch_size,
-            instance.max_wait,
+        batch_thread, batch_queue = spawn_batching_thread(
+            item_queue,
+            max_batch_size,
+            max_wait,
             max_queue_size=batch_maxsize,
         )
-        instance._process_thread = threading.Thread(target=instance._process_worker, daemon=True)
+
+        instance = cls(
+            _process_batch=process_batch,
+            _max_batch_size=max_batch_size,
+            _max_wait=max_wait,
+            _max_queue_size=max_queue_size,
+            _executor=stream,
+            _item_queue=item_queue,
+            _batch_thread=batch_thread,
+            _batch_queue=batch_queue,
+        )
+
+        process_thread = threading.Thread(target=instance._process_worker, daemon=True)
+        instance._process_thread = process_thread
         instance._process_thread.start()
 
         return instance
@@ -131,12 +119,7 @@ class WriteStreamV2:
                 self._executor.shutdown()
             elif self._executor is not None:
                 self._executor.shutdown(wait=True)
-
-            self._batch_thread = None
-            self._process_thread = None
-            self._batch_queue = None
-            self._item_queue = BlockingQueue()
-            self._executor = None
+            self._item_queue = Queue()
 
     def _process_worker(self) -> None:
         """Worker that processes batches."""
@@ -171,7 +154,7 @@ class WriteStreamV2:
     ) -> None:
         """Write a single value."""
         item = BatchItem(channel_name, timestamp, value, tags)
-        self._item_queue.put_with_backpressure(item)
+        self._item_queue.put(item)
 
     def enqueue_batch(
         self,

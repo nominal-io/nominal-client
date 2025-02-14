@@ -22,7 +22,7 @@ from nominal.core._utils import HasRid
 from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
 from nominal.core.stream import WriteStream
-from nominal.core.stream_v2 import BackpressureMode, WriteStreamV2
+from nominal.core.stream_v2 import WriteStreamV2
 
 
 @dataclass(frozen=True)
@@ -170,7 +170,6 @@ class StreamingConnection(Connection):
         self,
         max_batch_size: int = 30000,
         max_wait: timedelta = timedelta(seconds=1),
-        backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
         max_queue_size: int = 0,
         max_workers: int = 10,
     ) -> WriteStreamV2:
@@ -195,7 +194,6 @@ class StreamingConnection(Connection):
             process_batch=process_batch_worker,
             max_batch_size=max_batch_size,
             max_wait=max_wait,
-            backpressure_mode=backpressure_mode,
             max_queue_size=max_queue_size,
             client_factory=lambda: self._clients.proto_write,
             auth_header=self._clients.auth_header,

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import timedelta
 from queue import Empty, Queue
@@ -93,19 +92,3 @@ def iter_queue(q: ReadQueue[_T]) -> Iterable[_T]:
             break
         yield item
         q.task_done()
-
-
-class BackpressureQueue(ABC, Queue[_T]):
-    """Abstract base class for queues with different backpressure strategies."""
-
-    @abstractmethod
-    def put_with_backpressure(self, item: _T) -> None:
-        """Put an item in the queue using the specific backpressure strategy."""
-        pass
-
-
-class BlockingQueue(BackpressureQueue[_T]):
-    """Queue that blocks when full."""
-
-    def put_with_backpressure(self, item: _T) -> None:
-        self.put(item)
