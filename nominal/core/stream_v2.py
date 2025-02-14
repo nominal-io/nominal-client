@@ -54,13 +54,13 @@ class WriteStreamV2:
         cls,
         nominal_data_source_rid: str,
         process_batch: Callable[[Sequence[BatchItem]], None],
-        max_batch_size,
-        max_wait,
-        max_queue_size,
-        backpressure_mode,
+        max_batch_size: int,
+        max_wait: timedelta,
+        max_queue_size: int,
+        backpressure_mode: BackpressureMode,
         client_factory: Callable[[], ProtoWriteService],
         auth_header: str,
-        max_workers,
+        max_workers: int,
     ) -> Self:
         """Create a new WriteStreamV2 instance.
 
@@ -79,8 +79,6 @@ class WriteStreamV2:
             auth_header: Authentication header
             max_workers: Maximum number of worker threads for parallel processing
         """
- 
-
         executor = ProcessPoolManager(
             max_workers=max_workers,
             client_factory=client_factory,

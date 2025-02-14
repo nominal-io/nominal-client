@@ -68,6 +68,9 @@ def test_process_batch_double_points(mock_connection):
     assert kwargs["data_source_rid"] == "test-datasource-rid"
     actual_request = kwargs["request"]
 
+    # Convert bytes back to WriteRequestNominal
+    actual_request = WriteRequestNominal.FromString(actual_request)
+
     # Verify it's the correct type
     assert isinstance(actual_request, WriteRequestNominal)
 
@@ -125,6 +128,8 @@ def test_process_batch_string_points(mock_connection):
     assert kwargs["data_source_rid"] == "test-datasource-rid"
     actual_request = kwargs["request"]
 
+    actual_request = WriteRequestNominal.FromString(actual_request)
+
     # Verify series structure
     assert len(actual_request.series) == 1
     series = actual_request.series[0]
@@ -167,6 +172,8 @@ def test_process_batch_with_tags(mock_connection):
     assert kwargs["auth_header"] == "test-auth-header"
     assert kwargs["data_source_rid"] == "test-datasource-rid"
     actual_request = kwargs["request"]
+
+    actual_request = WriteRequestNominal.FromString(actual_request)
 
     # Verify tags were included
     assert len(actual_request.series) == 1
@@ -219,6 +226,8 @@ def test_process_batch_multiple_channels(mock_connection):
     assert kwargs["auth_header"] == "test-auth-header"
     assert kwargs["data_source_rid"] == "test-datasource-rid"
     actual_request = kwargs["request"]
+
+    actual_request = WriteRequestNominal.FromString(actual_request)
 
     # Verify we have three series
     assert len(actual_request.series) == 3
@@ -274,6 +283,9 @@ def test_multiple_write_streams(mock_connection):
     # Check first call (stream1)
     first_call = mock_write.call_args_list[0].kwargs
     first_request = first_call["request"]
+
+    first_request = WriteRequestNominal.FromString(first_request)
+
     assert len(first_request.series) == 1
     assert first_request.series[0].channel.name == "channel1"
     assert first_request.series[0].points.HasField("double_points")
@@ -285,6 +297,9 @@ def test_multiple_write_streams(mock_connection):
     # Check second call (stream2)
     second_call = mock_write.call_args_list[1].kwargs
     second_request = second_call["request"]
+
+    second_request = WriteRequestNominal.FromString(second_request)
+
     assert len(second_request.series) == 1
     assert second_request.series[0].channel.name == "channel2"
     assert second_request.series[0].points.HasField("string_points")
