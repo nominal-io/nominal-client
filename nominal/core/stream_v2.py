@@ -37,8 +37,13 @@ class WriteStreamV2:
     _item_queue: Queue[BatchItem | QueueShutdown]
     _batch_queue: ReadQueue[Sequence[BatchItem]]
     _batch_thread: threading.Thread
-    _executor: concurrent.futures.Executor
+    _process_pool: ProcessPoolExecutor
+    _io_pool: concurrent.futures.ThreadPoolExecutor
+    _client_factory: Callable[[], ProtoWriteService]
+    _auth_header: str
+    _nominal_data_source_rid: str
     _process_thread: threading.Thread | None = field(default=None)
+   
 
     @classmethod
     def create(
@@ -76,6 +81,7 @@ class WriteStreamV2:
         )
 
         stream = ProcessPoolExecutor(max_workers=max_workers, initializer=worker_init, initargs=(context,))
+        io_pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
 
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
@@ -94,10 +100,14 @@ class WriteStreamV2:
             _max_batch_size=max_batch_size,
             _max_wait=max_wait,
             _max_queue_size=max_queue_size,
-            _executor=stream,
+            _process_pool=stream,
+            _io_pool=io_pool,
             _item_queue=item_queue,
             _batch_thread=batch_thread,
             _batch_queue=batch_queue,
+            _client_factory=client_factory,
+            _auth_header=auth_header,
+            _nominal_data_source_rid=nominal_data_source_rid,
         )
 
         process_thread = threading.Thread(target=instance._process_worker, daemon=True)
@@ -115,10 +125,8 @@ class WriteStreamV2:
             self._batch_thread.join()
             self._process_thread.join()
 
-            if isinstance(self._executor, ProcessPoolExecutor):
-                self._executor.shutdown()
-            elif self._executor is not None:
-                self._executor.shutdown(wait=True)
+            self._process_pool.shutdown(wait=True)
+            self._io_pool.shutdown(wait=True)
             self._item_queue = Queue()
 
     def _process_worker(self) -> None:
@@ -126,24 +134,18 @@ class WriteStreamV2:
         if not self._batch_queue:
             return
 
-        futures = []
+        proto_write = self._client_factory()
+        
+        def handle_serialized_data(future: concurrent.futures.Future) -> None:
+            try:
+                serialized_data = future.result()
+                self._io_pool.submit(proto_write.write_nominal_batches, self._auth_header, self._nominal_data_source_rid, serialized_data)
+            except Exception as e:
+                logger.error(f"Error processing batch: {e}")
+
         for batch in iter_queue(self._batch_queue):
-            if self._executor is not None:
-                future = self._executor.submit(self._process_batch, batch)
-                futures.append(future)
-            else:
-                try:
-                    self._process_batch(batch)
-                except Exception as e:
-                    logger.error(f"Batch processing failed: {e}")
-        # Wait for any remaining futures to complete
-        if futures:
-            concurrent.futures.wait(futures)
-            for future in futures:
-                try:
-                    future.result()  # Raise any exceptions that occurred
-                except Exception as e:
-                    logger.error(f"Batch processing failed: {e}")
+            future = self._process_pool.submit(self._process_batch, batch)
+            future.add_done_callback(handle_serialized_data)
 
     def enqueue(
         self,

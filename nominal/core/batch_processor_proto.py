@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import concurrent.futures
+import itertools
 import logging
 import multiprocessing
 from datetime import datetime
-from itertools import groupby
+from itertools import groupby, islice
 from typing import Sequence, cast
 
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -58,8 +59,11 @@ def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
         raise ValueError("only float and string are supported types for value")
 
 
-def create_write_request(api_batches: list[list[BatchItem]]) -> WriteRequestNominal:
+def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
     """Create a WriteRequestNominal from batches of items."""
+
+    api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
+    api_batches = [list(api_batch) for _, api_batch in api_batched]
     return WriteRequestNominal(
         series=[
             Series(
@@ -71,43 +75,28 @@ def create_write_request(api_batches: list[list[BatchItem]]) -> WriteRequestNomi
         ]
     )
 
+def batched(iterable, n, *, strict=False):
+    # batched('ABCDEFG', 3) → ABC DEF G
+    if n < 1:
+        raise ValueError('n must be at least one')
+    iterator = iter(iterable)
+    while batch := tuple(islice(iterator, n)):
+        if strict and len(batch) != n:
+            raise ValueError('batched(): incomplete batch')
+        yield batch
 
 def process_batch(
     batch: Sequence[BatchItem],
     nominal_data_source_rid: str,
     auth_header: str,
     proto_write: ProtoWriteService,
-) -> None:
-    """Process a batch of items to write."""
+) -> bytes:
+    """Process a batch of items and return serialized request."""
     logger = logging.getLogger(__name__)
     logger.debug(f"Processing batch of {len(batch)} items in process {multiprocessing.current_process().name}")
-    max_points_per_request = 10000
-    # Group items by channel/tags
-    api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
-    api_batches = [list(api_batch) for _, api_batch in api_batched]
-
-    # Split into smaller requests
-    requests = []
-    for i in range(0, len(api_batches), max_points_per_request):
-        chunk = api_batches[i : i + max_points_per_request]
-        request = create_write_request(chunk)
-        requests.append(request.SerializeToString())
-
-    # Use ThreadPoolExecutor for parallel network requests
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [
-            executor.submit(
-                proto_write.write_nominal_batches,
-                auth_header=auth_header,
-                data_source_rid=nominal_data_source_rid,
-                request=request,
-            )
-            for request in requests
-        ]
-
-        # Wait for all requests to complete and raise any errors
-        for future in concurrent.futures.as_completed(futures):
-            future.result()  # This will raise any exceptions that occurred
+    
+    request = create_write_request(batch)
+    return request.SerializeToString()
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:
