@@ -4,6 +4,7 @@ import concurrent.futures
 import enum
 import logging
 import threading
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
@@ -15,8 +16,7 @@ from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core.queueing import (
     BackpressureQueue,
     BlockingQueue,
-    DropNewestQueue,
-    DropOldestQueue,
+    QueueShutdown,
     ReadQueue,
     iter_queue,
     spawn_batching_thread,
@@ -42,7 +42,7 @@ class WriteStreamV2:
     max_batch_size: int = 50_000
     max_wait: timedelta = timedelta(seconds=1)
     max_queue_size: int = 0  # Default to unlimited queue size
-    _item_queue: BackpressureQueue[BatchItem] = field(init=False)
+    _item_queue: BackpressureQueue[BatchItem | QueueShutdown] = field(init=False)
     _batch_queue: ReadQueue[Sequence[BatchItem]] | None = field(default=None)
     _batch_thread: threading.Thread | None = field(default=None)
     _process_thread: threading.Thread | None = field(default=None)
@@ -99,13 +99,10 @@ class WriteStreamV2:
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
-        # Choose the correct queue according to backpressure_mode.
-        if backpressure_mode == BackpressureMode.DROP_NEWEST:
-            instance._item_queue = DropNewestQueue(maxsize=item_maxsize)
-        elif backpressure_mode == BackpressureMode.DROP_OLDEST:
-            instance._item_queue = DropOldestQueue(maxsize=item_maxsize)
-        else:  # BLOCK mode
-            instance._item_queue = BlockingQueue(maxsize=item_maxsize)
+        if backpressure_mode != BackpressureMode.BLOCK:
+            warnings.warn("We dont support non-blocking backpressure mode yet.")
+
+        instance._item_queue = BlockingQueue(maxsize=item_maxsize)
 
         # Start the streaming threads for batching and processing.
         instance._batch_thread, instance._batch_queue = spawn_batching_thread(
@@ -122,7 +119,7 @@ class WriteStreamV2:
     def close(self, wait: bool = True) -> None:
         """Stop the streaming threads."""
         if self._item_queue:
-            self._item_queue.shutdown()
+            self._item_queue.put(QueueShutdown())
 
         if wait and self._batch_thread and self._process_thread:
             self._batch_thread.join()
