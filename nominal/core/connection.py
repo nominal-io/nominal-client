@@ -21,7 +21,7 @@ from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
-from nominal.core.stream import BatchItem, WriteStream
+from nominal.core.stream import WriteStream
 from nominal.core.stream_v2 import BackpressureMode, WriteStreamV2
 
 
@@ -165,22 +165,6 @@ class Connection(HasRid):
 @dataclass(frozen=True)
 class StreamingConnection(Connection):
     nominal_data_source_rid: str
-
-    def process_batch(self, batch: Sequence[BatchItem], data_format: Literal["json", "protobuf"] = "json") -> None:
-        """Process a batch of items."""
-        if data_format == "json":
-            process_batch_legacy(
-                batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
-            )
-        else:
-            from nominal.core.batch_processor_proto import process_batch
-
-            process_batch(
-                batch=batch,
-                nominal_data_source_rid=self.nominal_data_source_rid,
-                auth_header=self._clients.auth_header,
-                proto_write=self._clients.proto_write,
-            )
 
     def get_write_stream_v2(
         self,

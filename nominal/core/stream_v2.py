@@ -5,6 +5,7 @@ import enum
 import logging
 import threading
 import warnings
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import TracebackType
@@ -24,7 +25,7 @@ from nominal.core.queueing import (
 from nominal.core.stream import BatchItem
 
 # if TYPE_CHECKING:
-from nominal.core.worker_pool import ProcessPoolManager
+from nominal.core.worker_pool import WorkerContext, worker_init
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
@@ -39,15 +40,15 @@ class BackpressureMode(enum.Enum):
 @dataclass()
 class WriteStreamV2:
     _process_batch: Callable[[Sequence[BatchItem]], None]
-    max_batch_size: int = 50_000
-    max_wait: timedelta = timedelta(seconds=1)
-    max_queue_size: int = 0  # Default to unlimited queue size
+    max_batch_size: int
+    max_wait: timedelta
+    max_queue_size: int
+    backpressure_mode: BackpressureMode
     _item_queue: BackpressureQueue[BatchItem | QueueShutdown] = field(init=False)
     _batch_queue: ReadQueue[Sequence[BatchItem]] | None = field(default=None)
     _batch_thread: threading.Thread | None = field(default=None)
     _process_thread: threading.Thread | None = field(default=None)
     _executor: concurrent.futures.Executor | None = field(default=None)
-    backpressure_mode: BackpressureMode = field(default=BackpressureMode.BLOCK)
 
     @classmethod
     def create(
@@ -79,12 +80,13 @@ class WriteStreamV2:
             auth_header: Authentication header
             max_workers: Maximum number of worker threads for parallel processing
         """
-        executor = ProcessPoolManager(
-            max_workers=max_workers,
-            client_factory=client_factory,
+        context = WorkerContext(
             nominal_data_source_rid=nominal_data_source_rid,
             auth_header=auth_header,
+            proto_write=client_factory(),
         )
+
+        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=worker_init, initargs=(context,))
 
         instance = cls(
             _process_batch=process_batch,
@@ -125,7 +127,7 @@ class WriteStreamV2:
             self._batch_thread.join()
             self._process_thread.join()
 
-            if isinstance(self._executor, ProcessPoolManager):
+            if isinstance(self._executor, ProcessPoolExecutor):
                 self._executor.shutdown()
             elif self._executor is not None:
                 self._executor.shutdown(wait=True)
@@ -169,7 +171,6 @@ class WriteStreamV2:
     ) -> None:
         """Write a single value."""
         item = BatchItem(channel_name, timestamp, value, tags)
-        # Simply use the queue's built-in backpressure logic.
         self._item_queue.put_with_backpressure(item)
 
     def enqueue_batch(
