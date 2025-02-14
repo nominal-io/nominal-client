@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.30.0](https://github.com/nominal-io/nominal-client/compare/v1.29.0...v1.30.0) (2025-02-13)
+
+
+### Features
+
+* add links to Run.update and Asset.update ([#215](https://github.com/nominal-io/nominal-client/issues/215)) ([9fea28e](https://github.com/nominal-io/nominal-client/commit/9fea28e4eb70085e51ac5e20e6cb78cc039a96dc))
+
+## [1.29.0](https://github.com/nominal-io/nominal-client/compare/v1.28.0...v1.29.0) (2025-02-11)
+
+
+### Features
+
+* add `nominal.__version__` and `nom --version` ([#202](https://github.com/nominal-io/nominal-client/issues/202)) ([5256aaf](https://github.com/nominal-io/nominal-client/commit/5256aafd72676794754dbf25558970823b357d75))
+* add ardupilot dataflash ingest ([#203](https://github.com/nominal-io/nominal-client/issues/203)) ([d5d522f](https://github.com/nominal-io/nominal-client/commit/d5d522f6dbcd1cf7a1e71ca1a1520d5cdcc8b187))
+* improve streaming default params ([#210](https://github.com/nominal-io/nominal-client/issues/210)) ([8c99d57](https://github.com/nominal-io/nominal-client/commit/8c99d570034c2cc96d29e16b33f794ea967ab52a))
+* protobuf support in the python client for streaming data ([#208](https://github.com/nominal-io/nominal-client/issues/208)) ([6fd94b4](https://github.com/nominal-io/nominal-client/commit/6fd94b46ab2e18ccb72e987d9ccaaac74329a72e))
+* update client to support multi file mcap datasets via new ingest endp… ([#212](https://github.com/nominal-io/nominal-client/issues/212)) ([8d99a41](https://github.com/nominal-io/nominal-client/commit/8d99a4119ed98e36f98f96a5018314e344699a5f))
+
+
+### Bug Fixes
+
+* remove errant commas in markdown, fixing mkdocs documentation generation ([#201](https://github.com/nominal-io/nominal-client/issues/201)) ([066ab2a](https://github.com/nominal-io/nominal-client/commit/066ab2a630557a35e1ee8ca50881c858b2b235c1))
+
 ## [1.28.0](https://github.com/nominal-io/nominal-client/compare/v1.27.0...v1.28.0) (2025-01-23)
 
 
