@@ -77,22 +77,21 @@ def process_batch(
     nominal_data_source_rid: str,
     auth_header: str,
     proto_write: ProtoWriteService,
-    max_series_per_request: int = 10000,  # New parameter to control request size
 ) -> None:
     """Process a batch of items to write."""
     logger = logging.getLogger(__name__)
     logger.debug(f"Processing batch of {len(batch)} items in process {multiprocessing.current_process().name}")
-
+    max_points_per_request = 10000
     # Group items by channel/tags
     api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
     api_batches = [list(api_batch) for _, api_batch in api_batched]
 
     # Split into smaller requests
     requests = []
-    for i in range(0, len(api_batches), max_series_per_request):
-        chunk = api_batches[i : i + max_series_per_request]
+    for i in range(0, len(api_batches), max_points_per_request):
+        chunk = api_batches[i : i + max_points_per_request]
         request = create_write_request(chunk)
-        requests.append(request)
+        requests.append(request.SerializeToString())
 
     # Use ThreadPoolExecutor for parallel network requests
     with concurrent.futures.ThreadPoolExecutor() as executor:

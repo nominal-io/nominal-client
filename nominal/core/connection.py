@@ -184,9 +184,8 @@ class StreamingConnection(Connection):
 
     def get_write_stream_v2(
         self,
-        max_batch_size: int = 50_000,
+        max_batch_size: int = 30000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf"] = "json",
         backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
         max_queue_size: int = 0,
         max_workers: int = 10,

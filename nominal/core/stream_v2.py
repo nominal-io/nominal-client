@@ -54,13 +54,13 @@ class WriteStreamV2:
         cls,
         nominal_data_source_rid: str,
         process_batch: Callable[[Sequence[BatchItem]], None],
-        max_batch_size: int = 50_000,
-        max_wait: timedelta = timedelta(seconds=1),
-        max_queue_size: int = 0,
-        backpressure_mode: BackpressureMode = BackpressureMode.BLOCK,
-        client_factory: Callable[[], ProtoWriteService] | None = None,
-        auth_header: str | None = None,
-        max_workers: int = 2,
+        max_batch_size,
+        max_wait,
+        max_queue_size,
+        backpressure_mode,
+        client_factory: Callable[[], ProtoWriteService],
+        auth_header: str,
+        max_workers,
     ) -> Self:
         """Create a new WriteStreamV2 instance.
 
@@ -79,20 +79,14 @@ class WriteStreamV2:
             auth_header: Authentication header
             max_workers: Maximum number of worker threads for parallel processing
         """
-        if client_factory is not None:
-            if not all([nominal_data_source_rid, auth_header]):
-                raise ValueError("Must specify all client parameters when using client_factory")
+ 
 
-            # Add type assertion to handle None cases
-            assert nominal_data_source_rid is not None
-            assert auth_header is not None
-
-            executor = ProcessPoolManager(
-                max_workers=max_workers,
-                client_factory=client_factory,
-                nominal_data_source_rid=nominal_data_source_rid,
-                auth_header=auth_header,
-            )
+        executor = ProcessPoolManager(
+            max_workers=max_workers,
+            client_factory=client_factory,
+            nominal_data_source_rid=nominal_data_source_rid,
+            auth_header=auth_header,
+        )
 
         instance = cls(
             _process_batch=process_batch,

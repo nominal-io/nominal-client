@@ -81,7 +81,7 @@ class ProcessPoolManager(Executor):
         self.pool = multiprocessing.Pool(
             processes=max_workers,
             initializer=worker_init,
-            initargs=(self.contexts[0],),  # Each process gets same context for now
+            initargs=(self.contexts[0],),
         )
 
     def submit(self, fn: Callable[..., _T], /, *args: Any, **kwargs: Any) -> Future[_T]:

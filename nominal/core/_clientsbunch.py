@@ -37,14 +37,14 @@ from typing_extensions import Self
 
 
 class ProtoWriteService(Service):
-    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: WriteRequestNominal) -> None:
+    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
-        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: WriteRequest) -> None:
         _headers = {
