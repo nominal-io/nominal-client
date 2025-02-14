@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import concurrent.futures
+import logging
+import multiprocessing
 from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
@@ -71,25 +74,40 @@ def create_write_request(api_batches: list[list[BatchItem]]) -> WriteRequestNomi
 
 def process_batch(
     batch: Sequence[BatchItem],
-    nominal_data_source_rid: str | None,
+    nominal_data_source_rid: str,
     auth_header: str,
     proto_write: ProtoWriteService,
 ) -> None:
     """Process a batch of items to write."""
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Processing batch of {len(batch)} items in process {multiprocessing.current_process().name}")
+    max_points_per_request = 10000
+    # Group items by channel/tags
     api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
-
     api_batches = [list(api_batch) for _, api_batch in api_batched]
 
-    if nominal_data_source_rid is None:
-        raise ValueError("Writing not implemented for this connection type")
+    # Split into smaller requests
+    requests = []
+    for i in range(0, len(api_batches), max_points_per_request):
+        chunk = api_batches[i : i + max_points_per_request]
+        request = create_write_request(chunk)
+        requests.append(request.SerializeToString())
 
-    request = create_write_request(api_batches)
+    # Use ThreadPoolExecutor for parallel network requests
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(
+                proto_write.write_nominal_batches,
+                auth_header=auth_header,
+                data_source_rid=nominal_data_source_rid,
+                request=request,
+            )
+            for request in requests
+        ]
 
-    proto_write.write_nominal_batches(
-        auth_header=auth_header,
-        data_source_rid=nominal_data_source_rid,
-        request=request,
-    )
+        # Wait for all requests to complete and raise any errors
+        for future in concurrent.futures.as_completed(futures):
+            future.result()  # This will raise any exceptions that occurred
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:
