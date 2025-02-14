@@ -793,14 +793,14 @@ class NominalClient:
 
     def create_streaming_connection(
         self,
-        datasource_id: str,
         connection_name: str,
+        datasource_id: str | None = None,
         datasource_description: str | None = None,
         nominal_data_source_rid: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
     ) -> Connection:
-        if nominal_data_source_rid is None:
+        if datasource_id:
             datasource_response = self._clients.storage.create(
                 self._clients.auth_header,
                 storage_datasource_api.CreateNominalDataSourceRequest(
@@ -808,7 +808,7 @@ class NominalClient:
                     description=datasource_description,
                 ),
             )
-        else:
+        elif nominal_data_source_rid is not None:
             try:
                 datasource_response = self._clients.storage.batch_get(
                     self._clients.auth_header, [nominal_data_source_rid]
