@@ -3,12 +3,13 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import threading
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from queue import Queue
 from types import TracebackType
 from typing import Callable, Sequence, Type
+import time
 
 from typing_extensions import Self
 
@@ -22,15 +23,15 @@ from nominal.core.queueing import (
 from nominal.core.stream import BatchItem
 
 # if TYPE_CHECKING:
-from nominal.core.worker_pool import WorkerContext, worker_init
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
 
 
+
 @dataclass()
 class WriteStreamV2:
-    _process_batch: Callable[[Sequence[BatchItem]], None]
+    _serialize_batch: Callable[[Sequence[BatchItem]], None]
     _max_batch_size: int
     _max_wait: timedelta
     _max_queue_size: int
@@ -42,14 +43,16 @@ class WriteStreamV2:
     _client_factory: Callable[[], ProtoWriteService]
     _auth_header: str
     _nominal_data_source_rid: str
+    submitted_points: int
+    serialized_points: int      
+    lock: threading.Lock
     _process_thread: threading.Thread | None = field(default=None)
-   
 
     @classmethod
     def create(
         cls,
         nominal_data_source_rid: str,
-        process_batch: Callable[[Sequence[BatchItem]], None],
+        serialize_batch: Callable[[Sequence[BatchItem]], None],
         max_batch_size: int,
         max_wait: timedelta,
         max_queue_size: int,
@@ -74,20 +77,14 @@ class WriteStreamV2:
             auth_header: Authentication header
             max_workers: Maximum number of worker threads for parallel processing
         """
-        context = WorkerContext(
-            nominal_data_source_rid=nominal_data_source_rid,
-            auth_header=auth_header,
-            proto_write=client_factory(),
-        )
-
-        stream = ProcessPoolExecutor(max_workers=max_workers, initializer=worker_init, initargs=(context,))
-        io_pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-
+        stream = ProcessPoolExecutor(max_workers=max_workers)
+        io_pool = ThreadPoolExecutor()
+        lock = threading.Lock
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
         item_queue: Queue[BatchItem | QueueShutdown] = Queue(maxsize=item_maxsize)
-
+        
         batch_thread, batch_queue = spawn_batching_thread(
             item_queue,
             max_batch_size,
@@ -96,8 +93,11 @@ class WriteStreamV2:
         )
 
         instance = cls(
-            _process_batch=process_batch,
+            _serialize_batch=serialize_batch,
             _max_batch_size=max_batch_size,
+            submitted_points = 0,
+            serialized_points=0,
+            lock = threading.Lock(),
             _max_wait=max_wait,
             _max_queue_size=max_queue_size,
             _process_pool=stream,
@@ -131,21 +131,32 @@ class WriteStreamV2:
 
     def _process_worker(self) -> None:
         """Worker that processes batches."""
-        if not self._batch_queue:
-            return
-
         proto_write = self._client_factory()
-        
-        def handle_serialized_data(future: concurrent.futures.Future) -> None:
+
+        def send_serialized_data(future: concurrent.futures.Future) -> None:
+
             try:
+                
                 serialized_data = future.result()
-                self._io_pool.submit(proto_write.write_nominal_batches, self._auth_header, self._nominal_data_source_rid, serialized_data)
+                with self.lock:
+                    self.serialized_points+=serialized_data[1]
+                if serialized_data is None:
+                    logger.error("Received None instead of serialized data")
+                    return
+                self._io_pool.submit(
+                    proto_write.write_nominal_batches, 
+                    self._auth_header, 
+                    self._nominal_data_source_rid, 
+                    serialized_data[0]
+                )
             except Exception as e:
-                logger.error(f"Error processing batch: {e}")
+                logger.error(f"Error processing batch: {e}", exc_info=True)
 
         for batch in iter_queue(self._batch_queue):
-            future = self._process_pool.submit(self._process_batch, batch)
-            future.add_done_callback(handle_serialized_data)
+            future = self._process_pool.submit(self._serialize_batch, batch)
+            self.submitted_points+=len(batch)
+            # Track points being serialized
+            future.add_done_callback(send_serialized_data)
 
     def enqueue(
         self,

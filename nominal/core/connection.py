@@ -185,13 +185,13 @@ class StreamingConnection(Connection):
             max_workers (int): Maximum number of threads to use for parallel processing. Default 4
         """
         try:
-            from nominal.core.worker_pool import process_batch_worker
+            from nominal.core.batch_processor_proto import serialize_batch
         except ImportError:
             raise ImportError("nominal-api-protos is required to use get_write_stream_v2 with data_format='protobuf'")
 
         return WriteStreamV2.create(
             nominal_data_source_rid=self.nominal_data_source_rid,
-            process_batch=process_batch_worker,
+            serialize_batch=serialize_batch,
             max_batch_size=max_batch_size,
             max_wait=max_wait,
             max_queue_size=max_queue_size,

@@ -1,17 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from logging import getLogger
-
-logger = getLogger(__name__)
-
-if TYPE_CHECKING:
-    from nominal_api_protos.prometheus_remote_write_pb2 import WriteRequest
-
 from dataclasses import dataclass
 from functools import partial
-from typing import Protocol
+from logging import getLogger
+from typing import TYPE_CHECKING, Protocol
 
 from conjure_python_client import RequestsClient, Service, ServiceConfiguration
 from nominal_api import (
@@ -38,11 +30,15 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+if TYPE_CHECKING:
+    from nominal_api_protos.prometheus_remote_write_pb2 import WriteRequest
+
+logger = getLogger(__name__)
+
 
 class ProtoWriteService(Service):
     def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
         try:
-            logger.debug(f"Writing nominal batches to {data_source_rid}")
             _headers = {
                 "Accept": "application/json",
                 "Content-Type": "application/x-protobuf",
