@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from queue import Queue
 from types import TracebackType
 from typing import Callable, Sequence, Type
-import time
 
 from typing_extensions import Self
 
@@ -28,10 +27,9 @@ from nominal.ts import IntegralNanosecondsUTC
 logger = logging.getLogger(__name__)
 
 
-
 @dataclass()
 class WriteStreamV2:
-    _serialize_batch: Callable[[Sequence[BatchItem]], None]
+    _serialize_batch: Callable[[Sequence[BatchItem]], bytes]
     _max_batch_size: int
     _max_wait: timedelta
     _max_queue_size: int
@@ -39,20 +37,17 @@ class WriteStreamV2:
     _batch_queue: ReadQueue[Sequence[BatchItem]]
     _batch_thread: threading.Thread
     _process_pool: ProcessPoolExecutor
-    _io_pool: concurrent.futures.ThreadPoolExecutor
+    _thread_pool: ThreadPoolExecutor
     _client_factory: Callable[[], ProtoWriteService]
     _auth_header: str
     _nominal_data_source_rid: str
-    submitted_points: int
-    serialized_points: int      
-    lock: threading.Lock
     _process_thread: threading.Thread | None = field(default=None)
 
     @classmethod
     def create(
         cls,
         nominal_data_source_rid: str,
-        serialize_batch: Callable[[Sequence[BatchItem]], None],
+        serialize_batch: Callable[[Sequence[BatchItem]], bytes],
         max_batch_size: int,
         max_wait: timedelta,
         max_queue_size: int,
@@ -63,28 +58,22 @@ class WriteStreamV2:
         """Create a new WriteStreamV2 instance.
 
         Args:
-            process_batch: Function to process batches of items
-            max_batch_size: How many items to accumulate before processing
-            max_wait: Maximum time to wait before processing a partial batch
-            max_queue_size: Maximum number of items that can be queued (0 for unlimited)
-            backpressure_mode: How to handle queue overflow:
-                - BLOCK: Block until space is available (default)
-                - DROP_NEWEST: Drop new items when queue is full
-                - DROP_OLDEST: Drop oldest items when queue is full (ring buffer)
-            executor: executor for parallel batch processing.
-            client_factory: Factory function to create ProtoWriteService instances
             nominal_data_source_rid: Nominal data source rid
+            serialize_batch: Function to serialize batches of items
+            max_batch_size: How many items to accumulate before serializing
+            max_wait: Maximum time to wait before serializing a partial batch
+            max_queue_size: Maximum number of items that can be queued (0 for unlimited)
+            client_factory: Factory function to create ProtoWriteService instances
             auth_header: Authentication header
             max_workers: Maximum number of worker threads for parallel processing
         """
-        stream = ProcessPoolExecutor(max_workers=max_workers)
-        io_pool = ThreadPoolExecutor()
-        lock = threading.Lock
+        process_pool = ProcessPoolExecutor(max_workers=max_workers)
+        thread_pool = ThreadPoolExecutor()
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
         item_queue: Queue[BatchItem | QueueShutdown] = Queue(maxsize=item_maxsize)
-        
+
         batch_thread, batch_queue = spawn_batching_thread(
             item_queue,
             max_batch_size,
@@ -95,13 +84,10 @@ class WriteStreamV2:
         instance = cls(
             _serialize_batch=serialize_batch,
             _max_batch_size=max_batch_size,
-            submitted_points = 0,
-            serialized_points=0,
-            lock = threading.Lock(),
             _max_wait=max_wait,
             _max_queue_size=max_queue_size,
-            _process_pool=stream,
-            _io_pool=io_pool,
+            _process_pool=process_pool,
+            _thread_pool=thread_pool,
             _item_queue=item_queue,
             _batch_thread=batch_thread,
             _batch_queue=batch_queue,
@@ -126,36 +112,27 @@ class WriteStreamV2:
             self._process_thread.join()
 
             self._process_pool.shutdown(wait=True)
-            self._io_pool.shutdown(wait=True)
+            self._thread_pool.shutdown(wait=True)
             self._item_queue = Queue()
 
     def _process_worker(self) -> None:
         """Worker that processes batches."""
         proto_write = self._client_factory()
 
-        def send_serialized_data(future: concurrent.futures.Future) -> None:
-
+        def send_serialized_data(future: concurrent.futures.Future[bytes]) -> None:
             try:
-                
                 serialized_data = future.result()
-                with self.lock:
-                    self.serialized_points+=serialized_data[1]
-                if serialized_data is None:
-                    logger.error("Received None instead of serialized data")
-                    return
-                self._io_pool.submit(
-                    proto_write.write_nominal_batches, 
-                    self._auth_header, 
-                    self._nominal_data_source_rid, 
-                    serialized_data[0]
+                self._thread_pool.submit(
+                    proto_write.write_nominal_batches,
+                    self._auth_header,
+                    self._nominal_data_source_rid,
+                    serialized_data,
                 )
             except Exception as e:
                 logger.error(f"Error processing batch: {e}", exc_info=True)
 
         for batch in iter_queue(self._batch_queue):
             future = self._process_pool.submit(self._serialize_batch, batch)
-            self.submitted_points+=len(batch)
-            # Track points being serialized
             future.add_done_callback(send_serialized_data)
 
     def enqueue(
