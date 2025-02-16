@@ -793,36 +793,26 @@ class NominalClient:
 
     def create_streaming_connection(
         self,
+        datasource_id: str,
         connection_name: str,
-        datasource_id: str | None = None,
         datasource_description: str | None = None,
-        nominal_data_source_rid: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
     ) -> Connection:
-        if datasource_id:
-            datasource_response = self._clients.storage.create(
-                self._clients.auth_header,
-                storage_datasource_api.CreateNominalDataSourceRequest(
-                    id=datasource_id,
-                    description=datasource_description,
-                ),
-            )
-        elif nominal_data_source_rid is not None:
-            try:
-                datasource_response = self._clients.storage.batch_get(
-                    self._clients.auth_header, [nominal_data_source_rid]
-                )[0]
-            except IndexError:
-                raise ValueError(f"no datasource found with RID {nominal_data_source_rid!r}")
-
+        datasource_response = self._clients.storage.create(
+            self._clients.auth_header,
+            storage_datasource_api.CreateNominalDataSourceRequest(
+                id=datasource_id,
+                description=datasource_description,
+            ),
+        )
         connection_response = self._clients.connection.create_connection(
             self._clients.auth_header,
             scout_datasource_connection_api.CreateConnection(
                 name=connection_name,
                 connection_details=scout_datasource_connection_api.ConnectionDetails(
                     nominal=scout_datasource_connection_api.NominalConnectionDetails(
-                        nominal_data_source_rid=nominal_data_source_rid or datasource_response.rid
+                        nominal_data_source_rid=datasource_response.rid
                     ),
                 ),
                 metadata={},

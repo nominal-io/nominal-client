@@ -596,10 +596,9 @@ def upload_mcap_video(
 
 
 def create_streaming_connection(
+    datasource_id: str,
     connection_name: str,
-    datasource_id: str | None = None,
     datasource_description: str | None = None,
-    nominal_data_source_rid: str | None = None,
     *,
     required_tag_names: list[str] | None = None,
 ) -> Connection:
@@ -607,18 +606,9 @@ def create_streaming_connection(
 
     datasource_id: A human readable identifier. Must be unique within an organization.
     """
-    if datasource_id is None and nominal_data_source_rid is None:
-        raise ValueError("Either datasource_id or nominal_data_source_rid must be provided.")
-    if datasource_id is not None and nominal_data_source_rid is not None:
-        raise ValueError("Only one of datasource_id or nominal_data_source_rid must be provided.")
-
     conn = get_default_client()
     return conn.create_streaming_connection(
-        connection_name,
-        datasource_id,
-        datasource_description,
-        nominal_data_source_rid,
-        required_tag_names=required_tag_names,
+        datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
     )
 
 
