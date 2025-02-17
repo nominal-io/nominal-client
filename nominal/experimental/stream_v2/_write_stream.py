@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class WriteStreamV2:
-    _serializer: BatchSerializer
     _item_queue: Queue[BatchItem | QueueShutdown]
     _batch_thread: threading.Thread
     _write_thread: ThreadPoolExecutor
@@ -61,7 +60,6 @@ class WriteStreamV2:
             write_pool, clients, serializer, nominal_data_source_rid, batch_queue
         )
         return cls(
-            _serializer=serializer,
             _write_thread=write_pool,
             _item_queue=item_queue,
             _batch_thread=batch_thread,
@@ -73,7 +71,6 @@ class WriteStreamV2:
         self._item_queue.put(QueueShutdown())
         self._batch_thread.join()
         self._process_thread.join()
-        self._serializer.close()
         self._write_thread.shutdown()
 
     def enqueue(
