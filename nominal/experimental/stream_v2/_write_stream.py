@@ -16,7 +16,7 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._queueing import QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
-from nominal.experimental.stream_v2.serializer import BatchSerializer
+from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
@@ -44,35 +44,22 @@ class WriteStreamV2:
         max_batch_size: int,
         max_wait: timedelta,
         max_queue_size: int,
-        max_workers: int,
+        max_workers: int | None,
     ) -> Self:
-        """Create a new WriteStreamV2 instance.
-
-        Args:
-            clients: Client bunch that holds the write client
-            serializer: Serializer to turn batches into a serialized write request
-            nominal_data_source_rid: The data source rid to write to
-            max_batch_size: How many items to accumulate before serializing
-            max_wait: Maximum time to wait before serializing a partial batch
-            max_queue_size: Maximum number of items that can be queued (0 for unlimited)
-            max_workers: Maximum number of worker threads for parallel writing
-        """
         write_pool = ThreadPoolExecutor(max_workers=max_workers)
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
         item_queue: Queue[BatchItem | QueueShutdown] = Queue(maxsize=item_maxsize)
-
         batch_thread, batch_queue = spawn_batching_thread(
             item_queue,
             max_batch_size,
             max_wait,
             max_queue_size=batch_maxsize,
         )
-        batch_write_thread = _spawn_batch_write_thread(
+        batch_write_thread = spawn_batch_write_thread(
             write_pool, clients, serializer, nominal_data_source_rid, batch_queue
         )
-
         return cls(
             _serializer=serializer,
             _write_thread=write_pool,
@@ -163,7 +150,7 @@ def _write_serialized_batch(
         logger.error(f"Error processing batch: {e}", exc_info=True)
 
 
-def _write_batches(
+def write_batches(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
@@ -177,7 +164,7 @@ def _write_batches(
         future.add_done_callback(callback)
 
 
-def _spawn_batch_write_thread(
+def spawn_batch_write_thread(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
@@ -185,7 +172,7 @@ def _spawn_batch_write_thread(
     batch_queue: ReadQueue[Sequence[BatchItem]],
 ) -> threading.Thread:
     thread = threading.Thread(
-        target=_write_batches, args=(pool, clients, serializer, nominal_data_source_rid, batch_queue), daemon=True
+        target=write_batches, args=(pool, clients, serializer, nominal_data_source_rid, batch_queue), daemon=True
     )
     thread.start()
     return thread
