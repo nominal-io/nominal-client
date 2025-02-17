@@ -5,18 +5,23 @@ from itertools import groupby
 from typing import Sequence, cast
 
 from google.protobuf.timestamp_pb2 import Timestamp
-from nominal_api_protos.nominal_write_pb2 import (
-    Channel as NominalChannel,
-)
-from nominal_api_protos.nominal_write_pb2 import (
-    DoublePoint,
-    DoublePoints,
-    Points,
-    Series,
-    StringPoint,
-    StringPoints,
-    WriteRequestNominal,
-)
+
+
+try:
+    from nominal_api_protos.nominal_write_pb2 import (
+        Channel as NominalChannel,
+    )
+    from nominal_api_protos.nominal_write_pb2 import (
+        DoublePoint,
+        DoublePoints,
+        Points,
+        Series,
+        StringPoint,
+        StringPoints,
+        WriteRequestNominal,
+    )
+except ModuleNotFoundError:
+    raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._utils import _to_api_batch_key
