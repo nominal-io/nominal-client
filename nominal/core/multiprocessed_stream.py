@@ -20,8 +20,6 @@ from nominal.core.queueing import (
     spawn_batching_thread,
 )
 from nominal.core.stream import BatchItem
-
-# if TYPE_CHECKING:
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
