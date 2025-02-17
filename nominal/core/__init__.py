@@ -8,7 +8,6 @@ from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuild
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet
-from nominal.core.multiprocessed_stream import MultiProcessedWriteStream
 from nominal.core.run import Run
 from nominal.core.stream import WriteStream
 from nominal.core.user import User
@@ -38,5 +37,4 @@ __all__ = [
     "CheckViolation",
     "DataReviewBuilder",
     "WriteStream",
-    "MultiProcessedWriteStream",
 ]
