@@ -90,14 +90,10 @@ def process_batch(
     )
 
 
-def serialize_batch(
-    batch: Sequence[BatchItem],
-) -> bytes:
+def serialize_batch(batch: Sequence[BatchItem]) -> bytes:
     """Process a batch of items and return serialized request."""
     request = create_write_request(batch)
-    serialized = request.SerializeToString()
-
-    return serialized
+    return request.SerializeToString()
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:
