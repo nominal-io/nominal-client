@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass()
-class WriteStreamV2:
+class MultiProcessedWriteStream:
     _serialize_batch: Callable[[Sequence[BatchItem]], bytes]
     _max_batch_size: int
     _max_wait: timedelta
@@ -55,7 +55,7 @@ class WriteStreamV2:
         auth_header: str,
         max_workers: int,
     ) -> Self:
-        """Create a new WriteStreamV2 instance.
+        """Create a new MultiProcessedWriteStream instance.
 
         Args:
             nominal_data_source_rid: Nominal data source rid
@@ -178,7 +178,7 @@ class WriteStreamV2:
         for channel, value in flattened_dict.items():
             self.enqueue(channel, timestamp, value)
 
-    def __enter__(self) -> WriteStreamV2:
+    def __enter__(self) -> MultiProcessedWriteStream:
         """Create the stream as a context manager."""
         return self
 

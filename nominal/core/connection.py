@@ -21,8 +21,8 @@ from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
+from nominal.core.multiprocessed_stream import MultiProcessedWriteStream
 from nominal.core.stream import WriteStream
-from nominal.core.stream_v2 import WriteStreamV2
 
 
 @dataclass(frozen=True)
@@ -166,13 +166,13 @@ class Connection(HasRid):
 class StreamingConnection(Connection):
     nominal_data_source_rid: str
 
-    def get_write_stream_v2(
+    def get_multiprocessed_write_stream(
         self,
         max_batch_size: int = 30000,
         max_wait: timedelta = timedelta(seconds=1),
         max_queue_size: int = 0,
         max_workers: int = 10,
-    ) -> WriteStreamV2:
+    ) -> MultiProcessedWriteStream:
         """Stream to write non-blocking messages to a datasource.
 
         Args:
@@ -189,7 +189,7 @@ class StreamingConnection(Connection):
         except ImportError:
             raise ImportError("nominal-api-protos is required to use get_write_stream_v2 with data_format='protobuf'")
 
-        return WriteStreamV2.create(
+        return MultiProcessedWriteStream.create(
             nominal_data_source_rid=self.nominal_data_source_rid,
             serialize_batch=serialize_batch,
             max_batch_size=max_batch_size,
@@ -204,7 +204,7 @@ class StreamingConnection(Connection):
     def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
         warnings.warn(
             "get_nominal_write_stream is deprecated and will be removed in a future version. "
-            "Use get_write_stream_v2() instead.",
+            "use get_write_stream instead.",
             UserWarning,
             stacklevel=2,
         )

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-import multiprocessing
 from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
@@ -96,9 +94,6 @@ def serialize_batch(
     batch: Sequence[BatchItem],
 ) -> bytes:
     """Process a batch of items and return serialized request."""
-    logger = logging.getLogger(__name__)
-    logger.debug(f"Processing batch of {len(batch)} items in process {multiprocessing.current_process().name}")
-
     request = create_write_request(batch)
     serialized = request.SerializeToString()
 

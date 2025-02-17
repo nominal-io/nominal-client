@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from collections.abc import Sequence
@@ -11,8 +10,6 @@ from typing import Iterable, Protocol, TypeVar
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
 _T_contra = TypeVar("_T_contra", contravariant=True)
-
-logger = logging.getLogger(__name__)
 
 
 class ReadQueue(Protocol[_T_co]):
@@ -70,7 +67,7 @@ def spawn_batching_thread(
     max_queue_size: int = 0,
 ) -> tuple[threading.Thread, ReadQueue[Sequence[_T]]]:
     """Enqueue items from a queue into batches in a separate thread."""
-    batches = Queue[Sequence[_T]](maxsize=max_queue_size)
+    batches: Queue[Sequence[_T]] = Queue(maxsize=max_queue_size)
     batching_thread = threading.Thread(
         target=_enqueue_timed_batches, args=(items, batches, max_batch_size, max_batch_duration), daemon=True
     )
