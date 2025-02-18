@@ -1,11 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from nominal_api_protos.nominal_write_pb2 import WriteRequestNominal
-    from nominal_api_protos.prometheus_remote_write_pb2 import WriteRequest
-
 from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
@@ -37,23 +31,23 @@ from typing_extensions import Self
 
 
 class ProtoWriteService(Service):
-    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: WriteRequestNominal) -> None:
+    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
-        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
-    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: WriteRequest) -> None:
+    def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/prometheus/{data_source_rid}"
-        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request.SerializeToString())
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
 
 @dataclass(frozen=True)

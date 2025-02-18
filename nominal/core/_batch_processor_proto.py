@@ -5,18 +5,22 @@ from itertools import groupby
 from typing import Sequence, cast
 
 from google.protobuf.timestamp_pb2 import Timestamp
-from nominal_api_protos.nominal_write_pb2 import (
-    Channel as NominalChannel,
-)
-from nominal_api_protos.nominal_write_pb2 import (
-    DoublePoint,
-    DoublePoints,
-    Points,
-    Series,
-    StringPoint,
-    StringPoints,
-    WriteRequestNominal,
-)
+
+try:
+    from nominal_api_protos.nominal_write_pb2 import (
+        Channel as NominalChannel,
+    )
+    from nominal_api_protos.nominal_write_pb2 import (
+        DoublePoint,
+        DoublePoints,
+        Points,
+        Series,
+        StringPoint,
+        StringPoints,
+        WriteRequestNominal,
+    )
+except ModuleNotFoundError:
+    raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._utils import _to_api_batch_key
@@ -55,8 +59,10 @@ def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
         raise ValueError("only float and string are supported types for value")
 
 
-def create_write_request(api_batches: list[list[BatchItem]]) -> WriteRequestNominal:
+def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
     """Create a WriteRequestNominal from batches of items."""
+    api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
+    api_batches = [list(api_batch) for _, api_batch in api_batched]
     return WriteRequestNominal(
         series=[
             Series(
@@ -76,20 +82,22 @@ def process_batch(
     proto_write: ProtoWriteService,
 ) -> None:
     """Process a batch of items to write."""
-    api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
-
-    api_batches = [list(api_batch) for _, api_batch in api_batched]
-
     if nominal_data_source_rid is None:
         raise ValueError("Writing not implemented for this connection type")
 
-    request = create_write_request(api_batches)
+    request = create_write_request(batch)
 
     proto_write.write_nominal_batches(
         auth_header=auth_header,
         data_source_rid=nominal_data_source_rid,
-        request=request,
+        request=request.SerializeToString(),
     )
+
+
+def serialize_batch(batch: Sequence[BatchItem]) -> bytes:
+    """Process a batch of items and return serialized request."""
+    request = create_write_request(batch)
+    return request.SerializeToString()
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:

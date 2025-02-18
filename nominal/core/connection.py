@@ -17,9 +17,9 @@ from nominal_api import (
     timeseries_logicalseries_api,
 )
 
+from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
-from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
 from nominal.core.stream import WriteStream
 
@@ -31,7 +31,6 @@ class Connection(HasRid):
     description: str | None
     _tags: Mapping[str, Sequence[str]]
     _clients: _Clients = field(repr=False)
-    _nominal_data_source_rid: str | None = None
 
     class _Clients(Channel._Clients, HasAuthHeader, Protocol):
         @property
@@ -41,21 +40,31 @@ class Connection(HasRid):
         @property
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
-        def proto_write(self) -> ProtoWriteService: ...
-        @property
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
 
+        @property
+        def proto_write(self) -> ProtoWriteService: ...
+
     @classmethod
-    def _from_conjure(cls, clients: _Clients, response: scout_datasource_connection_api.Connection) -> Connection:
+    def _from_conjure(
+        cls, clients: _Clients, response: scout_datasource_connection_api.Connection
+    ) -> Connection | StreamingConnection:
+        """Factory method to create the appropriate Connection subclass based on connection details"""
+        if response.connection_details.nominal is not None:
+            return StreamingConnection(
+                rid=response.rid,
+                name=response.display_name,
+                description=response.description,
+                _tags=response.available_tag_values,
+                _clients=clients,
+                nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
+            )
         return cls(
             rid=response.rid,
             name=response.display_name,
             description=response.description,
             _tags=response.available_tag_values,
             _clients=clients,
-            _nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid
-            if response.connection_details.nominal is not None
-            else None,
         )
 
     def _get_series_achetypes_paginated(self) -> Iterable[datasource_api.ChannelMetadata]:
@@ -141,12 +150,25 @@ class Connection(HasRid):
         series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
         return Channel._from_conjure_logicalseries_api(self._clients, series)
 
-    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
-        """get_nominal_write_stream is deprecated and will be removed in a future version,
-        use get_write_stream instead.
+    def archive(self) -> None:
+        """Archive this connection.
+        Archived connections are not deleted, but are hidden from the UI.
         """
+        self._clients.connection.archive_connection(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive this connection, making it visible in the UI."""
+        self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
+
+
+@dataclass(frozen=True)
+class StreamingConnection(Connection):
+    nominal_data_source_rid: str
+
+    # Deprecated methods for backward compatibility
+    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
         warnings.warn(
-            "get_nominal_write_stream is deprecated and will be removed in a future version,"
+            "get_nominal_write_stream is deprecated and will be removed in a future version. "
             "use get_write_stream instead.",
             UserWarning,
             stacklevel=2,
@@ -192,12 +214,12 @@ class Connection(HasRid):
                 batch_size,
                 max_wait,
                 lambda batch: process_batch_legacy(
-                    batch, self._nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
+                    batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
                 ),
             )
 
         try:
-            from nominal.core.batch_processor_proto import process_batch
+            from nominal.core._batch_processor_proto import process_batch
         except ImportError:
             raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
 
@@ -206,21 +228,11 @@ class Connection(HasRid):
             max_wait,
             lambda batch: process_batch(
                 batch=batch,
-                nominal_data_source_rid=self._nominal_data_source_rid,
+                nominal_data_source_rid=self.nominal_data_source_rid,
                 auth_header=self._clients.auth_header,
                 proto_write=self._clients.proto_write,
             ),
         )
-
-    def archive(self) -> None:
-        """Archive this connection.
-        Archived connections are not deleted, but are hidden from the UI.
-        """
-        self._clients.connection.archive_connection(self._clients.auth_header, self.rid)
-
-    def unarchive(self) -> None:
-        """Unarchive this connection, making it visible in the UI."""
-        self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
 
 
 def _get_connections(

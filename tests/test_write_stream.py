@@ -7,8 +7,8 @@ from nominal_api_protos.nominal_write_pb2 import (
     WriteRequestNominal,
 )
 
-from nominal.core.batch_processor_proto import process_batch
-from nominal.core.connection import Connection
+from nominal.core._batch_processor_proto import process_batch
+from nominal.core.connection import StreamingConnection
 from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
 
@@ -32,13 +32,13 @@ def mock_clients():
 
 @pytest.fixture
 def mock_connection(mock_clients):
-    return Connection(
+    return StreamingConnection(
         rid="test-connection-rid",
         name="Test Connection",
         description="A connection for testing",
         _tags={},
         _clients=mock_clients,
-        _nominal_data_source_rid="test-datasource-rid",
+        nominal_data_source_rid="test-datasource-rid",
     )
 
 
@@ -53,7 +53,7 @@ def test_process_batch_double_points(mock_connection):
     # Process the batch using the imported process_batch function
     process_batch(
         batch=batch,
-        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
         proto_write=mock_connection._clients.proto_write,
     )
@@ -67,6 +67,9 @@ def test_process_batch_double_points(mock_connection):
     assert kwargs["auth_header"] == "test-auth-header"
     assert kwargs["data_source_rid"] == "test-datasource-rid"
     actual_request = kwargs["request"]
+
+    # Convert bytes back to WriteRequestNominal
+    actual_request = WriteRequestNominal.FromString(actual_request)
 
     # Verify it's the correct type
     assert isinstance(actual_request, WriteRequestNominal)
@@ -110,7 +113,7 @@ def test_process_batch_string_points(mock_connection):
     # Process the batch using the imported process_batch function
     process_batch(
         batch=batch,
-        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
         proto_write=mock_connection._clients.proto_write,
     )
@@ -124,6 +127,8 @@ def test_process_batch_string_points(mock_connection):
     assert kwargs["auth_header"] == "test-auth-header"
     assert kwargs["data_source_rid"] == "test-datasource-rid"
     actual_request = kwargs["request"]
+
+    actual_request = WriteRequestNominal.FromString(actual_request)
 
     # Verify series structure
     assert len(actual_request.series) == 1
@@ -153,7 +158,7 @@ def test_process_batch_with_tags(mock_connection):
     # Process the batch using the imported process_batch function
     process_batch(
         batch=batch,
-        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
         proto_write=mock_connection._clients.proto_write,
     )
@@ -167,6 +172,8 @@ def test_process_batch_with_tags(mock_connection):
     assert kwargs["auth_header"] == "test-auth-header"
     assert kwargs["data_source_rid"] == "test-datasource-rid"
     actual_request = kwargs["request"]
+
+    actual_request = WriteRequestNominal.FromString(actual_request)
 
     # Verify tags were included
     assert len(actual_request.series) == 1
@@ -185,7 +192,7 @@ def test_process_batch_invalid_type(mock_connection):
     with pytest.raises(ValueError, match="only float and string are supported types for value"):
         process_batch(
             batch=batch,
-            nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+            nominal_data_source_rid=mock_connection.nominal_data_source_rid,
             auth_header=mock_connection._clients.auth_header,
             proto_write=mock_connection._clients.proto_write,
         )
@@ -205,7 +212,7 @@ def test_process_batch_multiple_channels(mock_connection):
     # Process the batch
     process_batch(
         batch=batch,
-        nominal_data_source_rid=mock_connection._nominal_data_source_rid,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
         proto_write=mock_connection._clients.proto_write,
     )
@@ -219,6 +226,8 @@ def test_process_batch_multiple_channels(mock_connection):
     assert kwargs["auth_header"] == "test-auth-header"
     assert kwargs["data_source_rid"] == "test-datasource-rid"
     actual_request = kwargs["request"]
+
+    actual_request = WriteRequestNominal.FromString(actual_request)
 
     # Verify we have three series
     assert len(actual_request.series) == 3
@@ -274,6 +283,9 @@ def test_multiple_write_streams(mock_connection):
     # Check first call (stream1)
     first_call = mock_write.call_args_list[0].kwargs
     first_request = first_call["request"]
+
+    first_request = WriteRequestNominal.FromString(first_request)
+
     assert len(first_request.series) == 1
     assert first_request.series[0].channel.name == "channel1"
     assert first_request.series[0].points.HasField("double_points")
@@ -285,6 +297,9 @@ def test_multiple_write_streams(mock_connection):
     # Check second call (stream2)
     second_call = mock_write.call_args_list[1].kwargs
     second_request = second_call["request"]
+
+    second_request = WriteRequestNominal.FromString(second_request)
+
     assert len(second_request.series) == 1
     assert second_request.series[0].channel.name == "channel2"
     assert second_request.series[0].points.HasField("string_points")
