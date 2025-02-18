@@ -48,14 +48,14 @@ class WriteStreamV2:
     ) -> Self:
         write_pool = ThreadPoolExecutor(max_workers=max_workers)
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
-        batch_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
+        batch_queue_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
         item_queue: Queue[BatchItem | QueueShutdown] = Queue(maxsize=item_maxsize)
         batch_thread, batch_queue = spawn_batching_thread(
             item_queue,
             max_batch_size,
             max_wait,
-            max_queue_size=batch_maxsize,
+            max_queue_size=batch_queue_maxsize,
         )
         batch_serialize_thread = spawn_batch_serialize_thread(
             write_pool, clients, serializer, nominal_data_source_rid, batch_queue
@@ -73,8 +73,8 @@ class WriteStreamV2:
         self._item_queue.put(QueueShutdown())
         self._batch_thread.join()
         self._batch_serialize_thread.join()
-        self._write_pool.shutdown(cancel_futures=True)
         self._serializer.close()
+        self._write_pool.shutdown(cancel_futures=True)
 
     def enqueue(
         self,
@@ -128,11 +128,8 @@ class WriteStreamV2:
         exc_type: Type[BaseException] | None,
         exc_value: BaseException | None,
         traceback: TracebackType | None,
-    ) -> bool:
+    ) -> None:
         self.close()
-
-        if type is not None:
-            return False
 
 
 def _write_serialized_batch(
@@ -178,7 +175,6 @@ def spawn_batch_serialize_thread(
     thread = threading.Thread(
         target=serialize_and_write_batches,
         args=(pool, clients, serializer, nominal_data_source_rid, batch_queue),
-        daemon=True,
     )
     thread.start()
     return thread

@@ -37,7 +37,5 @@ class BatchSerializer:
 
     def __exit__(
         self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
-    ) -> bool | None:
+    ) -> None:
         self.close()
-        if exc_value is not None:
-            return False
