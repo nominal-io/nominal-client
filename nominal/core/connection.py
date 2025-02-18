@@ -17,9 +17,9 @@ from nominal_api import (
     timeseries_logicalseries_api,
 )
 
+from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid
-from nominal.core.batch_processor import process_batch_legacy
 from nominal.core.channel import Channel
 from nominal.core.stream import WriteStream
 
@@ -219,7 +219,7 @@ class StreamingConnection(Connection):
             )
 
         try:
-            from nominal.core.batch_processor_proto import process_batch
+            from nominal.core._batch_processor_proto import process_batch
         except ImportError:
             raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
 

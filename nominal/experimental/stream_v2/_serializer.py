@@ -8,7 +8,7 @@ from typing import Type
 
 from typing_extensions import Self
 
-from nominal.core.batch_processor_proto import serialize_batch
+from nominal.core._batch_processor_proto import serialize_batch
 from nominal.core.stream import BatchItem
 
 

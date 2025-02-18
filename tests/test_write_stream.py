@@ -7,7 +7,7 @@ from nominal_api_protos.nominal_write_pb2 import (
     WriteRequestNominal,
 )
 
-from nominal.core.batch_processor_proto import process_batch
+from nominal.core._batch_processor_proto import process_batch
 from nominal.core.connection import StreamingConnection
 from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
