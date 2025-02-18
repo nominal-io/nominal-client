@@ -6,7 +6,6 @@ from typing import Sequence, cast
 
 from google.protobuf.timestamp_pb2 import Timestamp
 
-
 try:
     from nominal_api_protos.nominal_write_pb2 import (
         Channel as NominalChannel,

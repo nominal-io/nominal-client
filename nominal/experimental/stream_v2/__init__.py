@@ -1,8 +1,8 @@
 import contextlib
 from datetime import timedelta
 from typing import Generator
-from nominal.core.connection import StreamingConnection
 
+from nominal.core.connection import StreamingConnection
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 
@@ -27,9 +27,10 @@ def create_write_stream(
         max_batch_size: How big the batch can get before writing to Nominal.
         max_wait: How long a batch can exist before being flushed to Nominal.
         max_queue_size: Maximum number of items that can be queued (0 for unlimited).
+        write_thread_workers: Number of threads to use for writing to Nominal.
+        serialize_process_workers: Number of processes to use for serializing batches of protobufs.
 
     Example:
-
         ```python
         connection = client.get_connection(connection_rid)
         with nominal.experimental.stream_v2.create_write_stream(connection) as stream:

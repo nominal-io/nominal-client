@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import concurrent.futures
-from functools import partial
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from queue import Queue
 from types import TracebackType
 from typing import Protocol, Sequence, Type
