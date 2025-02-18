@@ -22,10 +22,10 @@ class BatchSerializer:
     pool: ProcessPoolExecutor
 
     def close(self) -> None:
-        self.pool.shutdown(wait=True)
+        self.pool.shutdown(cancel_futures=True)
 
     @classmethod
-    def create(cls, max_workers: int = 2) -> Self:
+    def create(cls, max_workers: int) -> Self:
         pool = ProcessPoolExecutor(max_workers=max_workers)
         return cls(pool=pool)
 
@@ -37,5 +37,7 @@ class BatchSerializer:
 
     def __exit__(
         self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
-    ) -> None:
+    ) -> bool | None:
         self.close()
+        if exc_value is not None:
+            return False

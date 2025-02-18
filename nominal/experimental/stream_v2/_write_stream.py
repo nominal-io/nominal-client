@@ -26,8 +26,9 @@ logger = logging.getLogger(__name__)
 class WriteStreamV2:
     _item_queue: Queue[BatchItem | QueueShutdown]
     _batch_thread: threading.Thread
-    _write_thread: ThreadPoolExecutor
-    _process_thread: threading.Thread
+    _write_pool: ThreadPoolExecutor
+    _batch_serialize_thread: threading.Thread
+    _serializer: BatchSerializer
     _clients: _Clients
 
     class _Clients(HasAuthHeader, Protocol):
@@ -56,22 +57,24 @@ class WriteStreamV2:
             max_wait,
             max_queue_size=batch_maxsize,
         )
-        batch_write_thread = spawn_batch_write_thread(
+        batch_serialize_thread = spawn_batch_serialize_thread(
             write_pool, clients, serializer, nominal_data_source_rid, batch_queue
         )
         return cls(
-            _write_thread=write_pool,
+            _write_pool=write_pool,
             _item_queue=item_queue,
             _batch_thread=batch_thread,
-            _process_thread=batch_write_thread,
+            _batch_serialize_thread=batch_serialize_thread,
+            _serializer=serializer,
             _clients=clients,
         )
 
     def close(self) -> None:
         self._item_queue.put(QueueShutdown())
         self._batch_thread.join()
-        self._process_thread.join()
-        self._write_thread.shutdown()
+        self._batch_serialize_thread.join()
+        self._write_pool.shutdown(cancel_futures=True)
+        self._serializer.close()
 
     def enqueue(
         self,
@@ -125,8 +128,11 @@ class WriteStreamV2:
         exc_type: Type[BaseException] | None,
         exc_value: BaseException | None,
         traceback: TracebackType | None,
-    ) -> None:
+    ) -> bool:
         self.close()
+
+        if type is not None:
+            return False
 
 
 def _write_serialized_batch(
@@ -145,9 +151,10 @@ def _write_serialized_batch(
         )
     except Exception as e:
         logger.error(f"Error processing batch: {e}", exc_info=True)
+        raise e
 
 
-def write_batches(
+def serialize_and_write_batches(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
@@ -161,7 +168,7 @@ def write_batches(
         future.add_done_callback(callback)
 
 
-def spawn_batch_write_thread(
+def spawn_batch_serialize_thread(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
@@ -169,7 +176,9 @@ def spawn_batch_write_thread(
     batch_queue: ReadQueue[Sequence[BatchItem]],
 ) -> threading.Thread:
     thread = threading.Thread(
-        target=write_batches, args=(pool, clients, serializer, nominal_data_source_rid, batch_queue), daemon=True
+        target=serialize_and_write_batches,
+        args=(pool, clients, serializer, nominal_data_source_rid, batch_queue),
+        daemon=True,
     )
     thread.start()
     return thread
