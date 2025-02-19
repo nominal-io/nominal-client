@@ -39,13 +39,18 @@ class ProtoWriteService(Service):
         request: bytes,
         most_recent_timestamp: datetime | None = None,
         least_recent_timestamp: datetime | None = None,
-    ) -> tuple[timedelta | None, timedelta | None, timedelta | None]:
+    ) -> tuple[timedelta | None, timedelta | None, timedelta | None, timedelta | None, timedelta | None]:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
+
+        most_recent_timestamp_diff_in_batch_before_request = None
+        least_recent_timestamp_diff_in_batch_before_request = None
+        oldest_total_rtt = None
+        newest_total_rtt = None
 
         if most_recent_timestamp and least_recent_timestamp:
             most_recent_timestamp_diff_in_batch_before_request = timedelta(
