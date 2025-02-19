@@ -3,13 +3,23 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Sequence
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from queue import Empty, Queue
-from typing import Iterable, Protocol, TypeVar
+from typing import Generic, Iterable, Protocol, TypeVar
+
+from nominal.core.stream import BatchItem
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
 _T_contra = TypeVar("_T_contra", contravariant=True)
+
+
+@dataclass(frozen=True)
+class Batch(Generic[_T]):
+    items: Sequence[_T]
+    oldest_timestamp: datetime | None
+    newest_timestamp: datetime | None
 
 
 class ReadQueue(Protocol[_T_co]):
@@ -22,35 +32,48 @@ class WriteQueue(Protocol[_T_contra]):
     def shutdown(self, immediate: bool = False) -> None: ...
 
 
-def _timed_batch(q: ReadQueue[_T], max_batch_size: int, max_batch_duration: timedelta) -> Iterable[Sequence[_T]]:
+def _timed_batch(
+    q: ReadQueue[BatchItem], max_batch_size: int, max_batch_duration: timedelta
+) -> Iterable[Batch[BatchItem]]:
     """Yield batches of items from a queue, either when the batch size is reached or the batch window expires.
 
     Will not yield empty batches.
     """
-    batch: list[_T] = []
+    batch: list[BatchItem] = []
+    oldest_timestamp: datetime | None = None
+    newest_timestamp: datetime | None = None
     next_batch_time = time.time() + max_batch_duration.total_seconds()
     while True:
         now = time.time()
         try:
             item = q.get(timeout=max(0, next_batch_time - now))
             if isinstance(item, QueueShutdown):
-                if batch:
-                    yield batch
+                if batch and oldest_timestamp and newest_timestamp:
+                    yield Batch(batch, oldest_timestamp, newest_timestamp)
                 return
+
+            if oldest_timestamp is not None and newest_timestamp is not None:
+                oldest_timestamp = min(oldest_timestamp, item.timestamp)
+                newest_timestamp = max(newest_timestamp, item.timestamp)
+            else:
+                oldest_timestamp = item.timestamp
+                newest_timestamp = item.timestamp
             batch.append(item)
             q.task_done()
         except Empty:  # timeout
             pass
         if len(batch) >= max_batch_size or time.time() >= next_batch_time:
             if batch:
-                yield batch
+                yield Batch(batch, oldest_timestamp, newest_timestamp)
+                oldest_timestamp = None
+                newest_timestamp = None
                 batch = []
             next_batch_time = now + max_batch_duration.total_seconds()
 
 
 def _enqueue_timed_batches(
-    items: ReadQueue[_T],
-    batches: WriteQueue[Sequence[_T] | QueueShutdown],
+    items: ReadQueue[BatchItem],
+    batches: WriteQueue[Batch[BatchItem] | QueueShutdown],
     max_batch_size: int,
     max_batch_duration: timedelta,
 ) -> None:
@@ -65,9 +88,9 @@ def spawn_batching_thread(
     max_batch_size: int,
     max_batch_duration: timedelta,
     max_queue_size: int = 0,
-) -> tuple[threading.Thread, ReadQueue[Sequence[_T]]]:
+) -> tuple[threading.Thread, ReadQueue[Batch[BatchItem]]]:
     """Enqueue items from a queue into batches in a separate thread."""
-    batches: Queue[Sequence[_T]] = Queue(maxsize=max_queue_size)
+    batches: Queue[Batch[BatchItem]] = Queue(maxsize=max_queue_size)
     batching_thread = threading.Thread(
         target=_enqueue_timed_batches, args=(items, batches, max_batch_size, max_batch_duration), daemon=True
     )

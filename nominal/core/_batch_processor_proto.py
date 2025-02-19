@@ -23,6 +23,7 @@ except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
+from nominal.core._queueing import Batch
 from nominal.core._utils import _to_api_batch_key
 from nominal.core.stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -94,10 +95,10 @@ def process_batch(
     )
 
 
-def serialize_batch(batch: Sequence[BatchItem]) -> bytes:
+def serialize_batch(batch: Batch[BatchItem]) -> tuple[bytes, datetime | None, datetime | None]:
     """Process a batch of items and return serialized request."""
-    request = create_write_request(batch)
-    return request.SerializeToString()
+    request = create_write_request(batch.items)
+    return request.SerializeToString(), batch.oldest_timestamp, batch.newest_timestamp
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:

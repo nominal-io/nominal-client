@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from functools import partial
 from typing import Protocol
 
@@ -31,14 +32,38 @@ from typing_extensions import Self
 
 
 class ProtoWriteService(Service):
-    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
+    def write_nominal_batches(
+        self,
+        auth_header: str,
+        data_source_rid: str,
+        request: bytes,
+        most_recent_timestamp: datetime | None = None,
+        least_recent_timestamp: datetime | None = None,
+    ) -> tuple[timedelta | None, timedelta | None, timedelta | None]:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
+
+        if most_recent_timestamp and least_recent_timestamp:
+            most_recent_timestamp_diff_in_batch_before_request = timedelta(
+                seconds=datetime.now().timestamp() - most_recent_timestamp.timestamp()
+            )
+            least_recent_timestamp_diff_in_batch_before_request = timedelta(
+                seconds=datetime.now().timestamp() - least_recent_timestamp.timestamp()
+            )
+
+        before_req = datetime.now()
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
+
+        rtt = timedelta(seconds=datetime.now().timestamp() - before_req.timestamp())
+        return (
+            most_recent_timestamp_diff_in_batch_before_request,
+            least_recent_timestamp_diff_in_batch_before_request,
+            rtt,
+        )
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
         _headers = {

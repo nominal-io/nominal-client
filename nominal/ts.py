@@ -394,6 +394,30 @@ _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | E
 )
 
 
+def _normalize_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> datetime:
+    """Normalize the timestamp to a datetime instance.
+
+    - If the timestamp is already a datetime, it is returned as-is.
+    - If it is a string, it is parsed using datetime.fromisoformat.
+    - If it is an IntegralNanosecondsUTC, it is assumed to represent a nanosecond
+        count since the Unix epoch.
+    """
+    if isinstance(timestamp, datetime):
+        return timestamp
+    elif isinstance(timestamp, str):
+        try:
+            return datetime.fromisoformat(timestamp)
+        except Exception as e:
+            raise ValueError("timestamp string is not a valid ISO format") from e
+    elif isinstance(timestamp, IntegralNanosecondsUTC):
+        seconds, nanos = divmod(timestamp, 1_000_000_000)
+        dt = datetime.fromtimestamp(seconds, tz=timezone.utc)
+        dt = dt.replace(microsecond=nanos // 1000)
+        return dt
+    else:
+        raise TypeError("timestamp must be one of: datetime, str, or IntegralNanosecondsUTC")
+
+
 class _SecondsNanos(NamedTuple):
     """A simple internal timestamp representation that can be converted to/from various formats.
 

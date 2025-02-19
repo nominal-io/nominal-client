@@ -14,10 +14,10 @@ from typing import Protocol, Sequence, Type
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
-from nominal.core._queueing import QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
+from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
 from nominal.experimental.stream_v2._serializer import BatchSerializer
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, _normalize_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class WriteStreamV2:
             max_queue_size=batch_queue_maxsize,
         )
         batch_serialize_thread = spawn_batch_serialize_thread(
-            write_pool, clients, serializer, nominal_data_source_rid, batch_queue
+            write_pool, clients, serializer, nominal_data_source_rid, batch_queue, item_queue
         )
         return cls(
             _write_pool=write_pool,
@@ -84,7 +84,9 @@ class WriteStreamV2:
         tags: dict[str, str] | None = None,
     ) -> None:
         """Write a single value."""
-        item = BatchItem(channel_name, timestamp, value, tags)
+        timestamp_normalized = _normalize_timestamp(timestamp)
+
+        item = BatchItem(channel_name, timestamp_normalized, value, tags)
         self._item_queue.put(item)
 
     def enqueue_batch(
@@ -99,8 +101,18 @@ class WriteStreamV2:
             raise ValueError(
                 f"Expected equal numbers of timestamps and values! Received: {len(timestamps)} vs. {len(values)}"
             )
+
         for timestamp, value in zip(timestamps, values):
             self.enqueue(channel_name, timestamp, value, tags)
+
+    def add_staleness_metric(self, timestamp: datetime, channel_name: str, value: float) -> None:
+        self._item_queue.put(
+            BatchItem(
+                channel_name=channel_name,
+                timestamp=timestamp,
+                value=value,
+            )
+        )
 
     def enqueue_from_dict(
         self,
@@ -116,8 +128,18 @@ class WriteStreamV2:
             timestamp: The common timestamp to use for all enqueued items.
             channel_values: A dictionary mapping channel names to their values.
         """
+        timestamp_normalized = _normalize_timestamp(timestamp)
+        enqueue_dict_timestamp_diff = timedelta(seconds=timestamp_normalized.timestamp() - datetime.now().timestamp())
+
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value)
+        last_enqueue_timestamp = timedelta(seconds=timestamp_normalized.timestamp() - datetime.now().timestamp())
+        self.add_staleness_metric(
+            timestamp_normalized, "enque_dict_start_staleness", enqueue_dict_timestamp_diff.total_seconds()
+        )
+        self.add_staleness_metric(
+            timestamp_normalized, "enque_dict_end_staleness", last_enqueue_timestamp.total_seconds()
+        )
 
     def __enter__(self) -> WriteStreamV2:
         """Create the stream as a context manager."""
@@ -136,16 +158,56 @@ def _write_serialized_batch(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     nominal_data_source_rid: str,
-    future: concurrent.futures.Future[bytes],
+    item_queue: Queue[BatchItem | QueueShutdown],
+    future: concurrent.futures.Future[tuple[bytes, datetime | None, datetime | None]],
 ) -> None:
     try:
-        serialized_data = future.result()
-        pool.submit(
+        serialized_data, most_recent_timestamp, least_recent_timestamp = future.result()
+        write_future = pool.submit(
             clients.proto_write.write_nominal_batches,
             clients.auth_header,
             nominal_data_source_rid,
             serialized_data,
+            most_recent_timestamp,
+            least_recent_timestamp,
         )
+
+        def on_write_complete(
+            f: concurrent.futures.Future[tuple[timedelta | None, timedelta | None, timedelta | None]],
+        ) -> None:
+            try:
+                (
+                    least_recent_before_request_diff,
+                    most_recent_before_request_diff,
+                    rtt,
+                ) = f.result()  # Check for exceptions
+                if least_recent_before_request_diff and most_recent_before_request_diff and rtt:
+                    current_time = datetime.now()
+                    item_queue.put(
+                        BatchItem(
+                            channel_name="least_recent_before_request_diff",
+                            timestamp=current_time,
+                            value=least_recent_before_request_diff.total_seconds(),
+                        )
+                    )
+                    item_queue.put(
+                        BatchItem(
+                            channel_name="most_recent_before_request_diff",
+                            timestamp=current_time,
+                            value=most_recent_before_request_diff.total_seconds(),
+                        )
+                    )
+                    item_queue.put(
+                        BatchItem(
+                            channel_name="rtt",
+                            timestamp=current_time,
+                            value=rtt.total_seconds(),
+                        )
+                    )
+            except Exception as e:
+                logger.error(f"Error in write completion callback: {e}", exc_info=True)
+
+        write_future.add_done_callback(on_write_complete)
     except Exception as e:
         logger.error(f"Error processing batch: {e}", exc_info=True)
         raise e
@@ -156,10 +218,11 @@ def serialize_and_write_batches(
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
-    batch_queue: ReadQueue[Sequence[BatchItem]],
+    item_queue: Queue[BatchItem | QueueShutdown],
+    batch_queue: ReadQueue[Batch[BatchItem]],
 ) -> None:
     """Worker that processes batches."""
-    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid)
+    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid, item_queue)
     for batch in iter_queue(batch_queue):
         future = serializer.serialize(batch)
         future.add_done_callback(callback)
@@ -170,11 +233,12 @@ def spawn_batch_serialize_thread(
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
-    batch_queue: ReadQueue[Sequence[BatchItem]],
+    batch_queue: ReadQueue[Batch[BatchItem]],
+    item_queue: Queue[BatchItem | QueueShutdown],
 ) -> threading.Thread:
     thread = threading.Thread(
         target=serialize_and_write_batches,
-        args=(pool, clients, serializer, nominal_data_source_rid, batch_queue),
+        args=(pool, clients, serializer, nominal_data_source_rid, item_queue, batch_queue),
     )
     thread.start()
     return thread

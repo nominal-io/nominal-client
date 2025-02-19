@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 from types import TracebackType
 from typing import Type
 
 from typing_extensions import Self
 
 from nominal.core._batch_processor_proto import serialize_batch
+from nominal.core._queueing import Batch
 from nominal.core.stream import BatchItem
 
 
@@ -29,7 +30,7 @@ class BatchSerializer:
         pool = ProcessPoolExecutor(max_workers=max_workers)
         return cls(pool=pool)
 
-    def serialize(self, batch: Sequence[BatchItem]) -> Future[bytes]:
+    def serialize(self, batch: Batch[BatchItem]) -> Future[tuple[bytes, datetime | None, datetime | None]]:
         return self.pool.submit(serialize_batch, batch)
 
     def __enter__(self) -> BatchSerializer:

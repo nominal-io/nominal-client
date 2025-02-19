@@ -12,7 +12,7 @@ from typing import Any, Callable, Sequence, Type
 
 from typing_extensions import Self
 
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, _normalize_timestamp
 
 
 def __getattr__(name: str) -> Any:
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class BatchItem:
     channel_name: str
-    timestamp: str | datetime | IntegralNanosecondsUTC
+    timestamp: datetime
     value: float | str
     tags: dict[str, str] | None = None
 
@@ -88,11 +88,15 @@ class WriteStream:
         value: float | str,
         tags: dict[str, str] | None = None,
     ) -> None:
-        """Add a message to the queue.
+        """Add a message to the queue after normalizing the timestamp to datetime.
 
-        The message will not be immediately sent to Nominal. Only after the batch size is full or the timeout occurs.
+        The message is added to the thread-safe batch and flushed if the batch
+        size is reached.
         """
-        self.enqueue_batch(channel_name, [timestamp], [value], tags)
+        dt_timestamp = _normalize_timestamp(timestamp)
+        item = BatchItem(channel_name, dt_timestamp, value, tags)
+        self._thread_safe_batch.add([item])
+        self._flush(condition=lambda size: size >= self.batch_size)
 
     def enqueue_batch(
         self,
@@ -101,19 +105,17 @@ class WriteStream:
         values: Sequence[float | str],
         tags: dict[str, str] | None = None,
     ) -> None:
-        """Add a sequence of messages to the queue.
+        """Add a sequence of messages to the queue by calling enqueue for each message.
 
-        The messages will not be immediately sent to Nominal. Only after the batch size is full or the timeout occurs.
+        The messages are added one by one (with timestamp normalization) and flushed
+        based on the batch conditions.
         """
         if len(timestamps) != len(values):
             raise ValueError(
                 f"Expected equal numbers of timestamps and values! Received: {len(timestamps)} vs. {len(values)}"
             )
-
-        self._thread_safe_batch.add(
-            [BatchItem(channel_name, timestamp, value, tags) for timestamp, value in zip(timestamps, values)]
-        )
-        self._flush(condition=lambda size: size >= self.batch_size)
+        for ts, val in zip(timestamps, values):
+            self.enqueue(channel_name, ts, val, tags)
 
     def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
         batch = self._thread_safe_batch.swap(condition)
