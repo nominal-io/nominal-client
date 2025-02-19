@@ -105,15 +105,6 @@ class WriteStreamV2:
         for timestamp, value in zip(timestamps, values):
             self.enqueue(channel_name, timestamp, value, tags)
 
-    def add_staleness_metric(self, timestamp: datetime, channel_name: str, value: float) -> None:
-        self._item_queue.put(
-            BatchItem(
-                channel_name=channel_name,
-                timestamp=timestamp,
-                value=value,
-            )
-        )
-
     def enqueue_from_dict(
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
@@ -134,11 +125,20 @@ class WriteStreamV2:
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value)
         last_enqueue_timestamp = timedelta(seconds=timestamp_normalized.timestamp() - datetime.now().timestamp())
-        self.add_staleness_metric(
-            timestamp_normalized, "enque_dict_start_staleness", enqueue_dict_timestamp_diff.total_seconds()
+
+        self._item_queue.put(
+            BatchItem(
+                channel_name="enque_dict_start_staleness",
+                timestamp=timestamp_normalized,
+                value=enqueue_dict_timestamp_diff.total_seconds(),
+            )
         )
-        self.add_staleness_metric(
-            timestamp_normalized, "enque_dict_end_staleness", last_enqueue_timestamp.total_seconds()
+        self._item_queue.put(
+            BatchItem(
+                channel_name="enque_dict_end_staleness",
+                timestamp=timestamp_normalized,
+                value=last_enqueue_timestamp.total_seconds(),
+            )
         )
 
     def __enter__(self) -> WriteStreamV2:
