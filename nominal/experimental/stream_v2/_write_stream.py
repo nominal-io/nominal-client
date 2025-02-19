@@ -173,15 +173,17 @@ def _write_serialized_batch(
         )
 
         def on_write_complete(
-            f: concurrent.futures.Future[tuple[timedelta | None, timedelta | None, timedelta | None]],
+            f: concurrent.futures.Future[tuple[timedelta | None, timedelta | None, timedelta | None, timedelta | None, timedelta | None]],
         ) -> None:
             try:
                 (
                     least_recent_before_request_diff,
                     most_recent_before_request_diff,
                     rtt,
+                    oldest_total_rtt,
+                    newest_total_rtt,
                 ) = f.result()  # Check for exceptions
-                if least_recent_before_request_diff and most_recent_before_request_diff and rtt:
+                if least_recent_before_request_diff and most_recent_before_request_diff and rtt and oldest_total_rtt and newest_total_rtt:
                     current_time = datetime.now()
                     item_queue.put(
                         BatchItem(
@@ -202,6 +204,20 @@ def _write_serialized_batch(
                             channel_name="rtt",
                             timestamp=current_time,
                             value=rtt.total_seconds(),
+                        )
+                    )
+                    item_queue.put(
+                        BatchItem(
+                            channel_name="oldest_total_rtt",
+                            timestamp=current_time,
+                            value=oldest_total_rtt.total_seconds(),
+                        )
+                        )
+                    item_queue.put(
+                        BatchItem(
+                            channel_name="newest_total_rtt",
+                            timestamp=current_time,
+                            value=newest_total_rtt.total_seconds(),
                         )
                     )
             except Exception as e:

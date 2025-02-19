@@ -95,7 +95,7 @@ def process_batch(
     )
 
 
-def serialize_batch(batch: Batch[BatchItem]) -> tuple[bytes, datetime | None, datetime | None]:
+def serialize_batch(batch: Batch[BatchItem]) -> tuple[bytes, datetime, datetime]:
     """Process a batch of items and return serialized request."""
     request = create_write_request(batch.items)
     return request.SerializeToString(), batch.oldest_timestamp, batch.newest_timestamp

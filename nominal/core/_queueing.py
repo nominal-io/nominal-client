@@ -18,8 +18,8 @@ _T_contra = TypeVar("_T_contra", contravariant=True)
 @dataclass(frozen=True)
 class Batch(Generic[_T]):
     items: Sequence[_T]
-    oldest_timestamp: datetime | None
-    newest_timestamp: datetime | None
+    oldest_timestamp: datetime
+    newest_timestamp: datetime
 
 
 class ReadQueue(Protocol[_T_co]):
@@ -40,8 +40,8 @@ def _timed_batch(
     Will not yield empty batches.
     """
     batch: list[BatchItem] = []
-    oldest_timestamp: datetime | None = None
-    newest_timestamp: datetime | None = None
+    oldest_timestamp: datetime = datetime.max
+    newest_timestamp: datetime = datetime.min
     next_batch_time = time.time() + max_batch_duration.total_seconds()
     while True:
         now = time.time()
@@ -52,12 +52,9 @@ def _timed_batch(
                     yield Batch(batch, oldest_timestamp, newest_timestamp)
                 return
 
-            if oldest_timestamp is not None and newest_timestamp is not None:
-                oldest_timestamp = min(oldest_timestamp, item.timestamp)
-                newest_timestamp = max(newest_timestamp, item.timestamp)
-            else:
-                oldest_timestamp = item.timestamp
-                newest_timestamp = item.timestamp
+            oldest_timestamp = min(oldest_timestamp, item.timestamp)
+            newest_timestamp = max(newest_timestamp, item.timestamp)
+
             batch.append(item)
             q.task_done()
         except Empty:  # timeout
@@ -65,8 +62,8 @@ def _timed_batch(
         if len(batch) >= max_batch_size or time.time() >= next_batch_time:
             if batch:
                 yield Batch(batch, oldest_timestamp, newest_timestamp)
-                oldest_timestamp = None
-                newest_timestamp = None
+                oldest_timestamp = datetime.max
+                newest_timestamp = datetime.min
                 batch = []
             next_batch_time = now + max_batch_duration.total_seconds()
 

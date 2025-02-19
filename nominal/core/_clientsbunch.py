@@ -57,12 +57,18 @@ class ProtoWriteService(Service):
 
         before_req = datetime.now()
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
+        request_rtt = timedelta(seconds=datetime.now().timestamp() - before_req.timestamp())
 
-        rtt = timedelta(seconds=datetime.now().timestamp() - before_req.timestamp())
+        if least_recent_timestamp:
+            oldest_total_rtt = timedelta(seconds=datetime.now().timestamp() - least_recent_timestamp.timestamp())
+        if most_recent_timestamp:
+            newest_total_rtt = timedelta(seconds=datetime.now().timestamp() - most_recent_timestamp.timestamp())
         return (
             most_recent_timestamp_diff_in_batch_before_request,
             least_recent_timestamp_diff_in_batch_before_request,
-            rtt,
+            request_rtt,
+            oldest_total_rtt,
+            newest_total_rtt,
         )
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
