@@ -16,7 +16,6 @@ from nominal_api import (
     scout_checklistexecution_api,
     scout_checks_api,
     scout_compute_api,
-    scout_compute_representation_api,
     scout_dataexport_api,
     scout_datareview_api,
     scout_datasource,
@@ -59,7 +58,6 @@ class ClientsBunch:
     authentication: authentication_api.AuthenticationServiceV2
     catalog: scout_catalog.CatalogService
     checklist: scout_checks_api.ChecklistService
-    compute_representation: scout_compute_representation_api.ComputeRepresentationService
     connection: scout_datasource_connection.ConnectionService
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
@@ -90,7 +88,6 @@ class ClientsBunch:
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
             catalog=client_factory(scout_catalog.CatalogService),
             checklist=client_factory(scout_checks_api.ChecklistService),
-            compute_representation=client_factory(scout_compute_representation_api.ComputeRepresentationService),
             connection=client_factory(scout_datasource_connection.ConnectionService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),

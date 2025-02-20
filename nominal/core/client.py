@@ -602,32 +602,6 @@ class NominalClient:
         response = self._clients.checklist.get(self._clients.auth_header, rid)
         return Checklist._from_conjure(self._clients, response)
 
-    def checklist_builder(
-        self,
-        name: str,
-        description: str = "",
-        assignee_email: str | None = None,
-        assignee_rid: str | None = None,
-        default_ref_name: str | None = None,
-    ) -> ChecklistBuilder:
-        """Creates a checklist builder.
-
-        You can provide one of `assignee_email` or `assignee_rid`. If neither are provided, the rid for the user
-        executing the script will be used as the assignee. If both are provided, a ValueError is raised.
-        """
-        return ChecklistBuilder(
-            name=name,
-            description=description,
-            assignee_rid=_get_user_with_fallback(
-                self._clients.auth_header, self._clients.authentication, assignee_email, assignee_rid
-            ),
-            _default_ref_name=default_ref_name,
-            _variables=[],
-            _checks=[],
-            _properties={},
-            _labels=[],
-            _clients=self._clients,
-        )
 
     def create_attachment_from_io(
         self,

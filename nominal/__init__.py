@@ -7,7 +7,6 @@ from nominal.core import (
     Channel,
     Check,
     Checklist,
-    ChecklistBuilder,
     CheckViolation,
     Connection,
     DataReview,
@@ -23,7 +22,6 @@ from nominal.core import (
     WriteStream,
 )
 from nominal.nominal import (
-    checklist_builder,
     create_asset,
     create_log_set,
     create_run,
@@ -61,7 +59,6 @@ __all__ = [
     "create_asset",
     "create_run",
     "create_run_csv",
-    "checklist_builder",
     "download_attachment",
     "get_attachment",
     "create_streaming_connection",
