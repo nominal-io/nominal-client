@@ -30,6 +30,7 @@ class WriteStreamV2:
     _batch_serialize_thread: threading.Thread
     _serializer: BatchSerializer
     _clients: _Clients
+    _track_metrics: bool
 
     class _Clients(HasAuthHeader, Protocol):
         @property
@@ -44,6 +45,7 @@ class WriteStreamV2:
         max_batch_size: int,
         max_wait: timedelta,
         max_queue_size: int,
+        track_metrics: bool,
         max_workers: int | None,
     ) -> Self:
         write_pool = ThreadPoolExecutor(max_workers=max_workers)
@@ -58,7 +60,7 @@ class WriteStreamV2:
             max_queue_size=batch_queue_maxsize,
         )
         batch_serialize_thread = spawn_batch_serialize_thread(
-            write_pool, clients, serializer, nominal_data_source_rid, batch_queue, item_queue
+            write_pool, clients, serializer, nominal_data_source_rid, batch_queue, item_queue, track_metrics
         )
         return cls(
             _write_pool=write_pool,
@@ -66,6 +68,7 @@ class WriteStreamV2:
             _batch_thread=batch_thread,
             _batch_serialize_thread=batch_serialize_thread,
             _serializer=serializer,
+            _track_metrics=track_metrics,
             _clients=clients,
         )
 
@@ -126,20 +129,21 @@ class WriteStreamV2:
             self.enqueue(channel, timestamp, value)
         last_enqueue_timestamp = timedelta(seconds=timestamp_normalized.timestamp() - datetime.now().timestamp())
 
-        self._item_queue.put(
-            BatchItem(
-                channel_name="enque_dict_start_staleness",
-                timestamp=timestamp_normalized,
-                value=enqueue_dict_timestamp_diff.total_seconds(),
+        if self._track_metrics:
+            self._item_queue.put(
+                BatchItem(
+                    channel_name="enque_dict_start_staleness",
+                    timestamp=timestamp_normalized,
+                    value=enqueue_dict_timestamp_diff.total_seconds(),
+                )
             )
-        )
-        self._item_queue.put(
-            BatchItem(
-                channel_name="enque_dict_end_staleness",
-                timestamp=timestamp_normalized,
-                value=last_enqueue_timestamp.total_seconds(),
+            self._item_queue.put(
+                BatchItem(
+                    channel_name="enque_dict_end_staleness",
+                    timestamp=timestamp_normalized,
+                    value=last_enqueue_timestamp.total_seconds(),
+                )
             )
-        )
 
     def __enter__(self) -> WriteStreamV2:
         """Create the stream as a context manager."""
@@ -159,6 +163,7 @@ def _write_serialized_batch(
     clients: WriteStreamV2._Clients,
     nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
+    track_metrics: bool,
     future: concurrent.futures.Future[tuple[bytes, datetime | None, datetime | None]],
 ) -> None:
     try:
@@ -231,7 +236,8 @@ def _write_serialized_batch(
             except Exception as e:
                 logger.error(f"Error in write completion callback: {e}", exc_info=True)
 
-        write_future.add_done_callback(on_write_complete)
+        if track_metrics:
+            write_future.add_done_callback(on_write_complete)
     except Exception as e:
         logger.error(f"Error processing batch: {e}", exc_info=True)
         raise e
@@ -244,9 +250,10 @@ def serialize_and_write_batches(
     nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
     batch_queue: ReadQueue[Batch[BatchItem]],
+    track_metrics: bool,
 ) -> None:
     """Worker that processes batches."""
-    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid, item_queue)
+    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid, item_queue, track_metrics)
     for batch in iter_queue(batch_queue):
         future = serializer.serialize(batch)
         future.add_done_callback(callback)
@@ -259,10 +266,11 @@ def spawn_batch_serialize_thread(
     nominal_data_source_rid: str,
     batch_queue: ReadQueue[Batch[BatchItem]],
     item_queue: Queue[BatchItem | QueueShutdown],
+    track_metrics: bool,
 ) -> threading.Thread:
     thread = threading.Thread(
         target=serialize_and_write_batches,
-        args=(pool, clients, serializer, nominal_data_source_rid, item_queue, batch_queue),
+        args=(pool, clients, serializer, nominal_data_source_rid, item_queue, batch_queue, track_metrics),
     )
     thread.start()
     return thread
