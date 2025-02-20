@@ -25,16 +25,7 @@ class BatchSerializer:
 
     def close(self) -> None:
         self.pool.shutdown(cancel_futures=True)
-        # processes = getattr(self.pool, "_processes", None)
-        # if processes is not None:
-        #     for pid, proc in processes.items():
-        #         if proc.is_alive():
-        #             logger.info("Force terminating process %s", pid)
-        #             proc.terminate()
-        #             proc.join()
-        # else:
-        #     logger.warning("ProcessPoolExecutor._processes is unavailable; unable to force terminate processes.")
-
+        
     @classmethod
     def create(cls, max_workers: int) -> Self:
         pool = ProcessPoolExecutor(max_workers=max_workers)
