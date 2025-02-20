@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
 from types import TracebackType
-from typing import Protocol, Sequence, Type
+from typing import Callable, Protocol, Sequence, Type
 
 from typing_extensions import Self
 
@@ -33,6 +33,7 @@ class WriteStreamV2:
     _serializer: BatchSerializer
     _clients: _Clients
     _track_metrics: bool
+    _add_metric: Callable[[str, int, float], None]
 
     class _Clients(HasAuthHeader, Protocol):
         @property
@@ -64,6 +65,21 @@ class WriteStreamV2:
         batch_serialize_thread = spawn_batch_serialize_thread(
             write_pool, clients, serializer, nominal_data_source_rid, batch_queue, item_queue, track_metrics
         )
+
+        def add_metric_impl(channel_name: str, timestamp: int, value: float) -> None:
+            item_queue.put(
+                BatchItem(
+                    channel_name=channel_name,
+                    timestamp=timestamp,
+                    value=value,
+                )
+            )
+
+        def add_metric_noop(channel_name: str, timestamp: int, value: float) -> None:
+            pass
+
+        add_metric_fn = add_metric_impl if track_metrics else add_metric_noop
+
         return cls(
             _write_pool=write_pool,
             _item_queue=item_queue,
@@ -72,7 +88,12 @@ class WriteStreamV2:
             _serializer=serializer,
             _track_metrics=track_metrics,
             _clients=clients,
+            _add_metric=add_metric_fn,
         )
+
+    def add_metric(self, channel_name: str, timestamp: int, value: float) -> None:
+        """Add a metric using the configured implementation."""
+        self._add_metric(channel_name, timestamp, value)
 
     def close(self) -> None:
         self._item_queue.put(QueueShutdown())
@@ -134,21 +155,8 @@ class WriteStreamV2:
         current_time_ns = time.time_ns()
         last_enqueue_timestamp = (current_time_ns - timestamp_normalized) / 1e9
 
-        if self._track_metrics:
-            self._item_queue.put(
-                BatchItem(
-                    channel_name="enque_dict_start_staleness",
-                    timestamp=timestamp_normalized,
-                    value=enqueue_dict_timestamp_diff,
-                )
-            )
-            self._item_queue.put(
-                BatchItem(
-                    channel_name="enque_dict_end_staleness",
-                    timestamp=timestamp_normalized,
-                    value=last_enqueue_timestamp,
-                )
-            )
+        self.add_metric("enque_dict_start_staleness", timestamp_normalized, enqueue_dict_timestamp_diff)
+        self.add_metric("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp)
 
     def __enter__(self) -> WriteStreamV2:
         """Create the stream as a context manager."""
@@ -168,7 +176,7 @@ def _write_serialized_batch(
     clients: WriteStreamV2._Clients,
     nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
-    track_metrics: bool,
+    write_callback: Callable[[concurrent.futures.Future[RequestMetrics]], None],
     future: concurrent.futures.Future[SerializedBatch],
 ) -> None:
     try:
@@ -181,57 +189,62 @@ def _write_serialized_batch(
             serialized.oldest_timestamp,
             serialized.newest_timestamp,
         )
-
-        def on_write_complete(
-            f: concurrent.futures.Future[RequestMetrics],
-        ) -> None:
-            try:
-                metrics = f.result()
-
-                current_time_ns = time.time_ns()
-                item_queue.put(
-                    BatchItem(
-                        channel_name="__nominal_metric.oldest_timestamp_diff_in_batch_before_request",
-                        timestamp=current_time_ns,
-                        value=metrics.oldest_timestamp_diff_before_request,
-                    )
-                )
-                item_queue.put(
-                    BatchItem(
-                        channel_name="__nominal_metric.newest_timestamp_diff_in_batch_before_request",
-                        timestamp=current_time_ns,
-                        value=metrics.newest_timestamp_diff_before_request,
-                    )
-                )
-                item_queue.put(
-                    BatchItem(
-                        channel_name="__nominal_metric.request_rtt",
-                        timestamp=current_time_ns,
-                        value=metrics.request_rtt,
-                    )
-                )
-                item_queue.put(
-                    BatchItem(
-                        channel_name="__nominal_metric.largest_e2e_latency",
-                        timestamp=current_time_ns,
-                        value=metrics.largest_e2e_latency,
-                    )
-                )
-                item_queue.put(
-                    BatchItem(
-                        channel_name="__nominal_metric.smallest_e2e_latency",
-                        timestamp=current_time_ns,
-                        value=metrics.smallest_e2e_latency,
-                    )
-                )
-            except Exception as e:
-                logger.error(f"Error in write completion callback: {e}", exc_info=True)
-
-        if track_metrics:
-            write_future.add_done_callback(on_write_complete)
+        write_future.add_done_callback(write_callback)
     except Exception as e:
         logger.error(f"Error processing batch: {e}", exc_info=True)
         raise e
+
+
+def _on_write_complete_with_metrics(
+    item_queue: Queue[BatchItem | QueueShutdown],
+    f: concurrent.futures.Future[RequestMetrics],
+) -> None:
+    try:
+        metrics = f.result()
+        current_time_ns = time.time_ns()
+        item_queue.put(
+            BatchItem(
+                channel_name="__nominal_metric.oldest_timestamp_diff_in_batch_before_request",
+                timestamp=current_time_ns,
+                value=metrics.oldest_timestamp_diff_before_request,
+            )
+        )
+        item_queue.put(
+            BatchItem(
+                channel_name="__nominal_metric.newest_timestamp_diff_in_batch_before_request",
+                timestamp=current_time_ns,
+                value=metrics.newest_timestamp_diff_before_request,
+            )
+        )
+        item_queue.put(
+            BatchItem(
+                channel_name="__nominal_metric.request_rtt",
+                timestamp=current_time_ns,
+                value=metrics.request_rtt,
+            )
+        )
+        item_queue.put(
+            BatchItem(
+                channel_name="__nominal_metric.largest_e2e_latency",
+                timestamp=current_time_ns,
+                value=metrics.largest_e2e_latency,
+            )
+        )
+        item_queue.put(
+            BatchItem(
+                channel_name="__nominal_metric.smallest_e2e_latency",
+                timestamp=current_time_ns,
+                value=metrics.smallest_e2e_latency,
+            )
+        )
+    except Exception as e:
+        logger.error(f"Error in write completion callback: {e}", exc_info=True)
+
+
+def _on_write_complete_noop(
+    _: concurrent.futures.Future[RequestMetrics],
+) -> None:
+    pass
 
 
 def serialize_and_write_batches(
@@ -244,7 +257,8 @@ def serialize_and_write_batches(
     track_metrics: bool,
 ) -> None:
     """Worker that processes batches."""
-    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid, item_queue, track_metrics)
+    write_callback = partial(_on_write_complete_with_metrics, item_queue) if track_metrics else _on_write_complete_noop
+    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid, item_queue, write_callback)
     for batch in iter_queue(batch_queue):
         future = serializer.serialize(batch)
         future.add_done_callback(callback)
