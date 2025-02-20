@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.32.0](https://github.com/nominal-io/nominal-client/compare/v1.31.0...v1.32.0) (2025-02-20)
+
+
+### Features
+
+* metrics on streaming connections ([#220](https://github.com/nominal-io/nominal-client/issues/220)) ([9f23471](https://github.com/nominal-io/nominal-client/commit/9f23471c4ddea312e9cdd4e87625ac9e27a453e4))
+
+
+### Bug Fixes
+
+* cleanup streaming shutdown ([#219](https://github.com/nominal-io/nominal-client/issues/219)) ([a4a00c8](https://github.com/nominal-io/nominal-client/commit/a4a00c8fea3c1289a9e43979d1b29b45b3fae11f))
+
 ## [1.31.0](https://github.com/nominal-io/nominal-client/compare/v1.30.0...v1.31.0) (2025-02-18)
 
 

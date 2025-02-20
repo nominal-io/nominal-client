@@ -98,9 +98,11 @@ class WriteStreamV2:
     def close(self) -> None:
         self._item_queue.put(QueueShutdown())
         self._batch_thread.join()
-        self._batch_serialize_thread.join()
+
         self._serializer.close()
         self._write_pool.shutdown(cancel_futures=True)
+
+        self._batch_serialize_thread.join()
 
     def enqueue(
         self,
@@ -190,6 +192,9 @@ def _write_serialized_batch(
             serialized.newest_timestamp,
         )
         write_future.add_done_callback(write_callback)
+    except KeyboardInterrupt:
+        logger.warning("KeyboardInterrupt caught in _write_serialized_batch; aborting batch write.")
+        return
     except Exception as e:
         logger.error(f"Error processing batch: {e}", exc_info=True)
         raise e
