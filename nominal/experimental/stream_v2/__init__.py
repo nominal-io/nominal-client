@@ -12,7 +12,7 @@ from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 @contextlib.contextmanager
 def create_write_stream(
     streaming_connection: StreamingConnection,
-    max_batch_size: int = 30_000,
+    max_batch_size: int = 10000,
     max_wait: timedelta = timedelta(seconds=1),
     max_queue_size: int = 0,
     write_thread_workers: int | None = 10,
