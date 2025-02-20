@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class BatchItem:
     channel_name: str
-    timestamp: datetime
+    timestamp: IntegralNanosecondsUTC
     value: float | str
     tags: dict[str, str] | None = None
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from functools import partial
 from typing import Protocol
 
@@ -30,6 +30,8 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal.ts import IntegralNanosecondsUTC
+
 
 class ProtoWriteService(Service):
     def write_nominal_batches(
@@ -51,9 +53,9 @@ class ProtoWriteService(Service):
         auth_header: str,
         data_source_rid: str,
         request: bytes,
-        most_recent_timestamp: datetime,
-        least_recent_timestamp: datetime,
-    ) -> tuple[timedelta, timedelta, timedelta, timedelta, timedelta]:
+        most_recent_timestamp: IntegralNanosecondsUTC,
+        least_recent_timestamp: IntegralNanosecondsUTC,
+    ) -> tuple[float, float, float, float, float]:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
@@ -61,26 +63,25 @@ class ProtoWriteService(Service):
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
 
-        most_recent_timestamp_diff_in_batch_before_request = timedelta(
-            seconds=datetime.now().timestamp() - most_recent_timestamp.timestamp()
-        )
-        least_recent_timestamp_diff_in_batch_before_request = timedelta(
-            seconds=datetime.now().timestamp() - least_recent_timestamp.timestamp()
-        )
+        current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
+        most_recent_timestamp_diff_in_batch_before_request = (current_time_ns - most_recent_timestamp) / 1e9
+        least_recent_timestamp_diff_in_batch_before_request = (current_time_ns - least_recent_timestamp) / 1e9
 
-        before_req = datetime.now()
+        before_req = int(datetime.now(timezone.utc).timestamp() * 1e9)
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
-        request_rtt = timedelta(seconds=datetime.now().timestamp() - before_req.timestamp())
 
-        oldest_total_rtt = timedelta(seconds=datetime.now().timestamp() - least_recent_timestamp.timestamp())
-        newest_total_rtt = timedelta(seconds=datetime.now().timestamp() - most_recent_timestamp.timestamp())
+        current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
+        request_rtt = (current_time_ns - before_req) / 1e9
+
+        largest_e2e_rtt = (current_time_ns - least_recent_timestamp) / 1e9
+        smallest_e2e_rtt = (current_time_ns - most_recent_timestamp) / 1e9
 
         return (
             most_recent_timestamp_diff_in_batch_before_request,
             least_recent_timestamp_diff_in_batch_before_request,
             request_rtt,
-            oldest_total_rtt,
-            newest_total_rtt,
+            largest_e2e_rtt,
+            smallest_e2e_rtt,
         )
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:

@@ -394,26 +394,23 @@ _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | E
 )
 
 
-def _normalize_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> datetime:
-    """Normalize the timestamp to a datetime instance.
+def _normalize_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> IntegralNanosecondsUTC:
+    """Normalize the timestamp to nanoseconds since epoch.
 
-    - If the timestamp is already a datetime, it is returned as-is.
-    - If it is a string, it is parsed using datetime.fromisoformat.
-    - If it is an IntegralNanosecondsUTC, it is assumed to represent a nanosecond
-        count since the Unix epoch.
+    - If the timestamp is already an IntegralNanosecondsUTC, it is returned as-is.
+    - If it is a string, it is parsed using dateutil.parser.parse and converted to nanoseconds.
+    - If it is a datetime, it is converted to nanoseconds since epoch.
     """
-    if isinstance(timestamp, datetime):
+    if isinstance(timestamp, IntegralNanosecondsUTC):
         return timestamp
     elif isinstance(timestamp, str):
         try:
-            return datetime.fromisoformat(timestamp)
+            dt = dateutil.parser.parse(timestamp)
+            return _SecondsNanos.from_datetime(dt).to_nanoseconds()
         except Exception as e:
-            raise ValueError("timestamp string is not a valid ISO format") from e
-    elif isinstance(timestamp, IntegralNanosecondsUTC):
-        seconds, nanos = divmod(timestamp, 1_000_000_000)
-        dt = datetime.fromtimestamp(seconds, tz=timezone.utc)
-        dt = dt.replace(microsecond=nanos // 1000)
-        return dt
+            raise ValueError("timestamp string could not be parsed") from e
+    elif isinstance(timestamp, datetime):
+        return _SecondsNanos.from_datetime(timestamp).to_nanoseconds()
     else:
         raise TypeError("timestamp must be one of: datetime, str, or IntegralNanosecondsUTC")
 

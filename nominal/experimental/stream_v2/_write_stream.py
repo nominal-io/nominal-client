@@ -5,7 +5,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from queue import Queue
 from types import TracebackType
@@ -123,25 +123,28 @@ class WriteStreamV2:
             channel_values: A dictionary mapping channel names to their values.
         """
         timestamp_normalized = _normalize_timestamp(timestamp)
-        enqueue_dict_timestamp_diff = timedelta(seconds=timestamp_normalized.timestamp() - datetime.now().timestamp())
+        current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
+        enqueue_dict_timestamp_diff = (current_time_ns - timestamp_normalized) / 1e9
 
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value)
-        last_enqueue_timestamp = timedelta(seconds=timestamp_normalized.timestamp() - datetime.now().timestamp())
+
+        current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
+        last_enqueue_timestamp = (current_time_ns - timestamp_normalized) / 1e9
 
         if self._track_metrics:
             self._item_queue.put(
                 BatchItem(
                     channel_name="enque_dict_start_staleness",
                     timestamp=timestamp_normalized,
-                    value=enqueue_dict_timestamp_diff.total_seconds(),
+                    value=enqueue_dict_timestamp_diff,
                 )
             )
             self._item_queue.put(
                 BatchItem(
                     channel_name="enque_dict_end_staleness",
                     timestamp=timestamp_normalized,
-                    value=last_enqueue_timestamp.total_seconds(),
+                    value=last_enqueue_timestamp,
                 )
             )
 
@@ -164,7 +167,7 @@ def _write_serialized_batch(
     nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
     track_metrics: bool,
-    future: concurrent.futures.Future[tuple[bytes, datetime, datetime]],
+    future: concurrent.futures.Future[tuple[bytes, IntegralNanosecondsUTC, IntegralNanosecondsUTC]],
 ) -> None:
     try:
         serialized_data, most_recent_timestamp, least_recent_timestamp = future.result()
@@ -178,51 +181,51 @@ def _write_serialized_batch(
         )
 
         def on_write_complete(
-            f: concurrent.futures.Future[tuple[timedelta, timedelta, timedelta, timedelta, timedelta]],
+            f: concurrent.futures.Future[tuple[float, float, float, float, float]],
         ) -> None:
             try:
                 (
                     least_recent_before_request_diff,
                     most_recent_before_request_diff,
                     rtt,
-                    oldest_total_rtt,
-                    newest_total_rtt,
+                    largest_e2e_rtt,
+                    smallest_e2e_rtt,
                 ) = f.result()  # Check for exceptions
 
-                current_time = datetime.now()
+                current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
                 item_queue.put(
                     BatchItem(
                         channel_name="least_recent_before_request_diff",
-                        timestamp=current_time,
-                        value=least_recent_before_request_diff.total_seconds(),
+                        timestamp=current_time_ns,
+                        value=least_recent_before_request_diff,
                     )
                 )
                 item_queue.put(
                     BatchItem(
                         channel_name="most_recent_before_request_diff",
-                        timestamp=current_time,
-                        value=most_recent_before_request_diff.total_seconds(),
+                        timestamp=current_time_ns,
+                        value=most_recent_before_request_diff,
                     )
                 )
                 item_queue.put(
                     BatchItem(
                         channel_name="rtt",
-                        timestamp=current_time,
-                        value=rtt.total_seconds(),
+                        timestamp=current_time_ns,
+                        value=rtt,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="oldest_total_rtt",
-                        timestamp=current_time,
-                        value=oldest_total_rtt.total_seconds(),
+                        channel_name="largest_e2e_rtt",
+                        timestamp=current_time_ns,
+                        value=largest_e2e_rtt,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="newest_total_rtt",
-                        timestamp=current_time,
-                        value=newest_total_rtt.total_seconds(),
+                        channel_name="smallest_e2e_rtt",
+                        timestamp=current_time_ns,
+                        value=smallest_e2e_rtt,
                     )
                 )
             except Exception as e:
@@ -241,7 +244,7 @@ def serialize_and_write_batches(
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
-    batch_queue: ReadQueue[Batch[BatchItem]],
+    batch_queue: ReadQueue[Batch],
     track_metrics: bool,
 ) -> None:
     """Worker that processes batches."""
@@ -256,7 +259,7 @@ def spawn_batch_serialize_thread(
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
-    batch_queue: ReadQueue[Batch[BatchItem]],
+    batch_queue: ReadQueue[Batch],
     item_queue: Queue[BatchItem | QueueShutdown],
     track_metrics: bool,
 ) -> threading.Thread:
