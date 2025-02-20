@@ -164,12 +164,12 @@ def _write_serialized_batch(
     nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
     track_metrics: bool,
-    future: concurrent.futures.Future[tuple[bytes, datetime | None, datetime | None]],
+    future: concurrent.futures.Future[tuple[bytes, datetime, datetime]],
 ) -> None:
     try:
         serialized_data, most_recent_timestamp, least_recent_timestamp = future.result()
         write_future = pool.submit(
-            clients.proto_write.write_nominal_batches,
+            clients.proto_write.write_nominal_batches_with_metrics,
             clients.auth_header,
             nominal_data_source_rid,
             serialized_data,
@@ -178,9 +178,7 @@ def _write_serialized_batch(
         )
 
         def on_write_complete(
-            f: concurrent.futures.Future[
-                tuple[timedelta | None, timedelta | None, timedelta | None, timedelta | None, timedelta | None]
-            ],
+            f: concurrent.futures.Future[tuple[timedelta, timedelta, timedelta, timedelta, timedelta]],
         ) -> None:
             try:
                 (
@@ -190,49 +188,43 @@ def _write_serialized_batch(
                     oldest_total_rtt,
                     newest_total_rtt,
                 ) = f.result()  # Check for exceptions
-                if (
-                    least_recent_before_request_diff
-                    and most_recent_before_request_diff
-                    and rtt
-                    and oldest_total_rtt
-                    and newest_total_rtt
-                ):
-                    current_time = datetime.now()
-                    item_queue.put(
-                        BatchItem(
-                            channel_name="least_recent_before_request_diff",
-                            timestamp=current_time,
-                            value=least_recent_before_request_diff.total_seconds(),
-                        )
+
+                current_time = datetime.now()
+                item_queue.put(
+                    BatchItem(
+                        channel_name="least_recent_before_request_diff",
+                        timestamp=current_time,
+                        value=least_recent_before_request_diff.total_seconds(),
                     )
-                    item_queue.put(
-                        BatchItem(
-                            channel_name="most_recent_before_request_diff",
-                            timestamp=current_time,
-                            value=most_recent_before_request_diff.total_seconds(),
-                        )
+                )
+                item_queue.put(
+                    BatchItem(
+                        channel_name="most_recent_before_request_diff",
+                        timestamp=current_time,
+                        value=most_recent_before_request_diff.total_seconds(),
                     )
-                    item_queue.put(
-                        BatchItem(
-                            channel_name="rtt",
-                            timestamp=current_time,
-                            value=rtt.total_seconds(),
-                        )
+                )
+                item_queue.put(
+                    BatchItem(
+                        channel_name="rtt",
+                        timestamp=current_time,
+                        value=rtt.total_seconds(),
                     )
-                    item_queue.put(
-                        BatchItem(
-                            channel_name="oldest_total_rtt",
-                            timestamp=current_time,
-                            value=oldest_total_rtt.total_seconds(),
-                        )
+                )
+                item_queue.put(
+                    BatchItem(
+                        channel_name="oldest_total_rtt",
+                        timestamp=current_time,
+                        value=oldest_total_rtt.total_seconds(),
                     )
-                    item_queue.put(
-                        BatchItem(
-                            channel_name="newest_total_rtt",
-                            timestamp=current_time,
-                            value=newest_total_rtt.total_seconds(),
-                        )
+                )
+                item_queue.put(
+                    BatchItem(
+                        channel_name="newest_total_rtt",
+                        timestamp=current_time,
+                        value=newest_total_rtt.total_seconds(),
                     )
+                )
             except Exception as e:
                 logger.error(f"Error in write completion callback: {e}", exc_info=True)
 

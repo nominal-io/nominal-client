@@ -30,7 +30,7 @@ class BatchSerializer:
         pool = ProcessPoolExecutor(max_workers=max_workers)
         return cls(pool=pool)
 
-    def serialize(self, batch: Batch[BatchItem]) -> Future[tuple[bytes, datetime | None, datetime | None]]:
+    def serialize(self, batch: Batch[BatchItem]) -> Future[tuple[bytes, datetime, datetime]]:
         return self.pool.submit(serialize_batch, batch)
 
     def __enter__(self) -> BatchSerializer:

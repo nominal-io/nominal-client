@@ -39,7 +39,23 @@ class ProtoWriteService(Service):
         request: bytes,
         most_recent_timestamp: datetime | None = None,
         least_recent_timestamp: datetime | None = None,
-    ) -> tuple[timedelta | None, timedelta | None, timedelta | None, timedelta | None, timedelta | None]:
+    ) -> None:
+        _headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-protobuf",
+            "Authorization": auth_header,
+        }
+        _path = f"/storage/writer/v1/nominal/{data_source_rid}"
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
+
+    def write_nominal_batches_with_metrics(
+        self,
+        auth_header: str,
+        data_source_rid: str,
+        request: bytes,
+        most_recent_timestamp: datetime,
+        least_recent_timestamp: datetime,
+    ) -> tuple[timedelta, timedelta, timedelta, timedelta, timedelta]:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
@@ -47,27 +63,20 @@ class ProtoWriteService(Service):
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
 
-        most_recent_timestamp_diff_in_batch_before_request = None
-        least_recent_timestamp_diff_in_batch_before_request = None
-        oldest_total_rtt = None
-        newest_total_rtt = None
-
-        if most_recent_timestamp and least_recent_timestamp:
-            most_recent_timestamp_diff_in_batch_before_request = timedelta(
-                seconds=datetime.now().timestamp() - most_recent_timestamp.timestamp()
-            )
-            least_recent_timestamp_diff_in_batch_before_request = timedelta(
-                seconds=datetime.now().timestamp() - least_recent_timestamp.timestamp()
-            )
+        most_recent_timestamp_diff_in_batch_before_request = timedelta(
+            seconds=datetime.now().timestamp() - most_recent_timestamp.timestamp()
+        )
+        least_recent_timestamp_diff_in_batch_before_request = timedelta(
+            seconds=datetime.now().timestamp() - least_recent_timestamp.timestamp()
+        )
 
         before_req = datetime.now()
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
         request_rtt = timedelta(seconds=datetime.now().timestamp() - before_req.timestamp())
 
-        if least_recent_timestamp:
-            oldest_total_rtt = timedelta(seconds=datetime.now().timestamp() - least_recent_timestamp.timestamp())
-        if most_recent_timestamp:
-            newest_total_rtt = timedelta(seconds=datetime.now().timestamp() - most_recent_timestamp.timestamp())
+        oldest_total_rtt = timedelta(seconds=datetime.now().timestamp() - least_recent_timestamp.timestamp())
+        newest_total_rtt = timedelta(seconds=datetime.now().timestamp() - most_recent_timestamp.timestamp())
+
         return (
             most_recent_timestamp_diff_in_batch_before_request,
             least_recent_timestamp_diff_in_batch_before_request,
