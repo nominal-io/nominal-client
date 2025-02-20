@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
 
-from attr import dataclass
 from google.protobuf.timestamp_pb2 import Timestamp
 
 try:
