@@ -20,20 +20,6 @@ from nominal.core._utils import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
 
 
-# TODO(ritwikdixit): add support for more fields i.e. lineage
-@dataclass(frozen=True)
-class Check(HasRid):
-    rid: str
-    name: str
-    priority: Priority
-    description: str
-
-
-@dataclass(frozen=True)
-class ChecklistVariable:
-    name: str
-
-
 @dataclass(frozen=True)
 class Checklist(HasRid):
     rid: str
@@ -41,8 +27,6 @@ class Checklist(HasRid):
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
-    checklist_variables: Sequence[ChecklistVariable]
-    checks: Sequence[Check]
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasAuthHeader, Protocol):
@@ -63,22 +47,6 @@ class Checklist(HasRid):
             description=checklist.metadata.description,
             properties=checklist.metadata.properties,
             labels=checklist.metadata.labels,
-            checklist_variables=[
-                ChecklistVariable(
-                    name=checklist_variable.name
-                )
-                for checklist_variable in checklist.checklist_variables
-            ],
-            checks=[
-                Check(
-                    rid=check_rid,
-                    name=check_definition.title,
-                    description=check_definition.description,
-                    expression=check_rids_to_expressions[check_rid],
-                    priority=_conjure_priority_to_priority(check_definition.priority),
-                )
-                for check in checklist.checks
-            ],
             _clients=clients,
         )
 

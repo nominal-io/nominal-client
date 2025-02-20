@@ -18,7 +18,6 @@ __all__ = [
     "Asset",
     "Attachment",
     "Channel",
-    "Check",
     "Checklist",
     "Connection",
     "Dataset",
