@@ -26,6 +26,7 @@ from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._queueing import Batch
 from nominal.core._utils import _to_api_batch_key
 from nominal.core.stream import BatchItem
+from nominal.experimental.stream_v2._serializer import SerializedBatch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -95,10 +96,14 @@ def process_batch(
     )
 
 
-def serialize_batch(batch: Batch) -> tuple[bytes, IntegralNanosecondsUTC, IntegralNanosecondsUTC]:
+def serialize_batch(batch: Batch) -> SerializedBatch:
     """Process a batch of items and return serialized request."""
     request = create_write_request(batch.items)
-    return request.SerializeToString(), batch.oldest_timestamp, batch.newest_timestamp
+    return SerializedBatch(
+        data=request.SerializeToString(),
+        oldest_timestamp=batch.oldest_timestamp,
+        newest_timestamp=batch.newest_timestamp,
+    )
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:

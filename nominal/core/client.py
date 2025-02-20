@@ -120,6 +120,24 @@ class NominalClient:
         response = self._clients.run.create_run(self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)
 
+    # def search_filtered_channels(
+    #     self,
+    # ) -> datasource_api.SearchFilteredChannelsResponse:
+    #     """Create a run."""
+    #     # TODO(alkasm): support links
+    #     request = datasource_api.SearchFilteredChannelsRequest(
+    #         datasources=["ri.nominal.cerulean-staging.datasource.337e62aa-dffe-4a8a-9b9f-c31f7c273347"],
+    #         exact_match=[],
+    #         fuzzy_search_text="",
+    #         tags={},
+    #         min_data_start_time=scout_run_api.UtcTimestamp(seconds_since_epoch=1739900421),
+    #         max_data_updated_time=scout_run_api.UtcTimestamp(seconds_since_epoch=1739908701),
+    #         previously_selected_channels={},
+    #         result_size=10000,
+    #     )
+    #     response = self._clients.datasource.search_filtered_channels(self._clients.auth_header, request)
+    #     return response
+
     def get_run(self, rid: str) -> Run:
         """Retrieve a run by its RID."""
         response = self._clients.run.get_run(self._clients.auth_header, rid)

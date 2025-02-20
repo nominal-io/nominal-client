@@ -5,18 +5,19 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
+import time
 from types import TracebackType
 from typing import Protocol, Sequence, Type
 
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
+from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService, RequestMetrics
 from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
-from nominal.experimental.stream_v2._serializer import BatchSerializer
+from nominal.experimental.stream_v2._serializer import BatchSerializer, SerializedBatch
 from nominal.ts import IntegralNanosecondsUTC, _normalize_timestamp
 
 logger = logging.getLogger(__name__)
@@ -123,13 +124,13 @@ class WriteStreamV2:
             channel_values: A dictionary mapping channel names to their values.
         """
         timestamp_normalized = _normalize_timestamp(timestamp)
-        current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
+        current_time_ns = time.time_ns()
         enqueue_dict_timestamp_diff = (current_time_ns - timestamp_normalized) / 1e9
 
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value)
 
-        current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
+        current_time_ns = time.time_ns()
         last_enqueue_timestamp = (current_time_ns - timestamp_normalized) / 1e9
 
         if self._track_metrics:
@@ -167,65 +168,59 @@ def _write_serialized_batch(
     nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
     track_metrics: bool,
-    future: concurrent.futures.Future[tuple[bytes, IntegralNanosecondsUTC, IntegralNanosecondsUTC]],
+    future: concurrent.futures.Future[SerializedBatch],
 ) -> None:
     try:
-        serialized_data, oldest_timestamp, newest_timestamp = future.result()
+        serialized = future.result()
         write_future = pool.submit(
             clients.proto_write.write_nominal_batches_with_metrics,
             clients.auth_header,
             nominal_data_source_rid,
-            serialized_data,
-            oldest_timestamp,
-            newest_timestamp,
+            serialized.data,
+            serialized.oldest_timestamp,
+            serialized.newest_timestamp,
         )
 
         def on_write_complete(
-            f: concurrent.futures.Future[tuple[float, float, float, float, float]],
+            f: concurrent.futures.Future[RequestMetrics],
         ) -> None:
             try:
-                (
-                    oldest_timestamp_diff_in_batch_before_request,
-                    newest_timestamp_diff_in_batch_before_request,
-                    rtt,
-                    largest_e2e_rtt,
-                    smallest_e2e_rtt,
-                ) = f.result()  # Check for exceptions
+                metrics = f.result()
 
-                current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
+                current_time_ns = time.time_ns()
                 item_queue.put(
                     BatchItem(
-                        channel_name="metric.oldest_timestamp_diff_in_batch_before_request",
+                        channel_name="__nominal_metric.oldest_timestamp_diff_in_batch_before_request",
                         timestamp=current_time_ns,
-                        value=oldest_timestamp_diff_in_batch_before_request,
+                        value=metrics.oldest_timestamp_diff_before_request,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="metric.newest_timestamp_diff_in_batch_before_request",
+                        channel_name="__nominal_metric.newest_timestamp_diff_in_batch_before_request",
                         timestamp=current_time_ns,
-                        value=newest_timestamp_diff_in_batch_before_request,
+                        value=metrics.newest_timestamp_diff_before_request,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="metric.request_rtt",
+                        channel_name="__nominal_metric.request_rtt",
                         timestamp=current_time_ns,
-                        value=rtt,
+                        value=metrics.request_rtt,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="metric.largest_e2e_rtt",
+                        channel_name="__nominal_metric.largest_e2e_latency",
                         timestamp=current_time_ns,
-                        value=largest_e2e_rtt,
+                        value=metrics.largest_e2e_latency,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="metric.smallest_e2e_rtt",
+                        channel_name="__nominal_metric.smallest_e2e_latency",
                         timestamp=current_time_ns,
-                        value=smallest_e2e_rtt,
+                        value=metrics.smallest_e2e_latency,
                     )
                 )
             except Exception as e:

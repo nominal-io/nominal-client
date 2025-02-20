@@ -13,6 +13,15 @@ from nominal.ts import IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)
+class SerializedBatch:
+    """Result of batch serialization containing the protobuf data and timestamp bounds."""
+
+    data: bytes  # Serialized protobuf data
+    oldest_timestamp: IntegralNanosecondsUTC  # Oldest timestamp in the batch
+    newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
+
+
+@dataclass(frozen=True)
 class BatchSerializer:
     """Serialize batch write requests in separate processes.
 
@@ -29,7 +38,7 @@ class BatchSerializer:
         pool = ProcessPoolExecutor(max_workers=max_workers)
         return cls(pool=pool)
 
-    def serialize(self, batch: Batch) -> Future[tuple[bytes, IntegralNanosecondsUTC, IntegralNanosecondsUTC]]:
+    def serialize(self, batch: Batch) -> Future[SerializedBatch]:
         return self.pool.submit(serialize_batch, batch)
 
     def __enter__(self) -> BatchSerializer:
