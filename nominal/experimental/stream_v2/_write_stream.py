@@ -98,9 +98,11 @@ class WriteStreamV2:
     def close(self) -> None:
         self._item_queue.put(QueueShutdown())
         self._batch_thread.join()
-        self._batch_serialize_thread.join()
+        
         self._serializer.close()
         self._write_pool.shutdown(cancel_futures=True)
+        
+        self._batch_serialize_thread.join()
 
     def enqueue(
         self,
