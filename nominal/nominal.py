@@ -12,7 +12,6 @@ from nominal.core import (
     Asset,
     Attachment,
     Checklist,
-    ChecklistBuilder,
     Dataset,
     FileType,
     FileTypes,
@@ -519,38 +518,6 @@ def _get_start_end_timestamp_csv_file(
     return (
         ts.IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
         ts.IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
-    )
-
-
-def checklist_builder(
-    name: str,
-    description: str = "",
-    assignee_email: str | None = None,
-    default_ref_name: str | None = None,
-) -> ChecklistBuilder:
-    """Create a checklist builder to add checks and variables, and publish the checklist to Nominal.
-
-    If assignee_email is None, the checklist is assigned to the user executing the code.
-
-    Example:
-    -------
-    ```python
-    builder = nm.checklist_builder("Programmatically created checklist")
-    builder.add_check(
-        name="derivative of cycle time is too high",
-        priority=2,
-        expression="derivative(numericChannel(channelName = 'Cycle_Time', refName = 'manufacturing')) > 0.05",
-    )
-    checklist = builder.publish()
-    ```
-
-    """
-    conn = get_default_client()
-    return conn.checklist_builder(
-        name=name,
-        description=description,
-        assignee_email=assignee_email,
-        default_ref_name=default_ref_name,
     )
 
 
