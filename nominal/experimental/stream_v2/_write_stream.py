@@ -66,7 +66,8 @@ class WriteStreamV2:
             write_pool, clients, serializer, nominal_data_source_rid, batch_queue, item_queue, track_metrics
         )
 
-        def add_metric_impl(channel_name: str, timestamp: int, value: float) -> None:
+        def add_metric_impl(channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
+            value = value / 1e9
             item_queue.put(
                 BatchItem(
                     channel_name=channel_name,
@@ -91,7 +92,7 @@ class WriteStreamV2:
             _add_metric=add_metric_fn,
         )
 
-    def add_metric(self, channel_name: str, timestamp: int, value: float) -> None:
+    def _add_metric_impl(self, channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
         """Add a metric using the configured implementation."""
         self._add_metric(channel_name, timestamp, value)
 
@@ -147,16 +148,16 @@ class WriteStreamV2:
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         current_time_ns = time.time_ns()
-        enqueue_dict_timestamp_diff = (current_time_ns - timestamp_normalized) / 1e9
+        enqueue_dict_timestamp_diff = current_time_ns - timestamp_normalized
 
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value)
 
         current_time_ns = time.time_ns()
-        last_enqueue_timestamp = (current_time_ns - timestamp_normalized) / 1e9
+        last_enqueue_timestamp_diff = current_time_ns - timestamp_normalized
 
-        self.add_metric("enque_dict_start_staleness", timestamp_normalized, enqueue_dict_timestamp_diff)
-        self.add_metric("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp)
+        self._add_metric_impl("enque_dict_start_staleness", timestamp_normalized, enqueue_dict_timestamp_diff)
+        self._add_metric_impl("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp_diff)
 
     def __enter__(self) -> WriteStreamV2:
         """Create the stream as a context manager."""

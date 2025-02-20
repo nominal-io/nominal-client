@@ -70,26 +70,18 @@ class ProtoWriteService(Service):
             "Authorization": auth_header,
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
-
-        current_time_ns = time.time_ns()
-        largest_latency_before_request = (current_time_ns - oldest_timestamp) / 1e9
-        smallest_latency_before_request = (current_time_ns - newest_timestamp) / 1e9
-
         before_req = time.time_ns()
+
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
-        current_time_ns = time.time_ns()
-        request_rtt = (current_time_ns - before_req) / 1e9
-
-        largest_latency_after_request = (current_time_ns - oldest_timestamp) / 1e9
-        smallest_latency_after_request = (current_time_ns - newest_timestamp) / 1e9
+        after_req = time.time_ns()
 
         return RequestMetrics(
-            largest_latency_before_request=largest_latency_before_request,
-            smallest_latency_before_request=smallest_latency_before_request,
-            request_rtt=request_rtt,
-            largest_latency_after_request=largest_latency_after_request,
-            smallest_latency_after_request=smallest_latency_after_request,
+            largest_latency_before_request=(before_req - oldest_timestamp) / 1e9,
+            smallest_latency_before_request=(before_req - newest_timestamp) / 1e9,
+            request_rtt=(after_req - before_req) / 1e9,
+            largest_latency_after_request=(after_req - oldest_timestamp) / 1e9,
+            smallest_latency_after_request=(after_req - newest_timestamp) / 1e9,
         )
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
