@@ -48,7 +48,7 @@ def _timed_batch(
         try:
             item = q.get(timeout=max(0, next_batch_time - now))
             if isinstance(item, QueueShutdown):
-                if batch and oldest_timestamp and newest_timestamp:
+                if batch:
                     yield Batch(batch, oldest_timestamp, newest_timestamp)
                 return
 
