@@ -12,7 +12,6 @@ from nominal.core import (
     Asset,
     Attachment,
     Checklist,
-    ChecklistBuilder,
     Dataset,
     FileType,
     FileTypes,

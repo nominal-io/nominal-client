@@ -5,11 +5,8 @@ from datetime import timedelta
 from typing import Literal, Mapping, Protocol, Sequence
 
 from nominal_api import (
-    api,
-    scout_api,
     scout_checklistexecution_api,
     scout_checks_api,
-    scout_compute_api,
     scout_integrations_api,
     scout_run_api,
 )

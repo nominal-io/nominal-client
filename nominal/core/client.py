@@ -38,7 +38,7 @@ from nominal.core._utils import construct_user_agent_string, rid_from_instance_o
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
-from nominal.core.checklist import Checklist, ChecklistBuilder
+from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
@@ -46,7 +46,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
-from nominal.core.user import User, _get_user, _get_user_with_fallback
+from nominal.core.user import User, _get_user
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalIngestError
