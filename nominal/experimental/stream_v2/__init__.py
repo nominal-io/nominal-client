@@ -32,7 +32,7 @@ def create_write_stream(
         max_queue_size: Maximum number of items that can be queued (0 for unlimited).
         write_thread_workers: Number of threads to use for writing to Nominal.
         serialize_process_workers: Number of processes to use for serializing batches of protobufs.
-        track_metrics: Whether to publish metrics on latency to nominal channels on your connection
+        track_metrics: Whether to publish metrics on latency to nominal channels on the connection
     Example:
         ```python
         connection = client.get_connection(connection_rid)
