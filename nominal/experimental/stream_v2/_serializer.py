@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
 from types import TracebackType
@@ -10,8 +9,6 @@ from typing_extensions import Self
 
 from nominal.core._batch_processor_proto import SerializedBatch, serialize_batch
 from nominal.core._queueing import Batch
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
