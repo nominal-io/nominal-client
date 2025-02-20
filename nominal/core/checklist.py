@@ -57,30 +57,6 @@ class Checklist(HasRid):
         if not checklist.metadata.is_published:
             raise ValueError("cannot get a checklist that has not been published")
 
-        variable_name_to_graph_map = {
-            variable_name: compute_graph
-            for variable_name, compute_graph in (
-                _conjure_checklist_variable_to_name_graph_pair(checklistVariable)
-                for checklistVariable in checklist.checklist_variables
-            )
-        }
-        check_rid_to_graph_and_def_map = {
-            check_definition.rid: (check_definition, compute_graph)
-            for check_definition, compute_graph in (
-                _conjure_check_to_check_definition_graph_pair(check) for check in checklist.checks
-            )
-        }
-
-        variable_names_to_expressions = clients.compute_representation.batch_compute_to_expression(
-            clients.auth_header, variable_name_to_graph_map
-        )
-        check_rids_to_expressions = clients.compute_representation.batch_compute_to_expression(
-            clients.auth_header, {check_rid: graph for check_rid, (_, graph) in check_rid_to_graph_and_def_map.items()}
-        )
-        check_rids_to_definitions = {
-            check_rid: check_def for check_rid, (check_def, _) in check_rid_to_graph_and_def_map.items()
-        }
-
         return cls(
             rid=checklist.rid,
             name=checklist.metadata.title,
@@ -89,10 +65,9 @@ class Checklist(HasRid):
             labels=checklist.metadata.labels,
             checklist_variables=[
                 ChecklistVariable(
-                    name=checklist_variable_name,
-                    expression=expression,
+                    name=checklist_variable.name
                 )
-                for checklist_variable_name, expression in variable_names_to_expressions.items()
+                for checklist_variable in checklist.checklist_variables
             ],
             checks=[
                 Check(
@@ -102,7 +77,7 @@ class Checklist(HasRid):
                     expression=check_rids_to_expressions[check_rid],
                     priority=_conjure_priority_to_priority(check_definition.priority),
                 )
-                for check_rid, check_definition in check_rids_to_definitions.items()
+                for check in checklist.checks
             ],
             _clients=clients,
         )
@@ -172,20 +147,6 @@ class Checklist(HasRid):
 Priority = Literal[0, 1, 2, 3, 4]
 
 
-@dataclass(frozen=True)
-class _CreateChecklistVariable:
-    name: str
-    expression: str
-
-
-@dataclass(frozen=True)
-class _CreateCheck:
-    name: str
-    expression: str
-    priority: Priority
-    description: str
-
-
 _priority_to_conjure_map: dict[Priority, scout_checks_api.Priority] = {
     0: scout_checks_api.Priority.P0,
     1: scout_checks_api.Priority.P1,
@@ -193,12 +154,6 @@ _priority_to_conjure_map: dict[Priority, scout_checks_api.Priority] = {
     3: scout_checks_api.Priority.P3,
     4: scout_checks_api.Priority.P4,
 }
-
-
-def _priority_to_conjure_priority(priority: Priority) -> scout_checks_api.Priority:
-    if priority in _priority_to_conjure_map:
-        return _priority_to_conjure_map[priority]
-    raise ValueError(f"unknown priority {priority}, expected one of {_priority_to_conjure_map.keys()}")
 
 
 def _conjure_priority_to_priority(priority: scout_checks_api.Priority) -> Priority:
