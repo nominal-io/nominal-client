@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
@@ -23,9 +24,19 @@ except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
+from nominal.core._queueing import Batch
 from nominal.core._utils import _to_api_batch_key
 from nominal.core.stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+
+@dataclass(frozen=True)
+class SerializedBatch:
+    """Result of batch serialization containing the protobuf data and timestamp bounds."""
+
+    data: bytes  # Serialized protobuf data
+    oldest_timestamp: IntegralNanosecondsUTC  # Oldest timestamp in the batch
+    newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
 
 
 def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
@@ -94,10 +105,14 @@ def process_batch(
     )
 
 
-def serialize_batch(batch: Sequence[BatchItem]) -> bytes:
+def serialize_batch(batch: Batch) -> SerializedBatch:
     """Process a batch of items and return serialized request."""
-    request = create_write_request(batch)
-    return request.SerializeToString()
+    request = create_write_request(batch.items)
+    return SerializedBatch(
+        data=request.SerializeToString(),
+        oldest_timestamp=batch.oldest_timestamp,
+        newest_timestamp=batch.newest_timestamp,
+    )
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:

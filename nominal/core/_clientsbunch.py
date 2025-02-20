@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
@@ -28,6 +29,32 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal.ts import IntegralNanosecondsUTC
+
+
+@dataclass(frozen=True)
+class RequestMetrics:
+    largest_latency_before_request: float
+    """
+    delta between current time and oldest timestamp before request (seconds)
+    """
+    smallest_latency_before_request: float
+    """
+    delta between current time and newest timestamp before request (seconds)
+    """
+    request_rtt: float
+    """
+    delta between before and after request (seconds)
+    """
+    largest_latency_after_request: float
+    """
+    delta between current time and oldest timestamp after request (seconds)
+    """
+    smallest_latency_after_request: float
+    """
+    delta between current time and newest timestamp after request (seconds)
+    """
+
 
 class ProtoWriteService(Service):
     def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
@@ -38,6 +65,34 @@ class ProtoWriteService(Service):
         }
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
+
+    def write_nominal_batches_with_metrics(
+        self,
+        auth_header: str,
+        data_source_rid: str,
+        request: bytes,
+        oldest_timestamp: IntegralNanosecondsUTC,
+        newest_timestamp: IntegralNanosecondsUTC,
+    ) -> RequestMetrics:
+        _headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/x-protobuf",
+            "Authorization": auth_header,
+        }
+        _path = f"/storage/writer/v1/nominal/{data_source_rid}"
+        before_req = time.time_ns()
+
+        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
+
+        after_req = time.time_ns()
+
+        return RequestMetrics(
+            largest_latency_before_request=(before_req - oldest_timestamp) / 1e9,
+            smallest_latency_before_request=(before_req - newest_timestamp) / 1e9,
+            request_rtt=(after_req - before_req) / 1e9,
+            largest_latency_after_request=(after_req - oldest_timestamp) / 1e9,
+            smallest_latency_after_request=(after_req - newest_timestamp) / 1e9,
+        )
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
         _headers = {
