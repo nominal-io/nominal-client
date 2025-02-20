@@ -602,7 +602,6 @@ class NominalClient:
         response = self._clients.checklist.get(self._clients.auth_header, rid)
         return Checklist._from_conjure(self._clients, response)
 
-
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,
