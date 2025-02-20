@@ -190,6 +190,9 @@ def _write_serialized_batch(
             serialized.newest_timestamp,
         )
         write_future.add_done_callback(write_callback)
+    except KeyboardInterrupt:
+        logger.warning("KeyboardInterrupt caught in _write_serialized_batch; aborting batch write.")
+        return
     except Exception as e:
         logger.error(f"Error processing batch: {e}", exc_info=True)
         raise e
