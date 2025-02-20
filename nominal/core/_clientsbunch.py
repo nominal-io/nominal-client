@@ -53,8 +53,8 @@ class ProtoWriteService(Service):
         auth_header: str,
         data_source_rid: str,
         request: bytes,
-        most_recent_timestamp: IntegralNanosecondsUTC,
-        least_recent_timestamp: IntegralNanosecondsUTC,
+        oldest_timestamp: IntegralNanosecondsUTC,
+        newest_timestamp: IntegralNanosecondsUTC,
     ) -> tuple[float, float, float, float, float]:
         _headers = {
             "Accept": "application/json",
@@ -64,8 +64,8 @@ class ProtoWriteService(Service):
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
 
         current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
-        most_recent_timestamp_diff_in_batch_before_request = (current_time_ns - most_recent_timestamp) / 1e9
-        least_recent_timestamp_diff_in_batch_before_request = (current_time_ns - least_recent_timestamp) / 1e9
+        oldest_timestamp_diff_in_batch_before_request = (current_time_ns - oldest_timestamp) / 1e9
+        newest_timestamp_diff_in_batch_before_request = (current_time_ns - newest_timestamp) / 1e9
 
         before_req = int(datetime.now(timezone.utc).timestamp() * 1e9)
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
@@ -73,12 +73,12 @@ class ProtoWriteService(Service):
         current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
         request_rtt = (current_time_ns - before_req) / 1e9
 
-        largest_e2e_rtt = (current_time_ns - least_recent_timestamp) / 1e9
-        smallest_e2e_rtt = (current_time_ns - most_recent_timestamp) / 1e9
+        largest_e2e_rtt = (current_time_ns - oldest_timestamp) / 1e9
+        smallest_e2e_rtt = (current_time_ns - newest_timestamp) / 1e9
 
         return (
-            most_recent_timestamp_diff_in_batch_before_request,
-            least_recent_timestamp_diff_in_batch_before_request,
+            oldest_timestamp_diff_in_batch_before_request,
+            newest_timestamp_diff_in_batch_before_request,
             request_rtt,
             largest_e2e_rtt,
             smallest_e2e_rtt,

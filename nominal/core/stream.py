@@ -88,7 +88,7 @@ class WriteStream:
         value: float | str,
         tags: dict[str, str] | None = None,
     ) -> None:
-        """Add a message to the queue after normalizing the timestamp to datetime.
+        """Add a message to the queue after normalizing the timestamp to IntegralNanosecondsUTC.
 
         The message is added to the thread-safe batch and flushed if the batch
         size is reached.

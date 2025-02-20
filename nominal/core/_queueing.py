@@ -17,6 +17,7 @@ _T_contra = TypeVar("_T_contra", contravariant=True)
 # Maximum value for a 64-bit signed integer
 MAX_INT64 = 2**63 - 1
 
+
 @dataclass(frozen=True)
 class Batch:
     items: List[BatchItem]

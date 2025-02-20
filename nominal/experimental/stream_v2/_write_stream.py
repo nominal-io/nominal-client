@@ -170,14 +170,14 @@ def _write_serialized_batch(
     future: concurrent.futures.Future[tuple[bytes, IntegralNanosecondsUTC, IntegralNanosecondsUTC]],
 ) -> None:
     try:
-        serialized_data, most_recent_timestamp, least_recent_timestamp = future.result()
+        serialized_data, oldest_timestamp, newest_timestamp = future.result()
         write_future = pool.submit(
             clients.proto_write.write_nominal_batches_with_metrics,
             clients.auth_header,
             nominal_data_source_rid,
             serialized_data,
-            most_recent_timestamp,
-            least_recent_timestamp,
+            oldest_timestamp,
+            newest_timestamp,
         )
 
         def on_write_complete(
@@ -185,8 +185,8 @@ def _write_serialized_batch(
         ) -> None:
             try:
                 (
-                    least_recent_before_request_diff,
-                    most_recent_before_request_diff,
+                    oldest_timestamp_diff_in_batch_before_request,
+                    newest_timestamp_diff_in_batch_before_request,
                     rtt,
                     largest_e2e_rtt,
                     smallest_e2e_rtt,
@@ -195,35 +195,35 @@ def _write_serialized_batch(
                 current_time_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
                 item_queue.put(
                     BatchItem(
-                        channel_name="least_recent_before_request_diff",
+                        channel_name="metric.oldest_timestamp_diff_in_batch_before_request",
                         timestamp=current_time_ns,
-                        value=least_recent_before_request_diff,
+                        value=oldest_timestamp_diff_in_batch_before_request,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="most_recent_before_request_diff",
+                        channel_name="metric.newest_timestamp_diff_in_batch_before_request",
                         timestamp=current_time_ns,
-                        value=most_recent_before_request_diff,
+                        value=newest_timestamp_diff_in_batch_before_request,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="rtt",
+                        channel_name="metric.request_rtt",
                         timestamp=current_time_ns,
                         value=rtt,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="largest_e2e_rtt",
+                        channel_name="metric.largest_e2e_rtt",
                         timestamp=current_time_ns,
                         value=largest_e2e_rtt,
                     )
                 )
                 item_queue.put(
                     BatchItem(
-                        channel_name="smallest_e2e_rtt",
+                        channel_name="metric.smallest_e2e_rtt",
                         timestamp=current_time_ns,
                         value=smallest_e2e_rtt,
                     )
