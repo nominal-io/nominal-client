@@ -14,6 +14,8 @@ _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
 _T_contra = TypeVar("_T_contra", contravariant=True)
 
+# Maximum value for a 64-bit signed integer
+MAX_INT64 = 2**63 - 1
 
 @dataclass(frozen=True)
 class Batch:
@@ -38,7 +40,7 @@ def _timed_batch(q: ReadQueue[BatchItem], max_batch_size: int, max_batch_duratio
     Will not yield empty batches.
     """
     batch: list[BatchItem] = []
-    oldest_timestamp: IntegralNanosecondsUTC = 2**63 - 1
+    oldest_timestamp: IntegralNanosecondsUTC = MAX_INT64
     newest_timestamp: IntegralNanosecondsUTC = 0
     next_batch_time = time.time() + max_batch_duration.total_seconds()
     while True:
@@ -60,7 +62,7 @@ def _timed_batch(q: ReadQueue[BatchItem], max_batch_size: int, max_batch_duratio
         if len(batch) >= max_batch_size or time.time() >= next_batch_time:
             if batch:
                 yield Batch(batch, oldest_timestamp, newest_timestamp)
-                oldest_timestamp = 2**63 - 1
+                oldest_timestamp = MAX_INT64
                 newest_timestamp = 0
                 batch = []
             next_batch_time = now + max_batch_duration.total_seconds()
