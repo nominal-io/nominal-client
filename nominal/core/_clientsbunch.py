@@ -37,8 +37,6 @@ class ProtoWriteService(Service):
         auth_header: str,
         data_source_rid: str,
         request: bytes,
-        most_recent_timestamp: datetime | None = None,
-        least_recent_timestamp: datetime | None = None,
     ) -> None:
         _headers = {
             "Accept": "application/json",
