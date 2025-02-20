@@ -35,15 +35,26 @@ from nominal.ts import IntegralNanosecondsUTC
 
 @dataclass(frozen=True)
 class RequestMetrics:
-    largest_latency_before_request: (
-        float  # Time difference between current time and oldest timestamp before request (seconds)
-    )
-    smallest_latency_before_request: (
-        float  # Time difference between current time and newest timestamp before request (seconds)
-    )
-    request_rtt: float  # Round-trip time for the request (seconds)
-    largest_latency_after_request: float  # Largest end-to-end latency (oldest timestamp to completion) (seconds)
-    smallest_latency_after_request: float  # Smallest end-to-end latency (newest timestamp to completion) (seconds)
+    largest_latency_before_request: float
+    """
+    delta between current time and oldest timestamp before request (seconds)
+    """
+    smallest_latency_before_request: float
+    """
+    delta between current time and newest timestamp before request (seconds)
+    """
+    request_rtt: float
+    """
+    delta between before and after request (seconds)
+    """
+    largest_latency_after_request: float
+    """
+    delta between current time and oldest timestamp after request (seconds)
+    """
+    smallest_latency_after_request: float
+    """
+    delta between current time and newest timestamp after request (seconds)
+    """
 
 
 class ProtoWriteService(Service):

@@ -205,35 +205,35 @@ def _on_write_complete_with_metrics(
         current_time_ns = time.time_ns()
         item_queue.put(
             BatchItem(
-                channel_name="nominal.metric.largest_latency_before_request",
+                channel_name="__nominal.metric.largest_latency_before_request",
                 timestamp=current_time_ns,
                 value=metrics.largest_latency_before_request,
             )
         )
         item_queue.put(
             BatchItem(
-                channel_name="nominal.metric.smallest_latency_before_request",
+                channel_name="__nominal.metric.smallest_latency_before_request",
                 timestamp=current_time_ns,
                 value=metrics.smallest_latency_before_request,
             )
         )
         item_queue.put(
             BatchItem(
-                channel_name="nominal.metric.request_rtt",
+                channel_name="__nominal.metric.request_rtt",
                 timestamp=current_time_ns,
                 value=metrics.request_rtt,
             )
         )
         item_queue.put(
             BatchItem(
-                channel_name="nominal.metric.largest_latency_after_request",
+                channel_name="__nominal.metric.largest_latency_after_request",
                 timestamp=current_time_ns,
                 value=metrics.largest_latency_after_request,
             )
         )
         item_queue.put(
             BatchItem(
-                channel_name="nominal.metric.smallest_latency_after_request",
+                channel_name="__nominal.metric.smallest_latency_after_request",
                 timestamp=current_time_ns,
                 value=metrics.smallest_latency_after_request,
             )
