@@ -204,37 +204,37 @@ def _on_write_complete_with_metrics(
         current_time_ns = time.time_ns()
         item_queue.put(
             BatchItem(
-                channel_name="__nominal_metric.oldest_timestamp_diff_in_batch_before_request",
+                channel_name="nominal.metric.largest_latency_before_request",
                 timestamp=current_time_ns,
-                value=metrics.oldest_timestamp_diff_before_request,
+                value=metrics.largest_latency_before_request,
             )
         )
         item_queue.put(
             BatchItem(
-                channel_name="__nominal_metric.newest_timestamp_diff_in_batch_before_request",
+                channel_name="nominal.metric.smallest_latency_before_request",
                 timestamp=current_time_ns,
-                value=metrics.newest_timestamp_diff_before_request,
+                value=metrics.smallest_latency_before_request,
             )
         )
         item_queue.put(
             BatchItem(
-                channel_name="__nominal_metric.request_rtt",
+                channel_name="nominal.metric.request_rtt",
                 timestamp=current_time_ns,
                 value=metrics.request_rtt,
             )
         )
         item_queue.put(
             BatchItem(
-                channel_name="__nominal_metric.largest_e2e_latency",
+                channel_name="nominal.metric.largest_latency_after_request",
                 timestamp=current_time_ns,
-                value=metrics.largest_e2e_latency,
+                value=metrics.largest_latency_after_request,
             )
         )
         item_queue.put(
             BatchItem(
-                channel_name="__nominal_metric.smallest_e2e_latency",
+                channel_name="nominal.metric.smallest_latency_after_request",
                 timestamp=current_time_ns,
-                value=metrics.smallest_e2e_latency,
+                value=metrics.smallest_latency_after_request,
             )
         )
     except Exception as e:

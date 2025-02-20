@@ -35,15 +35,15 @@ from nominal.ts import IntegralNanosecondsUTC
 
 @dataclass(frozen=True)
 class RequestMetrics:
-    oldest_timestamp_diff_before_request: (
+    largest_latency_before_request: (
         float  # Time difference between current time and oldest timestamp before request (seconds)
     )
-    newest_timestamp_diff_before_request: (
+    smallest_latency_before_request: (
         float  # Time difference between current time and newest timestamp before request (seconds)
     )
     request_rtt: float  # Round-trip time for the request (seconds)
-    largest_e2e_latency: float  # Largest end-to-end latency (oldest timestamp to completion) (seconds)
-    smallest_e2e_latency: float  # Smallest end-to-end latency (newest timestamp to completion) (seconds)
+    largest_latency_after_request: float  # Largest end-to-end latency (oldest timestamp to completion) (seconds)
+    smallest_latency_after_request: float  # Smallest end-to-end latency (newest timestamp to completion) (seconds)
 
 
 class ProtoWriteService(Service):
@@ -72,8 +72,8 @@ class ProtoWriteService(Service):
         _path = f"/storage/writer/v1/nominal/{data_source_rid}"
 
         current_time_ns = time.time_ns()
-        oldest_timestamp_diff_in_batch_before_request = (current_time_ns - oldest_timestamp) / 1e9
-        newest_timestamp_diff_in_batch_before_request = (current_time_ns - newest_timestamp) / 1e9
+        largest_latency_before_request = (current_time_ns - oldest_timestamp) / 1e9
+        smallest_latency_before_request = (current_time_ns - newest_timestamp) / 1e9
 
         before_req = time.time_ns()
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
@@ -81,15 +81,15 @@ class ProtoWriteService(Service):
         current_time_ns = time.time_ns()
         request_rtt = (current_time_ns - before_req) / 1e9
 
-        largest_e2e_rtt = (current_time_ns - oldest_timestamp) / 1e9
-        smallest_e2e_rtt = (current_time_ns - newest_timestamp) / 1e9
+        largest_latency_after_request = (current_time_ns - oldest_timestamp) / 1e9
+        smallest_latency_after_request = (current_time_ns - newest_timestamp) / 1e9
 
         return RequestMetrics(
-            oldest_timestamp_diff_before_request=oldest_timestamp_diff_in_batch_before_request,
-            newest_timestamp_diff_before_request=newest_timestamp_diff_in_batch_before_request,
+            largest_latency_before_request=largest_latency_before_request,
+            smallest_latency_before_request=smallest_latency_before_request,
             request_rtt=request_rtt,
-            largest_e2e_latency=largest_e2e_rtt,
-            smallest_e2e_latency=smallest_e2e_rtt,
+            largest_latency_after_request=largest_latency_after_request,
+            smallest_latency_after_request=smallest_latency_after_request,
         )
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
