@@ -17,7 +17,7 @@ def create_write_stream(
     max_queue_size: int = 0,
     write_thread_workers: int | None = 10,
     serialize_process_workers: int = 2,
-    track_metrics: bool = False,
+    track_metrics: bool = True,
 ) -> Generator[WriteStreamV2, None, None]:
     """Writer for a streaming data source in Nominal.
 
