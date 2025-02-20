@@ -67,7 +67,6 @@ class WriteStreamV2:
         )
 
         def add_metric_impl(channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
-            value = value / 1e9
             item_queue.put(
                 BatchItem(
                     channel_name=channel_name,
@@ -148,13 +147,13 @@ class WriteStreamV2:
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         current_time_ns = time.time_ns()
-        enqueue_dict_timestamp_diff = current_time_ns - timestamp_normalized
+        enqueue_dict_timestamp_diff = current_time_ns - timestamp_normalized / 1e9
 
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value)
 
         current_time_ns = time.time_ns()
-        last_enqueue_timestamp_diff = current_time_ns - timestamp_normalized
+        last_enqueue_timestamp_diff = current_time_ns - timestamp_normalized / 1e9
 
         self._add_metric_impl("enque_dict_start_staleness", timestamp_normalized, enqueue_dict_timestamp_diff)
         self._add_metric_impl("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp_diff)
