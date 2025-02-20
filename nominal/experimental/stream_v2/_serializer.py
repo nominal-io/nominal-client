@@ -7,18 +7,8 @@ from typing import Type
 
 from typing_extensions import Self
 
-from nominal.core._batch_processor_proto import serialize_batch
+from nominal.core._batch_processor_proto import SerializedBatch, serialize_batch
 from nominal.core._queueing import Batch
-from nominal.ts import IntegralNanosecondsUTC
-
-
-@dataclass(frozen=True)
-class SerializedBatch:
-    """Result of batch serialization containing the protobuf data and timestamp bounds."""
-
-    data: bytes  # Serialized protobuf data
-    oldest_timestamp: IntegralNanosecondsUTC  # Oldest timestamp in the batch
-    newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
 
 
 @dataclass(frozen=True)

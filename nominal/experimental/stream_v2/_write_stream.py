@@ -3,22 +3,23 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
-import time
 from types import TracebackType
 from typing import Protocol, Sequence, Type
 
 from typing_extensions import Self
 
+from nominal.core._batch_processor_proto import SerializedBatch
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService, RequestMetrics
 from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
-from nominal.experimental.stream_v2._serializer import BatchSerializer, SerializedBatch
-from nominal.ts import IntegralNanosecondsUTC, _normalize_timestamp
+from nominal.experimental.stream_v2._serializer import BatchSerializer
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ class WriteStreamV2:
         tags: dict[str, str] | None = None,
     ) -> None:
         """Write a single value."""
-        timestamp_normalized = _normalize_timestamp(timestamp)
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
 
         item = BatchItem(channel_name, timestamp_normalized, value, tags)
         self._item_queue.put(item)
@@ -123,7 +124,7 @@ class WriteStreamV2:
             timestamp: The common timestamp to use for all enqueued items.
             channel_values: A dictionary mapping channel names to their values.
         """
-        timestamp_normalized = _normalize_timestamp(timestamp)
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         current_time_ns = time.time_ns()
         enqueue_dict_timestamp_diff = (current_time_ns - timestamp_normalized) / 1e9
 

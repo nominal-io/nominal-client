@@ -12,7 +12,7 @@ from typing import Any, Callable, Sequence, Type
 
 from typing_extensions import Self
 
-from nominal.ts import IntegralNanosecondsUTC, _normalize_timestamp
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 def __getattr__(name: str) -> Any:
@@ -93,7 +93,7 @@ class WriteStream:
         The message is added to the thread-safe batch and flushed if the batch
         size is reached.
         """
-        dt_timestamp = _normalize_timestamp(timestamp)
+        dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         item = BatchItem(channel_name, dt_timestamp, value, tags)
         self._thread_safe_batch.add([item])
         self._flush(condition=lambda size: size >= self.batch_size)

@@ -4,6 +4,7 @@ from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
 
+from attr import dataclass
 from google.protobuf.timestamp_pb2 import Timestamp
 
 try:
@@ -26,8 +27,16 @@ from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._queueing import Batch
 from nominal.core._utils import _to_api_batch_key
 from nominal.core.stream import BatchItem
-from nominal.experimental.stream_v2._serializer import SerializedBatch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+
+@dataclass(frozen=True)
+class SerializedBatch:
+    """Result of batch serialization containing the protobuf data and timestamp bounds."""
+
+    data: bytes  # Serialized protobuf data
+    oldest_timestamp: IntegralNanosecondsUTC  # Oldest timestamp in the batch
+    newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
 
 
 def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
