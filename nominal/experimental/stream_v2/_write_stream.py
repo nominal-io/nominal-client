@@ -100,7 +100,7 @@ class WriteStreamV2:
         self._batch_thread.join()
 
         self._serializer.close()
-        self._write_pool.shutdown(cancel_futures=True)
+        self._write_pool.shutdown()
 
         self._batch_serialize_thread.join()
 

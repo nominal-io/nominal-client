@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence, cast
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -39,7 +39,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
-from nominal.core.connection import Connection
+from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
 from nominal.core.filetype import FileType, FileTypes
@@ -771,7 +771,7 @@ class NominalClient:
         datasource_description: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
-    ) -> Connection:
+    ) -> StreamingConnection:
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
@@ -804,7 +804,13 @@ class NominalClient:
                 should_scrape=True,
             ),
         )
-        return Connection._from_conjure(self._clients, connection_response)
+        try:
+            streaming_connection = cast(
+                StreamingConnection, Connection._from_conjure(self._clients, connection_response)
+            )
+            return streaming_connection
+        except Exception as e:
+            raise e
 
     def create_workbook_from_template(
         self,

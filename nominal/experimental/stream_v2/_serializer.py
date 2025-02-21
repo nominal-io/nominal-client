@@ -21,7 +21,7 @@ class BatchSerializer:
     pool: ProcessPoolExecutor
 
     def close(self) -> None:
-        self.pool.shutdown(cancel_futures=True)
+        self.pool.shutdown()
 
     @classmethod
     def create(cls, max_workers: int) -> Self:
