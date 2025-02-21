@@ -95,12 +95,13 @@ class WriteStreamV2:
         """Add a metric using the configured implementation."""
         self._add_metric(channel_name, timestamp, value)
 
-    def close(self) -> None:
+    def close(self, cancel_futures: bool = False) -> None:
+        logger.debug("Closing write stream %s", cancel_futures)
         self._item_queue.put(QueueShutdown())
         self._batch_thread.join()
 
-        self._serializer.close()
-        self._write_pool.shutdown()
+        self._serializer.close(cancel_futures)
+        self._write_pool.shutdown(cancel_futures=cancel_futures)
 
         self._batch_serialize_thread.join()
 
@@ -170,7 +171,7 @@ class WriteStreamV2:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        self.close(cancel_futures=exc_type is not None)
 
 
 def _write_serialized_batch(
