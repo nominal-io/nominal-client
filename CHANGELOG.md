@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.32.1](https://github.com/nominal-io/nominal-client/compare/v1.32.0...v1.32.1) (2025-02-21)
+
+
+### Bug Fixes
+
+* remove compute expression representations from checklists ([#222](https://github.com/nominal-io/nominal-client/issues/222)) ([6a4687e](https://github.com/nominal-io/nominal-client/commit/6a4687e682869a1d0d691d8286e6131bf72e5735))
+* remove repr service again ([#227](https://github.com/nominal-io/nominal-client/issues/227)) ([c35c10d](https://github.com/nominal-io/nominal-client/commit/c35c10d30e11ab14fcfddc0cae880572dd191ba5))
+
 ## [1.32.0](https://github.com/nominal-io/nominal-client/compare/v1.31.0...v1.32.0) (2025-02-20)
 
 
