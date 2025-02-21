@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -804,13 +804,11 @@ class NominalClient:
                 should_scrape=True,
             ),
         )
-        try:
-            streaming_connection = cast(
-                StreamingConnection, Connection._from_conjure(self._clients, connection_response)
-            )
-            return streaming_connection
-        except Exception as e:
-            raise e
+        conn = Connection._from_conjure(self._clients, connection_response)
+        if isinstance(conn, StreamingConnection):
+            return conn
+        else:
+            raise ValueError("Connection is not a StreamingConnection")
 
     def create_workbook_from_template(
         self,
