@@ -87,11 +87,11 @@ class ProtoWriteService(Service):
         after_req = time.time_ns()
 
         return RequestMetrics(
-            largest_latency_before_request=(before_req - oldest_timestamp) / 1e9,
-            smallest_latency_before_request=(before_req - newest_timestamp) / 1e9,
-            request_rtt=(after_req - before_req) / 1e9,
-            largest_latency_after_request=(after_req - oldest_timestamp) / 1e9,
-            smallest_latency_after_request=(after_req - newest_timestamp) / 1e9,
+            largest_latency_before_request=(before_req - oldest_timestamp),
+            smallest_latency_before_request=(before_req - newest_timestamp),
+            request_rtt=(after_req - before_req),
+            largest_latency_after_request=(after_req - oldest_timestamp),
+            smallest_latency_after_request=(after_req - newest_timestamp),
         )
 
     def write_prometheus_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:

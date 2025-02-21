@@ -24,6 +24,36 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 logger = logging.getLogger(__name__)
 
 
+@dataclass()
+class MetricsManager:
+    _item_queue: Queue[BatchItem | QueueShutdown]
+    _enabled: bool
+    _counter: int = 0
+
+    def add_metric(self, channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
+        if not self._enabled:
+            return
+
+        self._item_queue.put(
+            BatchItem(
+                channel_name=channel_name,
+                timestamp=timestamp,
+                value=value / 1e9,
+            )
+        )
+
+    def track_enqueue_latency(self, timestamp_normalized: int) -> None:
+        if not self._enabled:
+            return
+
+        self._counter += 1
+        if self._counter >= 1000:
+            current_time_ns = time.time_ns()
+            staleness = (current_time_ns - timestamp_normalized) / 1e9
+            self.add_metric("point_staleness", timestamp_normalized, staleness)
+            self._counter = 0
+
+
 @dataclass(frozen=True)
 class WriteStreamV2:
     _item_queue: Queue[BatchItem | QueueShutdown]
@@ -32,8 +62,7 @@ class WriteStreamV2:
     _batch_serialize_thread: threading.Thread
     _serializer: BatchSerializer
     _clients: _Clients
-    _track_metrics: bool
-    _add_metric: Callable[[str, int, float], None]
+    _metrics_manager: MetricsManager
 
     class _Clients(HasAuthHeader, Protocol):
         @property
@@ -56,6 +85,11 @@ class WriteStreamV2:
         batch_queue_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
         item_queue: Queue[BatchItem | QueueShutdown] = Queue(maxsize=item_maxsize)
+        metrics_manager = MetricsManager(
+            _item_queue=item_queue,
+            _enabled=track_metrics,
+        )
+
         batch_thread, batch_queue = spawn_batching_thread(
             item_queue,
             max_batch_size,
@@ -63,22 +97,8 @@ class WriteStreamV2:
             max_queue_size=batch_queue_maxsize,
         )
         batch_serialize_thread = spawn_batch_serialize_thread(
-            write_pool, clients, serializer, nominal_data_source_rid, batch_queue, item_queue, track_metrics
+            write_pool, clients, serializer, nominal_data_source_rid, batch_queue, metrics_manager
         )
-
-        def add_metric_impl(channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
-            item_queue.put(
-                BatchItem(
-                    channel_name=channel_name,
-                    timestamp=timestamp,
-                    value=value,
-                )
-            )
-
-        def add_metric_noop(channel_name: str, timestamp: int, value: float) -> None:
-            pass
-
-        add_metric_fn = add_metric_impl if track_metrics else add_metric_noop
 
         return cls(
             _write_pool=write_pool,
@@ -86,14 +106,9 @@ class WriteStreamV2:
             _batch_thread=batch_thread,
             _batch_serialize_thread=batch_serialize_thread,
             _serializer=serializer,
-            _track_metrics=track_metrics,
             _clients=clients,
-            _add_metric=add_metric_fn,
+            _metrics_manager=metrics_manager,
         )
-
-    def _add_metric_impl(self, channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
-        """Add a metric using the configured implementation."""
-        self._add_metric(channel_name, timestamp, value)
 
     def close(self) -> None:
         self._item_queue.put(QueueShutdown())
@@ -113,6 +128,8 @@ class WriteStreamV2:
     ) -> None:
         """Write a single value."""
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+
+        self._metrics_manager.track_enqueue_latency(timestamp_normalized)
 
         item = BatchItem(channel_name, timestamp_normalized, value, tags)
         self._item_queue.put(item)
@@ -138,27 +155,9 @@ class WriteStreamV2:
         timestamp: str | datetime | IntegralNanosecondsUTC,
         channel_values: dict[str, float | str],
     ) -> None:
-        """Write multiple channel values at a single timestamp using a flattened dictionary.
-
-        Each key in the dictionary is treated as a channel name and
-        the corresponding value is enqueued with the provided timestamp.
-
-        Args:
-            timestamp: The common timestamp to use for all enqueued items.
-            channel_values: A dictionary mapping channel names to their values.
-        """
-        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        current_time_ns = time.time_ns()
-        enqueue_dict_timestamp_diff = current_time_ns - timestamp_normalized / 1e9
-
+        """Write multiple channel values at a single timestamp using a flattened dictionary."""
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value)
-
-        current_time_ns = time.time_ns()
-        last_enqueue_timestamp_diff = current_time_ns - timestamp_normalized / 1e9
-
-        self._add_metric_impl("enque_dict_start_staleness", timestamp_normalized, enqueue_dict_timestamp_diff)
-        self._add_metric_impl("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp_diff)
 
     def __enter__(self) -> WriteStreamV2:
         """Create the stream as a context manager."""
@@ -177,7 +176,7 @@ def _write_serialized_batch(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     nominal_data_source_rid: str,
-    item_queue: Queue[BatchItem | QueueShutdown],
+    metrics_manager: MetricsManager,
     write_callback: Callable[[concurrent.futures.Future[RequestMetrics]], None],
     future: concurrent.futures.Future[SerializedBatch],
 ) -> None:
@@ -201,46 +200,24 @@ def _write_serialized_batch(
 
 
 def _on_write_complete_with_metrics(
-    item_queue: Queue[BatchItem | QueueShutdown],
+    metrics_manager: MetricsManager,
     f: concurrent.futures.Future[RequestMetrics],
 ) -> None:
     try:
         metrics = f.result()
         current_time_ns = time.time_ns()
-        item_queue.put(
-            BatchItem(
-                channel_name="__nominal.metric.largest_latency_before_request",
-                timestamp=current_time_ns,
-                value=metrics.largest_latency_before_request,
-            )
+        metrics_manager.add_metric(
+            "__nominal.metric.largest_latency_before_request", current_time_ns, metrics.largest_latency_before_request
         )
-        item_queue.put(
-            BatchItem(
-                channel_name="__nominal.metric.smallest_latency_before_request",
-                timestamp=current_time_ns,
-                value=metrics.smallest_latency_before_request,
-            )
+        metrics_manager.add_metric(
+            "__nominal.metric.smallest_latency_before_request", current_time_ns, metrics.smallest_latency_before_request
         )
-        item_queue.put(
-            BatchItem(
-                channel_name="__nominal.metric.request_rtt",
-                timestamp=current_time_ns,
-                value=metrics.request_rtt,
-            )
+        metrics_manager.add_metric("__nominal.metric.request_rtt", current_time_ns, metrics.request_rtt)
+        metrics_manager.add_metric(
+            "__nominal.metric.largest_latency_after_request", current_time_ns, metrics.largest_latency_after_request
         )
-        item_queue.put(
-            BatchItem(
-                channel_name="__nominal.metric.largest_latency_after_request",
-                timestamp=current_time_ns,
-                value=metrics.largest_latency_after_request,
-            )
-        )
-        item_queue.put(
-            BatchItem(
-                channel_name="__nominal.metric.smallest_latency_after_request",
-                timestamp=current_time_ns,
-                value=metrics.smallest_latency_after_request,
-            )
+        metrics_manager.add_metric(
+            "__nominal.metric.smallest_latency_after_request", current_time_ns, metrics.smallest_latency_after_request
         )
     except Exception as e:
         logger.error(f"Error in write completion callback: {e}", exc_info=True)
@@ -257,13 +234,16 @@ def serialize_and_write_batches(
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
-    item_queue: Queue[BatchItem | QueueShutdown],
+    metrics_manager: MetricsManager,
     batch_queue: ReadQueue[Batch],
-    track_metrics: bool,
 ) -> None:
     """Worker that processes batches."""
-    write_callback = partial(_on_write_complete_with_metrics, item_queue) if track_metrics else _on_write_complete_noop
-    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid, item_queue, write_callback)
+    write_callback = (
+        partial(_on_write_complete_with_metrics, metrics_manager)
+        if metrics_manager._enabled
+        else _on_write_complete_noop
+    )
+    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid, metrics_manager, write_callback)
     for batch in iter_queue(batch_queue):
         future = serializer.serialize(batch)
         future.add_done_callback(callback)
@@ -275,12 +255,11 @@ def spawn_batch_serialize_thread(
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
     batch_queue: ReadQueue[Batch],
-    item_queue: Queue[BatchItem | QueueShutdown],
-    track_metrics: bool,
+    metrics_manager: MetricsManager,
 ) -> threading.Thread:
     thread = threading.Thread(
         target=serialize_and_write_batches,
-        args=(pool, clients, serializer, nominal_data_source_rid, item_queue, batch_queue, track_metrics),
+        args=(pool, clients, serializer, nominal_data_source_rid, metrics_manager, batch_queue),
     )
     thread.start()
     return thread
