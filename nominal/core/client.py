@@ -38,7 +38,7 @@ from nominal.core._utils import construct_user_agent_string, rid_from_instance_o
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
-from nominal.core.checklist import Checklist
+from nominal.core.checklist import Checklist, ChecklistBuilder
 from nominal.core.connection import Connection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
@@ -46,7 +46,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
-from nominal.core.user import User, _get_user
+from nominal.core.user import User, _get_user, _get_user_with_fallback
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalIngestError
@@ -601,6 +601,33 @@ class NominalClient:
     def get_checklist(self, rid: str) -> Checklist:
         response = self._clients.checklist.get(self._clients.auth_header, rid)
         return Checklist._from_conjure(self._clients, response)
+
+    def checklist_builder(
+        self,
+        name: str,
+        description: str = "",
+        assignee_email: str | None = None,
+        assignee_rid: str | None = None,
+        default_ref_name: str | None = None,
+    ) -> ChecklistBuilder:
+        """Creates a checklist builder.
+
+        You can provide one of `assignee_email` or `assignee_rid`. If neither are provided, the rid for the user
+        executing the script will be used as the assignee. If both are provided, a ValueError is raised.
+        """
+        return ChecklistBuilder(
+            name=name,
+            description=description,
+            assignee_rid=_get_user_with_fallback(
+                self._clients.auth_header, self._clients.authentication, assignee_email, assignee_rid
+            ),
+            _default_ref_name=default_ref_name,
+            _variables=[],
+            _checks=[],
+            _properties={},
+            _labels=[],
+            _clients=self._clients,
+        )
 
     def create_attachment_from_io(
         self,
