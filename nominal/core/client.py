@@ -807,8 +807,7 @@ class NominalClient:
         conn = Connection._from_conjure(self._clients, connection_response)
         if isinstance(conn, StreamingConnection):
             return conn
-        else:
-            raise ValueError("Connection is not a StreamingConnection")
+        raise TypeError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
     def create_workbook_from_template(
         self,
