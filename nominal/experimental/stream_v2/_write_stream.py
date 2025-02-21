@@ -49,8 +49,10 @@ class MetricsManager:
         self._counter += 1
         if self._counter >= 1000:
             current_time_ns = time.time_ns()
-            staleness_by_enqueue_time = (current_time_ns - timestamp_normalized)
-            self.add_metric("__nominal.metric.staleness_by_enqueue_time", timestamp_normalized, staleness_by_enqueue_time)
+            staleness_by_enqueue_time = current_time_ns - timestamp_normalized
+            self.add_metric(
+                "__nominal.metric.staleness_by_enqueue_time", timestamp_normalized, staleness_by_enqueue_time
+            )
             self._counter = 0
 
 
