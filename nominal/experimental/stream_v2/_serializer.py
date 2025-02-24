@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
-from types import TracebackType
-from typing import Type
 
 from typing_extensions import Self
 
@@ -33,8 +31,3 @@ class BatchSerializer:
 
     def __enter__(self) -> BatchSerializer:
         return self
-
-    def __exit__(
-        self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
-    ) -> None:
-        self.close(cancel_futures=exc_type is not None)
