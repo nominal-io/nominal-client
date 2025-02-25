@@ -26,6 +26,7 @@ from nominal_api import (
     storage_writer_api,
     timeseries_logicalseries,
     upload_api,
+    event,
 )
 from typing_extensions import Self
 
@@ -131,6 +132,7 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
+    event: event.EventService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -161,6 +163,7 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
+            event=client_factory(event.EventService),
         )
 
 

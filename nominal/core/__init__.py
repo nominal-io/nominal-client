@@ -13,6 +13,7 @@ from nominal.core.stream import WriteStream
 from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
+from nominal.core.event import Event, EventType
 
 __all__ = [
     "Asset",
@@ -35,4 +36,6 @@ __all__ = [
     "CheckViolation",
     "DataReviewBuilder",
     "WriteStream",
+    "Event",
+    "EventType",
 ]

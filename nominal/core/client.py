@@ -4,7 +4,7 @@ import json
 import logging
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
@@ -26,6 +26,7 @@ from nominal_api import (
     scout_video_api,
     storage_datasource_api,
     timeseries_logicalseries_api,
+    event,
 )
 from typing_extensions import Self
 
@@ -38,10 +39,11 @@ from nominal.core._utils import construct_user_agent_string, rid_from_instance_o
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
-from nominal.core.checklist import Checklist
+from nominal.core.checklist import Checklist, _to_api_duration
 from nominal.core.connection import Connection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
+from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
@@ -962,6 +964,28 @@ class NominalClient:
     def get_data_review(self, rid: str) -> DataReview:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
+
+    def create_run(
+            self,
+            name: str,
+            asset_rids: list[str],
+            start: datetime | IntegralNanosecondsUTC,
+            duration: timedelta,
+            type: EventType,
+            properties: Mapping[str, str] = {},
+            labels: list[str] = []
+        ) -> Event:
+        response = self._clients.event.create_event(self._clients.auth_header, event.CreateEvent(
+            name=name,
+            asset_rids=asset_rids,
+            timestamp=_SecondsNanos.from_flexible(start).to_scout_run_api(start),
+            duration=_to_api_duration(duration),
+            origins=[],
+            properties=dict(properties),
+            labels=labels,
+            type=type._to_api_event_type(),
+        ))
+        return Event._from_conjure(response)
 
 
 def _create_search_runs_query(
