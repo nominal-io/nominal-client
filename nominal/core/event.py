@@ -92,7 +92,6 @@ class Event(HasRid):
             asset_rids=event.asset_rids,
             name=event.name,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
-            # FIXME: is this correct?
             duration=timedelta(seconds=event.duration.seconds, microseconds=int(event.timestamp.nanos / 1000)),
             type=EventType.from_api_event_type(event.type),
             _clients=clients,
