@@ -3,25 +3,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, cast
+from typing import Mapping, Protocol, Sequence
 
 from nominal_api import (
     event,
-    scout_run_api,
 )
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._conjure_utils import Link, _build_links
-from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
+from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.asset import Asset
-from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.attachment import Attachment
 from nominal.core.checklist import _to_api_duration
-from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _get_datasets
-from nominal.core.log import LogSet, _get_log_set
-from nominal.core.video import Video, _get_video
+from nominal.core.connection import Connection
+from nominal.core.dataset import Dataset
+from nominal.core.log import LogSet
+from nominal.core.video import Video
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -84,8 +81,8 @@ class Event(HasRid):
             type=None if type is None else type._to_api_event_type(),
         )
         response = self._clients.event.update_event(self._clients.auth_header, request, self.rid)
-        event = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, event, fields=self.__dataclass_fields__)
+        e = self.__class__._from_conjure(self._clients, response)
+        update_dataclass(self, e, fields=self.__dataclass_fields__)
         return self
 
     @classmethod

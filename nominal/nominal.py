@@ -648,12 +648,12 @@ def create_event(
     properties: Mapping[str, str] = {},
     labels: list[str] = [],
 ) -> Event:
-    "Create a new event"
+    """Create a new event"""
     conn = get_default_client()
     return conn.create_event(name, asset_rids, start, duration, type, properties=properties, labels=labels)
 
 
 def get_events(uuids: list[str]) -> list[Event]:
-    "Get a set of events by their UUIDs"
+    """Get a set of events by their UUIDs"""
     conn = get_default_client()
     return conn.get_events(uuids)

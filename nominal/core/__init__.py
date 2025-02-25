@@ -6,6 +6,7 @@ from nominal.core.client import NominalClient
 from nominal.core.connection import Connection
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
+from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet
 from nominal.core.run import Run
@@ -13,7 +14,6 @@ from nominal.core.stream import WriteStream
 from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
-from nominal.core.event import Event, EventType
 
 __all__ = [
     "Asset",

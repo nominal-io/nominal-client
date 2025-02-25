@@ -16,6 +16,7 @@ from nominal_api import (
     attachments_api,
     datasource,
     datasource_logset_api,
+    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -26,7 +27,6 @@ from nominal_api import (
     scout_video_api,
     storage_datasource_api,
     timeseries_logicalseries_api,
-    event,
 )
 from typing_extensions import Self
 

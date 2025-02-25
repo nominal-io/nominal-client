@@ -10,6 +10,7 @@ from nominal_api import (
     attachments_api,
     authentication_api,
     datasource_logset,
+    event,
     ingest_api,
     scout,
     scout_assets,
@@ -26,7 +27,6 @@ from nominal_api import (
     storage_writer_api,
     timeseries_logicalseries,
     upload_api,
-    event,
 )
 from typing_extensions import Self
 
