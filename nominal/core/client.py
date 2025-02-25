@@ -968,31 +968,31 @@ class NominalClient:
     def create_event(
         self,
         name: str,
-        asset_rids: list[str],
+        asset_rids: Sequence[str],
         start: datetime | IntegralNanosecondsUTC,
         duration: timedelta,
         type: EventType,
         *,
         properties: Mapping[str, str] = {},
-        labels: list[str] = [],
+        labels: Sequence[str] = [],
     ) -> Event:
         response = self._clients.event.create_event(
             self._clients.auth_header,
             event.CreateEvent(
                 name=name,
-                asset_rids=asset_rids,
+                asset_rids=list(asset_rids),
                 timestamp=_SecondsNanos.from_flexible(start).to_api(),
                 duration=_to_api_duration(duration),
                 origins=[],
                 properties=dict(properties),
-                labels=labels,
+                labels=list(labels),
                 type=type._to_api_event_type(),
             ),
         )
         return Event._from_conjure(self._clients, response)
 
-    def get_events(self, uuids: list[str]) -> list[Event]:
-        responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(uuids))
+    def get_events(self, uuids: Sequence[str]) -> list[Event]:
+        responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
         return [Event._from_conjure(self._clients, response) for response in responses]
 
 

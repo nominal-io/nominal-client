@@ -640,20 +640,20 @@ def get_data_review(rid: str) -> DataReview:
 
 def create_event(
     name: str,
-    asset_rids: list[str],
+    asset_rids: Sequence[str],
     start: datetime | ts.IntegralNanosecondsUTC,
     duration: timedelta,
     type: EventType,
     *,
     properties: Mapping[str, str] = {},
-    labels: list[str] = [],
+    labels: Sequence[str] = [],
 ) -> Event:
     """Create a new event"""
     conn = get_default_client()
     return conn.create_event(name, asset_rids, start, duration, type, properties=properties, labels=labels)
 
 
-def get_events(uuids: list[str]) -> list[Event]:
+def get_events(uuids: Sequence[str]) -> list[Event]:
     """Get a set of events by their UUIDs"""
     conn = get_default_client()
     return conn.get_events(uuids)
