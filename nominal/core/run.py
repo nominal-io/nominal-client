@@ -35,7 +35,7 @@ class Run(HasRid):
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
     run_number: int
-    assets: list[str]
+    assets: Sequence[str]
 
     _clients: _Clients = field(repr=False)
 
