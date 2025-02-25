@@ -1094,6 +1094,7 @@ class NominalClient:
 
     def search_events(
         self,
+        *,
         search_text: str | None = None,
         after: datetime | IntegralNanosecondsUTC | None = None,
         before: datetime | IntegralNanosecondsUTC | None = None,
