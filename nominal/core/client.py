@@ -1101,7 +1101,7 @@ class NominalClient:
         asset: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
-    ) -> list[Event]:
+    ) -> Sequence[Event]:
         return list(
             self._iter_search_events(
                 _create_search_events_query(
