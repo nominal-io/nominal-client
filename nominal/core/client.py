@@ -1284,6 +1284,55 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
         return None
     else:
         return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+    def _search_events_paginated(self, request: scout_asset_api.SearchAssetsRequest) -> Iterable[scout_asset_api.Asset]:
+        while True:
+            response = self._clients.event.search_events(self._clients.auth_header, request)
+            yield from response.results
+            if response.next_page_token is None:
+                break
+            request = event.SearchEventsRequest(
+                page_size=request.page_size,
+                query=request.query,
+                sort=request.sort,
+                next_page_token=response.next_page_token,
+            )
+
+    def _iter_search_events(
+        self,
+        query: event.SearchQuery,
+    ) -> Iterable[Event]:
+        request = event.SearchEventsRequest(
+            page_size=100,
+            query=query,
+            sort=event.SortOptions(
+                field=event.SortField.START_TIME,
+                is_descending=True,
+            ),
+        )
+        for event in self._search_events_paginated(request):
+            yield Event._from_conjure(self._clients, event)
+
+    def search_events(
+        self,
+        search_text: str | None = None,
+        after: datetime | IntegralNanosecondsUTC | None = None,
+        before: datetime | IntegralNanosecondsUTC | None = None,
+        asset: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> list[Event]:
+        return list(
+            self._iter_search_events(
+                _create_search_events_query(
+                    search_text=search_text,
+                    after=after,
+                    before=before,
+                    asset=asset,
+                    labels=labels,
+                    properties=properties,
+                )
+            )
+        )
 
 
 def _create_search_runs_query(
@@ -1373,6 +1422,37 @@ def _create_search_checklists_query(
             queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
 
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
+
+def _create_search_events_query(
+    search_text: str | None = None,
+    after: datetime | IntegralNanosecondsUTC | None = None,
+    before: datetime | IntegralNanosecondsUTC | None = None,
+    asset: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> event.SearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(event.SearchQuery(search_text=search_text))
+
+    if after is not None:
+        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
+
+    if before is not None:
+        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+
+    if asset:
+        queries.append(event.SearchQuery(asset=asset))
+
+    if labels:
+        for label in labels:
+            queries.append(event.SearchQuery(label=label))
+
+    if properties:
+        for property in properties:
+            queries.append(event.SearchQuery(property=property))
+
+    return event.SearchQuery(and_=queries)
 
 
 def _handle_deprecated_labels_properties(
