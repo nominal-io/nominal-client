@@ -106,27 +106,25 @@ class EventType(Enum):
 
     @classmethod
     def from_api_event_type(cls, event: event.EventType) -> EventType:
-        match event.name:
-            case "INFO":
-                return cls.INFO
-            case "FLAG":
-                return cls.FLAG
-            case "ERROR":
-                return cls.ERROR
-            case "SUCCESS":
-                return cls.SUCCESS
-            case _:
-                return cls.UNKNOWN
+        if event.name == "INFO":
+            return cls.INFO
+        elif event.name == "FLAG":
+            return cls.FLAG
+        elif event.name == "ERROR":
+            return cls.ERROR
+        elif event.name == "SUCCESS":
+            return cls.SUCCESS
+        else:
+            return cls.UNKNOWN
 
     def _to_api_event_type(self) -> event.EventType:
-        match self.name:
-            case "INFO":
-                return event.EventType.INFO
-            case "FLAG":
-                return event.EventType.FLAG
-            case "ERROR":
-                return event.EventType.ERROR
-            case "SUCCESS":
-                return event.EventType.SUCCESS
-            case _:
-                return event.EventType.UNKNOWN
+        if self.name == "INFO":
+            return event.EventType.INFO
+        elif self.name == "FLAG":
+            return event.EventType.FLAG
+        elif self.name == "ERROR":
+            return event.EventType.ERROR
+        elif self.name == "SUCCESS":
+            return event.EventType.SUCCESS
+        else:
+            return event.EventType.UNKNOWN
