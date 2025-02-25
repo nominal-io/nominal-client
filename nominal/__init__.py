@@ -27,6 +27,7 @@ from nominal.nominal import (
     create_run,
     create_run_csv,
     create_event,
+    get_events,
     create_streaming_connection,
     create_workbook_from_template,
     data_review_builder,

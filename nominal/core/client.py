@@ -987,6 +987,10 @@ class NominalClient:
         ))
         return Event._from_conjure(self._clients, response)
 
+    def get_events(self, uuids: list[str]) -> list[Event]:
+        responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(uuids))
+        return [Event._from_conjure(self._clients, response) for response in responses]
+
 
 def _create_search_runs_query(
     start: str | datetime | IntegralNanosecondsUTC | None = None,

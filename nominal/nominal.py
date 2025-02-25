@@ -641,3 +641,8 @@ def create_event(**kwargs) -> Event:
     "Create a new event"
     conn = get_default_client()
     return conn.create_event(**kwargs)
+
+def get_events(uuids: list[str]) -> list[Event]:
+    "Get a set of events by their UUIDs"
+    conn = get_default_client()
+    return conn.get_events(uuids)
