@@ -644,6 +644,7 @@ def create_event(
     start: datetime | ts.IntegralNanosecondsUTC,
     duration: timedelta,
     type: EventType,
+    *,
     properties: Mapping[str, str] = {},
     labels: list[str] = [],
 ) -> Event:
