@@ -55,6 +55,14 @@ class Channel(HasRid):
         @property
         def compute(self) -> scout_compute_api.ComputeService: ...
 
+    def set_description(self, description: str) -> None:
+        self._clients.logical_series.batch_update_logical_series(
+            self._clients.auth_header,
+            timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(
+                [timeseries_logicalseries_api.UpdateLogicalSeries(logical_series_rid=self.rid, description=description)]
+            ),
+        )
+
     def to_pandas(
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
