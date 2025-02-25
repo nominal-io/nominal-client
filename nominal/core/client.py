@@ -1284,7 +1284,7 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
         return None
     else:
         return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-    def _search_events_paginated(self, request: scout_asset_api.SearchAssetsRequest) -> Iterable[scout_asset_api.Asset]:
+    def _search_events_paginated(self, request: event.SearchEventsRequest) -> Iterable[event.Event]:
         while True:
             response = self._clients.event.search_events(self._clients.auth_header, request)
             yield from response.results
