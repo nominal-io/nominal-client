@@ -19,12 +19,14 @@ from nominal.core import (
     Video,
     Workbook,
     WriteStream,
+    EventType,
 )
 from nominal.nominal import (
     create_asset,
     create_log_set,
     create_run,
     create_run_csv,
+    create_event,
     create_streaming_connection,
     create_workbook_from_template,
     data_review_builder,
@@ -58,6 +60,7 @@ __all__ = [
     "create_asset",
     "create_run",
     "create_run_csv",
+    "create_event",
     "download_attachment",
     "get_attachment",
     "create_streaming_connection",
@@ -103,6 +106,7 @@ __all__ = [
     "CheckViolation",
     "DataReviewBuilder",
     "WriteStream",
+    "EventType",
     "__version__",
 ]
 

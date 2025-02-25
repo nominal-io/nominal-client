@@ -965,7 +965,7 @@ class NominalClient:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
 
-    def create_run(
+    def create_event(
             self,
             name: str,
             asset_rids: list[str],
@@ -978,7 +978,7 @@ class NominalClient:
         response = self._clients.event.create_event(self._clients.auth_header, event.CreateEvent(
             name=name,
             asset_rids=asset_rids,
-            timestamp=_SecondsNanos.from_flexible(start).to_scout_run_api(start),
+            timestamp=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             duration=_to_api_duration(duration),
             origins=[],
             properties=dict(properties),

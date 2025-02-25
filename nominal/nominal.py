@@ -25,6 +25,7 @@ from nominal.core import (
     poll_until_ingestion_completed,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder
+from nominal.core.event import Event
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -635,3 +636,8 @@ def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_data_review(rid)
+
+def create_event(**kwargs) -> Event:
+    "Create a new event"
+    conn = get_default_client()
+    return conn.create_event(**kwargs)
