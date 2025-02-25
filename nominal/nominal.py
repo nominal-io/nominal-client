@@ -35,32 +35,35 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
 
-_current_profile: str = "default"
+
+_current_client: NominalClient | None = None
+
+
+def _set_base_url(base_url: str) -> None:
+    cfg = NominalConfig.from_yaml()
+    profile_name, _ = _get_profile_matching_url(cfg, base_url)
+    set_current_client(NominalClient.from_profile(profile_name))
 
 
 @typing_extensions.deprecated(
     """`set_base_url` is deprecated and will be removed in a future version.
-    Use `set_current_profile` instead. More at: [docs].""",
+    Use `set_current_client` instead. More at: [docs].""",
     category=UserWarning,
 )
 def set_base_url(base_url: str) -> None:
-    """Set the current profile to the profile with the given base URL.
+    """Set the current Nominal client to the profile with the given base URL.
 
     This function does not update the Nominal config.
-    Instead, it sets the default profile used in the current program execution.
 
     Raises:
         NominalConfigError: if there is not exactly one profile with the given base URL.
     """
-    cfg = NominalConfig.from_yaml()
-    profile_name, _ = _get_profile_matching_url(cfg, base_url)
-    set_current_profile(profile=profile_name)
+    _set_base_url(base_url)
 
 
 @typing_extensions.deprecated(
     """`set_token` is deprecated and will be removed in a future version.
-    Use `nom config` at the command line to edit connection profiles instead.
-    More at: [docs].""",
+    Use `set_current_client` instead. More at: [docs].""",
     category=UserWarning,
 )
 def set_token(base_url: str, token: str) -> None:
@@ -76,42 +79,37 @@ def set_token(base_url: str, token: str) -> None:
     new_profile = ConfigProfile(base_url=base_url, token=token)
     new_cfg = dataclasses.replace(cfg, profiles={**cfg.profiles, profile_name: new_profile})
     new_cfg.to_yaml()
+    client = NominalClient.from_profile(profile_name)
+    set_current_client(client)
 
 
 @typing_extensions.deprecated(
-    """`get_default_client` is deprecated and will be removed in a future version.
-    Use `get_client` instead. More at: [docs].""",
+    """`set_default_client` is deprecated and will be removed in a future version.
+    Use `set_current_client` instead. More at: [docs].""",
     category=UserWarning,
 )
 def get_default_client() -> NominalClient:
-    """Retrieve the default client to the Nominal platform."""
-    return get_client()
+    """Retrieve the current client to the Nominal platform."""
+    return get_current_client()
 
 
-def set_current_profile(profile: str) -> None:
-    """Set the current profile for new Nominal connections to use in this program execution."""
-    global _current_profile
-    _current_profile = profile
+def get_current_client() -> NominalClient:
+    """Retrieve the current client to the Nominal platform."""
+    if _current_client is None:
+        _set_base_url("https://api.gov.nominal.io/api")
+        return get_current_client()
+    return _current_client
 
 
-def get_current_profile() -> str:
-    """Retrieve the current profile used for new Nominal connections in this program execution."""
-    return _current_profile
-
-
-def get_client(profile: str | None = None) -> NominalClient:
-    """Retrieve a client to the Nominal platform by profile.
-
-    If no profile is specified, the current profile is used.
-    """
-    if profile is None:
-        profile = get_current_profile()
-    return NominalClient.from_profile(profile)
+def set_current_client(client: NominalClient) -> None:
+    """Set the current client to the given client."""
+    global _current_client
+    _current_client = client
 
 
 def get_user() -> User:
-    """Retrieve the user associated with the default client."""
-    client = get_client()
+    """Retrieve current user."""
+    client = get_current_client()
     return client.get_user()
 
 
@@ -177,7 +175,7 @@ def upload_pandas(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    client = get_client()
+    client = get_current_client()
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
 
@@ -220,7 +218,7 @@ def upload_polars(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    client = get_client()
+    client = get_current_client()
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
         df.write_csv(w)
@@ -263,7 +261,7 @@ def upload_csv(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    client = get_client()
+    client = get_current_client()
     return _upload_csv(
         client,
         file,
@@ -302,7 +300,7 @@ def _upload_csv(
 
 def get_dataset(rid: str) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID."""
-    client = get_client()
+    client = get_current_client()
     return client.get_dataset(rid)
 
 
@@ -318,7 +316,7 @@ def create_run(
 
     To add a dataset to the run, use `run.add_dataset()`.
     """
-    client = get_client()
+    client = get_current_client()
     return client.create_run(
         name,
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
@@ -360,7 +358,7 @@ def create_run_csv(
 
 def get_run(rid: str) -> Run:
     """Retrieve a run from the Nominal platform by its RID."""
-    client = get_client()
+    client = get_current_client()
     return client.get_run(rid)
 
 
@@ -390,7 +388,7 @@ def search_runs(
     Returns:
         All runs which match all of the provided conditions
     """
-    client = get_client()
+    client = get_current_client()
     return client.search_runs(
         start=None if start is None else ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
         end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
@@ -409,7 +407,7 @@ def upload_attachment(
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
     path = Path(file)
-    client = get_client()
+    client = get_current_client()
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:
         return client.create_attachment_from_io(f, name, file_type, description)
@@ -417,19 +415,19 @@ def upload_attachment(
 
 def get_attachment(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
-    client = get_client()
+    client = get_current_client()
     return client.get_attachment(rid)
 
 
 def get_log_set(rid: str) -> LogSet:
     """Retrieve a log set from the Nominal platform by its RID."""
-    client = get_client()
+    client = get_current_client()
     return client.get_log_set(rid)
 
 
 def download_attachment(rid: str, file: Path | str) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
-    client = get_client()
+    client = get_current_client()
     attachment = client.get_attachment(rid)
     attachment.write(Path(file))
 
@@ -438,7 +436,7 @@ def upload_video(
     file: Path | str, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
 ) -> Video:
     """Upload a video to Nominal from a file."""
-    client = get_client()
+    client = get_current_client()
     path = Path(file)
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
@@ -453,7 +451,7 @@ def upload_video(
 
 def get_video(rid: str) -> Video:
     """Retrieve a video from the Nominal platform by its RID."""
-    client = get_client()
+    client = get_current_client()
     return client.get_video(rid)
 
 
@@ -465,13 +463,13 @@ def create_asset(
     labels: Sequence[str] = (),
 ) -> Asset:
     """Create an asset."""
-    client = get_client()
+    client = get_current_client()
     return client.create_asset(name, description, properties=properties, labels=labels)
 
 
 def get_asset(rid: str) -> Asset:
     """Retrieve an asset by its RID."""
-    client = get_client()
+    client = get_current_client()
     return client.get_asset(rid)
 
 
@@ -498,7 +496,7 @@ def search_assets(
     Returns:
         All assets which match all of the provided conditions
     """
-    client = get_client()
+    client = get_current_client()
     return client.search_assets(
         search_text=search_text,
         label=label,
@@ -514,7 +512,7 @@ def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]
     Args:
         asset: if provided, only return checklists associated with the given asset.
     """
-    client = get_client()
+    client = get_current_client()
     return client.list_streaming_checklists(asset)
 
 
@@ -586,7 +584,7 @@ def checklist_builder(
     ```
 
     """
-    client = get_client()
+    client = get_current_client()
     return client.checklist_builder(
         name=name,
         description=description,
@@ -596,7 +594,7 @@ def checklist_builder(
 
 
 def get_checklist(checklist_rid: str) -> Checklist:
-    client = get_client()
+    client = get_current_client()
     return client.get_checklist(checklist_rid)
 
 
@@ -616,7 +614,7 @@ def upload_mcap_video(
         returning. If you are uploading many videos, set `wait_until_complete=False` instead and call
         `wait_until_ingestion_complete()` after uploading all videos to allow for parallel ingestion.
     """
-    client = get_client()
+    client = get_current_client()
 
     path = Path(file)
     file_type = FileType.from_path(path)
@@ -647,7 +645,7 @@ def create_streaming_connection(
 
     datasource_id: A human readable identifier. Must be unique within an organization.
     """
-    client = get_client()
+    client = get_current_client()
     return client.create_streaming_connection(
         datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
     )
@@ -655,7 +653,7 @@ def create_streaming_connection(
 
 def get_connection(rid: str) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID."""
-    client = get_client()
+    client = get_current_client()
     return client.get_connection(rid)
 
 
@@ -666,7 +664,7 @@ def create_workbook_from_template(
     template_rid: The template to use for the workbook.
     run_rid: The run to associate the workbook with.
     """
-    client = get_client()
+    client = get_current_client()
     return client.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
 
 
@@ -681,7 +679,7 @@ def create_log_set(
     The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
     or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
     """
-    client = get_client()
+    client = get_current_client()
     return client.create_log_set(name, logs, timestamp_type, description)
 
 
@@ -701,11 +699,11 @@ def data_review_builder() -> DataReviewBuilder:
         print(review.get_violations())
     ```
     """
-    client = get_client()
+    client = get_current_client()
     return client.data_review_builder()
 
 
 def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
-    client = get_client()
+    client = get_current_client()
     return client.get_data_review(rid)
