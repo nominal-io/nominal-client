@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence, Optional
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -57,6 +57,7 @@ from nominal.ts import (
     _SecondsNanos,
     _to_typed_timestamp_type,
 )
+from nominal.core._metrics import MetricsManager, timed, count_metric
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,12 @@ class NominalClient:
 
     @classmethod
     def create(
-        cls, base_url: str, token: str | None, trust_store_path: str | None = None, connect_timeout: float = 30
+        cls,
+        base_url: str,
+        token: str | None,
+        trust_store_path: str | None = None,
+        connect_timeout: float = 30,
+        metrics_manager: Optional[MetricsManager] = None
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -85,7 +91,7 @@ class NominalClient:
             connect_timeout=connect_timeout,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, metrics_manager))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""

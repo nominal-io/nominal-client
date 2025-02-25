@@ -4,7 +4,7 @@ from datetime import datetime
 from functools import cache, partial
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence, Optional
 
 from nominal import Connection, _config, ts
 from nominal._utils import deprecate_keyword_argument, reader_writer
@@ -25,6 +25,7 @@ from nominal.core import (
     poll_until_ingestion_completed,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder
+from nominal.core._metrics import MetricsManager
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -35,8 +36,16 @@ _DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
 _global_base_url = _DEFAULT_BASE_URL
 
 
+def _get_or_create_connection(base_url: str, token: str, metrics_manager: Optional[MetricsManager] = None) -> NominalClient:
+    if metrics_manager is not None:
+        # Don't use cache when a metrics manager is provided
+        return NominalClient.create(base_url, token, metrics_manager=metrics_manager)
+    else:
+        # Use cache for the default case with no metrics manager
+        return _get_or_create_connection_cached(base_url, token)
+
 @cache
-def _get_or_create_connection(base_url: str, token: str) -> NominalClient:
+def _get_or_create_connection_cached(base_url: str, token: str) -> NominalClient:
     return NominalClient.create(base_url, token)
 
 
@@ -61,10 +70,10 @@ def set_token(base_url: str, token: str) -> None:
     _config.set_token(base_url, token)
 
 
-def get_default_client() -> NominalClient:
+def get_default_client(metrics_manager: Optional[MetricsManager] = None) -> NominalClient:
     """Retrieve the default client to the Nominal platform."""
     token = _config.get_token(_global_base_url)
-    return _get_or_create_connection(_global_base_url, token)
+    return _get_or_create_connection(_global_base_url, token, metrics_manager)
 
 
 def get_user() -> User:

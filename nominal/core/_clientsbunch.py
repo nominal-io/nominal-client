@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
-from typing import Protocol
+from typing import Protocol, Optional
 
 from conjure_python_client import RequestsClient, Service, ServiceConfiguration
 from nominal_api import (
@@ -30,6 +30,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.ts import IntegralNanosecondsUTC
+from nominal.core._metrics import MetricsManager, NullMetricsManager
 
 
 @dataclass(frozen=True)
@@ -131,9 +132,10 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
+    metrics_manager: MetricsManager = field(default_factory=NullMetricsManager)
 
     @classmethod
-    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
+    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, metrics_manager: Optional[MetricsManager] = None) -> Self:
         client_factory = partial(RequestsClient.create, user_agent=agent, service_config=cfg)
 
         return cls(
@@ -161,6 +163,7 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
+            metrics_manager=metrics_manager or NullMetricsManager(),
         )
 
 

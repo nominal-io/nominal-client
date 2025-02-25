@@ -1,6 +1,6 @@
 import importlib.metadata
 
-from nominal import ts
+from nominal import ts, metrics
 from nominal.core import (
     Asset,
     Attachment,
