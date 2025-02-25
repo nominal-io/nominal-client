@@ -91,7 +91,10 @@ class Event(HasRid):
             asset_rids=tuple(event.asset_rids),
             name=event.name,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
-            duration=timedelta(seconds=event.duration.seconds, microseconds=int(event.timestamp.nanos / 1000)),
+            duration=timedelta(
+                seconds=event.duration.seconds,
+                microseconds=event.timestamp.nanos / 1e3 + event.timestamp.picos / 1e6,
+            ),
             type=EventType.from_api_event_type(event.type),
             _clients=clients,
         )
