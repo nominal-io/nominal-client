@@ -356,6 +356,6 @@ class Run(HasRid):
             start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             run_number=run.run_number,
-            assets=run.assets,
+            assets=tuple(run.assets),
             _clients=clients,
         )
