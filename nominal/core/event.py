@@ -103,11 +103,11 @@ class Event(HasRid):
 
 
 class EventType(Enum):
-    INFO = 'INFO'
-    FLAG = 'FLAG'
-    ERROR = 'ERROR'
-    SUCCESS = 'SUCCESS'
-    UNKNOWN = 'UNKNOWN'
+    INFO = "INFO"
+    FLAG = "FLAG"
+    ERROR = "ERROR"
+    SUCCESS = "SUCCESS"
+    UNKNOWN = "UNKNOWN"
 
     @classmethod
     def from_api_event_type(cls, event: event.EventType) -> Self:
@@ -122,7 +122,7 @@ class EventType(Enum):
                 return cls.SUCCESS
             case _:
                 return cls.UNKNOWN
-    
+
     def _to_api_event_type(self) -> event.EventType:
         match self.name:
             case "INFO":

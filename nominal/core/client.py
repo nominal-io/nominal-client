@@ -966,25 +966,28 @@ class NominalClient:
         return DataReview._from_conjure(self._clients, response)
 
     def create_event(
-            self,
-            name: str,
-            asset_rids: list[str],
-            start: datetime | IntegralNanosecondsUTC,
-            duration: timedelta,
-            type: EventType,
-            properties: Mapping[str, str] = {},
-            labels: list[str] = []
-        ) -> Event:
-        response = self._clients.event.create_event(self._clients.auth_header, event.CreateEvent(
-            name=name,
-            asset_rids=asset_rids,
-            timestamp=_SecondsNanos.from_flexible(start).to_api(),
-            duration=_to_api_duration(duration),
-            origins=[],
-            properties=dict(properties),
-            labels=labels,
-            type=type._to_api_event_type(),
-        ))
+        self,
+        name: str,
+        asset_rids: list[str],
+        start: datetime | IntegralNanosecondsUTC,
+        duration: timedelta,
+        type: EventType,
+        properties: Mapping[str, str] = {},
+        labels: list[str] = [],
+    ) -> Event:
+        response = self._clients.event.create_event(
+            self._clients.auth_header,
+            event.CreateEvent(
+                name=name,
+                asset_rids=asset_rids,
+                timestamp=_SecondsNanos.from_flexible(start).to_api(),
+                duration=_to_api_duration(duration),
+                origins=[],
+                properties=dict(properties),
+                labels=labels,
+                type=type._to_api_event_type(),
+            ),
+        )
         return Event._from_conjure(self._clients, response)
 
     def get_events(self, uuids: list[str]) -> list[Event]:
