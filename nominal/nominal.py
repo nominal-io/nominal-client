@@ -653,6 +653,12 @@ def create_event(
     return conn.create_event(name, type, start, duration, assets=assets, properties=properties, labels=labels)
 
 
+def search_events(**kwargs) -> list[Event]:
+    "Searches for events that match the given filters"
+    conn = get_default_client()
+    return conn.search_events(**kwargs)
+
+
 def get_events(uuids: Sequence[str]) -> Sequence[Event]:
     """Get a set of events by their UUIDs"""
     conn = get_default_client()
