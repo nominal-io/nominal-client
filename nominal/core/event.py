@@ -126,12 +126,12 @@ class EventType(Enum):
     def _to_api_event_type(self) -> event.EventType:
         match self.name:
             case "INFO":
-                return EventType.INFO
+                return event.EventType.INFO
             case "FLAG":
-                return EventType.FLAG
+                return event.EventType.FLAG
             case "ERROR":
-                return EventType.ERROR
+                return event.EventType.ERROR
             case "SUCCESS":
-                return EventType.SUCCESS
+                return event.EventType.SUCCESS
             case _:
-                return EventType.UNKNOWN
+                return event.EventType.UNKNOWN
