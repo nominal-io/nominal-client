@@ -75,7 +75,7 @@ class Event(HasRid):
         request = event.UpdateEvent(
             uuid=self.uuid,
             asset_rids=asset_rids,
-            timestamp=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
+            timestamp=None if start is None else _SecondsNanos.from_flexible(start).to_api(),
             duration=None if duration is None else _to_api_duration(duration),
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
