@@ -83,9 +83,9 @@ class Event(HasRid):
             assets=[],
             type=None if type is None else type._to_api_event_type(),
         )
-        response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
-        run = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, run, fields=self.__dataclass_fields__)
+        response = self._clients.event.update_event(self._clients.auth_header, request, self.rid)
+        event = self.__class__._from_conjure(self._clients, response)
+        update_dataclass(self, event, fields=self.__dataclass_fields__)
         return self
 
     @classmethod
