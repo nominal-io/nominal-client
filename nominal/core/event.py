@@ -25,7 +25,7 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 @dataclass(frozen=True)
 class Event(HasRid):
     uuid: str
-    asset_rids: list[str]
+    asset_rids: Sequence[str]
     name: str
     start: IntegralNanosecondsUTC
     duration: timedelta
@@ -88,7 +88,7 @@ class Event(HasRid):
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
         return cls(
             uuid=event.uuid,
-            asset_rids=event.asset_rids,
+            asset_rids=tuple(event.asset_rids),
             name=event.name,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
             duration=timedelta(seconds=event.duration.seconds, microseconds=int(event.timestamp.nanos / 1000)),
