@@ -792,9 +792,7 @@ class NominalClient:
                 scraping=scout_datasource_connection_api.ScrapingConfig(
                     nominal=scout_datasource_connection_api.NominalScrapingConfig(
                         channel_name_components=[
-                            scout_datasource_connection_api.NominalChannelNameComponent(
-                                channel=scout_datasource_connection_api.Empty()
-                            )
+                            scout_datasource_connection_api.NominalChannelNameComponent(channel=api.Empty())
                         ],
                         separator=".",
                     )
@@ -830,6 +828,8 @@ class NominalClient:
                 layout=template.layout,
                 content=template.content,
                 content_v2=None,
+                check_alert_refs=[],
+                event_refs=[],
             ),
         )
 
@@ -989,7 +989,7 @@ def _create_search_runs_query(
 
     if properties:
         for name, value in properties.items():
-            queries.append(scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value)))
+            queries.append(scout_run_api.SearchQuery(property=api.Property(name=name, value=value)))
 
     return scout_run_api.SearchQuery(and_=queries)
 
@@ -1028,7 +1028,7 @@ def _create_search_assets_query(
 
     if properties:
         for name, value in properties.items():
-            queries.append(scout_asset_api.SearchAssetsQuery(property=scout_run_api.Property(name=name, value=value)))
+            queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
 
