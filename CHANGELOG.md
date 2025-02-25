@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.0](https://github.com/nominal-io/nominal-client/compare/v1.32.1...v1.33.0) (2025-02-25)
+
+
+### Features
+
+* bump nominal api to 0.565.1 ([#230](https://github.com/nominal-io/nominal-client/issues/230)) ([7445d91](https://github.com/nominal-io/nominal-client/commit/7445d9193d19a3f63c09072ea9860a5852543284))
+
 ## [1.32.1](https://github.com/nominal-io/nominal-client/compare/v1.32.0...v1.32.1) (2025-02-21)
 
 
