@@ -93,7 +93,8 @@ class Event(HasRid):
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
             duration=timedelta(
                 seconds=event.duration.seconds,
-                microseconds=event.timestamp.nanos / 1e3 + event.timestamp.picos / 1e6,
+                microseconds=event.timestamp.nanos / 1e3
+                + (0 if event.timestamp.picos is None else event.timestamp.picos / 1e6),
             ),
             type=EventType.from_api_event_type(event.type),
             _clients=clients,
