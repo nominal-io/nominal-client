@@ -1309,8 +1309,8 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
                 is_descending=True,
             ),
         )
-        for event in self._search_events_paginated(request):
-            yield Event._from_conjure(self._clients, event)
+        for e in self._search_events_paginated(request):
+            yield Event._from_conjure(self._clients, e)
 
     def search_events(
         self,
