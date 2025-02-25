@@ -650,7 +650,7 @@ def create_event(
 ) -> Event:
     "Create a new event"
     conn = get_default_client()
-    return conn.create_event(name, asset_rids, start, duration, type, properties, labels)
+    return conn.create_event(name, asset_rids, start, duration, type, properties=properties, labels=labels)
 
 
 def get_events(uuids: list[str]) -> list[Event]:

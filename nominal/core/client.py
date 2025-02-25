@@ -972,6 +972,7 @@ class NominalClient:
         start: datetime | IntegralNanosecondsUTC,
         duration: timedelta,
         type: EventType,
+        *,
         properties: Mapping[str, str] = {},
         labels: list[str] = [],
     ) -> Event:
