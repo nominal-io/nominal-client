@@ -583,7 +583,7 @@ def search_events(
     asset: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
-) -> list[Event]:
+) -> Sequence[Event]:
     """Searches for events that match the given filters"""
     conn = get_default_client()
     return conn.search_events(
