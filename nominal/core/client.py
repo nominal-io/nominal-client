@@ -978,14 +978,14 @@ class NominalClient:
         response = self._clients.event.create_event(self._clients.auth_header, event.CreateEvent(
             name=name,
             asset_rids=asset_rids,
-            timestamp=_SecondsNanos.from_flexible(start).to_scout_run_api(),
+            timestamp=_SecondsNanos.from_flexible(start).to_api(),
             duration=_to_api_duration(duration),
             origins=[],
             properties=dict(properties),
             labels=labels,
             type=type._to_api_event_type(),
         ))
-        return Event._from_conjure(response)
+        return Event._from_conjure(self._clients, response)
 
 
 def _create_search_runs_query(
