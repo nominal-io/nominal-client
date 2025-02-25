@@ -1314,6 +1314,7 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
 
     def search_events(
         self,
+        *,
         search_text: str | None = None,
         after: datetime | IntegralNanosecondsUTC | None = None,
         before: datetime | IntegralNanosecondsUTC | None = None,

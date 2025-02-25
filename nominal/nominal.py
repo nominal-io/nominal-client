@@ -575,10 +575,20 @@ def create_event(
     )
 
 
-def search_events(**kwargs) -> list[Event]:
+def search_events(
+    *,
+    search_text: str | None = None,
+    after: datetime | ts.IntegralNanosecondsUTC | None = None,
+    before: datetime | ts.IntegralNanosecondsUTC | None = None,
+    asset: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> list[Event]:
     "Searches for events that match the given filters"
     conn = get_default_client()
-    return conn.search_events(**kwargs)
+    return conn.search_events(
+        search_text=search_text, after=after, before=before, asset=asset, labels=labels, properties=properties
+    )
 
 
 def get_events(uuids: Sequence[str]) -> Sequence[Event]:
