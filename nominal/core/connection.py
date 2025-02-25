@@ -105,22 +105,24 @@ class Connection(HasRid):
             * sweaters, {color: green, size: M}
             * sweaters, {color: green, size: L}
         """
-        req = timeseries_logicalseries_api.BatchResolveSeriesRequest(
-            requests=[
-                timeseries_logicalseries_api.ResolveSeriesRequest(datasource=self.rid, name=name, tags=tags)
-                for name in channel_names
-                for tags in _tag_product(self._tags)
-            ]
-        )
-        resp = self._clients.logical_series.resolve_batch(self._clients.auth_header, req)
+        all_requests=[
+            timeseries_logicalseries_api.ResolveSeriesRequest(datasource=self.rid, name=name, tags=tags)
+            for name in channel_names
+            for tags in _tag_product(self._tags)
+        ]
         # TODO(alkasm): is there a batch get_logical_series ?
-        for resolved_series in resp.series:
-            if resolved_series.type == "error" and resolved_series.error is not None:
-                raise RuntimeError(f"error resolving series: {resolved_series.error}")
-            elif resolved_series.rid is None:
-                raise RuntimeError(f"error resolving series for series {resolved_series}: no rid returned")
-            series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
-            yield Channel._from_conjure_logicalseries_api(self._clients, series)
+        BATCH_SIZE = 100
+        for i in range(0, len(all_requests), BATCH_SIZE):
+            batch_requests = all_requests[i:i + BATCH_SIZE]
+            req = timeseries_logicalseries_api.BatchResolveSeriesRequest(requests=batch_requests)
+            resp = self._clients.logical_series.resolve_batch(self._clients.auth_header, req)
+            for resolved_series in resp.series:
+                if resolved_series.type == "error" and resolved_series.error is not None:
+                    raise RuntimeError(f"error resolving series: {resolved_series.error}")
+                elif resolved_series.rid is None:
+                    raise RuntimeError(f"error resolving series for series {resolved_series}: no rid returned")
+                series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
+                yield Channel._from_conjure_logicalseries_api(self._clients, series)
 
     def _get_channels(self) -> Iterable[Channel]:
         """Retrieve all channels associated with this connection."""
