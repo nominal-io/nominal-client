@@ -50,7 +50,7 @@ class Event(HasRid):
         self,
         *,
         name: str | None = None,
-        asset_rids: list[str] | None = None,
+        asset_rids: Sequence[str] | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         duration: timedelta | None = None,
         properties: Mapping[str, str] | None = None,
@@ -71,7 +71,7 @@ class Event(HasRid):
         """
         request = event.UpdateEvent(
             uuid=self.uuid,
-            asset_rids=asset_rids,
+            asset_rids=None if asset_rids is None else list(asset_rids),
             duration=None if duration is None else _to_api_duration(duration),
             labels=None if labels is None else list(labels),
             name=name,
