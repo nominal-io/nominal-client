@@ -72,15 +72,14 @@ class Event(HasRid):
         request = event.UpdateEvent(
             uuid=self.uuid,
             asset_rids=asset_rids,
-            timestamp=None if start is None else _SecondsNanos.from_flexible(start).to_api(),
             duration=None if duration is None else _to_api_duration(duration),
             labels=None if labels is None else list(labels),
+            name=name,
             properties=None if properties is None else dict(properties),
-            title=name,
-            assets=[],
+            timestamp=None if start is None else _SecondsNanos.from_flexible(start).to_api(),
             type=None if type is None else type._to_api_event_type(),
         )
-        response = self._clients.event.update_event(self._clients.auth_header, request, self.rid)
+        response = self._clients.event.update_event(self._clients.auth_header, request)
         e = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, e, fields=self.__dataclass_fields__)
         return self
@@ -106,7 +105,7 @@ class EventType(Enum):
     UNKNOWN = "UNKNOWN"
 
     @classmethod
-    def from_api_event_type(cls, event: event.EventType) -> Self:
+    def from_api_event_type(cls, event: event.EventType) -> EventType:
         match event.name:
             case "INFO":
                 return cls.INFO
