@@ -35,8 +35,7 @@ class Run(HasRid):
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
     run_number: int
-    asset: str | None
-    """The RID of the asset representing this run."""
+    assets: list[str]
 
     _clients: _Clients = field(repr=False)
 
@@ -357,6 +356,6 @@ class Run(HasRid):
             start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             run_number=run.run_number,
-            asset=run.asset,
+            assets=run.assets,
             _clients=clients,
         )
