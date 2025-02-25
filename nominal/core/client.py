@@ -1063,7 +1063,7 @@ class NominalClient:
         responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
         return [Event._from_conjure(self._clients, response) for response in responses]
 
-    def _search_events_paginated(self, request: scout_asset_api.SearchAssetsRequest) -> Iterable[scout_asset_api.Asset]:
+    def _search_events_paginated(self, request: event.SearchEventsRequest) -> Iterable[event.Event]:
         while True:
             response = self._clients.event.search_events(self._clients.auth_header, request)
             yield from response.results
