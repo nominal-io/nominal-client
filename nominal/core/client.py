@@ -1098,7 +1098,7 @@ class NominalClient:
         search_text: str | None = None,
         after: datetime | IntegralNanosecondsUTC | None = None,
         before: datetime | IntegralNanosecondsUTC | None = None,
-        asset: str | None = None,
+        assets: Sequence[str] | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Sequence[Event]:
@@ -1108,7 +1108,7 @@ class NominalClient:
                     search_text=search_text,
                     after=after,
                     before=before,
-                    asset=asset,
+                    assets=assets,
                     labels=labels,
                     properties=properties,
                 )
@@ -1189,7 +1189,7 @@ def _create_search_events_query(
     search_text: str | None = None,
     after: datetime | IntegralNanosecondsUTC | None = None,
     before: datetime | IntegralNanosecondsUTC | None = None,
-    asset: str | None = None,
+    assets: Sequence[str] | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> event.SearchQuery:
@@ -1203,8 +1203,9 @@ def _create_search_events_query(
     if before is not None:
         queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
 
-    if asset:
-        queries.append(event.SearchQuery(asset=asset))
+    if assets:
+        for asset in assets:
+            queries.append(event.SearchQuery(asset=asset))
 
     if labels:
         for label in labels:
