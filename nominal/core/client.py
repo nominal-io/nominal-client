@@ -991,7 +991,7 @@ class NominalClient:
         )
         return Event._from_conjure(self._clients, response)
 
-    def get_events(self, uuids: Sequence[str]) -> list[Event]:
+    def get_events(self, uuids: Sequence[str]) -> Sequence[Event]:
         responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
         return [Event._from_conjure(self._clients, response) for response in responses]
 
