@@ -36,6 +36,7 @@ class Run(HasRid):
     end: IntegralNanosecondsUTC | None
     run_number: int
     asset: str | None
+    '''The RID of the asset representing this run.'''
 
     _clients: _Clients = field(repr=False)
 
