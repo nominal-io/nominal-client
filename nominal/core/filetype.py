@@ -90,5 +90,5 @@ class FileTypes:
     # https://issues.apache.org/jira/browse/PARQUET-1889
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
     TS: FileType = FileType(".ts", "video/mp2t")
-    JOURNAL_JSON: FileType = FileType(".jsonl", "application/jsonl")
-    JOURNAL_JSON_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
+    JOURNAL_JSONL: FileType = FileType(".jsonl", "application/jsonl")
+    JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
