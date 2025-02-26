@@ -635,3 +635,33 @@ def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_data_review(rid)
+
+
+def upload_journal_json(
+    file: Path | str,
+    name: str | None = None,
+    description: str | None = None,
+    *,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    """Create a dataset in the Nominal platform from a journal JSON file.
+
+    If name is None, the dataset is created with the name of the file.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
+    conn = get_default_client()
+    dataset = conn.create_journal_json_dataset(
+        file,
+        name,
+        description=description,
+        labels=labels,
+        properties=properties,
+    )
+    if wait_until_complete:
+        dataset.poll_until_ingestion_completed()
+    return dataset

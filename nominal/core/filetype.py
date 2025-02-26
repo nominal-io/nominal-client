@@ -4,6 +4,7 @@ import logging
 import mimetypes
 from pathlib import Path
 from typing import NamedTuple
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,15 @@ class FileType(NamedTuple):
             raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
 
         return file_type
+    
+    @classmethod
+    def from_path_journal_json(cls, path: Path | str) -> FileType:
+        file_type = cls.from_path(path)
+        if file_type not in (FileTypes.JOURNAL_JSON, FileTypes.JOURNAL_JSON_GZ):
+            warnings.warn(f"journal json path '{path}' must end in .jsonl or .jsonl.gz")
+            warnings.warn("Using .jsonl as fallback.")
+
+        return FileTypes.JOURNAL_JSON
 
     @classmethod
     def from_video(cls, path: Path | str) -> FileType:
@@ -80,3 +90,5 @@ class FileTypes:
     # https://issues.apache.org/jira/browse/PARQUET-1889
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
     TS: FileType = FileType(".ts", "video/mp2t")
+    JOURNAL_JSON: FileType = FileType(".jsonl", "application/jsonl")
+    JOURNAL_JSON_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")

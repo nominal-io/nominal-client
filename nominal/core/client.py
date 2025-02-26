@@ -348,6 +348,51 @@ class NominalClient:
             raise NominalIngestError("error ingesting mcap: no dataset rid")
         raise NominalIngestError("error ingesting mcap: no dataset created")
 
+    def create_journal_json_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from a journal JSON file.
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_path_journal_json(path)
+
+        if name is None:
+            name = path.name
+
+        with open(path, "rb") as f:
+            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
+
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                journal_json=ingest_api.JournalJsonOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                    target=ingest_api.DatasetIngestTarget(
+                        new=ingest_api.NewDatasetIngestDestination(
+                            labels=list(labels),
+                            properties={} if properties is None else dict(properties),
+                            dataset_description=description,
+                            dataset_name=name,
+                        )
+                    ),
+                )
+            ),
+        )
+
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.dataset is None:
+            raise NominalIngestError("error ingesting journal json: no dataset created")
+        return self.get_dataset(response.details.dataset.dataset_rid)
+
     def create_dataset_from_io(
         self,
         dataset: BinaryIO,
