@@ -358,7 +358,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a journal log file with json output format.
-        
+
         Intended to be used with the recorded output of `journalctl --output json ...`.
         The file may be gzipped, in which case the extension is expected to be `.gz`.
 

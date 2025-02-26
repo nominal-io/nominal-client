@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import mimetypes
-import warnings
 from pathlib import Path
 from typing import NamedTuple
 
@@ -63,11 +62,10 @@ class FileType(NamedTuple):
     @classmethod
     def from_path_journal_json(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
-        if file_type not in (FileTypes.JOURNAL_JSON, FileTypes.JOURNAL_JSON_GZ):
-            warnings.warn(f"journal json path '{path}' must end in .jsonl or .jsonl.gz")
-            warnings.warn("Using .jsonl as fallback.")
+        if file_type not in (FileTypes.JOURNAL_JSONL, FileTypes.JOURNAL_JSONL_GZ):
+            raise ValueError(f"journal jsonl path '{path}' must end in .jsonl or .jsonl.gz")
 
-        return FileTypes.JOURNAL_JSON
+        return file_type
 
     @classmethod
     def from_video(cls, path: Path | str) -> FileType:
