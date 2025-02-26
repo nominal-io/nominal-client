@@ -20,8 +20,7 @@ from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
-ScopeTupleSeq: TypeAlias = "Sequence[tuple[str, Connection | Dataset | LogSet | Video]]"
-ScopeSeq: TypeAlias = "Sequence[Connection | Dataset | LogSet | Video | str]"
+ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
 
 
 @dataclass(frozen=True)
@@ -164,7 +163,7 @@ class Asset(HasRid):
             for (scope, rid) in scope_rid.items()
         ]
 
-    def list_data_scopes(self) -> ScopeTupleSeq:
+    def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
         """List scopes associated with this asset.
         Returns (data_scope_name, scope) pairs, where scope can be
         a dataset, connection, video, or logset.
@@ -232,11 +231,12 @@ class Asset(HasRid):
         data_sources: Sequence[Connection | Dataset | LogSet | Video | str] | None = None,
     ) -> None:
         data_scope_names = data_scope_names or []
+        data_sources = data_sources or []
 
         if isinstance(data_sources, str):
             raise RuntimeError("Expect `data_sources` to be a sequence, not a string")
 
-        data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
+        data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources}
 
         conjure_asset = self._get_asset()
 
@@ -281,23 +281,14 @@ class Asset(HasRid):
         self,
         *,
         names: Sequence[str] | None = None,
-        rids: Sequence[str] | None = None,
-        scopes: ScopeSeq | None = None,
+        scopes: Sequence[ScopeType | str] | None = None,
     ) -> None:
         """Remove data scopes from this asset.
 
-        Scopes can be specified either by their names, their rids, or the
-        scope objects themselves.
+        `names` are scope names.
+        `scopes` are rids or scope objects.
         """
-        if isinstance(rids, str):
-            raise ValueError("Expected rids to be a sequence, not a string")
-
-        if rids is None:
-            rids = []
-        if scopes is None:
-            scopes = []
-
-        self._remove_data_sources(data_scope_names=names, data_sources=[*rids, *scopes])
+        self._remove_data_sources(data_scope_names=names, data_sources=scopes)
 
     def add_connection(
         self, data_scope_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
