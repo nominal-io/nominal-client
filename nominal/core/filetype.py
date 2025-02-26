@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import warnings
 from pathlib import Path
 from typing import NamedTuple
-import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class FileType(NamedTuple):
             raise ValueError(f"dataset path '{path}' must end in .csv, .csv.gz, or .parquet")
 
         return file_type
-    
+
     @classmethod
     def from_path_journal_json(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
