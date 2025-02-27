@@ -4,7 +4,7 @@ import json
 import logging
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
@@ -16,6 +16,7 @@ from nominal_api import (
     attachments_api,
     datasource,
     datasource_logset_api,
+    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -38,10 +39,11 @@ from nominal.core._utils import construct_user_agent_string, rid_from_instance_o
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
-from nominal.core.checklist import Checklist
+from nominal.core.checklist import Checklist, _to_api_duration
 from nominal.core.connection import Connection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
+from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
@@ -51,6 +53,7 @@ from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalIngestError
 from nominal.ts import (
+    IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
     LogTimestampType,
     _AnyTimestampType,
@@ -1029,6 +1032,36 @@ class NominalClient:
     def get_data_review(self, rid: str) -> DataReview:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
+
+    def create_event(
+        self,
+        name: str,
+        type: EventType,
+        start: str | datetime | IntegralNanosecondsUTC,
+        duration: timedelta | IntegralNanosecondsDuration = 0,
+        *,
+        assets: Iterable[Asset | str] = (),
+        properties: Mapping[str, str] | None = None,
+        labels: Iterable[str] = (),
+    ) -> Event:
+        response = self._clients.event.create_event(
+            self._clients.auth_header,
+            event.CreateEvent(
+                name=name,
+                asset_rids=[asset.rid if isinstance(asset, Asset) else asset for asset in assets],
+                timestamp=_SecondsNanos.from_flexible(start).to_api(),
+                duration=_to_api_duration(duration),
+                origins=[],
+                properties=dict(properties) if properties else {},
+                labels=list(labels),
+                type=type._to_api_event_type(),
+            ),
+        )
+        return Event._from_conjure(self._clients, response)
+
+    def get_events(self, uuids: Sequence[str]) -> Sequence[Event]:
+        responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
+        return [Event._from_conjure(self._clients, response) for response in responses]
 
 
 def _create_search_runs_query(

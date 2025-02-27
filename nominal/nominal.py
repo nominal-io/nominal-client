@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cache, partial
 from pathlib import Path
 from threading import Thread
@@ -25,6 +25,7 @@ from nominal.core import (
     poll_until_ingestion_completed,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder
+from nominal.core.event import Event, EventType
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -635,3 +636,24 @@ def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_data_review(rid)
+
+
+def create_event(
+    name: str,
+    type: EventType,
+    start: str | datetime | ts.IntegralNanosecondsUTC,
+    duration: timedelta | ts.IntegralNanosecondsDuration = 0,
+    *,
+    assets: Iterable[Asset | str] = (),
+    properties: Mapping[str, str] | None = None,
+    labels: Iterable[str] = (),
+) -> Event:
+    """Create a new event"""
+    conn = get_default_client()
+    return conn.create_event(name, type, start, duration, assets=assets, properties=properties, labels=labels)
+
+
+def get_events(uuids: Sequence[str]) -> Sequence[Event]:
+    """Get a set of events by their UUIDs"""
+    conn = get_default_client()
+    return conn.get_events(uuids)
