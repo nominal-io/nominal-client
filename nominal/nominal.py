@@ -646,7 +646,7 @@ def create_event(
     *,
     asset_rids: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] = [],
+    labels: Sequence[str] = (),
 ) -> Event:
     """Create a new event"""
     conn = get_default_client()
