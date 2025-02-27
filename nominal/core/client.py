@@ -351,6 +351,54 @@ class NominalClient:
             raise NominalIngestError("error ingesting mcap: no dataset rid")
         raise NominalIngestError("error ingesting mcap: no dataset created")
 
+    def create_journal_json_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from a journal log file with json output format.
+
+        Intended to be used with the recorded output of `journalctl --output json ...`.
+        The path extension is expected to be `.jsonl` or `.jsonl.gz` if gzipped.
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_path_journal_json(path)
+
+        if name is None:
+            name = path.name
+
+        with open(path, "rb") as f:
+            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
+
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                journal_json=ingest_api.JournalJsonOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                    target=ingest_api.DatasetIngestTarget(
+                        new=ingest_api.NewDatasetIngestDestination(
+                            labels=list(labels),
+                            properties={} if properties is None else dict(properties),
+                            dataset_description=description,
+                            dataset_name=name,
+                        )
+                    ),
+                )
+            ),
+        )
+
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.dataset is None:
+            raise NominalIngestError("error ingesting journal json: no dataset created")
+        return self.get_dataset(response.details.dataset.dataset_rid)
+
     def create_dataset_from_io(
         self,
         dataset: BinaryIO,
@@ -379,24 +427,37 @@ class NominalClient:
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
-        request = ingest_api.TriggerIngest(
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-            channel_config=(
-                None
-                if prefix_tree_delimiter is None
-                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-            ),
-            dataset_description=description,
-            dataset_name=name,
-            timestamp_metadata=ingest_api.TimestampMetadata(
-                series_name=timestamp_column,
-                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-            ),
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                csv=ingest_api.CsvOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                    target=ingest_api.DatasetIngestTarget(
+                        new=ingest_api.NewDatasetIngestDestination(
+                            labels=list(labels),
+                            properties={} if properties is None else dict(properties),
+                            channel_config=(
+                                None
+                                if prefix_tree_delimiter is None
+                                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+                            ),
+                            dataset_description=description,
+                            dataset_name=name,
+                        )
+                    ),
+                    timestamp_metadata=ingest_api.TimestampMetadata(
+                        series_name=timestamp_column,
+                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+                    ),
+                    additional_file_tags=None,
+                    channel_prefix=prefix_tree_delimiter,
+                    tag_keys_from_columns=None,
+                )
+            )
         )
-        response = self._clients.ingest.trigger_ingest(self._clients.auth_header, request)
-        return self.get_dataset(response.dataset_rid)
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if not response.details.dataset:
+            raise NominalIngestError("error ingesting dataset: no dataset created")
+        return self.get_dataset(response.details.dataset.dataset_rid)
 
     def create_video(
         self,
@@ -494,36 +555,37 @@ class NominalClient:
                 FileTypes.JSON,
                 self._clients.upload,
             )
-            timestamp_manifest = ingest_api.VideoTimestampManifest(
-                timestamp_manifests=ingest_api.TimestampManifest(
-                    sources=[
-                        ingest_api.IngestSource(
-                            s3=ingest_api.S3IngestSource(
-                                path=manifest_s3_path,
-                            )
-                        )
-                    ]
-                )
-            )
+            timestamp_manifest = scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
         else:
-            timestamp_manifest = ingest_api.VideoTimestampManifest(
-                no_manifest=ingest_api.NoTimestampManifest(
-                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
+            # TODO(drake): expose scale parameter to users
+            timestamp_manifest = scout_video_api.VideoFileTimestampManifest(
+                no_manifest=scout_video_api.NoTimestampManifest(
+                    starting_timestamp=_SecondsNanos.from_flexible(start).to_api()
                 )
             )
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
-        request = ingest_api.IngestVideoRequest(
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
-            timestamps=timestamp_manifest,
-            description=description,
-            title=name,
+        request = ingest_api.IngestRequest(
+            ingest_api.IngestOptions(
+                video=ingest_api.VideoOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                    target=ingest_api.VideoIngestTarget(
+                        new=ingest_api.NewVideoIngestDestination(
+                            title=name,
+                            description=description,
+                            properties={} if properties is None else dict(properties),
+                            labels=list(labels),
+                        )
+                    ),
+                    timestamp_manifest=timestamp_manifest,
+                )
+            )
         )
-        response = self._clients.ingest.ingest_video(self._clients.auth_header, request)
-        return self.get_video(response.video_rid)
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.video is None:
+            raise NominalIngestError("error ingesting video: no video created")
+        return self.get_video(response.details.video.video_rid)
 
     def create_log_set(
         self,
@@ -749,23 +811,28 @@ class NominalClient:
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
-        request = ingest_api.IngestMcapRequest(
-            channel_config=[
-                ingest_api.McapChannelConfig(
-                    channel_type=ingest_api.McapChannelConfigType(video=ingest_api.McapVideoChannelConfig()),
-                    locator=api.McapChannelLocator(topic=topic),
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                video=ingest_api.VideoOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                    target=ingest_api.VideoIngestTarget(
+                        new=ingest_api.NewVideoIngestDestination(
+                            title=name,
+                            description=description,
+                            properties={} if properties is None else dict(properties),
+                            labels=list(labels),
+                        )
+                    ),
+                    timestamp_manifest=scout_video_api.VideoFileTimestampManifest(
+                        mcap=scout_video_api.McapTimestampManifest(api.McapChannelLocator(topic=topic))
+                    ),
                 )
-            ],
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
-            description=description,
-            title=name,
+            )
         )
-        response = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
-        if len(response.outputs) != 1 or response.outputs[0].target.video_rid is None:
-            raise NominalIngestError("No or invalid video RID returned")
-        return self.get_video(response.outputs[0].target.video_rid)
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.video is None:
+            raise NominalIngestError("error ingesting mcap video: no video created")
+        return self.get_video(response.details.video.video_rid)
 
     def create_streaming_connection(
         self,
