@@ -94,8 +94,8 @@ class NominalClient:
     def create_run(
         self,
         name: str,
-        start: datetime | IntegralNanosecondsUTC,
-        end: datetime | IntegralNanosecondsUTC | None,
+        start: str | datetime | IntegralNanosecondsUTC,
+        end: str | datetime | IntegralNanosecondsUTC | None,
         description: str | None = None,
         *,
         properties: Mapping[str, str] | None = None,
