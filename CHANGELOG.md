@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.34.0](https://github.com/nominal-io/nominal-client/compare/v1.33.0...v1.34.0) (2025-02-26)
+
+
+### Features
+
+* add support for journal json upload ([#240](https://github.com/nominal-io/nominal-client/issues/240)) ([31f7b39](https://github.com/nominal-io/nominal-client/commit/31f7b39e519e2b23f2f0fd5f9225ff0810fd998e))
+* expose run `assets` field ([#235](https://github.com/nominal-io/nominal-client/issues/235)) ([8d11a19](https://github.com/nominal-io/nominal-client/commit/8d11a19873fb73806592b8e46d2de19a7131ff05))
+* Use ingest V2 endpoint everywhere in python client ([c613263](https://github.com/nominal-io/nominal-client/commit/c6132633d9b6e6884c72827f6ee3607da1185c84))
+* use ingest V2 endpoint everywhere in python client ([#233](https://github.com/nominal-io/nominal-client/issues/233)) ([c613263](https://github.com/nominal-io/nominal-client/commit/c6132633d9b6e6884c72827f6ee3607da1185c84))
+
+## [1.33.0](https://github.com/nominal-io/nominal-client/compare/v1.32.1...v1.33.0) (2025-02-25)
+
+
+### Features
+
+* bump nominal api to 0.565.1 ([#230](https://github.com/nominal-io/nominal-client/issues/230)) ([7445d91](https://github.com/nominal-io/nominal-client/commit/7445d9193d19a3f63c09072ea9860a5852543284))
+
+## [1.32.1](https://github.com/nominal-io/nominal-client/compare/v1.32.0...v1.32.1) (2025-02-21)
+
+
+### Bug Fixes
+
+* remove compute expression representations from checklists ([#222](https://github.com/nominal-io/nominal-client/issues/222)) ([6a4687e](https://github.com/nominal-io/nominal-client/commit/6a4687e682869a1d0d691d8286e6131bf72e5735))
+* remove repr service again ([#227](https://github.com/nominal-io/nominal-client/issues/227)) ([c35c10d](https://github.com/nominal-io/nominal-client/commit/c35c10d30e11ab14fcfddc0cae880572dd191ba5))
+
 ## [1.32.0](https://github.com/nominal-io/nominal-client/compare/v1.31.0...v1.32.0) (2025-02-20)
 
 

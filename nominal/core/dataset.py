@@ -196,19 +196,21 @@ class Dataset(HasRid):
             file_type,
             self._clients.upload,
         )
-        request = ingest_api.TriggerFileIngest(
-            destination=ingest_api.IngestDestination(
-                existing_dataset=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
-            ),
-            source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-            source_metadata=ingest_api.IngestSourceMetadata(
-                timestamp_metadata=ingest_api.TimestampMetadata(
-                    series_name=timestamp_column,
-                    timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                ),
-            ),
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                csv=ingest_api.CsvOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                    target=ingest_api.DatasetIngestTarget(
+                        existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+                    ),
+                    timestamp_metadata=ingest_api.TimestampMetadata(
+                        series_name=timestamp_column,
+                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+                    ),
+                )
+            )
         )
-        self._clients.ingest.trigger_file_ingest(self._clients.auth_header, request)
+        self._clients.ingest.ingest(self._clients.auth_header, request)
 
     def add_mcap_to_dataset(
         self,
