@@ -641,7 +641,7 @@ def get_data_review(rid: str) -> DataReview:
 def create_event(
     name: str,
     asset_rids: Sequence[str],
-    start: datetime | ts.IntegralNanosecondsUTC,
+    start: str | datetime | ts.IntegralNanosecondsUTC,
     duration: timedelta | ts.IntegralNanosecondsDuration,
     type: EventType,
     *,

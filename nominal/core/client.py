@@ -970,7 +970,7 @@ class NominalClient:
         self,
         name: str,
         asset_rids: Sequence[str],
-        start: datetime | IntegralNanosecondsUTC,
+        start: str | datetime | IntegralNanosecondsUTC,
         duration: timedelta | IntegralNanosecondsDuration,
         type: EventType,
         *,
