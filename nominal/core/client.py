@@ -1316,8 +1316,8 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
         self,
         *,
         search_text: str | None = None,
-        after: datetime | IntegralNanosecondsUTC | None = None,
-        before: datetime | IntegralNanosecondsUTC | None = None,
+        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        before: str | datetime | IntegralNanosecondsUTC | None = None,
         assets: Sequence[str] | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
@@ -1440,8 +1440,8 @@ def _create_search_checklists_query(
 
 def _create_search_events_query(
     search_text: str | None = None,
-    after: datetime | IntegralNanosecondsUTC | None = None,
-    before: datetime | IntegralNanosecondsUTC | None = None,
+    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    before: str |datetime | IntegralNanosecondsUTC | None = None,
     assets: Sequence[str] | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,

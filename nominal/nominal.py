@@ -578,8 +578,8 @@ def create_event(
 def search_events(
     *,
     search_text: str | None = None,
-    after: datetime | ts.IntegralNanosecondsUTC | None = None,
-    before: datetime | ts.IntegralNanosecondsUTC | None = None,
+    after: str | datetime | ts.IntegralNanosecondsUTC | None = None,
+    before: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     assets: Sequence[str] | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
