@@ -90,7 +90,7 @@ class Event(HasRid):
         if event.duration.picos:
             warnings.warn(
                 (
-                    f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: ",
+                    f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: "
                     "this is not currently supported in nominal-client",
                 ),
                 UserWarning,
