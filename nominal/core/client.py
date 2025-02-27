@@ -1318,8 +1318,8 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
         search_text: str | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
-        assets: Sequence[str] | None = None,
-        labels: Sequence[str] | None = None,
+        assets: Iterable[Asset | str] | None = None,
+        labels: Iterable[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
@@ -1330,7 +1330,7 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
             after: Filters to end times after this time, exclusive.
             before: Filters to start times before this time, exclusive.
             assets: List of assets that must ALL be present on an event to be included.
-            labels: A sequence of labels that must ALL be present on an event to be included.
+            labels: A list of labels that must ALL be present on an event to be included.
             properties: A mapping of key-value pairs that must ALL be present on an event to be included.
 
         Returns:
@@ -1342,7 +1342,7 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
                     search_text=search_text,
                     after=after,
                     before=before,
-                    assets=assets,
+                    assets=None if assets is None else [asset.id if isinstance(asset, Asset) else asset for asset in assets],
                     labels=labels,
                     properties=properties,
                 )
@@ -1442,8 +1442,8 @@ def _create_search_events_query(
     search_text: str | None = None,
     after: str | datetime | IntegralNanosecondsUTC | None = None,
     before: str |datetime | IntegralNanosecondsUTC | None = None,
-    assets: Sequence[str] | None = None,
-    labels: Sequence[str] | None = None,
+    assets: Iterable[str] | None = None,
+    labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> event.SearchQuery:
     queries = []

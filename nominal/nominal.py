@@ -580,7 +580,7 @@ def search_events(
     search_text: str | None = None,
     after: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     before: str | datetime | ts.IntegralNanosecondsUTC | None = None,
-    assets: Sequence[str] | None = None,
+    assets: Iterable[Asset | str] | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> Sequence[Event]:
