@@ -28,7 +28,7 @@ class Event(HasRid):
     asset_rids: Sequence[str]
     name: str
     start: IntegralNanosecondsUTC
-    duration: timedelta
+    duration: IntegralNanosecondsDuration
     type: EventType
 
     _clients: _Clients = field(repr=False)

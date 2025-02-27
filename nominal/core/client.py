@@ -53,6 +53,7 @@ from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalIngestError
 from nominal.ts import (
+    IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
     LogTimestampType,
     _AnyTimestampType,
@@ -970,7 +971,7 @@ class NominalClient:
         name: str,
         asset_rids: Sequence[str],
         start: datetime | IntegralNanosecondsUTC,
-        duration: timedelta,
+        duration: timedelta | IntegralNanosecondsDuration,
         type: EventType,
         *,
         properties: Mapping[str, str] = {},

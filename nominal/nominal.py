@@ -642,7 +642,7 @@ def create_event(
     name: str,
     asset_rids: Sequence[str],
     start: datetime | ts.IntegralNanosecondsUTC,
-    duration: timedelta,
+    duration: timedelta | ts.IntegralNanosecondsDuration,
     type: EventType,
     *,
     properties: Mapping[str, str] = {},
