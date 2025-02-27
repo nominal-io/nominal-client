@@ -89,7 +89,10 @@ class Event(HasRid):
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
         if event.duration.picos:
             warnings.warn(
-                f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: this is not currently supported in nominal-client",
+                (
+                    f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: ",
+                    "this is not currently supported in nominal-client",
+                ),
                 UserWarning,
                 stacklevel=2,
             )
