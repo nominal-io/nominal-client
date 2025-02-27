@@ -1322,6 +1322,20 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Sequence[Event]:
+        """Search for events meeting the specified filters.
+        Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
+
+        Args:
+            search_text: Searches for a string in the run's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            assets: List of assets that must ALL be present on an event to be included.
+            labels: A sequence of labels that must ALL be present on an event to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+
+        Returns:
+            All events which match all of the provided conditions
+        """
         return list(
             self._iter_search_events(
                 _create_search_events_query(
