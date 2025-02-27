@@ -653,6 +653,22 @@ def create_event(
     return conn.create_event(name, type, start, duration, assets=assets, properties=properties, labels=labels)
 
 
+def search_events(
+    *,
+    search_text: str | None = None,
+    after: str | datetime | ts.IntegralNanosecondsUTC | None = None,
+    before: str | datetime | ts.IntegralNanosecondsUTC | None = None,
+    assets: Iterable[Asset | str] | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> Sequence[Event]:
+    """Searches for events that match the given filters"""
+    conn = get_default_client()
+    return conn.search_events(
+        search_text=search_text, after=after, before=before, assets=assets, labels=labels, properties=properties
+    )
+
+
 def get_events(uuids: Sequence[str]) -> Sequence[Event]:
     """Get a set of events by their UUIDs"""
     conn = get_default_client()
