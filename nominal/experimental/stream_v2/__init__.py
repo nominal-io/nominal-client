@@ -42,7 +42,7 @@ def create_write_stream(
         ```
     """
     serializer = BatchSerializer.create(max_workers=serialize_process_workers)
-    stream = WriteStreamV2.create(
+    with WriteStreamV2.create(
         streaming_connection._clients,
         serializer,
         streaming_connection.nominal_data_source_rid,
@@ -51,8 +51,5 @@ def create_write_stream(
         max_queue_size,
         track_metrics,
         write_thread_workers,
-    )
-    try:
+    ) as stream:
         yield stream
-    finally:
-        stream.close()

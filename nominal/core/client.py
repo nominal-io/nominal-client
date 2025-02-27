@@ -39,7 +39,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
-from nominal.core.connection import Connection
+from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
 from nominal.core.filetype import FileType, FileTypes
@@ -838,7 +838,7 @@ class NominalClient:
         datasource_description: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
-    ) -> Connection:
+    ) -> StreamingConnection:
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
@@ -869,7 +869,10 @@ class NominalClient:
                 should_scrape=True,
             ),
         )
-        return Connection._from_conjure(self._clients, connection_response)
+        conn = Connection._from_conjure(self._clients, connection_response)
+        if isinstance(conn, StreamingConnection):
+            return conn
+        raise TypeError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
     def create_workbook_from_template(
         self,
