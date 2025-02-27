@@ -89,10 +89,8 @@ class Event(HasRid):
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
         if event.duration.picos:
             warnings.warn(
-                (
-                    f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: "
-                    "this is not currently supported in nominal-client",
-                ),
+                f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: "
+                "this is not currently supported in nominal-client",
                 UserWarning,
                 stacklevel=2,
             )
@@ -101,7 +99,7 @@ class Event(HasRid):
             asset_rids=tuple(event.asset_rids),
             name=event.name,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
-            duration=event.duration.seconds * 1e9 + event.timestamp.nanos,
+            duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
             type=EventType.from_api_event_type(event.type),
             _clients=clients,
         )
