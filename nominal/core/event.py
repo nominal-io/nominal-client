@@ -30,6 +30,7 @@ class Event(HasRid):
     name: str
     start: IntegralNanosecondsUTC
     duration: IntegralNanosecondsDuration
+    properties: Mapping[str, str]
     type: EventType
 
     _clients: _Clients = field(repr=False)
@@ -103,6 +104,7 @@ class Event(HasRid):
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
             duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
             type=EventType.from_api_event_type(event.type),
+            properties=event.properties,
             _clients=clients,
         )
 
