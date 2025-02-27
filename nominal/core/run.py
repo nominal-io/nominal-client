@@ -6,9 +6,7 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
-    attachments_api,
     scout,
-    scout_catalog,
     scout_run_api,
 )
 from typing_extensions import Self
@@ -40,19 +38,10 @@ class Run(HasRid):
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        Attachment._Clients,
         Asset._Clients,
-        Connection._Clients,
-        Dataset._Clients,
-        LogSet._Clients,
-        Video._Clients,
         HasAuthHeader,
         Protocol,
     ):
-        @property
-        def attachment(self) -> attachments_api.AttachmentService: ...
-        @property
-        def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def run(self) -> scout.RunService: ...
 
