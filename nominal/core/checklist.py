@@ -135,4 +135,4 @@ def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout
     else:
         seconds, nanoseconds = divmod(duration, 1e9)
         scout_run_api.Duration(seconds=int(seconds), nanos=int(nanoseconds))
-        return 
+        return

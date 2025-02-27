@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Mapping, Protocol, Sequence
-import warnings
 
 from nominal_api import (
     event,
