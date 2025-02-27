@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.0](https://github.com/nominal-io/nominal-client/compare/v1.34.0...v1.35.0) (2025-02-27)
+
+
+### Features
+
+* support multi-file dataflash datasets ([#241](https://github.com/nominal-io/nominal-client/issues/241)) ([875ff85](https://github.com/nominal-io/nominal-client/commit/875ff85b39f1396c96ea0bbe345deb73fb56c577))
+
 ## [1.34.0](https://github.com/nominal-io/nominal-client/compare/v1.33.0...v1.34.0) (2025-02-26)
 
 
