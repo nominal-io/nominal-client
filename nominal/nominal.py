@@ -640,17 +640,17 @@ def get_data_review(rid: str) -> DataReview:
 
 def create_event(
     name: str,
-    asset_rids: Sequence[str],
-    start: str | datetime | ts.IntegralNanosecondsUTC,
-    duration: timedelta | ts.IntegralNanosecondsDuration,
     type: EventType,
+    start: str | datetime | ts.IntegralNanosecondsUTC,
+    duration: timedelta | ts.IntegralNanosecondsDuration = 0,
     *,
+    asset_rids: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
     labels: Sequence[str] = [],
 ) -> Event:
     """Create a new event"""
     conn = get_default_client()
-    return conn.create_event(name, asset_rids, start, duration, type, properties=properties, labels=labels)
+    return conn.create_event(name, type, start, duration, asset_rids=asset_rids, properties=properties, labels=labels)
 
 
 def get_events(uuids: Sequence[str]) -> Sequence[Event]:

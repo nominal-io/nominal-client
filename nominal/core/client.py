@@ -969,11 +969,11 @@ class NominalClient:
     def create_event(
         self,
         name: str,
-        asset_rids: Sequence[str],
-        start: str | datetime | IntegralNanosecondsUTC,
-        duration: timedelta | IntegralNanosecondsDuration,
         type: EventType,
+        start: str | datetime | IntegralNanosecondsUTC,
+        duration: timedelta | IntegralNanosecondsDuration = 0,
         *,
+        asset_rids: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
     ) -> Event:
