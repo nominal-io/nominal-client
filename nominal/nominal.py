@@ -644,13 +644,13 @@ def create_event(
     start: str | datetime | ts.IntegralNanosecondsUTC,
     duration: timedelta | ts.IntegralNanosecondsDuration = 0,
     *,
-    asset_rids: Sequence[str] = (),
+    assets: Iterable[Asset | str] = (),
     properties: Mapping[str, str] | None = None,
-    labels: Sequence[str] = (),
+    labels: Iterable[str] = (),
 ) -> Event:
     """Create a new event"""
     conn = get_default_client()
-    return conn.create_event(name, type, start, duration, asset_rids=asset_rids, properties=properties, labels=labels)
+    return conn.create_event(name, type, start, duration, assets=assets, properties=properties, labels=labels)
 
 
 def get_events(uuids: Sequence[str]) -> Sequence[Event]:

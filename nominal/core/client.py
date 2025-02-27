@@ -1040,15 +1040,15 @@ class NominalClient:
         start: str | datetime | IntegralNanosecondsUTC,
         duration: timedelta | IntegralNanosecondsDuration = 0,
         *,
-        asset_rids: Sequence[str] = (),
+        assets: Iterable[Asset | str] = (),
         properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] = (),
+        labels: Iterable[str] = (),
     ) -> Event:
         response = self._clients.event.create_event(
             self._clients.auth_header,
             event.CreateEvent(
                 name=name,
-                asset_rids=list(asset_rids),
+                asset_rids=[asset.rid if isinstance(asset, Asset) else asset for asset in assets],
                 timestamp=_SecondsNanos.from_flexible(start).to_api(),
                 duration=_to_api_duration(duration),
                 origins=[],

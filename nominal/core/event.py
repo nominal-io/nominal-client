@@ -4,7 +4,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import (
     event,
@@ -51,11 +51,11 @@ class Event(HasRid):
         self,
         *,
         name: str | None = None,
-        asset_rids: Sequence[str] | None = None,
+        assets: Iterable[Asset | str] | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         duration: timedelta | IntegralNanosecondsDuration | None = None,
         properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] | None = None,
+        labels: Iterable[str] | None = None,
         type: EventType | None,
     ) -> Self:
         """Replace event metadata.
@@ -72,7 +72,9 @@ class Event(HasRid):
         """
         request = event.UpdateEvent(
             uuid=self.uuid,
-            asset_rids=None if asset_rids is None else list(asset_rids),
+            asset_rids=None
+            if assets is None
+            else [asset.rid if isinstance(asset, Asset) else asset for asset in assets],
             duration=None if duration is None else _to_api_duration(duration),
             labels=None if labels is None else list(labels),
             name=name,
