@@ -122,7 +122,7 @@ class Asset(HasRid):
             if scope.data_source.type.lower() == stype
         }
 
-    def list_datasets(self) -> list[tuple[str, Dataset]]:
+    def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
         Returns (data_scope_name, dataset) pairs for each dataset.
         """
@@ -132,7 +132,7 @@ class Asset(HasRid):
             (scope, Dataset._from_conjure(self._clients, ds)) for (scope, ds) in zip(scope_rid.keys(), datasets_meta)
         ]
 
-    def list_connections(self) -> list[tuple[str, Connection]]:
+    def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this asset.
         Returns (data_scope_name, connection) pairs for each connection.
         """
@@ -143,7 +143,7 @@ class Asset(HasRid):
             for (scope, connection) in zip(scope_rid.keys(), connections_meta)
         ]
 
-    def list_videos(self) -> list[tuple[str, Video]]:
+    def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List the videos associated with this asset.
         Returns (data_scope_name, dataset) pairs for each video.
         """
@@ -153,7 +153,7 @@ class Asset(HasRid):
             for (scope, rid) in scope_rid.items()
         ]
 
-    def list_logsets(self) -> list[tuple[str, LogSet]]:
+    def list_logsets(self) -> Sequence[tuple[str, LogSet]]:
         """List the logsets associated with this asset.
         Returns (data_scope_name, logset) pairs for each logset.
         """
@@ -228,7 +228,7 @@ class Asset(HasRid):
         self,
         *,
         data_scope_names: Sequence[str] | None = None,
-        data_sources: Sequence[Connection | Dataset | LogSet | Video | str] | None = None,
+        data_sources: Sequence[ScopeType | str] | None = None,
     ) -> None:
         data_scope_names = data_scope_names or []
         data_sources = data_sources or []
@@ -268,7 +268,7 @@ class Asset(HasRid):
         self,
         *,
         data_scope_names: Sequence[str] | None = None,
-        data_sources: Sequence[Connection | Dataset | LogSet | Video | str] | None = None,
+        data_sources: Sequence[ScopeType | str] | None = None,
     ) -> None:
         """Remove data sources from this asset.
 
