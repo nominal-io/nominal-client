@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Mapping, Protocol, Sequence
+import warnings
 
 from nominal_api import (
     event,
@@ -19,7 +20,7 @@ from nominal.core.connection import Connection
 from nominal.core.dataset import Dataset
 from nominal.core.log import LogSet
 from nominal.core.video import Video
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,7 @@ class Event(HasRid):
         name: str | None = None,
         asset_rids: Sequence[str] | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
-        duration: timedelta | None = None,
+        duration: timedelta | IntegralNanosecondsDuration | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
         type: EventType | None,
@@ -86,16 +87,18 @@ class Event(HasRid):
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
+        if event.duration.picos:
+            warnings.warn(
+                f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: this is not currently supported in nominal-client",
+                UserWarning,
+                stacklevel=2,
+            )
         return cls(
             uuid=event.uuid,
             asset_rids=tuple(event.asset_rids),
             name=event.name,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
-            duration=timedelta(
-                seconds=event.duration.seconds,
-                microseconds=event.timestamp.nanos / 1e3
-                + (0 if event.timestamp.picos is None else event.timestamp.picos / 1e6),
-            ),
+            duration=event.duration.seconds * 1e9 + event.timestamp.nanos,
             type=EventType.from_api_event_type(event.type),
             _clients=clients,
         )
