@@ -974,8 +974,8 @@ class NominalClient:
         duration: timedelta | IntegralNanosecondsDuration,
         type: EventType,
         *,
-        properties: Mapping[str, str] = {},
-        labels: Sequence[str] = [],
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
     ) -> Event:
         response = self._clients.event.create_event(
             self._clients.auth_header,
@@ -985,7 +985,7 @@ class NominalClient:
                 timestamp=_SecondsNanos.from_flexible(start).to_api(),
                 duration=_to_api_duration(duration),
                 origins=[],
-                properties=dict(properties),
+                properties=dict(properties) if properties else {},
                 labels=list(labels),
                 type=type._to_api_event_type(),
             ),

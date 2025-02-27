@@ -645,7 +645,7 @@ def create_event(
     duration: timedelta | ts.IntegralNanosecondsDuration,
     type: EventType,
     *,
-    properties: Mapping[str, str] = {},
+    properties: Mapping[str, str] | None = None,
     labels: Sequence[str] = [],
 ) -> Event:
     """Create a new event"""
