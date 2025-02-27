@@ -272,7 +272,7 @@ def create_run(
     *,
     properties: Mapping[str, str] | None = None,
     labels: Sequence[str] = (),
-    attachments: Iterable[Attachment] | Iterable[str] = ()
+    attachments: Iterable[Attachment] | Iterable[str] = (),
 ) -> Run:
     """Create a run in the Nominal platform.
 
