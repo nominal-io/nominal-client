@@ -11,6 +11,7 @@ from nominal.core import (
     DataReview,
     DataReviewBuilder,
     Dataset,
+    EventType,
     Log,
     LogSet,
     NominalClient,
@@ -22,6 +23,7 @@ from nominal.core import (
 )
 from nominal.nominal import (
     create_asset,
+    create_event,
     create_log_set,
     create_run,
     create_run_csv,
@@ -36,6 +38,7 @@ from nominal.nominal import (
     get_data_review,
     get_dataset,
     get_default_client,
+    get_events,
     get_log_set,
     get_run,
     get_video,
@@ -58,6 +61,8 @@ __all__ = [
     "create_asset",
     "create_run",
     "create_run_csv",
+    "create_event",
+    "get_events",
     "download_attachment",
     "get_attachment",
     "create_streaming_connection",
@@ -103,6 +108,7 @@ __all__ = [
     "CheckViolation",
     "DataReviewBuilder",
     "WriteStream",
+    "EventType",
     "__version__",
 ]
 
