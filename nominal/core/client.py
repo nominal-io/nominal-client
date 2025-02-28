@@ -1096,8 +1096,8 @@ class NominalClient:
         self,
         *,
         search_text: str | None = None,
-        after: str | datetime | IntegralNanosecondsUTC | None = None,
-        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        after: datetime | IntegralNanosecondsUTC | None = None,
+        before: datetime | IntegralNanosecondsUTC | None = None,
         assets: Iterable[Asset | str] | None = None,
         labels: Iterable[str] | None = None,
         properties: Mapping[str, str] | None = None,
@@ -1122,7 +1122,9 @@ class NominalClient:
                     search_text=search_text,
                     after=after,
                     before=before,
-                    assets=None if assets is None else [asset.id if isinstance(asset, Asset) else asset for asset in assets],
+                    assets=None
+                    if assets is None
+                    else [asset.id if isinstance(asset, Asset) else asset for asset in assets],
                     labels=labels,
                     properties=properties,
                 )
@@ -1202,7 +1204,7 @@ def _create_search_assets_query(
 def _create_search_events_query(
     search_text: str | None = None,
     after: str | datetime | IntegralNanosecondsUTC | None = None,
-    before: str |datetime | IntegralNanosecondsUTC | None = None,
+    before: str | datetime | IntegralNanosecondsUTC | None = None,
     assets: Iterable[str] | None = None,
     labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
