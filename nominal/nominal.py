@@ -660,7 +660,7 @@ def create_event(
     return conn.create_event(
         name,
         type,
-        ts._SecondsNanos.from_flexible(start).to_api(),
+        ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
         duration,
         assets=assets,
         properties=properties,
