@@ -24,8 +24,7 @@ from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _Sec
 
 
 @dataclass(frozen=True)
-@runtime_checkable
-class Event(Protocol):
+class Event:
     uuid: str
     asset_rids: Sequence[str]
     name: str
