@@ -93,7 +93,7 @@ class Event(Protocol):
         if event.duration.picos:
             warnings.warn(
                 f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: "
-                "this is not currently supported in nominal-client",
+                "currently, any sub-nanosecond precision will be ignored in nominal-client",
                 UserWarning,
                 stacklevel=2,
             )
