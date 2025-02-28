@@ -42,7 +42,14 @@ from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, _to_api_duration
 from nominal.core.connection import Connection
 from nominal.core.data_review import DataReview, DataReviewBuilder
-from nominal.core.dataset import Dataset, _create_ingest_request, _create_mcap_channels, _get_dataset, _get_datasets
+from nominal.core.dataset import (
+    Dataset,
+    _create_dataflash_ingest_request,
+    _create_mcap_channels,
+    _create_mcap_ingest_request,
+    _get_dataset,
+    _get_datasets,
+)
 from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
@@ -249,21 +256,15 @@ class NominalClient:
         with open(path, "rb") as f:
             s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
 
-        request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                dataflash=ingest_api.DataflashOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        new=ingest_api.NewDatasetIngestDestination(
-                            labels=list(labels),
-                            properties={} if properties is None else dict(properties),
-                            dataset_description=description,
-                            dataset_name=name,
-                        )
-                    ),
-                )
-            ),
+        target = ingest_api.DatasetIngestTarget(
+            new=ingest_api.NewDatasetIngestDestination(
+                labels=list(labels),
+                properties={} if properties is None else dict(properties),
+                dataset_description=description,
+                dataset_name=name,
+            )
         )
+        request = _create_dataflash_ingest_request(s3_path, target)
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
         if response.details.dataset is None:
             raise NominalIngestError("error ingesting dataflash: no dataset created")
@@ -341,7 +342,7 @@ class NominalClient:
                 channel_config=None,
             )
         )
-        request = _create_ingest_request(s3_path, channels, target)
+        request = _create_mcap_ingest_request(s3_path, channels, target)
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
         if resp.details.dataset is not None:
             dataset_rid = resp.details.dataset.dataset_rid
