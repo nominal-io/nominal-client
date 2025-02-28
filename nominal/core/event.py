@@ -4,7 +4,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence, runtime_checkable
 
 from nominal_api import (
     event,
@@ -24,6 +24,7 @@ from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _Sec
 
 
 @dataclass(frozen=True)
+@runtime_checkable
 class Event(Protocol):
     uuid: str
     asset_rids: Sequence[str]
