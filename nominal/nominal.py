@@ -283,8 +283,8 @@ def create_run(
     conn = get_default_client()
     return conn.create_run(
         name,
-        start=start,
-        end=end,
+        start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
+        end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         description=description,
         properties=properties,
         labels=labels,
