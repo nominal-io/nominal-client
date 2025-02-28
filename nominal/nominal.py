@@ -588,8 +588,8 @@ def search_events(
     conn = get_default_client()
     return conn.search_events(
         search_text=search_text,
-        after=ts._SecondsNanos.from_flexible(after).to_nanoseconds(),
-        before=ts._SecondsNanos.from_flexible(before).to_nanoseconds(),
+        after=None if after is None else ts._SecondsNanos.from_flexible(after).to_nanoseconds(),
+        before=None if before is None else ts._SecondsNanos.from_flexible(before).to_nanoseconds(),
         assets=assets,
         labels=labels,
         properties=properties,
