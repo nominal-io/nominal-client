@@ -587,7 +587,12 @@ def search_events(
     """Searches for events that match the given filters"""
     conn = get_default_client()
     return conn.search_events(
-        search_text=search_text, after=after, before=before, assets=assets, labels=labels, properties=properties
+        search_text=search_text,
+        after=ts._SecondsNanos.from_flexible(after).to_nanoseconds,
+        before=ts._SecondsNanos.from_flexible(before).to_nanoseconds,
+        assets=assets,
+        labels=labels,
+        properties=properties,
     )
 
 
