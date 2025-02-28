@@ -8,6 +8,7 @@ import pandas as pd
 from nominal_api import (
     datasource_api,
     scout_dataexport_api,
+    scout_run_api,
     scout_datasource,
     timeseries_logicalseries,
     timeseries_logicalseries_api,
@@ -34,8 +35,12 @@ class ExportClients(Channel._Clients, HasAuthHeader, Protocol):
 def get_channels(
     clients: ExportClients,
     datasource_rid: str,
+    min_data_updated_time: scout_run_api.UtcTimestamp,
+    max_data_start_time: scout_run_api.UtcTimestamp,
     exact_match: Sequence[str] = (),
     fuzzy_search_text: str = "",
+    tags: dict[str, str] = {},
+    
 ) -> Iterable[Channel]:
     """Look up channels associated with a datasource.
 
@@ -49,29 +54,17 @@ def get_channels(
     Yields:
         Channel objects for each matching channel
     """
-    next_page_token = None
-    while True:
-        query = datasource_api.SearchChannelsRequest(
-            data_sources=[datasource_rid],
-            exact_match=list(exact_match),
-            fuzzy_search_text=fuzzy_search_text,
-            previously_selected_channels={},
-            next_page_token=next_page_token,
-            page_size=None,
-            prefix=None,
-        )
-        response = clients.datasource.search_channels(clients.auth_header, query)
-        for channel_metadata in response.results:
-            # Skip series archetypes for now
-            if channel_metadata.series_rid.logical_series is None:
-                continue
-
-            yield Channel._from_conjure_datasource_api(clients, channel_metadata)
-
-        if response.next_page_token is None:
-            break
-        else:
-            next_page_token = response.next_page_token
+    query = datasource_api.SearchFilteredChannelsRequest(
+        data_sources=[datasource_rid],
+        exact_match=list(exact_match),
+        fuzzy_search_text=fuzzy_search_text,
+        tags = {datasource_rid: tags},
+        min_data_updated_time=min_data_updated_time,
+        max_data_start_time=max_data_start_time,
+    )
+    response = clients.datasource.search_filtered_channels(clients.auth_header, query)
+    for channel_metadata in response.results:
+        yield channel_metadata
 
 
 def export_channels_data(
@@ -100,17 +93,21 @@ def export_channels_data(
     Returns:
         A pandas DataFrame containing the exported channel data
     """
+
+
+    start_time = _SecondsNanos.from_flexible(start).to_api() if start else _MIN_TIMESTAMP.to_api()
+    end_time = _SecondsNanos.from_flexible(end).to_api() if end else _MAX_TIMESTAMP.to_api()
+    start_time_scout_api =  _SecondsNanos.from_flexible(start).to_scout_run_api() if start else _MIN_TIMESTAMP.to_scout_run_api()
+    end_time_scout_api =  _SecondsNanos.from_flexible(end).to_scout_run_api() if end else _MAX_TIMESTAMP.to_scout_run_api()
     # Get all channels from the datasource
-    all_channels = list(get_channels(clients, datasource_rid, channel_exact_match, channel_fuzzy_search_text))
+    all_channels = list(get_channels(clients=clients, datasource_rid=datasource_rid, min_data_updated_time=start_time_scout_api, max_data_start_time=end_time_scout_api, exact_match=channel_exact_match, fuzzy_search_text=channel_fuzzy_search_text, tags=tags))
     # Extract channel names from the Channel objects
     channel_names = [channel.name for channel in all_channels]
+
 
     # Process channel names in batches of 20
     batch_size = 20
     all_dataframes = []
-
-    start_time = _SecondsNanos.from_flexible(start).to_api() if start else _MIN_TIMESTAMP.to_api()
-    end_time = _SecondsNanos.from_flexible(end).to_api() if end else _MAX_TIMESTAMP.to_api()
 
     for i in range(0, len(channel_names), batch_size):
         batch_channel_names = channel_names[i : i + batch_size]
