@@ -12,7 +12,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import HasRid, update_dataclass
+from nominal.core._utils import update_dataclass
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.checklist import _to_api_duration
@@ -24,7 +24,7 @@ from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _Sec
 
 
 @dataclass(frozen=True)
-class Event(HasRid):
+class Event(Protocol):
     uuid: str
     asset_rids: Sequence[str]
     name: str
