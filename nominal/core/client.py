@@ -10,16 +10,20 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
+import pandas as pd
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
     attachments_api,
     datasource,
+    datasource_api,
     datasource_logset_api,
     ingest_api,
     scout_asset_api,
     scout_catalog,
     scout_checklistexecution_api,
+    scout_compute_api,
+    scout_dataexport_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -1030,6 +1034,110 @@ class NominalClient:
     def get_data_review(self, rid: str) -> DataReview:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
+
+    def export_channels_from_datasource(
+        self,
+        datasource_rid: str,
+        start: str | datetime | IntegralNanosecondsUTC,
+        end: str | datetime | IntegralNanosecondsUTC,
+        channel_names: list[str],
+    ) -> pd.DataFrame:
+        """Export channel data from a datasource and return it as a pandas DataFrame.
+
+        Args:
+            datasource_rid: The RID of the datasource to export data from.
+            start: The start time for the data export. If None, the earliest available data will be used.
+                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
+            end: The end time for the data export. If None, the latest available data will be used.
+                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
+            channel_names: List of channel names to export. If None, all channels will be exported.
+
+        Returns:
+            A pandas DataFrame containing the exported channel data.
+        """
+        # If no channel names are provided, search for all channels in the datasource
+        if not channel_names:
+            # print("Searching for all channels in datasource")
+            req = datasource_api.SearchChannelsRequest(
+                data_sources=[datasource_rid],
+                exact_match=[],
+                fuzzy_search_text="",
+                previously_selected_channels={},
+            )
+            resp = self._clients.datasource.search_channels(self._clients.auth_header, req)
+
+            print(resp)
+            channel_info = [(r.series_rid.logical_series, r.name) for r in resp.results]
+            print(channel_info)
+        else:
+            # Resolve the channel names to their RIDs
+            request = timeseries_logicalseries_api.BatchResolveSeriesRequest(
+                requests=[
+                    timeseries_logicalseries_api.ResolveSeriesRequest(
+                        datasource=datasource_rid,
+                        name=name,
+                        tags={},
+                    )
+                    for name in channel_names
+                ]
+            )
+            response = self._clients.logical_series.resolve_batch(self._clients.auth_header, request)
+
+            print(response)
+            # return
+
+            channel_info = [(s.rid, name) for s, name in zip(response.series, channel_names)]
+
+        # Set default start and end times if not provided
+        # Use max timestamp value if end is None (2262-04-11 19:47:16.854775807)
+        # end_time = (
+        #     api.Timestamp(seconds=9223372036, nanos=854775807)
+        #     if end is None
+        #     else _SecondsNanos.from_flexible(end).to_api()
+        # )
+
+        print(channel_info)
+        # Create the export request
+        export_request = scout_dataexport_api.ExportDataRequest(
+            channels=scout_dataexport_api.ExportChannels(
+                time_domain=scout_dataexport_api.ExportTimeDomainChannels(
+                    channels=[
+                        scout_dataexport_api.TimeDomainChannel(
+                            column_name=name,
+                            compute_node=scout_compute_api.Series(raw=scout_compute_api.Reference(name=name)),
+                        )
+                        for _, name in channel_info
+                    ],
+                    merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
+                        none=scout_dataexport_api.NoneStrategy(),
+                    ),
+                    output_timestamp_format=scout_dataexport_api.TimestampFormat(
+                        iso8601=scout_dataexport_api.Iso8601TimestampFormat(),
+                    ),
+                )
+            ),
+            start_time=_SecondsNanos.from_flexible(start).to_api(),
+            end_time=_SecondsNanos.from_flexible(end).to_api(),
+            context=scout_compute_api.Context(
+                function_variables={},
+                variables={
+                    name: scout_compute_api.VariableValue(
+                        series=scout_compute_api.SeriesSpec(rid=rid if rid is not None else ""),
+                    )
+                    for rid, name in channel_info
+                },
+            ),
+            format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
+            resolution=scout_dataexport_api.ResolutionOption(
+                undecimated=scout_dataexport_api.UndecimatedResolution(),
+            ),
+        )
+
+        # Execute the export request
+        export_response = self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request)
+
+        # Convert the response to a pandas DataFrame
+        return pd.DataFrame(pd.read_csv(export_response))
 
 
 def _create_search_runs_query(
