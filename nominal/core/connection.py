@@ -24,7 +24,7 @@ from nominal.core._export_utils import export_channels_data, get_channels
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import WriteStream
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)
@@ -126,12 +126,15 @@ class Connection(HasRid):
 
     def get_channels(self, exact_match: Sequence[str] = (), fuzzy_search_text: str = "") -> Iterable[Channel]:
         """Retrieve all channels associated with this connection."""
-        return get_channels(
+        for channel_metadata in get_channels(
             clients=self._clients,
             datasource_rid=self.rid,
             exact_match=exact_match,
             fuzzy_search_text=fuzzy_search_text,
-        )
+            max_data_start_time=_MAX_TIMESTAMP.to_scout_run_api(),
+            min_data_updated_time=_MIN_TIMESTAMP.to_scout_run_api(),
+        ):
+            yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
 
     def get_channel(self, name: str) -> Channel:
         """Retrieve a channel with the given name and tags."""

@@ -33,6 +33,8 @@ from nominal.core.channel import Channel
 from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
+    _MAX_TIMESTAMP,
+    _MIN_TIMESTAMP,
     IntegralNanosecondsUTC,
     _AnyTimestampType,
     _SecondsNanos,
@@ -279,12 +281,15 @@ class Dataset(HasRid):
             Yields a sequence of channel metadata objects which match the provided query parameters
 
         """
-        return get_channels(
+        for channel_metadata in get_channels(
             clients=self._clients,
             datasource_rid=self.rid,
             exact_match=exact_match,
             fuzzy_search_text=fuzzy_search_text,
-        )
+            max_data_start_time=_MAX_TIMESTAMP.to_scout_run_api(),
+            min_data_updated_time=_MIN_TIMESTAMP.to_scout_run_api(),
+        ):
+            yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
 
     def to_pandas(
         self,

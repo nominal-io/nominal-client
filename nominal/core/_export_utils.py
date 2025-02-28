@@ -8,8 +8,8 @@ import pandas as pd
 from nominal_api import (
     datasource_api,
     scout_dataexport_api,
-    scout_run_api,
     scout_datasource,
+    scout_run_api,
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
@@ -35,13 +35,12 @@ class ExportClients(Channel._Clients, HasAuthHeader, Protocol):
 def get_channels(
     clients: ExportClients,
     datasource_rid: str,
-    min_data_updated_time: scout_run_api.UtcTimestamp,
-    max_data_start_time: scout_run_api.UtcTimestamp,
     exact_match: Sequence[str] = (),
     fuzzy_search_text: str = "",
     tags: dict[str, str] = {},
-    
-) -> Iterable[Channel]:
+    min_data_updated_time: scout_run_api.UtcTimestamp | None = None,
+    max_data_start_time: scout_run_api.UtcTimestamp | None = None,
+) -> Iterable[datasource_api.ChannelMetadata]:
     """Look up channels associated with a datasource.
 
     Args:
@@ -50,6 +49,9 @@ def get_channels(
         exact_match: Filter the returned channels to those whose names match all provided strings
             (case insensitive).
         fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+        tags: Dictionary of tags to filter channels by
+        min_data_updated_time: The minimum data updated time to filter channels by
+        max_data_start_time: The maximum data start time to filter channels by
 
     Yields:
         Channel objects for each matching channel
@@ -58,7 +60,7 @@ def get_channels(
         data_sources=[datasource_rid],
         exact_match=list(exact_match),
         fuzzy_search_text=fuzzy_search_text,
-        tags = {datasource_rid: tags},
+        tags={datasource_rid: tags},
         min_data_updated_time=min_data_updated_time,
         max_data_start_time=max_data_start_time,
     )
@@ -93,17 +95,31 @@ def export_channels_data(
     Returns:
         A pandas DataFrame containing the exported channel data
     """
-
-
     start_time = _SecondsNanos.from_flexible(start).to_api() if start else _MIN_TIMESTAMP.to_api()
     end_time = _SecondsNanos.from_flexible(end).to_api() if end else _MAX_TIMESTAMP.to_api()
-    start_time_scout_api =  _SecondsNanos.from_flexible(start).to_scout_run_api() if start else _MIN_TIMESTAMP.to_scout_run_api()
-    end_time_scout_api =  _SecondsNanos.from_flexible(end).to_scout_run_api() if end else _MAX_TIMESTAMP.to_scout_run_api()
+    start_time_scout_api = (
+        _SecondsNanos.from_flexible(start).to_scout_run_api() if start else _MIN_TIMESTAMP.to_scout_run_api()
+    )
+    end_time_scout_api = (
+        _SecondsNanos.from_flexible(end).to_scout_run_api() if end else _MAX_TIMESTAMP.to_scout_run_api()
+    )
     # Get all channels from the datasource
-    all_channels = list(get_channels(clients=clients, datasource_rid=datasource_rid, min_data_updated_time=start_time_scout_api, max_data_start_time=end_time_scout_api, exact_match=channel_exact_match, fuzzy_search_text=channel_fuzzy_search_text, tags=tags))
+    all_channels = list(
+        get_channels(
+            clients=clients,
+            datasource_rid=datasource_rid,
+            min_data_updated_time=start_time_scout_api,
+            max_data_start_time=end_time_scout_api,
+            exact_match=channel_exact_match,
+            fuzzy_search_text=channel_fuzzy_search_text,
+            tags=tags,
+        )
+    )
     # Extract channel names from the Channel objects
     channel_names = [channel.name for channel in all_channels]
-
+    if not channel_names:
+        logger.warning(f"No channels found for export from datasource {datasource_rid}")
+        return pd.DataFrame()
 
     # Process channel names in batches of 20
     batch_size = 20
