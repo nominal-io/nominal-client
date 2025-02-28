@@ -26,15 +26,13 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._export_utils import export_channels_data
+from nominal.core._export_utils import export_channels_data, get_channels
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
-from nominal.core.channel import Channel, _get_series_values_csv
+from nominal.core.channel import Channel
 from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
-    _MAX_TIMESTAMP,
-    _MIN_TIMESTAMP,
     IntegralNanosecondsUTC,
     _AnyTimestampType,
     _SecondsNanos,
@@ -281,31 +279,21 @@ class Dataset(HasRid):
             Yields a sequence of channel metadata objects which match the provided query parameters
 
         """
-        next_page_token = None
-        while True:
-            query = datasource_api.SearchChannelsRequest(
-                data_sources=[self.rid],
-                exact_match=list(exact_match),
-                fuzzy_search_text=fuzzy_search_text,
-                previously_selected_channels={},
-                next_page_token=next_page_token,
-                page_size=None,
-                prefix=None,
-            )
-            response = self._clients.datasource.search_channels(self._clients.auth_header, query)
-            for channel_metadata in response.results:
-                # Skip series archetypes for now-- they aren't handled by the rest of the SDK in a graceful manner
-                if channel_metadata.series_rid.logical_series is None:
-                    continue
+        return get_channels(
+            clients=self._clients,
+            datasource_rid=self.rid,
+            exact_match=exact_match,
+            fuzzy_search_text=fuzzy_search_text,
+        )
 
-                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
-
-            if response.next_page_token is None:
-                break
-            else:
-                next_page_token = response.next_page_token
-
-    def to_pandas(self, channel_exact_match: Sequence[str] = (), channel_fuzzy_search_text: str = "") -> pd.DataFrame:
+    def to_pandas(
+        self,
+        channel_exact_match: Sequence[str] = (),
+        channel_fuzzy_search_text: str = "",
+        start: str | datetime | IntegralNanosecondsUTC | None = None,
+        end: str | datetime | IntegralNanosecondsUTC | None = None,
+        tags: dict[str, str] = {},
+    ) -> pd.DataFrame:
         """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
         Args:
@@ -316,6 +304,11 @@ class Dataset(HasRid):
                 whereas a channel named 'engine_turbine_flowrate' would not!
             channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided
                 string.
+            start: The start time for the data export.
+                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
+            end: The end time for the data export.
+                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
+            tags: Dictionary of tags to filter channels by.
 
         Returns:
         -------
@@ -334,17 +327,15 @@ class Dataset(HasRid):
         ```
 
         """
-        rid_name = {ch.rid: ch.name for ch in self.get_channels(channel_exact_match, channel_fuzzy_search_text)}
-        # TODO(alkasm): parametrize start/end times with dataset bounds
-        body = _get_series_values_csv(
-            self._clients.auth_header,
-            self._clients.dataexport,
-            rid_name,
-            _MIN_TIMESTAMP.to_api(),
-            _MAX_TIMESTAMP.to_api(),
+        return export_channels_data(
+            clients=self._clients,
+            datasource_rid=self.rid,
+            start=start,
+            end=end,
+            channel_exact_match=channel_exact_match,
+            channel_fuzzy_search_text=channel_fuzzy_search_text,
+            tags=tags,
         )
-        df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
-        return df
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
@@ -427,35 +418,6 @@ class Dataset(HasRid):
     def unarchive(self) -> None:
         """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI."""
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
-
-    def export_channels(
-        self,
-        start: str | datetime | IntegralNanosecondsUTC,
-        end: str | datetime | IntegralNanosecondsUTC,
-        channel_names: list[str] | None = None,
-        tags: dict[str, str] = {},
-    ) -> pd.DataFrame:
-        """Export channel data from this dataset and return it as a pandas DataFrame.
-
-        Args:
-            start: The start time for the data export.
-                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
-            end: The end time for the data export.
-                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
-            channel_names: List of channel names to export. If None, all channels will be exported.
-            tags: Dictionary of tags to filter channels by.
-
-        Returns:
-            A pandas DataFrame containing the exported channel data.
-        """
-        return export_channels_data(
-            clients=self._clients,
-            datasource_rid=self.rid,
-            start=start,
-            end=end,
-            channel_names=channel_names,
-            tags=tags,
-        )
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, dataset: scout_catalog.EnrichedDataset) -> Self:

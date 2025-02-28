@@ -10,8 +10,6 @@ from typing import Iterable, Literal, Mapping, Protocol, Sequence
 import pandas as pd
 from nominal_api import (
     datasource_api,
-    scout_compute_api,
-    scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
     scout_datasource_connection_api,
@@ -22,7 +20,7 @@ from nominal_api import (
 
 from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
-from nominal.core._export_utils import export_channels_data
+from nominal.core._export_utils import export_channels_data, get_channels
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import WriteStream
@@ -46,11 +44,6 @@ class Connection(HasRid):
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
-        @property
-        def dataexport(self) -> scout_dataexport_api.DataExportService: ...
-        @property
-        def compute(self) -> scout_compute_api.ComputeService: ...
-
         @property
         def proto_write(self) -> ProtoWriteService: ...
 
@@ -131,33 +124,21 @@ class Connection(HasRid):
             series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
             yield Channel._from_conjure_logicalseries_api(self._clients, series)
 
-    def _get_channels(self) -> Iterable[Channel]:
+    def get_channels(self, exact_match: Sequence[str] = (), fuzzy_search_text: str = "") -> Iterable[Channel]:
         """Retrieve all channels associated with this connection."""
-        channel_names = [channel.name for channel in self._get_series_achetypes_paginated()]
-        return self._resolve_archetypes_to_channels(channel_names)
-
-    def get_channel(self, name: str, tags: dict[str, str] | None = None) -> Channel:
-        """Retrieve a channel with the given name and tags."""
-        req = timeseries_logicalseries_api.BatchResolveSeriesRequest(
-            requests=[
-                timeseries_logicalseries_api.ResolveSeriesRequest(
-                    datasource=self.rid, name=name, tags={} if tags is None else tags
-                )
-            ]
+        return get_channels(
+            clients=self._clients,
+            datasource_rid=self.rid,
+            exact_match=exact_match,
+            fuzzy_search_text=fuzzy_search_text,
         )
-        resp = self._clients.logical_series.resolve_batch(self._clients.auth_header, req)
-        if len(resp.series) == 0:
-            raise ValueError("no channel found with name {name!r} and tags {tags!r}")
-        elif len(resp.series) > 1:
-            raise ValueError("multiple channels found with name {name!r} and tags {tags!r}")
 
-        resolved_series = resp.series[0]
-        if resolved_series.type == "error" and resolved_series.error is not None:
-            raise RuntimeError(f"error resolving series: {resolved_series.error}")
-        elif resolved_series.rid is None:
-            raise RuntimeError(f"error resolving series for series {resolved_series}: no rid returned")
-        series = self._clients.logical_series.get_logical_series(self._clients.auth_header, resolved_series.rid)
-        return Channel._from_conjure_logicalseries_api(self._clients, series)
+    def get_channel(self, name: str) -> Channel:
+        """Retrieve a channel with the given name and tags."""
+        for channel in self.get_channels(exact_match=[name]):
+            if channel.name == name:
+                return channel
+        raise ValueError(f"channel {name!r} not found in connection {self.rid!r}")
 
     def archive(self) -> None:
         """Archive this connection.
@@ -169,11 +150,12 @@ class Connection(HasRid):
         """Unarchive this connection, making it visible in the UI."""
         self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
 
-    def export_channels(
+    def to_pandas(
         self,
         start: str | datetime | IntegralNanosecondsUTC,
         end: str | datetime | IntegralNanosecondsUTC,
-        channel_names: list[str] | None = None,
+        channel_exact_match: Sequence[str] = (),
+        channel_fuzzy_search_text: str = "",
         tags: dict[str, str] = {},
     ) -> pd.DataFrame:
         """Export channel data from this connection and return it as a pandas DataFrame.
@@ -183,7 +165,9 @@ class Connection(HasRid):
                 Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
             end: The end time for the data export.
                 Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
-            channel_names: List of channel names to export. If None, all channels will be exported.
+            channel_exact_match: Filter the returned channels to those whose names match all provided strings
+                (case insensitive).
+            channel_fuzzy_search_text: Filters the returned channels to those that fuzzily match the provided string.
             tags: Dictionary of tags to filter channels by.
 
         Returns:
@@ -194,7 +178,8 @@ class Connection(HasRid):
             datasource_rid=self.rid,
             start=start,
             end=end,
-            channel_names=channel_names,
+            channel_exact_match=channel_exact_match,
+            channel_fuzzy_search_text=channel_fuzzy_search_text,
             tags=tags,
         )
 

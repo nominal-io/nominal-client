@@ -2,24 +2,25 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Protocol
+from typing import Iterable, Protocol, Sequence
 
 import pandas as pd
 from nominal_api import (
     datasource_api,
-    scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
 
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core.channel import Channel, _get_series_values_csv
+from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
 
-class ExportClients(Protocol):
+class ExportClients(Channel._Clients, HasAuthHeader, Protocol):
     @property
     def auth_header(self) -> str: ...
     @property
@@ -30,12 +31,56 @@ class ExportClients(Protocol):
     def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
 
 
+def get_channels(
+    clients: ExportClients,
+    datasource_rid: str,
+    exact_match: Sequence[str] = (),
+    fuzzy_search_text: str = "",
+) -> Iterable[Channel]:
+    """Look up channels associated with a datasource.
+
+    Args:
+        clients: Client objects with necessary services
+        datasource_rid: The RID of the datasource to search channels in
+        exact_match: Filter the returned channels to those whose names match all provided strings
+            (case insensitive).
+        fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+
+    Yields:
+        Channel objects for each matching channel
+    """
+    next_page_token = None
+    while True:
+        query = datasource_api.SearchChannelsRequest(
+            data_sources=[datasource_rid],
+            exact_match=list(exact_match),
+            fuzzy_search_text=fuzzy_search_text,
+            previously_selected_channels={},
+            next_page_token=next_page_token,
+            page_size=None,
+            prefix=None,
+        )
+        response = clients.datasource.search_channels(clients.auth_header, query)
+        for channel_metadata in response.results:
+            # Skip series archetypes for now
+            if channel_metadata.series_rid.logical_series is None:
+                continue
+
+            yield Channel._from_conjure_datasource_api(clients, channel_metadata)
+
+        if response.next_page_token is None:
+            break
+        else:
+            next_page_token = response.next_page_token
+
+
 def export_channels_data(
     clients: ExportClients,
     datasource_rid: str,
-    start: str | datetime | IntegralNanosecondsUTC,
-    end: str | datetime | IntegralNanosecondsUTC,
-    channel_names: list[str] | None = None,
+    start: str | datetime | IntegralNanosecondsUTC | None = None,
+    end: str | datetime | IntegralNanosecondsUTC | None = None,
+    channel_exact_match: Sequence[str] = (),
+    channel_fuzzy_search_text: str = "",
     tags: dict[str, str] = {},
 ) -> pd.DataFrame:
     """Export channel data from a datasource and return it as a pandas DataFrame.
@@ -47,26 +92,25 @@ def export_channels_data(
             Can be a string (ISO format), datetime, or IntegralNanosecondsUTC
         end: The end time for the data export
             Can be a string (ISO format), datetime, or IntegralNanosecondsUTC
-        channel_names: List of channel names to export. If None, all channels will be exported
+        channel_exact_match: Filter the returned channels to those whose names match all provided strings
+            (case insensitive).
+        channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
         tags: Dictionary of tags to filter channels by
 
     Returns:
         A pandas DataFrame containing the exported channel data
     """
-    # If no channel names are provided, search for all channels in the datasource
-    if not channel_names:
-        req = datasource_api.SearchChannelsRequest(
-            data_sources=[datasource_rid],
-            exact_match=[],
-            fuzzy_search_text="",
-            previously_selected_channels={},
-        )
-        resp = clients.datasource.search_channels(clients.auth_header, req)
-        channel_names = [r.name for r in resp.results if r.series_rid.series_archetype is not None]
+    # Get all channels from the datasource
+    all_channels = list(get_channels(clients, datasource_rid, channel_exact_match, channel_fuzzy_search_text))
+    # Extract channel names from the Channel objects
+    channel_names = [channel.name for channel in all_channels]
 
-    # Process channel names in batches of 100
+    # Process channel names in batches of 20
     batch_size = 20
     all_dataframes = []
+
+    start_time = _SecondsNanos.from_flexible(start).to_api() if start else _MIN_TIMESTAMP.to_api()
+    end_time = _SecondsNanos.from_flexible(end).to_api() if end else _MAX_TIMESTAMP.to_api()
 
     for i in range(0, len(channel_names), batch_size):
         batch_channel_names = channel_names[i : i + batch_size]
@@ -102,43 +146,14 @@ def export_channels_data(
             flush=True,
         )
 
-        # Create export request for this batch
-        export_request = scout_dataexport_api.ExportDataRequest(
-            channels=scout_dataexport_api.ExportChannels(
-                time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                    channels=[
-                        scout_dataexport_api.TimeDomainChannel(
-                            column_name=name,
-                            compute_node=scout_compute_api.Series(raw=scout_compute_api.Reference(name=name)),
-                        )
-                        for _, name in batch_channel_info
-                    ],
-                    merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                        none=scout_dataexport_api.NoneStrategy(),
-                    ),
-                    output_timestamp_format=scout_dataexport_api.TimestampFormat(
-                        iso8601=scout_dataexport_api.Iso8601TimestampFormat(),
-                    ),
-                )
-            ),
-            start_time=_SecondsNanos.from_flexible(start).to_api(),
-            end_time=_SecondsNanos.from_flexible(end).to_api(),
-            context=scout_compute_api.Context(
-                function_variables={},
-                variables={
-                    name: scout_compute_api.VariableValue(
-                        series=scout_compute_api.SeriesSpec(rid=rid),
-                    )
-                    for rid, name in batch_channel_info
-                },
-            ),
-            format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
-            resolution=scout_dataexport_api.ResolutionOption(
-                undecimated=scout_dataexport_api.UndecimatedResolution(),
-            ),
-        )
+        # Create a dictionary mapping RIDs to channel names
+        rid_to_name = {rid: name for rid, name in batch_channel_info}
 
-        export_response = clients.dataexport.export_channel_data(clients.auth_header, export_request)
+        # Use _get_series_values_csv to get the data
+
+        export_response = _get_series_values_csv(
+            clients.auth_header, clients.dataexport, rid_to_name, start_time, end_time
+        )
 
         # Convert the response to a pandas DataFrame and add to list
         batch_df = pd.DataFrame(pd.read_csv(export_response))
