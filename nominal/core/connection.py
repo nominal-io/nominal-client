@@ -4,11 +4,14 @@ import itertools
 import logging
 import warnings
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Iterable, Literal, Mapping, Protocol, Sequence
 
+import pandas as pd
 from nominal_api import (
     datasource_api,
+    scout_compute_api,
+    scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
     scout_datasource_connection_api,
@@ -19,9 +22,11 @@ from nominal_api import (
 
 from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
+from nominal.core._export_utils import export_channels_data
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
 from nominal.core.stream import WriteStream
+from nominal.ts import IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,10 @@ class Connection(HasRid):
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
+        @property
+        def dataexport(self) -> scout_dataexport_api.DataExportService: ...
+        @property
+        def compute(self) -> scout_compute_api.ComputeService: ...
 
         @property
         def proto_write(self) -> ProtoWriteService: ...
@@ -159,6 +168,35 @@ class Connection(HasRid):
     def unarchive(self) -> None:
         """Unarchive this connection, making it visible in the UI."""
         self._clients.connection.unarchive_connection(self._clients.auth_header, self.rid)
+
+    def export_channels(
+        self,
+        start: str | datetime | IntegralNanosecondsUTC,
+        end: str | datetime | IntegralNanosecondsUTC,
+        channel_names: list[str] | None = None,
+        tags: dict[str, str] = {},
+    ) -> pd.DataFrame:
+        """Export channel data from this connection and return it as a pandas DataFrame.
+
+        Args:
+            start: The start time for the data export.
+                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
+            end: The end time for the data export.
+                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
+            channel_names: List of channel names to export. If None, all channels will be exported.
+            tags: Dictionary of tags to filter channels by.
+
+        Returns:
+            A pandas DataFrame containing the exported channel data.
+        """
+        return export_channels_data(
+            clients=self._clients,
+            datasource_rid=self.rid,
+            start=start,
+            end=end,
+            channel_names=channel_names,
+            tags=tags,
+        )
 
 
 @dataclass(frozen=True)

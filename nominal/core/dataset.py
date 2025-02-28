@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
@@ -26,6 +26,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._conjure_utils import _available_units, _build_unit_update
+from nominal.core._export_utils import export_channels_data
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.channel import Channel, _get_series_values_csv
@@ -426,6 +427,35 @@ class Dataset(HasRid):
     def unarchive(self) -> None:
         """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI."""
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
+
+    def export_channels(
+        self,
+        start: str | datetime | IntegralNanosecondsUTC,
+        end: str | datetime | IntegralNanosecondsUTC,
+        channel_names: list[str] | None = None,
+        tags: dict[str, str] = {},
+    ) -> pd.DataFrame:
+        """Export channel data from this dataset and return it as a pandas DataFrame.
+
+        Args:
+            start: The start time for the data export.
+                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
+            end: The end time for the data export.
+                Can be a string (ISO format), datetime, or IntegralNanosecondsUTC.
+            channel_names: List of channel names to export. If None, all channels will be exported.
+            tags: Dictionary of tags to filter channels by.
+
+        Returns:
+            A pandas DataFrame containing the exported channel data.
+        """
+        return export_channels_data(
+            clients=self._clients,
+            datasource_rid=self.rid,
+            start=start,
+            end=end,
+            channel_names=channel_names,
+            tags=tags,
+        )
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
