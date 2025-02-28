@@ -1041,6 +1041,7 @@ class NominalClient:
         start: str | datetime | IntegralNanosecondsUTC,
         end: str | datetime | IntegralNanosecondsUTC,
         channel_names: list[str],
+        tags: dict[str, str] = {},
     ) -> pd.DataFrame:
         """Export channel data from a datasource and return it as a pandas DataFrame.
 
@@ -1076,7 +1077,7 @@ class NominalClient:
                     timeseries_logicalseries_api.ResolveSeriesRequest(
                         datasource=datasource_rid,
                         name=name,
-                        tags={},
+                        tags=tags,
                     )
                     for name in channel_names
                 ]
