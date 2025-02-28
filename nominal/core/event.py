@@ -4,7 +4,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Iterable, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import (
     event,
