@@ -657,7 +657,15 @@ def create_event(
 ) -> Event:
     """Create a new event"""
     conn = get_default_client()
-    return conn.create_event(name, type, start, duration, assets=assets, properties=properties, labels=labels)
+    return conn.create_event(
+        name,
+        type,
+        ts._SecondsNanos.from_flexible(start).to_api(),
+        duration,
+        assets=assets,
+        properties=properties,
+        labels=labels,
+    )
 
 
 def get_events(uuids: Sequence[str]) -> Sequence[Event]:
