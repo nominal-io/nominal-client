@@ -231,7 +231,26 @@ class Dataset(HasRid):
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
-        request = _create_ingest_request(s3_path, channels, target)
+        request = _create_mcap_ingest_request(s3_path, channels, target)
+        self._clients.ingest.ingest(self._clients.auth_header, request)
+
+    def add_ardupilot_dataflash_to_dataset(
+        self,
+        path: Path | str,
+    ) -> None:
+        """Add a Dataflash file to an existing dataset."""
+        self.poll_until_ingestion_completed()
+        dataflash_path = Path(path)
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            dataflash_path,
+            self._clients.upload,
+            file_type=FileTypes.DATAFLASH,
+        )
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+        request = _create_dataflash_ingest_request(s3_path, target)
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
     def get_channel(self, name: str) -> Channel:
@@ -460,7 +479,18 @@ def _get_dataset(
     return datasets[0]
 
 
-def _create_ingest_request(
+def _create_dataflash_ingest_request(s3_path: str, target: ingest_api.DatasetIngestTarget) -> ingest_api.IngestRequest:
+    return ingest_api.IngestRequest(
+        ingest_api.IngestOptions(
+            dataflash=ingest_api.DataflashOpts(
+                source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                target=target,
+            )
+        ),
+    )
+
+
+def _create_mcap_ingest_request(
     s3_path: str, channels: ingest_api.McapChannels, target: ingest_api.DatasetIngestTarget
 ) -> ingest_api.IngestRequest:
     return ingest_api.IngestRequest(
