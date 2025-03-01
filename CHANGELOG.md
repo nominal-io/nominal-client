@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.36.0](https://github.com/nominal-io/nominal-client/compare/v1.35.0...v1.36.0) (2025-03-01)
+
+
+### Features
+
+* add execute to the Checklist class ([3efb9c9](https://github.com/nominal-io/nominal-client/commit/3efb9c9205d1a8a746eb64c80861a776ca27c3df))
+* add execute_checklist to the Run class ([#246](https://github.com/nominal-io/nominal-client/issues/246)) ([3efb9c9](https://github.com/nominal-io/nominal-client/commit/3efb9c9205d1a8a746eb64c80861a776ca27c3df))
+* expose more parameters in top-level `create_run` ([#242](https://github.com/nominal-io/nominal-client/issues/242)) ([d4c0f86](https://github.com/nominal-io/nominal-client/commit/d4c0f8672a8556867a5254d6b6f9225e97dd48be))
+
 ## [1.35.0](https://github.com/nominal-io/nominal-client/compare/v1.34.0...v1.35.0) (2025-02-27)
 
 
