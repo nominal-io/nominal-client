@@ -96,7 +96,7 @@ def get_default_client() -> NominalClient:
 def get_current_client() -> NominalClient:
     """Retrieve the current client to the Nominal platform."""
     if _current_client is None:
-        _set_base_url("https://api.gov.nominal.io/api")
+        set_current_client(NominalClient.from_profile("default"))
         return get_current_client()
     return _current_client
 
