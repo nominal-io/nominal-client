@@ -7,6 +7,7 @@ from typing import Literal, Mapping, Protocol, Sequence
 from nominal_api import (
     scout_checklistexecution_api,
     scout_checks_api,
+    scout_datareview_api,
     scout_integrations_api,
     scout_run_api,
 )
@@ -15,6 +16,8 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
+from nominal.core.data_review import DataReview
+from nominal.core.run import Run
 
 
 @dataclass(frozen=True)
@@ -26,11 +29,13 @@ class Checklist(HasRid):
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(DataReview._Clients, HasAuthHeader, Protocol):
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
+        @property
+        def datareview(self) -> scout_datareview_api.DataReviewService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
@@ -45,6 +50,39 @@ class Checklist(HasRid):
             properties=checklist.metadata.properties,
             labels=checklist.metadata.labels,
             _clients=clients,
+        )
+
+    def execute(self, run: Run | str, commit: str | None = None) -> DataReview:
+        """Execute a checklist against a run.
+
+        Args:
+            run: Run (or its rid) to execute the checklist against
+            commit: Commit hash of the version of the checklist to run, or None for the latest version
+
+        Returns:
+            Created datareview for the checklist execution
+        """
+        run_rid = rid_from_instance_or_string(run)
+
+        response = self._clients.datareview.batch_initiate(
+            self._clients.auth_header,
+            scout_datareview_api.BatchInitiateDataReviewRequest(
+                notification_configurations=[],
+                requests=[
+                    scout_datareview_api.CreateDataReviewRequest(
+                        checklist_rid=self.rid,
+                        run_rid=run_rid,
+                        commit=commit,
+                    )
+                ],
+            ),
+        )
+        if len(response.rids) != 1:
+            raise RuntimeError(f"Expected exactly one response from batch_initiate, received {len(response.rids)}")
+
+        return DataReview._from_conjure(
+            self._clients,
+            self._clients.datareview.get(self._clients.auth_header, response.rids[0]),
         )
 
     def execute_streaming(
