@@ -67,9 +67,9 @@ def get_default_client() -> NominalClient:
     return _get_or_create_connection(_global_base_url, token)
 
 
-def get_user() -> User:
+def get_user(*, client: NominalClient | None = None) -> User:
     """Retrieve the user associated with the default client."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_user()
 
 
@@ -81,6 +81,7 @@ def upload_tdms(
     timestamp_type: ts._AnyTimestampType | None = None,
     *,
     wait_until_complete: bool = True,
+    client: NominalClient | None = None,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a tdms file.
 
@@ -111,11 +112,11 @@ def upload_tdms(
     )
     if timestamp_column is not None and timestamp_type is not None:
         df = _tdms.tdms_with_time_column_to_pandas(path, timestamp_column)
-        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
+        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=timestamp_type, client=client)
     elif timestamp_column is None and timestamp_type is None:
         timestamp_column = "time_ns"
         df = _tdms.tdms_with_waveform_props_to_pandas(path, timestamp_column)
-        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
+        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS, client=client)
     raise ValueError("'timestamp_column' and 'timestamp_type' must be included together, or excluded together.")
 
 
@@ -128,6 +129,7 @@ def upload_pandas(
     channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
+    client: NominalClient | None,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a pandas.DataFrame.
 
@@ -135,7 +137,7 @@ def upload_pandas(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
 
     # TODO(alkasm): use parquet instead of CSV as an intermediary
 
@@ -171,6 +173,7 @@ def upload_polars(
     channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
+    client: NominalClient | None,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a polars.DataFrame.
 
@@ -178,7 +181,7 @@ def upload_polars(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
 
     def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
         df.write_csv(w)
@@ -212,6 +215,7 @@ def upload_csv(
     channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
+    client: NominalClient | None = None,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a .csv or .csv.gz file.
 
@@ -221,7 +225,7 @@ def upload_csv(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return _upload_csv(
         conn,
         file,
@@ -258,9 +262,9 @@ def _upload_csv(
     return dataset
 
 
-def get_dataset(rid: str) -> Dataset:
+def get_dataset(rid: str, *, client: NominalClient | None = None) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_dataset(rid)
 
 
@@ -273,6 +277,7 @@ def create_run(
     properties: Mapping[str, str] | None = None,
     labels: Sequence[str] = (),
     attachments: Iterable[Attachment] | Iterable[str] = (),
+    client: NominalClient | None = None,
 ) -> Run:
     """Create a run in the Nominal platform.
 
@@ -280,7 +285,7 @@ def create_run(
 
     To add a dataset to the run, use `run.add_dataset()`.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.create_run(
         name,
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
@@ -298,6 +303,8 @@ def create_run_csv(
     timestamp_column: str,
     timestamp_type: ts._LiteralAbsolute | ts.Iso8601 | ts.Epoch,
     description: str | None = None,
+    *,
+    client: NominalClient | None = None,
 ) -> Run:
     """Create a dataset from a CSV file, and create a run based on it.
 
@@ -323,9 +330,9 @@ def create_run_csv(
     return run
 
 
-def get_run(rid: str) -> Run:
+def get_run(rid: str, *, client: NominalClient | None = None) -> Run:
     """Retrieve a run from the Nominal platform by its RID."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_run(rid)
 
 
@@ -339,6 +346,7 @@ def search_runs(
     labels: Sequence[str] | None = None,
     property: tuple[str, str] | None = None,
     properties: Mapping[str, str] | None = None,
+    client: NominalClient | None = None,
 ) -> Sequence[Run]:
     """Search for runs meeting the specified filters.
     Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
@@ -355,7 +363,7 @@ def search_runs(
     Returns:
         All runs which match all of the provided conditions
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.search_runs(
         start=start,
         end=end,
@@ -371,39 +379,46 @@ def upload_attachment(
     file: Path | str,
     name: str,
     description: str | None = None,
+    *,
+    client: NominalClient | None = None,
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
     path = Path(file)
-    conn = get_default_client()
+    conn = client or get_default_client()
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:
         return conn.create_attachment_from_io(f, name, file_type, description)
 
 
-def get_attachment(rid: str) -> Attachment:
+def get_attachment(rid: str, *, client: NominalClient | None = None) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_attachment(rid)
 
 
-def get_log_set(rid: str) -> LogSet:
+def get_log_set(rid: str, *, client: NominalClient | None = None) -> LogSet:
     """Retrieve a log set from the Nominal platform by its RID."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_log_set(rid)
 
 
-def download_attachment(rid: str, file: Path | str) -> None:
+def download_attachment(rid: str, file: Path | str, *, client: NominalClient | None = None) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     attachment = conn.get_attachment(rid)
     attachment.write(Path(file))
 
 
 def upload_video(
-    file: Path | str, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
+    file: Path | str,
+    name: str,
+    start: datetime | str | ts.IntegralNanosecondsUTC,
+    description: str | None = None,
+    *,
+    client: NominalClient | None = None,
 ) -> Video:
     """Upload a video to Nominal from a file."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     path = Path(file)
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
@@ -416,9 +431,9 @@ def upload_video(
         )
 
 
-def get_video(rid: str) -> Video:
+def get_video(rid: str, *, client: NominalClient | None = None) -> Video:
     """Retrieve a video from the Nominal platform by its RID."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_video(rid)
 
 
@@ -428,15 +443,16 @@ def create_asset(
     *,
     properties: Mapping[str, str] | None = None,
     labels: Sequence[str] = (),
+    client: NominalClient | None = None,
 ) -> Asset:
     """Create an asset."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.create_asset(name, description, properties=properties, labels=labels)
 
 
-def get_asset(rid: str) -> Asset:
+def get_asset(rid: str, *, client: NominalClient | None = None) -> Asset:
     """Retrieve an asset by its RID."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_asset(rid)
 
 
@@ -449,6 +465,7 @@ def search_assets(
     labels: Sequence[str] | None = None,
     property: tuple[str, str] | None = None,
     properties: Mapping[str, str] | None = None,
+    client: NominalClient | None = None,
 ) -> Sequence[Asset]:
     """Search for assets meeting the specified filters.
     Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
@@ -463,7 +480,7 @@ def search_assets(
     Returns:
         All assets which match all of the provided conditions
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.search_assets(
         search_text=search_text,
         label=label,
@@ -473,13 +490,15 @@ def search_assets(
     )
 
 
-def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
+def list_streaming_checklists(
+    asset: Asset | str | None = None, *, client: NominalClient | None = None
+) -> Iterable[str]:
     """List all Streaming Checklists.
 
     Args:
         asset: if provided, only return checklists associated with the given asset.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.list_streaming_checklists(asset)
 
 
@@ -528,8 +547,8 @@ def _get_start_end_timestamp_csv_file(
     )
 
 
-def get_checklist(checklist_rid: str) -> Checklist:
-    conn = get_default_client()
+def get_checklist(checklist_rid: str, *, client: NominalClient | None = None) -> Checklist:
+    conn = client or get_default_client()
     return conn.get_checklist(checklist_rid)
 
 
@@ -540,6 +559,7 @@ def upload_mcap_video(
     description: str | None = None,
     *,
     wait_until_complete: bool = True,
+    client: NominalClient | None = None,
 ) -> Video:
     """Create a video in the Nominal platform from a topic in a mcap file.
 
@@ -549,7 +569,7 @@ def upload_mcap_video(
         returning. If you are uploading many videos, set `wait_until_complete=False` instead and call
         `wait_until_ingestion_complete()` after uploading all videos to allow for parallel ingestion.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
 
     path = Path(file)
     file_type = FileType.from_path(path)
@@ -575,31 +595,38 @@ def create_streaming_connection(
     datasource_description: str | None = None,
     *,
     required_tag_names: list[str] | None = None,
+    client: NominalClient | None = None,
 ) -> Connection:
     """Creates a new datasource and a new connection.
 
     datasource_id: A human readable identifier. Must be unique within an organization.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.create_streaming_connection(
         datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
     )
 
 
-def get_connection(rid: str) -> Connection:
+def get_connection(rid: str, client: NominalClient | None = None) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_connection(rid)
 
 
 def create_workbook_from_template(
-    template_rid: str, run_rid: str, *, title: str | None = None, description: str | None = None, is_draft: bool = False
+    template_rid: str,
+    run_rid: str,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    is_draft: bool = False,
+    client: NominalClient | None = None,
 ) -> Workbook:
     """Creates a new workbook from a template.
     template_rid: The template to use for the workbook.
     run_rid: The run to associate the workbook with.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
 
 
@@ -608,17 +635,19 @@ def create_log_set(
     logs: Iterable[Log] | Iterable[tuple[datetime | ts.IntegralNanosecondsUTC, str]],
     timestamp_type: ts.LogTimestampType = "absolute",
     description: str | None = None,
+    *,
+    client: NominalClient | None = None,
 ) -> LogSet:
     """Create an immutable log set with the given logs.
 
     The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
     or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.create_log_set(name, logs, timestamp_type, description)
 
 
-def data_review_builder() -> DataReviewBuilder:
+def data_review_builder(*, client: NominalClient | None = None) -> DataReviewBuilder:
     """Create a batch of data reviews to be initiated together.
 
     Example:
@@ -634,11 +663,11 @@ def data_review_builder() -> DataReviewBuilder:
         print(review.get_violations())
     ```
     """
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.data_review_builder()
 
 
-def get_data_review(rid: str) -> DataReview:
+def get_data_review(rid: str, *, client: NominalClient | None = None) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
-    conn = get_default_client()
+    conn = client or get_default_client()
     return conn.get_data_review(rid)
