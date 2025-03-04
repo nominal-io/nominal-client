@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.33.0"
+version = "1.36.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -25,7 +25,7 @@ requires-python = ">=3.9,<4"
 dependencies = [
     "click>=8,<9",
     "conjure-python-client>=2.8.0,<3",
-    "nominal-api==0.566.0",
+    "nominal-api==0.568.0",
     "nptdms>=1.9.0,<2",
     "tabulate>=0.9.0,<0.10",
     "typing-extensions>=4,<5",

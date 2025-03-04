@@ -60,6 +60,14 @@ class FileType(NamedTuple):
         return file_type
 
     @classmethod
+    def from_path_journal_json(cls, path: Path | str) -> FileType:
+        file_type = cls.from_path(path)
+        if file_type not in (FileTypes.JOURNAL_JSONL, FileTypes.JOURNAL_JSONL_GZ):
+            raise ValueError(f"journal jsonl path '{path}' must end in .jsonl or .jsonl.gz")
+
+        return file_type
+
+    @classmethod
     def from_video(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
         if file_type not in (FileTypes.MKV, FileTypes.MP4, FileTypes.TS):
@@ -80,3 +88,5 @@ class FileTypes:
     # https://issues.apache.org/jira/browse/PARQUET-1889
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
     TS: FileType = FileType(".ts", "video/mp2t")
+    JOURNAL_JSONL: FileType = FileType(".jsonl", "application/jsonl")
+    JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
