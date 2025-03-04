@@ -447,7 +447,6 @@ class NominalClient:
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
                     additional_file_tags=None,
-                    channel_prefix=prefix_tree_delimiter,
                     tag_keys_from_columns=None,
                 )
             )
