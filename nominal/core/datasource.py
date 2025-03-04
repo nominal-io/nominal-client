@@ -22,8 +22,7 @@ from nominal_api import (
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._utils import HasRid
-from nominal.core.channel import Channel, _get_series_values_csv
-from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP
+from nominal.core.channel import Channel
 
 logger = logging.getLogger(__name__)
 
@@ -82,29 +81,7 @@ class DataSource(HasRid):
             Yields a sequence of channel metadata objects which match the provided query parameters
 
         """
-        next_page_token = None
-        while True:
-            query = datasource_api.SearchChannelsRequest(
-                data_sources=[self.rid],
-                exact_match=list(exact_match),
-                fuzzy_search_text=fuzzy_search_text,
-                previously_selected_channels={},
-                next_page_token=next_page_token,
-                page_size=None,
-                prefix=None,
-            )
-            response = self._clients.datasource.search_channels(self._clients.auth_header, query)
-            for channel_metadata in response.results:
-                # Skip series archetypes for now-- they aren't handled by the rest of the SDK in a graceful manner
-                if channel_metadata.series_rid.logical_series is None:
-                    continue
-
-                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
-
-            if response.next_page_token is None:
-                break
-            else:
-                next_page_token = response.next_page_token
+        return iter(())
 
     def to_pandas(self, channel_exact_match: Sequence[str] = (), channel_fuzzy_search_text: str = "") -> pd.DataFrame:
         """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
@@ -135,16 +112,7 @@ class DataSource(HasRid):
         ```
 
         """
-        rid_name = {ch.rid: ch.name for ch in self.get_channels(channel_exact_match, channel_fuzzy_search_text)}
-        # TODO(alkasm): parametrize start/end times with dataset bounds
-        body = _get_series_values_csv(
-            self._clients.auth_header,
-            self._clients.dataexport,
-            rid_name,
-            _MIN_TIMESTAMP.to_api(),
-            _MAX_TIMESTAMP.to_api(),
-        )
-        df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
+        df = pd.DataFrame()
         return df
 
     def set_channel_units(
