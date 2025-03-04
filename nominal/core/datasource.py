@@ -7,10 +7,12 @@ from typing import Iterable, Mapping, Protocol, Sequence
 
 import pandas as pd
 from nominal_api import (
+    api,
     datasource_api,
     ingest_api,
     scout,
     scout_catalog,
+    scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
@@ -25,8 +27,9 @@ from nominal_api import (
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._utils import HasRid
+from nominal.core.channel import ChannelDataType
 from nominal.core.channel_v2 import Channel
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +172,123 @@ class DataSource(HasRid):
         ```
 
         """
-        df = pd.DataFrame()
-        return df
+        start_time = _SecondsNanos.from_flexible(start).to_api() if start else _MIN_TIMESTAMP.to_api()
+        end_time = _SecondsNanos.from_flexible(end).to_api() if end else _MAX_TIMESTAMP.to_api()
+        start_time_scout_api = (
+            _SecondsNanos.from_flexible(start).to_scout_run_api() if start else _MIN_TIMESTAMP.to_scout_run_api()
+        )
+        end_time_scout_api = (
+            _SecondsNanos.from_flexible(end).to_scout_run_api() if end else _MAX_TIMESTAMP.to_scout_run_api()
+        )
+        # Get all channels from the datasource
+        filtered_channels = list(
+            self.search_channels(
+                start=start_time_scout_api,
+                end=end_time_scout_api,
+                exact_match=channel_exact_match,
+                fuzzy_search_text=channel_fuzzy_search_text,
+                tags=tags,
+            )
+        )
+
+        batch_size = 20
+        all_dataframes = []
+
+        for i in range(0, len(filtered_channels), batch_size):
+            batch_channels = filtered_channels[i : i + batch_size]
+
+            total_batches = (len(filtered_channels) + batch_size - 1) // batch_size
+            current_batch = i // batch_size + 1
+            percent_complete = current_batch / total_batches * 100
+            bar_length = 20
+            filled_length = int(bar_length * current_batch // total_batches)
+            bar = "█" * filled_length + "░" * (bar_length - filled_length)
+            print(
+                f"\rExporting data: [{bar}] {percent_complete:.1f}% ({current_batch}/{total_batches} batches)",
+                end="",
+                flush=True,
+            )
+
+            export_request = self._construct_export_request(batch_channels, start_time, end_time)
+            export_response = self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request)
+            batch_df = pd.DataFrame(pd.read_csv(export_response))
+            if not batch_df.empty:
+                all_dataframes.append(batch_df)
+
+        if not all_dataframes:
+            logger.warning(f"No data found for export from datasource {self.rid}")
+            return pd.DataFrame()
+
+        result_df = pd.concat(all_dataframes, axis=0)
+        print(f"\nExport complete: {len(result_df)} total rows")
+        return result_df
+
+    def _construct_export_request(
+        self, channels: Sequence[Channel], start: api.Timestamp, end: api.Timestamp
+    ) -> scout_dataexport_api.ExportDataRequest:
+        export_channels = []
+
+        for channel in channels:
+            if channel.data_type == ChannelDataType.DOUBLE:
+                export_channels.append(
+                    scout_dataexport_api.TimeDomainChannel(
+                        column_name=channel.name,
+                        compute_node=scout_compute_api.Series(
+                            numeric=scout_compute_api.NumericSeries(
+                                channel=scout_compute_api.ChannelSeries(
+                                    data_source=scout_compute_api.DataSourceChannel(
+                                        channel=scout_compute_api.StringConstant(literal=channel.name),
+                                        data_source_rid=scout_compute_api.StringConstant(literal=self.rid),
+                                        tags={},
+                                    )
+                                )
+                            )
+                        ),
+                    )
+                )
+            elif channel.data_type == ChannelDataType.STRING:
+                export_channels.append(
+                    scout_dataexport_api.TimeDomainChannel(
+                        column_name=channel.name,
+                        compute_node=scout_compute_api.Series(
+                            enum=scout_compute_api.EnumSeries(
+                                channel=scout_compute_api.ChannelSeries(
+                                    data_source=scout_compute_api.DataSourceChannel(
+                                        channel=scout_compute_api.StringConstant(literal=channel.name),
+                                        data_source_rid=scout_compute_api.StringConstant(literal=self.rid),
+                                        tags={},
+                                    )
+                                )
+                            )
+                        ),
+                    )
+                )
+
+        request = scout_dataexport_api.ExportDataRequest(
+            channels=scout_dataexport_api.ExportChannels(
+                time_domain=scout_dataexport_api.ExportTimeDomainChannels(
+                    channels=export_channels,
+                    merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
+                        # only one series will be returned, so no need to merge
+                        none=scout_dataexport_api.NoneStrategy(),
+                    ),
+                    output_timestamp_format=scout_dataexport_api.TimestampFormat(
+                        iso8601=scout_dataexport_api.Iso8601TimestampFormat()
+                    ),
+                )
+            ),
+            start_time=start,
+            end_time=end,
+            context=scout_compute_api.Context(
+                function_variables={},
+                variables={},
+            ),
+            format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
+            resolution=scout_dataexport_api.ResolutionOption(
+                undecimated=scout_dataexport_api.UndecimatedResolution(),
+            ),
+        )
+        return request
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
