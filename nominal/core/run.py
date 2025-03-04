@@ -20,6 +20,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -42,8 +43,7 @@ class Run(HasRid):
     class _Clients(
         Attachment._Clients,
         Asset._Clients,
-        Connection._Clients,
-        Dataset._Clients,
+        DataSource._Clients,
         LogSet._Clients,
         Video._Clients,
         HasAuthHeader,

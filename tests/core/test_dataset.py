@@ -43,7 +43,7 @@ def mock_dataset(mock_clients):
     return ds
 
 
-@patch("nominal.core.dataset._available_units", return_value=UNITS)
+@patch("nominal.core.datasource._available_units", return_value=UNITS)
 @patch.object(Dataset, "get_channels")
 def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: MagicMock, mock_dataset: Dataset):
     mock_get_channels.return_value = [
@@ -81,7 +81,7 @@ def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: M
     mock_available_units.assert_called_once()
 
 
-@patch("nominal.core.dataset._available_units", return_value=UNITS)
+@patch("nominal.core.datasource._available_units", return_value=UNITS)
 @patch.object(Dataset, "get_channels")
 def test_set_channel_units_invalid_unit(
     mock_get_channels: MagicMock, mock_available_units: MagicMock, mock_dataset: Dataset
@@ -106,7 +106,7 @@ def test_set_channel_units_invalid_unit(
 
 
 @pytest.mark.parametrize("validate", [True, False])
-@patch("nominal.core.dataset._available_units", return_value=UNITS)
+@patch("nominal.core.datasource._available_units", return_value=UNITS)
 @patch.object(Dataset, "get_channels")
 def test_set_channel_units_no_channel_data(
     mock_get_channels: MagicMock, mock_available_units: MagicMock, mock_dataset: Dataset, validate: bool
