@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
+from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 
 # if TYPE_CHECKING:
 import pandas as pd
@@ -87,9 +87,7 @@ class DataSource(HasRid):
 
         """
         if not channel_names:
-            print("no channel names")
             channel_names = [channel.name for channel in self.search_channels()]
-            print("channel names found", len(list(channel_names)))
 
         requests = [
             timeseries_channelmetadata_api.GetChannelMetadataRequest(
@@ -138,7 +136,6 @@ class DataSource(HasRid):
             max_data_start_time=end_time_scout_api,
         )
 
-        print("query", query)
         response = self._clients.datasource.search_filtered_channels(self._clients.auth_header, query)
         for channel_metadata in response.results:
             yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
@@ -201,7 +198,9 @@ class DataSource(HasRid):
         for i in range(0, len(filtered_channels), batch_size):
             batch_channels = filtered_channels[i : i + batch_size]
             export_request = self._construct_export_request(batch_channels, start_time, end_time)
-            export_response = cast(BinaryIO, self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request))
+            export_response = cast(
+                BinaryIO, self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request)
+            )
             batch_df = pd.DataFrame(pd.read_csv(export_response))
             if not batch_df.empty:
                 all_dataframes.append(batch_df)

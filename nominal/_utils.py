@@ -141,38 +141,23 @@ def deprecate_all_positional_args(
     Returns:
         A decorator function
     """
+
     def decorator(method: Callable[Param, T]) -> Callable[Param, T]:
         from typing import cast
 
         def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
             # For instance methods, we need at least self/cls
             # So we check if there are more args than just self/cls
-            
+
             # Get the argument names from the function signature
-            import inspect
-            sig = inspect.signature(method)
-            param_names = list(sig.parameters.keys())
-            
             # Check if any positional args beyond self/cls are provided
             has_positional_args = len(args) > 1
-            
+
             # Check if any deprecated kwargs are provided
             has_deprecated_kwargs = any(arg_name in kwargs for arg_name in deprecated_args)
-            
+
             using_deprecated = has_positional_args or has_deprecated_kwargs
-            
-            if len(args) > 0:
-                for i, arg in enumerate(args):
-                    if i < len(param_names):
-                        print(f"  {param_names[i]}: {arg}")
-                    else:
-                        print(f"  arg{i}: {arg}")
-                        
-            if has_deprecated_kwargs:
-                for arg_name in deprecated_args:
-                    if arg_name in kwargs:
-                        print(f"  {arg_name}: {kwargs[arg_name]}")
-                        
+
             if using_deprecated:
                 import warnings
 
