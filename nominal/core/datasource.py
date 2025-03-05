@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 from nominal_api import (
     api,
     datasource_api,
