@@ -20,7 +20,6 @@ from nominal_api.api import Timestamp
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import HasRid
 from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -38,30 +37,22 @@ class ChannelDataType(enum.Enum):
 
 
 @dataclass
-class Channel(HasRid):
+class Channel:
     """Metadata for working with channels."""
 
-    _rid: str
     name: str
     data_source: str
     data_type: ChannelDataType | None
     unit: str | None
     description: str | None
     _clients: _Clients = field(repr=False)
+    _rid: str
 
     @property
     def rid(self) -> str:
         """Get the rid value with a deprecation warning."""
-        warnings.warn(
-            "Accessing Channel.rid is deprecated and now returns an empty string.", DeprecationWarning, stacklevel=2
-        )
+        warnings.warn("Accessing Channel.rid is deprecated and now returns an empty string.", UserWarning, stacklevel=2)
         return self._rid
-
-    @rid.setter
-    def rid(self, value: str) -> None:
-        """Set the rid value with a deprecation warning."""
-        warnings.warn("Setting Channel.rid is deprecated and now does nothing.", DeprecationWarning, stacklevel=2)
-        self._rid = value
 
     class _Clients(HasAuthHeader, Protocol):
         @property
@@ -91,7 +82,7 @@ class Channel(HasRid):
         """
         start_time = _MIN_TIMESTAMP.to_api() if start is None else _SecondsNanos.from_flexible(start).to_api()
         end_time = _MAX_TIMESTAMP.to_api() if end is None else _SecondsNanos.from_flexible(end).to_api()
-        body = self.get_series_values_csv(start_time, end_time)
+        body = self._get_series_values_csv(start_time, end_time)
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
         return df[self.name]
 
@@ -199,10 +190,8 @@ class Channel(HasRid):
                 tags={},
             )
         )
-        if self.data_type == ChannelDataType.STRING:
-            series = scout_compute_api.Series(enum=scout_compute_api.EnumSeries(channel=channel_series))
-        elif self.data_type == ChannelDataType.DOUBLE:
-            series = scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
+
+        series = self._create_series_from_channel(channel_series)
         request = scout_compute_api.ComputeNodeRequest(
             start=_SecondsNanos.from_flexible(start).to_api(),
             end=_SecondsNanos.from_flexible(end).to_api(),
@@ -221,7 +210,26 @@ class Channel(HasRid):
         response = self._clients.compute.compute(self._clients.auth_header, request)
         return response
 
-    def get_series_values_csv(
+    def _create_series_from_channel(self, channel_series: scout_compute_api.ChannelSeries) -> scout_compute_api.Series:
+        """Create a Series object based on the channel's data type.
+
+        Args:
+            channel_series: The channel series to use
+
+        Returns:
+            A Series object appropriate for the channel's data type
+
+        Raises:
+            ValueError: If the channel's data type is not supported
+        """
+        if self.data_type == ChannelDataType.STRING:
+            return scout_compute_api.Series(enum=scout_compute_api.EnumSeries(channel=channel_series))
+        elif self.data_type == ChannelDataType.DOUBLE:
+            return scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
+        else:
+            raise ValueError(f"Unsupported channel data type: {self.data_type}")
+
+    def _get_series_values_csv(
         self,
         start: api.Timestamp,
         end: api.Timestamp,
@@ -242,12 +250,7 @@ class Channel(HasRid):
                 tags={},
             )
         )
-        if self.data_type == ChannelDataType.STRING:
-            series = scout_compute_api.Series(enum=scout_compute_api.EnumSeries(channel=channel_series))
-        elif self.data_type == ChannelDataType.DOUBLE:
-            series = scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
-        else:
-            raise ValueError(f"Unsupported channel data type: {self.data_type}")
+        series = self._create_series_from_channel(channel_series)
 
         request = scout_dataexport_api.ExportDataRequest(
             channels=scout_dataexport_api.ExportChannels(

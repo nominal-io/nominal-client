@@ -258,7 +258,6 @@ class Dataset(DataSource):
         channel_names: list[str] | None = None,
     ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this dataset.
-        NOTE: Provided channels may also be associated with other datasets-- use with caution.
 
         Args:
         ----

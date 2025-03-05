@@ -17,6 +17,7 @@ from nominal.core._utils import HasRid, rid_from_instance_or_string, update_data
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
@@ -34,8 +35,7 @@ class Asset(HasRid):
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        Dataset._Clients,
-        Connection._Clients,
+        DataSource._Clients,
         Video._Clients,
         LogSet._Clients,
         Attachment._Clients,

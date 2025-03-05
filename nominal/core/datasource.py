@@ -104,7 +104,7 @@ class DataSource(HasRid):
         self,
         exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
-        tags: dict[str, str] = {},
+        tags: dict[str, str] | None = None,
         start: str | IntegralNanosecondsUTC | datetime | None = None,
         end: str | IntegralNanosecondsUTC | datetime | None = None,
     ) -> Iterable[Channel]:
@@ -142,7 +142,7 @@ class DataSource(HasRid):
         channel_fuzzy_search_text: str = "",
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
-        tags: dict[str, str] = {},
+        tags: dict[str, str] | None = None,
     ) -> pd.DataFrame:
         """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
@@ -193,19 +193,6 @@ class DataSource(HasRid):
 
         for i in range(0, len(filtered_channels), batch_size):
             batch_channels = filtered_channels[i : i + batch_size]
-
-            total_batches = (len(filtered_channels) + batch_size - 1) // batch_size
-            current_batch = i // batch_size + 1
-            percent_complete = current_batch / total_batches * 100
-            bar_length = 20
-            filled_length = int(bar_length * current_batch // total_batches)
-            bar = "█" * filled_length + "░" * (bar_length - filled_length)
-            print(
-                f"\rExporting data: [{bar}] {percent_complete:.1f}% ({current_batch}/{total_batches} batches)",
-                end="",
-                flush=True,
-            )
-
             export_request = self._construct_export_request(batch_channels, start_time, end_time)
             export_response = self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request)
             batch_df = pd.DataFrame(pd.read_csv(export_response))
@@ -214,10 +201,9 @@ class DataSource(HasRid):
 
         if not all_dataframes:
             logger.warning(f"No data found for export from datasource {self.rid}")
-            return pd.DataFrame()
+            raise RuntimeError(f"No data found for export from datasource {self.rid}")
 
         result_df = pd.concat(all_dataframes, axis=0)
-        print(f"\nExport complete: {len(result_df)} total rows")
         return result_df
 
     def _construct_export_request(
