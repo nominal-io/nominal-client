@@ -248,7 +248,7 @@ class Dataset(DataSource):
     @deprecate_arguments(
         deprecated_args=["exact_match", "fuzzy_search_text"],
         new_kwarg="channel_names",
-        new_route=DataSource.get_channels,
+        new_method=DataSource.get_channels,
     )
     def get_channels(
         self,

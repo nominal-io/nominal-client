@@ -122,7 +122,7 @@ def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callab
 
 
 def deprecate_arguments(
-    deprecated_args: list[str], new_kwarg: str, new_route: Callable[..., T]
+    deprecated_args: list[str], new_kwarg: str, new_method: Callable[..., T]
 ) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
     """Decorator to deprecate specific positional and keyword arguments in favor of a keyword-only argument.
 
