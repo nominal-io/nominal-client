@@ -78,8 +78,7 @@ def deprecate_argument(argument_name: str) -> Callable[[Callable[Param, T]], Cal
                 # Cast to satisfy the type checker
                 return func(*args, **cast(Param.kwargs, filtered_kwargs))
 
-            # Check if deprecated argument is passed as positional
-            elif len(args) > len(param_names) - 1:  # -1 because we're removing one parameter
+            elif len(args) > len(param_names) - 1:
                 warnings.warn(
                     f"The '{argument_name}' argument is deprecated and will be removed in a future version.",
                     UserWarning,
@@ -119,7 +118,7 @@ def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callab
     return _deprecate_keyword_argument_decorator
 
 
-def deprecate_all_positional_args(
+def deprecate_arguments(
     deprecated_args: list[str], new_kwarg: str, fallback_method: Callable[..., Any] | None = None
 ) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
     """Decorator to deprecate specific positional and keyword arguments in favor of a keyword-only argument.
