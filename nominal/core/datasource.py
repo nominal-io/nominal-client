@@ -88,11 +88,11 @@ class DataSource(HasRid):
         """
         if not channel_names:
             channel_names = [channel.name for channel in self.search_channels()]
-        
+
         # Process in batches of 500
         batch_size = 500
         for i in range(0, len(channel_names), batch_size):
-            batch_channel_names = channel_names[i:i + batch_size]
+            batch_channel_names = channel_names[i : i + batch_size]
             requests = [
                 timeseries_channelmetadata_api.GetChannelMetadataRequest(
                     channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
@@ -103,7 +103,9 @@ class DataSource(HasRid):
             ]
 
             batch_request = timeseries_channelmetadata_api.BatchGetChannelMetadataRequest(requests=requests)
-            response = self._clients.channel_metadata.batch_get_channel_metadata(self._clients.auth_header, batch_request)
+            response = self._clients.channel_metadata.batch_get_channel_metadata(
+                self._clients.auth_header, batch_request
+            )
             yield from (Channel._from_channel_metadata_api(self._clients, channel) for channel in response.responses)
 
     def search_channels(
