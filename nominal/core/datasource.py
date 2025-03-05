@@ -74,7 +74,7 @@ class DataSource(HasRid):
         self,
         *,
         channel_names: list[str] | None = None,
-    ) -> Iterable[Channel]:  # TODO(vtupuri): use new endpoint
+    ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this datasource
 
         Args:
@@ -88,20 +88,23 @@ class DataSource(HasRid):
         """
         if not channel_names:
             channel_names = [channel.name for channel in self.search_channels()]
-
-        requests = [
-            timeseries_channelmetadata_api.GetChannelMetadataRequest(
-                channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
-                    channel_name=channel_name, data_source_rid=self.rid
+        
+        # Process in batches of 500
+        batch_size = 500
+        for i in range(0, len(channel_names), batch_size):
+            batch_channel_names = channel_names[i:i + batch_size]
+            requests = [
+                timeseries_channelmetadata_api.GetChannelMetadataRequest(
+                    channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
+                        channel_name=channel_name, data_source_rid=self.rid
+                    )
                 )
-            )
-            for channel_name in channel_names
-        ]
+                for channel_name in batch_channel_names
+            ]
 
-        batch_request = timeseries_channelmetadata_api.BatchGetChannelMetadataRequest(requests=requests)
-        response = self._clients.channel_metadata.batch_get_channel_metadata(self._clients.auth_header, batch_request)
-
-        return (Channel._from_channel_metadata_api(self._clients, channel) for channel in response.responses)
+            batch_request = timeseries_channelmetadata_api.BatchGetChannelMetadataRequest(requests=requests)
+            response = self._clients.channel_metadata.batch_get_channel_metadata(self._clients.auth_header, batch_request)
+            yield from (Channel._from_channel_metadata_api(self._clients, channel) for channel in response.responses)
 
     def search_channels(
         self,
@@ -188,6 +191,8 @@ class DataSource(HasRid):
             )
         )
 
+        # print("filtered channels", filtered_channels)
+
         batch_size = 20
         all_dataframes = []
 
@@ -217,7 +222,7 @@ class DataSource(HasRid):
         if tags:
             for key, value in tags.items():
                 converted_tags[key] = scout_compute_api.StringConstant(literal=value)
-
+        print("converted tags", converted_tags)
         for channel in channels:
             if channel.data_type == ChannelDataType.DOUBLE:
                 export_channels.append(
@@ -246,7 +251,7 @@ class DataSource(HasRid):
                                     data_source=scout_compute_api.DataSourceChannel(
                                         channel=scout_compute_api.StringConstant(literal=channel.name),
                                         data_source_rid=scout_compute_api.StringConstant(literal=self.rid),
-                                        tags={},
+                                        tags=converted_tags,
                                     )
                                 )
                             )
