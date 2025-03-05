@@ -24,6 +24,7 @@ from nominal.core import (
     Workbook,
     poll_until_ingestion_completed,
 )
+from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 
 if TYPE_CHECKING:
@@ -575,7 +576,7 @@ def create_streaming_connection(
     datasource_description: str | None = None,
     *,
     required_tag_names: list[str] | None = None,
-) -> Connection:
+) -> StreamingConnection:
     """Creates a new datasource and a new connection.
 
     datasource_id: A human readable identifier. Must be unique within an organization.

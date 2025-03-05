@@ -75,7 +75,7 @@ class DataSource(HasRid):
     def get_channels(
         self,
         *,
-        channel_names: list[str] | None = None,
+        names: Sequence[str] | None = None,
     ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this datasource
 

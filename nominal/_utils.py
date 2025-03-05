@@ -156,7 +156,7 @@ def deprecate_arguments(
                 import warnings
 
                 warnings.warn(
-                    (f"Use the '{new_kwarg}' keyword argument instead."),
+                    f"Use the '{new_kwarg}' keyword argument instead.",
                     UserWarning,
                     stacklevel=2,
                 )
