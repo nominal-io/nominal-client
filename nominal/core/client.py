@@ -49,7 +49,7 @@ from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
-from nominal.exceptions import NominalIngestError
+from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
     LogTimestampType,
@@ -807,7 +807,7 @@ class NominalClient:
         conn = Connection._from_conjure(self._clients, connection_response)
         if isinstance(conn, StreamingConnection):
             return conn
-        raise TypeError(f"Expected StreamingConnection but got {type(conn).__name__}")
+        raise NominalError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
     def create_workbook_from_template(
         self,
