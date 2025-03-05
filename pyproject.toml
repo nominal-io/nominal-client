@@ -72,7 +72,6 @@ dev = [
 [tool.uv.sources]
 mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", branch = "alkasm/keep-context-settings" }
 nominal = { workspace = true }
-nominal-api = { path = "/Users/varuntupuri/Desktop/nominal-code/scout/scout-service-api/scout-service-api-python/python" }
 
 
 [project.optional-dependencies]
