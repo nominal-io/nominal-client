@@ -132,7 +132,7 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
-    channel_metadata: timeseries_channelmetadata.ChannelService
+    channel_metadata: timeseries_channelmetadata.ChannelMetadataService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -163,7 +163,7 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
-            channel_metadata=client_factory(timeseries_channelmetadata.ChannelService),
+            channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
         )
 
 

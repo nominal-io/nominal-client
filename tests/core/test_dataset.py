@@ -76,10 +76,10 @@ def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: M
     batch_request = mock_dataset._clients.channel_metadata.batch_update_channel_metadata.call_args[0][1]
     assert isinstance(batch_request, BatchUpdateChannelMetadataRequest)
     assert len(batch_request.requests) == 2
-    assert batch_request.requests[0].channel_name == "channel1"
-    assert batch_request.requests[0].data_source_rid == "test-rid"
-    assert batch_request.requests[1].channel_name == "channel2"
-    assert batch_request.requests[1].data_source_rid == "test-rid"
+    assert batch_request.requests[0].channel_identifier.channel_name == "channel1"
+    assert batch_request.requests[0].channel_identifier.data_source_rid == "test-rid"
+    assert batch_request.requests[1].channel_identifier.channel_name == "channel2"
+    assert batch_request.requests[1].channel_identifier.data_source_rid == "test-rid"
 
 
 @patch("nominal.core.datasource._available_units", return_value=UNITS)

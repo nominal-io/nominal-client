@@ -13,7 +13,7 @@ from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self
 
 from nominal._utils import (
-    deprecate_positional_args_with_fallback,
+    deprecate_all_positional_args,
 )
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import update_dataclass
@@ -245,7 +245,7 @@ class Dataset(DataSource):
             _clients=clients,
         )
 
-    @deprecate_positional_args_with_fallback(
+    @deprecate_all_positional_args(
         deprecated_args=["exact_match", "fuzzy_search_text"],
         new_kwarg="channel_names",
         fallback_method=DataSource.get_channels,
@@ -288,9 +288,7 @@ class Dataset(DataSource):
             response = self._clients.datasource.search_channels(self._clients.auth_header, query)
             for channel_metadata in response.results:
                 # Skip series archetypes for now-- they aren't handled by the rest of the SDK in a graceful manner
-                if channel_metadata.series_rid.logical_series is None:
-                    continue
-
+             
                 yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
 
             if response.next_page_token is None:

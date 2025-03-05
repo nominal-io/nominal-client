@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 
-if TYPE_CHECKING:
-    import pandas as pd
+# if TYPE_CHECKING:
+import pandas as pd
 from nominal_api import (
     api,
     datasource_api,
@@ -61,10 +61,10 @@ class DataSource(HasRid):
         @property
         def proto_write(self) -> ProtoWriteService: ...
         @property
-        def channel_metadata(self) -> timeseries_channelmetadata.ChannelService: ...
+        def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
 
     @deprecate_argument("tags")
-    def get_channel(self, name: str, tags: dict[str, str]) -> Channel:
+    def get_channel(self, name: str, tags: dict[str, str] | None = None) -> Channel:
         for channel in self.get_channels(channel_names=[name]):
             if channel.name == name:
                 return channel
@@ -87,11 +87,15 @@ class DataSource(HasRid):
 
         """
         if not channel_names:
+            print("no channel names")
             channel_names = [channel.name for channel in self.search_channels()]
+            print("channel names found", len(list(channel_names)))
 
         requests = [
             timeseries_channelmetadata_api.GetChannelMetadataRequest(
-                channel_name=channel_name, data_source_rid=self.rid
+                channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
+                    channel_name=channel_name, data_source_rid=self.rid
+                )
             )
             for channel_name in channel_names
         ]
@@ -133,6 +137,8 @@ class DataSource(HasRid):
             min_data_updated_time=start_time_scout_api,
             max_data_start_time=end_time_scout_api,
         )
+
+        print("query", query)
         response = self._clients.datasource.search_filtered_channels(self._clients.auth_header, query)
         for channel_metadata in response.results:
             yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
@@ -141,8 +147,8 @@ class DataSource(HasRid):
         self,
         channel_exact_match: Sequence[str] = (),
         channel_fuzzy_search_text: str = "",
-        start: datetime | IntegralNanosecondsUTC | None = None,
-        end: datetime | IntegralNanosecondsUTC | None = None,
+        start: str | datetime | IntegralNanosecondsUTC | None = None,
+        end: str | datetime | IntegralNanosecondsUTC | None = None,
         tags: dict[str, str] | None = None,
     ) -> pd.DataFrame:
         """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
@@ -195,7 +201,7 @@ class DataSource(HasRid):
         for i in range(0, len(filtered_channels), batch_size):
             batch_channels = filtered_channels[i : i + batch_size]
             export_request = self._construct_export_request(batch_channels, start_time, end_time)
-            export_response = self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request)
+            export_response = cast(BinaryIO, self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request))
             batch_df = pd.DataFrame(pd.read_csv(export_response))
             if not batch_df.empty:
                 all_dataframes.append(batch_df)
@@ -323,8 +329,9 @@ class DataSource(HasRid):
                     continue
 
             channel_request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
-                channel_name=channel_name,
-                data_source_rid=self.rid,
+                channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
+                    channel_name=channel_name, data_source_rid=self.rid
+                ),
                 unit_update=_build_unit_update(unit),
             )
             update_requests.append(channel_request)

@@ -119,59 +119,66 @@ def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callab
     return _deprecate_keyword_argument_decorator
 
 
-def deprecate_positional_args_with_fallback(
+def deprecate_all_positional_args(
     deprecated_args: list[str], new_kwarg: str, fallback_method: Callable[..., Any] | None = None
 ) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
-    """Decorator to deprecate positional arguments in favor of a keyword argument.
+    """Decorator to deprecate specific positional and keyword arguments in favor of a keyword-only argument.
 
-    This decorator handles the case where a method has positional arguments that are being deprecated
-    in favor of a keyword argument. If any of the deprecated arguments are provided, it will:
+    This decorator handles the case where a method has arguments that are being deprecated
+    in favor of a keyword-only argument. If any deprecated arguments are provided (either as
+    positional or keyword arguments), it will:
     1. Issue a warning
     2. Execute the original method (which contains the legacy logic)
-    3. If none of the deprecated arguments are provided but the new keyword argument is,
+    3. If no deprecated arguments are provided but the new keyword argument is,
        it will call the fallback method with the new keyword argument.
 
     Args:
-        deprecated_args: List of names of the positional arguments being deprecated
-        new_kwarg: Name of the new keyword argument that replaces the deprecated ones
+        deprecated_args: List of argument names that are being deprecated
+        new_kwarg: Name of the new keyword-only argument that replaces the deprecated args
         fallback_method: Optional function to call when using the new approach. If None,
                          the original method will be called.
 
     Returns:
         A decorator function
     """
-
     def decorator(method: Callable[Param, T]) -> Callable[Param, T]:
-        import inspect
         from typing import cast
 
-        sig = inspect.signature(method)
-        param_names = list(sig.parameters.keys())
-        is_instance_method = len(param_names) > 0 and param_names[0] in ("self", "cls")
-
         def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
-            # Check if any deprecated args are explicitly provided in kwargs
-            using_deprecated = any(arg_name in kwargs for arg_name in deprecated_args)
-
-            # If not found in kwargs, check if they're provided as positional args
-            if not using_deprecated and args:
-                # Get the names of parameters that would receive positional args
-                # Skip the first parameter (self/cls) for instance/class methods
-                offset = 1 if is_instance_method and len(args) > 0 else 0
-
-                # Check if any positional args map to deprecated parameters
-                for i, _ in enumerate(args[offset:], start=offset):
-                    if i < len(param_names) and param_names[i] in deprecated_args:
-                        using_deprecated = True
-                        break
-
+            # For instance methods, we need at least self/cls
+            # So we check if there are more args than just self/cls
+            
+            # Get the argument names from the function signature
+            import inspect
+            sig = inspect.signature(method)
+            param_names = list(sig.parameters.keys())
+            
+            # Check if any positional args beyond self/cls are provided
+            has_positional_args = len(args) > 1
+            
+            # Check if any deprecated kwargs are provided
+            has_deprecated_kwargs = any(arg_name in kwargs for arg_name in deprecated_args)
+            
+            using_deprecated = has_positional_args or has_deprecated_kwargs
+            
+            if len(args) > 0:
+                for i, arg in enumerate(args):
+                    if i < len(param_names):
+                        print(f"  {param_names[i]}: {arg}")
+                    else:
+                        print(f"  arg{i}: {arg}")
+                        
+            if has_deprecated_kwargs:
+                for arg_name in deprecated_args:
+                    if arg_name in kwargs:
+                        print(f"  {arg_name}: {kwargs[arg_name]}")
+                        
             if using_deprecated:
                 import warnings
 
                 warnings.warn(
                     (
-                        f"The positional arguments {', '.join(f'{arg!r}' for arg in deprecated_args)} "
-                        f"are deprecated and will be removed in a future version. "
+                        f"Positional arguments and deprecated keyword arguments are deprecated and will be removed in a future version. "
                         f"Use the '{new_kwarg}' keyword argument instead."
                     ),
                     UserWarning,
@@ -179,18 +186,12 @@ def deprecate_positional_args_with_fallback(
                 )
                 # Execute the original method with its legacy logic
                 return method(*args, **kwargs)
-
-            # If we're here, none of the deprecated args were used
             # Check if the new kwarg is provided and we have a fallback method
             if new_kwarg in kwargs and fallback_method is not None:
                 # Pass the instance as first argument if this is an instance method
-                if is_instance_method and len(args) > 0:
+                if len(args) == 1:  # self/cls is present
                     return cast(T, fallback_method(args[0], **{new_kwarg: kwargs[new_kwarg]}))
-                else:
-                    return cast(T, fallback_method(**{new_kwarg: kwargs[new_kwarg]}))
-
-            # If neither deprecated args nor new kwarg are used, or if no fallback method is provided,
-            # just call the original method
+            # If neither positional args nor new kwarg are used, or if no fallback method is provided
             return method(*args, **kwargs)
 
         return wrapper
