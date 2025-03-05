@@ -13,7 +13,7 @@ from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self
 
 from nominal._utils import (
-    deprecate_all_positional_args,
+    deprecate_arguments,
 )
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import update_dataclass
@@ -245,7 +245,7 @@ class Dataset(DataSource):
             _clients=clients,
         )
 
-    @deprecate_all_positional_args(
+    @deprecate_arguments(
         deprecated_args=["exact_match", "fuzzy_search_text"],
         new_kwarg="channel_names",
         fallback_method=DataSource.get_channels,
