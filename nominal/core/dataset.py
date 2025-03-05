@@ -247,7 +247,7 @@ class Dataset(DataSource):
 
     @deprecate_arguments(
         deprecated_args=["exact_match", "fuzzy_search_text"],
-        new_kwarg="channel_names",
+        new_kwarg="names",
         new_method=DataSource.get_channels,
     )
     def get_channels(
@@ -255,7 +255,7 @@ class Dataset(DataSource):
         exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
         *,
-        channel_names: list[str] | None = None,
+        names: Sequence[str] | None = None,
     ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this dataset.
 
@@ -266,7 +266,7 @@ class Dataset(DataSource):
                 For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
                 whereas a channel named 'engine_turbine_flowrate' would not!
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
-            channel_names: List of channel names to look up metadata for. This parameter is preferred over
+            names: List of channel names to look up metadata for. This parameter is preferred over
                 exact_match and fuzzy_search_text, which are deprecated.
 
         Yields:

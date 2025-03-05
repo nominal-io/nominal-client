@@ -137,7 +137,7 @@ def deprecate_arguments(
     Args:
         deprecated_args: List of argument names that are being deprecated
         new_kwarg: Name of the new keyword-only argument that replaces the deprecated args
-        new_route: Function to call when using the new approach. This is the new implementation
+        new_method: Function to call when using the new approach. This is the new implementation
                    that will be used when the new keyword argument is provided.
 
     Returns:
@@ -163,7 +163,7 @@ def deprecate_arguments(
                 return method(*args, **kwargs)
             if new_kwarg in kwargs:
                 if len(args) == 1:  # self/cls is present
-                    return new_route(args[0], **{new_kwarg: kwargs[new_kwarg]})
+                    return new_method(args[0], **{new_kwarg: kwargs[new_kwarg]})
             return method(*args, **kwargs)
 
         return wrapper

@@ -67,7 +67,7 @@ class DataSource(HasRid):
         "tags", "The 'tags' argument is deprecated because it's not used and will be removed in a future version."
     )
     def get_channel(self, name: str, tags: dict[str, str] | None = None) -> Channel:
-        for channel in self.get_channels(channel_names=[name]):
+        for channel in self.get_channels(names=[name]):
             if channel.name == name:
                 return channel
         raise ValueError(f"channel {name!r} not found in dataset {self.rid!r}")
@@ -81,14 +81,14 @@ class DataSource(HasRid):
 
         Args:
         ----
-            channel_names: List of channel names to look up metadata for.
+            names: List of channel names to look up metadata for.
 
         Yields:
         ------
             Yields a sequence of channel metadata objects which match the provided query parameters
 
         """
-        if not channel_names:
+        if not names:
             channel_names = [channel.name for channel in self.search_channels()]
 
         # Process in batches of 500
@@ -321,9 +321,7 @@ class DataSource(HasRid):
                 )
 
         # Get metadata for all requested channels
-        found_channels = {
-            channel.name: channel for channel in self.get_channels(channel_names=list(channels_to_units.keys()))
-        }
+        found_channels = {channel.name: channel for channel in self.get_channels(names=list(channels_to_units.keys()))}
 
         # For each channel / unit combination, create an update request
         update_requests = []
