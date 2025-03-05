@@ -120,7 +120,7 @@ def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callab
 
 
 def deprecate_positional_args_with_fallback(
-    deprecated_args: list[str], new_kwarg: str, fallback_method: Callable | None = None
+    deprecated_args: list[str], new_kwarg: str, fallback_method: Callable[..., Any] | None = None
 ) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
     """Decorator to deprecate positional arguments in favor of a keyword argument.
 
