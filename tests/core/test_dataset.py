@@ -48,7 +48,7 @@ def mock_dataset(mock_clients):
 def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: MagicMock, mock_dataset: Dataset):
     mock_get_channels.return_value = [
         Channel(
-            rid="ch-1",
+            _rid="ch-1",
             name="channel1",
             data_source="ds-1",
             data_type="float",
@@ -57,7 +57,7 @@ def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: M
             _clients=mock_dataset._clients,
         ),
         Channel(
-            rid="ch-2",
+            _rid="ch-2",
             name="channel2",
             data_source="ds-2",
             data_type="float",
@@ -89,7 +89,7 @@ def test_set_channel_units_invalid_unit(
 ):
     mock_get_channels.return_value = [
         Channel(
-            rid="ch-1",
+            _rid="ch-1",
             name="channel1",
             data_source="ds-1",
             data_type="float",

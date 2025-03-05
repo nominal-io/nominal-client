@@ -23,6 +23,7 @@ from nominal_api import (
     upload_api,
 )
 
+from nominal._utils import deprecate_argument
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._utils import HasRid
@@ -61,7 +62,8 @@ class DataSource(HasRid):
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelService: ...
 
-    def get_channel(self, name: str) -> Channel:
+    @deprecate_argument("tags")
+    def get_channel(self, name: str, tags: dict[str, str]) -> Channel:
         for channel in self.get_channels(channel_names=[name]):
             if channel.name == name:
                 return channel
@@ -318,7 +320,9 @@ class DataSource(HasRid):
                 )
 
         # Get metadata for all requested channels
-        found_channels = {channel.name: channel for channel in self.get_channels(channel_names=list(channels_to_units.keys()))}
+        found_channels = {
+            channel.name: channel for channel in self.get_channels(channel_names=list(channels_to_units.keys()))
+        }
 
         # For each channel / unit combination, create an update request
         update_requests = []

@@ -245,12 +245,6 @@ class Dataset(DataSource):
             _clients=clients,
         )
 
-    def get_channel(self, name: str) -> Channel:
-        for channel in self.get_channels(exact_match=[name]):
-            if channel.name == name:
-                return channel
-        raise ValueError(f"channel {name!r} not found in dataset {self.rid!r}")
-
     @deprecate_positional_args_with_fallback(
         deprecated_args=["exact_match", "fuzzy_search_text"],
         new_kwarg="channel_names",
