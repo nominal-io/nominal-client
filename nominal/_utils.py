@@ -120,7 +120,7 @@ def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callab
 
 
 def deprecate_positional_args_with_fallback(
-    deprecated_args: list[str], new_kwarg: str, fallback_method_name: str
+    deprecated_args: list[str], new_kwarg: str, fallback_method: Callable | None = None
 ) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
     """Decorator to deprecate positional arguments in favor of a keyword argument.
 
@@ -129,12 +129,13 @@ def deprecate_positional_args_with_fallback(
     1. Issue a warning
     2. Execute the original method (which contains the legacy logic)
     3. If none of the deprecated arguments are provided but the new keyword argument is,
-       it will call the parent class method with the new keyword argument.
+       it will call the fallback method with the new keyword argument.
 
     Args:
         deprecated_args: List of names of the positional arguments being deprecated
         new_kwarg: Name of the new keyword argument that replaces the deprecated ones
-        fallback_method_name: Name of the parent class method to call if using the new approach
+        fallback_method: Optional function to call when using the new approach. If None,
+                         the original method will be called.
 
     Returns:
         A decorator function
@@ -180,20 +181,16 @@ def deprecate_positional_args_with_fallback(
                 return method(*args, **kwargs)
 
             # If we're here, none of the deprecated args were used
-            # Check if the new kwarg is provided
-            if new_kwarg in kwargs:
-                # Call the parent class method with the new kwarg
+            # Check if the new kwarg is provided and we have a fallback method
+            if new_kwarg in kwargs and fallback_method is not None:
+                # Pass the instance as first argument if this is an instance method
                 if is_instance_method and len(args) > 0:
-                    instance_or_cls = args[0]
-                    parent_method = getattr(super(instance_or_cls.__class__, instance_or_cls), fallback_method_name)
-                    # Call the parent method with just the new kwarg
-                    return cast(T, parent_method(**{new_kwarg: kwargs[new_kwarg]}))
+                    return cast(T, fallback_method(args[0], **{new_kwarg: kwargs[new_kwarg]}))
                 else:
-                    # This is a static method or we don't have an instance/class
-                    # In this case, we can't use super() so just call the original method
-                    return method(*args, **kwargs)
+                    return cast(T, fallback_method(**{new_kwarg: kwargs[new_kwarg]}))
 
-            # If neither deprecated args nor new kwarg are used, just call the original method
+            # If neither deprecated args nor new kwarg are used, or if no fallback method is provided,
+            # just call the original method
             return method(*args, **kwargs)
 
         return wrapper

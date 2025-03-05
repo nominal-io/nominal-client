@@ -248,7 +248,7 @@ class Dataset(DataSource):
     @deprecate_positional_args_with_fallback(
         deprecated_args=["exact_match", "fuzzy_search_text"],
         new_kwarg="channel_names",
-        fallback_method_name="get_channels",
+        fallback_method=DataSource.get_channels,
     )
     def get_channels(
         self,
