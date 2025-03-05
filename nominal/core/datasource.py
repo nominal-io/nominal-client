@@ -24,7 +24,7 @@ from nominal_api import (
     upload_api,
 )
 
-from nominal._utils import deprecate_argument
+from nominal._utils import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._utils import HasRid
@@ -63,7 +63,9 @@ class DataSource(HasRid):
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
 
-    @deprecate_argument("tags")
+    @warn_on_deprecated_argument(
+        "tags", "The 'tags' argument is deprecated because it's not used and will be removed in a future version."
+    )
     def get_channel(self, name: str, tags: dict[str, str] | None = None) -> Channel:
         for channel in self.get_channels(channel_names=[name]):
             if channel.name == name:
