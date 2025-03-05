@@ -72,10 +72,11 @@ def deprecate_argument(argument_name: str) -> Callable[[Callable[Param, T]], Cal
                     UserWarning,
                     stacklevel=2,
                 )
-                # Remove the deprecated argument from kwargs but keep a copy of kwargs
-                # without modifying the original
-                filtered_kwargs = {k: v for k, v in kwargs.items() if k != argument_name}
-                return func(*args, **filtered_kwargs)
+                # Create a new kwargs dict without the deprecated argument
+                filtered_kwargs = kwargs.copy()
+                filtered_kwargs.pop(argument_name)
+                # Cast to satisfy the type checker
+                return func(*args, **cast(Param.kwargs, filtered_kwargs))
 
             # Check if deprecated argument is passed as positional
             elif len(args) > len(param_names) - 1:  # -1 because we're removing one parameter
@@ -85,8 +86,7 @@ def deprecate_argument(argument_name: str) -> Callable[[Callable[Param, T]], Cal
                     stacklevel=2,
                 )
                 # Only keep the non-deprecated positional arguments
-                # Use cast to satisfy the type checker
-                filtered_args = cast(Param.args, args[:len(param_names) - 1])
+                filtered_args = cast(Param.args, args[: len(param_names) - 1])
                 return func(*filtered_args, **kwargs)
 
             # If the deprecated argument is not used, just call the function normally
