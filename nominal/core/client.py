@@ -25,17 +25,19 @@ from nominal_api import (
     scout_run_api,
     scout_video_api,
     storage_datasource_api,
+    timeseries_logicalseries_api,
 )
 from typing_extensions import Self
 
 from nominal import _config
 from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core._conjure_utils import _available_units
+from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection
 from nominal.core.data_review import DataReview, DataReviewBuilder
@@ -738,7 +740,7 @@ class NominalClient:
             for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
         ]
 
-    def get_channel(self, rid: str) -> None:  # TODO(vtupuri): do this correctly
+    def get_channel(self, rid: str) -> Channel:
         """Get metadata for a given channel by looking up its rid
         Args:
             rid: Identifier for the channel to look up
@@ -752,8 +754,13 @@ class NominalClient:
             "get_channel is deprecated. Use dataset.get_channel() or connection.get_channel() instead.",
             DeprecationWarning,
         )
+        return Channel._from_conjure_logicalseries_api(
+            self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
+        )
 
-    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> None:  # TODO(vtupuri): do this correctly
+    def set_channel_units(
+        self, rids_to_types: Mapping[str, str | None]
+    ) -> Iterable[Channel]:  # TODO(vtupuri): do this correctly
         """Sets the units for a set of channels based on user-provided unit symbols
         Args:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
@@ -772,6 +779,19 @@ class NominalClient:
             "set_channel_units is deprecated. Use dataset.set_channel_units() or connection.set_channel_units()",
             DeprecationWarning,
         )
+
+        series_updates = []
+        for rid, series_type in rids_to_types.items():
+            series_updates.append(
+                timeseries_logicalseries_api.UpdateLogicalSeries(
+                    logical_series_rid=rid,
+                    unit_update=_build_unit_update(series_type),
+                )
+            )
+
+        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
+        response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
+        return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
 
     def get_connection(self, rid: str) -> Connection:
         """Retrieve a connection by its RID."""

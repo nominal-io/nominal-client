@@ -16,7 +16,6 @@ from nominal_api import (
     scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
-    scout_run_api,
     storage_writer_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
@@ -27,8 +26,7 @@ from nominal_api import (
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._utils import HasRid
-from nominal.core.channel import ChannelDataType
-from nominal.core.channel_v2 import Channel
+from nominal.core.channel import Channel, ChannelDataType
 from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -63,18 +61,18 @@ class DataSource(HasRid):
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelService: ...
 
-    def get_channel(self, name: str) -> Channel:  # TODO(vtupuri): use new endpoint
-        for channel in self.get_channels([name]):
+    def get_channel(self, name: str) -> Channel:
+        for channel in self.get_channels(channel_names=[name]):
             if channel.name == name:
                 return channel
         raise ValueError(f"channel {name!r} not found in dataset {self.rid!r}")
 
     def get_channels(
         self,
+        *,
         channel_names: list[str] | None = None,
     ) -> Iterable[Channel]:  # TODO(vtupuri): use new endpoint
-        """Look up the metadata for all matching channels associated with this dataset.
-        NOTE: Provided channels may also be associated with other datasets-- use with caution.
+        """Look up the metadata for all matching channels associated with this datasource
 
         Args:
         ----
@@ -105,8 +103,8 @@ class DataSource(HasRid):
         exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
         tags: dict[str, str] = {},
-        start: scout_run_api.UtcTimestamp | None = None,
-        end: scout_run_api.UtcTimestamp | None = None,
+        start: str | IntegralNanosecondsUTC | datetime | None = None,
+        end: str | IntegralNanosecondsUTC | datetime | None = None,
     ) -> Iterable[Channel]:
         """Look up channels associated with a datasource.
 
@@ -121,13 +119,16 @@ class DataSource(HasRid):
         Yields:
             Channel objects for each matching channel
         """
+        start_time_scout_api = _SecondsNanos.from_flexible(start).to_scout_run_api() if start else None
+        end_time_scout_api = _SecondsNanos.from_flexible(end).to_scout_run_api() if end else None
+
         query = datasource_api.SearchFilteredChannelsRequest(
             data_sources=[self.rid],
             exact_match=list(exact_match),
             fuzzy_search_text=fuzzy_search_text,
             tags={self.rid: tags} if tags else {},
-            min_data_updated_time=start if start else None,
-            max_data_start_time=end if end else None,
+            min_data_updated_time=start_time_scout_api,
+            max_data_start_time=end_time_scout_api,
         )
         response = self._clients.datasource.search_filtered_channels(self._clients.auth_header, query)
         for channel_metadata in response.results:
@@ -174,17 +175,11 @@ class DataSource(HasRid):
         """
         start_time = _SecondsNanos.from_flexible(start).to_api() if start else _MIN_TIMESTAMP.to_api()
         end_time = _SecondsNanos.from_flexible(end).to_api() if end else _MAX_TIMESTAMP.to_api()
-        start_time_scout_api = (
-            _SecondsNanos.from_flexible(start).to_scout_run_api() if start else _MIN_TIMESTAMP.to_scout_run_api()
-        )
-        end_time_scout_api = (
-            _SecondsNanos.from_flexible(end).to_scout_run_api() if end else _MAX_TIMESTAMP.to_scout_run_api()
-        )
         # Get all channels from the datasource
         filtered_channels = list(
             self.search_channels(
-                start=start_time_scout_api,
-                end=end_time_scout_api,
+                start=start,
+                end=end,
                 exact_match=channel_exact_match,
                 fuzzy_search_text=channel_fuzzy_search_text,
                 tags=tags,
@@ -323,7 +318,7 @@ class DataSource(HasRid):
                 )
 
         # Get metadata for all requested channels
-        found_channels = {channel.name: channel for channel in self.get_channels(list(channels_to_units.keys()))}
+        found_channels = {channel.name: channel for channel in self.get_channels(channel_names=list(channels_to_units.keys()))}
 
         # For each channel / unit combination, create an update request
         update_requests = []
@@ -350,7 +345,7 @@ class DataSource(HasRid):
         batch_request = timeseries_channelmetadata_api.BatchUpdateChannelMetadataRequest(requests=update_requests)
         self._clients.channel_metadata.batch_update_channel_metadata(self._clients.auth_header, batch_request)
 
-    def set_channel_prefix_tree(self, delimiter: str = ".") -> None:  # TODO(vtupuri): use new endpoint
+    def set_channel_prefix_tree(self, delimiter: str = ".") -> None:
         """Index channels hierarchically by a given delimiter.
 
         Primarily, the result of this operation is to prompt the frontend to represent channels

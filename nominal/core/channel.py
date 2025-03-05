@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, BinaryIO, Protocol, cast
@@ -11,6 +12,7 @@ from nominal_api import (
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
+    timeseries_channelmetadata_api,
     timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
@@ -39,13 +41,27 @@ class ChannelDataType(enum.Enum):
 class Channel(HasRid):
     """Metadata for working with channels."""
 
-    rid: str
+    _rid: str
     name: str
     data_source: str
     data_type: ChannelDataType | None
     unit: str | None
     description: str | None
     _clients: _Clients = field(repr=False)
+
+    @property
+    def rid(self) -> str:
+        """Get the rid value with a deprecation warning."""
+        warnings.warn(
+            "Accessing Channel.rid is deprecated and now returns an empty string.", DeprecationWarning, stacklevel=2
+        )
+        return self._rid
+
+    @rid.setter
+    def rid(self, value: str) -> None:
+        """Set the rid value with a deprecation warning."""
+        warnings.warn("Setting Channel.rid is deprecated and now does nothing.", DeprecationWarning, stacklevel=2)
+        self._rid = value
 
     class _Clients(HasAuthHeader, Protocol):
         @property
@@ -75,9 +91,7 @@ class Channel(HasRid):
         """
         start_time = _MIN_TIMESTAMP.to_api() if start is None else _SecondsNanos.from_flexible(start).to_api()
         end_time = _MAX_TIMESTAMP.to_api() if end is None else _SecondsNanos.from_flexible(end).to_api()
-        body = _get_series_values_csv(
-            self._clients.auth_header, self._clients.dataexport, {self.rid: self.name}, start_time, end_time
-        )
+        body = self.get_series_values_csv(start_time, end_time)
         df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
         return df[self.name]
 
@@ -91,7 +105,7 @@ class Channel(HasRid):
         channel_unit = channel.unit.symbol if channel.unit else None
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
         return cls(
-            rid=channel.series_rid.logical_series,
+            _rid="",
             name=channel.name,
             data_source=channel.data_source,
             unit=channel_unit,
@@ -106,11 +120,26 @@ class Channel(HasRid):
     ) -> Self:
         channel_data_type = ChannelDataType._from_conjure(series.series_data_type) if series.series_data_type else None
         return cls(
-            rid=series.rid,
+            _rid="",
             name=series.channel,
             data_source=series.data_source_rid,
             unit=series.unit,
             description=series.description,
+            data_type=channel_data_type,
+            _clients=clients,
+        )
+
+    @classmethod
+    def _from_channel_metadata_api(
+        cls, clients: _Clients, channel: timeseries_channelmetadata_api.ChannelMetadata
+    ) -> Self:
+        channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
+        return cls(
+            _rid="",
+            name=channel.channel_identifier.channel_name,
+            data_source=channel.channel_identifier.data_source_rid,
+            unit=channel.unit,
+            description=channel.description,
             data_type=channel_data_type,
             _clients=clients,
         )
@@ -163,25 +192,96 @@ class Channel(HasRid):
         buckets: int | None = None,
         resolution: int | None = None,
     ) -> scout_compute_api.ComputeNodeResponse:
+        channel_series = scout_compute_api.ChannelSeries(
+            data_source=scout_compute_api.DataSourceChannel(
+                channel=scout_compute_api.StringConstant(literal=self.name),
+                data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
+                tags={},
+            )
+        )
+        if self.data_type == ChannelDataType.STRING:
+            series = scout_compute_api.Series(enum=scout_compute_api.EnumSeries(channel=channel_series))
+        elif self.data_type == ChannelDataType.DOUBLE:
+            series = scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
         request = scout_compute_api.ComputeNodeRequest(
             start=_SecondsNanos.from_flexible(start).to_api(),
             end=_SecondsNanos.from_flexible(end).to_api(),
             node=scout_compute_api.ComputableNode(
                 series=scout_compute_api.SummarizeSeries(
-                    input=scout_compute_api.Series(
-                        numeric=scout_compute_api.NumericSeries(raw=scout_compute_api.Reference(name="ch-1"))
-                    ),
+                    input=series,
                     buckets=buckets,
                     resolution=resolution,
                 )
             ),
             context=scout_compute_api.Context(
                 function_variables={},
-                variables={"ch-1": scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=self.rid))},
+                variables={},
             ),
         )
         response = self._clients.compute.compute(self._clients.auth_header, request)
         return response
+
+    def get_series_values_csv(
+        self,
+        start: api.Timestamp,
+        end: api.Timestamp,
+    ) -> BinaryIO:
+        """Get the channel data as a CSV file-like object.
+
+        Args:
+            start: Start timestamp
+            end: End timestamp
+
+        Returns:
+            A binary file-like object containing the CSV data
+        """
+        channel_series = scout_compute_api.ChannelSeries(
+            data_source=scout_compute_api.DataSourceChannel(
+                channel=scout_compute_api.StringConstant(literal=self.name),
+                data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
+                tags={},
+            )
+        )
+        if self.data_type == ChannelDataType.STRING:
+            series = scout_compute_api.Series(enum=scout_compute_api.EnumSeries(channel=channel_series))
+        elif self.data_type == ChannelDataType.DOUBLE:
+            series = scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
+        else:
+            raise ValueError(f"Unsupported channel data type: {self.data_type}")
+
+        request = scout_dataexport_api.ExportDataRequest(
+            channels=scout_dataexport_api.ExportChannels(
+                time_domain=scout_dataexport_api.ExportTimeDomainChannels(
+                    channels=[
+                        scout_dataexport_api.TimeDomainChannel(
+                            column_name=self.name,
+                            compute_node=series,
+                        )
+                    ],
+                    merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
+                        # only one series will be returned, so no need to merge
+                        none=scout_dataexport_api.NoneStrategy(),
+                    ),
+                    output_timestamp_format=scout_dataexport_api.TimestampFormat(
+                        iso8601=scout_dataexport_api.Iso8601TimestampFormat()
+                    ),
+                )
+            ),
+            start_time=start,
+            end_time=end,
+            context=scout_compute_api.Context(
+                function_variables={},
+                variables={},
+            ),
+            format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
+            resolution=scout_dataexport_api.ResolutionOption(
+                undecimated=scout_dataexport_api.UndecimatedResolution(),
+            ),
+        )
+        response = self._clients.dataexport.export_channel_data(self._clients.auth_header, request)
+        # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
+        # this acts like a file-like object in binary-mode.
+        return cast(BinaryIO, response)
 
 
 def _get_series_values_csv(

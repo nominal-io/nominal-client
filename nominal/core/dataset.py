@@ -9,15 +9,15 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
-from nominal_api import (
-    api,
-    ingest_api,
-    scout_catalog,
-)
+from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self
 
+from nominal._utils import (
+    deprecate_positional_args_with_fallback,
+)
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import update_dataclass
+from nominal.core.channel import Channel
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
@@ -244,6 +244,66 @@ class Dataset(DataSource):
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             _clients=clients,
         )
+
+    def get_channel(self, name: str) -> Channel:
+        for channel in self.get_channels(exact_match=[name]):
+            if channel.name == name:
+                return channel
+        raise ValueError(f"channel {name!r} not found in dataset {self.rid!r}")
+
+    @deprecate_positional_args_with_fallback(
+        deprecated_args=["exact_match", "fuzzy_search_text"],
+        new_kwarg="channel_names",
+        fallback_method_name="get_channels",
+    )
+    def get_channels(
+        self,
+        exact_match: Sequence[str] = (),
+        fuzzy_search_text: str = "",
+        *,
+        channel_names: list[str] | None = None,
+    ) -> Iterable[Channel]:
+        """Look up the metadata for all matching channels associated with this dataset.
+        NOTE: Provided channels may also be associated with other datasets-- use with caution.
+
+        Args:
+        ----
+            exact_match: Filter the returned channels to those whose names match all provided strings
+                (case insensitive).
+                For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
+                whereas a channel named 'engine_turbine_flowrate' would not!
+            fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+            channel_names: List of channel names to look up metadata for. This parameter is preferred over
+                exact_match and fuzzy_search_text, which are deprecated.
+
+        Yields:
+        ------
+            Yields a sequence of channel metadata objects which match the provided query parameters
+
+        """
+        next_page_token = None
+        while True:
+            query = datasource_api.SearchChannelsRequest(
+                data_sources=[self.rid],
+                exact_match=list(exact_match),
+                fuzzy_search_text=fuzzy_search_text,
+                previously_selected_channels={},
+                next_page_token=next_page_token,
+                page_size=None,
+                prefix=None,
+            )
+            response = self._clients.datasource.search_channels(self._clients.auth_header, query)
+            for channel_metadata in response.results:
+                # Skip series archetypes for now-- they aren't handled by the rest of the SDK in a graceful manner
+                if channel_metadata.series_rid.logical_series is None:
+                    continue
+
+                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
+
+            if response.next_page_token is None:
+                break
+            else:
+                next_page_token = response.next_page_token
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
