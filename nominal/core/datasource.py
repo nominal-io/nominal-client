@@ -222,7 +222,6 @@ class DataSource(HasRid):
         if tags:
             for key, value in tags.items():
                 converted_tags[key] = scout_compute_api.StringConstant(literal=value)
-        print("converted tags", converted_tags)
         for channel in channels:
             if channel.data_type == ChannelDataType.DOUBLE:
                 export_channels.append(
