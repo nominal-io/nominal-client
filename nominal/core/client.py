@@ -751,7 +751,7 @@ class NominalClient:
         """
         warnings.warn(
             "get_channel is deprecated. Use dataset.get_channel() or connection.get_channel() instead.",
-            DeprecationWarning,
+            UserWarning,
         )
         return Channel._from_conjure_logicalseries_api(
             self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
@@ -776,7 +776,7 @@ class NominalClient:
         """
         warnings.warn(
             "set_channel_units is deprecated. Use dataset.set_channel_units() or connection.set_channel_units()",
-            DeprecationWarning,
+            UserWarning,
         )
 
         series_updates = []
