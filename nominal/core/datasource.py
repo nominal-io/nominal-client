@@ -107,9 +107,6 @@ class DataSource(HasRid):
         self,
         exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
-        tags: dict[str, str] | None = None,
-        start: str | IntegralNanosecondsUTC | datetime | None = None,
-        end: str | IntegralNanosecondsUTC | datetime | None = None,
     ) -> Iterable[Channel]:
         """Look up channels associated with a datasource.
 
@@ -124,21 +121,23 @@ class DataSource(HasRid):
         Yields:
             Channel objects for each matching channel
         """
-        start_time_scout_api = _SecondsNanos.from_flexible(start).to_scout_run_api() if start else None
-        end_time_scout_api = _SecondsNanos.from_flexible(end).to_scout_run_api() if end else None
-
-        query = datasource_api.SearchFilteredChannelsRequest(
-            data_sources=[self.rid],
-            exact_match=list(exact_match),
-            fuzzy_search_text=fuzzy_search_text,
-            tags={self.rid: tags} if tags else {},
-            min_data_updated_time=start_time_scout_api,
-            max_data_start_time=end_time_scout_api,
-        )
-
-        response = self._clients.datasource.search_filtered_channels(self._clients.auth_header, query)
-        for channel_metadata in response.results:
-            yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
+        next_page_token = None
+        while True:
+            query = datasource_api.SearchChannelsRequest(
+                data_sources=[self.rid],
+                exact_match=list(exact_match),
+                fuzzy_search_text=fuzzy_search_text,
+                previously_selected_channels={},
+                next_page_token=next_page_token,
+                page_size=None,
+                prefix=None,
+            )
+            response = self._clients.datasource.search_channels(self._clients.auth_header, query)
+            for channel_metadata in response.results:
+                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
+            if response.next_page_token is None:
+                break
+            next_page_token = response.next_page_token
 
     def to_pandas(
         self,
@@ -184,11 +183,8 @@ class DataSource(HasRid):
         # Get all channels from the datasource
         filtered_channels = list(
             self.search_channels(
-                start=start,
-                end=end,
                 exact_match=channel_exact_match,
                 fuzzy_search_text=channel_fuzzy_search_text,
-                tags=tags,
             )
         )
 
@@ -197,7 +193,7 @@ class DataSource(HasRid):
 
         for i in range(0, len(filtered_channels), batch_size):
             batch_channels = filtered_channels[i : i + batch_size]
-            export_request = self._construct_export_request(batch_channels, start_time, end_time)
+            export_request = self._construct_export_request(batch_channels, start_time, end_time, tags)
             export_response = cast(
                 BinaryIO, self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request)
             )
@@ -213,9 +209,14 @@ class DataSource(HasRid):
         return result_df
 
     def _construct_export_request(
-        self, channels: Sequence[Channel], start: api.Timestamp, end: api.Timestamp
+        self, channels: Sequence[Channel], start: api.Timestamp, end: api.Timestamp, tags: dict[str, str] | None
     ) -> scout_dataexport_api.ExportDataRequest:
         export_channels = []
+
+        converted_tags = {}
+        if tags:
+            for key, value in tags.items():
+                converted_tags[key] = scout_compute_api.StringConstant(literal=value)
 
         for channel in channels:
             if channel.data_type == ChannelDataType.DOUBLE:
@@ -228,7 +229,7 @@ class DataSource(HasRid):
                                     data_source=scout_compute_api.DataSourceChannel(
                                         channel=scout_compute_api.StringConstant(literal=channel.name),
                                         data_source_rid=scout_compute_api.StringConstant(literal=self.rid),
-                                        tags={},
+                                        tags=converted_tags,
                                     )
                                 )
                             )

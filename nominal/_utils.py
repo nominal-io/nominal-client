@@ -162,10 +162,7 @@ def deprecate_all_positional_args(
                 import warnings
 
                 warnings.warn(
-                    (
-                        f"Positional arguments and deprecated keyword arguments are deprecated and will be removed in a future version. "
-                        f"Use the '{new_kwarg}' keyword argument instead."
-                    ),
+                    (f"Use the '{new_kwarg}' keyword argument instead."),
                     UserWarning,
                     stacklevel=2,
                 )
