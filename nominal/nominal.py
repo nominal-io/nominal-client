@@ -270,6 +270,10 @@ def create_run(
     start: datetime | str | ts.IntegralNanosecondsUTC,
     end: datetime | str | ts.IntegralNanosecondsUTC | None,
     description: str | None = None,
+    *,
+    properties: Mapping[str, str] | None = None,
+    labels: Sequence[str] = (),
+    attachments: Iterable[Attachment] | Iterable[str] = (),
 ) -> Run:
     """Create a run in the Nominal platform.
 
@@ -283,6 +287,9 @@ def create_run(
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
         end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         description=description,
+        properties=properties,
+        labels=labels,
+        attachments=attachments,
     )
 
 

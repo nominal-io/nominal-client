@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from nominal_api import scout, scout_run_api, timeseries_logicalseries_api
+from nominal_api import api, scout, scout_run_api, timeseries_logicalseries_api
 from typing_extensions import TypeAlias
 
 from nominal.core.unit import Unit
@@ -17,7 +17,7 @@ def _available_units(auth_header: str, client: scout.UnitsService) -> Sequence[U
 def _build_unit_update(symbol: str | None) -> timeseries_logicalseries_api.UnitUpdate:
     """Helper function for building a UnitUpdate enum from a potentially null unit symbol."""
     if symbol is None:
-        return timeseries_logicalseries_api.UnitUpdate(clear_unit=timeseries_logicalseries_api.Empty())
+        return timeseries_logicalseries_api.UnitUpdate(clear_unit=api.Empty())
     else:
         return timeseries_logicalseries_api.UnitUpdate(unit=symbol)
 
