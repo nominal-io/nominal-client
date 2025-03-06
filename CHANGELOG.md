@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.37.0](https://github.com/nominal-io/nominal-client/compare/v1.36.0...v1.37.0) (2025-03-06)
+
+
+### Features
+
+* use new channel metadata endpoints ([#248](https://github.com/nominal-io/nominal-client/issues/248)) ([00b0801](https://github.com/nominal-io/nominal-client/commit/00b0801b6d6aabb02d2ec9a19e93d21254e138e3))
+
+
+### Bug Fixes
+
+* list and remove various types of data sources ([#209](https://github.com/nominal-io/nominal-client/issues/209)) ([a018c2c](https://github.com/nominal-io/nominal-client/commit/a018c2cc0d773f92512774bf4e2c1c91cb60a7e1))
+* return type of create_streaming_connection and clean .close() and enqueue metric ([#225](https://github.com/nominal-io/nominal-client/issues/225)) ([b97ab06](https://github.com/nominal-io/nominal-client/commit/b97ab062861a4d6da1aadb8fa92f804a81e1900b))
+* stop using channel delimiter as channel prefix ([#249](https://github.com/nominal-io/nominal-client/issues/249)) ([0ba556f](https://github.com/nominal-io/nominal-client/commit/0ba556f744141aaa8c6a76e23e99701e9abcf65e))
+
 ## [1.36.0](https://github.com/nominal-io/nominal-client/compare/v1.35.0...v1.36.0) (2025-03-01)
 
 
