@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
+from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 
-# if TYPE_CHECKING:
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 from nominal_api import (
     api,
     datasource_api,
@@ -154,6 +154,8 @@ class DataSource(HasRid):
         end: str | datetime | IntegralNanosecondsUTC | None = None,
         tags: dict[str, str] | None = None,
     ) -> pd.DataFrame:
+        import pandas as pd
+
         """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
         Args:
