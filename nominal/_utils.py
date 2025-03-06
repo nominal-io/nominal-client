@@ -67,11 +67,7 @@ def warn_on_deprecated_argument(
         @wraps(func)
         def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
             if argument_name in kwargs:
-                warnings.warn(
-                    warning_message,
-                    UserWarning,
-                    stacklevel=2,
-                )
+                warnings.warn(warning_message, UserWarning, stacklevel=2)
                 filtered_kwargs = kwargs.copy()
                 filtered_kwargs.pop(argument_name)
                 return func(*args, **cast(Param.kwargs, filtered_kwargs))
@@ -153,11 +149,7 @@ def deprecate_arguments(
             )
 
             if has_deprecated_kwargs or has_deprecated_positional:
-                warnings.warn(
-                    f"Use the '{new_kwarg}' keyword argument instead.",
-                    UserWarning,
-                    stacklevel=2,
-                )
+                warnings.warn(f"Use the '{new_kwarg}' keyword argument instead.", UserWarning, stacklevel=2)
                 return method(*args, **kwargs)
 
             if new_kwarg in kwargs:
