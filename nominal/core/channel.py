@@ -188,7 +188,7 @@ class Channel:
             )
         )
 
-        series = self._create_series_from_channel(channel_series)
+        series = _create_series_from_channel(channel_series, self.data_type)
         request = scout_compute_api.ComputeNodeRequest(
             start=_SecondsNanos.from_flexible(start).to_api(),
             end=_SecondsNanos.from_flexible(end).to_api(),
@@ -206,25 +206,6 @@ class Channel:
         )
         response = self._clients.compute.compute(self._clients.auth_header, request)
         return response
-
-    def _create_series_from_channel(self, channel_series: scout_compute_api.ChannelSeries) -> scout_compute_api.Series:
-        """Create a Series object based on the channel's data type.
-
-        Args:
-            channel_series: The channel series to use
-
-        Returns:
-            A Series object appropriate for the channel's data type
-
-        Raises:
-            ValueError: If the channel's data type is not supported
-        """
-        if self.data_type == ChannelDataType.STRING:
-            return scout_compute_api.Series(enum=scout_compute_api.EnumSeries(channel=channel_series))
-        elif self.data_type == ChannelDataType.DOUBLE:
-            return scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
-        else:
-            raise ValueError(f"Unsupported channel data type: {self.data_type}")
 
     def _get_series_values_csv(
         self,
@@ -247,7 +228,7 @@ class Channel:
                 tags={},
             )
         )
-        series = self._create_series_from_channel(channel_series)
+        series = _create_series_from_channel(channel_series, self.data_type)
 
         request = scout_dataexport_api.ExportDataRequest(
             channels=scout_dataexport_api.ExportChannels(
@@ -332,3 +313,26 @@ def _get_series_values_csv(
 
 def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
+
+
+def _create_series_from_channel(
+    channel_series: scout_compute_api.ChannelSeries, data_type: ChannelDataType | None
+) -> scout_compute_api.Series:
+    """Create a Series object based on the channel's data type.
+
+    Args:
+        channel_series: The channel series to use
+        data_type: The data type of the channel
+
+    Returns:
+        A Series object appropriate for the channel's data type
+
+    Raises:
+        ValueError: If the channel's data type is not supported
+    """
+    if data_type == ChannelDataType.STRING:
+        return scout_compute_api.Series(enum=scout_compute_api.EnumSeries(channel=channel_series))
+    elif data_type == ChannelDataType.DOUBLE:
+        return scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
+    else:
+        raise ValueError(f"Unsupported channel data type: {data_type}")

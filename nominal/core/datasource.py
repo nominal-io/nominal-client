@@ -34,6 +34,82 @@ from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _
 logger = logging.getLogger(__name__)
 
 
+def _construct_export_request(
+    channels: Sequence[Channel],
+    datasource_rid: str,
+    start: api.Timestamp,
+    end: api.Timestamp,
+    tags: dict[str, str] | None,
+) -> scout_dataexport_api.ExportDataRequest:
+    export_channels = []
+
+    converted_tags = {}
+    if tags:
+        for key, value in tags.items():
+            converted_tags[key] = scout_compute_api.StringConstant(literal=value)
+    for channel in channels:
+        if channel.data_type == ChannelDataType.DOUBLE:
+            export_channels.append(
+                scout_dataexport_api.TimeDomainChannel(
+                    column_name=channel.name,
+                    compute_node=scout_compute_api.Series(
+                        numeric=scout_compute_api.NumericSeries(
+                            channel=scout_compute_api.ChannelSeries(
+                                data_source=scout_compute_api.DataSourceChannel(
+                                    channel=scout_compute_api.StringConstant(literal=channel.name),
+                                    data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
+                                    tags=converted_tags,
+                                )
+                            )
+                        )
+                    ),
+                )
+            )
+        elif channel.data_type == ChannelDataType.STRING:
+            export_channels.append(
+                scout_dataexport_api.TimeDomainChannel(
+                    column_name=channel.name,
+                    compute_node=scout_compute_api.Series(
+                        enum=scout_compute_api.EnumSeries(
+                            channel=scout_compute_api.ChannelSeries(
+                                data_source=scout_compute_api.DataSourceChannel(
+                                    channel=scout_compute_api.StringConstant(literal=channel.name),
+                                    data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
+                                    tags=converted_tags,
+                                )
+                            )
+                        )
+                    ),
+                )
+            )
+
+    request = scout_dataexport_api.ExportDataRequest(
+        channels=scout_dataexport_api.ExportChannels(
+            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
+                channels=export_channels,
+                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
+                    # only one series will be returned, so no need to merge
+                    none=scout_dataexport_api.NoneStrategy(),
+                ),
+                output_timestamp_format=scout_dataexport_api.TimestampFormat(
+                    iso8601=scout_dataexport_api.Iso8601TimestampFormat()
+                ),
+            )
+        ),
+        start_time=start,
+        end_time=end,
+        context=scout_compute_api.Context(
+            function_variables={},
+            variables={},
+        ),
+        format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
+        resolution=scout_dataexport_api.ResolutionOption(
+            undecimated=scout_dataexport_api.UndecimatedResolution(),
+        ),
+    )
+    return request
+
+
 @dataclass(frozen=True)
 class DataSource(HasRid):
     rid: str
@@ -195,7 +271,7 @@ class DataSource(HasRid):
         all_dataframes = []
 
         for channel_batch in batched(filtered_channels, batch_size):
-            export_request = self._construct_export_request(channel_batch, start_time, end_time, tags)
+            export_request = _construct_export_request(channel_batch, self.rid, start_time, end_time, tags)
             export_response = cast(
                 BinaryIO, self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request)
             )
@@ -209,77 +285,6 @@ class DataSource(HasRid):
 
         result_df = pd.concat(all_dataframes, axis=0)
         return result_df
-
-    def _construct_export_request(
-        self, channels: Sequence[Channel], start: api.Timestamp, end: api.Timestamp, tags: dict[str, str] | None
-    ) -> scout_dataexport_api.ExportDataRequest:
-        export_channels = []
-
-        converted_tags = {}
-        if tags:
-            for key, value in tags.items():
-                converted_tags[key] = scout_compute_api.StringConstant(literal=value)
-        for channel in channels:
-            if channel.data_type == ChannelDataType.DOUBLE:
-                export_channels.append(
-                    scout_dataexport_api.TimeDomainChannel(
-                        column_name=channel.name,
-                        compute_node=scout_compute_api.Series(
-                            numeric=scout_compute_api.NumericSeries(
-                                channel=scout_compute_api.ChannelSeries(
-                                    data_source=scout_compute_api.DataSourceChannel(
-                                        channel=scout_compute_api.StringConstant(literal=channel.name),
-                                        data_source_rid=scout_compute_api.StringConstant(literal=self.rid),
-                                        tags=converted_tags,
-                                    )
-                                )
-                            )
-                        ),
-                    )
-                )
-            elif channel.data_type == ChannelDataType.STRING:
-                export_channels.append(
-                    scout_dataexport_api.TimeDomainChannel(
-                        column_name=channel.name,
-                        compute_node=scout_compute_api.Series(
-                            enum=scout_compute_api.EnumSeries(
-                                channel=scout_compute_api.ChannelSeries(
-                                    data_source=scout_compute_api.DataSourceChannel(
-                                        channel=scout_compute_api.StringConstant(literal=channel.name),
-                                        data_source_rid=scout_compute_api.StringConstant(literal=self.rid),
-                                        tags=converted_tags,
-                                    )
-                                )
-                            )
-                        ),
-                    )
-                )
-
-        request = scout_dataexport_api.ExportDataRequest(
-            channels=scout_dataexport_api.ExportChannels(
-                time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                    channels=export_channels,
-                    merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                        # only one series will be returned, so no need to merge
-                        none=scout_dataexport_api.NoneStrategy(),
-                    ),
-                    output_timestamp_format=scout_dataexport_api.TimestampFormat(
-                        iso8601=scout_dataexport_api.Iso8601TimestampFormat()
-                    ),
-                )
-            ),
-            start_time=start,
-            end_time=end,
-            context=scout_compute_api.Context(
-                function_variables={},
-                variables={},
-            ),
-            format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
-            resolution=scout_dataexport_api.ResolutionOption(
-                undecimated=scout_dataexport_api.UndecimatedResolution(),
-            ),
-        )
-        return request
 
     def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
         """Set units for channels based on a provided mapping of channel names to units.

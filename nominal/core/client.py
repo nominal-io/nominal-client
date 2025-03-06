@@ -757,9 +757,7 @@ class NominalClient:
             self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
         )
 
-    def set_channel_units(
-        self, rids_to_types: Mapping[str, str | None]
-    ) -> Iterable[Channel]:  # TODO(vtupuri): do this correctly
+    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Iterable[Channel]:
         """Sets the units for a set of channels based on user-provided unit symbols
         Args:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
