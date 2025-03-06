@@ -6,7 +6,7 @@ import os
 import warnings
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, BinaryIO, Callable, Iterator, TypeVar, cast
+from typing import Any, BinaryIO, Callable, Iterator, TypeVar
 
 from typing_extensions import ParamSpec
 
@@ -70,16 +70,12 @@ def warn_on_deprecated_argument(
                 warnings.warn(warning_message, UserWarning, stacklevel=2)
                 filtered_kwargs = kwargs.copy()
                 filtered_kwargs.pop(argument_name)
-                return func(*args, **cast(Param.kwargs, filtered_kwargs))
+                return func(*args, **filtered_kwargs)  # type: ignore[arg-type]
 
             elif len(args) > len(param_names) - 1:
-                warnings.warn(
-                    warning_message,
-                    UserWarning,
-                    stacklevel=2,
-                )
-                filtered_args = cast(Param.args, args[: len(param_names) - 1])
-                return func(*filtered_args, **kwargs)
+                warnings.warn(warning_message, UserWarning, stacklevel=2)
+                filtered_args = args[: len(param_names) - 1]
+                return func(*filtered_args, **kwargs)  # type: ignore[arg-type]
 
             return func(*args, **kwargs)
 
