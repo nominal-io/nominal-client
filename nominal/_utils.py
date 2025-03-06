@@ -121,7 +121,7 @@ def deprecate_arguments(
     1. Issue a warning
     2. Execute the original method (which contains the legacy logic)
     3. If no deprecated arguments are provided but the new keyword argument is,
-       it will call the new_route method with the new keyword argument.
+       it will call new_method with the new keyword argument.
 
     Args:
         deprecated_args: List of argument names that are being deprecated
