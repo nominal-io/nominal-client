@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
-from io import BytesIO, TextIOBase, TextIOWrapper
+from io import TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
@@ -54,7 +53,7 @@ from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user
-from nominal.core.video import Video
+from nominal.core.video import Video, _build_video_file_timestamp_manifest
 from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
@@ -530,37 +529,12 @@ class NominalClient:
             time elapsed in the video playback.
 
         """
-        if (start is None and frame_timestamps is None) or (None not in (start, frame_timestamps)):
-            raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
-
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
-        if start is None:
-            # Dump timestamp array into an in-memory file-like IO object
-            json_io = BytesIO()
-            text_json_io = TextIOWrapper(json_io)
-            json.dump(frame_timestamps, text_json_io)
-            text_json_io.flush()
-            json_io.seek(0)
-
-            logger.debug("Uploading timestamp manifests to s3")
-            manifest_s3_path = upload_multipart_io(
-                self._clients.auth_header,
-                json_io,
-                "timestamp_manifest",
-                FileTypes.JSON,
-                self._clients.upload,
-            )
-            timestamp_manifest = scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
-        else:
-            # TODO(drake): expose scale parameter to users
-            timestamp_manifest = scout_video_api.VideoFileTimestampManifest(
-                no_manifest=scout_video_api.NoTimestampManifest(
-                    starting_timestamp=_SecondsNanos.from_flexible(start).to_api()
-                )
-            )
-
+        timestamp_manifest = _build_video_file_timestamp_manifest(
+            self._clients.auth_header, self._clients.upload, start, frame_timestamps
+        )
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
         request = ingest_api.IngestRequest(
