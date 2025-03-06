@@ -89,12 +89,12 @@ class DataSource(HasRid):
 
         """
         if not names:
-            channel_names = [channel.name for channel in self.search_channels()]
+            names = [channel.name for channel in self.search_channels()]
 
         # Process in batches of 500
         batch_size = 500
-        for i in range(0, len(channel_names), batch_size):
-            batch_channel_names = channel_names[i : i + batch_size]
+        for i in range(0, len(names), batch_size):
+            batch_channel_names = names[i : i + batch_size]
             requests = [
                 timeseries_channelmetadata_api.GetChannelMetadataRequest(
                     channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
@@ -307,6 +307,7 @@ class DataSource(HasRid):
         supported_symbols = set(
             [unit.symbol for unit in _available_units(self._clients.auth_header, self._clients.units)]
         )
+        print("channels_to_units", type(channels_to_units))
 
         # Validate that all user provided unit symbols are valid
         for channel_name, unit_symbol in channels_to_units.items():
@@ -325,6 +326,7 @@ class DataSource(HasRid):
 
         # For each channel / unit combination, create an update request
         update_requests = []
+
         for channel_name, unit in channels_to_units.items():
             # No data uploaded to channel yet ...
             if channel_name not in found_channels:
