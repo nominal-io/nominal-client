@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import warnings
 from contextlib import contextmanager
-from typing import Any, BinaryIO, Callable, Iterator, TypeVar
+from functools import wraps
+from typing import Any, BinaryIO, Callable, Iterator, TypeVar, cast
 
 from typing_extensions import ParamSpec
 
@@ -59,11 +61,6 @@ def warn_on_deprecated_argument(
     """
 
     def decorator(func: Callable[Param, T]) -> Callable[Param, T]:
-        import inspect
-        import warnings
-        from functools import wraps
-        from typing import cast
-
         sig = inspect.signature(func)
         param_names = list(sig.parameters.keys())
 
