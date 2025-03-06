@@ -749,11 +749,15 @@ class NominalClient:
             conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
                 This typically occurs when there is no such channel for the given RID.
         """
+        warnings.warn(
+            "get_channel is deprecated. Use dataset.get_channel() or connection.get_channel() instead.",
+            UserWarning,
+        )
         return Channel._from_conjure_logicalseries_api(
             self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
         )
 
-    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Sequence[Channel]:
+    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Iterable[Channel]:
         """Sets the units for a set of channels based on user-provided unit symbols
         Args:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
@@ -768,6 +772,11 @@ class NominalClient:
                 channels with the given RIDs present.
 
         """
+        warnings.warn(
+            "set_channel_units is deprecated. Use dataset.set_channel_units() or connection.set_channel_units()",
+            UserWarning,
+        )
+
         series_updates = []
         for rid, series_type in rids_to_types.items():
             series_updates.append(

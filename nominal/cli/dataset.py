@@ -128,7 +128,6 @@ def summarize(
             data["dataset_name"].append(dataset.name)
 
             if show_rids:
-                data["channel rid"].append(metadata.rid)
                 data["dataset rid"].append(dataset.rid)
 
     output_str = _dataset_data_to_string(data, format)
