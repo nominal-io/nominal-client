@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from contextlib import contextmanager
 from typing import Any, BinaryIO, Callable, Iterator, TypeVar
 
@@ -162,8 +163,6 @@ def deprecate_arguments(
             )
 
             if has_deprecated_kwargs or has_deprecated_positional:
-                import warnings
-
                 warnings.warn(
                     f"Use the '{new_kwarg}' keyword argument instead.",
                     UserWarning,
