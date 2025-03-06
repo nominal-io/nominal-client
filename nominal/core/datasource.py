@@ -27,7 +27,7 @@ from nominal_api import (
 from nominal._utils import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._utils import HasRid
+from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
@@ -75,7 +75,7 @@ class DataSource(HasRid):
     def get_channels(
         self,
         *,
-        names: Sequence[str] | None = None,
+        names: Iterable[str] | None = None,
     ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this datasource
 
@@ -93,8 +93,7 @@ class DataSource(HasRid):
 
         # Process in batches of 500
         batch_size = 500
-        for i in range(0, len(names), batch_size):
-            batch_channel_names = names[i : i + batch_size]
+        for batch_channel_names in batched(names, batch_size):
             requests = [
                 timeseries_channelmetadata_api.GetChannelMetadataRequest(
                     channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
@@ -121,9 +120,6 @@ class DataSource(HasRid):
             exact_match: Filter the returned channels to those whose names match all provided strings
                 (case insensitive).
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
-            tags: Dictionary of tags to filter channels by
-            start: The minimum data updated time to filter channels by
-            end: The maximum data start time to filter channels by
 
         Yields:
             Channel objects for each matching channel
@@ -182,29 +178,24 @@ class DataSource(HasRid):
 
         rid = "..." # Taken from the UI or via the SDK
         dataset = nm.get_dataset(rid)
-        s = dataset.to_pandas()
-        print("index:", s.index, "index mean:", s.index.mean())
+        df = dataset.to_pandas()
+        print(df.head())  # Show first few rows of data
         ```
 
         """
         start_time = _SecondsNanos.from_flexible(start).to_api() if start else _MIN_TIMESTAMP.to_api()
         end_time = _SecondsNanos.from_flexible(end).to_api() if end else _MAX_TIMESTAMP.to_api()
         # Get all channels from the datasource
-        filtered_channels = list(
-            self.search_channels(
-                exact_match=channel_exact_match,
-                fuzzy_search_text=channel_fuzzy_search_text,
-            )
+        filtered_channels = self.search_channels(
+            exact_match=channel_exact_match,
+            fuzzy_search_text=channel_fuzzy_search_text,
         )
-
-        # print("filtered channels", filtered_channels)
 
         batch_size = 20
         all_dataframes = []
 
-        for i in range(0, len(filtered_channels), batch_size):
-            batch_channels = filtered_channels[i : i + batch_size]
-            export_request = self._construct_export_request(batch_channels, start_time, end_time, tags)
+        for channel_batch in batched(filtered_channels, batch_size):
+            export_request = self._construct_export_request(channel_batch, start_time, end_time, tags)
             export_response = cast(
                 BinaryIO, self._clients.dataexport.export_channel_data(self._clients.auth_header, export_request)
             )
@@ -309,8 +300,6 @@ class DataSource(HasRid):
         supported_symbols = set(
             [unit.symbol for unit in _available_units(self._clients.auth_header, self._clients.units)]
         )
-        print("channels_to_units", type(channels_to_units))
-
         # Validate that all user provided unit symbols are valid
         for channel_name, unit_symbol in channels_to_units.items():
             # User is clearing the unit for this channel-- don't validate

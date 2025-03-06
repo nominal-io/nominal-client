@@ -255,7 +255,7 @@ class Dataset(DataSource):
         exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
         *,
-        names: Sequence[str] | None = None,
+        names: Iterable[str] | None = None,
     ) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this dataset.
 

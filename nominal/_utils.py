@@ -66,17 +66,14 @@ def warn_on_deprecated_argument(
 
         @wraps(func)
         def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
-            # Check if deprecated argument is in kwargs
             if argument_name in kwargs:
                 warnings.warn(
                     warning_message,
                     UserWarning,
                     stacklevel=2,
                 )
-                # Create a new kwargs dict without the deprecated argument
                 filtered_kwargs = kwargs.copy()
                 filtered_kwargs.pop(argument_name)
-                # Cast to satisfy the type checker
                 return func(*args, **cast(Param.kwargs, filtered_kwargs))
 
             elif len(args) > len(param_names) - 1:
@@ -85,11 +82,9 @@ def warn_on_deprecated_argument(
                     UserWarning,
                     stacklevel=2,
                 )
-                # Only keep the non-deprecated positional arguments
                 filtered_args = cast(Param.args, args[: len(param_names) - 1])
                 return func(*filtered_args, **kwargs)
 
-            # If the deprecated argument is not used, just call the function normally
             return func(*args, **kwargs)
 
         return wrapper
