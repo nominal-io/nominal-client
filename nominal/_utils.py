@@ -143,8 +143,6 @@ def deprecate_arguments(
     """
 
     def decorator(method: Callable[Param, T]) -> Callable[Param, T]:
-        import inspect
-
         sig = inspect.signature(method)
         param_names = list(sig.parameters.keys())
 
