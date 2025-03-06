@@ -145,14 +145,23 @@ def deprecate_arguments(
     """
 
     def decorator(method: Callable[Param, T]) -> Callable[Param, T]:
+        import inspect
+
+        sig = inspect.signature(method)
+        param_names = list(sig.parameters.keys())
+
+        min_deprecated_index = float("inf")
+        for arg in deprecated_args:
+            if arg in param_names:
+                min_deprecated_index = min(min_deprecated_index, param_names.index(arg))
+
         def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
-            has_positional_args = len(args) > 1
-
             has_deprecated_kwargs = any(arg_name in kwargs for arg_name in deprecated_args)
+            has_deprecated_positional = (
+                len(args) > min_deprecated_index if min_deprecated_index != float("inf") else False
+            )
 
-            using_deprecated = has_positional_args or has_deprecated_kwargs
-
-            if using_deprecated:
+            if has_deprecated_kwargs or has_deprecated_positional:
                 import warnings
 
                 warnings.warn(
@@ -161,9 +170,10 @@ def deprecate_arguments(
                     stacklevel=2,
                 )
                 return method(*args, **kwargs)
+
             if new_kwarg in kwargs:
-                if len(args) == 1:  # self/cls is present
-                    return new_method(args[0], **{new_kwarg: kwargs[new_kwarg]})
+                return new_method(*args, **{new_kwarg: kwargs[new_kwarg]})
+
             return method(*args, **kwargs)
 
         return wrapper
