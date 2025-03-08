@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.38.0](https://github.com/nominal-io/nominal-client/compare/v1.37.0...v1.38.0) (2025-03-06)
+
+
+### Features
+
+* support multi-file video from client ([#251](https://github.com/nominal-io/nominal-client/issues/251)) ([9611717](https://github.com/nominal-io/nominal-client/commit/9611717ddca85a55ce12891033e2dad86ff572d0))
+
 ## [1.37.0](https://github.com/nominal-io/nominal-client/compare/v1.36.0...v1.37.0) (2025-03-06)
 
 
