@@ -133,6 +133,9 @@ class Video(HasRid):
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
+
+        Returns:
+            Reference to the created video file.
         """
         path = pathlib.Path(path)
         file_type = FileType.from_video(path)
@@ -167,6 +170,9 @@ class Video(HasRid):
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
+
+        Returns:
+            Reference to the created video file.
         """
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
@@ -204,7 +210,7 @@ class Video(HasRid):
         path: pathlib.Path,
         topic: str,
         description: str | None = None,
-    ) -> None:
+    ) -> VideoFile:
         """Append to a video from a file-path to an MCAP file containing video data.
 
         Args:
@@ -212,6 +218,9 @@ class Video(HasRid):
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
+
+        Returns:
+            Reference to the created video file.
         """
         path = pathlib.Path(path)
         file_type = FileType.from_video(path)
@@ -232,7 +241,7 @@ class Video(HasRid):
         topic: str,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MCAP,
-    ) -> None:
+    ) -> VideoFile:
         """Append to a video from a file-like binary stream with MCAP data containing video data.
 
         Args:
@@ -242,6 +251,9 @@ class Video(HasRid):
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video (e.g. MCAP).
+
+        Returns:
+            Reference to the created video file.
         """
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
@@ -278,7 +290,7 @@ class Video(HasRid):
         )
 
     def list_files(self) -> Sequence[VideoFile]:
-        """"""
+        """List all video files associated with the video."""
         raw_videos = self._clients.video_file.list_files_in_video(self._clients.auth_header, self.rid)
         return [VideoFile._from_conjure(self._clients, raw_video) for raw_video in raw_videos]
 
