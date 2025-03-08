@@ -17,6 +17,7 @@ from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.video_file import VideoFile
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -39,6 +40,8 @@ class Video(HasRid):
         def upload(self) -> upload_api.UploadService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        @property
+        def video_file(self) -> scout_video.VideoFileService: ...
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -263,6 +266,11 @@ class Video(HasRid):
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
         if response.details.video is None:
             raise NominalIngestError("error ingesting mcap video: no video created")
+
+    def list_files(self) -> Sequence[VideoFile]:
+        """"""
+        raw_videos = self._clients.video_file.list_files_in_video(self._clients.auth_header, self.rid)
+        return [VideoFile._from_conjure(self._clients, raw_video) for raw_video in raw_videos]
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, video: scout_video_api.Video) -> Self:
