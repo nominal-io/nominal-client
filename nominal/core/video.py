@@ -17,6 +17,7 @@ from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.video_file import VideoFile
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -39,6 +40,8 @@ class Video(HasRid):
         def upload(self) -> upload_api.UploadService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        @property
+        def video_file(self) -> scout_video.VideoFileService: ...
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -120,7 +123,7 @@ class Video(HasRid):
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
-    ) -> None:
+    ) -> VideoFile:
         """Append to a video from a file-path to H264-encoded video data.
 
         Args:
@@ -130,12 +133,15 @@ class Video(HasRid):
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
+
+        Returns:
+            Reference to the created video file.
         """
         path = pathlib.Path(path)
         file_type = FileType.from_video(path)
 
         with path.open("rb") as video_file:
-            self.add_to_video_from_io(
+            return self.add_to_video_from_io(
                 video_file,
                 name=path.name,
                 start=start,
@@ -152,7 +158,7 @@ class Video(HasRid):
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
-    ) -> None:
+    ) -> VideoFile:
         """Append to a video from a file-like object containing H264-encoded video data.
 
         Args:
@@ -164,6 +170,9 @@ class Video(HasRid):
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
+
+        Returns:
+            Reference to the created video file.
         """
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
@@ -191,12 +200,17 @@ class Video(HasRid):
         if response.details.video is None:
             raise NominalIngestError("error ingesting video: no video created")
 
+        return VideoFile._from_conjure(
+            self._clients,
+            self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
+        )
+
     def add_mcap_to_video(
         self,
         path: pathlib.Path,
         topic: str,
         description: str | None = None,
-    ) -> None:
+    ) -> VideoFile:
         """Append to a video from a file-path to an MCAP file containing video data.
 
         Args:
@@ -204,12 +218,15 @@ class Video(HasRid):
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
+
+        Returns:
+            Reference to the created video file.
         """
         path = pathlib.Path(path)
         file_type = FileType.from_video(path)
 
         with path.open("rb") as video_file:
-            self.add_mcap_to_video_from_io(
+            return self.add_mcap_to_video_from_io(
                 video_file,
                 name=path.name,
                 topic=topic,
@@ -224,7 +241,7 @@ class Video(HasRid):
         topic: str,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MCAP,
-    ) -> None:
+    ) -> VideoFile:
         """Append to a video from a file-like binary stream with MCAP data containing video data.
 
         Args:
@@ -234,6 +251,9 @@ class Video(HasRid):
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video (e.g. MCAP).
+
+        Returns:
+            Reference to the created video file.
         """
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
@@ -263,6 +283,16 @@ class Video(HasRid):
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
         if response.details.video is None:
             raise NominalIngestError("error ingesting mcap video: no video created")
+
+        return VideoFile._from_conjure(
+            self._clients,
+            self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
+        )
+
+    def list_files(self) -> Sequence[VideoFile]:
+        """List all video files associated with the video."""
+        raw_videos = self._clients.video_file.list_files_in_video(self._clients.auth_header, self.rid)
+        return [VideoFile._from_conjure(self._clients, raw_video) for raw_video in raw_videos]
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, video: scout_video_api.Video) -> Self:
