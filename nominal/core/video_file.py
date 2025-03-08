@@ -4,9 +4,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Protocol, Self
+from typing import Protocol
 
 from nominal_api import scout_video, scout_video_api
+from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, update_dataclass
