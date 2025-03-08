@@ -123,7 +123,7 @@ class Video(HasRid):
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
-    ) -> None:
+    ) -> VideoFile:
         """Append to a video from a file-path to H264-encoded video data.
 
         Args:
@@ -138,7 +138,7 @@ class Video(HasRid):
         file_type = FileType.from_video(path)
 
         with path.open("rb") as video_file:
-            self.add_to_video_from_io(
+            return self.add_to_video_from_io(
                 video_file,
                 name=path.name,
                 start=start,
@@ -155,7 +155,7 @@ class Video(HasRid):
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
-    ) -> None:
+    ) -> VideoFile:
         """Append to a video from a file-like object containing H264-encoded video data.
 
         Args:
@@ -194,6 +194,11 @@ class Video(HasRid):
         if response.details.video is None:
             raise NominalIngestError("error ingesting video: no video created")
 
+        return VideoFile._from_conjure(
+            self._clients,
+            self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
+        )
+
     def add_mcap_to_video(
         self,
         path: pathlib.Path,
@@ -212,7 +217,7 @@ class Video(HasRid):
         file_type = FileType.from_video(path)
 
         with path.open("rb") as video_file:
-            self.add_mcap_to_video_from_io(
+            return self.add_mcap_to_video_from_io(
                 video_file,
                 name=path.name,
                 topic=topic,
@@ -266,6 +271,11 @@ class Video(HasRid):
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
         if response.details.video is None:
             raise NominalIngestError("error ingesting mcap video: no video created")
+
+        return VideoFile._from_conjure(
+            self._clients,
+            self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
+        )
 
     def list_files(self) -> Sequence[VideoFile]:
         """"""
