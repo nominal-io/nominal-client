@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.39.0](https://github.com/nominal-io/nominal-client/compare/v1.38.0...v1.39.0) (2025-03-10)
+
+
+### Features
+
+* add video files support ([#253](https://github.com/nominal-io/nominal-client/issues/253)) ([587a932](https://github.com/nominal-io/nominal-client/commit/587a9322ae41d20460776bae024c003c259d4ca0))
+
+
+### Bug Fixes
+
+* bump nominal api to latest version ([#255](https://github.com/nominal-io/nominal-client/issues/255)) ([140c16f](https://github.com/nominal-io/nominal-client/commit/140c16fd5458957eb0c237c2dd873519c1de84ab))
+
 ## [1.38.0](https://github.com/nominal-io/nominal-client/compare/v1.37.0...v1.38.0) (2025-03-06)
 
 
