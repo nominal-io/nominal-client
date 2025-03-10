@@ -189,7 +189,7 @@ class Video(HasRid):
                     target=ingest_api.VideoIngestTarget(
                         existing=ingest_api.ExistingVideoIngestDestination(
                             video_rid=self.rid,
-                            video_file_details=ingest_api.VideoFileIngestDetails([], {}, description),
+                            video_file_details=ingest_api.VideoFileIngestDetails(description, [], {}),
                         )
                     ),
                     timestamp_manifest=timestamp_manifest,
