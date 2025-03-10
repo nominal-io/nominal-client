@@ -113,7 +113,7 @@ def frame_count(video_path: pathlib.Path) -> int:
     )
 
     # No video streams present
-    if len(probe_resp['streams']) == 0:
+    if len(probe_resp["streams"]) == 0:
         return 0
 
     return int(probe_resp["streams"][0]["nb_read_packets"])
