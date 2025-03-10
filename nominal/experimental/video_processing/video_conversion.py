@@ -1,7 +1,6 @@
 import logging
 import pathlib
 
-import cv2
 import ffmpeg
 
 logger = logging.getLogger(__name__)
@@ -102,10 +101,21 @@ def normalize_video(
 
 
 def frame_count(video_path: pathlib.Path) -> int:
-    """Given a path to a video file, return the number of frames present in the video."""
+    """Given a path to a video file, return the number of frames present in the video.
+
+    NOTE: if no streams are present, returns 0. If multiple streams are present, returns frame count
+          of the first video stream.
+    """
     assert video_path.exists()
-    cap = cv2.VideoCapture(str(video_path))
-    return int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    probe_resp = ffmpeg.probe(
+        video_path, v="error", select_streams="v:0", count_packets=None, show_entries="stream=nb_read_packets"
+    )
+
+    # No video streams present
+    if len(probe_resp['streams']) == 0:
+        return 0
+
+    return int(probe_resp["streams"][0]["nb_read_packets"])
 
 
 def has_audio_track(video_path: pathlib.Path) -> bool:

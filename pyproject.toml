@@ -77,7 +77,7 @@ nominal = { workspace = true }
 [project.optional-dependencies]
 hdf5 = ["h5py>=3.0", "tables>=3.7"]
 protos = ["nominal-api-protos>=0.549.0"]
-video = ["ffmpeg-python>=0.2.0", "opencv-python>=4.11.0.86"]
+video = ["ffmpeg-python>=0.2.0"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
