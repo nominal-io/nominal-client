@@ -62,7 +62,7 @@ def normalize_video(
     # While the backend will do this for you automatically, it dramatically faster to do it here
     # than in the backend since we are already re-encoding video.
     input_kwargs = {}
-    output_kwargs = dict(
+    output_kwargs: dict[str, str | None] = dict(
         acodec=DEFAULT_AUDIO_CODEC,
         vcodec=DEFAULT_VIDEO_CODEC,
         force_key_frames="source",
@@ -83,7 +83,7 @@ def normalize_video(
         output_kwargs["shortest"] = None
 
     # Run ffmpeg in subprocess
-    video_in = ffmpeg.input(str(input_path), **input_kwargs)  # type: ignore[no-untyped-call]
+    video_in = ffmpeg.input(str(input_path), **input_kwargs)
     video_out = video_in.output(str(output_path), **output_kwargs)
     logger.info(f"Running command: '{' '.join(video_out.compile())}'")
     video_out.run()
@@ -104,7 +104,7 @@ def normalize_video(
 def frame_count(video_path: pathlib.Path) -> int:
     """Given a path to a video file, return the number of frames present in the video."""
     assert video_path.exists()
-    cap = cv2.VideoCapture(video_path)
+    cap = cv2.VideoCapture(str(video_path))
     return int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
 
