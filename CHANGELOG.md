@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.40.0](https://github.com/nominal-io/nominal-client/compare/v1.39.0...v1.40.0) (2025-03-10)
+
+
+### Features
+
+* add functionality to experimental package for normalizing video ([#256](https://github.com/nominal-io/nominal-client/issues/256)) ([acedb7e](https://github.com/nominal-io/nominal-client/commit/acedb7eceed62870ea6075d0b4e8df26f7255ff4))
+
 ## [1.39.0](https://github.com/nominal-io/nominal-client/compare/v1.38.0...v1.39.0) (2025-03-10)
 
 
