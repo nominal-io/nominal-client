@@ -19,6 +19,7 @@ from nominal_api import (
     scout_asset_api,
     scout_catalog,
     scout_checklistexecution_api,
+    scout_checks_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -65,6 +66,8 @@ from nominal.ts import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PAGE_SIZE = 100
 
 
 @dataclass(frozen=True)
@@ -153,7 +156,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
-            page_size=100,
+            page_size=DEFAULT_PAGE_SIZE,
             query=_create_search_runs_query(start, end, name_substring, labels, properties),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
@@ -638,6 +641,43 @@ class NominalClient:
         response = self._clients.checklist.get(self._clients.auth_header, rid)
         return Checklist._from_conjure(self._clients, response)
 
+    def search_checklists(
+        self,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> Sequence[Checklist]:
+        """Search for checklists meeting the specified filters.
+        Filters are ANDed together, e.g. `(checklist.label == label) AND (checklist.search_text =~ field)`
+
+        Args:
+            search_text: case-insensitive search for any of the keywords in all string fields
+            labels: A sequence of labels that must ALL be present on a checklist to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a checklist to be included.
+
+        Returns:
+            All checklists which match all of the provided conditions
+        """
+        page_token = None
+        query = _create_search_checklists_query(search_text, labels, properties)
+        archived_statuses = [api.ArchivedStatus.NOT_ARCHIVED]
+
+        raw_checklists = []
+        while True:
+            request = scout_checks_api.SearchChecklistsRequest(
+                query=query,
+                archived_statuses=archived_statuses,
+                next_page_token=page_token,
+                page_size=DEFAULT_PAGE_SIZE,
+            )
+            response = self._clients.checklist.search(self._clients.auth_header, request)
+            raw_checklists.extend(response.values)
+            page_token = response.next_page_token
+            if not page_token:
+                break
+
+        return [Checklist._from_conjure(self._clients, checklist) for checklist in raw_checklists]
+
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,
@@ -938,7 +978,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Asset]:
         request = scout_asset_api.SearchAssetsRequest(
-            page_size=100,
+            page_size=DEFAULT_PAGE_SIZE,
             query=_create_search_assets_query(search_text, labels, properties),
             sort=scout_asset_api.SortOptions(
                 field=scout_asset_api.SortField.CREATED_AT,
@@ -1084,6 +1124,26 @@ def _create_search_assets_query(
             queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
+
+
+def _create_search_checklists_query(
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> scout_checks_api.ChecklistSearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
+
+    if labels is not None:
+        for label in labels:
+            queries.append(scout_checks_api.ChecklistSearchQuery(label=label))
+
+    if properties is not None:
+        for prop_key, prop_value in properties.items():
+            queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
+
+    return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
 
 def _handle_deprecated_labels_properties(
