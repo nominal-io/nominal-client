@@ -28,6 +28,8 @@ class DataReview(HasRid):
         @property
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
         @property
+        def checklist(self) -> scout_checks_api.ChecklistService: ...
+        @property
         def run(self) -> scout.RunService: ...
 
     @classmethod
@@ -45,6 +47,12 @@ class DataReview(HasRid):
             checklist_commit=data_review.checklist.checklist.commit,
             completed=completed,
             _clients=clients,
+        )
+
+    def get_checklist(self) -> checklist.Checklist:
+        return checklist.Checklist._from_conjure(
+            self._clients.clients,
+            self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
         )
 
     def get_violations(self) -> Sequence[CheckViolation]:
