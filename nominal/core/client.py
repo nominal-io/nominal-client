@@ -20,6 +20,7 @@ from nominal_api import (
     scout_catalog,
     scout_checklistexecution_api,
     scout_checks_api,
+    scout_datareview_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -1055,6 +1056,33 @@ class NominalClient:
     def get_data_review(self, rid: str) -> DataReview:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
+
+    def search_data_reviews(
+        self,
+        assets: Sequence[Asset | str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+    ) -> Sequence[DataReview]:
+        """Search for any data reviews present within a collection of runs and assets."""
+        page_token = None
+        raw_data_reviews = []
+        while True:
+            # TODO (drake-nominal): Expose checklist_refs to users
+            request = scout_datareview_api.FindDataReviewsRequest(
+                asset_rids=[rid_from_instance_or_string(asset) for asset in assets] if assets else [],
+                checklist_refs=[],
+                run_rids=[rid_from_instance_or_string(run) for run in runs] if runs else [],
+                archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
+                next_page_token=page_token,
+                page_size=DEFAULT_PAGE_SIZE,
+            )
+            response = self._clients.datareview.find_data_reviews(self._clients.auth_header, request)
+            raw_data_reviews.extend(response.data_reviews)
+            page_token = response.next_page_token
+
+            if page_token is None:
+                break
+
+        return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
 
 
 def _create_search_runs_query(
