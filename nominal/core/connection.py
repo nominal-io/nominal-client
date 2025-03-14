@@ -33,7 +33,7 @@ class Connection(DataSource):
                 _description=response.description,
                 _tags=response.available_tag_values,
                 _clients=clients,
-                nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
+                _nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
             )
         return cls(
             _rid=response.rid,
@@ -64,7 +64,11 @@ class Connection(DataSource):
 
 @dataclass(frozen=True)
 class StreamingConnection(Connection):
-    nominal_data_source_rid: str
+    _nominal_data_source_rid: str
+
+    @property
+    def nominal_data_source_rid(self) -> str:
+        return self._nominal_data_source_rid
 
     # Deprecated methods for backward compatibility
     def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:

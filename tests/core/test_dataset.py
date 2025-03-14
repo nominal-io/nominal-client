@@ -11,9 +11,9 @@ from nominal.core.unit import Unit
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
 UNITS = [
-    Unit(name="coulomb", symbol="C"),
-    Unit(name="kilograms", symbol="kg"),
-    Unit(name="mole", symbol="mol"),
+    Unit(_name="coulomb", _symbol="C"),
+    Unit(_name="kilograms", _symbol="kg"),
+    Unit(_name="mole", _symbol="mol"),
 ]
 
 
@@ -27,12 +27,12 @@ def mock_clients():
 @pytest.fixture
 def mock_dataset(mock_clients):
     ds = Dataset(
-        rid="test-rid",
-        name="Test Dataset",
-        description="A dataset for testing",
-        bounds=DatasetBounds(start=123455, end=123456),
-        properties={},
-        labels=[],
+        _rid="test-rid",
+        _name="Test Dataset",
+        _description="A dataset for testing",
+        _bounds=DatasetBounds(start=123455, end=123456),
+        _properties={},
+        _labels=[],
         _clients=mock_clients,
     )
 
@@ -49,20 +49,20 @@ def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: M
     mock_get_channels.return_value = [
         Channel(
             _rid="ch-1",
-            name="channel1",
-            data_source="ds-1",
-            data_type="float",
-            unit=None,
-            description="Test Channel 1",
+            _name="channel1",
+            _data_source="ds-1",
+            _data_type="float",
+            _unit=None,
+            _description="Test Channel 1",
             _clients=mock_dataset._clients,
         ),
         Channel(
             _rid="ch-2",
-            name="channel2",
-            data_source="ds-2",
-            data_type="float",
-            unit=None,
-            description="Test Channel 2",
+            _name="channel2",
+            _data_source="ds-2",
+            _data_type="float",
+            _unit=None,
+            _description="Test Channel 2",
             _clients=mock_dataset._clients,
         ),
     ]
@@ -90,11 +90,11 @@ def test_set_channel_units_invalid_unit(
     mock_get_channels.return_value = [
         Channel(
             _rid="ch-1",
-            name="channel1",
-            data_source="ds-1",
-            data_type="float",
-            unit=None,
-            description="Test Channel 1",
+            _name="channel1",
+            _data_source="ds-1",
+            _data_type="float",
+            _unit=None,
+            _description="Test Channel 1",
             _clients=mock_dataset._clients,
         ),
     ]

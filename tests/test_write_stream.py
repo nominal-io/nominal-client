@@ -33,12 +33,12 @@ def mock_clients():
 @pytest.fixture
 def mock_connection(mock_clients):
     return StreamingConnection(
-        rid="test-connection-rid",
-        name="Test Connection",
-        description="A connection for testing",
+        _rid="test-connection-rid",
+        _name="Test Connection",
+        _description="A connection for testing",
         _tags={},
         _clients=mock_clients,
-        nominal_data_source_rid="test-datasource-rid",
+        _nominal_data_source_rid="test-datasource-rid",
     )
 
 
