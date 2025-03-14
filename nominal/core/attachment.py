@@ -15,16 +15,36 @@ from nominal.core._utils import HasRid, update_dataclass
 
 @dataclass(frozen=True)
 class Attachment(HasRid):
-    rid: str
-    name: str
-    description: str
-    properties: Mapping[str, str]
-    labels: Sequence[str]
+    _rid: str
+    _name: str
+    _description: str
+    _properties: Mapping[str, str]
+    _labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasAuthHeader, Protocol):
         @property
         def attachment(self) -> attachments_api.AttachmentService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @property
+    def properties(self) -> Mapping[str, str]:
+        return self._properties
+
+    @property
+    def labels(self) -> Sequence[str]:
+        return self._labels
 
     def update(
         self,
@@ -88,11 +108,11 @@ class Attachment(HasRid):
     @classmethod
     def _from_conjure(cls, clients: _Clients, attachment: attachments_api.Attachment) -> Self:
         return cls(
-            rid=attachment.rid,
-            name=attachment.title,
-            description=attachment.description,
-            properties=MappingProxyType(attachment.properties),
-            labels=tuple(attachment.labels),
+            _rid=attachment.rid,
+            _name=attachment.title,
+            _description=attachment.description,
+            _properties=MappingProxyType(attachment.properties),
+            _labels=tuple(attachment.labels),
             _clients=clients,
         )
 

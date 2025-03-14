@@ -40,19 +40,13 @@ class ChannelDataType(enum.Enum):
 class Channel:
     """Metadata for working with channels."""
 
-    name: str
-    data_source: str
-    data_type: ChannelDataType | None
-    unit: str | None
-    description: str | None
+    _name: str
+    _data_source: str
+    _data_type: ChannelDataType | None
+    _unit: str | None
+    _description: str | None
     _clients: _Clients = field(repr=False)
     _rid: str
-
-    @property
-    def rid(self) -> str:
-        """Get the rid value with a deprecation warning."""
-        warnings.warn("Accessing Channel.rid is deprecated and now returns an empty string.", UserWarning, stacklevel=2)
-        return self._rid
 
     class _Clients(HasAuthHeader, Protocol):
         @property
@@ -61,6 +55,32 @@ class Channel:
         def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
         def compute(self) -> scout_compute_api.ComputeService: ...
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def data_source(self) -> str:
+        return self._data_source
+
+    @property
+    def data_type(self) -> ChannelDataType | None:
+        return self._data_type
+
+    @property
+    def unit(self) -> str | None:
+        return self._unit
+
+    @property
+    def description(self) -> str | None:
+        return self._description
+
+    @property
+    def rid(self) -> str:
+        """Get the rid value with a deprecation warning."""
+        warnings.warn("Accessing Channel.rid is deprecated and now returns an empty string.", UserWarning, stacklevel=2)
+        return self._rid
 
     def to_pandas(
         self,
@@ -94,11 +114,11 @@ class Channel:
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
         return cls(
             _rid="",
-            name=channel.name,
-            data_source=channel.data_source,
-            unit=channel_unit,
-            description=channel.description,
-            data_type=channel_data_type,
+            _name=channel.name,
+            _data_source=channel.data_source,
+            _unit=channel_unit,
+            _description=channel.description,
+            _data_type=channel_data_type,
             _clients=clients,
         )
 
@@ -109,11 +129,11 @@ class Channel:
         channel_data_type = ChannelDataType._from_conjure(series.series_data_type) if series.series_data_type else None
         return cls(
             _rid="",
-            name=series.channel,
-            data_source=series.data_source_rid,
-            unit=series.unit,
-            description=series.description,
-            data_type=channel_data_type,
+            _name=series.channel,
+            _data_source=series.data_source_rid,
+            _unit=series.unit,
+            _description=series.description,
+            _data_type=channel_data_type,
             _clients=clients,
         )
 
@@ -124,11 +144,11 @@ class Channel:
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
         return cls(
             _rid="",
-            name=channel.channel_identifier.channel_name,
-            data_source=channel.channel_identifier.data_source_rid,
-            unit=channel.unit,
-            description=channel.description,
-            data_type=channel_data_type,
+            _name=channel.channel_identifier.channel_name,
+            _data_source=channel.channel_identifier.data_source_rid,
+            _unit=channel.unit,
+            _description=channel.description,
+            _data_type=channel_data_type,
             _clients=clients,
         )
 

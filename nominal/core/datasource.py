@@ -112,7 +112,7 @@ def _construct_export_request(
 
 @dataclass(frozen=True)
 class DataSource(HasRid):
-    rid: str
+    _rid: str
     _clients: _Clients = field(repr=False)
 
     class _Clients(Channel._Clients, HasAuthHeader, Protocol):
@@ -138,6 +138,10 @@ class DataSource(HasRid):
         def proto_write(self) -> ProtoWriteService: ...
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
 
     @warn_on_deprecated_argument(
         "tags", "The 'tags' argument is deprecated because it's not used and will be removed in a future version."

@@ -13,18 +13,25 @@ class Unit:
     This is primarily used when setting or retrieving the units of a channel within a dataset.
     """
 
-    name: str
-    """Plain english name of the unit (e.g. 'coulomb')"""
+    _name: str
+    _symbol: str
 
-    symbol: str
-    """ Abbreviated symbol for the unit (e.g. 'C')
-    See: https://ucum.org/ucum
-    """
+    @property
+    def name(self) -> str:
+        """Plain english name of the unit (e.g. 'coulomb')"""
+        return self._name
+
+    @property
+    def symbol(self) -> str:
+        """Abbreviated symbol for the unit (e.g. 'C')
+        See: https://ucum.org/ucum
+        """
+        return self._symbol
 
     @classmethod
     def _from_conjure(cls, api_unit: api.Unit | scout_units_api.Unit | scout_run_api.Unit) -> Self:
         """Construct a Unit from any conjure Unit across all API endpoints"""
         if isinstance(api_unit, api.Unit):
-            return cls(name="", symbol=api_unit)
+            return cls(_name="", _symbol=api_unit)
         name = "" if api_unit.name is None else api_unit.name
-        return cls(name=name, symbol=api_unit.symbol)
+        return cls(_name=name, _symbol=api_unit.symbol)

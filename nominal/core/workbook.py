@@ -12,15 +12,31 @@ from nominal.core._utils import HasRid
 
 @dataclass(frozen=True)
 class Workbook(HasRid):
-    rid: str
-    title: str
-    description: str
-    run_rid: str | None
+    _rid: str
+    _title: str
+    _description: str
+    _run_rid: str | None
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasAuthHeader, Protocol):
         @property
         def notebook(self) -> scout.NotebookService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def title(self) -> str:
+        return self._title
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @property
+    def run_rid(self) -> str | None:
+        return self._run_rid
 
     @property
     def nominal_url(self) -> str:
@@ -41,9 +57,9 @@ class Workbook(HasRid):
     @classmethod
     def _from_conjure(cls, clients: _Clients, notebook: scout_notebook_api.Notebook) -> Self:
         return cls(
-            rid=notebook.rid,
-            title=notebook.metadata.title,
-            description=notebook.metadata.description,
-            run_rid=notebook.metadata.run_rid,
+            _rid=notebook.rid,
+            _title=notebook.metadata.title,
+            _description=notebook.metadata.description,
+            _run_rid=notebook.metadata.run_rid,
             _clients=clients,
         )

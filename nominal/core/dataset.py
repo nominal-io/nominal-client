@@ -44,11 +44,31 @@ class DatasetBounds:
 
 @dataclass(frozen=True)
 class Dataset(DataSource):
-    name: str
-    description: str | None
-    properties: Mapping[str, str]
-    labels: Sequence[str]
-    bounds: DatasetBounds | None
+    _name: str
+    _description: str | None
+    _properties: Mapping[str, str]
+    _labels: Sequence[str]
+    _bounds: DatasetBounds | None
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str | None:
+        return self._description
+
+    @property
+    def properties(self) -> Mapping[str, str]:
+        return self._properties
+
+    @property
+    def labels(self) -> Sequence[str]:
+        return self._labels
+
+    @property
+    def bounds(self) -> DatasetBounds | None:
+        return self._bounds
 
     @property
     def nominal_url(self) -> str:
@@ -234,12 +254,12 @@ class Dataset(DataSource):
     @classmethod
     def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
-            rid=dataset.rid,
-            name=dataset.name,
-            description=dataset.description,
-            properties=MappingProxyType(dataset.properties),
-            labels=tuple(dataset.labels),
-            bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
+            _rid=dataset.rid,
+            _name=dataset.name,
+            _description=dataset.description,
+            _properties=MappingProxyType(dataset.properties),
+            _labels=tuple(dataset.labels),
+            _bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             _clients=clients,
         )
 

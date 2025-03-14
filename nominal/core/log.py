@@ -13,15 +13,31 @@ from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
 
 @dataclass(frozen=True)
 class LogSet(HasRid):
-    rid: str
-    name: str
-    timestamp_type: LogTimestampType
-    description: str | None
+    _rid: str
+    _name: str
+    _timestamp_type: LogTimestampType
+    _description: str | None
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasAuthHeader, Protocol):
         @property
         def logset(self) -> datasource_logset.LogSetService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def timestamp_type(self) -> LogTimestampType:
+        return self._timestamp_type
+
+    @property
+    def description(self) -> str | None:
+        return self._description
 
     def _stream_logs_paginated(self) -> Iterable[datasource_logset_api.Log]:
         request = datasource_logset_api.SearchLogsRequest()
@@ -44,18 +60,26 @@ class LogSet(HasRid):
     @classmethod
     def _from_conjure(cls, clients: _Clients, log_set_metadata: datasource_logset_api.LogSetMetadata) -> Self:
         return cls(
-            rid=log_set_metadata.rid,
-            name=log_set_metadata.name,
-            timestamp_type=_log_timestamp_type_from_conjure(log_set_metadata.timestamp_type),
-            description=log_set_metadata.description,
+            _rid=log_set_metadata.rid,
+            _name=log_set_metadata.name,
+            _timestamp_type=_log_timestamp_type_from_conjure(log_set_metadata.timestamp_type),
+            _description=log_set_metadata.description,
             _clients=clients,
         )
 
 
 @dataclass(frozen=True)
 class Log:
-    timestamp: IntegralNanosecondsUTC
-    body: str
+    _timestamp: IntegralNanosecondsUTC
+    _body: str
+
+    @property
+    def timestamp(self) -> IntegralNanosecondsUTC:
+        return self._timestamp
+
+    @property
+    def body(self) -> str:
+        return self._body
 
     def _to_conjure(self) -> datasource_logset_api.Log:
         return datasource_logset_api.Log(
@@ -69,7 +93,7 @@ class Log:
     def _from_conjure(cls, log: datasource_logset_api.Log) -> Self:
         if log.body.basic is None:
             raise RuntimeError(f"unhandled log body type: expected 'basic' but got {log.body.type!r}")
-        return cls(timestamp=_SecondsNanos.from_api(log.time).to_nanoseconds(), body=log.body.basic.message)
+        return cls(_timestamp=_SecondsNanos.from_api(log.time).to_nanoseconds(), _body=log.body.basic.message)
 
 
 def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampType) -> LogTimestampType:

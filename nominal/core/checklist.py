@@ -22,11 +22,11 @@ from nominal.core.run import Run
 
 @dataclass(frozen=True)
 class Checklist(HasRid):
-    rid: str
-    name: str
-    description: str
-    properties: Mapping[str, str]
-    labels: Sequence[str]
+    _rid: str
+    _name: str
+    _description: str
+    _properties: Mapping[str, str]
+    _labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
     class _Clients(DataReview._Clients, HasAuthHeader, Protocol):
@@ -37,6 +37,26 @@ class Checklist(HasRid):
         @property
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
 
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @property
+    def properties(self) -> Mapping[str, str]:
+        return self._properties
+
+    @property
+    def labels(self) -> Sequence[str]:
+        return self._labels
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
         # TODO(ritwikdixit): support draft checklists with VCS
@@ -44,11 +64,11 @@ class Checklist(HasRid):
             raise ValueError("cannot get a checklist that has not been published")
 
         return cls(
-            rid=checklist.rid,
-            name=checklist.metadata.title,
-            description=checklist.metadata.description,
-            properties=checklist.metadata.properties,
-            labels=checklist.metadata.labels,
+            _rid=checklist.rid,
+            _name=checklist.metadata.title,
+            _description=checklist.metadata.description,
+            _properties=checklist.metadata.properties,
+            _labels=checklist.metadata.labels,
             _clients=clients,
         )
 

@@ -26,11 +26,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Video(HasRid):
-    rid: str
-    name: str
-    description: str | None
-    properties: Mapping[str, str]
-    labels: Sequence[str]
+    _rid: str
+    _name: str
+    _description: str | None
+    _properties: Mapping[str, str]
+    _labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasAuthHeader, Protocol):
@@ -42,6 +42,26 @@ class Video(HasRid):
         def ingest(self) -> ingest_api.IngestService: ...
         @property
         def video_file(self) -> scout_video.VideoFileService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str | None:
+        return self._description
+
+    @property
+    def properties(self) -> Mapping[str, str]:
+        return self._properties
+
+    @property
+    def labels(self) -> Sequence[str]:
+        return self._labels
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -297,11 +317,11 @@ class Video(HasRid):
     @classmethod
     def _from_conjure(cls, clients: _Clients, video: scout_video_api.Video) -> Self:
         return cls(
-            rid=video.rid,
-            name=video.title,
-            description=video.description,
-            properties=MappingProxyType(video.properties),
-            labels=tuple(video.labels),
+            _rid=video.rid,
+            _name=video.title,
+            _description=video.description,
+            _properties=MappingProxyType(video.properties),
+            _labels=tuple(video.labels),
             _clients=clients,
         )
 

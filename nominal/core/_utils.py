@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import abc
 import importlib.metadata
 import platform
 import sys
 from itertools import islice
-from typing import Iterable, Protocol, Sequence, TypeVar, runtime_checkable
+from typing import Iterable, Sequence, TypeVar
 
 from nominal._utils import logger
 from nominal.core.stream import BatchItem
@@ -12,9 +13,10 @@ from nominal.core.stream import BatchItem
 T = TypeVar("T")
 
 
-@runtime_checkable
-class HasRid(Protocol):
-    rid: str
+class HasRid(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def rid(self) -> str: ...
 
 
 def batched(iterable: Iterable[T], n: int, *, strict: bool = False) -> Iterable[tuple[T, ...]]:

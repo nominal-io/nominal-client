@@ -19,14 +19,26 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class VideoFile(HasRid):
-    rid: str
-    name: str
-    description: str | None
+    _rid: str
+    _name: str
+    _description: str | None
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasAuthHeader, Protocol):
         @property
         def video_file(self) -> scout_video.VideoFileService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str | None:
+        return self._description
 
     def archive(self) -> None:
         """Archive the video file, disallowing it to appear when playing back the video"""
@@ -130,8 +142,8 @@ class VideoFile(HasRid):
     @classmethod
     def _from_conjure(cls, clients: _Clients, video_file: scout_video_api.VideoFile) -> Self:
         return cls(
-            rid=video_file.rid,
-            name=video_file.title,
-            description=video_file.description,
+            _rid=video_file.rid,
+            _name=video_file.title,
+            _description=video_file.description,
             _clients=clients,
         )

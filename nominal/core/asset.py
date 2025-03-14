@@ -26,11 +26,11 @@ ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
 
 @dataclass(frozen=True)
 class Asset(HasRid):
-    rid: str
-    name: str
-    description: str | None
-    properties: Mapping[str, str]
-    labels: Sequence[str]
+    _rid: str
+    _name: str
+    _description: str | None
+    _properties: Mapping[str, str]
+    _labels: Sequence[str]
 
     _clients: _Clients = field(repr=False)
 
@@ -44,6 +44,26 @@ class Asset(HasRid):
     ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str | None:
+        return self._description
+
+    @property
+    def properties(self) -> Mapping[str, str]:
+        return self._properties
+
+    @property
+    def labels(self) -> Sequence[str]:
+        return self._labels
 
     def update(
         self,
@@ -315,10 +335,10 @@ class Asset(HasRid):
     @classmethod
     def _from_conjure(cls, clients: _Clients, asset: scout_asset_api.Asset) -> Self:
         return cls(
-            rid=asset.rid,
-            name=asset.title,
-            description=asset.description,
-            properties=MappingProxyType(asset.properties),
-            labels=tuple(asset.labels),
+            _rid=asset.rid,
+            _name=asset.title,
+            _description=asset.description,
+            _properties=MappingProxyType(asset.properties),
+            _labels=tuple(asset.labels),
             _clients=clients,
         )

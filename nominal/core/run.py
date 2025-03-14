@@ -25,15 +25,15 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 @dataclass(frozen=True)
 class Run(HasRid):
-    rid: str
-    name: str
-    description: str
-    properties: Mapping[str, str]
-    labels: Sequence[str]
-    start: IntegralNanosecondsUTC
-    end: IntegralNanosecondsUTC | None
-    run_number: int
-    assets: Sequence[str]
+    _rid: str
+    _name: str
+    _description: str
+    _properties: Mapping[str, str]
+    _labels: Sequence[str]
+    _start: IntegralNanosecondsUTC
+    _end: IntegralNanosecondsUTC | None
+    _run_number: int
+    _assets: Sequence[str]
 
     _clients: _Clients = field(repr=False)
 
@@ -44,6 +44,42 @@ class Run(HasRid):
     ):
         @property
         def run(self) -> scout.RunService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str:
+        return self._description
+
+    @property
+    def properties(self) -> Mapping[str, str]:
+        return self._properties
+
+    @property
+    def labels(self) -> Sequence[str]:
+        return self._labels
+
+    @property
+    def start(self) -> IntegralNanosecondsUTC:
+        return self._start
+
+    @property
+    def end(self) -> IntegralNanosecondsUTC | None:
+        return self._end
+
+    @property
+    def run_number(self) -> int:
+        return self._run_number
+
+    @property
+    def assets(self) -> Sequence[str]:
+        return self._assets
 
     @property
     def nominal_url(self) -> str:
@@ -337,14 +373,14 @@ class Run(HasRid):
     @classmethod
     def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:
         return cls(
-            rid=run.rid,
-            name=run.title,
-            description=run.description,
-            properties=MappingProxyType(run.properties),
-            labels=tuple(run.labels),
-            start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
-            end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
-            run_number=run.run_number,
-            assets=tuple(run.assets),
+            _rid=run.rid,
+            _name=run.title,
+            _description=run.description,
+            _properties=MappingProxyType(run.properties),
+            _labels=tuple(run.labels),
+            _start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
+            _end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
+            _run_number=run.run_number,
+            _assets=tuple(run.assets),
             _clients=clients,
         )

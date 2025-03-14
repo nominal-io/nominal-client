@@ -17,8 +17,8 @@ from nominal.core.stream import WriteStream
 
 @dataclass(frozen=True)
 class Connection(DataSource):
-    name: str
-    description: str | None
+    _name: str
+    _description: str | None
     _tags: Mapping[str, Sequence[str]]
 
     @classmethod
@@ -28,20 +28,28 @@ class Connection(DataSource):
         """Factory method to create the appropriate Connection subclass based on connection details"""
         if response.connection_details.nominal is not None:
             return StreamingConnection(
-                rid=response.rid,
-                name=response.display_name,
-                description=response.description,
+                _rid=response.rid,
+                _name=response.display_name,
+                _description=response.description,
                 _tags=response.available_tag_values,
                 _clients=clients,
                 nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
             )
         return cls(
-            rid=response.rid,
-            name=response.display_name,
-            description=response.description,
+            _rid=response.rid,
+            _name=response.display_name,
+            _description=response.description,
             _tags=response.available_tag_values,
             _clients=clients,
         )
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str | None:
+        return self._description
 
     def archive(self) -> None:
         """Archive this connection.

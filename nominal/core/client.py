@@ -1063,7 +1063,7 @@ def _logs_to_conjure(
             yield log._to_conjure()
         elif isinstance(log, tuple):
             ts, body = log
-            yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
+            yield Log(_timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), _body=body)._to_conjure()
 
 
 def _create_search_assets_query(

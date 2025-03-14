@@ -16,11 +16,11 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 @dataclass(frozen=True)
 class DataReview(HasRid):
-    rid: str
-    run_rid: str
-    checklist_rid: str
-    checklist_commit: str
-    completed: bool
+    _rid: str
+    _run_rid: str
+    _checklist_rid: str
+    _checklist_commit: str
+    _completed: bool
 
     _clients: _Clients = field(repr=False)
 
@@ -29,6 +29,26 @@ class DataReview(HasRid):
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
         @property
         def run(self) -> scout.RunService: ...
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def run_rid(self) -> str:
+        return self._run_rid
+
+    @property
+    def checklist_rid(self) -> str:
+        return self._checklist_rid
+
+    @property
+    def checklist_commit(self) -> str:
+        return self._checklist_commit
+
+    @property
+    def completed(self) -> bool:
+        return self._completed
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, data_review: scout_datareview_api.DataReview) -> Self:
@@ -39,11 +59,11 @@ class DataReview(HasRid):
         ]
         completed = not any(executing_states)
         return cls(
-            rid=data_review.rid,
-            run_rid=data_review.run_rid,
-            checklist_rid=data_review.checklist.checklist.rid,
-            checklist_commit=data_review.checklist.checklist.commit,
-            completed=completed,
+            _rid=data_review.rid,
+            _run_rid=data_review.run_rid,
+            _checklist_rid=data_review.checklist.checklist.rid,
+            _checklist_commit=data_review.checklist.checklist.commit,
+            _completed=completed,
             _clients=clients,
         )
 
@@ -84,22 +104,46 @@ class DataReview(HasRid):
 
 @dataclass(frozen=True)
 class CheckViolation:
-    rid: str
-    check_rid: str
-    name: str
-    start: IntegralNanosecondsUTC
-    end: IntegralNanosecondsUTC | None
-    priority: checklist.Priority | None
+    _rid: str
+    _check_rid: str
+    _name: str
+    _start: IntegralNanosecondsUTC
+    _end: IntegralNanosecondsUTC | None
+    _priority: checklist.Priority | None
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def check_rid(self) -> str:
+        return self._check_rid
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def start(self) -> IntegralNanosecondsUTC:
+        return self._start
+
+    @property
+    def end(self) -> IntegralNanosecondsUTC | None:
+        return self._end
+
+    @property
+    def priority(self) -> checklist.Priority | None:
+        return self._priority
 
     @classmethod
     def _from_conjure(cls, check_alert: scout_datareview_api.CheckAlert) -> CheckViolation:
         return cls(
-            rid=check_alert.rid,
-            check_rid=check_alert.check_rid,
-            name=check_alert.name,
-            start=_SecondsNanos.from_api(check_alert.start).to_nanoseconds(),
-            end=_SecondsNanos.from_api(check_alert.end).to_nanoseconds() if check_alert.end is not None else None,
-            priority=checklist._conjure_priority_to_priority(check_alert.priority)
+            _rid=check_alert.rid,
+            _check_rid=check_alert.check_rid,
+            _name=check_alert.name,
+            _start=_SecondsNanos.from_api(check_alert.start).to_nanoseconds(),
+            _end=_SecondsNanos.from_api(check_alert.end).to_nanoseconds() if check_alert.end is not None else None,
+            _priority=checklist._conjure_priority_to_priority(check_alert.priority)
             if check_alert.priority is not scout_checks_api.Priority.UNKNOWN
             else None,
         )

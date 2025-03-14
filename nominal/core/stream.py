@@ -41,6 +41,7 @@ class BatchItem:
 class WriteStream:
     batch_size: int
     max_wait: timedelta
+
     _process_batch: Callable[[Sequence[BatchItem]], None]
     _executor: concurrent.futures.ThreadPoolExecutor
     _thread_safe_batch: ThreadSafeBatch
