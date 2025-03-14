@@ -106,7 +106,7 @@ def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callab
     return _deprecate_keyword_argument_decorator
 
 
-def deprecate_arguments(
+def deprecate_arguments_on_instance_methods(
     deprecated_args: list[str], new_kwarg: str, new_method: Callable[..., T]
 ) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
     """Decorator to deprecate specific positional and keyword arguments in favor of a keyword-only argument.
@@ -118,6 +118,7 @@ def deprecate_arguments(
     2. Execute the original method (which contains the legacy logic)
     3. If no deprecated arguments are provided but the new keyword argument is,
        it will call new_method with the new keyword argument.
+    4. If only self is passed (for instance methods), it will call new_method.
 
     Args:
         deprecated_args: List of argument names that are being deprecated
@@ -150,6 +151,9 @@ def deprecate_arguments(
 
             if new_kwarg in kwargs:
                 return new_method(*args, **{new_kwarg: kwargs[new_kwarg]})
+
+            if len(args) == 1 and not kwargs:
+                return new_method(*args)
 
             return method(*args, **kwargs)
 

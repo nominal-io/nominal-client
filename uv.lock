@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = ">=3.9, <4"
 resolution-markers = [
     "python_full_version == '3.10.*' and sys_platform == 'darwin'",
@@ -1578,7 +1577,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.39.0"
+version = "1.40.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1646,7 +1645,6 @@ requires-dist = [
     { name = "tabulate", specifier = ">=0.9.0,<0.10" },
     { name = "typing-extensions", specifier = ">=4,<5" },
 ]
-provides-extras = ["hdf5", "protos", "video"]
 
 [package.metadata.requires-dev]
 dev = [
