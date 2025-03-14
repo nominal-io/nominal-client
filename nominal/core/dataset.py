@@ -12,7 +12,7 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self
 
-from nominal._utils import deprecate_arguments_on_instance_methods
+from nominal._utils import deprecate_arguments
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.core._utils import update_dataclass
 from nominal.core.channel import Channel
@@ -243,7 +243,7 @@ class Dataset(DataSource):
             _clients=clients,
         )
 
-    @deprecate_arguments_on_instance_methods(
+    @deprecate_arguments(
         deprecated_args=["exact_match", "fuzzy_search_text"],
         new_kwarg="names",
         new_method=DataSource.get_channels,
