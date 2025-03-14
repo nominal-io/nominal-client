@@ -5,7 +5,13 @@ from datetime import timedelta
 from time import sleep
 from typing import Protocol, Sequence
 
-from nominal_api import scout, scout_checks_api, scout_datareview_api, scout_integrations_api
+from nominal_api import (
+    scout,
+    scout_checklistexecution_api,
+    scout_checks_api,
+    scout_datareview_api,
+    scout_integrations_api,
+)
 from typing_extensions import Self
 
 from nominal.core import checklist
@@ -30,6 +36,8 @@ class DataReview(HasRid):
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
+        def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
+        @property
         def run(self) -> scout.RunService: ...
 
     @classmethod
@@ -51,7 +59,7 @@ class DataReview(HasRid):
 
     def get_checklist(self) -> checklist.Checklist:
         return checklist.Checklist._from_conjure(
-            self._clients.clients,
+            self._clients,
             self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
         )
 
