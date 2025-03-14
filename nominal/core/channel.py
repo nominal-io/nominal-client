@@ -12,14 +12,15 @@ from nominal_api import (
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
+    timeseries_channelmetadata,
     timeseries_channelmetadata_api,
-    timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
 from nominal_api.api import Timestamp
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._utils import update_dataclass
 from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -58,9 +59,38 @@ class Channel:
         @property
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
-        def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
-        @property
         def compute(self) -> scout_compute_api.ComputeService: ...
+        @property
+        def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
+
+    def update(
+        self,
+        *,
+        description: str | None = None,
+        unit: str | None = None,
+    ) -> Self:
+        """Replace channel metadata within Nominal, and updates / returns the local instance.
+
+        Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Args:
+            description: Human-readable description of data within the channel
+            unit: Unit symbol to apply to the channel
+        """
+        channel_metadata = self._clients.channel_metadata.update_channel_metadata(
+            self._clients.auth_header,
+            timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
+                channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
+                    channel_name=self.name,
+                    data_source_rid=self.data_source,
+                ),
+                description=description,
+                unit_update=timeseries_logicalseries_api.UnitUpdate(unit=unit) if unit else None,
+            ),
+        )
+        updated_channel = self.__class__._from_channel_metadata_api(self._clients, channel_metadata)
+        update_dataclass(self, updated_channel, fields=self.__dataclass_fields__)
+        return self
 
     def to_pandas(
         self,
