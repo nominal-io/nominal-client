@@ -14,7 +14,6 @@ from nominal_api import (
     scout_dataexport_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
-    timeseries_logicalseries,
     timeseries_logicalseries_api,
 )
 from nominal_api.api import Timestamp
@@ -72,7 +71,7 @@ class Channel:
                     data_source_rid=self.data_source,
                 ),
                 description=description,
-            )
+            ),
         )
 
     def to_pandas(
