@@ -9,9 +9,21 @@ from nominal.core._utils import HasRid
 
 @dataclass(frozen=True)
 class User(HasRid):
-    rid: str
-    display_name: str
-    email: str
+    _rid: str
+    _display_name: str
+    _email: str
+
+    @property
+    def rid(self) -> str:
+        return self._rid
+
+    @property
+    def display_name(self) -> str:
+        return self._display_name
+
+    @property
+    def email(self) -> str:
+        return self._email
 
 
 def _get_user(
@@ -20,7 +32,11 @@ def _get_user(
 ) -> User:
     """Retrieve the user with the set auth token"""
     response = client.get_my_profile(auth_header)
-    return User(rid=response.rid, display_name=response.display_name, email=response.email)
+    return User(
+        _rid=response.rid,
+        _display_name=response.display_name,
+        _email=response.email,
+    )
 
 
 def _get_user_rid_from_email(
