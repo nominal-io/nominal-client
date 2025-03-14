@@ -12,6 +12,7 @@ from nominal_api import (
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
+    timeseries_channelmetadata,
     timeseries_channelmetadata_api,
     timeseries_logicalseries,
     timeseries_logicalseries_api,
@@ -58,9 +59,21 @@ class Channel:
         @property
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
-        def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
-        @property
         def compute(self) -> scout_compute_api.ComputeService: ...
+        @property
+        def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
+
+    def set_description(self, description: str) -> None:
+        self._clients.channel_metadata.update_channel_metadata(
+            self._clients.auth_header,
+            timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
+                channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
+                    channel_name=self.name,
+                    data_source_rid=self.data_source,
+                ),
+                description=description,
+            )
+        )
 
     def to_pandas(
         self,
