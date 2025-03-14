@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.41.0](https://github.com/nominal-io/nominal-client/compare/v1.40.1...v1.41.0) (2025-03-14)
+
+
+### Features
+
+* expose channel update() method ([#234](https://github.com/nominal-io/nominal-client/issues/234)) ([8c0dcdc](https://github.com/nominal-io/nominal-client/commit/8c0dcdc478b3d716b5ff89a4fa9c2cac0fe204b1))
+* expose searching for checklists and data reviews ([#259](https://github.com/nominal-io/nominal-client/issues/259)) ([fc7e69c](https://github.com/nominal-io/nominal-client/commit/fc7e69c9c03d68005c0552ce78b20079f44ca4dd))
+* update docs to reflect h265 support ([#264](https://github.com/nominal-io/nominal-client/issues/264)) ([8707c4b](https://github.com/nominal-io/nominal-client/commit/8707c4bd5c93be1d82be7ff76d427f92f9f9ca31))
+
 ## [1.40.1](https://github.com/nominal-io/nominal-client/compare/v1.40.0...v1.40.1) (2025-03-14)
 
 
