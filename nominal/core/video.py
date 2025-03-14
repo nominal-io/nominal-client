@@ -159,10 +159,10 @@ class Video(HasRid):
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
     ) -> VideoFile:
-        """Append to a video from a file-like object containing H264-encoded video data.
+        """Append to a video from a file-like object containing video data encoded in H264 or H265.
 
         Args:
-            video: File-like object containing H264-encoded video data.
+            video: File-like object containing video data encoded in H264 or H265.
             name: Name of the file to use when uploading to S3.
             start: Starting timestamp of the video file in absolute UTC time
             frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
