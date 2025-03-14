@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.40.1](https://github.com/nominal-io/nominal-client/compare/v1.40.0...v1.40.1) (2025-03-14)
+
+
+### Bug Fixes
+
+* dataset get_channels() ([#260](https://github.com/nominal-io/nominal-client/issues/260)) ([4d67b50](https://github.com/nominal-io/nominal-client/commit/4d67b5061f559c094846831d40cd82505a309254))
+
 ## [1.40.0](https://github.com/nominal-io/nominal-client/compare/v1.39.0...v1.40.0) (2025-03-10)
 
 
