@@ -585,7 +585,7 @@ class NominalClient:
             start: Starting timestamp of the video
             frame_timestamps: Per-frame timestamps (in nanoseconds since unix epoch) for every frame of the video
             description: Description of the video to create in nominal
-            file_type: Type of data being uploaded, used for naming the file uploaded to cloud storage as part 
+            file_type: Type of data being uploaded, used for naming the file uploaded to cloud storage as part
                 of ingestion.
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
