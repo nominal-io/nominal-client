@@ -243,6 +243,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from an ArduPilot DataFlash log file.
 
@@ -264,6 +265,7 @@ class NominalClient:
                 properties={} if properties is None else dict(properties),
                 dataset_description=description,
                 dataset_name=name,
+                channel_config=_build_channel_config(prefix_tree_delimiter),
             )
         )
         request = _create_dataflash_ingest_request(s3_path, target)
@@ -318,6 +320,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a journal log file with json output format.
 
@@ -347,6 +350,7 @@ class NominalClient:
                             properties={} if properties is None else dict(properties),
                             dataset_description=description,
                             dataset_name=name,
+                            channel_config=_build_channel_config(prefix_tree_delimiter),
                         )
                     ),
                 )
@@ -381,6 +385,22 @@ class NominalClient:
             "epoch_{unit}": epoch timestamps in UTC (floats or ints),
             "relative_{unit}": relative timestamps (floats or ints),
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
+
+        Args:
+            dataset: Binary file-like tabular data stream
+            name: Name of the dataset to create
+            timestamp_column: Column of data containing timestamp information for all other columns
+            timestamp_type: Type of timestamps contained within timestamp_column
+            file_type: Type of file being ingested (e.g. CSV, parquet, etc.). Used for naming the file uploaded
+                to cloud storage as part of ingestion.
+            description: Human-readable description of the dataset to create
+            labels: Text labels to apply to the created dataset
+            properties: Key-value properties to apply to the cleated dataset
+            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+            channel_prefix: Prefix to apply to newly created channels
+
+        Returns:
+            Reference to the constructed dataset object.
         """
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
@@ -395,11 +415,7 @@ class NominalClient:
                         new=ingest_api.NewDatasetIngestDestination(
                             labels=list(labels),
                             properties={} if properties is None else dict(properties),
-                            channel_config=(
-                                None
-                                if prefix_tree_delimiter is None
-                                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-                            ),
+                            channel_config=_build_channel_config(prefix_tree_delimiter),
                             dataset_description=description,
                             dataset_name=name,
                         )
@@ -429,6 +445,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from an MCAP file.
 
@@ -449,6 +466,7 @@ class NominalClient:
                 exclude_topics=exclude_topics,
                 labels=labels,
                 properties=properties,
+                prefix_tree_delimiter=prefix_tree_delimiter,
             )
 
     def create_dataset_from_mcap_io(
@@ -461,6 +479,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from an mcap file-like object.
 
@@ -476,6 +495,7 @@ class NominalClient:
             exclude_topics: If present, list of topics to not ingest from the MCAP.
             labels: Text labels to apply to the created dataset
             properties: Key-value properties to apply to the cleated dataset
+            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
 
         Returns:
             Reference to the constructed dataset object.
@@ -497,7 +517,7 @@ class NominalClient:
                 dataset_description=description,
                 properties={} if properties is None else dict(properties),
                 labels=list(labels),
-                channel_config=None,
+                channel_config=_build_channel_config(prefix_tree_delimiter),
             )
         )
         request = _create_mcap_ingest_request(s3_path, channels, target)
@@ -565,7 +585,8 @@ class NominalClient:
             start: Starting timestamp of the video
             frame_timestamps: Per-frame timestamps (in nanoseconds since unix epoch) for every frame of the video
             description: Description of the video to create in nominal
-            file_type: Type of data being uploaded
+            file_type: Type of data being uploaded, used for naming the file uploaded to cloud storage as part
+                of ingestion.
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
 
@@ -1164,6 +1185,13 @@ class NominalClient:
                 break
 
         return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
+
+
+def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
+    if prefix_tree_delimiter is None:
+        return None
+    else:
+        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
 
 
 def _create_search_runs_query(
