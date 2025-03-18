@@ -215,6 +215,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
     ) -> Dataset:
         """Create a dataset from a CSV file.
 
@@ -231,6 +232,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             prefix_tree_delimiter=prefix_tree_delimiter,
+            channel_prefix=channel_prefix,
         )
 
     def create_ardupilot_dataflash_dataset(
@@ -281,6 +283,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
     ) -> Dataset:
         """Create a dataset from a table-like file (CSV, parquet, etc.).
 
@@ -304,6 +307,7 @@ class NominalClient:
                 labels=labels,
                 properties=properties,
                 prefix_tree_delimiter=prefix_tree_delimiter,
+                channel_prefix=channel_prefix,
             )
 
     def create_mcap_dataset(
@@ -412,6 +416,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -450,6 +455,7 @@ class NominalClient:
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
                     additional_file_tags=None,
+                    channel_prefix=channel_prefix,
                     tag_keys_from_columns=None,
                 )
             )
