@@ -214,6 +214,38 @@ class Asset(HasRid):
         """
         return (*self.list_datasets(), *self.list_connections(), *self.list_logsets(), *self.list_videos())
 
+    def get_data_scope(self, data_scope_name: str) -> ScopeType:
+        """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""
+        for scope, data in self.list_data_scopes():
+            if scope == data_scope_name:
+                return data
+
+        raise ValueError(f"No such data scope found on asset {self.rid} with data_scope_name {data_scope_name}")
+
+    def get_dataset(self, data_scope_name: str) -> Dataset:
+        """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
+        dataset = self.get_data_scope(data_scope_name)
+        if isinstance(dataset, Dataset):
+            return dataset
+        else:
+            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a dataset")
+
+    def get_connection(self, data_scope_name: str) -> Connection:
+        """Retrieve a connection by data scope name, or raise ValueError if one is not found."""
+        connection = self.get_data_scope(data_scope_name)
+        if isinstance(connection, Connection):
+            return connection
+        else:
+            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a connection")
+
+    def get_video(self, data_scope_name: str) -> Video:
+        """Retrieve a video by data scope name, or raise ValueError if one is not found."""
+        video = self.get_data_scope(data_scope_name)
+        if isinstance(video, Video):
+            return video
+        else:
+            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a video")
+
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this asset.
         Does not remove the attachments from Nominal.
