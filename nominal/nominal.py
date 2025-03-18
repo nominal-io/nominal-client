@@ -47,7 +47,7 @@ def _set_base_url(base_url: str) -> None:
 
 @typing_extensions.deprecated(
     """`set_base_url` is deprecated and will be removed in a future version.
-    Use `set_current_client` instead. More at: [docs].""",
+    Use `set_current_client` instead.""",
     category=UserWarning,
 )
 def set_base_url(base_url: str) -> None:
@@ -63,7 +63,7 @@ def set_base_url(base_url: str) -> None:
 
 @typing_extensions.deprecated(
     """`set_token` is deprecated and will be removed in a future version.
-    Use `set_current_client` instead. More at: [docs].""",
+    Use `set_current_client` instead.""",
     category=UserWarning,
 )
 def set_token(base_url: str, token: str) -> None:
@@ -85,7 +85,7 @@ def set_token(base_url: str, token: str) -> None:
 
 @typing_extensions.deprecated(
     """`get_default_client` is deprecated and will be removed in a future version.
-    Use `get_current_client` instead. More at: [docs].""",
+    Use `get_current_client` instead.""",
     category=UserWarning,
 )
 def get_default_client() -> NominalClient:
