@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = ">=3.9, <4"
 resolution-markers = [
     "python_full_version == '3.10.*' and sys_platform == 'darwin'",
@@ -1582,6 +1583,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "conjure-python-client" },
+    { name = "ffmpeg-python" },
     { name = "nominal-api" },
     { name = "nptdms" },
     { name = "pandas" },
@@ -1600,9 +1602,6 @@ hdf5 = [
 ]
 protos = [
     { name = "nominal-api-protos" },
-]
-video = [
-    { name = "ffmpeg-python" },
 ]
 
 [package.dev-dependencies]
@@ -1631,7 +1630,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
-    { name = "ffmpeg-python", marker = "extra == 'video'", specifier = ">=0.2.0" },
+    { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
     { name = "nominal-api", specifier = "==0.584.3" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.549.0" },
@@ -1645,6 +1644,7 @@ requires-dist = [
     { name = "tabulate", specifier = ">=0.9.0,<0.10" },
     { name = "typing-extensions", specifier = ">=4,<5" },
 ]
+provides-extras = ["hdf5", "protos"]
 
 [package.metadata.requires-dev]
 dev = [
