@@ -99,9 +99,6 @@ include = ["nominal/**/*.py", "tests/**/*.py"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-[tool.ruff.lint.pylint]
-max-args = 10
-
 [tool.ruff.lint]
 # See rules and codes: https://docs.astral.sh/ruff/rules/
 select = [
@@ -134,6 +131,7 @@ ignore = [
     "D401",    # imperative mood
     "PLW0603", # globals
     "PLR2004", # magic values
+    "PLR0913", # too many arguments
 ]
 
 [tool.mypy]
