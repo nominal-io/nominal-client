@@ -84,8 +84,8 @@ def set_token(base_url: str, token: str) -> None:
 
 
 @typing_extensions.deprecated(
-    """`set_default_client` is deprecated and will be removed in a future version.
-    Use `set_current_client` instead. More at: [docs].""",
+    """`get_default_client` is deprecated and will be removed in a future version.
+    Use `get_current_client` instead. More at: [docs].""",
     category=UserWarning,
 )
 def get_default_client() -> NominalClient:
