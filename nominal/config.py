@@ -129,9 +129,10 @@ def _auto_migrate_deprecated_config() -> None:
     logger.info(f"migrating deprecated config to new config: {cfg}")
     cfg.to_yaml()
     logger.warning(
-        f"we recommend deleting deprecated config file {DEPRECATED_NOMINAL_CONFIG_PATH} containing {deprecated_cfg}"
+        f"deprecated config file {DEPRECATED_NOMINAL_CONFIG_PATH} containing {deprecated_cfg} "
+        f"successfully migrated to v2 config file {DEFAULT_NOMINAL_CONFIG_PATH}. "
+        f"We recommended deleting the deprecated config file {DEPRECATED_NOMINAL_CONFIG_PATH}"
     )
-    logger.info(f"successfully migrated over to the v2 nominal config at {DEFAULT_NOMINAL_CONFIG_PATH}")
 
 
 def _is_same_url(url1: str, url2: str) -> bool:
