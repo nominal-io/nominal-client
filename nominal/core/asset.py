@@ -115,13 +115,13 @@ class Asset(HasRid):
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
-                  data_scope_name=data_scope_name,
-                  data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
-                  series_tags={}
+                    data_scope_name=data_scope_name,
+                    data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
+                    series_tags={},
                 ),
             ]
         )
-        self._clients.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this asset.
