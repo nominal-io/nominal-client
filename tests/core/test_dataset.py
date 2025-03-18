@@ -3,7 +3,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nominal_api.timeseries_logicalseries_api import BatchUpdateLogicalSeriesRequest
+from nominal_api.timeseries_channelmetadata_api import BatchUpdateChannelMetadataRequest
 
 from nominal.core.channel import Channel
 from nominal.core.dataset import Dataset, DatasetBounds
@@ -43,12 +43,12 @@ def mock_dataset(mock_clients):
     return ds
 
 
-@patch("nominal.core.dataset._available_units", return_value=UNITS)
+@patch("nominal.core.datasource._available_units", return_value=UNITS)
 @patch.object(Dataset, "get_channels")
 def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: MagicMock, mock_dataset: Dataset):
     mock_get_channels.return_value = [
         Channel(
-            rid="ch-1",
+            _rid="ch-1",
             name="channel1",
             data_source="ds-1",
             data_type="float",
@@ -57,7 +57,7 @@ def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: M
             _clients=mock_dataset._clients,
         ),
         Channel(
-            rid="ch-2",
+            _rid="ch-2",
             name="channel2",
             data_source="ds-2",
             data_type="float",
@@ -73,22 +73,23 @@ def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: M
     mock_available_units.assert_called_once_with(mock_dataset._clients.auth_header, mock_dataset._clients.units)
     mock_get_channels.assert_called_once()
 
-    batch_request = mock_dataset._clients.logical_series.batch_update_logical_series.call_args[0][1]
-    assert isinstance(batch_request, BatchUpdateLogicalSeriesRequest)
+    batch_request = mock_dataset._clients.channel_metadata.batch_update_channel_metadata.call_args[0][1]
+    assert isinstance(batch_request, BatchUpdateChannelMetadataRequest)
     assert len(batch_request.requests) == 2
-    assert batch_request.requests[0].logical_series_rid == "ch-1"
-    assert batch_request.requests[1].logical_series_rid == "ch-2"
-    mock_available_units.assert_called_once()
+    assert batch_request.requests[0].channel_identifier.channel_name == "channel1"
+    assert batch_request.requests[0].channel_identifier.data_source_rid == "test-rid"
+    assert batch_request.requests[1].channel_identifier.channel_name == "channel2"
+    assert batch_request.requests[1].channel_identifier.data_source_rid == "test-rid"
 
 
-@patch("nominal.core.dataset._available_units", return_value=UNITS)
+@patch("nominal.core.datasource._available_units", return_value=UNITS)
 @patch.object(Dataset, "get_channels")
 def test_set_channel_units_invalid_unit(
     mock_get_channels: MagicMock, mock_available_units: MagicMock, mock_dataset: Dataset
 ):
     mock_get_channels.return_value = [
         Channel(
-            rid="ch-1",
+            _rid="ch-1",
             name="channel1",
             data_source="ds-1",
             data_type="float",
@@ -106,7 +107,7 @@ def test_set_channel_units_invalid_unit(
 
 
 @pytest.mark.parametrize("validate", [True, False])
-@patch("nominal.core.dataset._available_units", return_value=UNITS)
+@patch("nominal.core.datasource._available_units", return_value=UNITS)
 @patch.object(Dataset, "get_channels")
 def test_set_channel_units_no_channel_data(
     mock_get_channels: MagicMock, mock_available_units: MagicMock, mock_dataset: Dataset, validate: bool

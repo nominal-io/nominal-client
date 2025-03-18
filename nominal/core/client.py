@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from io import BytesIO, TextIOBase, TextIOWrapper
+from io import TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
@@ -20,6 +19,8 @@ from nominal_api import (
     scout_asset_api,
     scout_catalog,
     scout_checklistexecution_api,
+    scout_checks_api,
+    scout_datareview_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -38,18 +39,25 @@ from nominal.core._utils import construct_user_agent_string, rid_from_instance_o
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
-from nominal.core.checklist import Checklist, ChecklistBuilder
-from nominal.core.connection import Connection
+from nominal.core.checklist import Checklist
+from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
-from nominal.core.dataset import Dataset, _get_dataset, _get_datasets
+from nominal.core.dataset import (
+    Dataset,
+    _create_dataflash_ingest_request,
+    _create_mcap_channels,
+    _create_mcap_ingest_request,
+    _get_dataset,
+    _get_datasets,
+)
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
-from nominal.core.user import User, _get_user, _get_user_with_fallback
-from nominal.core.video import Video
+from nominal.core.user import User, _get_user
+from nominal.core.video import Video, _build_video_file_timestamp_manifest
 from nominal.core.workbook import Workbook
-from nominal.exceptions import NominalIngestError
+from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
     LogTimestampType,
@@ -59,6 +67,8 @@ from nominal.ts import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PAGE_SIZE = 100
 
 
 @dataclass(frozen=True)
@@ -192,7 +202,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
-            page_size=100,
+            page_size=DEFAULT_PAGE_SIZE,
             query=_create_search_runs_query(start, end, name_substring, labels, properties),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
@@ -250,6 +260,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
     ) -> Dataset:
         """Create a dataset from a CSV file.
 
@@ -266,6 +277,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             prefix_tree_delimiter=prefix_tree_delimiter,
+            channel_prefix=channel_prefix,
         )
 
     def create_ardupilot_dataflash_dataset(
@@ -291,21 +303,15 @@ class NominalClient:
         with open(path, "rb") as f:
             s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
 
-        request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                dataflash=ingest_api.DataflashOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        new=ingest_api.NewDatasetIngestDestination(
-                            labels=list(labels),
-                            properties={} if properties is None else dict(properties),
-                            dataset_description=description,
-                            dataset_name=name,
-                        )
-                    ),
-                )
-            ),
+        target = ingest_api.DatasetIngestTarget(
+            new=ingest_api.NewDatasetIngestDestination(
+                labels=list(labels),
+                properties={} if properties is None else dict(properties),
+                dataset_description=description,
+                dataset_name=name,
+            )
         )
+        request = _create_dataflash_ingest_request(s3_path, target)
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
         if response.details.dataset is None:
             raise NominalIngestError("error ingesting dataflash: no dataset created")
@@ -322,6 +328,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
     ) -> Dataset:
         """Create a dataset from a table-like file (CSV, parquet, etc.).
 
@@ -345,6 +352,7 @@ class NominalClient:
                 labels=labels,
                 properties=properties,
                 prefix_tree_delimiter=prefix_tree_delimiter,
+                channel_prefix=channel_prefix,
             )
 
     def create_mcap_dataset(
@@ -366,18 +374,6 @@ class NominalClient:
 
         See `create_dataset_from_io` for more details on the other arguments.
         """
-        channels = ingest_api.McapChannels(all=api.Empty())
-        if include_topics is not None and exclude_topics is not None:
-            include_topics = [t for t in include_topics if t not in exclude_topics]
-        if include_topics is not None:
-            channels = ingest_api.McapChannels(
-                include=[api.McapChannelLocator(topic=topic) for topic in include_topics]
-            )
-        elif exclude_topics is not None:
-            channels = ingest_api.McapChannels(
-                exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics]
-            )
-
         mcap_path = Path(path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,
@@ -385,24 +381,73 @@ class NominalClient:
             self._clients.upload,
             file_type=FileTypes.MCAP,
         )
-        source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
-        request = ingest_api.IngestMcapRequest(
-            channel_config=[],
-            channels=channels,
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            sources=[source],
-            description=description,
-            title=name,
+        channels = _create_mcap_channels(include_topics, exclude_topics)
+        target = ingest_api.DatasetIngestTarget(
+            new=ingest_api.NewDatasetIngestDestination(
+                dataset_name=name,
+                dataset_description=description,
+                properties={} if properties is None else dict(properties),
+                labels=list(labels),
+                channel_config=None,
+            )
         )
-        resp = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
-        if resp.outputs:
-            dataset_rid = resp.outputs[0].target.dataset_rid
+        request = _create_mcap_ingest_request(s3_path, channels, target)
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if resp.details.dataset is not None:
+            dataset_rid = resp.details.dataset.dataset_rid
             if dataset_rid is not None:
                 dataset = self.get_dataset(dataset_rid)
                 return dataset
             raise NominalIngestError("error ingesting mcap: no dataset rid")
         raise NominalIngestError("error ingesting mcap: no dataset created")
+
+    def create_journal_json_dataset(
+        self,
+        path: Path | str,
+        name: str | None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Create a dataset from a journal log file with json output format.
+
+        Intended to be used with the recorded output of `journalctl --output json ...`.
+        The path extension is expected to be `.jsonl` or `.jsonl.gz` if gzipped.
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_io` for more details.
+        """
+        path = Path(path)
+        file_type = FileType.from_path_journal_json(path)
+
+        if name is None:
+            name = path.name
+
+        with open(path, "rb") as f:
+            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
+
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                journal_json=ingest_api.JournalJsonOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                    target=ingest_api.DatasetIngestTarget(
+                        new=ingest_api.NewDatasetIngestDestination(
+                            labels=list(labels),
+                            properties={} if properties is None else dict(properties),
+                            dataset_description=description,
+                            dataset_name=name,
+                        )
+                    ),
+                )
+            ),
+        )
+
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.dataset is None:
+            raise NominalIngestError("error ingesting journal json: no dataset created")
+        return self.get_dataset(response.details.dataset.dataset_rid)
 
     def create_dataset_from_io(
         self,
@@ -416,6 +461,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -432,24 +478,37 @@ class NominalClient:
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
-        request = ingest_api.TriggerIngest(
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-            channel_config=(
-                None
-                if prefix_tree_delimiter is None
-                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-            ),
-            dataset_description=description,
-            dataset_name=name,
-            timestamp_metadata=ingest_api.TimestampMetadata(
-                series_name=timestamp_column,
-                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-            ),
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                csv=ingest_api.CsvOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
+                    target=ingest_api.DatasetIngestTarget(
+                        new=ingest_api.NewDatasetIngestDestination(
+                            labels=list(labels),
+                            properties={} if properties is None else dict(properties),
+                            channel_config=(
+                                None
+                                if prefix_tree_delimiter is None
+                                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+                            ),
+                            dataset_description=description,
+                            dataset_name=name,
+                        )
+                    ),
+                    timestamp_metadata=ingest_api.TimestampMetadata(
+                        series_name=timestamp_column,
+                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+                    ),
+                    additional_file_tags=None,
+                    channel_prefix=channel_prefix,
+                    tag_keys_from_columns=None,
+                )
+            )
         )
-        response = self._clients.ingest.trigger_ingest(self._clients.auth_header, request)
-        return self.get_dataset(response.dataset_rid)
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if not response.details.dataset:
+            raise NominalIngestError("error ingesting dataset: no dataset created")
+        return self.get_dataset(response.details.dataset.dataset_rid)
 
     def create_video(
         self,
@@ -525,58 +584,34 @@ class NominalClient:
             time elapsed in the video playback.
 
         """
-        if (start is None and frame_timestamps is None) or (None not in (start, frame_timestamps)):
-            raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
-
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
-        if start is None:
-            # Dump timestamp array into an in-memory file-like IO object
-            json_io = BytesIO()
-            text_json_io = TextIOWrapper(json_io)
-            json.dump(frame_timestamps, text_json_io)
-            text_json_io.flush()
-            json_io.seek(0)
-
-            logger.debug("Uploading timestamp manifests to s3")
-            manifest_s3_path = upload_multipart_io(
-                self._clients.auth_header,
-                json_io,
-                "timestamp_manifest",
-                FileTypes.JSON,
-                self._clients.upload,
-            )
-            timestamp_manifest = ingest_api.VideoTimestampManifest(
-                timestamp_manifests=ingest_api.TimestampManifest(
-                    sources=[
-                        ingest_api.IngestSource(
-                            s3=ingest_api.S3IngestSource(
-                                path=manifest_s3_path,
-                            )
-                        )
-                    ]
-                )
-            )
-        else:
-            timestamp_manifest = ingest_api.VideoTimestampManifest(
-                no_manifest=ingest_api.NoTimestampManifest(
-                    starting_timestamp=_SecondsNanos.from_flexible(start).to_ingest_api()
-                )
-            )
-
+        timestamp_manifest = _build_video_file_timestamp_manifest(
+            self._clients.auth_header, self._clients.upload, start, frame_timestamps
+        )
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
-        request = ingest_api.IngestVideoRequest(
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
-            timestamps=timestamp_manifest,
-            description=description,
-            title=name,
+        request = ingest_api.IngestRequest(
+            ingest_api.IngestOptions(
+                video=ingest_api.VideoOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                    target=ingest_api.VideoIngestTarget(
+                        new=ingest_api.NewVideoIngestDestination(
+                            title=name,
+                            description=description,
+                            properties={} if properties is None else dict(properties),
+                            labels=list(labels),
+                        )
+                    ),
+                    timestamp_manifest=timestamp_manifest,
+                )
+            )
         )
-        response = self._clients.ingest.ingest_video(self._clients.auth_header, request)
-        return self.get_video(response.video_rid)
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.video is None:
+            raise NominalIngestError("error ingesting video: no video created")
+        return self.get_video(response.details.video.video_rid)
 
     def create_log_set(
         self,
@@ -658,32 +693,42 @@ class NominalClient:
         response = self._clients.checklist.get(self._clients.auth_header, rid)
         return Checklist._from_conjure(self._clients, response)
 
-    def checklist_builder(
+    def search_checklists(
         self,
-        name: str,
-        description: str = "",
-        assignee_email: str | None = None,
-        assignee_rid: str | None = None,
-        default_ref_name: str | None = None,
-    ) -> ChecklistBuilder:
-        """Creates a checklist builder.
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> Sequence[Checklist]:
+        """Search for checklists meeting the specified filters.
+        Filters are ANDed together, e.g. `(checklist.label == label) AND (checklist.search_text =~ field)`
 
-        You can provide one of `assignee_email` or `assignee_rid`. If neither are provided, the rid for the user
-        executing the script will be used as the assignee. If both are provided, a ValueError is raised.
+        Args:
+            search_text: case-insensitive search for any of the keywords in all string fields
+            labels: A sequence of labels that must ALL be present on a checklist to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a checklist to be included.
+
+        Returns:
+            All checklists which match all of the provided conditions
         """
-        return ChecklistBuilder(
-            name=name,
-            description=description,
-            assignee_rid=_get_user_with_fallback(
-                self._clients.auth_header, self._clients.authentication, assignee_email, assignee_rid
-            ),
-            _default_ref_name=default_ref_name,
-            _variables=[],
-            _checks=[],
-            _properties={},
-            _labels=[],
-            _clients=self._clients,
-        )
+        page_token = None
+        query = _create_search_checklists_query(search_text, labels, properties)
+        archived_statuses = [api.ArchivedStatus.NOT_ARCHIVED]
+
+        raw_checklists = []
+        while True:
+            request = scout_checks_api.SearchChecklistsRequest(
+                query=query,
+                archived_statuses=archived_statuses,
+                next_page_token=page_token,
+                page_size=DEFAULT_PAGE_SIZE,
+            )
+            response = self._clients.checklist.search(self._clients.auth_header, request)
+            raw_checklists.extend(response.values)
+            page_token = response.next_page_token
+            if not page_token:
+                break
+
+        return [Checklist._from_conjure(self._clients, checklist) for checklist in raw_checklists]
 
     def create_attachment_from_io(
         self,
@@ -770,11 +815,15 @@ class NominalClient:
             conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
                 This typically occurs when there is no such channel for the given RID.
         """
+        warnings.warn(
+            "get_channel is deprecated. Use dataset.get_channel() or connection.get_channel() instead.",
+            UserWarning,
+        )
         return Channel._from_conjure_logicalseries_api(
             self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
         )
 
-    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Sequence[Channel]:
+    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Iterable[Channel]:
         """Sets the units for a set of channels based on user-provided unit symbols
         Args:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
@@ -789,6 +838,11 @@ class NominalClient:
                 channels with the given RIDs present.
 
         """
+        warnings.warn(
+            "set_channel_units is deprecated. Use dataset.set_channel_units() or connection.set_channel_units()",
+            UserWarning,
+        )
+
         series_updates = []
         for rid, series_type in rids_to_types.items():
             series_updates.append(
@@ -829,23 +883,28 @@ class NominalClient:
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
-        request = ingest_api.IngestMcapRequest(
-            channel_config=[
-                ingest_api.McapChannelConfig(
-                    channel_type=ingest_api.McapChannelConfigType(video=ingest_api.McapVideoChannelConfig()),
-                    locator=api.McapChannelLocator(topic=topic),
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                video=ingest_api.VideoOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                    target=ingest_api.VideoIngestTarget(
+                        new=ingest_api.NewVideoIngestDestination(
+                            title=name,
+                            description=description,
+                            properties={} if properties is None else dict(properties),
+                            labels=list(labels),
+                        )
+                    ),
+                    timestamp_manifest=scout_video_api.VideoFileTimestampManifest(
+                        mcap=scout_video_api.McapTimestampManifest(api.McapChannelLocator(topic=topic))
+                    ),
                 )
-            ],
-            labels=list(labels),
-            properties={} if properties is None else dict(properties),
-            sources=[ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))],
-            description=description,
-            title=name,
+            )
         )
-        response = self._clients.ingest.ingest_mcap(self._clients.auth_header, request)
-        if len(response.outputs) != 1 or response.outputs[0].target.video_rid is None:
-            raise NominalIngestError("No or invalid video RID returned")
-        return self.get_video(response.outputs[0].target.video_rid)
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.video is None:
+            raise NominalIngestError("error ingesting mcap video: no video created")
+        return self.get_video(response.details.video.video_rid)
 
     def create_streaming_connection(
         self,
@@ -854,7 +913,7 @@ class NominalClient:
         datasource_description: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
-    ) -> Connection:
+    ) -> StreamingConnection:
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
@@ -875,9 +934,7 @@ class NominalClient:
                 scraping=scout_datasource_connection_api.ScrapingConfig(
                     nominal=scout_datasource_connection_api.NominalScrapingConfig(
                         channel_name_components=[
-                            scout_datasource_connection_api.NominalChannelNameComponent(
-                                channel=scout_datasource_connection_api.Empty()
-                            )
+                            scout_datasource_connection_api.NominalChannelNameComponent(channel=api.Empty())
                         ],
                         separator=".",
                     )
@@ -887,7 +944,10 @@ class NominalClient:
                 should_scrape=True,
             ),
         )
-        return Connection._from_conjure(self._clients, connection_response)
+        conn = Connection._from_conjure(self._clients, connection_response)
+        if isinstance(conn, StreamingConnection):
+            return conn
+        raise NominalError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
     def create_workbook_from_template(
         self,
@@ -913,6 +973,8 @@ class NominalClient:
                 layout=template.layout,
                 content=template.content,
                 content_v2=None,
+                check_alert_refs=[],
+                event_refs=[],
             ),
         )
 
@@ -968,7 +1030,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Asset]:
         request = scout_asset_api.SearchAssetsRequest(
-            page_size=100,
+            page_size=DEFAULT_PAGE_SIZE,
             query=_create_search_assets_query(search_text, labels, properties),
             sort=scout_asset_api.SortOptions(
                 field=scout_asset_api.SortField.CREATED_AT,
@@ -1046,6 +1108,33 @@ class NominalClient:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
 
+    def search_data_reviews(
+        self,
+        assets: Sequence[Asset | str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+    ) -> Sequence[DataReview]:
+        """Search for any data reviews present within a collection of runs and assets."""
+        page_token = None
+        raw_data_reviews = []
+        while True:
+            # TODO (drake-nominal): Expose checklist_refs to users
+            request = scout_datareview_api.FindDataReviewsRequest(
+                asset_rids=[rid_from_instance_or_string(asset) for asset in assets] if assets else [],
+                checklist_refs=[],
+                run_rids=[rid_from_instance_or_string(run) for run in runs] if runs else [],
+                archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
+                next_page_token=page_token,
+                page_size=DEFAULT_PAGE_SIZE,
+            )
+            response = self._clients.datareview.find_data_reviews(self._clients.auth_header, request)
+            raw_data_reviews.extend(response.data_reviews)
+            page_token = response.next_page_token
+
+            if page_token is None:
+                break
+
+        return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
+
 
 def _create_search_runs_query(
     start: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -1072,7 +1161,7 @@ def _create_search_runs_query(
 
     if properties:
         for name, value in properties.items():
-            queries.append(scout_run_api.SearchQuery(property=scout_run_api.Property(name=name, value=value)))
+            queries.append(scout_run_api.SearchQuery(property=api.Property(name=name, value=value)))
 
     return scout_run_api.SearchQuery(and_=queries)
 
@@ -1111,9 +1200,29 @@ def _create_search_assets_query(
 
     if properties:
         for name, value in properties.items():
-            queries.append(scout_asset_api.SearchAssetsQuery(property=scout_run_api.Property(name=name, value=value)))
+            queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
+
+
+def _create_search_checklists_query(
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> scout_checks_api.ChecklistSearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
+
+    if labels is not None:
+        for label in labels:
+            queries.append(scout_checks_api.ChecklistSearchQuery(label=label))
+
+    if properties is not None:
+        for prop_key, prop_value in properties.items():
+            queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
+
+    return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
 
 def _handle_deprecated_labels_properties(

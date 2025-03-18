@@ -6,14 +6,13 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
-    attachments_api,
     scout,
-    scout_catalog,
     scout_run_api,
 )
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._conjure_utils import Link, _build_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -34,23 +33,15 @@ class Run(HasRid):
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
     run_number: int
+    assets: Sequence[str]
 
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        Attachment._Clients,
         Asset._Clients,
-        Connection._Clients,
-        Dataset._Clients,
-        LogSet._Clients,
-        Video._Clients,
         HasAuthHeader,
         Protocol,
     ):
-        @property
-        def attachment(self) -> attachments_api.AttachmentService: ...
-        @property
-        def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def run(self) -> scout.RunService: ...
 
@@ -239,10 +230,13 @@ class Run(HasRid):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
+        links: Sequence[str] | Sequence[Link] | None = None,
     ) -> Self:
         """Replace run metadata.
         Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Links can be URLs or tuples of (URL, name).
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
@@ -260,6 +254,7 @@ class Run(HasRid):
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
             assets=[],
+            links=_build_links(links),
         )
         response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._clients, response)
@@ -350,5 +345,6 @@ class Run(HasRid):
             start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             run_number=run.run_number,
+            assets=tuple(run.assets),
             _clients=clients,
         )

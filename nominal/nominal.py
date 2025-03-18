@@ -16,7 +16,6 @@ from nominal.core import (
     Asset,
     Attachment,
     Checklist,
-    ChecklistBuilder,
     Dataset,
     FileType,
     FileTypes,
@@ -29,6 +28,7 @@ from nominal.core import (
     Workbook,
     poll_until_ingestion_completed,
 )
+from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 
 if TYPE_CHECKING:
@@ -309,6 +309,10 @@ def create_run(
     start: datetime | str | ts.IntegralNanosecondsUTC,
     end: datetime | str | ts.IntegralNanosecondsUTC | None,
     description: str | None = None,
+    *,
+    properties: Mapping[str, str] | None = None,
+    labels: Sequence[str] = (),
+    attachments: Iterable[Attachment] | Iterable[str] = (),
 ) -> Run:
     """Create a run in the Nominal platform.
 
@@ -322,6 +326,9 @@ def create_run(
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
         end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
         description=description,
+        properties=properties,
+        labels=labels,
+        attachments=attachments,
     )
 
 
@@ -561,38 +568,6 @@ def _get_start_end_timestamp_csv_file(
     )
 
 
-def checklist_builder(
-    name: str,
-    description: str = "",
-    assignee_email: str | None = None,
-    default_ref_name: str | None = None,
-) -> ChecklistBuilder:
-    """Create a checklist builder to add checks and variables, and publish the checklist to Nominal.
-
-    If assignee_email is None, the checklist is assigned to the user executing the code.
-
-    Example:
-    -------
-    ```python
-    builder = nm.checklist_builder("Programmatically created checklist")
-    builder.add_check(
-        name="derivative of cycle time is too high",
-        priority=2,
-        expression="derivative(numericChannel(channelName = 'Cycle_Time', refName = 'manufacturing')) > 0.05",
-    )
-    checklist = builder.publish()
-    ```
-
-    """
-    client = get_current_client()
-    return client.checklist_builder(
-        name=name,
-        description=description,
-        assignee_email=assignee_email,
-        default_ref_name=default_ref_name,
-    )
-
-
 def get_checklist(checklist_rid: str) -> Checklist:
     client = get_current_client()
     return client.get_checklist(checklist_rid)
@@ -640,7 +615,7 @@ def create_streaming_connection(
     datasource_description: str | None = None,
     *,
     required_tag_names: list[str] | None = None,
-) -> Connection:
+) -> StreamingConnection:
     """Creates a new datasource and a new connection.
 
     datasource_id: A human readable identifier. Must be unique within an organization.

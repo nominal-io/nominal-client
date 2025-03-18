@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.28.0"
+version = "1.40.1"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -25,11 +25,10 @@ requires-python = ">=3.9,<4"
 dependencies = [
     "click>=8,<9",
     "conjure-python-client>=2.8.0,<3",
-    "nominal-api==0.531.0",
+    "nominal-api==0.584.3",
     "nptdms>=1.9.0,<2",
     "tabulate>=0.9.0,<0.10",
     "typing-extensions>=4,<5",
-
     # Any version is okay for these dependencies
     "pandas>=0.0.0",
     "polars>=0.0.0",
@@ -45,7 +44,10 @@ Documentation = "https://docs.nominal.io"
 Repository = "https://github.com/nominal-io/nominal-client"
 
 [tool.uv]
-dev-dependencies = [
+default-groups = ["dev"]
+
+[dependency-groups]
+dev = [
     "black>=24.8.0,<25",
     "jupyter>=1.1.1,<2",
     "jupyterlab>=4.2.5,<5",
@@ -61,8 +63,10 @@ dev-dependencies = [
     "ruff>=0.4.2,<0.5",
     "types-pyyaml>=6.0.12.20240808,<7",
     "types-requests>=2.32.0.20240712,<3",
+    "types-protobuf>=4.24.0.20240311,<5",
     "mkdocs-click",                         # Sourced separately from github fork
     "types-tabulate>=0.9.0.20241207,<0.10",
+    "nominal-api-protos>=0.549.0",
 ]
 
 [tool.uv.sources]
@@ -72,6 +76,8 @@ nominal = { workspace = true }
 
 [project.optional-dependencies]
 hdf5 = ["h5py>=3.0", "tables>=3.7"]
+protos = ["nominal-api-protos>=0.549.0"]
+video = ["ffmpeg-python>=0.2.0"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
@@ -92,9 +98,6 @@ include = ["nominal/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.ruff.lint.pylint]
-max-args = 10
 
 [tool.ruff.lint]
 # See rules and codes: https://docs.astral.sh/ruff/rules/
@@ -128,6 +131,7 @@ ignore = [
     "D401",    # imperative mood
     "PLW0603", # globals
     "PLR2004", # magic values
+    "PLR0913", # too many arguments
 ]
 
 [tool.mypy]
@@ -142,6 +146,10 @@ disable_error_code = ["no-any-return", "no-untyped-def"]
 
 [[tool.mypy.overrides]]
 module = "nptdms"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "ffmpeg"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

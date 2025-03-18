@@ -1,17 +1,27 @@
 from __future__ import annotations
 
+import json
+import logging
+import pathlib
 import time
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
+from io import BytesIO, TextIOBase, TextIOWrapper
 from types import MappingProxyType
-from typing import Mapping, Protocol, Sequence
+from typing import BinaryIO, Mapping, Protocol, Sequence
 
-from nominal_api import scout_video, scout_video_api
+from nominal_api import api, ingest_api, scout_video, scout_video_api, upload_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
+from nominal.core.filetype import FileType, FileTypes
+from nominal.core.video_file import VideoFile
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -26,6 +36,12 @@ class Video(HasRid):
     class _Clients(HasAuthHeader, Protocol):
         @property
         def video(self) -> scout_video.VideoService: ...
+        @property
+        def upload(self) -> upload_api.UploadService: ...
+        @property
+        def ingest(self) -> ingest_api.IngestService: ...
+        @property
+        def video_file(self) -> scout_video.VideoFileService: ...
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -101,6 +117,183 @@ class Video(HasRid):
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
+    def add_file_to_video(
+        self,
+        path: pathlib.Path | str,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        description: str | None = None,
+    ) -> VideoFile:
+        """Append to a video from a file-path to H264-encoded video data.
+
+        Args:
+            path: Path to the video file to add to an existing video within Nominal
+            start: Starting timestamp of the video file in absolute UTC time
+            frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
+                parameter, unless precise per-frame metadata is available and desired.
+            description: Description of the video file.
+                NOTE: this is currently not displayed to users and may be removed in the future.
+
+        Returns:
+            Reference to the created video file.
+        """
+        path = pathlib.Path(path)
+        file_type = FileType.from_video(path)
+
+        with path.open("rb") as video_file:
+            return self.add_to_video_from_io(
+                video_file,
+                name=path.name,
+                start=start,
+                frame_timestamps=frame_timestamps,
+                description=description,
+                file_type=file_type,
+            )
+
+    def add_to_video_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        start: datetime | IntegralNanosecondsUTC | None = None,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+        description: str | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+    ) -> VideoFile:
+        """Append to a video from a file-like object containing video data encoded in H264 or H265.
+
+        Args:
+            video: File-like object containing video data encoded in H264 or H265.
+            name: Name of the file to use when uploading to S3.
+            start: Starting timestamp of the video file in absolute UTC time
+            frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
+                parameter, unless precise per-frame metadata is available and desired.
+            description: Description of the video file.
+                NOTE: this is currently not displayed to users and may be removed in the future.
+            file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
+
+        Returns:
+            Reference to the created video file.
+        """
+        if isinstance(video, TextIOBase):
+            raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
+
+        timestamp_manifest = _build_video_file_timestamp_manifest(
+            self._clients.auth_header, self._clients.upload, start, frame_timestamps
+        )
+        file_type = FileType(*file_type)
+        s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
+        request = ingest_api.IngestRequest(
+            ingest_api.IngestOptions(
+                video=ingest_api.VideoOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                    target=ingest_api.VideoIngestTarget(
+                        existing=ingest_api.ExistingVideoIngestDestination(
+                            video_rid=self.rid,
+                            video_file_details=ingest_api.VideoFileIngestDetails(description, [], {}),
+                        )
+                    ),
+                    timestamp_manifest=timestamp_manifest,
+                )
+            )
+        )
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.video is None:
+            raise NominalIngestError("error ingesting video: no video created")
+
+        return VideoFile._from_conjure(
+            self._clients,
+            self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
+        )
+
+    def add_mcap_to_video(
+        self,
+        path: pathlib.Path,
+        topic: str,
+        description: str | None = None,
+    ) -> VideoFile:
+        """Append to a video from a file-path to an MCAP file containing video data.
+
+        Args:
+            path: Path to the video file to add to an existing video within Nominal
+            topic: Topic pointing to video data within the MCAP file.
+            description: Description of the video file.
+                NOTE: this is currently not displayed to users and may be removed in the future.
+
+        Returns:
+            Reference to the created video file.
+        """
+        path = pathlib.Path(path)
+        file_type = FileType.from_video(path)
+
+        with path.open("rb") as video_file:
+            return self.add_mcap_to_video_from_io(
+                video_file,
+                name=path.name,
+                topic=topic,
+                description=description,
+                file_type=file_type,
+            )
+
+    def add_mcap_to_video_from_io(
+        self,
+        mcap: BinaryIO,
+        name: str,
+        topic: str,
+        description: str | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MCAP,
+    ) -> VideoFile:
+        """Append to a video from a file-like binary stream with MCAP data containing video data.
+
+        Args:
+            mcap: File-like binary object containing MCAP data to upload.
+            name: Name of the file to create in S3 during upload
+            topic: Topic pointing to video data within the MCAP file.
+            description: Description of the video file.
+                NOTE: this is currently not displayed to users and may be removed in the future.
+            file_type: Metadata about the type of video (e.g. MCAP).
+
+        Returns:
+            Reference to the created video file.
+        """
+        if isinstance(mcap, TextIOBase):
+            raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
+
+        file_type = FileType(*file_type)
+        s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
+        request = ingest_api.IngestRequest(
+            options=ingest_api.IngestOptions(
+                video=ingest_api.VideoOpts(
+                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                    target=ingest_api.VideoIngestTarget(
+                        existing=ingest_api.ExistingVideoIngestDestination(
+                            video_rid=self.rid,
+                            video_file_details=ingest_api.VideoFileIngestDetails(
+                                file_labels=[],
+                                file_properties={},
+                                file_description=description,
+                            ),
+                        )
+                    ),
+                    timestamp_manifest=scout_video_api.VideoFileTimestampManifest(
+                        mcap=scout_video_api.McapTimestampManifest(api.McapChannelLocator(topic=topic))
+                    ),
+                )
+            )
+        )
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if response.details.video is None:
+            raise NominalIngestError("error ingesting mcap video: no video created")
+
+        return VideoFile._from_conjure(
+            self._clients,
+            self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
+        )
+
+    def list_files(self) -> Sequence[VideoFile]:
+        """List all video files associated with the video."""
+        raw_videos = self._clients.video_file.list_files_in_video(self._clients.auth_header, self.rid)
+        return [VideoFile._from_conjure(self._clients, raw_video) for raw_video in raw_videos]
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, video: scout_video_api.Video) -> Self:
         return cls(
@@ -111,6 +304,49 @@ class Video(HasRid):
             labels=tuple(video.labels),
             _clients=clients,
         )
+
+
+def _upload_frame_timestamps(
+    auth_header: str, upload_client: upload_api.UploadService, frame_timestamps: Sequence[IntegralNanosecondsUTC]
+) -> str:
+    """Uploads per-frame video timestamps to S3 and provides a path to the uploaded resource."""
+    # Dump timestamp array into an in-memory file-like IO object
+    json_io = BytesIO()
+    text_json_io = TextIOWrapper(json_io)
+    json.dump(frame_timestamps, text_json_io)
+    text_json_io.flush()
+    json_io.seek(0)
+
+    logger.debug("Uploading timestamp manifests to s3")
+    return upload_multipart_io(
+        auth_header,
+        json_io,
+        "timestamp_manifest",
+        FileTypes.JSON,
+        upload_client,
+    )
+
+
+def _build_video_file_timestamp_manifest(
+    auth_header: str,
+    upload_client: upload_api.UploadService,
+    start: datetime | IntegralNanosecondsUTC | None = None,
+    frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+) -> scout_video_api.VideoFileTimestampManifest:
+    if None not in (start, frame_timestamps):
+        raise ValueError("Only one of 'start' or 'frame_timestamps' are allowed")
+    elif frame_timestamps is not None:
+        manifest_s3_path = _upload_frame_timestamps(auth_header, upload_client, frame_timestamps)
+        return scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
+    elif start is not None:
+        # TODO(drake): expose scale parameter to users
+        return scout_video_api.VideoFileTimestampManifest(
+            no_manifest=scout_video_api.NoTimestampManifest(
+                starting_timestamp=_SecondsNanos.from_flexible(start).to_api()
+            )
+        )
+    else:
+        raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
 
 
 def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:

@@ -2,18 +2,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, cast
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
 
-from nominal_api import attachments_api, scout_asset_api, scout_assets, scout_run_api
-from typing_extensions import Self
+from nominal_api import (
+    scout_asset_api,
+    scout_assets,
+    scout_run_api,
+)
+from typing_extensions import Self, TypeAlias, deprecated
 
 from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._conjure_utils import Link, _build_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.connection import Connection
+from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
-from nominal.core.log import LogSet
-from nominal.core.video import Video
+from nominal.core.datasource import DataSource
+from nominal.core.log import LogSet, _get_log_set
+from nominal.core.video import Video, _get_video
+
+ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
 
 
 @dataclass(frozen=True)
@@ -26,11 +34,16 @@ class Asset(HasRid):
 
     _clients: _Clients = field(repr=False)
 
-    class _Clients(Dataset._Clients, HasAuthHeader, Protocol):
+    class _Clients(
+        DataSource._Clients,
+        Video._Clients,
+        LogSet._Clients,
+        Attachment._Clients,
+        HasAuthHeader,
+        Protocol,
+    ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
-        @property
-        def attachment(self) -> attachments_api.AttachmentService: ...
 
     def update(
         self,
@@ -39,10 +52,13 @@ class Asset(HasRid):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
+        links: Sequence[str] | Sequence[Link] | None = None,
     ) -> Self:
         """Replace asset metadata.
         Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Links can be URLs or tuples of (URL, name).
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
@@ -57,6 +73,7 @@ class Asset(HasRid):
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
             title=name,
+            links=_build_links(links),
         )
         response = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
         asset = self.__class__._from_conjure(self._clients, response)
@@ -96,28 +113,62 @@ class Asset(HasRid):
             raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
         return response[self.rid]
 
-    def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
+    def _scope_rid(self, stype: Literal["dataset", "video", "connection", "logset"]) -> dict[str, str]:
         asset = self._get_asset()
-        dataset_rids_by_data_scope_name = {}
-        for scope in asset.data_scopes:
-            if scope.data_source.type == "dataset":
-                dataset_rid = cast(str, scope.data_source.dataset)
-                dataset_rids_by_data_scope_name[scope.data_scope_name] = dataset_rid
-        datasets_by_rids = {
-            ds.rid: Dataset._from_conjure(self._clients, ds)
-            for ds in _get_datasets(
-                self._clients.auth_header, self._clients.catalog, dataset_rids_by_data_scope_name.values()
-            )
+        rid_attrib = {"dataset": "dataset", "logset": "log_set", "connection": "connection", "video": "video"}
+        return {
+            scope.data_scope_name: cast(str, getattr(scope.data_source, rid_attrib[stype]))
+            for scope in asset.data_scopes
+            if scope.data_source.type.lower() == stype
         }
-        for data_scope_name, rid in dataset_rids_by_data_scope_name.items():
-            dataset = datasets_by_rids[rid]
-            yield (data_scope_name, dataset)
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
         Returns (data_scope_name, dataset) pairs for each dataset.
         """
-        return list(self._iter_list_datasets())
+        scope_rid = self._scope_rid(stype="dataset")
+        datasets_meta = _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
+        return [
+            (scope, Dataset._from_conjure(self._clients, ds)) for (scope, ds) in zip(scope_rid.keys(), datasets_meta)
+        ]
+
+    def list_connections(self) -> Sequence[tuple[str, Connection]]:
+        """List the connections associated with this asset.
+        Returns (data_scope_name, connection) pairs for each connection.
+        """
+        scope_rid = self._scope_rid(stype="connection")
+        connections_meta = _get_connections(self._clients, list(scope_rid.values()))
+        return [
+            (scope, Connection._from_conjure(self._clients, connection))
+            for (scope, connection) in zip(scope_rid.keys(), connections_meta)
+        ]
+
+    def list_videos(self) -> Sequence[tuple[str, Video]]:
+        """List the videos associated with this asset.
+        Returns (data_scope_name, dataset) pairs for each video.
+        """
+        scope_rid = self._scope_rid(stype="video")
+        return [
+            (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
+            for (scope, rid) in scope_rid.items()
+        ]
+
+    def list_logsets(self) -> Sequence[tuple[str, LogSet]]:
+        """List the logsets associated with this asset.
+        Returns (data_scope_name, logset) pairs for each logset.
+        """
+        scope_rid = self._scope_rid(stype="logset")
+        return [
+            (scope, LogSet._from_conjure(self._clients, _get_log_set(self._clients, rid)))
+            for (scope, rid) in scope_rid.items()
+        ]
+
+    def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
+        """List scopes associated with this asset.
+        Returns (data_scope_name, scope) pairs, where scope can be
+        a dataset, connection, video, or logset.
+        """
+        return (*self.list_datasets(), *self.list_connections(), *self.list_logsets(), *self.list_videos())
 
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this asset.
@@ -173,18 +224,19 @@ class Asset(HasRid):
         """Unarchive this asset, allowing it to be viewed in the UI."""
         self._clients.assets.unarchive(self._clients.auth_header, self.rid)
 
-    def remove_data_sources(
+    def _remove_data_sources(
         self,
         *,
         data_scope_names: Sequence[str] | None = None,
-        data_sources: Sequence[Connection | Dataset | Video | str] | None = None,
+        data_sources: Sequence[ScopeType | str] | None = None,
     ) -> None:
-        """Remove data sources from this asset.
-
-        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
-        """
         data_scope_names = data_scope_names or []
-        data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
+        data_sources = data_sources or []
+
+        if isinstance(data_sources, str):
+            raise RuntimeError("Expect `data_sources` to be a sequence, not a string")
+
+        data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources}
 
         conjure_asset = self._get_asset()
 
@@ -197,7 +249,8 @@ class Asset(HasRid):
             )
             for ds in conjure_asset.data_scopes
             if ds.data_scope_name not in data_scope_names
-            and (ds.data_source.dataset or ds.data_source.connection or ds.data_source.video) not in data_source_rids
+            and (ds.data_source.dataset or ds.data_source.connection or ds.data_source.video or ds.data_source.log_set)
+            not in data_source_rids
         ]
 
         response = self._clients.assets.update_asset(
@@ -209,6 +262,33 @@ class Asset(HasRid):
         )
         asset = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, asset, fields=self.__dataclass_fields__)
+
+    @deprecated("Use `remove_data_scopes` instead")
+    def remove_data_sources(
+        self,
+        *,
+        data_scope_names: Sequence[str] | None = None,
+        data_sources: Sequence[ScopeType | str] | None = None,
+    ) -> None:
+        """Remove data sources from this asset.
+
+        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
+        """
+        self._remove_data_sources(data_scope_names=data_scope_names, data_sources=data_sources)
+
+    # Newer alias to replace `remove_data_sources`
+    def remove_data_scopes(
+        self,
+        *,
+        names: Sequence[str] | None = None,
+        scopes: Sequence[ScopeType | str] | None = None,
+    ) -> None:
+        """Remove data scopes from this asset.
+
+        `names` are scope names.
+        `scopes` are rids or scope objects.
+        """
+        self._remove_data_sources(data_scope_names=names, data_sources=scopes)
 
     def add_connection(
         self, data_scope_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None

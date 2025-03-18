@@ -1,5 +1,135 @@
 # Changelog
 
+## [1.40.1](https://github.com/nominal-io/nominal-client/compare/v1.40.0...v1.40.1) (2025-03-14)
+
+
+### Bug Fixes
+
+* dataset get_channels() ([#260](https://github.com/nominal-io/nominal-client/issues/260)) ([4d67b50](https://github.com/nominal-io/nominal-client/commit/4d67b5061f559c094846831d40cd82505a309254))
+
+## [1.40.0](https://github.com/nominal-io/nominal-client/compare/v1.39.0...v1.40.0) (2025-03-10)
+
+
+### Features
+
+* add functionality to experimental package for normalizing video ([#256](https://github.com/nominal-io/nominal-client/issues/256)) ([acedb7e](https://github.com/nominal-io/nominal-client/commit/acedb7eceed62870ea6075d0b4e8df26f7255ff4))
+
+## [1.39.0](https://github.com/nominal-io/nominal-client/compare/v1.38.0...v1.39.0) (2025-03-10)
+
+
+### Features
+
+* add video files support ([#253](https://github.com/nominal-io/nominal-client/issues/253)) ([587a932](https://github.com/nominal-io/nominal-client/commit/587a9322ae41d20460776bae024c003c259d4ca0))
+
+
+### Bug Fixes
+
+* bump nominal api to latest version ([#255](https://github.com/nominal-io/nominal-client/issues/255)) ([140c16f](https://github.com/nominal-io/nominal-client/commit/140c16fd5458957eb0c237c2dd873519c1de84ab))
+
+## [1.38.0](https://github.com/nominal-io/nominal-client/compare/v1.37.0...v1.38.0) (2025-03-06)
+
+
+### Features
+
+* support multi-file video from client ([#251](https://github.com/nominal-io/nominal-client/issues/251)) ([9611717](https://github.com/nominal-io/nominal-client/commit/9611717ddca85a55ce12891033e2dad86ff572d0))
+
+## [1.37.0](https://github.com/nominal-io/nominal-client/compare/v1.36.0...v1.37.0) (2025-03-06)
+
+
+### Features
+
+* use new channel metadata endpoints ([#248](https://github.com/nominal-io/nominal-client/issues/248)) ([00b0801](https://github.com/nominal-io/nominal-client/commit/00b0801b6d6aabb02d2ec9a19e93d21254e138e3))
+
+
+### Bug Fixes
+
+* list and remove various types of data sources ([#209](https://github.com/nominal-io/nominal-client/issues/209)) ([a018c2c](https://github.com/nominal-io/nominal-client/commit/a018c2cc0d773f92512774bf4e2c1c91cb60a7e1))
+* return type of create_streaming_connection and clean .close() and enqueue metric ([#225](https://github.com/nominal-io/nominal-client/issues/225)) ([b97ab06](https://github.com/nominal-io/nominal-client/commit/b97ab062861a4d6da1aadb8fa92f804a81e1900b))
+* stop using channel delimiter as channel prefix ([#249](https://github.com/nominal-io/nominal-client/issues/249)) ([0ba556f](https://github.com/nominal-io/nominal-client/commit/0ba556f744141aaa8c6a76e23e99701e9abcf65e))
+
+## [1.36.0](https://github.com/nominal-io/nominal-client/compare/v1.35.0...v1.36.0) (2025-03-01)
+
+
+### Features
+
+* add execute to the Checklist class ([3efb9c9](https://github.com/nominal-io/nominal-client/commit/3efb9c9205d1a8a746eb64c80861a776ca27c3df))
+* add execute_checklist to the Run class ([#246](https://github.com/nominal-io/nominal-client/issues/246)) ([3efb9c9](https://github.com/nominal-io/nominal-client/commit/3efb9c9205d1a8a746eb64c80861a776ca27c3df))
+* expose more parameters in top-level `create_run` ([#242](https://github.com/nominal-io/nominal-client/issues/242)) ([d4c0f86](https://github.com/nominal-io/nominal-client/commit/d4c0f8672a8556867a5254d6b6f9225e97dd48be))
+
+## [1.35.0](https://github.com/nominal-io/nominal-client/compare/v1.34.0...v1.35.0) (2025-02-27)
+
+
+### Features
+
+* support multi-file dataflash datasets ([#241](https://github.com/nominal-io/nominal-client/issues/241)) ([875ff85](https://github.com/nominal-io/nominal-client/commit/875ff85b39f1396c96ea0bbe345deb73fb56c577))
+
+## [1.34.0](https://github.com/nominal-io/nominal-client/compare/v1.33.0...v1.34.0) (2025-02-26)
+
+
+### Features
+
+* add support for journal json upload ([#240](https://github.com/nominal-io/nominal-client/issues/240)) ([31f7b39](https://github.com/nominal-io/nominal-client/commit/31f7b39e519e2b23f2f0fd5f9225ff0810fd998e))
+* expose run `assets` field ([#235](https://github.com/nominal-io/nominal-client/issues/235)) ([8d11a19](https://github.com/nominal-io/nominal-client/commit/8d11a19873fb73806592b8e46d2de19a7131ff05))
+* Use ingest V2 endpoint everywhere in python client ([c613263](https://github.com/nominal-io/nominal-client/commit/c6132633d9b6e6884c72827f6ee3607da1185c84))
+* use ingest V2 endpoint everywhere in python client ([#233](https://github.com/nominal-io/nominal-client/issues/233)) ([c613263](https://github.com/nominal-io/nominal-client/commit/c6132633d9b6e6884c72827f6ee3607da1185c84))
+
+## [1.33.0](https://github.com/nominal-io/nominal-client/compare/v1.32.1...v1.33.0) (2025-02-25)
+
+
+### Features
+
+* bump nominal api to 0.565.1 ([#230](https://github.com/nominal-io/nominal-client/issues/230)) ([7445d91](https://github.com/nominal-io/nominal-client/commit/7445d9193d19a3f63c09072ea9860a5852543284))
+
+## [1.32.1](https://github.com/nominal-io/nominal-client/compare/v1.32.0...v1.32.1) (2025-02-21)
+
+
+### Bug Fixes
+
+* remove compute expression representations from checklists ([#222](https://github.com/nominal-io/nominal-client/issues/222)) ([6a4687e](https://github.com/nominal-io/nominal-client/commit/6a4687e682869a1d0d691d8286e6131bf72e5735))
+* remove repr service again ([#227](https://github.com/nominal-io/nominal-client/issues/227)) ([c35c10d](https://github.com/nominal-io/nominal-client/commit/c35c10d30e11ab14fcfddc0cae880572dd191ba5))
+
+## [1.32.0](https://github.com/nominal-io/nominal-client/compare/v1.31.0...v1.32.0) (2025-02-20)
+
+
+### Features
+
+* metrics on streaming connections ([#220](https://github.com/nominal-io/nominal-client/issues/220)) ([9f23471](https://github.com/nominal-io/nominal-client/commit/9f23471c4ddea312e9cdd4e87625ac9e27a453e4))
+
+
+### Bug Fixes
+
+* cleanup streaming shutdown ([#219](https://github.com/nominal-io/nominal-client/issues/219)) ([a4a00c8](https://github.com/nominal-io/nominal-client/commit/a4a00c8fea3c1289a9e43979d1b29b45b3fae11f))
+
+## [1.31.0](https://github.com/nominal-io/nominal-client/compare/v1.30.0...v1.31.0) (2025-02-18)
+
+
+### Features
+
+* rework streaming connections ([#213](https://github.com/nominal-io/nominal-client/issues/213)) ([8bf292b](https://github.com/nominal-io/nominal-client/commit/8bf292b36a616a4ad0c691db6352585281cd6960))
+
+## [1.30.0](https://github.com/nominal-io/nominal-client/compare/v1.29.0...v1.30.0) (2025-02-13)
+
+
+### Features
+
+* add links to Run.update and Asset.update ([#215](https://github.com/nominal-io/nominal-client/issues/215)) ([9fea28e](https://github.com/nominal-io/nominal-client/commit/9fea28e4eb70085e51ac5e20e6cb78cc039a96dc))
+
+## [1.29.0](https://github.com/nominal-io/nominal-client/compare/v1.28.0...v1.29.0) (2025-02-11)
+
+
+### Features
+
+* add `nominal.__version__` and `nom --version` ([#202](https://github.com/nominal-io/nominal-client/issues/202)) ([5256aaf](https://github.com/nominal-io/nominal-client/commit/5256aafd72676794754dbf25558970823b357d75))
+* add ardupilot dataflash ingest ([#203](https://github.com/nominal-io/nominal-client/issues/203)) ([d5d522f](https://github.com/nominal-io/nominal-client/commit/d5d522f6dbcd1cf7a1e71ca1a1520d5cdcc8b187))
+* improve streaming default params ([#210](https://github.com/nominal-io/nominal-client/issues/210)) ([8c99d57](https://github.com/nominal-io/nominal-client/commit/8c99d570034c2cc96d29e16b33f794ea967ab52a))
+* protobuf support in the python client for streaming data ([#208](https://github.com/nominal-io/nominal-client/issues/208)) ([6fd94b4](https://github.com/nominal-io/nominal-client/commit/6fd94b46ab2e18ccb72e987d9ccaaac74329a72e))
+* update client to support multi file mcap datasets via new ingest endp… ([#212](https://github.com/nominal-io/nominal-client/issues/212)) ([8d99a41](https://github.com/nominal-io/nominal-client/commit/8d99a4119ed98e36f98f96a5018314e344699a5f))
+
+
+### Bug Fixes
+
+* remove errant commas in markdown, fixing mkdocs documentation generation ([#201](https://github.com/nominal-io/nominal-client/issues/201)) ([066ab2a](https://github.com/nominal-io/nominal-client/commit/066ab2a630557a35e1ee8ca50881c858b2b235c1))
+
 ## [1.28.0](https://github.com/nominal-io/nominal-client/compare/v1.27.0...v1.28.0) (2025-01-23)
 
 
