@@ -387,7 +387,7 @@ class NominalClient:
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
 
         Args:
-            dataset: Binary file-like MCAP stream
+            dataset: Binary file-like tabular data stream
             name: Name of the dataset to create
             timestamp_column: Column of data containing timestamp information for all other columns
             timestamp_type: Type of timestamps contained within timestamp_column
