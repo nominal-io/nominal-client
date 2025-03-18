@@ -89,7 +89,7 @@ class Asset(HasRid):
     def add_dataset(self, data_scope_name: str, dataset: Dataset | str) -> None:
         """Add a dataset to this asset.
 
-        Datasets map "data_scope_name" (their name within the asset) to a Dataset (or dataset rid). The same type of
+        Assets map "data_scope_name" (their name within the asset) to a Dataset (or dataset rid). The same type of
         datasets should use the same data scope name across assets, since checklists and templates use data scope names
         to reference datasets.
         """
@@ -104,6 +104,50 @@ class Asset(HasRid):
             ],
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+
+    def add_video(self, data_scope_name: str, video: Video | str) -> None:
+        """Add a video to this asset.
+
+        Assets map "data_scope_name" (name within the asset for the data) to a Video (or a video rid). The same type of
+        videos (e.g., files from a given camera) should use the same data scope name across assets, since checklists and
+        templates use data scope names to reference videos.
+        """
+        request = scout_asset_api.AddDataScopesToAssetRequest(
+            data_scopes=[
+                scout_asset_api.CreateAssetDataScope(
+                    data_scope_name=data_scope_name,
+                    data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
+                    series_tags={},
+                ),
+            ]
+        )
+        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+
+    def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
+        """Add a log set to this asset.
+
+        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
+        """
+        # TODO(alkasm): support series tags & offset
+        request = scout_asset_api.AddDataScopesToAssetRequest(
+            data_scopes=[
+                scout_asset_api.CreateAssetDataScope(
+                    data_scope_name=data_scope_name,
+                    data_source=scout_run_api.DataSource(log_set=rid_from_instance_or_string(log_set)),
+                    series_tags={},
+                )
+            ],
+        )
+        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+
+    def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
+        """Add attachments that have already been uploaded to this asset.
+
+        `attachments` can be `Attachment` instances, or attachment RIDs.
+        """
+        rids = [rid_from_instance_or_string(a) for a in attachments]
+        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
+        self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
 
     def _get_asset(self) -> scout_asset_api.Asset:
         response = self._clients.assets.get_assets(self._clients.auth_header, [self.rid])
@@ -169,32 +213,6 @@ class Asset(HasRid):
         a dataset, connection, video, or logset.
         """
         return (*self.list_datasets(), *self.list_connections(), *self.list_logsets(), *self.list_videos())
-
-    def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
-        """Add a log set to this asset.
-
-        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
-        """
-        # TODO(alkasm): support series tags & offset
-        request = scout_asset_api.AddDataScopesToAssetRequest(
-            data_scopes=[
-                scout_asset_api.CreateAssetDataScope(
-                    data_scope_name=data_scope_name,
-                    data_source=scout_run_api.DataSource(log_set=rid_from_instance_or_string(log_set)),
-                    series_tags={},
-                )
-            ],
-        )
-        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
-
-    def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
-        """Add attachments that have already been uploaded to this asset.
-
-        `attachments` can be `Attachment` instances, or attachment RIDs.
-        """
-        rids = [rid_from_instance_or_string(a) for a in attachments]
-        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
-        self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this asset.
