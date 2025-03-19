@@ -180,6 +180,34 @@ class Dataset(DataSource):
         )
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
+    def add_journal_json_to_dataset(
+        self,
+        path: Path | str,
+    ) -> None:
+        """Add a journald jsonl file to an existing dataset."""
+        self.poll_until_ingestion_completed()
+        log_path = Path(path)
+        file_type = FileType.from_path_journal_json(log_path)
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            log_path,
+            self._clients.upload,
+            file_type=file_type,
+        )
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+        self._clients.ingest.ingest(
+            self._clients.auth_header,
+            ingest_api.IngestRequest(
+                options=ingest_api.IngestOptions(
+                    journal_json=ingest_api.JournalJsonOpts(
+                        source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)), target=target
+                    )
+                )
+            ),
+        )
+
     def add_mcap_to_dataset(
         self,
         path: Path | str,
