@@ -14,7 +14,7 @@ from nominal_api import api, ingest_api, scout_video, scout_video_api, upload_ap
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._multipart import upload_multipart_io
+from nominal.core._multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
@@ -143,7 +143,7 @@ class Video(HasRid):
         with path.open("rb") as video_file:
             return self.add_to_video_from_io(
                 video_file,
-                name=path.name,
+                name=path_upload_name(path),
                 start=start,
                 frame_timestamps=frame_timestamps,
                 description=description,
@@ -228,7 +228,7 @@ class Video(HasRid):
         with path.open("rb") as video_file:
             return self.add_mcap_to_video_from_io(
                 video_file,
-                name=path.name,
+                name=path_upload_name(path),
                 topic=topic,
                 description=description,
                 file_type=file_type,

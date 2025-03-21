@@ -59,6 +59,11 @@ def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
         yield data
 
 
+def path_upload_name(path: pathlib.Path) -> str:
+    """Extract the name of a file without any extension suffixes for use in uploads"""
+    return path.stem.split(".")[0]
+
+
 def put_multipart_upload(
     auth_header: str,
     f: BinaryIO,

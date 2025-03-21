@@ -13,7 +13,7 @@ from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self
 
 from nominal._utils import deprecate_arguments
-from nominal.core._multipart import upload_multipart_file, upload_multipart_io
+from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import update_dataclass
 from nominal.core.channel import Channel
 from nominal.core.datasource import DataSource
@@ -138,7 +138,9 @@ class Dataset(DataSource):
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
         with open(path, "rb") as data_file:
-            self.add_to_dataset_from_io(data_file, timestamp_column, timestamp_type, file_type, file_name=path.name)
+            self.add_to_dataset_from_io(
+                data_file, timestamp_column, timestamp_type, file_type, file_name=path_upload_name(path)
+            )
 
     def add_to_dataset_from_io(
         self,

@@ -34,7 +34,7 @@ from nominal import _config
 from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import upload_multipart_io
+from nominal.core._multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -254,7 +254,7 @@ class NominalClient:
         path = Path(path)
         file_type = FileTypes.DATAFLASH
         if name is None:
-            name = path.name
+            name = path_upload_name(path)
 
         with open(path, "rb") as f:
             s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
@@ -296,7 +296,7 @@ class NominalClient:
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
         if name is None:
-            name = path.name
+            name = path_upload_name(path)
 
         with path.open("rb") as data_file:
             return self.create_dataset_from_io(
@@ -335,7 +335,7 @@ class NominalClient:
         file_type = FileType.from_path_journal_json(path)
 
         if name is None:
-            name = path.name
+            name = path_upload_name(path)
 
         with open(path, "rb") as f:
             s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
@@ -455,7 +455,7 @@ class NominalClient:
         """
         mcap_path = Path(path)
         if name is None:
-            name = mcap_path.name
+            name = path_upload_name(mcap_path)
 
         with mcap_path.open("rb") as mcap_file:
             return self.create_dataset_from_mcap_io(
@@ -549,7 +549,7 @@ class NominalClient:
         path = Path(path)
         file_type = FileType.from_video(path)
         if name is None:
-            name = path.name
+            name = path_upload_name(path)
 
         with path.open("rb") as data_file:
             return self.create_video_from_io(
@@ -899,7 +899,7 @@ class NominalClient:
         """
         path = Path(path)
         if name is None:
-            name = path.name
+            name = path_upload_name(path)
 
         with path.open("rb") as data_file:
             return self.create_video_from_mcap_io(
