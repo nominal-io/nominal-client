@@ -254,7 +254,7 @@ class NominalClient:
         path = Path(path)
         file_type = FileTypes.DATAFLASH
         if name is None:
-            name = path_upload_name(path)
+            name = path_upload_name(path, file_type)
 
         with open(path, "rb") as f:
             s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
@@ -296,7 +296,7 @@ class NominalClient:
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
         if name is None:
-            name = path_upload_name(path)
+            name = path_upload_name(path, file_type)
 
         with path.open("rb") as data_file:
             return self.create_dataset_from_io(
@@ -335,7 +335,7 @@ class NominalClient:
         file_type = FileType.from_path_journal_json(path)
 
         if name is None:
-            name = path_upload_name(path)
+            name = path_upload_name(path, file_type)
 
         with open(path, "rb") as f:
             s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
@@ -455,7 +455,7 @@ class NominalClient:
         """
         mcap_path = Path(path)
         if name is None:
-            name = path_upload_name(mcap_path)
+            name = path_upload_name(mcap_path, FileTypes.MCAP)
 
         with mcap_path.open("rb") as mcap_file:
             return self.create_dataset_from_mcap_io(
@@ -549,7 +549,7 @@ class NominalClient:
         path = Path(path)
         file_type = FileType.from_video(path)
         if name is None:
-            name = path_upload_name(path)
+            name = path_upload_name(path, file_type)
 
         with path.open("rb") as data_file:
             return self.create_video_from_io(
@@ -899,7 +899,7 @@ class NominalClient:
         """
         path = Path(path)
         if name is None:
-            name = path_upload_name(path)
+            name = path_upload_name(path, FileTypes.MCAP)
 
         with path.open("rb") as data_file:
             return self.create_video_from_mcap_io(

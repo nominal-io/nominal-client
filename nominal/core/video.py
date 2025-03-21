@@ -143,7 +143,7 @@ class Video(HasRid):
         with path.open("rb") as video_file:
             return self.add_to_video_from_io(
                 video_file,
-                name=path_upload_name(path),
+                name=path_upload_name(path, file_type),
                 start=start,
                 frame_timestamps=frame_timestamps,
                 description=description,
@@ -228,7 +228,7 @@ class Video(HasRid):
         with path.open("rb") as video_file:
             return self.add_mcap_to_video_from_io(
                 video_file,
-                name=path_upload_name(path),
+                name=path_upload_name(path, file_type),
                 topic=topic,
                 description=description,
                 file_type=file_type,

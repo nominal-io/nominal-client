@@ -59,8 +59,15 @@ def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
         yield data
 
 
-def path_upload_name(path: pathlib.Path) -> str:
-    """Extract the name of a file without any extension suffixes for use in uploads"""
+def path_upload_name(path: pathlib.Path, file_type: FileType) -> str:
+    """Extract the name of a file without any extension suffixes associated with the file_type for use in uploads"""
+    filename = path.name
+
+    # If the file type has an extension associated, and the path ends in that extension,
+    # remove exactly the extenion
+    if file_type.extension and filename.endswith(file_type.extension):
+        return filename[: -len(file_type.extension)]
+
     return path.stem.split(".")[0]
 
 
@@ -211,7 +218,7 @@ def upload_multipart_file(
     if file_type is None:
         file_type = FileType.from_path(file)
 
-    file_name = file.stem.split(".")[0]
+    file_name = path_upload_name(file, file_type)
     with file.open("rb") as file_handle:
         return upload_multipart_io(
             auth_header,

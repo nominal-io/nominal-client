@@ -139,7 +139,7 @@ class Dataset(DataSource):
         file_type = FileType.from_path_dataset(path)
         with open(path, "rb") as data_file:
             self.add_to_dataset_from_io(
-                data_file, timestamp_column, timestamp_type, file_type, file_name=path_upload_name(path)
+                data_file, timestamp_column, timestamp_type, file_type, file_name=path_upload_name(path, file_type)
             )
 
     def add_to_dataset_from_io(
