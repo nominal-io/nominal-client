@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.42.0](https://github.com/nominal-io/nominal-client/compare/v1.41.0...v1.42.0) (2025-03-21)
+
+
+### Features
+
+* allow multi-file journal json logs ([#270](https://github.com/nominal-io/nominal-client/issues/270)) ([67c98e5](https://github.com/nominal-io/nominal-client/commit/67c98e56c6638f9a8287adc0b8c4a080570f9513))
+* use filename for new files when adding data to dataset for csv/parquet ([#273](https://github.com/nominal-io/nominal-client/issues/273)) ([777f7e1](https://github.com/nominal-io/nominal-client/commit/777f7e15e78b8a670b22b202d3fe7a479e554bd8))
+
 ## [1.41.0](https://github.com/nominal-io/nominal-client/compare/v1.40.1...v1.41.0) (2025-03-18)
 
 
