@@ -301,21 +301,23 @@ class DataSource(HasRid):
             ValueError: Unsupported unit symbol provided
             conjure_python_client.ConjureHTTPError: Error completing requests.
         """
-        # Get the set of all available unit symbols
-        supported_symbols = set(
-            [unit.symbol for unit in _available_units(self._clients.auth_header, self._clients.units)]
-        )
         # Validate that all user provided unit symbols are valid
-        for channel_name, unit_symbol in channels_to_units.items():
-            # User is clearing the unit for this channel-- don't validate
-            if unit_symbol is None:
-                continue
+        if validate_schema:
+            # Get the set of all available unit symbols
+            supported_symbols = set(
+                [unit.symbol for unit in _available_units(self._clients.auth_header, self._clients.units)]
+            )
 
-            if unit_symbol not in supported_symbols:
-                raise ValueError(
-                    f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit "
-                    "recognized by nominal. For more information on valid symbols, see https://ucum.org/ucum"
-                )
+            for channel_name, unit_symbol in channels_to_units.items():
+                # User is clearing the unit for this channel-- don't validate
+                if unit_symbol is None:
+                    continue
+
+                if unit_symbol not in supported_symbols:
+                    raise ValueError(
+                        f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit "
+                        "recognized by nominal. For more information on valid symbols, see https://ucum.org/ucum"
+                    )
 
         # Get metadata for all requested channels
         found_channels = {channel.name: channel for channel in self.get_channels(names=list(channels_to_units.keys()))}
