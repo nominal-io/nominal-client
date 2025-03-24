@@ -70,9 +70,6 @@ def test_set_channel_units(mock_get_channels: MagicMock, mock_available_units: M
     channels_to_units = {"channel1": "mol", "channel2": "kg", "channel3": None}
     mock_dataset.set_channel_units(channels_to_units)
 
-    mock_available_units.assert_called_once_with(mock_dataset._clients.auth_header, mock_dataset._clients.units)
-    mock_get_channels.assert_called_once()
-
     batch_request = mock_dataset._clients.channel_metadata.batch_update_channel_metadata.call_args[0][1]
     assert isinstance(batch_request, BatchUpdateChannelMetadataRequest)
     assert len(batch_request.requests) == 2
@@ -102,7 +99,7 @@ def test_set_channel_units_invalid_unit(
     invalid_channels_to_units = {"channel1": "invalid_unit"}
 
     with pytest.raises(ValueError, match="Provided unit 'invalid_unit' for channel 'channel1'"):
-        mock_dataset.set_channel_units(invalid_channels_to_units)
+        mock_dataset.set_channel_units(invalid_channels_to_units, validate_schema=True)
     mock_available_units.assert_called_once()
 
 
@@ -118,10 +115,10 @@ def test_set_channel_units_no_channel_data(
     if validate:
         with pytest.raises(ValueError, match="Unable to set unit for channel1 to kg: no data uploaded for channel"):
             call()
+        mock_available_units.assert_called_once()
     else:
         call()
         mock_dataset._clients.logical_series.batch_update_logical_series.assert_not_called()
-    mock_available_units.assert_called_once()
 
 
 @patch("time.sleep", return_value=None)
