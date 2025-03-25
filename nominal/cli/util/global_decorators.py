@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import functools
 import logging
-import pathlib
 import pdb  # noqa: T100
 import typing
 
 import click
 import typing_extensions
 
-from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
 from nominal.cli.util.click_log_handler import install_log_handler
-from nominal.core.client import NominalClient
 
 Param = typing_extensions.ParamSpec("Param")
 T = typing.TypeVar("T")
@@ -86,71 +83,3 @@ def global_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     used utility options across all CLI endpoints within the nominal python client.
     """
     return functools.wraps(func)(debug_switch(verbosity_switch(func)))
-
-
-def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
-    """Decorator to add click options to a click command for dynamically creating and injecting an instance of the
-    NominalClient into commands based on user-provided flags containing the base API url and a path to a configuration
-    file containing an API Access Key.
-
-    This will add two options, --base-url and --token, which perform the two aforementioned configurations before
-    spawning a NominalClient.
-
-    NOTE: any click command utilizing this decorator MUST accept a key-value argument pair named client of type
-        NominalClient.
-    """
-    url_option = click.option(
-        "--base-url",
-        default="https://api.gov.nominal.io/api",
-        show_default=True,
-        help="Base URL of the Nominal API to hit. Useful for hitting other clusters, e.g., staging for internal users.",
-    )
-    token_path_option = click.option(
-        "--token-path",
-        default=_DEFAULT_NOMINAL_CONFIG_PATH,
-        type=click.Path(dir_okay=False, resolve_path=True, path_type=pathlib.Path),
-        show_default=True,
-        help="Path to the yaml file containing the Nominal access token for authenticating with the API",
-    )
-    token_option = click.option(
-        "--token",
-        help=(
-            "API Access token to use when creating the nominal client. "
-            "If provided, takes precedence over --token-path and --base-url"
-        ),
-    )
-    trust_store_option = click.option(
-        "--trust-store-path",
-        type=click.Path(dir_okay=False, exists=True, resolve_path=True, path_type=pathlib.Path),
-        help=(
-            "Path to a trust store CA root file to initiate SSL connections."
-            "If not provided, defaults to certifi's trust store."
-        ),
-    )
-
-    @functools.wraps(func)
-    def wrapped_function(
-        *args: Param.args,
-        base_url: str,
-        token: str | None,
-        token_path: pathlib.Path,
-        trust_store_path: pathlib.Path | None,
-        **kwargs: Param.kwargs,
-    ) -> T:
-        if token is None:
-            if token_path.exists():
-                token = get_token(base_url, token_path)
-            else:
-                raise ValueError(
-                    f"Cannot instantiate client: no token provided and token path {token_path} does not exist."
-                )
-
-        client = NominalClient.create(
-            base_url,
-            token=token,
-            trust_store_path=str(trust_store_path) if trust_store_path else None,
-        )
-        kwargs["client"] = client
-        return func(*args, **kwargs)
-
-    return trust_store_option(url_option(token_path_option(token_option(wrapped_function))))
