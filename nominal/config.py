@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class ConfigProfile:
+    base_url: str
+    token: str
+
+
+@dataclass(frozen=True)
 class NominalConfig:
     """Nominal configuration. Stores connection profiles.
 
@@ -51,11 +57,9 @@ class NominalConfig:
     def from_yaml(cls, path: Path = DEFAULT_NOMINAL_CONFIG_PATH) -> Self:
         if not path.exists():
             if DEPRECATED_NOMINAL_CONFIG_PATH.exists():
-                _auto_migrate_deprecated_config()
+                _auto_migrate_deprecated_config(DEPRECATED_NOMINAL_CONFIG_PATH, path)
             else:
-                raise FileNotFoundError(
-                    f"no config file found at {DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config profile add`"
-                )
+                raise FileNotFoundError(f"no config file found at {path}: create with `nom config profile add`")
         with open(path) as f:
             obj = yaml.safe_load(f)
         if "version" not in obj:
@@ -79,24 +83,18 @@ class NominalConfig:
         raise NominalConfigError(f"profile {name!r} not found in config: add with `nom config add-profile`")
 
 
-@dataclass(frozen=True)
-class ConfigProfile:
-    base_url: str
-    token: str
-
-
 class _NominalConfigMigrationError(NominalConfigError):
     """Unable to automatically migrate v1 config to v2"""
 
 
-def _auto_migrate_deprecated_config() -> None:
+def _auto_migrate_deprecated_config(old_path: Path, new_path: Path) -> None:
     logger.info("attempting to auto-migrate deprecated v1 config to v2")
 
     prod_url = "api.gov.nominal.io/api"
     staging_url = "api-staging.gov.nominal.io/api"
     dev_url = "api.nominal.test"
 
-    deprecated_cfg = NominalConfigV1.from_yaml()
+    deprecated_cfg = NominalConfigV1.from_yaml(old_path)
     logger.debug(f"retrieved deprecated config: {deprecated_cfg}")
     env = deprecated_cfg.environments.copy()
     profiles = {}
@@ -127,7 +125,7 @@ def _auto_migrate_deprecated_config() -> None:
 
     cfg = NominalConfig(version=2, profiles=profiles)
     logger.info(f"migrating deprecated config to new config: {cfg}")
-    cfg.to_yaml()
+    cfg.to_yaml(new_path)
     logger.warning(
         f"deprecated config file {DEPRECATED_NOMINAL_CONFIG_PATH} containing {deprecated_cfg} "
         f"successfully migrated to v2 config file {DEFAULT_NOMINAL_CONFIG_PATH}. "
