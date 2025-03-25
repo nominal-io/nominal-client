@@ -58,16 +58,6 @@ class Connection(DataSource):
 class StreamingConnection(Connection):
     nominal_data_source_rid: str
 
-    # Deprecated methods for backward compatibility
-    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
-        warnings.warn(
-            "get_nominal_write_stream is deprecated and will be removed in a future version. "
-            "use get_write_stream instead.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
-
     def get_write_stream(
         self,
         batch_size: int = 50_000,
