@@ -80,7 +80,7 @@ class NominalConfig:
     def get_profile(self, name: str) -> ConfigProfile:
         if name in self.profiles:
             return self.profiles[name]
-        raise NominalConfigError(f"profile {name!r} not found in config: add with `nom config add-profile`")
+        raise NominalConfigError(f"profile {name!r} not found in config: add with `nom config profile add`")
 
 
 class _NominalConfigMigrationError(NominalConfigError):
