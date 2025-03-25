@@ -30,15 +30,13 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.io._utils import deprecate_keyword_argument
 from nominal.io.config import NominalConfig
 from nominal.io.core._clientsbunch import ClientsBunch
-from nominal.io.core._conjure_utils import _available_units, _build_unit_update
+from nominal.io.core._conjure_utils import _available_units
 from nominal.io.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.io.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.io.core.asset import Asset
 from nominal.io.core.attachment import Attachment, _iter_get_attachments
-from nominal.io.core.channel import Channel
 from nominal.io.core.checklist import Checklist
 from nominal.io.core.connection import Connection, StreamingConnection
 from nominal.io.core.data_review import DataReview, DataReviewBuilder
@@ -110,8 +108,7 @@ class NominalClient:
 
         Args:
             base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-            token: An API key or bearer token to authenticate with. If None (deprecated), searches for a profile
-                with the given `base_url` in the Nominal config.
+            token: An API key or bearer token to authenticate with.
             trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout, in seconds.
@@ -197,7 +194,6 @@ class NominalClient:
         for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self._clients, run)
 
-    @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
         self,
         start: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -778,57 +774,6 @@ class NominalClient:
             Unit._from_conjure(unit)
             for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
         ]
-
-    def get_channel(self, rid: str) -> Channel:
-        """Get metadata for a given channel by looking up its rid
-        Args:
-            rid: Identifier for the channel to look up
-        Returns:
-            Resolved metadata for the requested channel
-        Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
-                This typically occurs when there is no such channel for the given RID.
-        """
-        warnings.warn(
-            "get_channel is deprecated. Use dataset.get_channel() or connection.get_channel() instead.",
-            UserWarning,
-        )
-        return Channel._from_conjure_logicalseries_api(
-            self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
-        )
-
-    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Iterable[Channel]:
-        """Sets the units for a set of channels based on user-provided unit symbols
-        Args:
-            rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
-                NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
-
-        Returns:
-        -------
-            A sequence of metadata for all updated channels
-        Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the channel.
-                This typically occurs when either the units are invalid, or there are no
-                channels with the given RIDs present.
-
-        """
-        warnings.warn(
-            "set_channel_units is deprecated. Use dataset.set_channel_units() or connection.set_channel_units()",
-            UserWarning,
-        )
-
-        series_updates = []
-        for rid, series_type in rids_to_types.items():
-            series_updates.append(
-                timeseries_logicalseries_api.UpdateLogicalSeries(
-                    logical_series_rid=rid,
-                    unit_update=_build_unit_update(series_type),
-                )
-            )
-
-        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
-        response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
-        return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
 
     def get_connection(self, rid: str) -> Connection:
         """Retrieve a connection by its RID."""
