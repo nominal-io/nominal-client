@@ -18,6 +18,7 @@ from nominal_api import (
 )
 from nominal_api.api import Timestamp
 from typing_extensions import Self
+import typing_extensions
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import update_dataclass
@@ -92,29 +93,19 @@ class Channel:
         update_dataclass(self, updated_channel, fields=self.__dataclass_fields__)
         return self
 
+    @typing_extensions.deprecated(
+        "`channel.to_pandas` is deprecated and will be removed in a future version. "
+        "Use `nominal.thirdparty.pandas.channel_to_series` instead."
+    )
     def to_pandas(
         self,
         start: datetime | IntegralNanosecondsUTC | None = None,
         end: datetime | IntegralNanosecondsUTC | None = None,
     ) -> pd.Series[Any]:
-        """Retrieve the channel data as a pandas.Series.
+        """Retrieve the channel data as a pandas.Series."""
+        from nominal.thirdparty.pandas import channel_to_series
 
-        The index of the series is the timestamp of the data.
-        The index name is "timestamp" and the series name is the channel name.
-
-        Example:
-        -------
-        ```
-        s = channel.to_pandas()
-        print(s.name, "mean:", s.mean())
-        ```
-
-        """
-        start_time = _MIN_TIMESTAMP.to_api() if start is None else _SecondsNanos.from_flexible(start).to_api()
-        end_time = _MAX_TIMESTAMP.to_api() if end is None else _SecondsNanos.from_flexible(end).to_api()
-        body = self._get_series_values_csv(start_time, end_time)
-        df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
-        return df[self.name]
+        return channel_to_series(self, start=start, end=end)
 
     @classmethod
     def _from_conjure_datasource_api(cls, clients: _Clients, channel: datasource_api.ChannelMetadata) -> Self:
@@ -162,6 +153,10 @@ class Channel:
             _clients=clients,
         )
 
+    @typing_extensions.deprecated(
+        "`channel.get_decimated` is deprecated and will be removed in a future version. "
+        "Use `nominal.thirdparty.pandas.channel_to_dataframe_decimated` instead."
+    )
     def get_decimated(
         self,
         start: str | datetime | IntegralNanosecondsUTC,
@@ -170,38 +165,10 @@ class Channel:
         buckets: int | None = None,
         resolution: int | None = None,
     ) -> pd.DataFrame:
-        """Retrieve the channel data as a pandas.DataFrame, decimated to the given buckets or resolution.
+        """Retrieve the channel data as a pandas.DataFrame, decimated to the given buckets or resolution."""
+        from nominal.thirdparty.pandas import channel_to_dataframe_decimated
 
-        Enter either the number of buckets or the resolution for the output.
-        Resolution in picoseconds for picosecond-granularity dataset, nanoseconds otherwise.
-        """
-        if buckets is not None and resolution is not None:
-            raise ValueError("Either buckets or resolution should be provided")
-
-        result = self._decimate_request(start, end, buckets, resolution)
-
-        # when there are less than 1000 points, the result is numeric
-        if result.numeric is not None:
-            df = pd.DataFrame(
-                result.numeric.values,
-                columns=["value"],
-                index=[_to_pandas_timestamp(timestamp) for timestamp in result.numeric.timestamps],
-            )
-            df.index.name = "timestamp"
-            return df
-
-        if result.bucketed_numeric is None:
-            raise ValueError("Unexpected response from compute service, bucketed_numeric should not be None")
-        df = pd.DataFrame(
-            [
-                (bucket.min, bucket.max, bucket.mean, bucket.count, bucket.variance)
-                for bucket in result.bucketed_numeric.buckets
-            ],
-            columns=["min", "max", "mean", "count", "variance"],
-            index=[_to_pandas_timestamp(timestamp) for timestamp in result.bucketed_numeric.timestamps],
-        )
-        df.index.name = "timestamp"
-        return df
+        return channel_to_dataframe_decimated(self, start=start, end=end, buckets=buckets, resolution=resolution)
 
     def _decimate_request(
         self,
