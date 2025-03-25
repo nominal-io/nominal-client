@@ -8,7 +8,7 @@ from queue import Empty, Queue
 from typing import Iterable, List, Protocol, TypeVar
 
 from nominal.core.stream import BatchItem
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.io.ts import IntegralNanosecondsUTC
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)

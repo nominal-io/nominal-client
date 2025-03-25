@@ -24,12 +24,12 @@ from nominal_api import (
     upload_api,
 )
 
-from nominal._utils import warn_on_deprecated_argument
+from nominal.io._utils import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
-from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 

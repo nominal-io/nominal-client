@@ -8,7 +8,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
-from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
+from nominal.io.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
 
 
 @dataclass(frozen=True)

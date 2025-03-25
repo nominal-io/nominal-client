@@ -7,7 +7,7 @@ import pandas as pd
 
 import nominal as nm
 from nominal.core.channel import ChannelDataType
-from nominal.ts import _SecondsNanos
+from nominal.io.ts import _SecondsNanos
 from tests.e2e import _create_random_start_end
 
 

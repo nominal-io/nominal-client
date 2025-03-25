@@ -18,8 +18,8 @@ from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
-from nominal.exceptions import NominalIngestError, NominalIngestFailed
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.exceptions import NominalIngestError, NominalIngestFailed
+from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 

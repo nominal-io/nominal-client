@@ -30,8 +30,8 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal._utils import deprecate_keyword_argument
-from nominal.config import NominalConfig
+from nominal.io._utils import deprecate_keyword_argument
+from nominal.io.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
@@ -57,8 +57,8 @@ from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user
 from nominal.core.video import Video, _build_video_file_timestamp_manifest
 from nominal.core.workbook import Workbook
-from nominal.exceptions import NominalError, NominalIngestError
-from nominal.ts import (
+from nominal.io.exceptions import NominalError, NominalIngestError
+from nominal.io.ts import (
     IntegralNanosecondsUTC,
     LogTimestampType,
     _AnyTimestampType,

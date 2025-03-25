@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 
 import nominal as nm
-from nominal import _utils
+from nominal.io import _utils
 from tests.e2e import _create_random_start_end
 
 

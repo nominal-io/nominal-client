@@ -1,7 +1,7 @@
 import importlib.metadata
 
-from nominal import ts
-from nominal.core import (
+from nominal.io import ts
+from nominal.io.core import (
     Asset,
     Attachment,
     Channel,

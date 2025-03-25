@@ -11,8 +11,8 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, update_dataclass
-from nominal.exceptions import NominalIngestError, NominalIngestFailed
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.exceptions import NominalIngestError, NominalIngestFailed
+from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 

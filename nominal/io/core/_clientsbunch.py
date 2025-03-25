@@ -30,7 +30,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.io.ts import IntegralNanosecondsUTC
 
 
 @dataclass(frozen=True)

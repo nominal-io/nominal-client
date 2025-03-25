@@ -27,7 +27,7 @@ from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._queueing import Batch
 from nominal.core._utils import _to_api_batch_key
 from nominal.core.stream import BatchItem
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)

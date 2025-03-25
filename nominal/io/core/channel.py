@@ -21,7 +21,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import update_dataclass
-from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 
 class ChannelDataType(enum.Enum):

@@ -5,7 +5,7 @@ import dataclasses
 import click
 
 
-from nominal import config
+from nominal.io import config
 from nominal.cli.util.global_decorators import global_options
 from nominal.cli.util.verify_connection import validate_token_url
 

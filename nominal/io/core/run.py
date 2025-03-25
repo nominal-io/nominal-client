@@ -20,7 +20,7 @@ from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)

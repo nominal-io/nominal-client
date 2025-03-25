@@ -12,7 +12,7 @@ import requests
 from nominal_api import ingest_api, upload_api
 
 from nominal.core.filetype import FileType
-from nominal.exceptions import NominalMultipartUploadFailed
+from nominal.io.exceptions import NominalMultipartUploadFailed
 
 logger = logging.getLogger(__name__)
 

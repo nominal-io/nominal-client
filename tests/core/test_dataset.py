@@ -8,7 +8,7 @@ from nominal_api.timeseries_channelmetadata_api import BatchUpdateChannelMetadat
 from nominal.core.channel import Channel
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.unit import Unit
-from nominal.exceptions import NominalIngestError, NominalIngestFailed
+from nominal.io.exceptions import NominalIngestError, NominalIngestFailed
 
 UNITS = [
     Unit(name="coulomb", symbol="C"),

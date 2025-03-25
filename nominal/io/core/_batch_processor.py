@@ -7,7 +7,7 @@ from nominal_api import storage_writer_api
 
 from nominal.core._utils import _to_api_batch_key
 from nominal.core.stream import BatchItem
-from nominal.ts import _SecondsNanos
+from nominal.io.ts import _SecondsNanos
 
 
 def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.Points:

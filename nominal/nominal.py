@@ -6,8 +6,8 @@ from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
-from nominal import Connection, ts
-from nominal._utils import deprecate_keyword_argument, reader_writer
+from nominal import Connection
+from nominal.io._utils import deprecate_keyword_argument, reader_writer
 from nominal.core import (
     Asset,
     Attachment,
@@ -26,6 +26,7 @@ from nominal.core import (
 )
 from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
+from nominal.io import ts
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -82,7 +83,7 @@ def upload_tdms(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    from nominal import _tdms
+    from nominal.thirdparty import _tdms
 
     path = Path(file)
     upload_func = partial(

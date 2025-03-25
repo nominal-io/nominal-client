@@ -12,7 +12,7 @@ from typing import Any, Callable, Sequence, Type
 
 from typing_extensions import Self
 
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 def __getattr__(name: str) -> Any:

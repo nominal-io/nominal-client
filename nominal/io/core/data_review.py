@@ -17,7 +17,7 @@ from typing_extensions import Self
 from nominal.core import checklist
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)

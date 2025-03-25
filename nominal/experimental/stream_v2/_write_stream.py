@@ -19,7 +19,7 @@ from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService, Request
 from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
 from nominal.experimental.stream_v2._serializer import BatchSerializer
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
