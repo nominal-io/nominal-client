@@ -10,29 +10,11 @@ from typing import Any, BinaryIO, Callable, Iterator, TypeVar
 
 from typing_extensions import ParamSpec
 
-from nominal.io.core import filetype
-
 logger = logging.getLogger(__name__)
 
 
 Param = ParamSpec("Param")
 T = TypeVar("T")
-
-
-def __getattr__(attr: str) -> Any:
-    import warnings
-
-    deprecated_attrs = {"FileType": filetype.FileType, "FileTypes": filetype.FileTypes}
-    if attr in deprecated_attrs:
-        warnings.warn(
-            (
-                f"nominal._utils.{attr} is deprecated and will be removed in a future version, use "
-                f"nominal.core.{attr} instead."
-            ),
-            UserWarning,
-            stacklevel=2,
-        )
-        return deprecated_attrs[attr]
 
 
 @contextmanager
