@@ -54,7 +54,7 @@ class NominalConfig:
                 _auto_migrate_deprecated_config()
             else:
                 raise FileNotFoundError(
-                    f"no config file found at {DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config add-profile`"
+                    f"no config file found at {DEFAULT_NOMINAL_CONFIG_PATH}: create with `nom config profile add`"
                 )
         with open(path) as f:
             obj = yaml.safe_load(f)
