@@ -272,24 +272,13 @@ def create_run_csv(
 ) -> Run:
     """Create a dataset from a CSV file, and create a run based on it.
 
-    This is a convenience function that combines `upload_csv()` and `create_run()` and can only be used with absolute
-    timestamps. For relative timestamps or custom formats, use `upload_dataset()` and `create_run()` separately.
-
-    The name and description are added to the run. The dataset is created with the name "Dataset for Run: {name}".
-    The reference name for the dataset in the run is "dataset".
-
-    The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
-    column.
+    This is a convenience function that combines `upload_csv()` and `create_run()`.
     """
-    ts_type = ts._to_typed_timestamp_type(timestamp_type)
-    if not isinstance(ts_type, (ts.Iso8601, ts.Epoch)):
-        raise ValueError(
-            "`create_run_csv()` only supports iso8601 or epoch timestamps: use "
-            "`upload_dataset()` and `create_run()` instead"
-        )
-    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, ts_type)
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, ts_type)
-    run = create_run(name, start=start, end=end, description=description)
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
+    dataset.poll_until_ingestion_completed()
+    dataset.refresh()
+    assert dataset.bounds is not None
+    run = create_run(name, start=dataset.bounds.start, end=dataset.bounds.end, description=description)
     run.add_dataset("dataset", dataset)
     return run
 
@@ -461,42 +450,6 @@ def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     this function after uploading all datasets to wait until ingestion completes. This allows for parallel ingestion.
     """
     poll_until_ingestion_completed(datasets)
-
-
-def _get_start_end_timestamp_csv_file(
-    file: Path | str,
-    timestamp_column: str,
-    timestamp_type: ts.Iso8601 | ts.Epoch,
-) -> tuple[ts.IntegralNanosecondsUTC, ts.IntegralNanosecondsUTC]:
-    import pandas as pd
-
-    df = pd.read_csv(file)
-    ts_col = df[timestamp_column]
-
-    if isinstance(timestamp_type, ts.Iso8601):
-        ts_col = pd.to_datetime(ts_col)
-    elif isinstance(timestamp_type, ts.Epoch):
-        pd_units: dict[ts._LiteralTimeUnit, str] = {
-            "hours": "s",  # hours are not supported by pandas
-            "minutes": "s",  # minutes are not supported by pandas
-            "seconds": "s",
-            "milliseconds": "ms",
-            "microseconds": "us",
-            "nanoseconds": "ns",
-        }
-        if timestamp_type.unit == "hours":
-            ts_col *= 60 * 60
-        elif timestamp_type.unit == "minutes":
-            ts_col *= 60
-        ts_col = pd.to_datetime(ts_col, unit=pd_units[timestamp_type.unit])
-    else:
-        raise ValueError(f"unhandled timestamp type {timestamp_type}")
-
-    start, end = ts_col.min(), ts_col.max()
-    return (
-        ts.IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
-        ts.IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
-    )
 
 
 def get_checklist(checklist_rid: str) -> Checklist:
