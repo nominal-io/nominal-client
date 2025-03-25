@@ -31,7 +31,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils import deprecate_keyword_argument
-from nominal.config import NominalConfig, _get_profile_matching_url
+from nominal.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import upload_multipart_file, upload_multipart_io
@@ -99,9 +99,10 @@ class NominalClient:
     def create(
         cls,
         base_url: str,
-        token: str | None = None,
+        token: str,
+        *,
         trust_store_path: str | None = None,
-        connect_timeout: timedelta | float = timedelta(seconds=30),
+        connect_timeout: timedelta = timedelta(seconds=30),
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -114,23 +115,7 @@ class NominalClient:
             trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout, in seconds.
-
-        Raises:
-            NominalConfigError: If the `token` is None and no profile is found for the given `base_url`.
         """
-        # TODO(alkasm): remove token=None
-        # TODO(alkasm): make trust_store_path and connect_timeout keyword-only
-        # TODO(alkasm): deprecate floating point timeout
-        if token is None:
-            warnings.warn(
-                "using NominalClient.create(..., token=None) is deprecated and will be removed in a future version. "
-                "instead configure profiles with the CLI `nom config` and use `NominalClient.from_profile`.",
-                UserWarning,
-                stacklevel=2,
-            )
-            _config = NominalConfig.from_yaml()
-            _, _profile = _get_profile_matching_url(_config, base_url)
-            token = _profile.token
 
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout

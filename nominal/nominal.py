@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import dataclasses
 from datetime import datetime
 from functools import partial
 from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
-import typing_extensions
-
 from nominal import Connection, ts
 from nominal._utils import deprecate_keyword_argument, reader_writer
-from nominal.config import ConfigProfile, NominalConfig, _get_profile_matching_url
 from nominal.core import (
     Asset,
     Attachment,
@@ -37,60 +33,6 @@ if TYPE_CHECKING:
 
 
 _current_client: NominalClient | None = None
-
-
-def _set_base_url(base_url: str) -> None:
-    cfg = NominalConfig.from_yaml()
-    profile_name, _ = _get_profile_matching_url(cfg, base_url)
-    set_current_client(NominalClient.from_profile(profile_name))
-
-
-@typing_extensions.deprecated(
-    """`set_base_url` is deprecated and will be removed in a future version.
-    Use `set_current_client` instead.""",
-    category=UserWarning,
-)
-def set_base_url(base_url: str) -> None:
-    """Set the current Nominal client to the profile with the given base URL.
-
-    This function does not update the Nominal config.
-
-    Raises:
-        NominalConfigError: if there is not exactly one profile with the given base URL.
-    """
-    _set_base_url(base_url)
-
-
-@typing_extensions.deprecated(
-    """`set_token` is deprecated and will be removed in a future version.
-    Use `set_current_client` instead.""",
-    category=UserWarning,
-)
-def set_token(base_url: str, token: str) -> None:
-    """Set the token for the profile with the given base URL.
-
-    This function updates the Nominal config file.
-
-    Raises:
-        NominalConfigError: if there is not exactly one profile with the given base URL.
-    """
-    cfg = NominalConfig.from_yaml()
-    profile_name, _ = _get_profile_matching_url(cfg, base_url)
-    new_profile = ConfigProfile(base_url=base_url, token=token)
-    new_cfg = dataclasses.replace(cfg, profiles={**cfg.profiles, profile_name: new_profile})
-    new_cfg.to_yaml()
-    client = NominalClient.from_profile(profile_name)
-    set_current_client(client)
-
-
-@typing_extensions.deprecated(
-    """`get_default_client` is deprecated and will be removed in a future version.
-    Use `get_current_client` instead.""",
-    category=UserWarning,
-)
-def get_default_client() -> NominalClient:
-    """Retrieve the current client to the Nominal platform."""
-    return get_current_client()
 
 
 def get_current_client() -> NominalClient:
