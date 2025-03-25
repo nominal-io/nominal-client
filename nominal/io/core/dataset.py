@@ -9,13 +9,11 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
-from nominal_api import api, datasource_api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
-from nominal.io._utils import deprecate_arguments
 from nominal.io.core._multipart import upload_multipart_file, upload_multipart_io
 from nominal.io.core._utils import update_dataclass
-from nominal.io.core.channel import Channel
 from nominal.io.core.datasource import DataSource
 from nominal.io.core.filetype import FileType, FileTypes
 from nominal.io.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
@@ -242,58 +240,6 @@ class Dataset(DataSource):
             bounds=None if dataset.bounds is None else DatasetBounds._from_conjure(dataset.bounds),
             _clients=clients,
         )
-
-    @deprecate_arguments(
-        deprecated_args=["exact_match", "fuzzy_search_text"],
-        new_kwarg="names",
-        new_method=DataSource.get_channels,
-    )
-    def get_channels(
-        self,
-        exact_match: Sequence[str] = (),
-        fuzzy_search_text: str = "",
-        *,
-        names: Iterable[str] | None = None,
-    ) -> Iterable[Channel]:
-        """Look up the metadata for all matching channels associated with this dataset.
-
-        Args:
-        ----
-            exact_match: Filter the returned channels to those whose names match all provided strings
-                (case insensitive).
-                For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
-                whereas a channel named 'engine_turbine_flowrate' would not!
-            fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
-            names: List of channel names to look up metadata for. This parameter is preferred over
-                exact_match and fuzzy_search_text, which are deprecated.
-
-        Yields:
-        ------
-            Yields a sequence of channel metadata objects which match the provided query parameters
-
-        """
-        next_page_token = None
-        while True:
-            query = datasource_api.SearchChannelsRequest(
-                data_sources=[self.rid],
-                exact_match=list(exact_match),
-                fuzzy_search_text=fuzzy_search_text,
-                previously_selected_channels={},
-                next_page_token=next_page_token,
-                page_size=None,
-                prefix=None,
-            )
-            response = self._clients.datasource.search_channels(self._clients.auth_header, query)
-            for channel_metadata in response.results:
-                # Skip series archetypes for now-- they aren't handled by the rest of the SDK in a graceful manner
-                if channel_metadata.series_rid.logical_series is None:
-                    continue
-                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
-
-            if response.next_page_token is None:
-                break
-            else:
-                next_page_token = response.next_page_token
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
