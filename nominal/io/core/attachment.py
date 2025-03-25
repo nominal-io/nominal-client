@@ -9,8 +9,8 @@ from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 from nominal_api import attachments_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import HasRid, update_dataclass
+from nominal.io.core._clientsbunch import HasAuthHeader
+from nominal.io.core._utils import HasRid, update_dataclass
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ import contextlib
 from datetime import timedelta
 from typing import Generator
 
-from nominal.core.connection import StreamingConnection
+from nominal.io.core.connection import StreamingConnection
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.experimental.stream_v2._write_stream import WriteStreamV2
 

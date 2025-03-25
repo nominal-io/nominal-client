@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from nominal.core import NominalClient
+from nominal.io.core import NominalClient
 
 
 def pytest_addoption(parser):

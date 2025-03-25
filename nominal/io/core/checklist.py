@@ -13,11 +13,11 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import HasRid, rid_from_instance_or_string
-from nominal.core.asset import Asset
-from nominal.core.data_review import DataReview
-from nominal.core.run import Run
+from nominal.io.core._clientsbunch import HasAuthHeader
+from nominal.io.core._utils import HasRid, rid_from_instance_or_string
+from nominal.io.core.asset import Asset
+from nominal.io.core.data_review import DataReview
+from nominal.io.core.run import Run
 
 
 @dataclass(frozen=True)

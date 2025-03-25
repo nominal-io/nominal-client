@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
 from nominal import Connection
 from nominal.io._utils import deprecate_keyword_argument, reader_writer
-from nominal.core import (
+from nominal.io.core import (
     Asset,
     Attachment,
     Checklist,
@@ -24,8 +24,8 @@ from nominal.core import (
     Workbook,
     poll_until_ingestion_completed,
 )
-from nominal.core.connection import StreamingConnection
-from nominal.core.data_review import DataReview, DataReviewBuilder
+from nominal.io.core.connection import StreamingConnection
+from nominal.io.core.data_review import DataReview, DataReviewBuilder
 from nominal.io import ts
 
 if TYPE_CHECKING:

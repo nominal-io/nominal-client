@@ -13,11 +13,11 @@ from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self
 
 from nominal.io._utils import deprecate_arguments
-from nominal.core._multipart import upload_multipart_file, upload_multipart_io
-from nominal.core._utils import update_dataclass
-from nominal.core.channel import Channel
-from nominal.core.datasource import DataSource
-from nominal.core.filetype import FileType, FileTypes
+from nominal.io.core._multipart import upload_multipart_file, upload_multipart_io
+from nominal.io.core._utils import update_dataclass
+from nominal.io.core.channel import Channel
+from nominal.io.core.datasource import DataSource
+from nominal.io.core.filetype import FileType, FileTypes
 from nominal.io.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.io.ts import (
     IntegralNanosecondsUTC,

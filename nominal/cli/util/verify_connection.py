@@ -1,7 +1,7 @@
 import click
 from conjure_python_client import ConjureHTTPError
 
-from nominal.core.client import NominalClient
+from nominal.io.core.client import NominalClient
 
 
 def validate_token_url(token: str, base_url: str) -> None:

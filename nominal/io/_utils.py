@@ -10,7 +10,7 @@ from typing import Any, BinaryIO, Callable, Iterator, TypeVar
 
 from typing_extensions import ParamSpec
 
-from nominal.core import filetype
+from nominal.io.core import filetype
 
 logger = logging.getLogger(__name__)
 

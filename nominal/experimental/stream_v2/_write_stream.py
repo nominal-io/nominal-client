@@ -14,10 +14,10 @@ from typing import Callable, Protocol, Sequence, Type
 
 from typing_extensions import Self
 
-from nominal.core._batch_processor_proto import SerializedBatch
-from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService, RequestMetrics
-from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
-from nominal.core.stream import BatchItem
+from nominal.io.core._batch_processor_proto import SerializedBatch
+from nominal.io.core._clientsbunch import HasAuthHeader, ProtoWriteService, RequestMetrics
+from nominal.io.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
+from nominal.io.core.stream import BatchItem
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 

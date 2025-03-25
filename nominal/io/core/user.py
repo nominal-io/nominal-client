@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from nominal_api import authentication_api
 
-from nominal.core._utils import HasRid
+from nominal.io.core._utils import HasRid
 
 
 @dataclass(frozen=True)

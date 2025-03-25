@@ -25,10 +25,10 @@ from nominal_api import (
 )
 
 from nominal.io._utils import warn_on_deprecated_argument
-from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
-from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._utils import HasRid, batched
-from nominal.core.channel import Channel, ChannelDataType
+from nominal.io.core._clientsbunch import HasAuthHeader, ProtoWriteService
+from nominal.io.core._conjure_utils import _available_units, _build_unit_update
+from nominal.io.core._utils import HasRid, batched
+from nominal.io.core.channel import Channel, ChannelDataType
 from nominal.io.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)

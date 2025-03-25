@@ -11,15 +11,15 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._conjure_utils import Link, _build_links
-from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
-from nominal.core.asset import Asset
-from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _get_datasets
-from nominal.core.log import LogSet, _get_log_set
-from nominal.core.video import Video, _get_video
+from nominal.io.core._clientsbunch import HasAuthHeader
+from nominal.io.core._conjure_utils import Link, _build_links
+from nominal.io.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
+from nominal.io.core.asset import Asset
+from nominal.io.core.attachment import Attachment, _iter_get_attachments
+from nominal.io.core.connection import Connection, _get_connections
+from nominal.io.core.dataset import Dataset, _get_datasets
+from nominal.io.core.log import LogSet, _get_log_set
+from nominal.io.core.video import Video, _get_video
 from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 

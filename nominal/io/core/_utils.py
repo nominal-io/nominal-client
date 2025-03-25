@@ -7,7 +7,7 @@ from itertools import islice
 from typing import Iterable, Protocol, Sequence, TypeVar, runtime_checkable
 
 from nominal.io._utils import logger
-from nominal.core.stream import BatchItem
+from nominal.io.core.stream import BatchItem
 
 T = TypeVar("T")
 

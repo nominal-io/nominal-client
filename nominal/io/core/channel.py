@@ -19,8 +19,8 @@ from nominal_api import (
 from nominal_api.api import Timestamp
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import update_dataclass
+from nominal.io.core._clientsbunch import HasAuthHeader
+from nominal.io.core._utils import update_dataclass
 from nominal.io.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
 
 

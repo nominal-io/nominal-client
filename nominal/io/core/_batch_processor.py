@@ -5,8 +5,8 @@ from typing import Sequence, cast
 
 from nominal_api import storage_writer_api
 
-from nominal.core._utils import _to_api_batch_key
-from nominal.core.stream import BatchItem
+from nominal.io.core._utils import _to_api_batch_key
+from nominal.io.core.stream import BatchItem
 from nominal.io.ts import _SecondsNanos
 
 

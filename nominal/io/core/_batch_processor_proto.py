@@ -23,10 +23,10 @@ try:
 except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
-from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._queueing import Batch
-from nominal.core._utils import _to_api_batch_key
-from nominal.core.stream import BatchItem
+from nominal.io.core._clientsbunch import ProtoWriteService
+from nominal.io.core._queueing import Batch
+from nominal.io.core._utils import _to_api_batch_key
+from nominal.io.core.stream import BatchItem
 from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 

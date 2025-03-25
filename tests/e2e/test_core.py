@@ -6,7 +6,7 @@ from uuid import uuid4
 import pandas as pd
 
 import nominal as nm
-from nominal.core.channel import ChannelDataType
+from nominal.io.core.channel import ChannelDataType
 from nominal.io.ts import _SecondsNanos
 from tests.e2e import _create_random_start_end
 

@@ -13,11 +13,11 @@ from typing import BinaryIO, Mapping, Protocol, Sequence
 from nominal_api import api, ingest_api, scout_video, scout_video_api, upload_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._multipart import upload_multipart_io
-from nominal.core._utils import HasRid, update_dataclass
-from nominal.core.filetype import FileType, FileTypes
-from nominal.core.video_file import VideoFile
+from nominal.io.core._clientsbunch import HasAuthHeader
+from nominal.io.core._multipart import upload_multipart_io
+from nominal.io.core._utils import HasRid, update_dataclass
+from nominal.io.core.filetype import FileType, FileTypes
+from nominal.io.core.video_file import VideoFile
 from nominal.io.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
 

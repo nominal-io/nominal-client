@@ -6,8 +6,8 @@ from typing import Iterable, Protocol
 from nominal_api import datasource, datasource_logset, datasource_logset_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import HasRid
+from nominal.io.core._clientsbunch import HasAuthHeader
+from nominal.io.core._utils import HasRid
 from nominal.io.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
 
 

@@ -10,9 +10,9 @@ from nominal_api import (
     scout_datasource_connection_api,
 )
 
-from nominal.core._batch_processor import process_batch_legacy
-from nominal.core.datasource import DataSource
-from nominal.core.stream import WriteStream
+from nominal.io.core._batch_processor import process_batch_legacy
+from nominal.io.core.datasource import DataSource
+from nominal.io.core.stream import WriteStream
 
 
 @dataclass(frozen=True)
@@ -112,7 +112,7 @@ class StreamingConnection(Connection):
             )
 
         try:
-            from nominal.core._batch_processor_proto import process_batch
+            from nominal.io.core._batch_processor_proto import process_batch
         except ImportError:
             raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
 

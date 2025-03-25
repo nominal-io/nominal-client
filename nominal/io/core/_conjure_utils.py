@@ -5,7 +5,7 @@ from typing import Sequence
 from nominal_api import api, scout, scout_run_api, timeseries_logicalseries_api
 from typing_extensions import TypeAlias
 
-from nominal.core.unit import Unit
+from nominal.io.core.unit import Unit
 
 
 def _available_units(auth_header: str, client: scout.UnitsService) -> Sequence[Unit]:
