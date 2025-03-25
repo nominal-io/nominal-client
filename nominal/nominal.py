@@ -143,35 +143,20 @@ def upload_polars(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a polars.DataFrame.
+    """Create a dataset in the Nominal platform from a polars.DataFrame."""
+    from nominal.thirdparty.pandas import upload_dataframe
 
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
-    conn = get_default_client()
-
-    def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
-        df.write_csv(w)
-        w.close()
-
-    with reader_writer() as (reader, writer):
-        # write the dataframe to CSV in another thread
-        t = Thread(target=write_and_close, args=(df, writer))
-        t.start()
-        dataset = conn.create_dataset_from_io(
-            reader,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
-            description=description,
-            prefix_tree_delimiter=channel_name_delimiter,
-        )
-        t.join()
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
-    return dataset
+    client = get_default_client()
+    return upload_dataframe(
+        client,
+        df.to_pandas(),
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
+    )
 
 
 def upload_csv(
