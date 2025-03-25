@@ -32,17 +32,17 @@ from typing_extensions import Self
 
 from nominal.io._utils import deprecate_keyword_argument
 from nominal.io.config import NominalConfig
-from nominal.io.core._clientsbunch import ClientsBunch
-from nominal.io.core._conjure_utils import _available_units, _build_unit_update
-from nominal.io.core._multipart import upload_multipart_file, upload_multipart_io
-from nominal.io.core._utils import construct_user_agent_string, rid_from_instance_or_string
-from nominal.io.core.asset import Asset
-from nominal.io.core.attachment import Attachment, _iter_get_attachments
-from nominal.io.core.channel import Channel
-from nominal.io.core.checklist import Checklist
-from nominal.io.core.connection import Connection, StreamingConnection
-from nominal.io.core.data_review import DataReview, DataReviewBuilder
-from nominal.io.core.dataset import (
+from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._conjure_utils import _available_units, _build_unit_update
+from nominal.core._multipart import upload_multipart_file, upload_multipart_io
+from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core.asset import Asset
+from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.channel import Channel
+from nominal.core.checklist import Checklist
+from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.data_review import DataReview, DataReviewBuilder
+from nominal.core.dataset import (
     Dataset,
     _create_dataflash_ingest_request,
     _create_mcap_channels,
@@ -50,13 +50,13 @@ from nominal.io.core.dataset import (
     _get_dataset,
     _get_datasets,
 )
-from nominal.io.core.filetype import FileType, FileTypes
-from nominal.io.core.log import Log, LogSet, _get_log_set
-from nominal.io.core.run import Run
-from nominal.io.core.unit import Unit
-from nominal.io.core.user import User, _get_user
-from nominal.io.core.video import Video, _build_video_file_timestamp_manifest
-from nominal.io.core.workbook import Workbook
+from nominal.core.filetype import FileType, FileTypes
+from nominal.core.log import Log, LogSet, _get_log_set
+from nominal.core.run import Run
+from nominal.core.unit import Unit
+from nominal.core.user import User, _get_user
+from nominal.core.video import Video, _build_video_file_timestamp_manifest
+from nominal.core.workbook import Workbook
 from nominal.io.exceptions import NominalError, NominalIngestError
 from nominal.io.ts import (
     IntegralNanosecondsUTC,
@@ -203,8 +203,6 @@ class NominalClient:
         start: str | datetime | IntegralNanosecondsUTC | None = None,
         end: str | datetime | IntegralNanosecondsUTC | None = None,
         name_substring: str | None = None,
-        label: str | None = None,
-        property: tuple[str, str] | None = None,
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
@@ -216,21 +214,12 @@ class NominalClient:
             start: Inclusive start time for filtering runs.
             end: Inclusive end time for filtering runs.
             name_substring: Searches for a (case-insensitive) substring in the name.
-            label: Deprecated, use labels instead.
-            property: Deprecated, use properties instead.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
 
         Returns:
             All runs which match all of the provided conditions
         """
-        labels, properties = _handle_deprecated_labels_properties(
-            "search_runs",
-            label,
-            labels,
-            property,
-            properties,
-        )
 
         return list(self._iter_search_runs(start, end, name_substring, labels, properties))
 
@@ -1028,8 +1017,6 @@ class NominalClient:
     def search_assets(
         self,
         search_text: str | None = None,
-        label: str | None = None,
-        property: tuple[str, str] | None = None,
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
@@ -1039,20 +1026,12 @@ class NominalClient:
 
         Args:
             search_text: case-insensitive search for any of the keywords in all string fields
-            label: Deprecated, use labels instead.
-            property: Deprecated, use properties instead.
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
 
         Returns:
             All assets which match all of the provided conditions
         """
-        labels, properties = _handle_deprecated_labels_properties(
-            "search_assets",
-            label,
-            labels,
-            property,
-            properties,
         )
 
         return list(self._iter_search_assets(search_text, labels, properties))
@@ -1208,37 +1187,3 @@ def _create_search_checklists_query(
             queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
 
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
-
-
-def _handle_deprecated_labels_properties(
-    function_name: str,
-    label: str | None,
-    labels: Sequence[str] | None,
-    property: tuple[str, str] | None,
-    properties: Mapping[str, str] | None,
-) -> tuple[Sequence[str], Mapping[str, str]]:
-    if all([label, labels]):
-        raise ValueError(f"Cannot use both label and labels for {function_name}.")
-    elif label:
-        warnings.warn(
-            f"parameter 'label' of {function_name} is deprecated, use 'labels' instead",
-            UserWarning,
-            stacklevel=2,
-        )
-        labels = [label]
-    elif labels is None:
-        labels = []
-
-    if all([property, properties]):
-        raise ValueError(f"Cannot use both property and propertiess for {function_name}.")
-    elif property:
-        warnings.warn(
-            f"parameter 'property' of {function_name} is deprecated, use 'properties' instead",
-            UserWarning,
-            stacklevel=2,
-        )
-        properties = {property[0]: property[1]}
-    elif properties is None:
-        properties = {}
-
-    return labels, properties
