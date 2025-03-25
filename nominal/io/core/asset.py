@@ -4,12 +4,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
 
-from nominal_api import (
-    scout_asset_api,
-    scout_assets,
-    scout_run_api,
-)
-from typing_extensions import Self, TypeAlias, deprecated
+from nominal_api import scout_asset_api, scout_assets, scout_run_api
+from typing_extensions import Self, TypeAlias
 
 from nominal.io.core._clientsbunch import HasAuthHeader
 from nominal.io.core._conjure_utils import Link, _build_links
@@ -263,20 +259,6 @@ class Asset(HasRid):
         asset = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, asset, fields=self.__dataclass_fields__)
 
-    @deprecated("Use `remove_data_scopes` instead")
-    def remove_data_sources(
-        self,
-        *,
-        data_scope_names: Sequence[str] | None = None,
-        data_sources: Sequence[ScopeType | str] | None = None,
-    ) -> None:
-        """Remove data sources from this asset.
-
-        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
-        """
-        self._remove_data_sources(data_scope_names=data_scope_names, data_sources=data_sources)
-
-    # Newer alias to replace `remove_data_sources`
     def remove_data_scopes(
         self,
         *,
