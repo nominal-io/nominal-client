@@ -24,7 +24,6 @@ from nominal_api import (
     upload_api,
 )
 
-from nominal.io._utils import warn_on_deprecated_argument
 from nominal.io.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.io.core._conjure_utils import _available_units, _build_unit_update
 from nominal.io.core._utils import HasRid, batched
@@ -139,20 +138,13 @@ class DataSource(HasRid):
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
 
-    @warn_on_deprecated_argument(
-        "tags", "The 'tags' argument is deprecated because it's not used and will be removed in a future version."
-    )
-    def get_channel(self, name: str, tags: dict[str, str] | None = None) -> Channel:
+    def get_channel(self, name: str) -> Channel:
         for channel in self.get_channels(names=[name]):
             if channel.name == name:
                 return channel
         raise ValueError(f"channel {name!r} not found in dataset {self.rid!r}")
 
-    def get_channels(
-        self,
-        *,
-        names: Iterable[str] | None = None,
-    ) -> Iterable[Channel]:
+    def get_channels(self, *, names: Iterable[str] | None = None) -> Iterable[Channel]:
         """Look up the metadata for all matching channels associated with this datasource
 
         Args:
@@ -185,11 +177,7 @@ class DataSource(HasRid):
             )
             yield from (Channel._from_channel_metadata_api(self._clients, channel) for channel in response.responses)
 
-    def search_channels(
-        self,
-        exact_match: Sequence[str] = (),
-        fuzzy_search_text: str = "",
-    ) -> Iterable[Channel]:
+    def search_channels(self, exact_match: Sequence[str] = (), fuzzy_search_text: str = "") -> Iterable[Channel]:
         """Look up channels associated with a datasource.
 
         Args:
