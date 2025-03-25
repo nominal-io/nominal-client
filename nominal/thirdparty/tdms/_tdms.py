@@ -48,7 +48,7 @@ def upload_tdms(
     """
     path = Path(file)
     upload_func = functools.partial(
-        _pandas.upload_pandas,
+        _pandas.upload_dataframe,
         name=name if name is not None else path.with_suffix(".csv").name,
         description=description,
         wait_until_complete=wait_until_complete,

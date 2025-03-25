@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, BinaryIO, Protocol, cast
 
 import pandas as pd
+import typing_extensions
 from nominal_api import (
     api,
     datasource_api,
@@ -18,11 +19,10 @@ from nominal_api import (
 )
 from nominal_api.api import Timestamp
 from typing_extensions import Self
-import typing_extensions
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import update_dataclass
-from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 class ChannelDataType(enum.Enum):

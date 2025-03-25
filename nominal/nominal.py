@@ -6,6 +6,8 @@ from pathlib import Path
 from threading import Thread
 from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
 
+import typing_extensions
+
 from nominal import Connection, _config, ts
 from nominal._utils import deprecate_keyword_argument, reader_writer
 from nominal.core import (
@@ -26,8 +28,6 @@ from nominal.core import (
 )
 from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
-
-import typing_extensions
 
 if TYPE_CHECKING:
     import pandas as pd

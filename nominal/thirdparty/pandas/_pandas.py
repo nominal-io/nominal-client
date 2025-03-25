@@ -5,6 +5,8 @@ from datetime import datetime
 from threading import Thread
 from typing import Any, BinaryIO, Sequence, cast
 
+from nominal_api.api import Timestamp
+
 import pandas as pd
 from nominal import ts
 from nominal._utils import reader_writer
@@ -14,7 +16,6 @@ from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
-from nominal_api.api import Timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,7 @@ def datasource_to_dataframe(
 
     Args:
     ----
+        datasource: The datasource to download data from
         channel_exact_match: Filter the returned channels to those whose names match all provided strings
             (case insensitive).
             For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
