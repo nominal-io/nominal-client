@@ -3,20 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from functools import cache
 from pathlib import Path
-from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
 import typing_extensions
 
 from nominal import Connection, _config, ts
-from nominal._utils import deprecate_keyword_argument, reader_writer
+from nominal._utils import deprecate_keyword_argument
 from nominal.core import (
     Asset,
     Attachment,
     Checklist,
     Dataset,
     FileType,
-    FileTypes,
     Log,
     LogSet,
     NominalClient,
