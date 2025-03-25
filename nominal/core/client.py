@@ -34,7 +34,7 @@ from nominal import _config
 from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import upload_multipart_io
+from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -256,9 +256,7 @@ class NominalClient:
         if name is None:
             name = path.name
 
-        with open(path, "rb") as f:
-            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
-
+        s3_path = upload_multipart_file(self._clients.auth_header, path, self._clients.upload, file_type)
         target = ingest_api.DatasetIngestTarget(
             new=ingest_api.NewDatasetIngestDestination(
                 labels=list(labels),
@@ -337,9 +335,7 @@ class NominalClient:
         if name is None:
             name = path.name
 
-        with open(path, "rb") as f:
-            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
-
+        s3_path = upload_multipart_file(self._clients.auth_header, path, self._clients.upload, file_type)
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 journal_json=ingest_api.JournalJsonOpts(
@@ -375,6 +371,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
         channel_prefix: str | None = None,
+        file_name: str | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -398,6 +395,7 @@ class NominalClient:
             properties: Key-value properties to apply to the cleated dataset
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
             channel_prefix: Prefix to apply to newly created channels
+            file_name: Name of the file (without extension) to create when uploading.
 
         Returns:
             Reference to the constructed dataset object.
@@ -406,7 +404,12 @@ class NominalClient:
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
+
+        # Prevent breaking changes from customers using create_dataset_from_io directly
+        if file_name is None:
+            file_name = name
+
+        s3_path = upload_multipart_io(self._clients.auth_header, dataset, file_name, file_type, self._clients.upload)
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 csv=ingest_api.CsvOpts(
@@ -467,6 +470,7 @@ class NominalClient:
                 labels=labels,
                 properties=properties,
                 prefix_tree_delimiter=prefix_tree_delimiter,
+                file_name=path_upload_name(mcap_path, FileTypes.MCAP),
             )
 
     def create_dataset_from_mcap_io(
@@ -480,6 +484,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        file_name: str | None = None,
     ) -> Dataset:
         """Create a dataset from an mcap file-like object.
 
@@ -496,6 +501,7 @@ class NominalClient:
             labels: Text labels to apply to the created dataset
             properties: Key-value properties to apply to the cleated dataset
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+            file_name: If present, name (without extension) to use when uploading file. Otherwise, defaults to name.
 
         Returns:
             Reference to the constructed dataset object.
@@ -503,10 +509,13 @@ class NominalClient:
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
+        if file_name is None:
+            file_name = name
+
         s3_path = upload_multipart_io(
             self._clients.auth_header,
             dataset,
-            name,
+            file_name,
             file_type=FileTypes.MCAP,
             upload_client=self._clients.upload,
         )
@@ -561,6 +570,7 @@ class NominalClient:
                 description=description,
                 labels=labels,
                 properties=properties,
+                file_name=path_upload_name(path, file_type),
             )
 
     def create_video_from_io(
@@ -574,6 +584,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        file_name: str | None = None,
     ) -> Video:
         """Create a video from a file-like object.
         The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -589,6 +600,7 @@ class NominalClient:
                 of ingestion.
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
+            file_name: Name (without extension) to use when uploading the video file. Defaults to video name.
 
         Returns:
         -------
@@ -610,8 +622,12 @@ class NominalClient:
         timestamp_manifest = _build_video_file_timestamp_manifest(
             self._clients.auth_header, self._clients.upload, start, frame_timestamps
         )
+
+        if file_name is None:
+            file_name = name
+
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(self._clients.auth_header, video, file_name, file_type, self._clients.upload)
         request = ingest_api.IngestRequest(
             ingest_api.IngestOptions(
                 video=ingest_api.VideoOpts(
@@ -910,6 +926,7 @@ class NominalClient:
                 description=description,
                 labels=labels,
                 properties=properties,
+                file_name=path_upload_name(path, FileTypes.MCAP),
             )
 
     def create_video_from_mcap_io(
@@ -922,6 +939,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        file_name: str | None = None,
     ) -> Video:
         """Create video from topic in a mcap file.
 
@@ -932,8 +950,11 @@ class NominalClient:
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
 
+        if file_name is None:
+            file_name = name
+
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(self._clients.auth_header, mcap, file_name, file_type, self._clients.upload)
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 video=ingest_api.VideoOpts(
