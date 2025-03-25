@@ -32,17 +32,17 @@ from typing_extensions import Self
 
 from nominal.io._utils import deprecate_keyword_argument
 from nominal.io.config import NominalConfig
-from nominal.core._clientsbunch import ClientsBunch
-from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import upload_multipart_file, upload_multipart_io
-from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
-from nominal.core.asset import Asset
-from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.channel import Channel
-from nominal.core.checklist import Checklist
-from nominal.core.connection import Connection, StreamingConnection
-from nominal.core.data_review import DataReview, DataReviewBuilder
-from nominal.core.dataset import (
+from nominal.io.core._clientsbunch import ClientsBunch
+from nominal.io.core._conjure_utils import _available_units, _build_unit_update
+from nominal.io.core._multipart import upload_multipart_file, upload_multipart_io
+from nominal.io.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.io.core.asset import Asset
+from nominal.io.core.attachment import Attachment, _iter_get_attachments
+from nominal.io.core.channel import Channel
+from nominal.io.core.checklist import Checklist
+from nominal.io.core.connection import Connection, StreamingConnection
+from nominal.io.core.data_review import DataReview, DataReviewBuilder
+from nominal.io.core.dataset import (
     Dataset,
     _create_dataflash_ingest_request,
     _create_mcap_channels,
@@ -50,13 +50,13 @@ from nominal.core.dataset import (
     _get_dataset,
     _get_datasets,
 )
-from nominal.core.filetype import FileType, FileTypes
-from nominal.core.log import Log, LogSet, _get_log_set
-from nominal.core.run import Run
-from nominal.core.unit import Unit
-from nominal.core.user import User, _get_user
-from nominal.core.video import Video, _build_video_file_timestamp_manifest
-from nominal.core.workbook import Workbook
+from nominal.io.core.filetype import FileType, FileTypes
+from nominal.io.core.log import Log, LogSet, _get_log_set
+from nominal.io.core.run import Run
+from nominal.io.core.unit import Unit
+from nominal.io.core.user import User, _get_user
+from nominal.io.core.video import Video, _build_video_file_timestamp_manifest
+from nominal.io.core.workbook import Workbook
 from nominal.io.exceptions import NominalError, NominalIngestError
 from nominal.io.ts import (
     IntegralNanosecondsUTC,
