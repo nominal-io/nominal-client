@@ -138,7 +138,7 @@ class Dataset(DataSource):
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
         with open(path, "rb") as data_file:
-            self.add_to_dataset_from_io(data_file, timestamp_column, timestamp_type, file_type)
+            self.add_to_dataset_from_io(data_file, timestamp_column, timestamp_type, file_type, file_name=path.name)
 
     def add_to_dataset_from_io(
         self,
@@ -146,6 +146,7 @@ class Dataset(DataSource):
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
+        file_name: str | None = None,
     ) -> None:
         """Append to a dataset from a file-like object.
 
@@ -156,11 +157,14 @@ class Dataset(DataSource):
 
         self.poll_until_ingestion_completed()
 
+        if file_name is None:
+            file_name = self.name
+
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
             self._clients.auth_header,
             dataset,
-            self.name,
+            file_name,
             file_type,
             self._clients.upload,
         )
@@ -179,6 +183,34 @@ class Dataset(DataSource):
             )
         )
         self._clients.ingest.ingest(self._clients.auth_header, request)
+
+    def add_journal_json_to_dataset(
+        self,
+        path: Path | str,
+    ) -> None:
+        """Add a journald jsonl file to an existing dataset."""
+        self.poll_until_ingestion_completed()
+        log_path = Path(path)
+        file_type = FileType.from_path_journal_json(log_path)
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            log_path,
+            self._clients.upload,
+            file_type=file_type,
+        )
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+        self._clients.ingest.ingest(
+            self._clients.auth_header,
+            ingest_api.IngestRequest(
+                options=ingest_api.IngestOptions(
+                    journal_json=ingest_api.JournalJsonOpts(
+                        source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)), target=target
+                    )
+                )
+            ),
+        )
 
     def add_mcap_to_dataset(
         self,

@@ -34,7 +34,7 @@ from nominal._utils import deprecate_keyword_argument
 from nominal.config import NominalConfig, _get_profile_matching_url
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import upload_multipart_file, upload_multipart_io
+from nominal.core._multipart import upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -288,6 +288,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from an ArduPilot DataFlash log file.
 
@@ -309,6 +310,7 @@ class NominalClient:
                 properties={} if properties is None else dict(properties),
                 dataset_description=description,
                 dataset_name=name,
+                channel_config=_build_channel_config(prefix_tree_delimiter),
             )
         )
         request = _create_dataflash_ingest_request(s3_path, target)
@@ -355,52 +357,6 @@ class NominalClient:
                 channel_prefix=channel_prefix,
             )
 
-    def create_mcap_dataset(
-        self,
-        path: Path | str,
-        name: str | None,
-        description: str | None = None,
-        include_topics: Iterable[str] | None = None,
-        exclude_topics: Iterable[str] | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-    ) -> Dataset:
-        """Create a dataset from an MCAP file.
-
-        If name is None, the name of the file will be used.
-
-        If include_topics is None (default), all channels with a "protobuf" message encoding are included.
-
-        See `create_dataset_from_io` for more details on the other arguments.
-        """
-        mcap_path = Path(path)
-        s3_path = upload_multipart_file(
-            self._clients.auth_header,
-            mcap_path,
-            self._clients.upload,
-            file_type=FileTypes.MCAP,
-        )
-        channels = _create_mcap_channels(include_topics, exclude_topics)
-        target = ingest_api.DatasetIngestTarget(
-            new=ingest_api.NewDatasetIngestDestination(
-                dataset_name=name,
-                dataset_description=description,
-                properties={} if properties is None else dict(properties),
-                labels=list(labels),
-                channel_config=None,
-            )
-        )
-        request = _create_mcap_ingest_request(s3_path, channels, target)
-        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if resp.details.dataset is not None:
-            dataset_rid = resp.details.dataset.dataset_rid
-            if dataset_rid is not None:
-                dataset = self.get_dataset(dataset_rid)
-                return dataset
-            raise NominalIngestError("error ingesting mcap: no dataset rid")
-        raise NominalIngestError("error ingesting mcap: no dataset created")
-
     def create_journal_json_dataset(
         self,
         path: Path | str,
@@ -409,6 +365,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a journal log file with json output format.
 
@@ -438,6 +395,7 @@ class NominalClient:
                             properties={} if properties is None else dict(properties),
                             dataset_description=description,
                             dataset_name=name,
+                            channel_config=_build_channel_config(prefix_tree_delimiter),
                         )
                     ),
                 )
@@ -472,6 +430,22 @@ class NominalClient:
             "epoch_{unit}": epoch timestamps in UTC (floats or ints),
             "relative_{unit}": relative timestamps (floats or ints),
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
+
+        Args:
+            dataset: Binary file-like tabular data stream
+            name: Name of the dataset to create
+            timestamp_column: Column of data containing timestamp information for all other columns
+            timestamp_type: Type of timestamps contained within timestamp_column
+            file_type: Type of file being ingested (e.g. CSV, parquet, etc.). Used for naming the file uploaded
+                to cloud storage as part of ingestion.
+            description: Human-readable description of the dataset to create
+            labels: Text labels to apply to the created dataset
+            properties: Key-value properties to apply to the cleated dataset
+            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+            channel_prefix: Prefix to apply to newly created channels
+
+        Returns:
+            Reference to the constructed dataset object.
         """
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
@@ -486,11 +460,7 @@ class NominalClient:
                         new=ingest_api.NewDatasetIngestDestination(
                             labels=list(labels),
                             properties={} if properties is None else dict(properties),
-                            channel_config=(
-                                None
-                                if prefix_tree_delimiter is None
-                                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-                            ),
+                            channel_config=_build_channel_config(prefix_tree_delimiter),
                             dataset_description=description,
                             dataset_name=name,
                         )
@@ -510,10 +480,104 @@ class NominalClient:
             raise NominalIngestError("error ingesting dataset: no dataset created")
         return self.get_dataset(response.details.dataset.dataset_rid)
 
-    def create_video(
+    def create_mcap_dataset(
         self,
         path: Path | str,
         name: str | None,
+        description: str | None = None,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
+    ) -> Dataset:
+        """Create a dataset from an MCAP file.
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_mcap_io` for more details on the other arguments.
+        """
+        mcap_path = Path(path)
+        if name is None:
+            name = mcap_path.name
+
+        with mcap_path.open("rb") as mcap_file:
+            return self.create_dataset_from_mcap_io(
+                mcap_file,
+                name=name,
+                description=description,
+                include_topics=include_topics,
+                exclude_topics=exclude_topics,
+                labels=labels,
+                properties=properties,
+                prefix_tree_delimiter=prefix_tree_delimiter,
+            )
+
+    def create_dataset_from_mcap_io(
+        self,
+        dataset: BinaryIO,
+        name: str,
+        description: str | None = None,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
+    ) -> Dataset:
+        """Create a dataset from an mcap file-like object.
+
+        The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        If the file is not in binary-mode, the requests library blocks indefinitely.
+
+        Args:
+            dataset: Binary file-like MCAP stream
+            name: Name of the dataset to create
+            description: Human-readable description of the dataset to create
+            include_topics: If present, list of topics to restrict ingestion to.
+                If not present, defaults to all protobuf-encoded topics present in the MCAP.
+            exclude_topics: If present, list of topics to not ingest from the MCAP.
+            labels: Text labels to apply to the created dataset
+            properties: Key-value properties to apply to the cleated dataset
+            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+
+        Returns:
+            Reference to the constructed dataset object.
+        """
+        if isinstance(dataset, TextIOBase):
+            raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
+
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            dataset,
+            name,
+            file_type=FileTypes.MCAP,
+            upload_client=self._clients.upload,
+        )
+        channels = _create_mcap_channels(include_topics, exclude_topics)
+        target = ingest_api.DatasetIngestTarget(
+            new=ingest_api.NewDatasetIngestDestination(
+                dataset_name=name,
+                dataset_description=description,
+                properties={} if properties is None else dict(properties),
+                labels=list(labels),
+                channel_config=_build_channel_config(prefix_tree_delimiter),
+            )
+        )
+        request = _create_mcap_ingest_request(s3_path, channels, target)
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if resp.details.dataset is not None:
+            dataset_rid = resp.details.dataset.dataset_rid
+            if dataset_rid is not None:
+                return self.get_dataset(dataset_rid)
+            raise NominalIngestError("error ingesting mcap: no dataset rid")
+        raise NominalIngestError("error ingesting mcap: no dataset created")
+
+    def create_video(
+        self,
+        path: Path | str,
+        name: str | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
@@ -566,7 +630,8 @@ class NominalClient:
             start: Starting timestamp of the video
             frame_timestamps: Per-frame timestamps (in nanoseconds since unix epoch) for every frame of the video
             description: Description of the video to create in nominal
-            file_type: Type of data being uploaded
+            file_type: Type of data being uploaded, used for naming the file uploaded to cloud storage as part
+                of ingestion.
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
 
@@ -861,6 +926,37 @@ class NominalClient:
         response = self._clients.connection.get_connection(self._clients.auth_header, rid)
         return Connection._from_conjure(self._clients, response)
 
+    def create_video_from_mcap(
+        self,
+        path: Path | str,
+        topic: str,
+        name: str | None = None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Create a video from an MCAP file containing H264 or H265 video data.
+
+        If name is None, the name of the file will be used.
+
+        See `create_video_from_mcap_io` for more details.
+        """
+        path = Path(path)
+        if name is None:
+            name = path.name
+
+        with path.open("rb") as data_file:
+            return self.create_video_from_mcap_io(
+                data_file,
+                name=name,
+                topic=topic,
+                file_type=FileTypes.MCAP,
+                description=description,
+                labels=labels,
+                properties=properties,
+            )
+
     def create_video_from_mcap_io(
         self,
         mcap: BinaryIO,
@@ -1134,6 +1230,13 @@ class NominalClient:
                 break
 
         return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
+
+
+def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
+    if prefix_tree_delimiter is None:
+        return None
+    else:
+        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
 
 
 def _create_search_runs_query(
