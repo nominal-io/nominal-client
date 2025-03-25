@@ -6,9 +6,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
 import typing_extensions
-
-if TYPE_CHECKING:
-    import pandas as pd
 from nominal_api import (
     api,
     datasource_api,
@@ -32,6 +29,9 @@ from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.ts import IntegralNanosecondsUTC
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 

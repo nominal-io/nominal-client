@@ -4,9 +4,8 @@ import enum
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, BinaryIO, Protocol, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, cast
 
-import pandas as pd
 import typing_extensions
 from nominal_api import (
     api,
@@ -17,12 +16,14 @@ from nominal_api import (
     timeseries_channelmetadata_api,
     timeseries_logicalseries_api,
 )
-from nominal_api.api import Timestamp
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import update_dataclass
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class ChannelDataType(enum.Enum):
@@ -306,10 +307,6 @@ def _get_series_values_csv(
     # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
     # this acts like a file-like object in binary-mode.
     return cast(BinaryIO, response)
-
-
-def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
-    return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
 def _create_series_from_channel(
