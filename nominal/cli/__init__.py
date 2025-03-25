@@ -1,11 +1,11 @@
 import click
 
-import nominal.io as io
+import nominal.io
 from nominal.cli import config
 
 
 @click.group(context_settings={"show_default": True, "help_option_names": ("-h", "--help")})
-@click.version_option(io.__version__)
+@click.version_option(nominal.io.__version__)
 def nom() -> None:
     pass
 

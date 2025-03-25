@@ -4,9 +4,9 @@ import contextlib
 from datetime import timedelta
 from typing import Generator
 
-from nominal.io.core.connection import StreamingConnection
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.experimental.stream_v2._write_stream import WriteStreamV2
+from nominal.io.core.connection import StreamingConnection
 
 
 @contextlib.contextmanager

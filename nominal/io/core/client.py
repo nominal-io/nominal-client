@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -26,7 +25,6 @@ from nominal_api import (
     scout_run_api,
     scout_video_api,
     storage_datasource_api,
-    timeseries_logicalseries_api,
 )
 from typing_extensions import Self
 
@@ -113,7 +111,6 @@ class NominalClient:
                 certifi's trust store is used.
             connect_timeout: Request connection timeout, in seconds.
         """
-
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
         cfg = ServiceConfiguration(
@@ -216,7 +213,6 @@ class NominalClient:
         Returns:
             All runs which match all of the provided conditions
         """
-
         return list(self._iter_search_runs(start, end, name_substring, labels, properties))
 
     def create_csv_dataset(
@@ -977,8 +973,6 @@ class NominalClient:
         Returns:
             All assets which match all of the provided conditions
         """
-        )
-
         return list(self._iter_search_assets(search_text, labels, properties))
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:

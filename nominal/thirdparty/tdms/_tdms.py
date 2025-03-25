@@ -12,8 +12,8 @@ from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 from nominal.io import ts
 from nominal.io.core.client import NominalClient
 from nominal.io.core.dataset import Dataset
-from nominal.thirdparty.tdms import _tdms
 from nominal.thirdparty.pandas import _pandas
+from nominal.thirdparty.tdms import _tdms
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,6 @@ def upload_tdms(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-
     path = Path(file)
     upload_func = functools.partial(
         _pandas.upload_pandas,

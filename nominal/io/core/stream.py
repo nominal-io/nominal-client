@@ -7,12 +7,11 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Any, Callable, Sequence, Type
+from typing import Callable, Sequence, Type
 
 from typing_extensions import Self
 
 from nominal.io.ts import IntegralNanosecondsUTC, _SecondsNanos
-
 
 logger = logging.getLogger(__name__)
 

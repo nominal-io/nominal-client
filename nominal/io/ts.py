@@ -197,7 +197,6 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 from __future__ import annotations
 
 import abc
-import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import MappingProxyType

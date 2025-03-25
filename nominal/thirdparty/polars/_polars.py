@@ -2,7 +2,6 @@ from threading import Thread
 from typing import BinaryIO
 
 import polars as pl
-
 from nominal.io import ts
 from nominal.io._utils import reader_writer
 from nominal.io.core.client import NominalClient

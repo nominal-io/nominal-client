@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import itertools
-import warnings
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal, Mapping, Sequence
