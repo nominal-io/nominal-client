@@ -125,9 +125,9 @@ def _auto_migrate_deprecated_config(old_path: Path, new_path: Path) -> None:
     logger.info(f"migrating deprecated config to new config: {cfg}")
     cfg.to_yaml(new_path)
     logger.warning(
-        f"deprecated config file {DEPRECATED_NOMINAL_CONFIG_PATH} containing {deprecated_cfg} "
-        f"successfully migrated to v2 config file {DEFAULT_NOMINAL_CONFIG_PATH}. "
-        f"We recommended deleting the deprecated config file {DEPRECATED_NOMINAL_CONFIG_PATH}"
+        f"deprecated config file {old_path} containing {deprecated_cfg} "
+        f"successfully migrated to v2 config file {new_path}. "
+        f"We recommended deleting the deprecated config file {old_path}"
     )
 
 
