@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.43.0](https://github.com/nominal-io/nominal-client/compare/v1.42.0...v1.43.0) (2025-03-25)
+
+
+### Features
+
+* allow custom derived units for channels ([#272](https://github.com/nominal-io/nominal-client/issues/272)) ([f6a1edf](https://github.com/nominal-io/nominal-client/commit/f6a1edf2029ee69e3865a7085480bd81d457e615))
+* prevent duplicated file extensions when using upload_multipart_io ([#274](https://github.com/nominal-io/nominal-client/issues/274)) ([3d5f349](https://github.com/nominal-io/nominal-client/commit/3d5f349e9c02dc7796b823a48295722dc59ca81e))
+
 ## [1.42.0](https://github.com/nominal-io/nominal-client/compare/v1.41.0...v1.42.0) (2025-03-21)
 
 
