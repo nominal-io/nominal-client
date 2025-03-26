@@ -167,7 +167,7 @@ def datasource_to_dataframe(
     ```
     rid = "..." # Taken from the UI or via the SDK
     dataset = client.get_dataset(rid)
-    df = datasource_to_pandas(dataset)
+    df = datasource_to_dataframe(dataset)
     print(df.head())  # Show first few rows of data
     ```
 
