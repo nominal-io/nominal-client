@@ -420,7 +420,7 @@ class _SecondsNanos(NamedTuple):
         """
         # datetimes are only microsecond precise, so manually add in the nanos
         dt_s = datetime.fromtimestamp(self.seconds, timezone.utc)
-        return f"{dt_s.isoformat(timespec='seconds')}.{self.nanos:09d}Z"
+        return f"{dt_s.strftime('%Y-%m-%dT%H:%M:%S')}.{self.nanos:09d}Z"
 
     def to_nanoseconds(self) -> IntegralNanosecondsUTC:
         return self.seconds * 1_000_000_000 + self.nanos
