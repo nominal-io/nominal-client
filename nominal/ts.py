@@ -204,7 +204,6 @@ from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, Union
 
 import dateutil.parser
-import numpy as np
 from nominal_api import api, ingest_api, scout_run_api
 from typing_extensions import Self, TypeAlias
 
@@ -413,12 +412,15 @@ class _SecondsNanos(NamedTuple):
         return api.Timestamp(seconds=self.seconds, nanos=self.nanos)
 
     def to_iso8601(self) -> str:
-        """datetime.datetime is only microsecond-precise, so we use np.datetime64[ns] to get nanosecond-precision for
-        printing. Note that nanosecond precision is the maximum allowable for conjure datetime fields.
+        """To an iso8601 string with nanosecond precision.
+
+        Note that nanos precision is the maximum allowable for conjure datetime fields.
         - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
         - https://github.com/palantir/conjure/pull/1643
         """
-        return str(np.datetime64(self.to_nanoseconds(), "ns")) + "Z"
+        # datetimes are only microsecond precise, so manually add in the nanos
+        dt_s = datetime.fromtimestamp(self.seconds, timezone.utc)
+        return f"{dt_s.strftime('%Y-%m-%dT%H:%M:%S')}.{self.nanos:09d}Z"
 
     def to_nanoseconds(self) -> IntegralNanosecondsUTC:
         return self.seconds * 1_000_000_000 + self.nanos
