@@ -220,21 +220,69 @@ class Dataset(DataSource):
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
     ) -> None:
-        """Add an MCAP file to an existing dataset."""
+        """Add an MCAP file to an existing dataset.
+
+        Args:
+        ----
+            path: Path to the MCAP file to add to this dataset
+            include_topics: If present, list of topics to restrict ingestion to.
+                If not present, defaults to all protobuf-encoded topics present in the MCAP.
+            exclude_topics: If present, list of topics to not ingest from the MCAP.
+        """
+        path = Path(path)
+        with path.open("rb") as data_file:
+            self.add_mcap_to_dataset_from_io(
+                data_file,
+                include_topics=include_topics,
+                exclude_topics=exclude_topics,
+                file_name=path_upload_name(path, FileTypes.MCAP),
+            )
+
+    def add_mcap_to_dataset_from_io(
+        self,
+        mcap: BinaryIO,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        file_name: str | None = None,
+    ) -> None:
+        """Add data to this dataset from an MCAP file-like object.
+
+        The mcap must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        If the file is not in binary-mode, the requests library blocks indefinitely.
+
+        Args:
+        ----
+            mcap: Binary file-like MCAP stream
+            include_topics: If present, list of topics to restrict ingestion to.
+                If not present, defaults to all protobuf-encoded topics present in the MCAP.
+            exclude_topics: If present, list of topics to not ingest from the MCAP.
+            file_name: If present, name to use when uploading file. Otherwise, defaults to dataset name.
+        """
+        if isinstance(mcap, TextIOBase):
+            raise TypeError(f"mcap {mcap} must be open in binary mode, rather than text mode")
+
         self.poll_until_ingestion_completed()
-        mcap_path = Path(path)
-        s3_path = upload_multipart_file(
+
+        if file_name is None:
+            file_name = self.name
+
+        s3_path = upload_multipart_io(
             self._clients.auth_header,
-            mcap_path,
-            self._clients.upload,
+            mcap,
+            file_name,
             file_type=FileTypes.MCAP,
+            upload_client=self._clients.upload,
         )
+
         channels = _create_mcap_channels(include_topics, exclude_topics)
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
+
         request = _create_mcap_ingest_request(s3_path, channels, target)
-        self._clients.ingest.ingest(self._clients.auth_header, request)
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if resp.details.dataset is None or resp.details.dataset.dataset_rid is None:
+            raise NominalIngestError("error ingesting mcap: no dataset created or updated")
 
     def add_ardupilot_dataflash_to_dataset(
         self,
