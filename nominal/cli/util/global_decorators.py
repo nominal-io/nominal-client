@@ -69,7 +69,7 @@ def debug_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     )
 
     @functools.wraps(func)
-    def wrapped_function(*args: Param.args, debug: bool, **kwargs: Param.kwargs) -> T:
+    def wrapped_function(debug: bool, *args: Param.args, **kwargs: Param.kwargs) -> T:
         try:
             return func(*args, **kwargs)
         except Exception as e:
@@ -130,11 +130,11 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
 
     @functools.wraps(func)
     def wrapped_function(
-        *args: Param.args,
         base_url: str,
         token: str | None,
         token_path: pathlib.Path,
         trust_store_path: pathlib.Path | None,
+        *args: Param.args,
         **kwargs: Param.kwargs,
     ) -> T:
         if token is None:
