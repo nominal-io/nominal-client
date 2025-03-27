@@ -256,7 +256,7 @@ class Dataset(DataSource):
             include_topics: If present, list of topics to restrict ingestion to.
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
             exclude_topics: If present, list of topics to not ingest from the MCAP.
-            file_name: If present, name (without extension) to use when uploading file. Otherwise, defaults to dataset name.
+            file_name: If present, name to use when uploading file. Otherwise, defaults to dataset name.
         """
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"mcap {mcap} must be open in binary mode, rather than text mode")
@@ -273,12 +273,12 @@ class Dataset(DataSource):
             file_type=FileTypes.MCAP,
             upload_client=self._clients.upload,
         )
-        
+
         channels = _create_mcap_channels(include_topics, exclude_topics)
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
-        
+
         request = _create_mcap_ingest_request(s3_path, channels, target)
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
         if resp.details.dataset is None or resp.details.dataset.dataset_rid is None:
