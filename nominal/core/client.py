@@ -204,6 +204,44 @@ class NominalClient:
 
         return list(self._iter_search_runs(start, end, name_substring, labels, properties))
 
+    def create_dataset(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
+    ) -> Dataset:
+        """Create an empty dataset.
+
+        Args:
+            name: Name of the dataset to create in Nominal.
+            description: Human readable description of the dataset.
+            labels: Text labels to apply to the created dataset
+            properties: Key-value properties to apply to the cleated dataset
+            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+
+        Returns:
+            Reference to the created dataset in Nominal.
+        """
+        request = scout_catalog.CreateDataset(
+            name=name,
+            description=description,
+            labels=[*labels],
+            properties={} if properties is None else {**properties},
+            is_v2_dataset=True,
+            metadata={},
+            origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        )
+        enriched_dataset = self._clients.catalog.create_dataset(self._clients.auth_header, request)
+        dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+
+        if prefix_tree_delimiter:
+            dataset.set_channel_prefix_tree(prefix_tree_delimiter)
+
+        return dataset
+
     def create_csv_dataset(
         self,
         path: Path | str,
