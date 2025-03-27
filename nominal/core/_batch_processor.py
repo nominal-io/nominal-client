@@ -10,9 +10,9 @@ from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
 
 
-def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.Points:
+def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.PointsExternal:
     if isinstance(api_batch[0].value, str):
-        return storage_writer_api.Points(
+        return storage_writer_api.PointsExternal(
             string=[
                 storage_writer_api.StringPoint(
                     timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
@@ -22,7 +22,7 @@ def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.Points:
             ]
         )
     if isinstance(api_batch[0].value, float):
-        return storage_writer_api.Points(
+        return storage_writer_api.PointsExternal(
             double=[
                 storage_writer_api.DoublePoint(
                     timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
@@ -43,10 +43,10 @@ def process_batch_legacy(
     api_batched = itertools.groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
 
     api_batches = [list(api_batch) for _, api_batch in api_batched]
-    request = storage_writer_api.WriteBatchesRequest(
+    request = storage_writer_api.WriteBatchesRequestExternal(
         data_source_rid=nominal_data_source_rid,
         batches=[
-            storage_writer_api.RecordsBatch(
+            storage_writer_api.RecordsBatchExternal(
                 channel=api_batch[0].channel_name,
                 points=make_points(api_batch),
                 tags=api_batch[0].tags or {},
@@ -54,7 +54,4 @@ def process_batch_legacy(
             for api_batch in api_batches
         ],
     )
-    storage_writer.write_batches(
-        auth_header,
-        request,
-    )
+    storage_writer.write_batches(auth_header, request)
