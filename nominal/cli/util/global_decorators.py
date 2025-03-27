@@ -39,7 +39,7 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
     color_option = click.option("--no-color", is_flag=True, help="If provided, don't color terminal log output")
 
     @functools.wraps(func)
-    def wrapped_function(*args: Param.args, verbose: int, no_color: bool, **kwargs: Param.kwargs) -> T:
+    def wrapped_function(verbose: int, no_color: bool, *args: Param.args, **kwargs: Param.kwargs) -> T:
         log_level = logging.NOTSET
         if verbose == 0:
             log_level = logging.WARNING
