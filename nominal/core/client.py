@@ -228,8 +228,8 @@ class NominalClient:
         request = scout_catalog.CreateDataset(
             name=name,
             description=description,
-            labels=labels,
-            properties=properties,
+            labels=[*labels],
+            properties={} if properties is None else {**properties},
             is_v2_dataset=True,
             metadata={},
             origin_metadata=scout_catalog.DatasetOriginMetadata(),
