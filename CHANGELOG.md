@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.44.0](https://github.com/nominal-io/nominal-client/compare/v1.43.0...v1.44.0) (2025-03-27)
+
+
+### Features
+
+* add data from mcap io ([#279](https://github.com/nominal-io/nominal-client/issues/279)) ([9e7df67](https://github.com/nominal-io/nominal-client/commit/9e7df675b05cb284793323e3e984f2e5f63c4007))
+* create thirdparty subpackage and deprecate existing usage of third party code ([#276](https://github.com/nominal-io/nominal-client/issues/276)) ([de6b5fd](https://github.com/nominal-io/nominal-client/commit/de6b5fdb505c99bd4b8fde8dccba95d853f895b8))
+
 ## [1.43.0](https://github.com/nominal-io/nominal-client/compare/v1.42.0...v1.43.0) (2025-03-25)
 
 
