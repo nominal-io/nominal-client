@@ -77,7 +77,13 @@ class NominalClient:
 
     @classmethod
     def create(
-        cls, base_url: str, token: str | None, trust_store_path: str | None = None, connect_timeout: float = 30
+        cls,
+        base_url: str,
+        token: str | None,
+        trust_store_path: str | None = None,
+        connect_timeout: float = 30,
+        *,
+        workspace: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -85,6 +91,8 @@ class NominalClient:
         token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
         trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
             certifi's trust store is used.
+        connect_timeout: The timeout in seconds for any API call to Nominal.
+        workspace: The workspace to use for the client. If not provided, the org's default workspace is used.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -95,7 +103,7 @@ class NominalClient:
             connect_timeout=connect_timeout,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
@@ -126,6 +134,7 @@ class NominalClient:
             title=name,
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             assets=[] if asset is None else [rid_from_instance_or_string(asset)],
+            workspace=self._clients.workspace,
         )
         response = self._clients.run.create_run(self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)
@@ -264,7 +273,8 @@ class NominalClient:
                 dataset_description=description,
                 dataset_name=name,
                 channel_config=_build_channel_config(prefix_tree_delimiter),
-            )
+                workspace=self._clients.workspace,
+            ),
         )
         request = _create_dataflash_ingest_request(s3_path, target)
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
@@ -347,6 +357,7 @@ class NominalClient:
                             dataset_description=description,
                             dataset_name=name,
                             channel_config=_build_channel_config(prefix_tree_delimiter),
+                            workspace=self._clients.workspace,
                         )
                     ),
                 )
@@ -421,6 +432,7 @@ class NominalClient:
                             channel_config=_build_channel_config(prefix_tree_delimiter),
                             dataset_description=description,
                             dataset_name=name,
+                            workspace=self._clients.workspace,
                         )
                     ),
                     timestamp_metadata=ingest_api.TimestampMetadata(
@@ -527,6 +539,7 @@ class NominalClient:
                 properties={} if properties is None else dict(properties),
                 labels=list(labels),
                 channel_config=_build_channel_config(prefix_tree_delimiter),
+                workspace=self._clients.workspace,
             )
         )
         request = _create_mcap_ingest_request(s3_path, channels, target)
@@ -666,6 +679,7 @@ class NominalClient:
             description=description,
             origin_metadata={},
             timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
+            workspace=self._clients.workspace,
         )
         response = self._clients.logset.create(self._clients.auth_header, request)
         return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
@@ -798,6 +812,7 @@ class NominalClient:
             properties={} if properties is None else dict(properties),
             s3_path=s3_path,
             title=name,
+            workspace=self._clients.workspace,
         )
         response = self._clients.attachment.create(self._clients.auth_header, request)
         return Attachment._from_conjure(self._clients, response)
@@ -991,6 +1006,7 @@ class NominalClient:
             storage_datasource_api.CreateNominalDataSourceRequest(
                 id=datasource_id,
                 description=datasource_description,
+                workspace=self._clients.workspace,
             ),
         )
         connection_response = self._clients.connection.create_connection(
@@ -1014,6 +1030,7 @@ class NominalClient:
                 required_tag_names=required_tag_names or [],
                 available_tag_values={},
                 should_scrape=True,
+                workspace=self._clients.workspace,
             ),
         )
         conn = Connection._from_conjure(self._clients, connection_response)
@@ -1047,6 +1064,7 @@ class NominalClient:
                 content_v2=None,
                 check_alert_refs=[],
                 event_refs=[],
+                workspace=self._clients.workspace,
             ),
         )
 
@@ -1069,6 +1087,7 @@ class NominalClient:
             attachments=[],
             data_scopes=[],
             links=[],
+            workspace=self._clients.workspace,
         )
         response = self._clients.assets.create_asset(self._clients.auth_header, request)
         return Asset._from_conjure(self._clients, response)
@@ -1156,7 +1175,10 @@ class NominalClient:
             if asset is None:
                 response = self._clients.checklist_execution.list_streaming_checklist(
                     self._clients.auth_header,
-                    scout_checklistexecution_api.ListStreamingChecklistRequest(page_token=next_page_token),
+                    scout_checklistexecution_api.ListStreamingChecklistRequest(
+                        page_token=next_page_token,
+                        workspace_ids=[self._clients.workspace] if self._clients.workspace is not None else [],
+                    ),
                 )
                 yield from response.checklists
                 next_page_token = response.next_page_token
