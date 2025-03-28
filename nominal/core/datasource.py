@@ -25,7 +25,7 @@ from nominal_api import (
 
 from nominal._utils import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
-from nominal.core._conjure_utils import _available_units, _build_unit_update
+from nominal.core._conjure_utils import _build_unit_update
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.ts import IntegralNanosecondsUTC
@@ -161,7 +161,12 @@ class DataSource(HasRid):
 
         return datasource_to_dataframe(self, channel_exact_match, channel_fuzzy_search_text, start, end, tags)
 
-    def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
+    def set_channel_units(
+        self,
+        channels_to_units: Mapping[str, str | None],
+        validate_schema: bool = False,
+        warn_on_non_commensurable_units: bool = True,
+    ) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
 
         Args:
@@ -170,45 +175,47 @@ class DataSource(HasRid):
                 NOTE: any existing units may be cleared from a channel by providing None as a symbol.
             validate_schema: If true, raises a ValueError if non-existent channel names are provided in
                 `channels_to_units`. Default is False.
+            warn_on_non_commensurable_units: If true, logs a warning if a unit is provided that has no conversions
+                allowed within Nominal.
 
         Raises:
         ------
             ValueError: Unsupported unit symbol provided
             conjure_python_client.ConjureHTTPError: Error completing requests.
         """
-        # Validate that all user provided unit symbols are valid
+        channel_names = set(channel.name for channel in self.get_channels())
+
         if validate_schema:
-            # Get the set of all available unit symbols
-            supported_symbols = set(
-                [unit.symbol for unit in _available_units(self._clients.auth_header, self._clients.units)]
+            for channel in channels_to_units:
+                if channel not in channel_names:
+                    raise ValueError(f"Cannot update units for channel {channel}-- no such channel exists!")
+        else:
+            channels_to_units = {
+                channel: unit for channel, unit in channels_to_units.items() if channel in channel_names
+            }
+
+        if warn_on_non_commensurable_units:
+            unique_units = set(channels_to_units.values())
+            non_commensurable_units = set(
+                unit
+                for unit in unique_units
+                if unit and not self._clients.units.get_commensurable_units(self._clients.auth_header, unit)
             )
 
-            for channel_name, unit_symbol in channels_to_units.items():
-                # User is clearing the unit for this channel-- don't validate
-                if unit_symbol is None:
-                    continue
-
-                if unit_symbol not in supported_symbols:
-                    raise ValueError(
-                        f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit "
-                        "recognized by nominal. For more information on valid symbols, see https://ucum.org/ucum"
+            for channel, unit in channels_to_units.items():
+                if unit in non_commensurable_units:
+                    logger.warning(
+                        """Unit '%s' for channel '%s' is not commensurable with Nominal's unit system.
+Unit conversions may not be available for this channel.
+For more information on valid symbols, see https://ucum.org/ucum
+                        """,
+                        unit,
+                        channel,
                     )
-
-        # Get metadata for all requested channels
-        found_channels = {channel.name: channel for channel in self.get_channels(names=list(channels_to_units.keys()))}
 
         # For each channel / unit combination, create an update request
         update_requests = []
-
         for channel_name, unit in channels_to_units.items():
-            # No data uploaded to channel yet ...
-            if channel_name not in found_channels:
-                if validate_schema:
-                    raise ValueError(f"Unable to set unit for {channel_name} to {unit}: no data uploaded for channel")
-                else:
-                    logger.info("Not setting unit for channel %s: no data uploaded for channel", channel_name)
-                    continue
-
             channel_request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
                 channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
                     channel_name=channel_name, data_source_rid=self.rid
@@ -218,6 +225,7 @@ class DataSource(HasRid):
             update_requests.append(channel_request)
 
         if not update_requests:
+            logger.warning("No channels specified to have updated units, nothing to update.")
             return
 
         # Set units in database using batch update
