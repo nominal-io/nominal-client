@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from nominal_api import scout_catalog
+from typing_extensions import Self
 
 from nominal.ts import (
     IntegralNanosecondsUTC,
