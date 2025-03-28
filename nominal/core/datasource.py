@@ -207,12 +207,10 @@ class DataSource(HasRid):
                     logger.warning(
                         """Unit '%s' for channel '%s' is not commensurable with Nominal's unit system.
 Unit conversions may not be available for this channel.
-Setting '%s' as the unit only affects the displayed unit within the application.
 For more information on valid symbols, see https://ucum.org/ucum
                         """,
                         unit,
                         channel,
-                        unit,
                     )
 
         # For each channel / unit combination, create an update request
