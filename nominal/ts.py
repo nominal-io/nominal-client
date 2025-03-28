@@ -430,6 +430,9 @@ class _SecondsNanos(NamedTuple):
         if isinstance(ts, int):
             return cls.from_nanoseconds(ts)
         if isinstance(ts, str):
+            # TODO(drake-nominal): by involving dateutil, this chops off any nano level precision provided
+            #                      in the timestamp. Update to not lose precision when converting to absolute
+            #                      nanos.
             ts = dateutil.parser.parse(ts)
         return cls.from_datetime(ts)
 
