@@ -7,7 +7,7 @@ from datetime import timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias
 
 from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self
@@ -28,10 +28,7 @@ from nominal.ts import (
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass(frozen=True)
-class DatasetBounds(Bounds):
-    """Bounds for a dataset object"""
+DatasetBounds: TypeAlias = Bounds
 
 
 @dataclass(frozen=True)
