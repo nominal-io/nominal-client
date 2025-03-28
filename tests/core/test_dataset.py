@@ -1,11 +1,8 @@
-import functools
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nominal_api.timeseries_channelmetadata_api import BatchUpdateChannelMetadataRequest
 
-from nominal.core.channel import Channel
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.unit import Unit
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
