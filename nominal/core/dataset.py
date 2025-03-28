@@ -15,14 +15,14 @@ from typing_extensions import Self
 from nominal._utils import deprecate_arguments
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import update_dataclass
+from nominal.core.bounds import Bounds
 from nominal.core.channel import Channel
+from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
-    IntegralNanosecondsUTC,
     _AnyTimestampType,
-    _SecondsNanos,
     _to_typed_timestamp_type,
 )
 
@@ -30,16 +30,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class DatasetBounds:
-    start: IntegralNanosecondsUTC
-    end: IntegralNanosecondsUTC
-
-    @classmethod
-    def _from_conjure(cls, bounds: scout_catalog.Bounds) -> Self:
-        return cls(
-            start=_SecondsNanos.from_api(bounds.start).to_nanoseconds(),
-            end=_SecondsNanos.from_api(bounds.end).to_nanoseconds(),
-        )
+class DatasetBounds(Bounds):
+    """Bounds for a dataset object"""
 
 
 @dataclass(frozen=True)
@@ -376,6 +368,26 @@ class Dataset(DataSource):
                 break
             else:
                 next_page_token = response.next_page_token
+
+    def list_files(self) -> Iterable[DatasetFile]:
+        next_page_token = None
+        while True:
+            files_page = self._clients.catalog.list_dataset_files(self._clients.auth_header, self.rid, next_page_token)
+            for file in files_page.files:
+                if file.ingest_status.type == "success":
+                    yield DatasetFile._from_conjure(file)
+                else:
+                    logger.debug(
+                        "Ignoring dataset file %s (id=%s)-- status '%s' is not 'success'!",
+                        file.name,
+                        file.id,
+                        file.ingest_status.type,
+                    )
+
+            if files_page.next_page is None:
+                break
+            else:
+                next_page_token = files_page.next_page
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
