@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.0](https://github.com/nominal-io/nominal-client/compare/v1.44.0...v1.45.0) (2025-03-28)
+
+
+### Features
+
+* allow listing dataset files ([#281](https://github.com/nominal-io/nominal-client/issues/281)) ([500d301](https://github.com/nominal-io/nominal-client/commit/500d301128f2e7c313303351920ea7a2f2380b91))
+
 ## [1.44.0](https://github.com/nominal-io/nominal-client/compare/v1.43.0...v1.44.0) (2025-03-27)
 
 
