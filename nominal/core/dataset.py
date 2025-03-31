@@ -20,7 +20,7 @@ from nominal.core.channel import Channel
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
-from nominal.exceptions import NominalIngestError, NominalIngestMultiError
+from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _AnyTimestampType,
     _to_typed_timestamp_type,
@@ -62,7 +62,12 @@ class Dataset(DataSource):
             elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
                 pass
             elif progress.ingest_status.type == "error":
-                break
+                error = progress.ingest_status.error
+                if error is not None:
+                    raise NominalIngestFailed(
+                        f"ingest failed for dataset {self.rid!r}: {error.message} ({error.error_type})"
+                    )
+
             else:
                 raise NominalIngestError(
                     f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
@@ -139,8 +144,6 @@ class Dataset(DataSource):
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
-        self.poll_until_ingestion_completed()
-
         if file_name is None:
             file_name = self.name
 
@@ -173,7 +176,6 @@ class Dataset(DataSource):
         path: Path | str,
     ) -> None:
         """Add a journald jsonl file to an existing dataset."""
-        self.poll_until_ingestion_completed()
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
         s3_path = upload_multipart_file(
@@ -243,8 +245,6 @@ class Dataset(DataSource):
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"mcap {mcap} must be open in binary mode, rather than text mode")
 
-        self.poll_until_ingestion_completed()
-
         if file_name is None:
             file_name = self.name
 
@@ -271,7 +271,6 @@ class Dataset(DataSource):
         path: Path | str,
     ) -> None:
         """Add a Dataflash file to an existing dataset."""
-        self.poll_until_ingestion_completed()
         dataflash_path = Path(path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,
