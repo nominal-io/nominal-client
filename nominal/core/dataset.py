@@ -62,14 +62,7 @@ class Dataset(DataSource):
             elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
                 pass
             elif progress.ingest_status.type == "error":
-                error = progress.ingest_status.error
-                if error is not None:
-                    raise NominalIngestFailed(
-                        f"ingest failed for dataset {self.rid!r}: {error.message} ({error.error_type})"
-                    )
-                raise NominalIngestError(
-                    f"ingest status type marked as 'error' but with no instance for dataset {self.rid!r}"
-                )
+                break
             else:
                 raise NominalIngestError(
                     f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
