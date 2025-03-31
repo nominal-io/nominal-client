@@ -57,12 +57,10 @@ class Dataset(DataSource):
         """
         while True:
             progress = self._clients.catalog.get_ingest_progress_v2(self._clients.auth_header, self.rid)
-            if progress.ingest_status.type == "success":
+            if progress.ingest_status.type == "success" or progress.ingest_status.type == "error":
                 break
             elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
                 pass
-            elif progress.ingest_status.type == "error":
-                break
             else:
                 raise NominalIngestError(
                     f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
