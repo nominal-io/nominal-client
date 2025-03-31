@@ -1441,6 +1441,7 @@ def _create_search_checklists_query(
 
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
+
 def _create_search_events_query(
     search_text: str | None = None,
     after: str | datetime | IntegralNanosecondsUTC | None = None,
