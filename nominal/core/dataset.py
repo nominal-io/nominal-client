@@ -67,7 +67,9 @@ class Dataset(DataSource):
                     raise NominalIngestFailed(
                         f"ingest failed for dataset {self.rid!r}: {error.message} ({error.error_type})"
                     )
-
+                raise NominalIngestError(
+                    f"ingest status type marked as 'error' but with no instance for dataset {self.rid!r}"
+                )
             else:
                 raise NominalIngestError(
                     f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
