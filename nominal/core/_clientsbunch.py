@@ -25,6 +25,7 @@ from nominal_api import (
     scout_video,
     storage_datasource_api,
     storage_writer_api,
+    timeseries_channelmetadata,
     timeseries_logicalseries,
     upload_api,
 )
@@ -124,6 +125,7 @@ class ClientsBunch:
     units: scout.UnitsService
     upload: upload_api.UploadService
     video: scout_video.VideoService
+    video_file: scout_video.VideoFileService
     compute: scout_compute_api.ComputeService
     storage: storage_datasource_api.NominalDataSourceService
     storage_writer: storage_writer_api.NominalChannelWriterService
@@ -133,6 +135,7 @@ class ClientsBunch:
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
     event: event.EventService
+    channel_metadata: timeseries_channelmetadata.ChannelMetadataService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
@@ -154,6 +157,7 @@ class ClientsBunch:
             run=client_factory(scout.RunService),
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
+            video_file=client_factory(scout_video.VideoFileService),
             video=client_factory(scout_video.VideoService),
             compute=client_factory(scout_compute_api.ComputeService),
             storage=client_factory(storage_datasource_api.NominalDataSourceService),
@@ -164,6 +168,7 @@ class ClientsBunch:
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
             event=client_factory(event.EventService),
+            channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
         )
 
 

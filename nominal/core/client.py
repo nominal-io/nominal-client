@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from io import BytesIO, TextIOBase, TextIOWrapper
+from io import TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
@@ -21,6 +20,8 @@ from nominal_api import (
     scout_asset_api,
     scout_catalog,
     scout_checklistexecution_api,
+    scout_checks_api,
+    scout_datareview_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -34,13 +35,13 @@ from nominal import _config
 from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
-from nominal.core._multipart import upload_multipart_file, upload_multipart_io
+from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist, _to_api_duration
-from nominal.core.connection import Connection
+from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
@@ -56,9 +57,9 @@ from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user
-from nominal.core.video import Video
+from nominal.core.video import Video, _build_video_file_timestamp_manifest
 from nominal.core.workbook import Workbook
-from nominal.exceptions import NominalIngestError
+from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -69,6 +70,8 @@ from nominal.ts import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PAGE_SIZE = 100
 
 
 @dataclass(frozen=True)
@@ -157,7 +160,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Run]:
         request = scout_run_api.SearchRunsRequest(
-            page_size=100,
+            page_size=DEFAULT_PAGE_SIZE,
             query=_create_search_runs_query(start, end, name_substring, labels, properties),
             sort=scout_run_api.SortOptions(
                 field=scout_run_api.SortField.START_TIME,
@@ -204,6 +207,44 @@ class NominalClient:
 
         return list(self._iter_search_runs(start, end, name_substring, labels, properties))
 
+    def create_dataset(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
+    ) -> Dataset:
+        """Create an empty dataset.
+
+        Args:
+            name: Name of the dataset to create in Nominal.
+            description: Human readable description of the dataset.
+            labels: Text labels to apply to the created dataset
+            properties: Key-value properties to apply to the cleated dataset
+            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+
+        Returns:
+            Reference to the created dataset in Nominal.
+        """
+        request = scout_catalog.CreateDataset(
+            name=name,
+            description=description,
+            labels=[*labels],
+            properties={} if properties is None else {**properties},
+            is_v2_dataset=True,
+            metadata={},
+            origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        )
+        enriched_dataset = self._clients.catalog.create_dataset(self._clients.auth_header, request)
+        dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+
+        if prefix_tree_delimiter:
+            dataset.set_channel_prefix_tree(prefix_tree_delimiter)
+
+        return dataset
+
     def create_csv_dataset(
         self,
         path: Path | str,
@@ -215,6 +256,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
     ) -> Dataset:
         """Create a dataset from a CSV file.
 
@@ -231,6 +273,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             prefix_tree_delimiter=prefix_tree_delimiter,
+            channel_prefix=channel_prefix,
         )
 
     def create_ardupilot_dataflash_dataset(
@@ -241,6 +284,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from an ArduPilot DataFlash log file.
 
@@ -253,15 +297,14 @@ class NominalClient:
         if name is None:
             name = path.name
 
-        with open(path, "rb") as f:
-            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
-
+        s3_path = upload_multipart_file(self._clients.auth_header, path, self._clients.upload, file_type)
         target = ingest_api.DatasetIngestTarget(
             new=ingest_api.NewDatasetIngestDestination(
                 labels=list(labels),
                 properties={} if properties is None else dict(properties),
                 dataset_description=description,
                 dataset_name=name,
+                channel_config=_build_channel_config(prefix_tree_delimiter),
             )
         )
         request = _create_dataflash_ingest_request(s3_path, target)
@@ -281,6 +324,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
     ) -> Dataset:
         """Create a dataset from a table-like file (CSV, parquet, etc.).
 
@@ -304,53 +348,8 @@ class NominalClient:
                 labels=labels,
                 properties=properties,
                 prefix_tree_delimiter=prefix_tree_delimiter,
+                channel_prefix=channel_prefix,
             )
-
-    def create_mcap_dataset(
-        self,
-        path: Path | str,
-        name: str | None,
-        description: str | None = None,
-        include_topics: Iterable[str] | None = None,
-        exclude_topics: Iterable[str] | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-    ) -> Dataset:
-        """Create a dataset from an MCAP file.
-
-        If name is None, the name of the file will be used.
-
-        If include_topics is None (default), all channels with a "protobuf" message encoding are included.
-
-        See `create_dataset_from_io` for more details on the other arguments.
-        """
-        mcap_path = Path(path)
-        s3_path = upload_multipart_file(
-            self._clients.auth_header,
-            mcap_path,
-            self._clients.upload,
-            file_type=FileTypes.MCAP,
-        )
-        channels = _create_mcap_channels(include_topics, exclude_topics)
-        target = ingest_api.DatasetIngestTarget(
-            new=ingest_api.NewDatasetIngestDestination(
-                dataset_name=name,
-                dataset_description=description,
-                properties={} if properties is None else dict(properties),
-                labels=list(labels),
-                channel_config=None,
-            )
-        )
-        request = _create_mcap_ingest_request(s3_path, channels, target)
-        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if resp.details.dataset is not None:
-            dataset_rid = resp.details.dataset.dataset_rid
-            if dataset_rid is not None:
-                dataset = self.get_dataset(dataset_rid)
-                return dataset
-            raise NominalIngestError("error ingesting mcap: no dataset rid")
-        raise NominalIngestError("error ingesting mcap: no dataset created")
 
     def create_journal_json_dataset(
         self,
@@ -360,6 +359,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Create a dataset from a journal log file with json output format.
 
@@ -376,9 +376,7 @@ class NominalClient:
         if name is None:
             name = path.name
 
-        with open(path, "rb") as f:
-            s3_path = upload_multipart_io(self._clients.auth_header, f, name, file_type, self._clients.upload)
-
+        s3_path = upload_multipart_file(self._clients.auth_header, path, self._clients.upload, file_type)
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 journal_json=ingest_api.JournalJsonOpts(
@@ -389,6 +387,7 @@ class NominalClient:
                             properties={} if properties is None else dict(properties),
                             dataset_description=description,
                             dataset_name=name,
+                            channel_config=_build_channel_config(prefix_tree_delimiter),
                         )
                     ),
                 )
@@ -412,6 +411,8 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        channel_prefix: str | None = None,
+        file_name: str | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -422,12 +423,34 @@ class NominalClient:
             "epoch_{unit}": epoch timestamps in UTC (floats or ints),
             "relative_{unit}": relative timestamps (floats or ints),
             where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
+
+        Args:
+            dataset: Binary file-like tabular data stream
+            name: Name of the dataset to create
+            timestamp_column: Column of data containing timestamp information for all other columns
+            timestamp_type: Type of timestamps contained within timestamp_column
+            file_type: Type of file being ingested (e.g. CSV, parquet, etc.). Used for naming the file uploaded
+                to cloud storage as part of ingestion.
+            description: Human-readable description of the dataset to create
+            labels: Text labels to apply to the created dataset
+            properties: Key-value properties to apply to the cleated dataset
+            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+            channel_prefix: Prefix to apply to newly created channels
+            file_name: Name of the file (without extension) to create when uploading.
+
+        Returns:
+            Reference to the constructed dataset object.
         """
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, dataset, name, file_type, self._clients.upload)
+
+        # Prevent breaking changes from customers using create_dataset_from_io directly
+        if file_name is None:
+            file_name = name
+
+        s3_path = upload_multipart_io(self._clients.auth_header, dataset, file_name, file_type, self._clients.upload)
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 csv=ingest_api.CsvOpts(
@@ -436,11 +459,7 @@ class NominalClient:
                         new=ingest_api.NewDatasetIngestDestination(
                             labels=list(labels),
                             properties={} if properties is None else dict(properties),
-                            channel_config=(
-                                None
-                                if prefix_tree_delimiter is None
-                                else ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
-                            ),
+                            channel_config=_build_channel_config(prefix_tree_delimiter),
                             dataset_description=description,
                             dataset_name=name,
                         )
@@ -450,7 +469,7 @@ class NominalClient:
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
                     additional_file_tags=None,
-                    channel_prefix=prefix_tree_delimiter,
+                    channel_prefix=channel_prefix,
                     tag_keys_from_columns=None,
                 )
             )
@@ -460,10 +479,110 @@ class NominalClient:
             raise NominalIngestError("error ingesting dataset: no dataset created")
         return self.get_dataset(response.details.dataset.dataset_rid)
 
-    def create_video(
+    def create_mcap_dataset(
         self,
         path: Path | str,
         name: str | None,
+        description: str | None = None,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
+    ) -> Dataset:
+        """Create a dataset from an MCAP file.
+
+        If name is None, the name of the file will be used.
+
+        See `create_dataset_from_mcap_io` for more details on the other arguments.
+        """
+        mcap_path = Path(path)
+        if name is None:
+            name = mcap_path.name
+
+        with mcap_path.open("rb") as mcap_file:
+            return self.create_dataset_from_mcap_io(
+                mcap_file,
+                name=name,
+                description=description,
+                include_topics=include_topics,
+                exclude_topics=exclude_topics,
+                labels=labels,
+                properties=properties,
+                prefix_tree_delimiter=prefix_tree_delimiter,
+                file_name=path_upload_name(mcap_path, FileTypes.MCAP),
+            )
+
+    def create_dataset_from_mcap_io(
+        self,
+        dataset: BinaryIO,
+        name: str,
+        description: str | None = None,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
+        file_name: str | None = None,
+    ) -> Dataset:
+        """Create a dataset from an mcap file-like object.
+
+        The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        If the file is not in binary-mode, the requests library blocks indefinitely.
+
+        Args:
+            dataset: Binary file-like MCAP stream
+            name: Name of the dataset to create
+            description: Human-readable description of the dataset to create
+            include_topics: If present, list of topics to restrict ingestion to.
+                If not present, defaults to all protobuf-encoded topics present in the MCAP.
+            exclude_topics: If present, list of topics to not ingest from the MCAP.
+            labels: Text labels to apply to the created dataset
+            properties: Key-value properties to apply to the cleated dataset
+            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+            file_name: If present, name (without extension) to use when uploading file. Otherwise, defaults to name.
+
+        Returns:
+            Reference to the constructed dataset object.
+        """
+        if isinstance(dataset, TextIOBase):
+            raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
+
+        if file_name is None:
+            file_name = name
+
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            dataset,
+            file_name,
+            file_type=FileTypes.MCAP,
+            upload_client=self._clients.upload,
+        )
+        channels = _create_mcap_channels(include_topics, exclude_topics)
+        target = ingest_api.DatasetIngestTarget(
+            new=ingest_api.NewDatasetIngestDestination(
+                dataset_name=name,
+                dataset_description=description,
+                properties={} if properties is None else dict(properties),
+                labels=list(labels),
+                channel_config=_build_channel_config(prefix_tree_delimiter),
+            )
+        )
+        request = _create_mcap_ingest_request(s3_path, channels, target)
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if resp.details.dataset is not None:
+            dataset_rid = resp.details.dataset.dataset_rid
+            if dataset_rid is not None:
+                return self.get_dataset(dataset_rid)
+            raise NominalIngestError("error ingesting mcap: no dataset rid")
+        raise NominalIngestError("error ingesting mcap: no dataset created")
+
+    def create_video(
+        self,
+        path: Path | str,
+        name: str | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
@@ -492,6 +611,7 @@ class NominalClient:
                 description=description,
                 labels=labels,
                 properties=properties,
+                file_name=path_upload_name(path, file_type),
             )
 
     def create_video_from_io(
@@ -505,6 +625,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        file_name: str | None = None,
     ) -> Video:
         """Create a video from a file-like object.
         The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -516,9 +637,11 @@ class NominalClient:
             start: Starting timestamp of the video
             frame_timestamps: Per-frame timestamps (in nanoseconds since unix epoch) for every frame of the video
             description: Description of the video to create in nominal
-            file_type: Type of data being uploaded
+            file_type: Type of data being uploaded, used for naming the file uploaded to cloud storage as part
+                of ingestion.
             labels: Labels to apply to the video in nominal
             properties: Properties to apply to the video in nominal
+            file_name: Name (without extension) to use when uploading the video file. Defaults to video name.
 
         Returns:
         -------
@@ -534,39 +657,18 @@ class NominalClient:
             time elapsed in the video playback.
 
         """
-        if (start is None and frame_timestamps is None) or (None not in (start, frame_timestamps)):
-            raise ValueError("One of 'start' or 'frame_timestamps' must be provided")
-
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
-        if start is None:
-            # Dump timestamp array into an in-memory file-like IO object
-            json_io = BytesIO()
-            text_json_io = TextIOWrapper(json_io)
-            json.dump(frame_timestamps, text_json_io)
-            text_json_io.flush()
-            json_io.seek(0)
+        timestamp_manifest = _build_video_file_timestamp_manifest(
+            self._clients.auth_header, self._clients.upload, start, frame_timestamps
+        )
 
-            logger.debug("Uploading timestamp manifests to s3")
-            manifest_s3_path = upload_multipart_io(
-                self._clients.auth_header,
-                json_io,
-                "timestamp_manifest",
-                FileTypes.JSON,
-                self._clients.upload,
-            )
-            timestamp_manifest = scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
-        else:
-            # TODO(drake): expose scale parameter to users
-            timestamp_manifest = scout_video_api.VideoFileTimestampManifest(
-                no_manifest=scout_video_api.NoTimestampManifest(
-                    starting_timestamp=_SecondsNanos.from_flexible(start).to_api()
-                )
-            )
+        if file_name is None:
+            file_name = name
 
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(self._clients.auth_header, video, file_name, file_type, self._clients.upload)
         request = ingest_api.IngestRequest(
             ingest_api.IngestOptions(
                 video=ingest_api.VideoOpts(
@@ -668,6 +770,43 @@ class NominalClient:
         response = self._clients.checklist.get(self._clients.auth_header, rid)
         return Checklist._from_conjure(self._clients, response)
 
+    def search_checklists(
+        self,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> Sequence[Checklist]:
+        """Search for checklists meeting the specified filters.
+        Filters are ANDed together, e.g. `(checklist.label == label) AND (checklist.search_text =~ field)`
+
+        Args:
+            search_text: case-insensitive search for any of the keywords in all string fields
+            labels: A sequence of labels that must ALL be present on a checklist to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a checklist to be included.
+
+        Returns:
+            All checklists which match all of the provided conditions
+        """
+        page_token = None
+        query = _create_search_checklists_query(search_text, labels, properties)
+        archived_statuses = [api.ArchivedStatus.NOT_ARCHIVED]
+
+        raw_checklists = []
+        while True:
+            request = scout_checks_api.SearchChecklistsRequest(
+                query=query,
+                archived_statuses=archived_statuses,
+                next_page_token=page_token,
+                page_size=DEFAULT_PAGE_SIZE,
+            )
+            response = self._clients.checklist.search(self._clients.auth_header, request)
+            raw_checklists.extend(response.values)
+            page_token = response.next_page_token
+            if not page_token:
+                break
+
+        return [Checklist._from_conjure(self._clients, checklist) for checklist in raw_checklists]
+
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,
@@ -753,11 +892,15 @@ class NominalClient:
             conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
                 This typically occurs when there is no such channel for the given RID.
         """
+        warnings.warn(
+            "get_channel is deprecated. Use dataset.get_channel() or connection.get_channel() instead.",
+            UserWarning,
+        )
         return Channel._from_conjure_logicalseries_api(
             self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
         )
 
-    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Sequence[Channel]:
+    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Iterable[Channel]:
         """Sets the units for a set of channels based on user-provided unit symbols
         Args:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
@@ -772,6 +915,11 @@ class NominalClient:
                 channels with the given RIDs present.
 
         """
+        warnings.warn(
+            "set_channel_units is deprecated. Use dataset.set_channel_units() or connection.set_channel_units()",
+            UserWarning,
+        )
+
         series_updates = []
         for rid, series_type in rids_to_types.items():
             series_updates.append(
@@ -790,6 +938,38 @@ class NominalClient:
         response = self._clients.connection.get_connection(self._clients.auth_header, rid)
         return Connection._from_conjure(self._clients, response)
 
+    def create_video_from_mcap(
+        self,
+        path: Path | str,
+        topic: str,
+        name: str | None = None,
+        description: str | None = None,
+        *,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Create a video from an MCAP file containing H264 or H265 video data.
+
+        If name is None, the name of the file will be used.
+
+        See `create_video_from_mcap_io` for more details.
+        """
+        path = Path(path)
+        if name is None:
+            name = path.name
+
+        with path.open("rb") as data_file:
+            return self.create_video_from_mcap_io(
+                data_file,
+                name=name,
+                topic=topic,
+                file_type=FileTypes.MCAP,
+                description=description,
+                labels=labels,
+                properties=properties,
+                file_name=path_upload_name(path, FileTypes.MCAP),
+            )
+
     def create_video_from_mcap_io(
         self,
         mcap: BinaryIO,
@@ -800,6 +980,7 @@ class NominalClient:
         *,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        file_name: str | None = None,
     ) -> Video:
         """Create video from topic in a mcap file.
 
@@ -810,8 +991,11 @@ class NominalClient:
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
 
+        if file_name is None:
+            file_name = name
+
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(self._clients.auth_header, mcap, file_name, file_type, self._clients.upload)
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 video=ingest_api.VideoOpts(
@@ -842,7 +1026,7 @@ class NominalClient:
         datasource_description: str | None = None,
         *,
         required_tag_names: list[str] | None = None,
-    ) -> Connection:
+    ) -> StreamingConnection:
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
@@ -873,7 +1057,10 @@ class NominalClient:
                 should_scrape=True,
             ),
         )
-        return Connection._from_conjure(self._clients, connection_response)
+        conn = Connection._from_conjure(self._clients, connection_response)
+        if isinstance(conn, StreamingConnection):
+            return conn
+        raise NominalError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
     def create_workbook_from_template(
         self,
@@ -956,7 +1143,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Asset]:
         request = scout_asset_api.SearchAssetsRequest(
-            page_size=100,
+            page_size=DEFAULT_PAGE_SIZE,
             query=_create_search_assets_query(search_text, labels, properties),
             sort=scout_asset_api.SortOptions(
                 field=scout_asset_api.SortField.CREATED_AT,
@@ -1064,6 +1251,40 @@ class NominalClient:
         responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
         return [Event._from_conjure(self._clients, response) for response in responses]
 
+    def search_data_reviews(
+        self,
+        assets: Sequence[Asset | str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+    ) -> Sequence[DataReview]:
+        """Search for any data reviews present within a collection of runs and assets."""
+        page_token = None
+        raw_data_reviews = []
+        while True:
+            # TODO (drake-nominal): Expose checklist_refs to users
+            request = scout_datareview_api.FindDataReviewsRequest(
+                asset_rids=[rid_from_instance_or_string(asset) for asset in assets] if assets else [],
+                checklist_refs=[],
+                run_rids=[rid_from_instance_or_string(run) for run in runs] if runs else [],
+                archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
+                next_page_token=page_token,
+                page_size=DEFAULT_PAGE_SIZE,
+            )
+            response = self._clients.datareview.find_data_reviews(self._clients.auth_header, request)
+            raw_data_reviews.extend(response.data_reviews)
+            page_token = response.next_page_token
+
+            if page_token is None:
+                break
+
+        return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
+
+
+def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
+    if prefix_tree_delimiter is None:
+        return None
+    else:
+        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+
 
 def _create_search_runs_query(
     start: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -1132,6 +1353,26 @@ def _create_search_assets_query(
             queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
+
+
+def _create_search_checklists_query(
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> scout_checks_api.ChecklistSearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
+
+    if labels is not None:
+        for label in labels:
+            queries.append(scout_checks_api.ChecklistSearchQuery(label=label))
+
+    if properties is not None:
+        for prop_key, prop_value in properties.items():
+            queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
+
+    return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
 
 def _handle_deprecated_labels_properties(

@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from functools import cache, partial
+from functools import cache
 from pathlib import Path
-from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
+
+import typing_extensions
 
 from nominal import Connection, _config, ts
-from nominal._utils import deprecate_keyword_argument, reader_writer
+from nominal._utils import deprecate_keyword_argument
 from nominal.core import (
     Asset,
     Attachment,
     Checklist,
     Dataset,
     FileType,
-    FileTypes,
     Log,
     LogSet,
     NominalClient,
@@ -24,12 +24,14 @@ from nominal.core import (
     Workbook,
     poll_until_ingestion_completed,
 )
+from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.event import Event, EventType
 
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
+
 _DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
 
 # global variable which `set_base_url()` modifies
@@ -74,6 +76,10 @@ def get_user() -> User:
     return conn.get_user()
 
 
+@typing_extensions.deprecated(
+    "`nominal.upload_tdms` is deprecated and will be removed in a future version. "
+    "Use `nominal.thirdparty.tdms.upload_tdms` instead."
+)
 def upload_tdms(
     file: Path | str,
     name: str | None = None,
@@ -83,43 +89,19 @@ def upload_tdms(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a tdms file.
+    """Create a dataset in the Nominal platform from a tdms file."""
+    from nominal.thirdparty.tdms import upload_tdms
 
-    If `name` is None, the dataset is created with the name of the file with a .csv suffix.
-
-    If 'timestamp_column' is provided, it must be present in every group and the length of all data columns must be
-    equal to (and aligned with) with 'timestamp_column'.
-
-    If 'timestamp_column' is None, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
-    property to be included in the dataset.
-
-    Note that both 'timestamp_column' and 'timestamp_type' must be included together, or excluded together.
-
-    Channels will be named as f"{group_name}.{channel_name}" with spaces replaced with underscores.
-
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
-    from nominal import _tdms
-
-    path = Path(file)
-    upload_func = partial(
-        upload_pandas,
-        name=name if name is not None else path.with_suffix(".csv").name,
-        description=description,
-        wait_until_complete=wait_until_complete,
+    client = get_default_client()
+    return upload_tdms(
+        client, file, name, description, timestamp_column, timestamp_type, wait_until_complete=wait_until_complete
     )
-    if timestamp_column is not None and timestamp_type is not None:
-        df = _tdms.tdms_with_time_column_to_pandas(path, timestamp_column)
-        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
-    elif timestamp_column is None and timestamp_type is None:
-        timestamp_column = "time_ns"
-        df = _tdms.tdms_with_waveform_props_to_pandas(path, timestamp_column)
-        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
-    raise ValueError("'timestamp_column' and 'timestamp_type' must be included together, or excluded together.")
 
 
+@typing_extensions.deprecated(
+    "`nominal.upload_pandas` is deprecated and will be removed in a future version. "
+    "Use `nominal.thirdparty.pandas.upload_dataframe` instead."
+)
 def upload_pandas(
     df: pd.DataFrame,
     name: str,
@@ -130,39 +112,26 @@ def upload_pandas(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a pandas.DataFrame.
+    """Create a dataset in the Nominal platform from a pandas.DataFrame."""
+    from nominal.thirdparty.pandas import upload_dataframe
 
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
     conn = get_default_client()
-
-    # TODO(alkasm): use parquet instead of CSV as an intermediary
-
-    def write_and_close(df: pd.DataFrame, w: BinaryIO) -> None:
-        df.to_csv(w)
-        w.close()
-
-    with reader_writer() as (reader, writer):
-        # write the dataframe to CSV in another thread
-        t = Thread(target=write_and_close, args=(df, writer))
-        t.start()
-        dataset = conn.create_dataset_from_io(
-            reader,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
-            description=description,
-            prefix_tree_delimiter=channel_name_delimiter,
-        )
-        t.join()
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
-    return dataset
+    return upload_dataframe(
+        conn,
+        df,
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
+    )
 
 
+@typing_extensions.deprecated(
+    "`nominal.upload_polars` is deprecated and will be removed in a future version. "
+    "Use `nominal.thirdparty.pandas.upload_dataframe(df.to_pandas(), ...)` instead."
+)
 def upload_polars(
     df: pl.DataFrame,
     name: str,
@@ -173,35 +142,20 @@ def upload_polars(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a polars.DataFrame.
+    """Create a dataset in the Nominal platform from a polars.DataFrame."""
+    from nominal.thirdparty.pandas import upload_dataframe
 
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
-    conn = get_default_client()
-
-    def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
-        df.write_csv(w)
-        w.close()
-
-    with reader_writer() as (reader, writer):
-        # write the dataframe to CSV in another thread
-        t = Thread(target=write_and_close, args=(df, writer))
-        t.start()
-        dataset = conn.create_dataset_from_io(
-            reader,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
-            description=description,
-            prefix_tree_delimiter=channel_name_delimiter,
-        )
-        t.join()
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
-    return dataset
+    client = get_default_client()
+    return upload_dataframe(
+        client,
+        df.to_pandas(),
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
+    )
 
 
 def upload_csv(
@@ -302,24 +256,13 @@ def create_run_csv(
 ) -> Run:
     """Create a dataset from a CSV file, and create a run based on it.
 
-    This is a convenience function that combines `upload_csv()` and `create_run()` and can only be used with absolute
-    timestamps. For relative timestamps or custom formats, use `upload_dataset()` and `create_run()` separately.
-
-    The name and description are added to the run. The dataset is created with the name "Dataset for Run: {name}".
-    The reference name for the dataset in the run is "dataset".
-
-    The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
-    column.
+    This is a convenience function that combines `upload_csv()` and `create_run()`.
     """
-    ts_type = ts._to_typed_timestamp_type(timestamp_type)
-    if not isinstance(ts_type, (ts.Iso8601, ts.Epoch)):
-        raise ValueError(
-            "`create_run_csv()` only supports iso8601 or epoch timestamps: use "
-            "`upload_dataset()` and `create_run()` instead"
-        )
-    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, ts_type)
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, ts_type)
-    run = create_run(name, start=start, end=end, description=description)
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
+    dataset.poll_until_ingestion_completed()
+    dataset.refresh()
+    assert dataset.bounds is not None
+    run = create_run(name, start=dataset.bounds.start, end=dataset.bounds.end, description=description)
     run.add_dataset("dataset", dataset)
     return run
 
@@ -493,42 +436,6 @@ def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     poll_until_ingestion_completed(datasets)
 
 
-def _get_start_end_timestamp_csv_file(
-    file: Path | str,
-    timestamp_column: str,
-    timestamp_type: ts.Iso8601 | ts.Epoch,
-) -> tuple[ts.IntegralNanosecondsUTC, ts.IntegralNanosecondsUTC]:
-    import pandas as pd
-
-    df = pd.read_csv(file)
-    ts_col = df[timestamp_column]
-
-    if isinstance(timestamp_type, ts.Iso8601):
-        ts_col = pd.to_datetime(ts_col)
-    elif isinstance(timestamp_type, ts.Epoch):
-        pd_units: dict[ts._LiteralTimeUnit, str] = {
-            "hours": "s",  # hours are not supported by pandas
-            "minutes": "s",  # minutes are not supported by pandas
-            "seconds": "s",
-            "milliseconds": "ms",
-            "microseconds": "us",
-            "nanoseconds": "ns",
-        }
-        if timestamp_type.unit == "hours":
-            ts_col *= 60 * 60
-        elif timestamp_type.unit == "minutes":
-            ts_col *= 60
-        ts_col = pd.to_datetime(ts_col, unit=pd_units[timestamp_type.unit])
-    else:
-        raise ValueError(f"unhandled timestamp type {timestamp_type}")
-
-    start, end = ts_col.min(), ts_col.max()
-    return (
-        ts.IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
-        ts.IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
-    )
-
-
 def get_checklist(checklist_rid: str) -> Checklist:
     conn = get_default_client()
     return conn.get_checklist(checklist_rid)
@@ -576,7 +483,7 @@ def create_streaming_connection(
     datasource_description: str | None = None,
     *,
     required_tag_names: list[str] | None = None,
-) -> Connection:
+) -> StreamingConnection:
     """Creates a new datasource and a new connection.
 
     datasource_id: A human readable identifier. Must be unique within an organization.
