@@ -18,6 +18,7 @@ from nominal.core._utils import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
 from nominal.core.run import Run
+from nominal.ts import IntegralNanosecondsDuration
 
 
 @dataclass(frozen=True)
@@ -166,5 +167,9 @@ def _conjure_priority_to_priority(priority: scout_checks_api.Priority) -> Priori
     raise ValueError(f"unknown priority '{priority}', expected one of {_priority_to_conjure_map.values()}")
 
 
-def _to_api_duration(duration: timedelta) -> scout_run_api.Duration:
-    return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)
+def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout_run_api.Duration:
+    if isinstance(duration, timedelta):
+        return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)
+    else:
+        seconds, nanos = divmod(duration, 1_000_000_000)
+        return scout_run_api.Duration(seconds=seconds, nanos=nanos)
