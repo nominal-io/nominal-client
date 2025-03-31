@@ -1278,12 +1278,6 @@ class NominalClient:
 
         return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
 
-
-def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
-    if prefix_tree_delimiter is None:
-        return None
-    else:
-        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
     def _search_events_paginated(self, request: event.SearchEventsRequest) -> Iterable[event.Event]:
         while True:
             response = self._clients.event.search_events(self._clients.auth_header, request)
@@ -1350,6 +1344,13 @@ def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.Chann
                 )
             )
         )
+
+
+def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
+    if prefix_tree_delimiter is None:
+        return None
+    else:
+        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
 
 
 def _create_search_runs_query(
