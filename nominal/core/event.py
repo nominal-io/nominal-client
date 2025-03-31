@@ -14,12 +14,7 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import update_dataclass
 from nominal.core.asset import Asset
-from nominal.core.attachment import Attachment
 from nominal.core.checklist import _to_api_duration
-from nominal.core.connection import Connection
-from nominal.core.dataset import Dataset
-from nominal.core.log import LogSet
-from nominal.core.video import Video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 
