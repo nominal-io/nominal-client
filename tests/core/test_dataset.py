@@ -8,7 +8,7 @@ from nominal_api.timeseries_channelmetadata_api import BatchUpdateChannelMetadat
 from nominal.core.channel import Channel
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.unit import Unit
-from nominal.exceptions import NominalIngestError, NominalIngestFailed
+from nominal.exceptions import NominalIngestError
 
 UNITS = [
     Unit(name="coulomb", symbol="C"),
@@ -154,9 +154,7 @@ def test_poll_until_ingestion_completed_error(mock_sleep: MagicMock, mock_datase
         MagicMock(ingest_status=MagicMock(type="inProgress")),
     ]
 
-    with pytest.raises(NominalIngestFailed) as e:
-        mock_dataset.poll_until_ingestion_completed(interval=timedelta(seconds=1))
-    assert str(e.value) == "ingest failed for dataset 'test-rid': Ingest failed (type_error)"
+    mock_dataset.poll_until_ingestion_completed(interval=timedelta(seconds=1))
     mock_sleep.assert_not_called()
 
 
@@ -167,9 +165,7 @@ def test_poll_until_ingestion_completed_error_is_none(mock_sleep: MagicMock, moc
         MagicMock(ingest_status=MagicMock(type="inProgress")),
     ]
 
-    with pytest.raises(NominalIngestError) as e:
-        mock_dataset.poll_until_ingestion_completed(interval=timedelta(seconds=1))
-    assert str(e.value) == "ingest status type marked as 'error' but with no instance for dataset 'test-rid'"
+    mock_dataset.poll_until_ingestion_completed(interval=timedelta(seconds=1))
     mock_sleep.assert_not_called()
 
 

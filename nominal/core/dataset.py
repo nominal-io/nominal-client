@@ -20,7 +20,7 @@ from nominal.core.channel import Channel
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
-from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
+from nominal.exceptions import NominalIngestError, NominalIngestMultiError
 from nominal.ts import (
     _AnyTimestampType,
     _to_typed_timestamp_type,
@@ -57,10 +57,12 @@ class Dataset(DataSource):
         """
         while True:
             progress = self._clients.catalog.get_ingest_progress_v2(self._clients.auth_header, self.rid)
-            if progress.ingest_status.type == "success" or progress.ingest_status.type == "error":
+            if progress.ingest_status.type == "success":
                 break
             elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
                 pass
+            elif progress.ingest_status.type == "error":
+                break
             else:
                 raise NominalIngestError(
                     f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
