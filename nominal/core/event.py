@@ -36,12 +36,6 @@ class Event:
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        Attachment._Clients,
-        Asset._Clients,
-        Connection._Clients,
-        Dataset._Clients,
-        LogSet._Clients,
-        Video._Clients,
         HasAuthHeader,
         Protocol,
     ):
