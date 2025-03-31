@@ -22,10 +22,10 @@ from nominal.core import (
     User,
     Video,
     Workbook,
+    poll_until_ingestion_completed,
 )
 from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
-from nominal.core.dataset import poll_until_ingestion_completed
 
 if TYPE_CHECKING:
     import pandas as pd
