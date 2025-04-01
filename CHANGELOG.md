@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.2](https://github.com/nominal-io/nominal-client/compare/v1.45.1...v1.45.2) (2025-04-01)
+
+
+### Bug Fixes
+
+* fix nondeterminism in asset list_datasets ([#287](https://github.com/nominal-io/nominal-client/issues/287)) ([79a4eb0](https://github.com/nominal-io/nominal-client/commit/79a4eb00de36b62a6c01578e9711adbf56b89047))
+
 ## [1.45.1](https://github.com/nominal-io/nominal-client/compare/v1.45.0...v1.45.1) (2025-04-01)
 
 
