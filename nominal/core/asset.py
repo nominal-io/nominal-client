@@ -171,10 +171,12 @@ class Asset(HasRid):
         Returns (data_scope_name, dataset) pairs for each dataset.
         """
         scope_rid = self._scope_rid(stype="dataset")
-        datasets_meta = _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
-        return [
-            (scope, Dataset._from_conjure(self._clients, ds)) for (scope, ds) in zip(scope_rid.keys(), datasets_meta)
-        ]
+
+        res = []
+        for key, value in scope_rid.items():
+            dataset = Dataset._from_conjure(self._clients, list(_get_datasets(self._clients.auth_header, self._clients.catalog, [value]))[0])
+            res.append((key, dataset))
+        return res
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this asset.
