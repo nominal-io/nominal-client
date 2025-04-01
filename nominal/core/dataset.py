@@ -123,7 +123,19 @@ class Dataset(DataSource):
         self.add_data_to_dataset(path, timestamp_column, timestamp_type)
 
     def add_data_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
-        """Append to a dataset from data on-disk."""
+        """Append to a dataset from tabular data on-disk.
+
+        Currently, the supported filetypes are:
+            - .csv / .csv.gz
+            - .parquet
+
+        Args:
+            path: Path to the file on disk to add to the dataset.
+            timestamp_column: Column within the file containing timestamp information.
+                NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
+                      to set the timestamps for all other uploaded data channels.
+            timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
+        """
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
         with open(path, "rb") as data_file:
