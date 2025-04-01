@@ -49,6 +49,7 @@ from nominal.nominal import (
     upload_mcap_video,
     upload_pandas,
     upload_polars,
+    upload_tabular,
     upload_tdms,
     upload_video,
 )
@@ -75,6 +76,7 @@ __all__ = [
     "upload_csv",
     "upload_pandas",
     "upload_polars",
+    "upload_tabular",
     "upload_tdms",
     "upload_mcap_video",
     "upload_video",

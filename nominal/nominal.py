@@ -212,6 +212,61 @@ def _upload_csv(
     return dataset
 
 
+def upload_tabular(
+    file: Path | str,
+    name: str | None,
+    timestamp_column: str,
+    timestamp_type: ts._AnyTimestampType,
+    description: str | None = None,
+    channel_name_delimiter: str | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    """Create a dataset in the Nominal platform from a table-like file (CSV, parquet, etc.)
+
+    If `name` is None, the dataset is created with the name of the file.
+
+    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
+        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
+        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    """
+    conn = get_default_client()
+    return _upload_tabular(
+        conn,
+        file,
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
+    )
+
+
+def _upload_tabular(
+    conn: NominalClient,
+    file: Path | str,
+    name: str | None,
+    timestamp_column: str,
+    timestamp_type: ts._AnyTimestampType,
+    description: str | None = None,
+    channel_name_delimiter: str | None = None,
+    *,
+    wait_until_complete: bool = True,
+) -> Dataset:
+    dataset = conn.create_tabular_dataset(
+        file,
+        name,
+        timestamp_column=timestamp_column,
+        timestamp_type=timestamp_type,
+        description=description,
+        prefix_tree_delimiter=channel_name_delimiter,
+    )
+    if wait_until_complete:
+        dataset.poll_until_ingestion_completed()
+    return dataset
+
+
 def get_dataset(rid: str) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID."""
     conn = get_default_client()
