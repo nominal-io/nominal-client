@@ -13,8 +13,6 @@ from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
     attachments_api,
-    datasource,
-    datasource_logset_api,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -51,7 +49,6 @@ from nominal.core.dataset import (
     _get_datasets,
 )
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
 from nominal.core.unit import Unit
 from nominal.core.user import User, _get_user
@@ -60,7 +57,6 @@ from nominal.core.workbook import Workbook
 from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
-    LogTimestampType,
     _AnyTimestampType,
     _SecondsNanos,
     _to_typed_timestamp_type,
@@ -691,34 +687,6 @@ class NominalClient:
             raise NominalIngestError("error ingesting video: no video created")
         return self.get_video(response.details.video.video_rid)
 
-    def create_log_set(
-        self,
-        name: str,
-        logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
-        timestamp_type: LogTimestampType = "absolute",
-        description: str | None = None,
-    ) -> LogSet:
-        """Create an immutable log set with the given logs.
-
-        The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
-        or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
-        """
-        request = datasource_logset_api.CreateLogSetRequest(
-            name=name,
-            description=description,
-            origin_metadata={},
-            timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
-        )
-        response = self._clients.logset.create(self._clients.auth_header, request)
-        return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
-
-    def _attach_logs_and_finalize(self, rid: str, logs: Iterable[datasource_logset_api.Log]) -> LogSet:
-        request = datasource_logset_api.AttachLogsAndFinalizeRequest(logs=list(logs))
-        response = self._clients.logset.attach_logs_and_finalize(
-            auth_header=self._clients.auth_header, log_set_rid=rid, request=request
-        )
-        return LogSet._from_conjure(self._clients, response)
-
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""
         response = self._clients.video.get(self._clients.auth_header, rid)
@@ -737,11 +705,6 @@ class NominalClient:
         """Retrieve a dataset by its RID."""
         response = _get_dataset(self._clients.auth_header, self._clients.catalog, rid)
         return Dataset._from_conjure(self._clients, response)
-
-    def get_log_set(self, log_set_rid: str) -> LogSet:
-        """Retrieve a log set along with its metadata given its RID."""
-        response = _get_log_set(self._clients, log_set_rid)
-        return LogSet._from_conjure(self._clients, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
         for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, rids):
@@ -1285,25 +1248,6 @@ def _create_search_runs_query(
             queries.append(scout_run_api.SearchQuery(property=api.Property(name=name, value=value)))
 
     return scout_run_api.SearchQuery(and_=queries)
-
-
-def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:
-    if log_timestamp_type == "absolute":
-        return datasource.TimestampType.ABSOLUTE
-    elif log_timestamp_type == "relative":
-        return datasource.TimestampType.RELATIVE
-    raise ValueError(f"timestamp type {log_timestamp_type} must be 'relative' or 'absolute'")
-
-
-def _logs_to_conjure(
-    logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
-) -> Iterable[datasource_logset_api.Log]:
-    for log in logs:
-        if isinstance(log, Log):
-            yield log._to_conjure()
-        elif isinstance(log, tuple):
-            ts, body = log
-            yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
 
 
 def _create_search_assets_query(

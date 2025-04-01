@@ -18,10 +18,9 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
-ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
+ScopeType: TypeAlias = "Connection | Dataset | Video"
 
 
 @dataclass(frozen=True)
@@ -37,7 +36,6 @@ class Asset(HasRid):
     class _Clients(
         DataSource._Clients,
         Video._Clients,
-        LogSet._Clients,
         Attachment._Clients,
         HasAuthHeader,
         Protocol,
@@ -123,23 +121,6 @@ class Asset(HasRid):
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
-    def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
-        """Add a log set to this asset.
-
-        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
-        """
-        # TODO(alkasm): support series tags & offset
-        request = scout_asset_api.AddDataScopesToAssetRequest(
-            data_scopes=[
-                scout_asset_api.CreateAssetDataScope(
-                    data_scope_name=data_scope_name,
-                    data_source=scout_run_api.DataSource(log_set=rid_from_instance_or_string(log_set)),
-                    series_tags={},
-                )
-            ],
-        )
-        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
-
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Add attachments that have already been uploaded to this asset.
 
@@ -205,22 +186,12 @@ class Asset(HasRid):
             for (scope, rid) in scope_rid.items()
         ]
 
-    def list_logsets(self) -> Sequence[tuple[str, LogSet]]:
-        """List the logsets associated with this asset.
-        Returns (data_scope_name, logset) pairs for each logset.
-        """
-        scope_rid = self._scope_rid(stype="logset")
-        return [
-            (scope, LogSet._from_conjure(self._clients, _get_log_set(self._clients, rid)))
-            for (scope, rid) in scope_rid.items()
-        ]
-
     def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
         """List scopes associated with this asset.
         Returns (data_scope_name, scope) pairs, where scope can be
         a dataset, connection, video, or logset.
         """
-        return (*self.list_datasets(), *self.list_connections(), *self.list_logsets(), *self.list_videos())
+        return (*self.list_datasets(), *self.list_connections(), *self.list_videos())
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""

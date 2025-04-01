@@ -15,8 +15,6 @@ from nominal.core import (
     Checklist,
     Dataset,
     FileType,
-    Log,
-    LogSet,
     NominalClient,
     Run,
     User,
@@ -328,12 +326,6 @@ def get_attachment(rid: str) -> Attachment:
     return conn.get_attachment(rid)
 
 
-def get_log_set(rid: str) -> LogSet:
-    """Retrieve a log set from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_log_set(rid)
-
-
 def download_attachment(rid: str, file: Path | str) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
     conn = get_default_client()
@@ -507,21 +499,6 @@ def create_workbook_from_template(
     """
     conn = get_default_client()
     return conn.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
-
-
-def create_log_set(
-    name: str,
-    logs: Iterable[Log] | Iterable[tuple[datetime | ts.IntegralNanosecondsUTC, str]],
-    timestamp_type: ts.LogTimestampType = "absolute",
-    description: str | None = None,
-) -> LogSet:
-    """Create an immutable log set with the given logs.
-
-    The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
-    or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
-    """
-    conn = get_default_client()
-    return conn.create_log_set(name, logs, timestamp_type, description)
 
 
 def data_review_builder() -> DataReviewBuilder:

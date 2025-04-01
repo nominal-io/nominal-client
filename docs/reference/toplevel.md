@@ -14,7 +14,6 @@
       - "!Run"
       - "!Video"
       - "!Log"
-      - "!LogSet"
       - "!User"
       - "!Workbook"
       - "!DataReview"
