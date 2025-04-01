@@ -146,8 +146,6 @@ class Dataset(DataSource):
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
-        self.poll_until_ingestion_completed()
-
         if file_name is None:
             file_name = self.name
 
@@ -180,7 +178,6 @@ class Dataset(DataSource):
         path: Path | str,
     ) -> None:
         """Add a journald jsonl file to an existing dataset."""
-        self.poll_until_ingestion_completed()
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
         s3_path = upload_multipart_file(
@@ -250,8 +247,6 @@ class Dataset(DataSource):
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"mcap {mcap} must be open in binary mode, rather than text mode")
 
-        self.poll_until_ingestion_completed()
-
         if file_name is None:
             file_name = self.name
 
@@ -278,7 +273,6 @@ class Dataset(DataSource):
         path: Path | str,
     ) -> None:
         """Add a Dataflash file to an existing dataset."""
-        self.poll_until_ingestion_completed()
         dataflash_path = Path(path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,

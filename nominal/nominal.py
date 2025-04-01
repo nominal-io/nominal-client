@@ -258,7 +258,6 @@ def create_run_csv(
     This is a convenience function that combines `upload_csv()` and `create_run()`.
     """
     dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
-    dataset.poll_until_ingestion_completed()
     dataset.refresh()
     assert dataset.bounds is not None
     run = create_run(name, start=dataset.bounds.start, end=dataset.bounds.end, description=description)
