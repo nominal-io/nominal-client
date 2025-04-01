@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.1](https://github.com/nominal-io/nominal-client/compare/v1.45.0...v1.45.1) (2025-04-01)
+
+
+### Bug Fixes
+
+* poll until ingestion completed exits if status is error ([#285](https://github.com/nominal-io/nominal-client/issues/285)) ([d656bd0](https://github.com/nominal-io/nominal-client/commit/d656bd031132727855c814900209b394b89e121d))
+
 ## [1.45.0](https://github.com/nominal-io/nominal-client/compare/v1.44.0...v1.45.0) (2025-03-28)
 
 
