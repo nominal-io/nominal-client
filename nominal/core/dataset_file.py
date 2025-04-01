@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 
 from nominal_api import scout_catalog
 from typing_extensions import Self
@@ -21,11 +20,11 @@ class DatasetFile:
 
     @classmethod
     def _from_conjure(cls, dataset_file: scout_catalog.DatasetFile) -> Self:
-        upload_time = _SecondsNanos.from_datetime(datetime.fromisoformat(dataset_file.uploaded_at)).to_nanoseconds()
+        upload_time = _SecondsNanos.from_flexible(dataset_file.uploaded_at).to_nanoseconds()
         ingest_time = (
             None
             if dataset_file.ingested_at is None
-            else _SecondsNanos.from_datetime(datetime.fromisoformat(dataset_file.ingested_at)).to_nanoseconds()
+            else _SecondsNanos.from_flexible(dataset_file.ingested_at).to_nanoseconds()
         )
         return cls(
             id=dataset_file.id,
