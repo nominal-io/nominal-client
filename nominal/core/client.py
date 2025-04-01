@@ -323,7 +323,11 @@ class NominalClient:
         prefix_tree_delimiter: str | None = None,
         channel_prefix: str | None = None,
     ) -> Dataset:
-        """Create a dataset from a table-like file (CSV, parquet, etc.).
+        """Create a dataset from a table-like file.
+
+        Currently, the supported filetypes are:
+            - .csv / .csv.gz
+            - .parquet
 
         If name is None, the name of the file will be used.
 
