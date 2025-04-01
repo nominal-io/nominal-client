@@ -157,6 +157,35 @@ def upload_polars(
     )
 
 
+def create_dataset(
+    name: str,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    prefix_tree_delimiter: str | None = None,
+) -> Dataset:
+    """Create an empty dataset.
+
+    Args:
+        name: Name of the dataset to create in Nominal.
+        description: Human readable description of the dataset.
+        labels: Text labels to apply to the created dataset
+        properties: Key-value properties to apply to the cleated dataset
+        prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+
+    Returns:
+        Reference to the created dataset in Nominal.
+    """
+    conn = get_default_client()
+    return conn.create_dataset(
+        name, description=description, labels=labels, properties=properties, prefix_tree_delimiter=prefix_tree_delimiter
+    )
+
+
+@typing_extensions.deprecated(
+    "`nominal.upload_csv` is deprecated and will be removed in a future version. "
+    "Use `nominal.create_dataset` or `nominal.get_dataset`, add data to an existing dataset instead."
+)
 def upload_csv(
     file: Path | str,
     name: str | None,

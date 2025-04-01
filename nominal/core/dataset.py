@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from nominal_api import api, datasource_api, ingest_api, scout_catalog
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self, TypeAlias, deprecated
 
 from nominal._utils import deprecate_arguments
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
@@ -118,11 +118,25 @@ class Dataset(DataSource):
 
         return self.refresh()
 
+    @deprecated(
+        "`Dataset.add_csv_to_dataset` is deprecated and will be removed in a future version. "
+        "Use `Dataset.add_tabular_data_to_dataset` instead."
+    )
     def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
-        self.add_data_to_dataset(path, timestamp_column, timestamp_type)
+        self.add_tabular_data_to_dataset(path, timestamp_column, timestamp_type)
 
+    @deprecated(
+        "`Dataset.add_data_to_dataset` is deprecated and will be removed in a future version. "
+        "Use `Dataset.add_tabular_data_to_dataset` instead."
+    )
     def add_data_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
+        """Append to a dataset from a tabular data file on-disk."""
+        self.add_tabular_data_to_dataset(path, timestamp_column, timestamp_type)
+
+    def add_tabular_data_to_dataset(
+        self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType
+    ) -> None:
         """Append to a dataset from tabular data on-disk.
 
         Currently, the supported filetypes are:

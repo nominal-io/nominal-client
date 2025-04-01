@@ -28,7 +28,7 @@ from nominal_api import (
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal import _config
 from nominal._utils import deprecate_keyword_argument
@@ -242,6 +242,10 @@ class NominalClient:
 
         return dataset
 
+    @deprecated(
+        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
+    )
     def create_csv_dataset(
         self,
         path: Path | str,
@@ -273,6 +277,10 @@ class NominalClient:
             channel_prefix=channel_prefix,
         )
 
+    @deprecated(
+        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
+    )
     def create_ardupilot_dataflash_dataset(
         self,
         path: Path | str,
@@ -310,6 +318,10 @@ class NominalClient:
             raise NominalIngestError("error ingesting dataflash: no dataset created")
         return self.get_dataset(response.details.dataset.dataset_rid)
 
+    @deprecated(
+        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
+    )
     def create_tabular_dataset(
         self,
         path: Path | str,
@@ -352,6 +364,10 @@ class NominalClient:
                 channel_prefix=channel_prefix,
             )
 
+    @deprecated(
+        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
+    )
     def create_journal_json_dataset(
         self,
         path: Path | str,
@@ -400,6 +416,10 @@ class NominalClient:
             raise NominalIngestError("error ingesting journal json: no dataset created")
         return self.get_dataset(response.details.dataset.dataset_rid)
 
+    @deprecated(
+        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
+    )
     def create_dataset_from_io(
         self,
         dataset: BinaryIO,
@@ -480,6 +500,10 @@ class NominalClient:
             raise NominalIngestError("error ingesting dataset: no dataset created")
         return self.get_dataset(response.details.dataset.dataset_rid)
 
+    @deprecated(
+        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
+    )
     def create_mcap_dataset(
         self,
         path: Path | str,
@@ -515,6 +539,10 @@ class NominalClient:
                 file_name=path_upload_name(mcap_path, FileTypes.MCAP),
             )
 
+    @deprecated(
+        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
+    )
     def create_dataset_from_mcap_io(
         self,
         dataset: BinaryIO,
