@@ -135,7 +135,11 @@ class Dataset(DataSource):
         self.add_tabular_data_to_dataset(path, timestamp_column, timestamp_type)
 
     def add_tabular_data_to_dataset(
-        self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType, tag_keys_from_columns: Sequence[str] | None = None
+        self,
+        path: Path | str,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        tag_keys_from_columns: Sequence[str] | None = None,
     ) -> None:
         """Append to a dataset from tabular data on-disk.
 
@@ -149,12 +153,18 @@ class Dataset(DataSource):
                 NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
                       to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
+            tag_keys_from_columns: If provided, will use the values from the columns with these names as tags.
         """
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
         with open(path, "rb") as data_file:
             self.add_to_dataset_from_io(
-                data_file, timestamp_column, timestamp_type, file_type, file_name=path_upload_name(path, file_type), tag_keys_from_columns=tag_keys_from_columns
+                data_file,
+                timestamp_column,
+                timestamp_type,
+                file_type,
+                file_name=path_upload_name(path, file_type),
+                tag_keys_from_columns=tag_keys_from_columns,
             )
 
     def add_to_dataset_from_io(
@@ -195,7 +205,7 @@ class Dataset(DataSource):
                         series_name=timestamp_column,
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
-                    tag_keys_from_columns=tag_keys_from_columns,
+                    tag_keys_from_columns=list(tag_keys_from_columns) if tag_keys_from_columns else None,
                 )
             )
         )
