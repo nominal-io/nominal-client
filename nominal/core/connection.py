@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import itertools
-import warnings
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal, Mapping, Sequence
@@ -57,16 +55,6 @@ class Connection(DataSource):
 @dataclass(frozen=True)
 class StreamingConnection(Connection):
     nominal_data_source_rid: str
-
-    # Deprecated methods for backward compatibility
-    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
-        warnings.warn(
-            "get_nominal_write_stream is deprecated and will be removed in a future version. "
-            "use get_write_stream instead.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
 
     def get_write_stream(
         self,
@@ -132,9 +120,3 @@ def _get_connections(
     clients: Connection._Clients, connection_rids: Sequence[str]
 ) -> Sequence[scout_datasource_connection_api.Connection]:
     return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
-
-
-def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
-    # {color: [red, green], size: [S, M, L]} -> [{color: red, size: S}, {color: red, size: M}, ...,
-    #                                            {color: green, size: L}]
-    return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]
