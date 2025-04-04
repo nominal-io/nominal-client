@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 import typing_extensions
 
 from nominal import Connection, _config, ts
-from nominal._utils import deprecate_keyword_argument
 from nominal.core import (
     Asset,
     Attachment,
@@ -300,42 +299,29 @@ def get_run(rid: str) -> Run:
     return conn.get_run(rid)
 
 
-@deprecate_keyword_argument("name_substring", "exact_name")
 def search_runs(
     *,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
-    label: str | None = None,
     labels: Sequence[str] | None = None,
-    property: tuple[str, str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> Sequence[Run]:
     """Search for runs meeting the specified filters.
-    Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
+    Filters are ANDed together, e.g. `(labels in run.labels) AND (run.end <= end)`
 
     Args:
         start: Inclusive start time for filtering runs.
         end: Inclusive end time for filtering runs.
         name_substring: Searches for a (case-insensitive) substring in the name
-        label: Deprecated, use labels instead.
         labels: A sequence of labels that must ALL be present on a run to be included.
-        property: Deprecated, use properties instead.
         properties: A mapping of key-value pairs that must ALL be present on a run to be included.
 
     Returns:
         All runs which match all of the provided conditions
     """
     conn = get_default_client()
-    return conn.search_runs(
-        start=start,
-        end=end,
-        name_substring=name_substring,
-        label=label,
-        labels=labels,
-        property=property,
-        properties=properties,
-    )
+    return conn.search_runs(start=start, end=end, name_substring=name_substring, labels=labels, properties=properties)
 
 
 def upload_attachment(
@@ -411,14 +397,10 @@ def get_asset(rid: str) -> Asset:
     return conn.get_asset(rid)
 
 
-@deprecate_keyword_argument("properties", "property")
-@deprecate_keyword_argument("labels", "label")
 def search_assets(
     *,
     search_text: str | None = None,
-    label: str | None = None,
     labels: Sequence[str] | None = None,
-    property: tuple[str, str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> Sequence[Asset]:
     """Search for assets meeting the specified filters.
@@ -426,22 +408,14 @@ def search_assets(
 
     Args:
         search_text: case-insensitive search for any of the keywords in all string fields
-        label: Deprecated, use labels instead.
         labels: A sequence of labels that must ALL be present on a asset to be included.
-        property: Deprecated, use properties instead.
         properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
 
     Returns:
         All assets which match all of the provided conditions
     """
     conn = get_default_client()
-    return conn.search_assets(
-        search_text=search_text,
-        label=label,
-        property=property,
-        labels=labels,
-        properties=properties,
-    )
+    return conn.search_assets(search_text=search_text, labels=labels, properties=properties)
 
 
 def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
