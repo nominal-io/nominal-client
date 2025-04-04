@@ -1200,7 +1200,9 @@ class NominalClient:
             if asset is None:
                 response = self._clients.checklist_execution.list_streaming_checklist(
                     self._clients.auth_header,
-                    scout_checklistexecution_api.ListStreamingChecklistRequest(page_token=next_page_token),
+                    scout_checklistexecution_api.ListStreamingChecklistRequest(
+                        workspaces=[], page_token=next_page_token
+                    ),
                 )
                 yield from response.checklists
                 next_page_token = response.next_page_token
