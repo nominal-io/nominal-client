@@ -93,30 +93,28 @@ class StreamingConnection(Connection):
         """
         if data_format == "json":
             return WriteStream.create(
-                batch_size=batch_size,
-                max_wait=max_wait,
-                process_batch=lambda batch: process_batch_legacy(
-                    batch, self.rid, self._clients.auth_header, self._clients.storage_writer
-                ),
-            )
-        elif data_format == "protobuf":
-            try:
-                from nominal.core._batch_processor_proto import process_batch
-            except ImportError:
-                raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
-
-            return WriteStream.create(
                 batch_size,
                 max_wait,
-                lambda batch: process_batch(
-                    batch=batch,
-                    nominal_data_source_rid=self.rid,
-                    auth_header=self._clients.auth_header,
-                    proto_write=self._clients.proto_write,
+                lambda batch: process_batch_legacy(
+                    batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
                 ),
             )
-        else:
-            raise ValueError(f"Expected `data_format` to be one of {{json, protobuf}}, received '{data_format}'")
+
+        try:
+            from nominal.core._batch_processor_proto import process_batch
+        except ImportError:
+            raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
+
+        return WriteStream.create(
+            batch_size,
+            max_wait,
+            lambda batch: process_batch(
+                batch=batch,
+                nominal_data_source_rid=self.nominal_data_source_rid,
+                auth_header=self._clients.auth_header,
+                proto_write=self._clients.proto_write,
+            ),
+        )
 
 
 def _get_connections(
