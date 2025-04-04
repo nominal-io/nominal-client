@@ -42,6 +42,7 @@ def mock_connection(mock_clients):
         nominal_data_source_rid="test-datasource-rid",
     )
 
+
 @pytest.fixture
 def mock_dataset(mock_clients):
     return Dataset(
@@ -53,6 +54,7 @@ def mock_dataset(mock_clients):
         labels=[],
         bounds=None,
     )
+
 
 def test_process_batch_double_points(mock_connection):
     # Create test data with fixed timestamp
@@ -267,6 +269,7 @@ def test_process_batch_multiple_channels(mock_connection):
     double_points = series3.points.double_points.points
     assert len(double_points) == 1
     assert double_points[0].value == 100.0
+
 
 def test_multiple_write_streams(mock_connection):
     # Create test data with fixed timestamp
@@ -536,22 +539,19 @@ def test_process_batch_multiple_channels_dataset(mock_dataset):
     assert len(double_points) == 1
     assert double_points[0].value == 100.0
 
+
 def test_multiple_write_streams_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     # First stream
-    with mock_dataset.get_write_stream(
-        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
-    ) as stream1:
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream1:
         stream1.enqueue("channel1", timestamp, 42.0)
         stream1.enqueue("channel1", timestamp + timedelta(seconds=1), 43.0)
         # Force a small sleep to allow the batch to be processed
 
     # Second stream
-    with mock_dataset.get_write_stream(
-        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
-    ) as stream2:
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream2:
         stream2.enqueue("channel2", timestamp, "value1")
         stream2.enqueue("channel2", timestamp + timedelta(seconds=1), "value2")
 
@@ -586,4 +586,3 @@ def test_multiple_write_streams_dataset(mock_dataset):
     assert len(string_points) == 2
     assert string_points[0].value == "value1"
     assert string_points[1].value == "value2"
-
