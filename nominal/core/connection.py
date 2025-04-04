@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Mapping, Sequence
+from typing import Literal, Mapping, Sequence
 
 from nominal_api import (
     scout_datasource_connection_api,
 )
+from typing_extensions import deprecated
 
+from nominal.core._batch_processor import process_batch_legacy
 from nominal.core.datasource import DataSource
 from nominal.core.stream import WriteStream
 
@@ -55,7 +57,7 @@ class Connection(DataSource):
 class StreamingConnection(Connection):
     nominal_data_source_rid: str
 
-<<<<<<< Updated upstream
+    @deprecated("`StreamingConnection.get_write_stream` is deprecated, use `Dataset.get_write_stream` instead.")
     def get_write_stream(
         self,
         batch_size: int = 50_000,
@@ -88,43 +90,33 @@ class StreamingConnection(Connection):
             ...
             stream.close()
             ```
-
         """
         if data_format == "json":
             return WriteStream.create(
-                batch_size,
-                max_wait,
-                lambda batch: process_batch_legacy(
-                    batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
+                batch_size=batch_size,
+                max_wait=max_wait,
+                process_batch=lambda batch: process_batch_legacy(
+                    batch, self.rid, self._clients.auth_header, self._clients.storage_writer
                 ),
             )
+        elif data_format == "protobuf":
+            try:
+                from nominal.core._batch_processor_proto import process_batch
+            except ImportError:
+                raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
 
-        try:
-            from nominal.core._batch_processor_proto import process_batch
-        except ImportError:
-            raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
-
-        return WriteStream.create(
-            batch_size,
-            max_wait,
-            lambda batch: process_batch(
-                batch=batch,
-                nominal_data_source_rid=self.nominal_data_source_rid,
-                auth_header=self._clients.auth_header,
-                proto_write=self._clients.proto_write,
-            ),
-        )
-=======
-    # Deprecated methods for backward compatibility
-    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
-        warnings.warn(
-            "get_nominal_write_stream is deprecated and will be removed in a future version. "
-            "use get_write_stream instead.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
->>>>>>> Stashed changes
+            return WriteStream.create(
+                batch_size,
+                max_wait,
+                lambda batch: process_batch(
+                    batch=batch,
+                    nominal_data_source_rid=self.rid,
+                    auth_header=self._clients.auth_header,
+                    proto_write=self._clients.proto_write,
+                ),
+            )
+        else:
+            raise ValueError(f"Expected `data_format` to be one of {{json, protobuf}}, received '{data_format}'")
 
 
 def _get_connections(

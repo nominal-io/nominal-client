@@ -1034,6 +1034,7 @@ class NominalClient:
             raise NominalIngestError("error ingesting mcap video: no video created")
         return self.get_video(response.details.video.video_rid)
 
+    @deprecated("`NominalClient.create_streaming_connection` is deprecated, use `Dataset.get_write_stream` instead.")
     def create_streaming_connection(
         self,
         datasource_id: str,
