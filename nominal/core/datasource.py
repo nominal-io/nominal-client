@@ -120,7 +120,7 @@ class DataSource(HasRid):
         data_format: Literal["json", "protobuf"] = "json",
     ) -> WriteStream:
         """Stream to write messages to a datasource.
-        
+
         Messages are written asynchronously.
 
         Args:

@@ -7,7 +7,6 @@ from typing import Literal, Mapping, Sequence
 from nominal_api import (
     scout_datasource_connection_api,
 )
-from typing_extensions import deprecated
 
 from nominal.core._batch_processor import process_batch_legacy
 from nominal.core.datasource import DataSource
@@ -62,6 +61,7 @@ class StreamingConnection(Connection):
     dataset using `Dataset.get_write_stream`, which has the same overall semantics of using
     a `StreamingConnection`.
     """
+
     nominal_data_source_rid: str
 
     def get_write_stream(
