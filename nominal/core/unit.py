@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-import conjure_python_client
 from nominal_api import (
     api,
     scout,
@@ -73,26 +72,20 @@ def _warn_on_invalid_units(unit_map: UnitMapping, unit_service: scout.UnitsServi
     # Normalize unit map to refer to channel names and unit symbols
     channels_to_units = {channel: _unit_symbol_from_unit_like(unit) for channel, unit in unit_map.items()}
 
-    # Get set of all provided invalid units
-    invalid_units = set()
-    for unit_symbol in set(channels_to_units.values()):
-        # Ignoring None units for purposes of warning the user
-        if unit_symbol is None:
-            continue
+    resolved_units = unit_service.get_batch_units(
+        auth_header, [unit_symbol for unit_symbol in set(channels_to_units.values()) if unit_symbol is not None]
+    )
 
-        try:
-            resolved_unit = unit_service.get_unit(auth_header, unit_symbol)
-            if resolved_unit is None:
-                invalid_units.add(unit_symbol)
-        except conjure_python_client.ConjureHTTPError as ex:
-            logger.debug("Error fetching unit '%s': '%s'", unit_symbol, ex)
-            invalid_units.add(unit_symbol)
+    # Get set of all provided invalid units
+    invalid_units = set(
+        [unit_symbol for unit_symbol in channels_to_units.values() if unit_symbol not in resolved_units]
+    )
 
     # Warn user about invalid units
     for channel, unit_symbol in channels_to_units.items():
         if unit_symbol in invalid_units:
             logger.warning(
-                """Unit '%s' for channel '%s' is not recognized with Nominal's unit system.
+                """Unit '%s' for channel '%s' is not recognized within Nominal's unit system.
 Unit conversions will not be available for this channel.
 For more information on valid symbols, see https://ucum.org/ucum
                         """,
