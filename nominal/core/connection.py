@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal, Mapping, Sequence
+from typing import Mapping, Sequence
 
 from nominal_api import (
     scout_datasource_connection_api,
 )
 
-from nominal.core._batch_processor import process_batch_legacy
 from nominal.core.datasource import DataSource
 from nominal.core.stream import WriteStream
 
@@ -56,6 +55,7 @@ class Connection(DataSource):
 class StreamingConnection(Connection):
     nominal_data_source_rid: str
 
+<<<<<<< Updated upstream
     def get_write_stream(
         self,
         batch_size: int = 50_000,
@@ -114,6 +114,17 @@ class StreamingConnection(Connection):
                 proto_write=self._clients.proto_write,
             ),
         )
+=======
+    # Deprecated methods for backward compatibility
+    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
+        warnings.warn(
+            "get_nominal_write_stream is deprecated and will be removed in a future version. "
+            "use get_write_stream instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
+>>>>>>> Stashed changes
 
 
 def _get_connections(

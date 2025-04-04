@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Iterable, Literal, Mapping, Protocol, Sequence
 
 import typing_extensions
 from nominal_api import (
@@ -24,10 +24,12 @@ from nominal_api import (
 )
 
 from nominal._utils import warn_on_deprecated_argument
+from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
+from nominal.core.stream import WriteStream
 from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
@@ -110,6 +112,66 @@ class DataSource(HasRid):
                 self._clients.auth_header, batch_request
             )
             yield from (Channel._from_channel_metadata_api(self._clients, channel) for channel in response.responses)
+
+    def get_write_stream(
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+        data_format: Literal["json", "protobuf"] = "json",
+    ) -> WriteStream:
+        """Stream to write non-blocking messages to a datasource.
+
+        Args:
+        ----
+            batch_size (int): How big the batch can get before writing to Nominal. Default 10
+            max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
+            data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
+
+        Examples:
+        --------
+            Standard Usage:
+            ```py
+            with connection.get_write_stream() as stream:
+                stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
+                stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
+                ...
+            ```
+
+            Without a context manager:
+            ```py
+            stream = connection.get_write_stream()
+            stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
+            stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
+            ...
+            stream.close()
+            ```
+        """
+        if data_format == "json":
+            return WriteStream.create(
+                batch_size=batch_size,
+                max_wait=max_wait,
+                process_batch=lambda batch: process_batch_legacy(
+                    batch, self.rid, self._clients.auth_header, self._clients.storage_writer
+                ),
+            )
+        elif data_format == "protobuf":
+            try:
+                from nominal.core._batch_processor_proto import process_batch
+            except ImportError:
+                raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
+
+            return WriteStream.create(
+                batch_size,
+                max_wait,
+                lambda batch: process_batch(
+                    batch=batch,
+                    nominal_data_source_rid=self.rid,
+                    auth_header=self._clients.auth_header,
+                    proto_write=self._clients.proto_write,
+                ),
+            )
+        else:
+            raise ValueError(f"Expected `data_format` to be one of {{json, protobuf}}, received '{data_format}'")
 
     def search_channels(
         self,
