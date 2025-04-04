@@ -131,7 +131,7 @@ class DataSource(HasRid):
         --------
             Standard Usage:
             ```py
-            with connection.get_write_stream() as stream:
+            with datasource.get_write_stream() as stream:
                 stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
                 stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
                 ...
@@ -139,7 +139,7 @@ class DataSource(HasRid):
 
             Without a context manager:
             ```py
-            stream = connection.get_write_stream()
+            stream = datasource.get_write_stream()
             stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
             stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
             ...
