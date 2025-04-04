@@ -139,7 +139,7 @@ class Dataset(DataSource):
         path: Path | str,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
-        tag_keys_from_columns: Sequence[str] | None = None,
+        tag_keys_from_columns: Mapping[str, str] | None = None,
     ) -> None:
         """Append to a dataset from tabular data on-disk.
 
@@ -153,7 +153,7 @@ class Dataset(DataSource):
                 NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
                       to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
-            tag_keys_from_columns: If provided, will use the values from the columns with these names as tags.
+            tag_keys_from_columns: If provided, maps column names to tag keys. Keys must equal values.
         """
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
@@ -174,7 +174,7 @@ class Dataset(DataSource):
         timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
         file_name: str | None = None,
-        tag_keys_from_columns: Sequence[str] | None = None,
+        tag_keys_from_columns: Mapping[str, str] | None = None,
     ) -> None:
         """Append to a dataset from a file-like object.
 
@@ -185,6 +185,11 @@ class Dataset(DataSource):
 
         if file_name is None:
             file_name = self.name
+
+        if tag_keys_from_columns is not None:
+            for key, value in tag_keys_from_columns.items():
+                if key != value:
+                    raise ValueError(f"Key '{key}' must equal value '{value}' in tag_keys_from_columns")
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
@@ -205,7 +210,7 @@ class Dataset(DataSource):
                         series_name=timestamp_column,
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
-                    tag_keys_from_columns=list(tag_keys_from_columns) if tag_keys_from_columns else None,
+                    tag_keys_from_columns=list(tag_keys_from_columns.keys()) if tag_keys_from_columns else None,
                 )
             )
         )
