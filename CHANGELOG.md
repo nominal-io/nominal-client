@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.46.0](https://github.com/nominal-io/nominal-client/compare/v1.45.2...v1.46.0) (2025-04-04)
+
+
+### Features
+
+* add deprecation notices to consolidate dataset creation / addition methods ([#292](https://github.com/nominal-io/nominal-client/issues/292)) ([13944b1](https://github.com/nominal-io/nominal-client/commit/13944b129b1ed8d0a9b9fc5b4cd6a8307b6d498d))
+* document that tabular data methods accept parquets ([#289](https://github.com/nominal-io/nominal-client/issues/289)) ([561845b](https://github.com/nominal-io/nominal-client/commit/561845bb482493ead34e05035ba10f99d4e40db0))
+* plumb column tag keys ([#294](https://github.com/nominal-io/nominal-client/issues/294)) ([58a20a4](https://github.com/nominal-io/nominal-client/commit/58a20a457f11e0a1f9711c5ee7b2d4c22d70939e))
+* remove 3mo+ deprecations ([#295](https://github.com/nominal-io/nominal-client/issues/295)) ([18b07f0](https://github.com/nominal-io/nominal-client/commit/18b07f068dfbe52d1d9d7dee719e51408960d591))
+* update nominal-api to 0.618.0 ([#297](https://github.com/nominal-io/nominal-client/issues/297)) ([2afd31d](https://github.com/nominal-io/nominal-client/commit/2afd31dc9abac0adcde677e7e524aa62dcb43a27))
+
 ## [1.45.2](https://github.com/nominal-io/nominal-client/compare/v1.45.1...v1.45.2) (2025-04-01)
 
 
