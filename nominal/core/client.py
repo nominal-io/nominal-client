@@ -167,7 +167,6 @@ class NominalClient:
         for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self._clients, run)
 
-    @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
         self,
         start: str | datetime | IntegralNanosecondsUTC | None = None,
