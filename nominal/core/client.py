@@ -31,7 +31,6 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import _config
-from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io

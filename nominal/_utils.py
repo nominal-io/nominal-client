@@ -66,28 +66,6 @@ def warn_on_deprecated_argument(
     return decorator
 
 
-def deprecate_keyword_argument(new_name: str, old_name: str) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
-    def _deprecate_keyword_argument_decorator(f: Callable[Param, T]) -> Callable[Param, T]:
-        def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
-            if old_name in kwargs:
-                import warnings
-
-                warnings.warn(
-                    (
-                        f"The '{old_name}' keyword argument is deprecated and will be removed in a "
-                        f"future version, use '{new_name}' instead."
-                    ),
-                    UserWarning,
-                    stacklevel=2,
-                )
-                kwargs[new_name] = kwargs.pop(old_name)
-            return f(*args, **kwargs)
-
-        return wrapper
-
-    return _deprecate_keyword_argument_decorator
-
-
 def deprecate_arguments(
     deprecated_args: list[str], new_kwarg: str, new_method: Callable[..., T]
 ) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
