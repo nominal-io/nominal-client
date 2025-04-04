@@ -139,7 +139,7 @@ class Dataset(DataSource):
         path: Path | str,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
-        tag_keys_from_columns: Mapping[str, str] | None = None,
+        tag_columns: Mapping[str, str] | None = None,
     ) -> None:
         """Append to a dataset from tabular data on-disk.
 
@@ -153,7 +153,7 @@ class Dataset(DataSource):
                 NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
                       to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
-            tag_keys_from_columns: If provided, maps column names to tag keys. Keys must equal values.
+            tag_columns: If provided, maps column names to tag keys. Keys must equal values.
         """
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
@@ -164,7 +164,7 @@ class Dataset(DataSource):
                 timestamp_type,
                 file_type,
                 file_name=path_upload_name(path, file_type),
-                tag_keys_from_columns=tag_keys_from_columns,
+                tag_columns=tag_columns,
             )
 
     def add_to_dataset_from_io(
@@ -174,7 +174,7 @@ class Dataset(DataSource):
         timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
         file_name: str | None = None,
-        tag_keys_from_columns: Mapping[str, str] | None = None,
+        tag_columns: Mapping[str, str] | None = None,
     ) -> None:
         """Append to a dataset from a file-like object.
 
@@ -186,11 +186,11 @@ class Dataset(DataSource):
         if file_name is None:
             file_name = self.name
 
-        if tag_keys_from_columns is not None:
-            for key, value in tag_keys_from_columns.items():
+        if tag_columns is not None:
+            for key, value in tag_columns.items():
                 if key != value:
                     raise ValueError(
-                        f"Currently, the keys and values in tag_keys_from_columns must be the same. "
+                        f"Currently, the keys and values in tag_columns must be the same. "
                         f"Key '{key}' must equal value '{value}'."
                     )
 
@@ -213,7 +213,7 @@ class Dataset(DataSource):
                         series_name=timestamp_column,
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
-                    tag_keys_from_columns=list(tag_keys_from_columns.keys()) if tag_keys_from_columns else None,
+                    tag_keys_from_columns=list(tag_columns.keys()) if tag_keys_from_columns else None,
                 )
             )
         )
