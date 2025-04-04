@@ -20,6 +20,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import update_dataclass
+from nominal.core.unit import UnitLike, _build_unit_update
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -65,11 +66,14 @@ class Channel:
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
 
+    class _NotProvided:
+        """Sentinel class for detecting when a user has or has not provided a value during updates"""
+
     def update(
         self,
         *,
         description: str | None = None,
-        unit: str | None = None,
+        unit: UnitLike | _NotProvided = _NotProvided(),
     ) -> Self:
         """Replace channel metadata within Nominal, and updates / returns the local instance.
 
@@ -77,7 +81,11 @@ class Channel:
 
         Args:
             description: Human-readable description of data within the channel
-            unit: Unit symbol to apply to the channel
+            unit: Unit symbol to apply to the channel. If unit is a string or a `Unit`, this will update the unit symbol
+                for the channel. If unit is None, this will clear the unit symbol for the channel. If not provided (or
+                `_NotProvided`), this will leave the unit unaffected.
+                NOTE: this is in contrast to other fields in other `update()` calls where `None` is treated as a
+                      "no-op".
         """
         channel_metadata = self._clients.channel_metadata.update_channel_metadata(
             self._clients.auth_header,
@@ -87,7 +95,7 @@ class Channel:
                     data_source_rid=self.data_source,
                 ),
                 description=description,
-                unit_update=timeseries_logicalseries_api.UnitUpdate(unit=unit) if unit else None,
+                unit_update=_build_unit_update(unit) if not isinstance(unit, self._NotProvided) else None,
             ),
         )
         updated_channel = self.__class__._from_channel_metadata_api(self._clients, channel_metadata)
