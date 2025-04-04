@@ -119,7 +119,9 @@ class DataSource(HasRid):
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf"] = "json",
     ) -> WriteStream:
-        """Stream to write non-blocking messages to a datasource.
+        """Stream to write messages to a datasource.
+        
+        Messages are written asynchronously.
 
         Args:
         ----
