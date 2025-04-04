@@ -20,6 +20,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import update_dataclass
+from nominal.core.unit import UnitLike, _build_unit_update
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
@@ -69,7 +70,7 @@ class Channel:
         self,
         *,
         description: str | None = None,
-        unit: str | None = None,
+        unit: UnitLike = None,
     ) -> Self:
         """Replace channel metadata within Nominal, and updates / returns the local instance.
 
@@ -77,7 +78,9 @@ class Channel:
 
         Args:
             description: Human-readable description of data within the channel
-            unit: Unit symbol to apply to the channel
+            unit: Unit symbol to apply to the channel.
+                NOTE: in contrast to 'set_channel_units' on a `nominal.Dataset`, providing `None` as the unit
+                      here does *not* clear the unit, but rather, leaves the unit for the channel unaffected.
         """
         channel_metadata = self._clients.channel_metadata.update_channel_metadata(
             self._clients.auth_header,
@@ -87,7 +90,7 @@ class Channel:
                     data_source_rid=self.data_source,
                 ),
                 description=description,
-                unit_update=timeseries_logicalseries_api.UnitUpdate(unit=unit) if unit else None,
+                unit_update=_build_unit_update(unit) if unit else None,
             ),
         )
         updated_channel = self.__class__._from_channel_metadata_api(self._clients, channel_metadata)
