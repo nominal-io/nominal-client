@@ -189,7 +189,10 @@ class Dataset(DataSource):
         if tag_keys_from_columns is not None:
             for key, value in tag_keys_from_columns.items():
                 if key != value:
-                    raise ValueError(f"Key '{key}' must equal value '{value}' in tag_keys_from_columns")
+                    raise ValueError(
+                        f"Currently, the keys and values in tag_keys_from_columns must be the same. "
+                        f"Key '{key}' must equal value '{value}'."
+                    )
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
