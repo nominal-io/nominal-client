@@ -10,31 +10,7 @@ from nominal.core.stream import BatchItem
 from nominal.ts import _SecondsNanos
 
 
-def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.Points:
-    if isinstance(api_batch[0].value, str):
-        return storage_writer_api.Points(
-            string=[
-                storage_writer_api.StringPoint(
-                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                    value=cast(str, item.value),
-                )
-                for item in api_batch
-            ]
-        )
-    if isinstance(api_batch[0].value, float):
-        return storage_writer_api.Points(
-            double=[
-                storage_writer_api.DoublePoint(
-                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                    value=cast(float, item.value),
-                )
-                for item in api_batch
-            ]
-        )
-    raise ValueError("only float and string are supported types for value")
-
-
-def make_points_external(api_batch: Sequence[BatchItem]) -> storage_writer_api.PointsExternal:
+def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.PointsExternal:
     if isinstance(api_batch[0].value, str):
         return storage_writer_api.PointsExternal(
             string=[
@@ -72,7 +48,7 @@ def process_batch_legacy(
         batches=[
             storage_writer_api.RecordsBatchExternal(
                 channel=api_batch[0].channel_name,
-                points=make_points_external(api_batch),
+                points=make_points(api_batch),
                 tags=api_batch[0].tags or {},
             )
             for api_batch in api_batches
