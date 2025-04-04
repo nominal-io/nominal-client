@@ -31,7 +31,6 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import _config
-from nominal._utils import deprecate_keyword_argument
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
@@ -167,14 +166,11 @@ class NominalClient:
         for run in self._search_runs_paginated(request):
             yield Run._from_conjure(self._clients, run)
 
-    @deprecate_keyword_argument("name_substring", "exact_name")
     def search_runs(
         self,
         start: str | datetime | IntegralNanosecondsUTC | None = None,
         end: str | datetime | IntegralNanosecondsUTC | None = None,
         name_substring: str | None = None,
-        label: str | None = None,
-        property: tuple[str, str] | None = None,
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
@@ -186,22 +182,12 @@ class NominalClient:
             start: Inclusive start time for filtering runs.
             end: Inclusive end time for filtering runs.
             name_substring: Searches for a (case-insensitive) substring in the name.
-            label: Deprecated, use labels instead.
-            property: Deprecated, use properties instead.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
 
         Returns:
             All runs which match all of the provided conditions
         """
-        labels, properties = _handle_deprecated_labels_properties(
-            "search_runs",
-            label,
-            labels,
-            property,
-            properties,
-        )
-
         return list(self._iter_search_runs(start, end, name_substring, labels, properties))
 
     def create_dataset(
@@ -1185,8 +1171,6 @@ class NominalClient:
     def search_assets(
         self,
         search_text: str | None = None,
-        label: str | None = None,
-        property: tuple[str, str] | None = None,
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
@@ -1196,22 +1180,12 @@ class NominalClient:
 
         Args:
             search_text: case-insensitive search for any of the keywords in all string fields
-            label: Deprecated, use labels instead.
-            property: Deprecated, use properties instead.
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
 
         Returns:
             All assets which match all of the provided conditions
         """
-        labels, properties = _handle_deprecated_labels_properties(
-            "search_assets",
-            label,
-            labels,
-            property,
-            properties,
-        )
-
         return list(self._iter_search_assets(search_text, labels, properties))
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
@@ -1372,37 +1346,3 @@ def _create_search_checklists_query(
             queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
 
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
-
-
-def _handle_deprecated_labels_properties(
-    function_name: str,
-    label: str | None,
-    labels: Sequence[str] | None,
-    property: tuple[str, str] | None,
-    properties: Mapping[str, str] | None,
-) -> tuple[Sequence[str], Mapping[str, str]]:
-    if all([label, labels]):
-        raise ValueError(f"Cannot use both label and labels for {function_name}.")
-    elif label:
-        warnings.warn(
-            f"parameter 'label' of {function_name} is deprecated, use 'labels' instead",
-            UserWarning,
-            stacklevel=2,
-        )
-        labels = [label]
-    elif labels is None:
-        labels = []
-
-    if all([property, properties]):
-        raise ValueError(f"Cannot use both property and propertiess for {function_name}.")
-    elif property:
-        warnings.warn(
-            f"parameter 'property' of {function_name} is deprecated, use 'properties' instead",
-            UserWarning,
-            stacklevel=2,
-        )
-        properties = {property[0]: property[1]}
-    elif properties is None:
-        properties = {}
-
-    return labels, properties

@@ -4,27 +4,14 @@ import concurrent.futures
 import logging
 import threading
 import time
-import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Any, Callable, Sequence, Type
+from typing import Callable, Sequence, Type
 
 from typing_extensions import Self
 
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
-
-
-def __getattr__(name: str) -> Any:
-    if name == "NominalWriteStream":
-        warnings.warn(
-            "NominalWriteStream is deprecated, use WriteStream instead",
-            UserWarning,
-            stacklevel=2,
-        )
-        return WriteStream
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
 
 logger = logging.getLogger(__name__)
 
