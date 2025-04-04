@@ -213,7 +213,7 @@ class Dataset(DataSource):
                         series_name=timestamp_column,
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
-                    tag_keys_from_columns=list(tag_columns.keys()) if tag_keys_from_columns else None,
+                    tag_keys_from_columns=list(tag_columns.keys()) if tag_columns else None,
                 )
             )
         )
