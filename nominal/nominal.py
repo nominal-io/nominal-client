@@ -478,6 +478,10 @@ def upload_mcap_video(
     return video
 
 
+@typing_extensions.deprecated(
+    "`nominal.create_streaming_connection` is deprecated, use `nominal.create_dataset` "
+    "and then `Dataset.get_write_stream` instead."
+)
 def create_streaming_connection(
     datasource_id: str,
     connection_name: str,
