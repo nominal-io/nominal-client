@@ -54,6 +54,14 @@ class Connection(DataSource):
 
 @dataclass(frozen=True)
 class StreamingConnection(Connection):
+    """A `StreamingConnection` is used to stream telemetry data to Nominal.
+
+    This is now largely an antiquated mechanism for ingesting data into Nominal.
+    It is instead recommended that users simply retrieve a write stream to an existing
+    dataset using `Dataset.get_write_stream`, which has the same overall semantics of using
+    a `StreamingConnection`.
+    """
+
     nominal_data_source_rid: str
 
     def get_write_stream(
@@ -88,7 +96,6 @@ class StreamingConnection(Connection):
             ...
             stream.close()
             ```
-
         """
         if data_format == "json":
             return WriteStream.create(
