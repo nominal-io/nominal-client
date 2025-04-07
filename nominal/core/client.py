@@ -1036,7 +1036,7 @@ class NominalClient:
 
     @deprecated(
         "`NominalClient.create_streaming_connection` is deprecated and will be removed in a future version. "
-        "Instead, create a dataset and use `Dataset.get_write_stream` to stream data."
+        "Instead, create a dataset with `create_dataset` and use `Dataset.get_write_stream` to stream data."
     )
     def create_streaming_connection(
         self,
