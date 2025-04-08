@@ -359,7 +359,7 @@
 ### Features
 
 * add content to Asset ([#125](https://github.com/nominal-io/nominal-client/issues/125)) ([de09dee](https://github.com/nominal-io/nominal-client/commit/de09deee1fa29cedf2bedbddcf813f0e3e1cf1f0))
-* add enqueue_batch to NominalWriteStream ([#138](https://github.com/nominal-io/nominal-client/issues/138)) ([447bfe9](https://github.com/nominal-io/nominal-client/commit/447bfe95c8f97d5cac79a8e89c4f2c80d3f4c700))
+* add enqueue_batch to WriteStreamBase ([#138](https://github.com/nominal-io/nominal-client/issues/138)) ([447bfe9](https://github.com/nominal-io/nominal-client/commit/447bfe95c8f97d5cac79a8e89c4f2c80d3f4c700))
 * allow users to interact with videos and runs ([#129](https://github.com/nominal-io/nominal-client/issues/129)) ([5b43856](https://github.com/nominal-io/nominal-client/commit/5b43856895c48581c2112c8f847b31c6d0baca03))
 * expose listing connections and logsets from a run object ([#128](https://github.com/nominal-io/nominal-client/issues/128)) ([14d4c36](https://github.com/nominal-io/nominal-client/commit/14d4c36d21140a8ff1f967c06b1f0e6c36b9fb2e))
 * make polling for io completion update dataset metadata ([#133](https://github.com/nominal-io/nominal-client/issues/133)) ([ac19e54](https://github.com/nominal-io/nominal-client/commit/ac19e54a0de072053af2f39233881a7cd757c47b))
