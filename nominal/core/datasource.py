@@ -28,9 +28,9 @@ from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
-from nominal.core.nominal_write_stream import NominalWriteStream
 from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
@@ -119,7 +119,7 @@ class DataSource(HasRid):
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf", "experimental"] = "json",
-    ) -> NominalWriteStream:
+    ) -> WriteStreamBase:
         """Stream to write messages to a datasource.
 
         Messages are written asynchronously.
@@ -342,7 +342,7 @@ def _get_write_stream(
     data_format: Literal["json", "protobuf", "experimental"],
     write_rid: str,
     clients: DataSource._Clients,
-) -> NominalWriteStream:
+) -> WriteStreamBase:
     if data_format == "json":
         return WriteStream.create(
             batch_size=batch_size,
@@ -392,4 +392,6 @@ def _get_write_stream(
             max_workers=None,
         )
     else:
-        raise ValueError(f"Expected `data_format` to be one of {{json, protobuf}}, received '{data_format}'")
+        raise ValueError(
+            f"Expected `data_format` to be one of {{json, protobuf, experimental}}, received '{data_format}'"
+        )

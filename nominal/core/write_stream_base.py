@@ -10,7 +10,7 @@ from typing_extensions import Self
 from nominal.ts import IntegralNanosecondsUTC
 
 
-class NominalWriteStream(abc.ABC):
+class WriteStreamBase(abc.ABC):
     @abc.abstractmethod
     def __enter__(self) -> Self:
         """Create the stream as a context manager."""
@@ -83,16 +83,6 @@ class NominalWriteStream(abc.ABC):
         """
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value)
-
-    @abc.abstractmethod
-    def flush(self, wait: bool = False, timeout: float | None = None) -> None:
-        """Flush current batch of records to nominal.
-
-        Args:
-            wait: If true, wait for the batch to complete uploading before returning.
-            timeout: If wait is true, the time to wait for flush completion.
-                NOTE: if none, waits indefinitely.
-        """
 
     @abc.abstractmethod
     def close(self, wait: bool = True) -> None:

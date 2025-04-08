@@ -17,8 +17,8 @@ from typing_extensions import Self
 from nominal.core._batch_processor_proto import SerializedBatch
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService, RequestMetrics
 from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
-from nominal.core.nominal_write_stream import NominalWriteStream
 from nominal.core.stream import BatchItem
+from nominal.core.write_stream_base import WriteStreamBase
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class WriteStreamV2(NominalWriteStream):
+class WriteStreamV2(WriteStreamBase):
     _item_queue: Queue[BatchItem | QueueShutdown]
     _batch_thread: threading.Thread
     _write_pool: ThreadPoolExecutor
@@ -142,9 +142,6 @@ class WriteStreamV2(NominalWriteStream):
 
         self._add_metric_impl("enque_dict_start_staleness", timestamp_normalized, enqueue_dict_timestamp_diff / 1e9)
         self._add_metric_impl("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp_diff / 1e9)
-
-    def flush(self, wait: bool = False, timeout: float | None = None) -> None:
-        raise NotImplementedError("'flush' not implemented for WriteStreamV2")
 
     def close(self, wait: bool = True) -> None:
         logger.debug("Closing write stream (wait=%s)", wait)

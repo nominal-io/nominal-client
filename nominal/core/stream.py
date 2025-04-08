@@ -11,7 +11,7 @@ from typing import Callable, Sequence, Type
 
 from typing_extensions import Self
 
-from nominal.core.nominal_write_stream import NominalWriteStream
+from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class BatchItem:
 
 
 @dataclass(frozen=True)
-class WriteStream(NominalWriteStream):
+class WriteStream(WriteStreamBase):
     batch_size: int
     max_wait: timedelta
     _process_batch: Callable[[Sequence[BatchItem]], None]
