@@ -15,7 +15,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core import checklist
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -30,7 +30,7 @@ class DataReview(HasRid):
 
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
         @property

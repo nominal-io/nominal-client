@@ -15,7 +15,7 @@ from typing import Callable, Protocol, Sequence, Type
 from typing_extensions import Self
 
 from nominal.core._batch_processor_proto import SerializedBatch
-from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService, RequestMetrics
+from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService, RequestMetrics
 from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
 from nominal.experimental.stream_v2._serializer import BatchSerializer
@@ -35,7 +35,7 @@ class WriteStreamV2:
     _track_metrics: bool
     _add_metric: Callable[[str, int, float], None]
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def proto_write(self) -> ProtoWriteService: ...
 

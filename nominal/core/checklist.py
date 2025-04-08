@@ -13,7 +13,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
@@ -29,7 +29,7 @@ class Checklist(HasRid):
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
-    class _Clients(DataReview._Clients, HasAuthHeader, Protocol):
+    class _Clients(DataReview._Clients, HasScoutParams, Protocol):
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property

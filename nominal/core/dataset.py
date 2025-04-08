@@ -197,6 +197,7 @@ class Dataset(DataSource):
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             dataset,
             file_name,
             file_type,
@@ -228,6 +229,7 @@ class Dataset(DataSource):
         file_type = FileType.from_path_journal_json(log_path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             log_path,
             self._clients.upload,
             file_type=file_type,
@@ -298,6 +300,7 @@ class Dataset(DataSource):
 
         s3_path = upload_multipart_io(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             mcap,
             file_name,
             file_type=FileTypes.MCAP,
@@ -322,6 +325,7 @@ class Dataset(DataSource):
         dataflash_path = Path(path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             dataflash_path,
             self._clients.upload,
             file_type=FileTypes.DATAFLASH,

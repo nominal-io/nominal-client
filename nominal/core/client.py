@@ -76,7 +76,13 @@ class NominalClient:
 
     @classmethod
     def create(
-        cls, base_url: str, token: str | None, trust_store_path: str | None = None, connect_timeout: float = 30
+        cls,
+        base_url: str,
+        token: str | None,
+        trust_store_path: str | None = None,
+        connect_timeout: float = 30,
+        *,
+        workspace_rid: str = "",
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -94,7 +100,7 @@ class NominalClient:
             connect_timeout=connect_timeout,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
@@ -125,6 +131,7 @@ class NominalClient:
             title=name,
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             assets=[] if asset is None else [rid_from_instance_or_string(asset)],
+            workspace=self._clients.workspace_rid,
         )
         response = self._clients.run.create_run(self._clients.auth_header, request)
         return Run._from_conjure(self._clients, response)
@@ -219,6 +226,7 @@ class NominalClient:
             is_v2_dataset=True,
             metadata={},
             origin_metadata=scout_catalog.DatasetOriginMetadata(),
+            workspace=self._clients.workspace_rid,
         )
         enriched_dataset = self._clients.catalog.create_dataset(self._clients.auth_header, request)
         dataset = Dataset._from_conjure(self._clients, enriched_dataset)
@@ -288,7 +296,9 @@ class NominalClient:
         if name is None:
             name = path.name
 
-        s3_path = upload_multipart_file(self._clients.auth_header, path, self._clients.upload, file_type)
+        s3_path = upload_multipart_file(
+            self._clients.auth_header, self._clients.workspace_rid, path, self._clients.upload, file_type
+        )
         target = ingest_api.DatasetIngestTarget(
             new=ingest_api.NewDatasetIngestDestination(
                 labels=list(labels),
@@ -296,6 +306,7 @@ class NominalClient:
                 dataset_description=description,
                 dataset_name=name,
                 channel_config=_build_channel_config(prefix_tree_delimiter),
+                workspace=self._clients.workspace_rid,
             )
         )
         request = _create_dataflash_ingest_request(s3_path, target)
@@ -379,7 +390,9 @@ class NominalClient:
         if name is None:
             name = path.name
 
-        s3_path = upload_multipart_file(self._clients.auth_header, path, self._clients.upload, file_type)
+        s3_path = upload_multipart_file(
+            self._clients.auth_header, self._clients.workspace_rid, path, self._clients.upload, file_type
+        )
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 journal_json=ingest_api.JournalJsonOpts(
@@ -391,6 +404,7 @@ class NominalClient:
                             dataset_description=description,
                             dataset_name=name,
                             channel_config=_build_channel_config(prefix_tree_delimiter),
+                            workspace=self._clients.workspace_rid,
                         )
                     ),
                 )
@@ -457,7 +471,9 @@ class NominalClient:
         if file_name is None:
             file_name = name
 
-        s3_path = upload_multipart_io(self._clients.auth_header, dataset, file_name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header, self._clients.workspace_rid, dataset, file_name, file_type, self._clients.upload
+        )
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 csv=ingest_api.CsvOpts(
@@ -469,6 +485,7 @@ class NominalClient:
                             channel_config=_build_channel_config(prefix_tree_delimiter),
                             dataset_description=description,
                             dataset_name=name,
+                            workspace=self._clients.workspace_rid,
                         )
                     ),
                     timestamp_metadata=ingest_api.TimestampMetadata(
@@ -570,6 +587,7 @@ class NominalClient:
 
         s3_path = upload_multipart_io(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             dataset,
             file_name,
             file_type=FileTypes.MCAP,
@@ -583,6 +601,7 @@ class NominalClient:
                 properties={} if properties is None else dict(properties),
                 labels=list(labels),
                 channel_config=_build_channel_config(prefix_tree_delimiter),
+                workspace=self._clients.workspace_rid,
             )
         )
         request = _create_mcap_ingest_request(s3_path, channels, target)
@@ -676,14 +695,16 @@ class NominalClient:
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
         timestamp_manifest = _build_video_file_timestamp_manifest(
-            self._clients.auth_header, self._clients.upload, start, frame_timestamps
+            self._clients.auth_header, self._clients.workspace_rid, self._clients.upload, start, frame_timestamps
         )
 
         if file_name is None:
             file_name = name
 
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, video, file_name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header, self._clients.workspace_rid, video, file_name, file_type, self._clients.upload
+        )
         request = ingest_api.IngestRequest(
             ingest_api.IngestOptions(
                 video=ingest_api.VideoOpts(
@@ -694,6 +715,7 @@ class NominalClient:
                             description=description,
                             properties={} if properties is None else dict(properties),
                             labels=list(labels),
+                            workspace=self._clients.workspace_rid,
                         )
                     ),
                     timestamp_manifest=timestamp_manifest,
@@ -722,6 +744,7 @@ class NominalClient:
             description=description,
             origin_metadata={},
             timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
+            workspace=self._clients.workspace_rid,
         )
         response = self._clients.logset.create(self._clients.auth_header, request)
         return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
@@ -843,6 +866,7 @@ class NominalClient:
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             attachment,
             name,
             file_type,
@@ -854,6 +878,7 @@ class NominalClient:
             properties={} if properties is None else dict(properties),
             s3_path=s3_path,
             title=name,
+            workspace=self._clients.workspace_rid,
         )
         response = self._clients.attachment.create(self._clients.auth_header, request)
         return Attachment._from_conjure(self._clients, response)
@@ -1015,7 +1040,9 @@ class NominalClient:
             file_name = name
 
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, mcap, file_name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header, self._clients.workspace_rid, mcap, file_name, file_type, self._clients.upload
+        )
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 video=ingest_api.VideoOpts(
@@ -1026,6 +1053,7 @@ class NominalClient:
                             description=description,
                             properties={} if properties is None else dict(properties),
                             labels=list(labels),
+                            workspace=self._clients.workspace_rid,
                         )
                     ),
                     timestamp_manifest=scout_video_api.VideoFileTimestampManifest(
@@ -1056,6 +1084,7 @@ class NominalClient:
             storage_datasource_api.CreateNominalDataSourceRequest(
                 id=datasource_id,
                 description=datasource_description,
+                workspace=self._clients.workspace_rid,
             ),
         )
         connection_response = self._clients.connection.create_connection(
@@ -1064,7 +1093,7 @@ class NominalClient:
                 name=connection_name,
                 connection_details=scout_datasource_connection_api.ConnectionDetails(
                     nominal=scout_datasource_connection_api.NominalConnectionDetails(
-                        nominal_data_source_rid=datasource_response.rid
+                        nominal_data_source_rid=datasource_response.rid,
                     ),
                 ),
                 metadata={},
@@ -1079,6 +1108,7 @@ class NominalClient:
                 required_tag_names=required_tag_names or [],
                 available_tag_values={},
                 should_scrape=True,
+                workspace=self._clients.workspace_rid,
             ),
         )
         conn = Connection._from_conjure(self._clients, connection_response)
@@ -1112,6 +1142,7 @@ class NominalClient:
                 content_v2=None,
                 check_alert_refs=[],
                 event_refs=[],
+                workspace=self._clients.workspace_rid,
             ),
         )
 
@@ -1134,6 +1165,7 @@ class NominalClient:
             attachments=[],
             data_scopes=[],
             links=[],
+            workspace=self._clients.workspace_rid,
         )
         response = self._clients.assets.create_asset(self._clients.auth_header, request)
         return Asset._from_conjure(self._clients, response)

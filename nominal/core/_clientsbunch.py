@@ -108,6 +108,7 @@ class ProtoWriteService(Service):
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
+    workspace_rid: str
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
@@ -136,11 +137,12 @@ class ClientsBunch:
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
 
     @classmethod
-    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
+    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str) -> Self:
         client_factory = partial(RequestsClient.create, user_agent=agent, service_config=cfg)
 
         return cls(
             auth_header=f"Bearer {token}",
+            workspace_rid=workspace_rid,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
@@ -169,6 +171,8 @@ class ClientsBunch:
         )
 
 
-class HasAuthHeader(Protocol):
+class HasScoutParams(Protocol):
     @property
     def auth_header(self) -> str: ...
+    @property
+    def workspace_rid(self) -> str: ...
