@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.46.0](https://github.com/nominal-io/nominal-client/compare/v1.45.2...v1.46.0) (2025-04-08)
+
+
+### Features
+
+* add deprecation notices to consolidate dataset creation / addition methods ([#292](https://github.com/nominal-io/nominal-client/issues/292)) ([13944b1](https://github.com/nominal-io/nominal-client/commit/13944b129b1ed8d0a9b9fc5b4cd6a8307b6d498d))
+* allow datasources to create write streams ([#296](https://github.com/nominal-io/nominal-client/issues/296)) ([5314e15](https://github.com/nominal-io/nominal-client/commit/5314e15f3a1e886e359b226b24c9f594dc71cf6f))
+* allow users to optionally be warned when setting display-only units ([#284](https://github.com/nominal-io/nominal-client/issues/284)) ([7e0ed0d](https://github.com/nominal-io/nominal-client/commit/7e0ed0df0a09830cfd844985095aed75a594ac46))
+* document that tabular data methods accept parquets ([#289](https://github.com/nominal-io/nominal-client/issues/289)) ([561845b](https://github.com/nominal-io/nominal-client/commit/561845bb482493ead34e05035ba10f99d4e40db0))
+* plumb column tag keys ([#294](https://github.com/nominal-io/nominal-client/issues/294)) ([58a20a4](https://github.com/nominal-io/nominal-client/commit/58a20a457f11e0a1f9711c5ee7b2d4c22d70939e))
+* remove 3mo+ deprecations ([#295](https://github.com/nominal-io/nominal-client/issues/295)) ([18b07f0](https://github.com/nominal-io/nominal-client/commit/18b07f068dfbe52d1d9d7dee719e51408960d591))
+* support experimental streaming, handle latent streaming feedback ([#298](https://github.com/nominal-io/nominal-client/issues/298)) ([de49d9d](https://github.com/nominal-io/nominal-client/commit/de49d9db31b11df2debb784d4de7c49f44486db0))
+* update nominal-api to 0.618.0 ([#297](https://github.com/nominal-io/nominal-client/issues/297)) ([2afd31d](https://github.com/nominal-io/nominal-client/commit/2afd31dc9abac0adcde677e7e524aa62dcb43a27))
+
+
+### Bug Fixes
+
+* use nano level precision when getting dataset files from api ([#283](https://github.com/nominal-io/nominal-client/issues/283)) ([26531f1](https://github.com/nominal-io/nominal-client/commit/26531f109e93e471aa101171526d98f65a1e41db))
+
 ## [1.45.2](https://github.com/nominal-io/nominal-client/compare/v1.45.1...v1.45.2) (2025-04-01)
 
 
