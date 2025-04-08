@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Protocol
+from types import MappingProxyType
+from typing import Iterable, Mapping, Protocol
 
-from nominal_api import datasource, datasource_logset, datasource_logset_api
+from nominal_api import datasource, datasource_logset, datasource_logset_api, storage_writer_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
@@ -12,7 +13,24 @@ from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
 
 
 @dataclass(frozen=True)
+class LogPoint:
+    timestamp: IntegralNanosecondsUTC
+    message: str
+    args: Mapping[str, str]
+
+    @classmethod
+    def _from_conjure(cls, point: storage_writer_api.LogPoint) -> Self:
+        return cls(
+            timestamp=_SecondsNanos.from_api(point.timestamp).to_nanoseconds(),
+            message=point.value.message,
+            args=MappingProxyType(point.value.args),
+        )
+
+
+@dataclass(frozen=True)
 class LogSet(HasRid):
+    """LogSet is a collection of logs. LogSets are deprecated."""
+
     rid: str
     name: str
     timestamp_type: LogTimestampType
@@ -54,6 +72,8 @@ class LogSet(HasRid):
 
 @dataclass(frozen=True)
 class Log:
+    """A single log in a LogSet. LogSets are deprecated."""
+
     timestamp: IntegralNanosecondsUTC
     body: str
 
