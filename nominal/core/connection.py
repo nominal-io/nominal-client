@@ -4,13 +4,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal, Mapping, Sequence
 
-from nominal_api import (
-    scout_datasource_connection_api,
-)
+from nominal_api import scout_datasource_connection_api
 
-from nominal.core._batch_processor import process_batch_legacy
-from nominal.core.datasource import DataSource
-from nominal.core.stream import WriteStream
+from nominal.core.datasource import DataSource, _get_write_stream
+from nominal.core.nominal_write_stream import NominalWriteStream
 
 
 @dataclass(frozen=True)
@@ -68,58 +65,29 @@ class StreamingConnection(Connection):
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf"] = "json",
-    ) -> WriteStream:
+        data_format: Literal["json", "protobuf", "experimental"] = "json",
+    ) -> NominalWriteStream:
         """Stream to write non-blocking messages to a datasource.
 
         Args:
         ----
-            batch_size (int): How big the batch can get before writing to Nominal. Default 10
-            max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
-            data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
+            batch_size: How big the batch can get before writing to Nominal.
+            max_wait: How long a batch can exist before being flushed to Nominal.
+            data_format: Serialized data format to use during upload.
+                NOTE: selecting 'protobuf' requires that `nominal` was installed with `protos` extras.
 
-        Examples:
+        Returns:
         --------
-            Standard Usage:
-            ```py
-            with connection.get_write_stream() as stream:
-                stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
-                stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
-                ...
-            ```
-
-            Without a context manager:
-            ```py
-            stream = connection.get_write_stream()
-            stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
-            stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
-            ...
-            stream.close()
-            ```
+            Write stream object configured to send data to nominal. This may be used as a context manager
+            (so that resources are automatically released upon exiting the context), or if not used as a context
+            manager, should be explicitly `close()`-ed once no longer needed.
         """
-        if data_format == "json":
-            return WriteStream.create(
-                batch_size,
-                max_wait,
-                lambda batch: process_batch_legacy(
-                    batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
-                ),
-            )
-
-        try:
-            from nominal.core._batch_processor_proto import process_batch
-        except ImportError:
-            raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
-
-        return WriteStream.create(
-            batch_size,
-            max_wait,
-            lambda batch: process_batch(
-                batch=batch,
-                nominal_data_source_rid=self.nominal_data_source_rid,
-                auth_header=self._clients.auth_header,
-                proto_write=self._clients.proto_write,
-            ),
+        return _get_write_stream(
+            batch_size=batch_size,
+            max_wait=max_wait,
+            data_format=data_format,
+            write_rid=self.nominal_data_source_rid,
+            clients=self._clients,
         )
 
 

@@ -11,6 +11,7 @@ from typing import Callable, Sequence, Type
 
 from typing_extensions import Self
 
+from nominal.core.nominal_write_stream import NominalWriteStream
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class BatchItem:
 
 
 @dataclass(frozen=True)
-class WriteStream:
+class WriteStream(NominalWriteStream):
     batch_size: int
     max_wait: timedelta
     _process_batch: Callable[[Sequence[BatchItem]], None]
@@ -84,25 +85,6 @@ class WriteStream:
         item = BatchItem(channel_name, dt_timestamp, value, tags)
         self._thread_safe_batch.add([item])
         self._flush(condition=lambda size: size >= self.batch_size)
-
-    def enqueue_batch(
-        self,
-        channel_name: str,
-        timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
-        values: Sequence[float | str],
-        tags: dict[str, str] | None = None,
-    ) -> None:
-        """Add a sequence of messages to the queue by calling enqueue for each message.
-
-        The messages are added one by one (with timestamp normalization) and flushed
-        based on the batch conditions.
-        """
-        if len(timestamps) != len(values):
-            raise ValueError(
-                f"Expected equal numbers of timestamps and values! Received: {len(timestamps)} vs. {len(values)}"
-            )
-        for ts, val in zip(timestamps, values):
-            self.enqueue(channel_name, ts, val, tags)
 
     def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
         batch = self._thread_safe_batch.swap(condition)
