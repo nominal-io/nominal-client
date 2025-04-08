@@ -261,7 +261,7 @@ class DataSource(HasRid):
         self._clients.datasource.index_channel_prefix_tree(self._clients.auth_header, request)
 
     def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
-        """Stream logs to the datasource.
+        r"""Stream logs to the datasource.
 
         This method executes synchronously, i.e. it blocks until all logs are sent to the API.
         Logs are sent in batches. The logs can be any iterable of LogPoints, including a generator.

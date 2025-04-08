@@ -8,10 +8,9 @@ from typing import Iterable, Mapping, Protocol
 from nominal_api import datasource, datasource_logset, datasource_logset_api, storage_writer_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import ClientsBunch, HasAuthHeader
+from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import HasRid, batched
 from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
-
 
 _EMTPY_MAP: Mapping[str, str] = MappingProxyType({})
 
