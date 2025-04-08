@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
+import conjure_python_client
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
@@ -32,7 +33,6 @@ from typing_extensions import Self, deprecated
 
 from nominal import _config
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core._conjure_utils import _available_units, _build_unit_update
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
@@ -52,7 +52,7 @@ from nominal.core.dataset import (
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
-from nominal.core.unit import Unit
+from nominal.core.unit import Unit, UnitMapping, _available_units, _build_unit_update
 from nominal.core.user import User, _get_user
 from nominal.core.video import Video, _build_video_file_timestamp_manifest
 from nominal.core.workbook import Workbook
@@ -875,7 +875,8 @@ class NominalClient:
         return _available_units(self._clients.auth_header, self._clients.units)
 
     def get_unit(self, unit_symbol: str) -> Unit | None:
-        """Get details of the given unit symbol, or none if invalid
+        """Get details of the given unit symbol, or none if the symbol is not recognized by Nominal.
+
         Args:
             unit_symbol: Symbol of the unit to get metadata for.
                 NOTE: This currently requires that units are formatted as laid out in
@@ -883,12 +884,16 @@ class NominalClient:
 
         Returns:
         -------
-            Rendered Unit metadata if the symbol is valid and supported by Nominal, or None
+            Resolved unit metadata if the symbol is valid and supported by Nominal, or None
             if no such unit symbol matches.
 
         """
-        api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
-        return None if api_unit is None else Unit._from_conjure(api_unit)
+        try:
+            api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
+            return None if api_unit is None else Unit._from_conjure(api_unit)
+        except conjure_python_client.ConjureHTTPError as ex:
+            logger.debug("Error getting unit '%s': '%s'", unit_symbol, ex)
+            return None
 
     def get_commensurable_units(self, unit_symbol: str) -> Sequence[Unit]:
         """Get the list of units that are commensurable (convertible to/from) the given unit symbol."""
@@ -915,7 +920,7 @@ class NominalClient:
             self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
         )
 
-    def set_channel_units(self, rids_to_types: Mapping[str, str | None]) -> Iterable[Channel]:
+    def set_channel_units(self, rids_to_types: UnitMapping) -> Iterable[Channel]:
         """Sets the units for a set of channels based on user-provided unit symbols
         Args:
             rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
