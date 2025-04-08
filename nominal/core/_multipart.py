@@ -171,6 +171,7 @@ def upload_multipart_io(
 
     Args:
         auth_header: Nominal authorization token
+        workspace_rid: Nominal workspace rid
         f: Binary IO to upload
         name: Name of the file to create in S3
             NOTE: does not need to be URL Safe
@@ -211,6 +212,7 @@ def upload_multipart_file(
 
     Args:
         auth_header: Nominal authorization token
+        workspace_rid: Nominal workspace rid
         file: File to upload to S3
         upload_client: Conjure upload client
         file_type: Manually override inferred file type for the given file
