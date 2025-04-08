@@ -68,7 +68,7 @@ def _build_unit_update(unit: UnitLike) -> timeseries_logicalseries_api.UnitUpdat
         return timeseries_logicalseries_api.UnitUpdate(unit=unit)
 
 
-def _warn_on_invalid_units(unit_map: UnitMapping, unit_service: scout.UnitsService, auth_header: str) -> None:
+def _error_on_invalid_units(unit_map: UnitMapping, unit_service: scout.UnitsService, auth_header: str) -> None:
     # Normalize unit map to refer to channel names and unit symbols
     channels_to_units = {channel: _unit_symbol_from_unit_like(unit) for channel, unit in unit_map.items()}
 
@@ -77,18 +77,14 @@ def _warn_on_invalid_units(unit_map: UnitMapping, unit_service: scout.UnitsServi
     )
 
     # Get set of all provided invalid units
-    invalid_units = set(
-        [unit_symbol for unit_symbol in channels_to_units.values() if unit_symbol not in resolved_units]
-    )
+    invalid_units = set(channels_to_units.values()) - set(resolved_units.keys())
 
-    # Warn user about invalid units
+    # error on invalid units
     for channel, unit_symbol in channels_to_units.items():
         if unit_symbol in invalid_units:
-            logger.warning(
-                """Unit '%s' for channel '%s' is not recognized within Nominal's unit system.
+            raise ValueError(
+                f"""Unit '{unit_symbol}' for channel '{channel}' is not recognized within Nominal's unit system.
 Unit conversions will not be available for this channel.
 For more information on valid symbols, see https://ucum.org/ucum
-                        """,
-                unit_symbol,
-                channel,
+                """
             )

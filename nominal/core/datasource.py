@@ -29,7 +29,7 @@ from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.stream import WriteStream
-from nominal.core.unit import UnitMapping, _build_unit_update, _warn_on_invalid_units
+from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
@@ -229,7 +229,7 @@ class DataSource(HasRid):
         self,
         channels_to_units: UnitMapping,
         validate_schema: bool = False,
-        warn_on_invalid_units: bool = True,
+        allow_display_only_units: bool = False,
     ) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
 
@@ -239,8 +239,7 @@ class DataSource(HasRid):
                 NOTE: any existing units may be cleared from a channel by providing None as a symbol.
             validate_schema: If true, raises a ValueError if non-existent channel names are provided in
                 `channels_to_units`. Default is False.
-            warn_on_invalid_units: If true, logs a warning if a unit is provided that is not recognized by
-                Nominal. Default is True.
+            allow_display_only_units: If true, allow units that would be treated as display-only by Nominal.
 
         Raises:
         ------
@@ -262,8 +261,8 @@ class DataSource(HasRid):
             logger.warning("No channels specified to have updated units, nothing to update.")
             return
 
-        if warn_on_invalid_units:
-            _warn_on_invalid_units(channels_to_units, self._clients.units, self._clients.auth_header)
+        if not allow_display_only_units:
+            _error_on_invalid_units(channels_to_units, self._clients.units, self._clients.auth_header)
 
         # For each channel / unit combination, create an update request
         update_requests = [
