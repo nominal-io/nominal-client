@@ -312,7 +312,7 @@ class Video(HasRid):
 
 def _upload_frame_timestamps(
     auth_header: str,
-    workspace_rid: str,
+    workspace_rid: str | None,
     upload_client: upload_api.UploadService,
     frame_timestamps: Sequence[IntegralNanosecondsUTC],
 ) -> str:
@@ -337,7 +337,7 @@ def _upload_frame_timestamps(
 
 def _build_video_file_timestamp_manifest(
     auth_header: str,
-    workspace_rid: str,
+    workspace_rid: str | None,
     upload_client: upload_api.UploadService,
     start: datetime | IntegralNanosecondsUTC | None = None,
     frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,

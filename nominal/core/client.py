@@ -82,7 +82,7 @@ class NominalClient:
         trust_store_path: str | None = None,
         connect_timeout: float = 30,
         *,
-        workspace_rid: str = "",
+        workspace_rid: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -90,6 +90,9 @@ class NominalClient:
         token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
         trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
             certifi's trust store is used.
+        connect_timeout: Timeout for any single request to the Nominal API.
+        workspace_rid: The workspace RID to use for all API calls that require it. If not provided, the default
+            workspace will be used (if one is configured for the tenant).
         """
         if token is None:
             token = _config.get_token(base_url)

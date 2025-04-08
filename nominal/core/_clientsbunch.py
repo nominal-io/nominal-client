@@ -108,7 +108,7 @@ class ProtoWriteService(Service):
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
-    workspace_rid: str
+    workspace_rid: str | None
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
@@ -137,7 +137,7 @@ class ClientsBunch:
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
 
     @classmethod
-    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str) -> Self:
+    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str | None) -> Self:
         client_factory = partial(RequestsClient.create, user_agent=agent, service_config=cfg)
 
         return cls(
@@ -175,4 +175,4 @@ class HasScoutParams(Protocol):
     @property
     def auth_header(self) -> str: ...
     @property
-    def workspace_rid(self) -> str: ...
+    def workspace_rid(self) -> str | None: ...

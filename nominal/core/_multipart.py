@@ -73,7 +73,7 @@ def path_upload_name(path: pathlib.Path, file_type: FileType) -> str:
 
 def put_multipart_upload(
     auth_header: str,
-    workspace_rid: str,
+    workspace_rid: str | None,
     f: BinaryIO,
     filename: str,
     mimetype: str,
@@ -159,7 +159,7 @@ def put_multipart_upload(
 
 def upload_multipart_io(
     auth_header: str,
-    workspace_rid: str,
+    workspace_rid: str | None,
     f: BinaryIO,
     name: str,
     file_type: FileType,
@@ -200,7 +200,7 @@ def upload_multipart_io(
 
 def upload_multipart_file(
     auth_header: str,
-    workspace_rid: str,
+    workspace_rid: str | None,
     file: pathlib.Path,
     upload_client: upload_api.UploadService,
     file_type: FileType | None = None,
