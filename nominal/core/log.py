@@ -50,7 +50,7 @@ class LogPoint:
         )
 
 
-def _stream_write_logs_batched(
+def _write_logs(
     auth_header: str,
     client: storage_writer_api.NominalChannelWriterService,
     data_source_rid: str,

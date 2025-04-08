@@ -28,7 +28,7 @@ from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
-from nominal.core.log import LogPoint, _stream_write_logs_batched
+from nominal.core.log import LogPoint, _write_logs
 from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.core.write_stream_base import WriteStreamBase
@@ -260,7 +260,7 @@ class DataSource(HasRid):
         request = datasource_api.IndexChannelPrefixTreeRequest(self.rid, delimiter=delimiter)
         self._clients.datasource.index_channel_prefix_tree(self._clients.auth_header, request)
 
-    def stream_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
+    def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
         """Stream logs to the datasource.
 
         This method executes synchronously, i.e. it blocks until all logs are sent to the API.
@@ -284,10 +284,10 @@ class DataSource(HasRid):
 
             dataset = client.get_dataset("dataset_rid")
             logs = parse_logs_from_file("logs.txt")
-            dataset.stream_logs(logs)
+            dataset.write_logs(logs)
             ```
         """
-        _stream_write_logs_batched(
+        _write_logs(
             auth_header=self._clients.auth_header,
             client=self._clients.storage_writer,
             data_source_rid=self.rid,
