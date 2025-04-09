@@ -18,7 +18,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import update_dataclass
 from nominal.core.unit import UnitLike, _build_unit_update
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -58,7 +58,7 @@ class Channel:
         warnings.warn("Accessing Channel.rid is deprecated and now returns an empty string.", UserWarning, stacklevel=2)
         return self._rid
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property

@@ -13,7 +13,7 @@ from typing import BinaryIO, Mapping, Protocol, Sequence
 from nominal_api import api, ingest_api, scout_video, scout_video_api, upload_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.core.filetype import FileType, FileTypes
@@ -33,7 +33,7 @@ class Video(HasRid):
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def video(self) -> scout_video.VideoService: ...
         @property
@@ -178,10 +178,12 @@ class Video(HasRid):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
 
         timestamp_manifest = _build_video_file_timestamp_manifest(
-            self._clients.auth_header, self._clients.upload, start, frame_timestamps
+            self._clients.auth_header, self._clients.workspace_rid, self._clients.upload, start, frame_timestamps
         )
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, video, name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header, self._clients.workspace_rid, video, name, file_type, self._clients.upload
+        )
         request = ingest_api.IngestRequest(
             ingest_api.IngestOptions(
                 video=ingest_api.VideoOpts(
@@ -259,7 +261,9 @@ class Video(HasRid):
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(self._clients.auth_header, mcap, name, file_type, self._clients.upload)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header, self._clients.workspace_rid, mcap, name, file_type, self._clients.upload
+        )
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
                 video=ingest_api.VideoOpts(
@@ -307,7 +311,10 @@ class Video(HasRid):
 
 
 def _upload_frame_timestamps(
-    auth_header: str, upload_client: upload_api.UploadService, frame_timestamps: Sequence[IntegralNanosecondsUTC]
+    auth_header: str,
+    workspace_rid: str | None,
+    upload_client: upload_api.UploadService,
+    frame_timestamps: Sequence[IntegralNanosecondsUTC],
 ) -> str:
     """Uploads per-frame video timestamps to S3 and provides a path to the uploaded resource."""
     # Dump timestamp array into an in-memory file-like IO object
@@ -320,6 +327,7 @@ def _upload_frame_timestamps(
     logger.debug("Uploading timestamp manifests to s3")
     return upload_multipart_io(
         auth_header,
+        workspace_rid,
         json_io,
         "timestamp_manifest",
         FileTypes.JSON,
@@ -329,6 +337,7 @@ def _upload_frame_timestamps(
 
 def _build_video_file_timestamp_manifest(
     auth_header: str,
+    workspace_rid: str | None,
     upload_client: upload_api.UploadService,
     start: datetime | IntegralNanosecondsUTC | None = None,
     frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
@@ -336,7 +345,7 @@ def _build_video_file_timestamp_manifest(
     if None not in (start, frame_timestamps):
         raise ValueError("Only one of 'start' or 'frame_timestamps' are allowed")
     elif frame_timestamps is not None:
-        manifest_s3_path = _upload_frame_timestamps(auth_header, upload_client, frame_timestamps)
+        manifest_s3_path = _upload_frame_timestamps(auth_header, workspace_rid, upload_client, frame_timestamps)
         return scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
     elif start is not None:
         # TODO(drake): expose scale parameter to users

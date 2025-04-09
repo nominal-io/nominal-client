@@ -11,7 +11,7 @@ from nominal_api import (
 )
 from typing_extensions import Self, TypeAlias, deprecated
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._conjure_utils import Link, _build_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -39,7 +39,7 @@ class Asset(HasRid):
         Video._Clients,
         LogSet._Clients,
         Attachment._Clients,
-        HasAuthHeader,
+        HasScoutParams,
         Protocol,
     ):
         @property

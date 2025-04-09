@@ -9,7 +9,7 @@ from typing import Protocol
 from nominal_api import scout_video, scout_video_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid, update_dataclass
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -24,7 +24,7 @@ class VideoFile(HasRid):
     description: str | None
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def video_file(self) -> scout_video.VideoFileService: ...
 

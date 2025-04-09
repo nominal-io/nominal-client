@@ -8,7 +8,7 @@ from typing import Iterable, Mapping, Protocol
 from nominal_api import datasource, datasource_logset, datasource_logset_api, storage_writer_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid, batched
 from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
 
@@ -75,7 +75,7 @@ class LogSet(HasRid):
     description: str | None
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def logset(self) -> datasource_logset.LogSetService: ...
 

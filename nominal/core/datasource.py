@@ -25,7 +25,7 @@ from nominal_api import (
 
 from nominal._utils import warn_on_deprecated_argument
 from nominal.core._batch_processor import process_batch_legacy
-from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
+from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.stream import WriteStream
@@ -44,7 +44,7 @@ class DataSource(HasRid):
     rid: str
     _clients: _Clients = field(repr=False)
 
-    class _Clients(Channel._Clients, HasAuthHeader, Protocol):
+    class _Clients(Channel._Clients, HasScoutParams, Protocol):
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
