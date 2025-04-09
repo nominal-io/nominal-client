@@ -205,10 +205,17 @@ class Asset(HasRid):
             for (scope, rid) in scope_rid.items()
         ]
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Logs should be stored as a log channel in a Nominal datasource instead."
+    )
     def list_logsets(self) -> Sequence[tuple[str, LogSet]]:
         """List the logsets associated with this asset.
         Returns (data_scope_name, logset) pairs for each logset.
         """
+        return self._list_logsets()
+
+    def _list_logsets(self) -> Sequence[tuple[str, LogSet]]:
         scope_rid = self._scope_rid(stype="logset")
         return [
             (scope, LogSet._from_conjure(self._clients, _get_log_set(self._clients, rid)))
@@ -220,7 +227,7 @@ class Asset(HasRid):
         Returns (data_scope_name, scope) pairs, where scope can be
         a dataset, connection, video, or logset.
         """
-        return (*self.list_datasets(), *self.list_connections(), *self.list_logsets(), *self.list_videos())
+        return (*self.list_datasets(), *self.list_connections(), *self._list_logsets(), *self.list_videos())
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""

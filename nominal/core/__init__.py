@@ -7,7 +7,7 @@ from nominal.core.connection import Connection
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.log import Log, LogSet
+from nominal.core.log import Log, LogPoint, LogSet
 from nominal.core.run import Run
 from nominal.core.stream import WriteStream
 from nominal.core.user import User
@@ -19,20 +19,21 @@ __all__ = [
     "Attachment",
     "Channel",
     "Checklist",
+    "CheckViolation",
     "Connection",
+    "DataReview",
+    "DataReviewBuilder",
     "Dataset",
     "FileType",
     "FileTypes",
     "Log",
+    "LogPoint",
     "LogSet",
     "NominalClient",
     "Run",
     "User",
     "Video",
-    "poll_until_ingestion_completed",
     "Workbook",
-    "DataReview",
-    "CheckViolation",
-    "DataReviewBuilder",
     "WriteStream",
+    "poll_until_ingestion_completed",
 ]

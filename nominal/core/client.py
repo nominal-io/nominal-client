@@ -705,6 +705,10 @@ class NominalClient:
             raise NominalIngestError("error ingesting video: no video created")
         return self.get_video(response.details.video.video_rid)
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def create_log_set(
         self,
         name: str,
@@ -752,6 +756,7 @@ class NominalClient:
         response = _get_dataset(self._clients.auth_header, self._clients.catalog, rid)
         return Dataset._from_conjure(self._clients, response)
 
+    @deprecated("LogSets are deprecated and will be removed in a future version.")
     def get_log_set(self, log_set_rid: str) -> LogSet:
         """Retrieve a log set along with its metadata given its RID."""
         response = _get_log_set(self._clients, log_set_rid)
