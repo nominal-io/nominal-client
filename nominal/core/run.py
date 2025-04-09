@@ -9,7 +9,7 @@ from nominal_api import (
     scout,
     scout_run_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._conjure_utils import Link, _build_links
@@ -67,6 +67,10 @@ class Run(HasRid):
 
         return datasource_rids_by_ref_name
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this run.
 
@@ -74,6 +78,10 @@ class Run(HasRid):
         """
         self.add_log_sets({ref_name: log_set})
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def add_log_sets(self, log_sets: Mapping[str, LogSet | str]) -> None:
         """Add multiple log sets to this run.
 
@@ -102,6 +110,10 @@ class Run(HasRid):
             log_set = log_sets_by_rids[rid]
             yield (ref_name, log_set)
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Logs should be stored as a log channel in a Nominal datasource instead."
+    )
     def list_log_sets(self) -> Sequence[tuple[str, LogSet]]:
         """List the log_sets associated with this run.
         Returns (ref_name, logset) pairs for each logset.

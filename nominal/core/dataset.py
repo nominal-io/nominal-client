@@ -20,6 +20,7 @@ from nominal.core.channel import Channel
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.log import LogPoint, _write_logs
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _AnyTimestampType,
@@ -429,6 +430,42 @@ class Dataset(DataSource):
                 break
             else:
                 next_page_token = files_page.next_page
+
+    def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
+        r"""Stream logs to the datasource.
+
+        This method executes synchronously, i.e. it blocks until all logs are sent to the API.
+        Logs are sent in batches. The logs can be any iterable of LogPoints, including a generator.
+
+        Args:
+            logs: LogPoints to stream to Nominal.
+            channel_name: Name of the channel to stream logs to.
+            batch_size: Number of logs to send to the API at a time.
+
+        Example:
+            ```python
+            from nominal.core import LogPoint
+
+            def parse_logs_from_file(file_path: str) -> Iterable[LogPoint]:
+                # 2025-04-08T14:26:28.679052Z [INFO] Sent ACTUATE_MOTOR command
+                with open(file_path, "r") as f:
+                    for line in f:
+                        timestamp, message = line.removesuffix("\n").split(maxsplit=1)
+                        yield LogPoint.create(timestamp, message)
+
+            dataset = client.get_dataset("dataset_rid")
+            logs = parse_logs_from_file("logs.txt")
+            dataset.write_logs(logs)
+            ```
+        """
+        _write_logs(
+            auth_header=self._clients.auth_header,
+            client=self._clients.storage_writer,
+            data_source_rid=self.rid,
+            logs=logs,
+            channel_name=channel_name,
+            batch_size=batch_size,
+        )
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:

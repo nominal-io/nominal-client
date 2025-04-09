@@ -30,6 +30,7 @@ from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
@@ -117,63 +118,33 @@ class DataSource(HasRid):
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf"] = "json",
-    ) -> WriteStream:
+        data_format: Literal["json", "protobuf", "experimental"] = "json",
+    ) -> WriteStreamBase:
         """Stream to write messages to a datasource.
 
         Messages are written asynchronously.
 
         Args:
         ----
-            batch_size (int): How big the batch can get before writing to Nominal. Default 10
-            max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
-            data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
+            batch_size: How big the batch can get before writing to Nominal.
+            max_wait: How long a batch can exist before being flushed to Nominal.
+            data_format: Serialized data format to use during upload.
+                NOTE: selecting 'protobuf' or 'experimental' requires that `nominal` was installed
+                      with `protos` extras.
 
-        Examples:
+        Returns:
         --------
-            Standard Usage:
-            ```py
-            with datasource.get_write_stream() as stream:
-                stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
-                stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
-                ...
-            ```
-
-            Without a context manager:
-            ```py
-            stream = datasource.get_write_stream()
-            stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
-            stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
-            ...
-            stream.close()
-            ```
+            Write stream object configured to send data to nominal. This may be used as a context manager
+            (so that resources are automatically released upon exiting the context), or if not used as a context
+            manager, should be explicitly `close()`-ed once no longer needed.
         """
-        if data_format == "json":
-            return WriteStream.create(
-                batch_size=batch_size,
-                max_wait=max_wait,
-                process_batch=lambda batch: process_batch_legacy(
-                    batch, self.rid, self._clients.auth_header, self._clients.storage_writer
-                ),
-            )
-        elif data_format == "protobuf":
-            try:
-                from nominal.core._batch_processor_proto import process_batch
-            except ImportError:
-                raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
-
-            return WriteStream.create(
-                batch_size,
-                max_wait,
-                lambda batch: process_batch(
-                    batch=batch,
-                    nominal_data_source_rid=self.rid,
-                    auth_header=self._clients.auth_header,
-                    proto_write=self._clients.proto_write,
-                ),
-            )
-        else:
-            raise ValueError(f"Expected `data_format` to be one of {{json, protobuf}}, received '{data_format}'")
+        return _get_write_stream(
+            batch_size=batch_size,
+            max_wait=max_wait,
+            data_format=data_format,
+            write_rid=self.rid,
+            clients=self._clients,
+        )
 
     def search_channels(
         self,
@@ -363,3 +334,64 @@ def _construct_export_request(
         ),
     )
     return request
+
+
+def _get_write_stream(
+    batch_size: int,
+    max_wait: timedelta,
+    data_format: Literal["json", "protobuf", "experimental"],
+    write_rid: str,
+    clients: DataSource._Clients,
+) -> WriteStreamBase:
+    if data_format == "json":
+        return WriteStream.create(
+            batch_size=batch_size,
+            max_wait=max_wait,
+            process_batch=lambda batch: process_batch_legacy(
+                batch=batch,
+                nominal_data_source_rid=write_rid,
+                auth_header=clients.auth_header,
+                storage_writer=clients.storage_writer,
+            ),
+        )
+    elif data_format == "protobuf":
+        try:
+            from nominal.core._batch_processor_proto import process_batch
+        except ImportError as ex:
+            raise ImportError(
+                "nominal-api-protos is required to use get_write_stream with data_format='protobuf'"
+            ) from ex
+
+        return WriteStream.create(
+            batch_size,
+            max_wait,
+            lambda batch: process_batch(
+                batch=batch,
+                nominal_data_source_rid=write_rid,
+                auth_header=clients.auth_header,
+                proto_write=clients.proto_write,
+            ),
+        )
+    elif data_format == "experimental":
+        try:
+            from nominal.experimental.stream_v2._serializer import BatchSerializer
+            from nominal.experimental.stream_v2._write_stream import WriteStreamV2
+        except ImportError as ex:
+            raise ImportError(
+                "nominal-api-protos is required to use get_write_stream with data_format='experimental'"
+            ) from ex
+
+        return WriteStreamV2.create(
+            clients=clients,
+            serializer=BatchSerializer.create(max_workers=None),
+            nominal_data_source_rid=write_rid,
+            max_batch_size=batch_size,
+            max_wait=max_wait,
+            max_queue_size=0,
+            track_metrics=True,
+            max_workers=None,
+        )
+    else:
+        raise ValueError(
+            f"Expected `data_format` to be one of {{json, protobuf, experimental}}, received '{data_format}'"
+        )
