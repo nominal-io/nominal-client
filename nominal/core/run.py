@@ -69,7 +69,7 @@ class Run(HasRid):
 
     @deprecated(
         "LogSets are deprecated and will be removed in a future version. "
-        "Add logs to an existing datasource with datasource.write_logs instead."
+        "Add logs to an existing dataset with dataset.write_logs instead."
     )
     def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this run.
@@ -80,7 +80,7 @@ class Run(HasRid):
 
     @deprecated(
         "LogSets are deprecated and will be removed in a future version. "
-        "Add logs to an existing datasource with datasource.write_logs instead."
+        "Add logs to an existing dataset with dataset.write_logs instead."
     )
     def add_log_sets(self, log_sets: Mapping[str, LogSet | str]) -> None:
         """Add multiple log sets to this run.

@@ -707,7 +707,7 @@ class NominalClient:
 
     @deprecated(
         "LogSets are deprecated and will be removed in a future version. "
-        "Add logs to an existing datasource with datasource.write_logs instead."
+        "Add logs to an existing dataset with dataset.write_logs instead."
     )
     def create_log_set(
         self,

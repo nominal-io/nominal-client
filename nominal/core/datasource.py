@@ -28,7 +28,6 @@ from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
-from nominal.core.log import LogPoint, _write_logs
 from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.core.write_stream_base import WriteStreamBase
@@ -259,42 +258,6 @@ class DataSource(HasRid):
         """
         request = datasource_api.IndexChannelPrefixTreeRequest(self.rid, delimiter=delimiter)
         self._clients.datasource.index_channel_prefix_tree(self._clients.auth_header, request)
-
-    def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
-        r"""Stream logs to the datasource.
-
-        This method executes synchronously, i.e. it blocks until all logs are sent to the API.
-        Logs are sent in batches. The logs can be any iterable of LogPoints, including a generator.
-
-        Args:
-            logs: LogPoints to stream to Nominal.
-            channel_name: Name of the channel to stream logs to.
-            batch_size: Number of logs to send to the API at a time.
-
-        Example:
-            ```python
-            from nominal.core import LogPoint
-
-            def parse_logs_from_file(file_path: str) -> Iterable[LogPoint]:
-                # 2025-04-08T14:26:28.679052Z [INFO] Sent ACTUATE_MOTOR command
-                with open(file_path, "r") as f:
-                    for line in f:
-                        timestamp, message = line.removesuffix("\n").split(maxsplit=1)
-                        yield LogPoint.create(timestamp, message)
-
-            dataset = client.get_dataset("dataset_rid")
-            logs = parse_logs_from_file("logs.txt")
-            dataset.write_logs(logs)
-            ```
-        """
-        _write_logs(
-            auth_header=self._clients.auth_header,
-            client=self._clients.storage_writer,
-            data_source_rid=self.rid,
-            logs=logs,
-            channel_name=channel_name,
-            batch_size=batch_size,
-        )
 
 
 def _construct_export_request(
