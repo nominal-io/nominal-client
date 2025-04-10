@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.47.0](https://github.com/nominal-io/nominal-client/compare/v1.46.0...v1.47.0) (2025-04-10)
+
+
+### Features
+
+* add log streaming, deprecate LogSets ([#300](https://github.com/nominal-io/nominal-client/issues/300)) ([8a95f1c](https://github.com/nominal-io/nominal-client/commit/8a95f1c589fb498de8f1e1abb585de979829cb73))
+* add workspace rids ([#299](https://github.com/nominal-io/nominal-client/issues/299)) ([08766ac](https://github.com/nominal-io/nominal-client/commit/08766acba58df4e6bc602dbeed33747c11e8d012))
+* enqueue from dict tags ([#304](https://github.com/nominal-io/nominal-client/issues/304)) ([b7189f6](https://github.com/nominal-io/nominal-client/commit/b7189f6fc640a52030fa2401f0c1ea6805b72545))
+* expose tags to enqueue_from_dict ([#302](https://github.com/nominal-io/nominal-client/issues/302)) ([42792d8](https://github.com/nominal-io/nominal-client/commit/42792d874a49c74c0961ab95c65d11564dba53dc))
+
 ## [1.46.0](https://github.com/nominal-io/nominal-client/compare/v1.45.2...v1.46.0) (2025-04-08)
 
 
