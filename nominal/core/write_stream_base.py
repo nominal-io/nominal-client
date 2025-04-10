@@ -82,7 +82,7 @@ class WriteStreamBase(abc.ABC):
             timestamp: The shared timestamp to use for all items to enqueue.
             channel_values: A dictionary mapping channel names to their respective values.
             tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+                NOTE: This *should* include all `required_tags` used when creating a `Connection` to Nominal.
         """
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value, tags)
