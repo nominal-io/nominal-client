@@ -70,7 +70,7 @@ class WriteStreamBase(abc.ABC):
     def enqueue_from_dict(
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        channel_values: dict[str, float | str],
+        channel_values: Mapping[str, float | str],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write multiple channel values at a given timestamp using a flattened dictionary.
