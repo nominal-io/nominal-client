@@ -14,7 +14,6 @@ from nominal.core.write_stream_base import WriteStreamBase
 class Connection(DataSource):
     name: str
     description: str | None
-    _tags: Mapping[str, Sequence[str]]
 
     @classmethod
     def _from_conjure(
@@ -26,7 +25,6 @@ class Connection(DataSource):
                 rid=response.rid,
                 name=response.display_name,
                 description=response.description,
-                _tags=response.available_tag_values,
                 _clients=clients,
                 nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
             )
@@ -34,7 +32,6 @@ class Connection(DataSource):
             rid=response.rid,
             name=response.display_name,
             description=response.description,
-            _tags=response.available_tag_values,
             _clients=clients,
         )
 
