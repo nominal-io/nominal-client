@@ -49,7 +49,7 @@ def process_batch_legacy(
             storage_writer_api.RecordsBatchExternal(
                 channel=api_batch[0].channel_name,
                 points=make_points(api_batch),
-                tags=api_batch[0].tags or {},
+                tags=dict(api_batch[0].tags) if api_batch[0].tags is not None else {},
             )
             for api_batch in api_batches
         ],

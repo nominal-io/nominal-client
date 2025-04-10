@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Callable, Sequence, Type
+from typing import Callable, Mapping, Sequence, Type
 
 from typing_extensions import Self
 
@@ -22,7 +22,7 @@ class BatchItem:
     channel_name: str
     timestamp: IntegralNanosecondsUTC
     value: float | str
-    tags: dict[str, str] | None = None
+    tags: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -74,7 +74,7 @@ class WriteStream(WriteStreamBase):
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         value: float | str,
-        tags: dict[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> None:
         """Add a message to the queue after normalizing the timestamp to IntegralNanosecondsUTC.
 
