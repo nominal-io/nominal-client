@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal, Mapping, Sequence
+from typing import Literal, Sequence
 
 from nominal_api import scout_datasource_connection_api
 
