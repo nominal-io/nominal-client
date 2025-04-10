@@ -71,6 +71,7 @@ class WriteStreamBase(abc.ABC):
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         channel_values: dict[str, float | str],
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Write multiple channel values at a given timestamp using a flattened dictionary.
 
@@ -80,9 +81,11 @@ class WriteStreamBase(abc.ABC):
         Args:
             timestamp: The shared timestamp to use for all items to enqueue.
             channel_values: A dictionary mapping channel names to their respective values.
+            tags: Key-value tags associated with the data being uploaded.
+                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
         """
         for channel, value in channel_values.items():
-            self.enqueue(channel, timestamp, value)
+            self.enqueue(channel, timestamp, value, tags)
 
     @abc.abstractmethod
     def close(self, wait: bool = True) -> None:
