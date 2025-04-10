@@ -121,6 +121,7 @@ class WriteStreamV2(WriteStreamBase):
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         channel_values: dict[str, float | str],
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Write multiple channel values at a single timestamp using a flattened dictionary.
 
@@ -130,12 +131,14 @@ class WriteStreamV2(WriteStreamBase):
         Args:
             timestamp: The common timestamp to use for all enqueued items.
             channel_values: A dictionary mapping channel names to their values.
+            tags: Key-value tags associated with the data being uploaded.
+                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         current_time_ns = time.time_ns()
         enqueue_dict_timestamp_diff = current_time_ns - timestamp_normalized
 
-        super().enqueue_from_dict(timestamp, channel_values)
+        super().enqueue_from_dict(timestamp, channel_values, tags)
 
         current_time_ns = time.time_ns()
         last_enqueue_timestamp_diff = current_time_ns - timestamp_normalized
