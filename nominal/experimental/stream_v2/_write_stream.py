@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
 from types import TracebackType
-from typing import Callable, Mapping, Protocol, Type
+from typing import Callable, Protocol, Type
 
 from typing_extensions import Self
 
@@ -109,7 +109,7 @@ class WriteStreamV2(WriteStreamBase):
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         value: float | str,
-        tags: Mapping[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         """Write a single value."""
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
@@ -120,8 +120,7 @@ class WriteStreamV2(WriteStreamBase):
     def enqueue_from_dict(
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        channel_values: Mapping[str, float | str],
-        tags: Mapping[str, str] | None = None,
+        channel_values: dict[str, float | str],
     ) -> None:
         """Write multiple channel values at a single timestamp using a flattened dictionary.
 
@@ -131,14 +130,12 @@ class WriteStreamV2(WriteStreamBase):
         Args:
             timestamp: The common timestamp to use for all enqueued items.
             channel_values: A dictionary mapping channel names to their values.
-            tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *should* include all `required_tags` used when creating a `Connection` to Nominal.
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         current_time_ns = time.time_ns()
         enqueue_dict_timestamp_diff = current_time_ns - timestamp_normalized
 
-        super().enqueue_from_dict(timestamp, channel_values, tags)
+        super().enqueue_from_dict(timestamp, channel_values)
 
         current_time_ns = time.time_ns()
         last_enqueue_timestamp_diff = current_time_ns - timestamp_normalized
