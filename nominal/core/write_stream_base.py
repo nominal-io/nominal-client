@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 from datetime import datetime
 from types import TracebackType
-from typing import Sequence, Type
+from typing import Mapping, Sequence, Type
 
 from typing_extensions import Self
 
@@ -27,7 +27,7 @@ class WriteStreamBase(abc.ABC):
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         value: float | str,
-        tags: dict[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write a single value to the stream
 
@@ -44,7 +44,7 @@ class WriteStreamBase(abc.ABC):
         channel_name: str,
         timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
         values: Sequence[float | str],
-        tags: dict[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> None:
         """Add a sequence of messages to the queue to upload to Nominal.
 
@@ -71,7 +71,7 @@ class WriteStreamBase(abc.ABC):
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
         channel_values: dict[str, float | str],
-        tags: dict[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write multiple channel values at a given timestamp using a flattened dictionary.
 
