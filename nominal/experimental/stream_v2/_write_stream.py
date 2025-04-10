@@ -132,7 +132,7 @@ class WriteStreamV2(WriteStreamBase):
             timestamp: The common timestamp to use for all enqueued items.
             channel_values: A dictionary mapping channel names to their values.
             tags: Key-value tags associated with the data being uploaded.
-                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+                NOTE: This *should* include all `required_tags` used when creating a `Connection` to Nominal.
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         current_time_ns = time.time_ns()
