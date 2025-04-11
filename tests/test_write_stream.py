@@ -37,7 +37,6 @@ def mock_connection(mock_clients):
         rid="test-connection-rid",
         name="Test Connection",
         description="A connection for testing",
-        _tags={},
         _clients=mock_clients,
         nominal_data_source_rid="test-datasource-rid",
     )
