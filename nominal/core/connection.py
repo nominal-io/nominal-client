@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal, Mapping, Sequence
+from typing import Literal, Sequence
 
 from nominal_api import scout_datasource_connection_api
 
@@ -14,7 +14,6 @@ from nominal.core.write_stream_base import WriteStreamBase
 class Connection(DataSource):
     name: str
     description: str | None
-    _tags: Mapping[str, Sequence[str]]
 
     @classmethod
     def _from_conjure(
@@ -26,7 +25,6 @@ class Connection(DataSource):
                 rid=response.rid,
                 name=response.display_name,
                 description=response.description,
-                _tags=response.available_tag_values,
                 _clients=clients,
                 nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
             )
@@ -34,7 +32,6 @@ class Connection(DataSource):
             rid=response.rid,
             name=response.display_name,
             description=response.description,
-            _tags=response.available_tag_values,
             _clients=clients,
         )
 
