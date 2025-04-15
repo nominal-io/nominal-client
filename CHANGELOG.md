@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.47.1](https://github.com/nominal-io/nominal-client/compare/v1.47.0...v1.47.1) (2025-04-15)
+
+
+### Bug Fixes
+
+* tie to a specific version of nominal-api ([#306](https://github.com/nominal-io/nominal-client/issues/306)) ([58f1dee](https://github.com/nominal-io/nominal-client/commit/58f1deea9a167b21355b5de0a49bcd25b74e1a49))
+
 ## [1.47.0](https://github.com/nominal-io/nominal-client/compare/v1.46.0...v1.47.0) (2025-04-10)
 
 
