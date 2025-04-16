@@ -78,7 +78,7 @@ class NominalClient:
     def create(
         cls,
         base_url: str,
-        token: str | None,
+        token: str | None = None,
         trust_store_path: str | None = None,
         connect_timeout: float = 30,
         *,
