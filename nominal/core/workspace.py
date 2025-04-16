@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Self
 
 from nominal_api import security_api_workspace
+from typing_extensions import Self
 
 from nominal.core._utils import HasRid
 
