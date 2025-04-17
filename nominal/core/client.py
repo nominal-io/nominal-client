@@ -26,6 +26,7 @@ from nominal_api import (
     scout_notebook_api,
     scout_run_api,
     scout_video_api,
+    secrets_api,
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
@@ -40,6 +41,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.containerized_extractors import FileExtractionInput, RegistryAuth
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
@@ -142,6 +144,112 @@ class NominalClient:
             Workspace._from_conjure(raw_workspace)
             for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
         ]
+
+    def create_secret(
+        self,
+        name: str,
+        decrypted_value: str,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> str:
+        """Create a secret for the current user
+
+        Args:
+            name: Name of the secret
+            decrypted_value: Decrypted value of the secret
+            description: Description of the secret
+            labels: Labels for the secret
+            properties: Properties for the secret
+        """
+        secret_request = secrets_api.CreateSecretRequest(
+            name=name,
+            description=description or "",
+            decrypted_value=decrypted_value,
+            workspace=self._clients.workspace_rid,
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+        )
+        response = self._clients.secrets.create(self._clients.auth_header, secret_request)
+        return response.rid
+
+    def create_containerized_extractor(
+        self,
+        name: str,
+        description: str,
+        registry: str,
+        repository: str,
+        tag: str,
+        file_extraction_inputs: Iterable[FileExtractionInput],
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        registry_auth: RegistryAuth | None = None,
+        *,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+    ) -> ingest_api.ContainerizedExtractorRid:
+        """Create a containerized extractor for data processing.
+        See docs for more details: https://docs.nominal.io/api-reference/containerized-extractor/register-containerized-extractor
+
+        Args:
+            name: Name of the extractor
+            description: Description of the extractor
+            registry: Docker registry name
+            repository: Docker repository name
+            tag: Docker image tag
+            file_extraction_inputs: Configuration for inputs that the container requires
+            timestamp_column: Column of data containing timestamp information for all other columns
+            timestamp_type: Type of timestamps contained within timestamp_column
+            registry_auth: Optional authentication for private Docker registry
+            properties: Optional properties for the extractor
+            labels: Optional labels for the extractor
+
+        Returns:
+            A ContainerizedExtractor instance
+        """
+        workspace = self._clients.workspace_rid
+        if workspace is None:
+            raise ValueError("workspace is required")
+
+        authentication: ingest_api.Authentication = ingest_api.Authentication(public=ingest_api.PublicAuthentication())
+        if registry_auth is not None:
+            authentication = ingest_api.Authentication(
+                user_and_password=ingest_api.UserAndPasswordAuthentication(
+                    username=registry_auth.username,
+                    password_secret_rid=registry_auth.password_secret_rid,
+                )
+            )
+        request = ingest_api.RegisterContainerizedExtractorRequest(
+            inputs=[
+                ingest_api.FileExtractionInput(
+                    environment_variable=file_extraction_input.environment_variable,
+                    name=file_extraction_input.name,
+                    description=file_extraction_input.description,
+                    regex=file_extraction_input.regex,
+                )
+                for file_extraction_input in file_extraction_inputs
+            ],
+            name=name,
+            description=description,
+            workspace=workspace,
+            timestamp_metadata=ingest_api.TimestampMetadata(
+                series_name=timestamp_column,
+                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+            ),
+            image=ingest_api.DockerImageSource(
+                authentication=authentication,
+                registry=registry,
+                repository=repository,
+                tag=tag,
+            ),
+            labels=[*labels],
+            properties={} if properties is None else dict(properties),
+        )
+
+        response = self._clients.containerized_extractors.register_containerized_extractor(
+            self._clients.auth_header, request
+        )
+        return response.extractor_rid
 
     def create_run(
         self,

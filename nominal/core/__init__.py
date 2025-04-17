@@ -4,6 +4,7 @@ from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient
 from nominal.core.connection import Connection
+from nominal.core.containerized_extractors import FileExtractionInput, RegistryAuth
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
 from nominal.core.filetype import FileType, FileTypes
@@ -38,4 +39,6 @@ __all__ = [
     "Workspace",
     "WriteStream",
     "poll_until_ingestion_completed",
+    "FileExtractionInput",
+    "RegistryAuth",
 ]
