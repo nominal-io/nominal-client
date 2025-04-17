@@ -121,7 +121,7 @@ class NominalClient:
 
         Raises:
             RuntimeError: Raises a RuntimeError if a workspace is not provided, but there is no configured default
-                workspace for the current workspace.
+                workspace for the current user.
         """
         if workspace_rid is None:
             raw_workspace = self._clients.workspace.get_default_workspace(self._clients.auth_header)
