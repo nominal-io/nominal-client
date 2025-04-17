@@ -167,8 +167,8 @@ class NominalClient:
             registry: Docker registry name
             repository: Docker repository name
             tag: Docker image tag
-            file_extraction_inputs: Configuration for file extraction inputs
-            timestamp_column: Column name containing timestamp information
+            file_extraction_inputs: Configuration for inputs that the container requires
+            timestamp_column: Column of data containing timestamp information for all other columns
             timestamp_type: Type of timestamps contained within timestamp_column
             registry_auth: Optional authentication for private Docker registry
             properties: Optional properties for the extractor

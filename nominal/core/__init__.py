@@ -4,6 +4,7 @@ from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient
 from nominal.core.connection import Connection
+from nominal.core.containerized_extractors import FileExtractionInput, RegistryAuth
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
 from nominal.core.filetype import FileType, FileTypes
@@ -14,7 +15,7 @@ from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.core.workspace import Workspace
-from nominal.core.containerized_extractors import FileExtractionInput, RegistryAuth
+
 __all__ = [
     "Asset",
     "Attachment",
