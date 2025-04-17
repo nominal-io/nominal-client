@@ -22,6 +22,7 @@ from nominal_api import (
     scout_datasource,
     scout_datasource_connection,
     scout_video,
+    secrets_api,
     security_api_workspace,
     storage_datasource_api,
     storage_writer_api,
@@ -137,6 +138,8 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     workspace: security_api_workspace.WorkspaceService
+    containerized_extractors: ingest_api.ContainerizedExtractorService
+    secrets: secrets_api.SecretService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str | None) -> Self:
@@ -171,6 +174,8 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
+            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
+            secrets=client_factory(secrets_api.SecretService),
         )
 
 
