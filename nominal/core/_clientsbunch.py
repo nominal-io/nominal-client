@@ -172,7 +172,7 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
-            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService)
+            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
         )
 
 

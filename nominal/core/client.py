@@ -40,6 +40,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.containerized_extractors import FileExtractionInput, RegistryAuth
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
@@ -170,6 +171,8 @@ class NominalClient:
             timestamp_column: Column name containing timestamp information
             timestamp_type: Type of timestamps contained within timestamp_column
             registry_auth: Optional authentication for private Docker registry
+            properties: Optional properties for the extractor
+            labels: Optional labels for the extractor
 
         Returns:
             A ContainerizedExtractor instance
@@ -177,13 +180,15 @@ class NominalClient:
         workspace = self._clients.workspace_rid
         if workspace is None:
             raise ValueError("workspace is required")
-        
+
         authentication: ingest_api.Authentication = ingest_api.Authentication(public=ingest_api.PublicAuthentication())
         if registry_auth is not None:
-            authentication = ingest_api.Authentication(user_and_password=ingest_api.UserAndPasswordAuthentication(
-                username=registry_auth.username,
-                password_secret_rid=registry_auth.password_secret_rid,
-            ))
+            authentication = ingest_api.Authentication(
+                user_and_password=ingest_api.UserAndPasswordAuthentication(
+                    username=registry_auth.username,
+                    password_secret_rid=registry_auth.password_secret_rid,
+                )
+            )
         request = ingest_api.RegisterContainerizedExtractorRequest(
             inputs=[
                 ingest_api.FileExtractionInput(
@@ -196,7 +201,7 @@ class NominalClient:
             ],
             name=name,
             description=description,
-            workspace = workspace,
+            workspace=workspace,
             timestamp_metadata=ingest_api.TimestampMetadata(
                 series_name=timestamp_column,
                 timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
@@ -210,10 +215,12 @@ class NominalClient:
             labels=[*labels],
             properties={} if properties is None else dict(properties),
         )
-        
-        response = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, request)
+
+        response = self._clients.containerized_extractors.register_containerized_extractor(
+            self._clients.auth_header, request
+        )
         return response.extractor_rid
-    
+
     def create_run(
         self,
         name: str,
