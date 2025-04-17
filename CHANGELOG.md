@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.48.0](https://github.com/nominal-io/nominal-client/compare/v1.47.1...v1.48.0) (2025-04-17)
+
+
+### Features
+
+* expose workspaces to client ([#308](https://github.com/nominal-io/nominal-client/issues/308)) ([93549e7](https://github.com/nominal-io/nominal-client/commit/93549e7e9c89dde4b54e69136b51d720a57a896d))
+
 ## [1.47.1](https://github.com/nominal-io/nominal-client/compare/v1.47.0...v1.47.1) (2025-04-15)
 
 
