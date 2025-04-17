@@ -26,6 +26,7 @@ from nominal_api import (
     scout_notebook_api,
     scout_run_api,
     scout_video_api,
+    secrets_api,
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
@@ -144,6 +145,34 @@ class NominalClient:
             for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
         ]
 
+    def create_secret(
+        self,
+        name: str,
+        decrypted_value: str,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> str:
+        """Create a secret for the current user
+
+        Args:
+            name: Name of the secret
+            decrypted_value: Decrypted value of the secret
+            description: Description of the secret
+            labels: Labels for the secret
+            properties: Properties for the secret
+        """
+        secret_request = secrets_api.CreateSecretRequest(
+            name=name,
+            description=description or "",
+            decrypted_value=decrypted_value,
+            workspace=self._clients.workspace_rid,
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+        )
+        response = self._clients.secrets.create(self._clients.auth_header, secret_request)
+        return response.rid
+
     def create_containerized_extractor(
         self,
         name: str,
@@ -160,6 +189,7 @@ class NominalClient:
         labels: Sequence[str] = (),
     ) -> ingest_api.ContainerizedExtractorRid:
         """Create a containerized extractor for data processing.
+        See docs for more details: https://docs.nominal.io/api-reference/containerized-extractor/register-containerized-extractor
 
         Args:
             name: Name of the extractor
