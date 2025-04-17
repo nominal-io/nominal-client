@@ -650,6 +650,38 @@ class NominalClient:
             raise NominalIngestError("error ingesting mcap: no dataset rid")
         raise NominalIngestError("error ingesting mcap: no dataset created")
 
+    def create_empty_video(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Create an empty video to append video files to.
+
+        Args:
+            name: Name of the video to create in Nominal
+            description: Description of the video to create in nominal
+            labels: Labels to apply to the video in nominal
+            properties: Properties to apply to the video in nominal
+
+        Returns:
+            Handle to the created video
+        """
+        request = scout_video_api.CreateVideoRequest(
+            title=name,
+            labels=list(labels),
+            properties={} if properties is None else {**properties},
+            description=description,
+        )
+        raw_video = self._clients.video.create(self._clients.auth_header, request)
+        return Video._from_conjure(self._clients, raw_video)
+
+    @deprecated(
+        "Creating a video from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_empty_video` or `get_video` and add video files to an existing video instead."
+    )
     def create_video(
         self,
         path: Path | str,
@@ -685,6 +717,10 @@ class NominalClient:
                 file_name=path_upload_name(path, file_type),
             )
 
+    @deprecated(
+        "Creating a video from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_empty_video` or `get_video` and add video files to an existing video instead."
+    )
     def create_video_from_io(
         self,
         video: BinaryIO,
