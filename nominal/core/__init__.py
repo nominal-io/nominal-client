@@ -14,7 +14,7 @@ from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.core.workspace import Workspace
-
+from nominal.core.containerized_extractors import FileExtractionInput, RegistryAuth
 __all__ = [
     "Asset",
     "Attachment",
@@ -38,4 +38,6 @@ __all__ = [
     "Workspace",
     "WriteStream",
     "poll_until_ingestion_completed",
+    "FileExtractionInput",
+    "RegistryAuth",
 ]
