@@ -13,6 +13,7 @@ from nominal.core.stream import WriteStream
 from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
+from nominal.core.workspace import Workspace
 
 __all__ = [
     "Asset",
@@ -34,6 +35,7 @@ __all__ = [
     "User",
     "Video",
     "Workbook",
+    "Workspace",
     "WriteStream",
     "poll_until_ingestion_completed",
 ]

@@ -56,6 +56,7 @@ from nominal.core.unit import Unit, UnitMapping, _available_units, _build_unit_u
 from nominal.core.user import User, _get_user
 from nominal.core.video import Video, _build_video_file_timestamp_manifest
 from nominal.core.workbook import Workbook
+from nominal.core.workspace import Workspace
 from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
@@ -108,6 +109,39 @@ class NominalClient:
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
         return _get_user(self._clients.auth_header, self._clients.authentication)
+
+    def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
+        """Get workspace via given RID, or the default workspace if no RID is provided.
+
+        Args:
+            workspace_rid: If provided, the RID of the workspace to retrieve. If None, retrieves the default workspace.
+
+        Returns:
+            Returns details about the requested workspace.
+
+        Raises:
+            RuntimeError: Raises a RuntimeError if a workspace is not provided, but there is no configured default
+                workspace for the current user.
+        """
+        if workspace_rid is None:
+            raw_workspace = self._clients.workspace.get_default_workspace(self._clients.auth_header)
+            if raw_workspace is None:
+                raise RuntimeError(
+                    "Could not retrieve default workspace! "
+                    "Either the user is not authorized to access or there is no default workspace."
+                )
+
+            return Workspace._from_conjure(raw_workspace)
+        else:
+            raw_workspace = self._clients.workspace.get_workspace(self._clients.auth_header, workspace_rid)
+            return Workspace._from_conjure(raw_workspace)
+
+    def list_workspaces(self) -> Sequence[Workspace]:
+        """Return all workspaces visible to the current user"""
+        return [
+            Workspace._from_conjure(raw_workspace)
+            for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
+        ]
 
     def create_run(
         self,

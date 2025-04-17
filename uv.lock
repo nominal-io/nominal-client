@@ -1578,7 +1578,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.46.0"
+version = "1.47.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1632,7 +1632,7 @@ requires-dist = [
     { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
-    { name = "nominal-api", specifier = ">=0.621.0" },
+    { name = "nominal-api", specifier = "==0.621.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.549.0" },
     { name = "nptdms", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },

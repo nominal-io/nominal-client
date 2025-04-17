@@ -22,6 +22,7 @@ from nominal_api import (
     scout_datasource,
     scout_datasource_connection,
     scout_video,
+    security_api_workspace,
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
@@ -135,6 +136,7 @@ class ClientsBunch:
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
+    workspace: security_api_workspace.WorkspaceService
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str | None) -> Self:
@@ -168,6 +170,7 @@ class ClientsBunch:
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
+            workspace=client_factory(security_api_workspace.WorkspaceService),
         )
 
 
