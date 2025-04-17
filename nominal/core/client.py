@@ -678,6 +678,10 @@ class NominalClient:
         raw_video = self._clients.video.create(self._clients.auth_header, request)
         return Video._from_conjure(self._clients, raw_video)
 
+    @deprecated(
+        "Creating a video from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_empty_video` or `get_video` and add video files to an existing video instead."
+    )
     def create_video(
         self,
         path: Path | str,
@@ -713,6 +717,10 @@ class NominalClient:
                 file_name=path_upload_name(path, file_type),
             )
 
+    @deprecated(
+        "Creating a video from a file via the client is deprecated and will be removed in a future version. "
+        "Use `create_empty_video` or `get_video` and add video files to an existing video instead."
+    )
     def create_video_from_io(
         self,
         video: BinaryIO,
