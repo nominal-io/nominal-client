@@ -111,7 +111,18 @@ class NominalClient:
         return _get_user(self._clients.auth_header, self._clients.authentication)
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
-        """Get workspace via given RID, or the default workspace if no RID is provided."""
+        """Get workspace via given RID, or the default workspace if no RID is provided.
+
+        Args:
+            workspace_rid: If provided, the RID of the workspace to retrieve. If None, retrieves the default workspace.
+
+        Returns:
+            Returns details about the requested workspace.
+
+        Raises:
+            RuntimeError: Raises a RuntimeError if a workspace is not provided, but there is no configured default
+                workspace for the current workspace.
+        """
         if workspace_rid is None:
             raw_workspace = self._clients.workspace.get_default_workspace(self._clients.auth_header)
             if raw_workspace is None:
