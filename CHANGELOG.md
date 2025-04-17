@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.49.0](https://github.com/nominal-io/nominal-client/compare/v1.48.0...v1.49.0) (2025-04-17)
+
+
+### Features
+
+* allow creating empty videos ([#311](https://github.com/nominal-io/nominal-client/issues/311)) ([f5e63a1](https://github.com/nominal-io/nominal-client/commit/f5e63a1a476ad6a01e7f50c5e22a4d01bde3d0e0))
+
 ## [1.48.0](https://github.com/nominal-io/nominal-client/compare/v1.47.1...v1.48.0) (2025-04-17)
 
 
