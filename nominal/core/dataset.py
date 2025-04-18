@@ -154,7 +154,7 @@ class Dataset(DataSource):
                 NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
                       to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
-            tag_columns: If provided, maps tag keys to column names. Currently, these must be equal.
+            tag_columns: a dictionary mapping tag keys to column names.
         """
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
