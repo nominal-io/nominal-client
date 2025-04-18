@@ -179,7 +179,12 @@ class Dataset(DataSource):
     ) -> None:
         """Append to a dataset from a file-like object.
 
+        dataset: a file-like object containing the data to append to the dataset.
+        timestamp_column: the column in the dataset that contains the timestamp data.
+        timestamp_type: the type of timestamp data in the dataset.
         file_type: a (extension, mimetype) pair describing the type of file.
+        file_name: the name of the file to upload.
+        tag_columns: a dictionary mapping tag keys to column names.
         """
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
