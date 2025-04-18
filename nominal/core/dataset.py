@@ -154,7 +154,7 @@ class Dataset(DataSource):
                 NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
                       to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
-            tag_columns: If provided, maps tag keys to column names. Currently, these must be equal.
+            tag_columns: a dictionary mapping tag keys to column names.
         """
         path = Path(path)
         file_type = FileType.from_path_dataset(path)
@@ -179,21 +179,18 @@ class Dataset(DataSource):
     ) -> None:
         """Append to a dataset from a file-like object.
 
+        dataset: a file-like object containing the data to append to the dataset.
+        timestamp_column: the column in the dataset that contains the timestamp data.
+        timestamp_type: the type of timestamp data in the dataset.
         file_type: a (extension, mimetype) pair describing the type of file.
+        file_name: the name of the file to upload.
+        tag_columns: a dictionary mapping tag keys to column names.
         """
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
 
         if file_name is None:
             file_name = self.name
-
-        if tag_columns is not None:
-            for key, value in tag_columns.items():
-                if key != value:
-                    raise ValueError(
-                        f"Currently, the keys and values in tag_columns must be the same. "
-                        f"Key '{key}' must equal value '{value}'."
-                    )
 
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
@@ -215,7 +212,7 @@ class Dataset(DataSource):
                         series_name=timestamp_column,
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
-                    tag_keys_from_columns=list(tag_columns.keys()) if tag_columns else None,
+                    tag_columns=dict(tag_columns) if tag_columns else None,
                 )
             )
         )
