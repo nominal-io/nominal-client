@@ -187,14 +187,6 @@ class Dataset(DataSource):
         if file_name is None:
             file_name = self.name
 
-        if tag_columns is not None:
-            for key, value in tag_columns.items():
-                if key != value:
-                    raise ValueError(
-                        f"Currently, the keys and values in tag_columns must be the same. "
-                        f"Key '{key}' must equal value '{value}'."
-                    )
-
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
             self._clients.auth_header,
@@ -215,7 +207,7 @@ class Dataset(DataSource):
                         series_name=timestamp_column,
                         timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
                     ),
-                    tag_keys_from_columns=list(tag_columns.keys()) if tag_columns else None,
+                    tag_columns=dict(tag_columns) if tag_columns else None,
                 )
             )
         )
