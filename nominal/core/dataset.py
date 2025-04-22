@@ -411,25 +411,25 @@ class Dataset(DataSource):
             else:
                 next_page_token = response.next_page_token
 
-    def list_files(self) -> Iterable[DatasetFile]:
+    def _list_files(self) -> Iterable[scout_catalog.DatasetFile]:
         next_page_token = None
         while True:
             files_page = self._clients.catalog.list_dataset_files(self._clients.auth_header, self.rid, next_page_token)
-            for file in files_page.files:
-                if file.ingest_status.type == "success":
-                    yield DatasetFile._from_conjure(file)
-                else:
-                    logger.debug(
-                        "Ignoring dataset file %s (id=%s)-- status '%s' is not 'success'!",
-                        file.name,
-                        file.id,
-                        file.ingest_status.type,
-                    )
-
+            yield from files_page.files
             if files_page.next_page is None:
                 break
-            else:
-                next_page_token = files_page.next_page
+            next_page_token = files_page.next_page
+
+    def list_files(self, *, successful_only: bool = True) -> Iterable[DatasetFile]:
+        """List files ingested to this dataset.
+
+        If successful_only, yields files with a 'success' ingest status only.
+        """
+        files = self._list_files()
+        if successful_only:
+            files = filter(lambda f: f.ingest_status.type == "success", files)
+        for file in files:
+            yield DatasetFile._from_conjure(file)
 
     def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
         r"""Stream logs to the datasource.
