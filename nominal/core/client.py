@@ -515,11 +515,45 @@ class NominalClient:
             self._clients.auth_header, self._clients.workspace_rid, dataset, file_name, file_type, self._clients.upload
         )
 
+        request = ingest_api.IngestRequest(
+            options=self._construct_tabular_ingest_options(
+                name=name,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                description=description,
+                labels=labels,
+                properties={} if properties is None else properties,
+                prefix_tree_delimiter=prefix_tree_delimiter,
+                channel_prefix=channel_prefix,
+                tag_columns=tag_columns,
+                s3_path=s3_path,
+            )
+        )
+        response = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if not response.details.dataset:
+            raise NominalIngestError("error ingesting dataset: no dataset created")
+        return self.get_dataset(response.details.dataset.dataset_rid)
+
+    def _construct_tabular_ingest_options(
+        self,
+        name: str,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        file_type: FileType,
+        description: str | None,
+        labels: Sequence[str],
+        properties: Mapping[str, str],
+        prefix_tree_delimiter: str | None,
+        channel_prefix: str | None,
+        tag_columns: Mapping[str, str] | None,
+        s3_path: str,
+    ) -> ingest_api.IngestOptions:
         source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
         target = ingest_api.DatasetIngestTarget(
             new=ingest_api.NewDatasetIngestDestination(
                 labels=list(labels),
-                properties={} if properties is None else dict(properties),
+                properties=dict(properties),
                 channel_config=_build_channel_config(prefix_tree_delimiter),
                 dataset_description=description,
                 dataset_name=name,
@@ -530,36 +564,32 @@ class NominalClient:
             series_name=timestamp_column,
             timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
         )
+        tag_columns = dict(tag_columns) if tag_columns else None
 
         if file_type.is_parquet():
-            options = ingest_api.IngestOptions(
+            return ingest_api.IngestOptions(
                 parquet=ingest_api.ParquetOpts(
                     source=source,
                     target=target,
                     timestamp_metadata=timestamp_metadata,
                     channel_prefix=channel_prefix,
-                    tag_columns=dict(tag_columns) if tag_columns else None,
+                    tag_columns=tag_columns,
                     is_archive=file_type.is_parquet_archive(),
                 )
             )
-        elif file_type.is_csv():
-            options = ingest_api.IngestOptions(
+        else:
+            if file_type.is_csv():
+                logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
+
+            return ingest_api.IngestOptions(
                 csv=ingest_api.CsvOpts(
                     source=source,
                     target=target,
                     timestamp_metadata=timestamp_metadata,
                     channel_prefix=channel_prefix,
-                    tag_columns=dict(tag_columns) if tag_columns else None,
+                    tag_columns=tag_columns,
                 )
             )
-        else:
-            raise ValueError(f"Expected filetype {file_type} to be parquet or csv!")
-
-        request = ingest_api.IngestRequest(options=options)
-        response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if not response.details.dataset:
-            raise NominalIngestError("error ingesting dataset: no dataset created")
-        return self.get_dataset(response.details.dataset.dataset_rid)
 
     @deprecated(
         "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "

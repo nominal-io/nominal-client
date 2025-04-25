@@ -116,7 +116,7 @@ class FileTypes:
     # https://issues.apache.org/jira/browse/PARQUET-1889
     PARQUET: FileType = FileType(".parquet", "application/vnd.apache.parquet")
     PARQUET_GZ: FileType = FileType(".parquet.gz", "application/octet-stream")
-    PARQUET_TARBALL: FileType = FileType(".parquet.tar.gz", "application/x-tar")
+    PARQUET_TAR_GZ: FileType = FileType(".parquet.tar.gz", "application/x-tar")
     PARQUET_TAR: FileType = FileType(".parquet.tar", "application/x-tar")
     PARQUET_ZIP: FileType = FileType(".parquet.zip", "application/zip")
     TS: FileType = FileType(".ts", "video/mp2t")
@@ -125,6 +125,6 @@ class FileTypes:
 
     CSV_TYPES = (CSV, CSV_GZ)
     PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
-    PARQUET_ARCHIVE_TYPES = (PARQUET_TARBALL, PARQUET_TAR, PARQUET_ZIP)
+    PARQUET_ARCHIVE_TYPES = (PARQUET_TAR_GZ, PARQUET_TAR, PARQUET_ZIP)
     JOURNAL_TYPES = (JOURNAL_JSONL, JOURNAL_JSONL_GZ)
     VIDEO_TYPES = (MKV, MP4, TS)

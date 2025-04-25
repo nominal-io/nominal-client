@@ -203,6 +203,25 @@ class Dataset(DataSource):
             self._clients.upload,
         )
 
+        request = ingest_api.IngestRequest(
+            options=self._construct_tabular_ingest_options(
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                tag_columns=tag_columns,
+                s3_path=s3_path,
+            )
+        )
+        self._clients.ingest.ingest(self._clients.auth_header, request)
+
+    def _construct_tabular_ingest_options(
+        self,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        file_type: FileType,
+        tag_columns: Mapping[str, str] | None,
+        s3_path: str,
+    ) -> ingest_api.IngestOptions:
         source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -214,7 +233,7 @@ class Dataset(DataSource):
         tag_columns = dict(tag_columns) if tag_columns else None
 
         if file_type.is_parquet():
-            options = ingest_api.IngestOptions(
+            return ingest_api.IngestOptions(
                 parquet=ingest_api.ParquetOpts(
                     source=source,
                     target=target,
@@ -223,8 +242,11 @@ class Dataset(DataSource):
                     is_archive=file_type.is_parquet_archive(),
                 )
             )
-        elif file_type.is_csv():
-            options = ingest_api.IngestOptions(
+        else:
+            if file_type.is_csv():
+                logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
+
+            return ingest_api.IngestOptions(
                 csv=ingest_api.CsvOpts(
                     source=source,
                     target=target,
@@ -232,11 +254,6 @@ class Dataset(DataSource):
                     tag_columns=tag_columns,
                 )
             )
-        else:
-            raise ValueError(f"Expected filetype {file_type} to be parquet or csv!")
-
-        request = ingest_api.IngestRequest(options=options)
-        self._clients.ingest.ingest(self._clients.auth_header, request)
 
     def add_journal_json_to_dataset(
         self,
