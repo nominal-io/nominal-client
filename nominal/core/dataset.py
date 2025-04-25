@@ -146,7 +146,8 @@ class Dataset(DataSource):
 
         Currently, the supported filetypes are:
             - .csv / .csv.gz
-            - .parquet
+            - .parquet / .parquet.gz
+            - .parquet.tar / .parquet.tar.gz / .parquet.zip
 
         Args:
             path: Path to the file on disk to add to the dataset.
@@ -157,7 +158,7 @@ class Dataset(DataSource):
             tag_columns: a dictionary mapping tag keys to column names.
         """
         path = Path(path)
-        file_type = FileType.from_path_dataset(path)
+        file_type = FileType.from_tabular(path)
         with open(path, "rb") as data_file:
             self.add_to_dataset_from_io(
                 data_file,
@@ -201,21 +202,40 @@ class Dataset(DataSource):
             file_type,
             self._clients.upload,
         )
-        request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                csv=ingest_api.CsvOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
-                    ),
-                    timestamp_metadata=ingest_api.TimestampMetadata(
-                        series_name=timestamp_column,
-                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                    ),
-                    tag_columns=dict(tag_columns) if tag_columns else None,
+
+        source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+        timestamp_metadata = ingest_api.TimestampMetadata(
+            series_name=timestamp_column,
+            timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+        )
+        tag_columns = dict(tag_columns) if tag_columns else None
+
+        if file_type.is_parquet():
+            options = ingest_api.IngestOptions(
+                parquet=ingest_api.ParquetOpts(
+                    source=source,
+                    target=target,
+                    timestamp_metadata=timestamp_metadata,
+                    tag_columns=tag_columns,
+                    is_archive=file_type.is_parquet_archive(),
                 )
             )
-        )
+        elif file_type.is_csv():
+            options = ingest_api.IngestOptions(
+                csv=ingest_api.CsvOpts(
+                    source=source,
+                    target=target,
+                    timestamp_metadata=timestamp_metadata,
+                    tag_columns=tag_columns,
+                )
+            )
+        else:
+            raise ValueError(f"Expected filetype {file_type} to be parquet or csv!")
+
+        request = ingest_api.IngestRequest(options=options)
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
     def add_journal_json_to_dataset(

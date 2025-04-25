@@ -373,14 +373,15 @@ class NominalClient:
 
         Currently, the supported filetypes are:
             - .csv / .csv.gz
-            - .parquet
+            - .parquet / .parquet.gz
+            - .parquet.tar / .parquet.tar.gz / .parquet.zip
 
         If name is None, the name of the file will be used.
 
         See `create_dataset_from_io` for more details.
         """
         path = Path(path)
-        file_type = FileType.from_path_dataset(path)
+        file_type = FileType.from_tabular(path)
         if name is None:
             name = path.name
 
@@ -471,6 +472,7 @@ class NominalClient:
         prefix_tree_delimiter: str | None = None,
         channel_prefix: str | None = None,
         file_name: str | None = None,
+        tag_columns: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -495,6 +497,7 @@ class NominalClient:
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
             channel_prefix: Prefix to apply to newly created channels
             file_name: Name of the file (without extension) to create when uploading.
+            tag_columns: a dictionary mapping tag keys to column names.
 
         Returns:
             Reference to the constructed dataset object.
@@ -511,30 +514,48 @@ class NominalClient:
         s3_path = upload_multipart_io(
             self._clients.auth_header, self._clients.workspace_rid, dataset, file_name, file_type, self._clients.upload
         )
-        request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                csv=ingest_api.CsvOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        new=ingest_api.NewDatasetIngestDestination(
-                            labels=list(labels),
-                            properties={} if properties is None else dict(properties),
-                            channel_config=_build_channel_config(prefix_tree_delimiter),
-                            dataset_description=description,
-                            dataset_name=name,
-                            workspace=self._clients.workspace_rid,
-                        )
-                    ),
-                    timestamp_metadata=ingest_api.TimestampMetadata(
-                        series_name=timestamp_column,
-                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                    ),
-                    additional_file_tags=None,
-                    channel_prefix=channel_prefix,
-                    tag_keys_from_columns=None,
-                )
+
+        source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+        target = ingest_api.DatasetIngestTarget(
+            new=ingest_api.NewDatasetIngestDestination(
+                labels=list(labels),
+                properties={} if properties is None else dict(properties),
+                channel_config=_build_channel_config(prefix_tree_delimiter),
+                dataset_description=description,
+                dataset_name=name,
+                workspace=self._clients.workspace_rid,
             )
         )
+        timestamp_metadata = ingest_api.TimestampMetadata(
+            series_name=timestamp_column,
+            timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+        )
+
+        if file_type.is_parquet():
+            options = ingest_api.IngestOptions(
+                parquet=ingest_api.ParquetOpts(
+                    source=source,
+                    target=target,
+                    timestamp_metadata=timestamp_metadata,
+                    channel_prefix=channel_prefix,
+                    tag_columns=dict(tag_columns) if tag_columns else None,
+                    is_archive=file_type.is_parquet_archive(),
+                )
+            )
+        elif file_type.is_csv():
+            options = ingest_api.IngestOptions(
+                csv=ingest_api.CsvOpts(
+                    source=source,
+                    target=target,
+                    timestamp_metadata=timestamp_metadata,
+                    channel_prefix=channel_prefix,
+                    tag_columns=dict(tag_columns) if tag_columns else None,
+                )
+            )
+        else:
+            raise ValueError(f"Expected filetype {file_type} to be parquet or csv!")
+
+        request = ingest_api.IngestRequest(options=options)
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
         if not response.details.dataset:
             raise NominalIngestError("error ingesting dataset: no dataset created")
