@@ -152,6 +152,11 @@ ignore_missing_imports = true
 module = "ffmpeg"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "tests.*"
+disable_error_code = ["no-untyped-def"]
+
+
 [tool.pytest.ini_options]
 filterwarnings = [
     "error", # transform all warnings into errors, except ignore: ones.
