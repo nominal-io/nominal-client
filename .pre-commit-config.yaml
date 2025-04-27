@@ -20,3 +20,4 @@ repos:
           - types-requests
           - types-python-dateutil
           - types-tabulate
+          - types-click
