@@ -169,9 +169,7 @@ class Dataset(DataSource):
             )
 
     # Backward compatibility
-    add_tabular_data_to_dataset = deprecated(
-        "`Dataset.add_tabular_data_to_dataset` is deprecated; use `Dataset.add_tabular_data` instead"
-    )(add_tabular_data)
+    add_tabular_data_to_dataset = add_tabular_data
 
     def add_from_io(
         self,
@@ -224,9 +222,7 @@ class Dataset(DataSource):
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
     # Backward compatibility
-    add_to_dataset_from_io_ = deprecated(
-        "`Dataset.add_to_dataset_from_io` is deprecated; use `Dataset.add_from_io` instead"
-    )(add_from_io)
+    add_to_dataset_from_io_ = add_from_io
 
     def add_journal_json(
         self,
@@ -257,9 +253,7 @@ class Dataset(DataSource):
         )
 
     # Backward compatibility
-    add_journal_json_to_dataset = deprecated(
-        "`Dataset.add_journal_json_to_dataset` is deprecated; use `Dataset.add_journal_json` instead"
-    )(add_journal_json)
+    add_journal_json_to_dataset = add_journal_json
 
     def add_mcap(
         self,
@@ -286,9 +280,7 @@ class Dataset(DataSource):
             )
 
     # Backward compatibility
-    add_mcap_to_dataset = deprecated("`Dataset.add_mcap_to_dataset` is deprecated; use `Dataset.add_mcap` instead")(
-        add_mcap
-    )
+    add_mcap_to_dataset = add_mcap
 
     def add_mcap_from_io(
         self,
@@ -336,9 +328,7 @@ class Dataset(DataSource):
             raise NominalIngestError("error ingesting mcap: no dataset created or updated")
 
     # Backward compatibility
-    add_mcap_to_dataset_from_io = deprecated(
-        "`Dataset.add_mcap_to_dataset_from_io` is deprecated; use `Dataset.add_mcap_from_io` instead"
-    )(add_mcap_from_io)
+    add_mcap_to_dataset_from_io = add_mcap_from_io
 
     def add_ardupilot_dataflash(
         self,
@@ -360,9 +350,7 @@ class Dataset(DataSource):
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
     # Backward compatibility
-    add_ardupilot_dataflash_to_dataset = deprecated(
-        "`Dataset.add_ardupilot_dataflash_to_dataset` is deprecated; use `Dataset.add_ardupilot_dataflash` instead"
-    )(add_ardupilot_dataflash)
+    add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
 
     def archive(self) -> None:
         """Archive this dataset.
