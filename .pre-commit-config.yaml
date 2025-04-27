@@ -1,0 +1,22 @@
+# Install pre-commit hooks via
+# pre-commit install
+# (only need to be run once)
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 1dc9eb131c2ea4816c708e4d85820d2cc8542683 # frozen: v0.5.0
+    hooks:
+      - id: ruff
+        args: ["--fix", "--show-fixes", "--exit-non-zero-on-fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: f40886d54c729f533f864ed6ce584e920feb0af7 # frozen: v1.15.0
+    hooks:
+      - id: mypy
+        args: [--strict, --ignore-missing-imports]
+        additional_dependencies:
+          - types-PyYAML
+          - types-requests
+          - types-python-dateutil
+          - types-tabulate
