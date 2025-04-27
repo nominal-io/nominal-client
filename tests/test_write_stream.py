@@ -197,8 +197,10 @@ def test_process_batch_with_tags(mock_connection):
 def test_process_batch_invalid_type(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    # Lists are not supported
     batch = [
-        BatchItem("test_channel", timestamp, [1, 2, 3]),  # Lists are not supported
+        BatchItem("test_channel", timestamp, [1, 2, 3]),  # type: ignore[arg-type]
     ]
 
     # Verify it raises the correct error
@@ -464,8 +466,10 @@ def test_process_batch_with_tags_dataset(mock_dataset):
 def test_process_batch_invalid_type_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    # Lists are not supported
     batch = [
-        BatchItem("test_channel", timestamp, [1, 2, 3]),  # Lists are not supported
+        BatchItem("test_channel", timestamp, [1, 2, 3]),  # type: ignore[arg-type]
     ]
 
     # Verify it raises the correct error

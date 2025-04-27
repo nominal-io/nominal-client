@@ -8,7 +8,7 @@ from queue import Empty, Queue
 from typing import Iterable, List, Protocol, TypeVar
 
 from nominal.core.stream import BatchItem
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
@@ -53,8 +53,8 @@ def _timed_batch(q: ReadQueue[BatchItem], max_batch_size: int, max_batch_duratio
                     yield Batch(batch, oldest_timestamp, newest_timestamp)
                 return
 
-            oldest_timestamp = min(oldest_timestamp, item.timestamp)
-            newest_timestamp = max(newest_timestamp, item.timestamp)
+            oldest_timestamp = min(oldest_timestamp, _SecondsNanos.from_flexible(item.timestamp).to_nanoseconds())
+            newest_timestamp = max(newest_timestamp, _SecondsNanos.from_flexible(item.timestamp).to_nanoseconds())
 
             batch.append(item)
             q.task_done()
