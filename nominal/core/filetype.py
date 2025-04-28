@@ -52,28 +52,28 @@ class FileType(NamedTuple):
         return cls(extension, mimetype)
 
     def is_csv(self) -> bool:
-        return self in FileTypes.CSV_TYPES
+        return self in FileTypes._CSV_TYPES
 
     def is_parquet_file(self) -> bool:
-        return self in FileTypes.PARQUET_FILE_TYPES
+        return self in FileTypes._PARQUET_FILE_TYPES
 
     def is_parquet_archive(self) -> bool:
-        return self in FileTypes.PARQUET_ARCHIVE_TYPES
+        return self in FileTypes._PARQUET_ARCHIVE_TYPES
 
     def is_parquet(self) -> bool:
         return self.is_parquet_file() or self.is_parquet_archive()
 
     def is_journal(self) -> bool:
-        return self in FileTypes.JOURNAL_TYPES
+        return self in FileTypes._JOURNAL_TYPES
 
     def is_video(self) -> bool:
-        return self in FileTypes.VIDEO_TYPES
+        return self in FileTypes._VIDEO_TYPES
 
     @classmethod
     def from_path_dataset(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_parquet_file() and not file_type.is_csv():
-            allowed_extensions = (*FileTypes.PARQUET_FILE_TYPES, *FileTypes.CSV_TYPES)
+            allowed_extensions = (*FileTypes._PARQUET_FILE_TYPES, *FileTypes._CSV_TYPES)
             raise ValueError(f"dataset path '{path}' must end in one of {allowed_extensions}")
 
         return file_type
@@ -82,7 +82,11 @@ class FileType(NamedTuple):
     def from_tabular(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_csv() and not file_type.is_parquet():
-            allowed_extensions = (*FileTypes.PARQUET_ARCHIVE_TYPES, *FileTypes.PARQUET_FILE_TYPES, *FileTypes.CSV_TYPES)
+            allowed_extensions = (
+                *FileTypes._PARQUET_ARCHIVE_TYPES,
+                *FileTypes._PARQUET_FILE_TYPES,
+                *FileTypes._CSV_TYPES,
+            )
             raise ValueError(f"tabular path '{path}' must end in one of {allowed_extensions}")
 
         return file_type
@@ -91,7 +95,7 @@ class FileType(NamedTuple):
     def from_path_journal_json(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_journal():
-            raise ValueError(f"journal jsonl path '{path}' must end in one of {FileTypes.JOURNAL_TYPES}")
+            raise ValueError(f"journal jsonl path '{path}' must end in one of {FileTypes._JOURNAL_TYPES}")
 
         return file_type
 
@@ -99,7 +103,7 @@ class FileType(NamedTuple):
     def from_video(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_video():
-            raise ValueError(f"video path '{path}' must end in one of {FileTypes.VIDEO_TYPES}")
+            raise ValueError(f"video path '{path}' must end in one of {FileTypes._VIDEO_TYPES}")
 
         return file_type
 
@@ -123,8 +127,8 @@ class FileTypes:
     JOURNAL_JSONL: FileType = FileType(".jsonl", "application/jsonl")
     JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
 
-    CSV_TYPES = (CSV, CSV_GZ)
-    PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
-    PARQUET_ARCHIVE_TYPES = (PARQUET_TAR_GZ, PARQUET_TAR, PARQUET_ZIP)
-    JOURNAL_TYPES = (JOURNAL_JSONL, JOURNAL_JSONL_GZ)
-    VIDEO_TYPES = (MKV, MP4, TS)
+    _CSV_TYPES = (CSV, CSV_GZ)
+    _PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
+    _PARQUET_ARCHIVE_TYPES = (PARQUET_TAR_GZ, PARQUET_TAR, PARQUET_ZIP)
+    _JOURNAL_TYPES = (JOURNAL_JSONL, JOURNAL_JSONL_GZ)
+    _VIDEO_TYPES = (MKV, MP4, TS)

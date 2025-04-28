@@ -213,6 +213,7 @@ class Dataset(DataSource):
                 s3_path=s3_path,
             )
         )
+        logger.info("Request for ingest: %s", request)
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
     def add_journal_json_to_dataset(
