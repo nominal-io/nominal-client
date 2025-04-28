@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.50.0](https://github.com/nominal-io/nominal-client/compare/v1.49.0...v1.50.0) (2025-04-28)
+
+
+### Features
+
+* allow parquet and parquet archive ingest ([#317](https://github.com/nominal-io/nominal-client/issues/317)) ([c91ad06](https://github.com/nominal-io/nominal-client/commit/c91ad06fefead70e1212c23d204d7fc30e831b92))
+* Expose nominal secrets via client ([98eb1bf](https://github.com/nominal-io/nominal-client/commit/98eb1bf2245c3fbc213f3ee50f2ec79cb0bf76d5))
+* expose org-level secrets via client ([#323](https://github.com/nominal-io/nominal-client/issues/323)) ([98eb1bf](https://github.com/nominal-io/nominal-client/commit/98eb1bf2245c3fbc213f3ee50f2ec79cb0bf76d5))
+
 ## [1.49.0](https://github.com/nominal-io/nominal-client/compare/v1.48.0...v1.49.0) (2025-04-22)
 
 
