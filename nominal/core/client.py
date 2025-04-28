@@ -44,6 +44,8 @@ from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
+    _build_channel_config,
+    _construct_new_ingest_options,
     _create_dataflash_ingest_request,
     _create_mcap_channels,
     _create_mcap_ingest_request,
@@ -65,7 +67,6 @@ from nominal.ts import (
     LogTimestampType,
     _AnyTimestampType,
     _SecondsNanos,
-    _to_typed_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -454,14 +455,15 @@ class NominalClient:
 
         Currently, the supported filetypes are:
             - .csv / .csv.gz
-            - .parquet
+            - .parquet / .parquet.gz
+            - .parquet.tar / .parquet.tar.gz / .parquet.zip
 
         If name is None, the name of the file will be used.
 
         See `create_dataset_from_io` for more details.
         """
         path = Path(path)
-        file_type = FileType.from_path_dataset(path)
+        file_type = FileType.from_tabular(path)
         if name is None:
             name = path.name
 
@@ -552,6 +554,7 @@ class NominalClient:
         prefix_tree_delimiter: str | None = None,
         channel_prefix: str | None = None,
         file_name: str | None = None,
+        tag_columns: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -576,6 +579,7 @@ class NominalClient:
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
             channel_prefix: Prefix to apply to newly created channels
             file_name: Name of the file (without extension) to create when uploading.
+            tag_columns: a dictionary mapping tag keys to column names.
 
         Returns:
             Reference to the constructed dataset object.
@@ -592,28 +596,21 @@ class NominalClient:
         s3_path = upload_multipart_io(
             self._clients.auth_header, self._clients.workspace_rid, dataset, file_name, file_type, self._clients.upload
         )
+
         request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                csv=ingest_api.CsvOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        new=ingest_api.NewDatasetIngestDestination(
-                            labels=list(labels),
-                            properties={} if properties is None else dict(properties),
-                            channel_config=_build_channel_config(prefix_tree_delimiter),
-                            dataset_description=description,
-                            dataset_name=name,
-                            workspace=self._clients.workspace_rid,
-                        )
-                    ),
-                    timestamp_metadata=ingest_api.TimestampMetadata(
-                        series_name=timestamp_column,
-                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                    ),
-                    additional_file_tags=None,
-                    channel_prefix=channel_prefix,
-                    tag_keys_from_columns=None,
-                )
+            options=_construct_new_ingest_options(
+                name=name,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                description=description,
+                labels=labels,
+                properties={} if properties is None else properties,
+                prefix_tree_delimiter=prefix_tree_delimiter,
+                channel_prefix=channel_prefix,
+                tag_columns=tag_columns,
+                s3_path=s3_path,
+                workspace_rid=self._clients.workspace_rid,
             )
         )
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
@@ -1452,13 +1449,6 @@ class NominalClient:
                 break
 
         return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
-
-
-def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
-    if prefix_tree_delimiter is None:
-        return None
-    else:
-        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
 
 
 def _create_search_runs_query(

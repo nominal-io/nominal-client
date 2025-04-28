@@ -146,7 +146,8 @@ class Dataset(DataSource):
 
         Currently, the supported filetypes are:
             - .csv / .csv.gz
-            - .parquet
+            - .parquet / .parquet.gz
+            - .parquet.tar / .parquet.tar.gz / .parquet.zip
 
         Args:
             path: Path to the file on disk to add to the dataset.
@@ -157,7 +158,7 @@ class Dataset(DataSource):
             tag_columns: a dictionary mapping tag keys to column names.
         """
         path = Path(path)
-        file_type = FileType.from_path_dataset(path)
+        file_type = FileType.from_tabular(path)
         with open(path, "rb") as data_file:
             self.add_to_dataset_from_io(
                 data_file,
@@ -201,19 +202,15 @@ class Dataset(DataSource):
             file_type,
             self._clients.upload,
         )
+
         request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                csv=ingest_api.CsvOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
-                    ),
-                    timestamp_metadata=ingest_api.TimestampMetadata(
-                        series_name=timestamp_column,
-                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                    ),
-                    tag_columns=dict(tag_columns) if tag_columns else None,
-                )
+            options=_construct_existing_ingest_options(
+                target_rid=self.rid,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                tag_columns=tag_columns,
+                s3_path=s3_path,
             )
         )
         self._clients.ingest.ingest(self._clients.auth_header, request)
@@ -542,3 +539,109 @@ def _create_mcap_channels(
     elif exclude_topics is not None:
         channels = ingest_api.McapChannels(exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics])
     return channels
+
+
+def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
+    if prefix_tree_delimiter is None:
+        return None
+    else:
+        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+
+
+def _construct_new_ingest_options(
+    name: str,
+    timestamp_column: str,
+    timestamp_type: _AnyTimestampType,
+    file_type: FileType,
+    description: str | None,
+    labels: Sequence[str],
+    properties: Mapping[str, str],
+    prefix_tree_delimiter: str | None,
+    channel_prefix: str | None,
+    tag_columns: Mapping[str, str] | None,
+    s3_path: str,
+    workspace_rid: str | None,
+) -> ingest_api.IngestOptions:
+    source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+    target = ingest_api.DatasetIngestTarget(
+        new=ingest_api.NewDatasetIngestDestination(
+            labels=list(labels),
+            properties=dict(properties),
+            channel_config=_build_channel_config(prefix_tree_delimiter),
+            dataset_description=description,
+            dataset_name=name,
+            workspace=workspace_rid,
+        )
+    )
+    timestamp_metadata = ingest_api.TimestampMetadata(
+        series_name=timestamp_column,
+        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+    )
+    tag_columns = dict(tag_columns) if tag_columns else None
+
+    if file_type.is_parquet():
+        return ingest_api.IngestOptions(
+            parquet=ingest_api.ParquetOpts(
+                source=source,
+                target=target,
+                timestamp_metadata=timestamp_metadata,
+                channel_prefix=channel_prefix,
+                tag_columns=tag_columns,
+                is_archive=file_type.is_parquet_archive(),
+            )
+        )
+    else:
+        if file_type.is_csv():
+            logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
+
+        return ingest_api.IngestOptions(
+            csv=ingest_api.CsvOpts(
+                source=source,
+                target=target,
+                timestamp_metadata=timestamp_metadata,
+                channel_prefix=channel_prefix,
+                tag_columns=tag_columns,
+            )
+        )
+
+
+def _construct_existing_ingest_options(
+    target_rid: str,
+    timestamp_column: str,
+    timestamp_type: _AnyTimestampType,
+    file_type: FileType,
+    tag_columns: Mapping[str, str] | None,
+    s3_path: str,
+) -> ingest_api.IngestOptions:
+    source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+    target = ingest_api.DatasetIngestTarget(
+        existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=target_rid)
+    )
+    timestamp_metadata = ingest_api.TimestampMetadata(
+        series_name=timestamp_column,
+        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+    )
+    tag_columns = dict(tag_columns) if tag_columns else None
+
+    if file_type.is_parquet():
+        return ingest_api.IngestOptions(
+            parquet=ingest_api.ParquetOpts(
+                source=source,
+                target=target,
+                timestamp_metadata=timestamp_metadata,
+                tag_columns=tag_columns,
+                is_archive=file_type.is_parquet_archive(),
+            )
+        )
+    else:
+        if file_type.is_csv():
+            logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
+
+        return ingest_api.IngestOptions(
+            csv=ingest_api.CsvOpts(
+                source=source,
+                target=target,
+                timestamp_metadata=timestamp_metadata,
+                tag_columns=tag_columns,
+            )
+        )
