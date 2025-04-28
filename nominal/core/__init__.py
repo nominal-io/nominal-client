@@ -32,6 +32,7 @@ __all__ = [
     "LogSet",
     "NominalClient",
     "Run",
+    "Secret",
     "User",
     "Video",
     "Workbook",

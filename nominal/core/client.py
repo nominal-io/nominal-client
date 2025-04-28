@@ -26,6 +26,7 @@ from nominal_api import (
     scout_notebook_api,
     scout_run_api,
     scout_video_api,
+    secrets_api,
     storage_datasource_api,
     timeseries_logicalseries_api,
 )
@@ -52,6 +53,7 @@ from nominal.core.dataset import (
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
+from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitMapping, _available_units, _build_unit_update
 from nominal.core.user import User, _get_user
 from nominal.core.video import Video, _build_video_file_timestamp_manifest
@@ -142,6 +144,85 @@ class NominalClient:
             Workspace._from_conjure(raw_workspace)
             for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
         ]
+
+    def create_secret(
+        self,
+        name: str,
+        decrypted_value: str,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Secret:
+        """Create a secret for the current user
+
+        Args:
+            name: Name of the secret
+            decrypted_value: Plain text value of the secret
+            description: Description of the secret
+            labels: Labels for the secret
+            properties: Properties for the secret
+        """
+        secret_request = secrets_api.CreateSecretRequest(
+            name=name,
+            description=description or "",
+            decrypted_value=decrypted_value,
+            workspace=self._clients.workspace_rid,
+            labels=list(labels),
+            properties={} if properties is None else dict(properties),
+        )
+        resp = self._clients.secrets.create(self._clients.auth_header, secret_request)
+        return Secret._from_conjure(self._clients, resp)
+
+    def get_secret(self, rid: str) -> Secret:
+        """Retrieve a secret by RID."""
+        resp = self._clients.secrets.get(self._clients.auth_header, rid)
+        return Secret._from_conjure(self._clients, resp)
+
+    def _iter_search_secrets(
+        self,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> Iterable[Secret]:
+        request = secrets_api.SearchSecretsRequest(
+            page_size=DEFAULT_PAGE_SIZE,
+            query=_create_search_secrets_query(search_text, labels, properties),
+            sort=secrets_api.SortOptions(field=secrets_api.SortField.CREATED_AT, is_descending=True),
+            archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
+        )
+        while True:
+            resp = self._clients.secrets.search(self._clients.auth_header, request)
+            for raw_secret in resp.results:
+                yield Secret._from_conjure(self._clients, raw_secret)
+
+            if resp.next_page_token is None:
+                break
+            else:
+                request = secrets_api.SearchSecretsRequest(
+                    page_size=request.page_size,
+                    query=request.query,
+                    sort=request.sort,
+                    token=resp.next_page_token,
+                )
+
+    def search_secrets(
+        self,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> Sequence[Secret]:
+        """Search for secrets meeting the specified filters.
+        Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
+
+        Args:
+            search_text: Searches for a (case-insensitive) substring across all text fields.
+            labels: A sequence of labels that must ALL be present on a secret to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
+
+        Returns:
+            All secrets which match all of the provided conditions
+        """
+        return list(self._iter_search_secrets(search_text=search_text, labels=labels, properties=properties))
 
     def create_run(
         self,
@@ -1427,6 +1508,26 @@ def _logs_to_conjure(
         elif isinstance(log, tuple):
             ts, body = log
             yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
+
+
+def _create_search_secrets_query(
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> secrets_api.SearchSecretsQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(secrets_api.SearchSecretsQuery(search_text=search_text))
+
+    if labels is not None:
+        for label in labels:
+            queries.append(secrets_api.SearchSecretsQuery(label=label))
+
+    if properties is not None:
+        for name, value in properties.items():
+            queries.append(secrets_api.SearchSecretsQuery(property=api.Property(name=name, value=value)))
+
+    return secrets_api.SearchSecretsQuery(and_=queries)
 
 
 def _create_search_assets_query(
