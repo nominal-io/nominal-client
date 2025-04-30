@@ -11,7 +11,11 @@ from nominal.core._batch_processor_proto import process_batch
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
 from nominal.core.stream import BatchItem
-from nominal.ts import _SecondsNanos
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+
+def dt_to_nano(dt: datetime) -> IntegralNanosecondsUTC:
+    return _SecondsNanos.from_datetime(dt).to_nanoseconds()
 
 
 @pytest.fixture(autouse=True)
@@ -59,8 +63,8 @@ def test_process_batch_double_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("test_channel", timestamp, 42.0),
-        BatchItem("test_channel", timestamp + timedelta(seconds=1), 43.0),
+        BatchItem("test_channel", dt_to_nano(timestamp), 42.0),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
     ]
 
     # Process the batch using the imported process_batch function
@@ -119,8 +123,8 @@ def test_process_batch_string_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("test_channel", timestamp, "value1"),
-        BatchItem("test_channel", timestamp + timedelta(seconds=1), "value2"),
+        BatchItem("test_channel", dt_to_nano(timestamp), "value1"),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
     ]
 
     # Process the batch using the imported process_batch function
@@ -164,8 +168,8 @@ def test_process_batch_with_tags(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("test_channel", timestamp, 42.0, {"tag1": "value1"}),
-        BatchItem("test_channel", timestamp + timedelta(seconds=1), 43.0, {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp), 42.0, {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0, {"tag1": "value1"}),
     ]
 
     # Process the batch using the imported process_batch function
@@ -200,7 +204,7 @@ def test_process_batch_invalid_type(mock_connection):
 
     # Lists are not supported
     batch = [
-        BatchItem("test_channel", timestamp, [1, 2, 3]),  # type: ignore[arg-type]
+        BatchItem("test_channel", dt_to_nano(timestamp), [1, 2, 3]),  # type: ignore[arg-type]
     ]
 
     # Verify it raises the correct error
@@ -217,11 +221,11 @@ def test_process_batch_multiple_channels(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("channel1", timestamp, 42.0),
-        BatchItem("channel1", timestamp + timedelta(seconds=1), 43.0),
-        BatchItem("channel2", timestamp, "value1"),
-        BatchItem("channel2", timestamp + timedelta(seconds=1), "value2"),
-        BatchItem("channel3", timestamp, 100.0, {"tag1": "value1"}),
+        BatchItem("channel1", dt_to_nano(timestamp), 42.0),
+        BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
+        BatchItem("channel2", dt_to_nano(timestamp), "value1"),
+        BatchItem("channel2", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
+        BatchItem("channel3", dt_to_nano(timestamp), 100.0, {"tag1": "value1"}),
     ]
 
     # Process the batch
@@ -328,8 +332,8 @@ def test_process_batch_double_points_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("test_channel", timestamp, 42.0),
-        BatchItem("test_channel", timestamp + timedelta(seconds=1), 43.0),
+        BatchItem("test_channel", dt_to_nano(timestamp), 42.0),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
     ]
 
     # Process the batch using the imported process_batch function
@@ -388,8 +392,8 @@ def test_process_batch_string_points_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("test_channel", timestamp, "value1"),
-        BatchItem("test_channel", timestamp + timedelta(seconds=1), "value2"),
+        BatchItem("test_channel", dt_to_nano(timestamp), "value1"),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
     ]
 
     # Process the batch using the imported process_batch function
@@ -433,8 +437,8 @@ def test_process_batch_with_tags_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("test_channel", timestamp, 42.0, {"tag1": "value1"}),
-        BatchItem("test_channel", timestamp + timedelta(seconds=1), 43.0, {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp), 42.0, {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0, {"tag1": "value1"}),
     ]
 
     # Process the batch using the imported process_batch function
@@ -469,7 +473,7 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
 
     # Lists are not supported
     batch = [
-        BatchItem("test_channel", timestamp, [1, 2, 3]),  # type: ignore[arg-type]
+        BatchItem("test_channel", dt_to_nano(timestamp), [1, 2, 3]),  # type: ignore[arg-type]
     ]
 
     # Verify it raises the correct error
@@ -486,11 +490,11 @@ def test_process_batch_multiple_channels_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("channel1", timestamp, 42.0),
-        BatchItem("channel1", timestamp + timedelta(seconds=1), 43.0),
-        BatchItem("channel2", timestamp, "value1"),
-        BatchItem("channel2", timestamp + timedelta(seconds=1), "value2"),
-        BatchItem("channel3", timestamp, 100.0, {"tag1": "value1"}),
+        BatchItem("channel1", dt_to_nano(timestamp), 42.0),
+        BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
+        BatchItem("channel2", dt_to_nano(timestamp), "value1"),
+        BatchItem("channel2", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
+        BatchItem("channel3", dt_to_nano(timestamp), 100.0, {"tag1": "value1"}),
     ]
 
     # Process the batch
