@@ -222,7 +222,7 @@ class Dataset(DataSource):
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
     # Backward compatibility
-    add_to_dataset_from_io_ = add_from_io
+    add_to_dataset_from_io = add_from_io
 
     def add_journal_json(
         self,
