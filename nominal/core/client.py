@@ -30,6 +30,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal import _config
 from nominal._utils import deprecate_keyword_argument
 from nominal.config import NominalConfig, _get_profile_matching_url
 from nominal.core._clientsbunch import ClientsBunch
@@ -83,7 +84,7 @@ class NominalClient:
         trust_store_path: str | None = None,
         connect_timeout: timedelta = timedelta(seconds=30),
     ) -> Self:
-        """Create a connection to the Nominal platform from a named profile in the Nominal client config.
+        """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
         Args:
             profile: profile name in the Nominal config.
@@ -93,45 +94,20 @@ class NominalClient:
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
-        return cls.create(prof.base_url, prof.token, trust_store_path=trust_store_path, connect_timeout=connect_timeout)
+        return cls.from_token(
+            prof.base_url, prof.token, trust_store_path=trust_store_path, connect_timeout=connect_timeout
+        )
 
     @classmethod
-    def create(
+    def from_token(
         cls,
-        base_url: str,
-        token: str | None = None,
+        token: str,
+        base_url: str = "https://api.gov.nominal.io/api",
+        *,
+        workspace_rid: str | None = None,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = timedelta(seconds=30),
     ) -> Self:
-        """Create a connection to the Nominal platform.
-
-        See also: `NominalClient.from_profile`.
-
-        Args:
-            base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-            token: An API key or bearer token to authenticate with. If None (deprecated), searches for a profile
-                with the given `base_url` in the Nominal config.
-            trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
-                certifi's trust store is used.
-            connect_timeout: Request connection timeout, in seconds.
-
-        Raises:
-            NominalConfigError: If the `token` is None and no profile is found for the given `base_url`.
-        """
-        # TODO(alkasm): remove token=None
-        # TODO(alkasm): make trust_store_path and connect_timeout keyword-only
-        # TODO(alkasm): deprecate floating point timeout
-        if token is None:
-            warnings.warn(
-                "using NominalClient.create(..., token=None) is deprecated and will be removed in a future version. "
-                "instead configure profiles with the CLI `nom config` and use `NominalClient.from_profile`.",
-                UserWarning,
-                stacklevel=2,
-            )
-            _config = NominalConfig.from_yaml()
-            _, _profile = _get_profile_matching_url(_config, base_url)
-            token = _profile.token
-
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
         cfg = ServiceConfiguration(
@@ -141,6 +117,36 @@ class NominalClient:
         )
         agent = construct_user_agent_string()
         return cls(_clients=ClientsBunch.from_config(cfg, agent, token))
+
+    @classmethod
+    def create(
+        cls,
+        base_url: str,
+        token: str | None,
+        trust_store_path: str | None = None,
+        connect_timeout: float = 30,
+        *,
+        workspace_rid: str | None = None,
+    ) -> Self:
+        """Create a connection to the Nominal platform.
+
+        base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
+        token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
+        trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
+            certifi's trust store is used.
+        connect_timeout: Timeout for any single request to the Nominal API.
+        workspace_rid: The workspace RID to use for all API calls that require it. If not provided, the default
+            workspace will be used (if one is configured for the tenant).
+        """
+        if token is None:
+            token = _config.get_token(base_url)
+        return cls.from_token(
+            token,
+            base_url,
+            trust_store_path=trust_store_path,
+            connect_timeout=connect_timeout,
+            workspace_rid=workspace_rid,
+        )
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
