@@ -121,21 +121,21 @@ class Dataset(DataSource):
 
     @deprecated(
         "`Dataset.add_csv_to_dataset` is deprecated and will be removed in a future version. "
-        "Use `Dataset.add_tabular_data_to_dataset` instead."
+        "Use `Dataset.add_tabular_data` instead."
     )
     def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
-        self.add_tabular_data_to_dataset(path, timestamp_column, timestamp_type)
+        self.add_tabular_data(path, timestamp_column, timestamp_type)
 
     @deprecated(
         "`Dataset.add_data_to_dataset` is deprecated and will be removed in a future version. "
-        "Use `Dataset.add_tabular_data_to_dataset` instead."
+        "Use `Dataset.add_tabular_data` instead."
     )
     def add_data_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a tabular data file on-disk."""
-        self.add_tabular_data_to_dataset(path, timestamp_column, timestamp_type)
+        self.add_tabular_data(path, timestamp_column, timestamp_type)
 
-    def add_tabular_data_to_dataset(
+    def add_tabular_data(
         self,
         path: Path | str,
         timestamp_column: str,
@@ -160,7 +160,7 @@ class Dataset(DataSource):
         path = Path(path)
         file_type = FileType.from_tabular(path)
         with open(path, "rb") as data_file:
-            self.add_to_dataset_from_io(
+            self.add_from_io(
                 data_file,
                 timestamp_column,
                 timestamp_type,
@@ -169,7 +169,10 @@ class Dataset(DataSource):
                 tag_columns=tag_columns,
             )
 
-    def add_to_dataset_from_io(
+    # Backward compatibility
+    add_tabular_data_to_dataset = add_tabular_data
+
+    def add_from_io(
         self,
         dataset: BinaryIO,
         timestamp_column: str,
@@ -215,7 +218,10 @@ class Dataset(DataSource):
         )
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
-    def add_journal_json_to_dataset(
+    # Backward compatibility
+    add_to_dataset_from_io = add_from_io
+
+    def add_journal_json(
         self,
         path: Path | str,
     ) -> None:
@@ -243,7 +249,10 @@ class Dataset(DataSource):
             ),
         )
 
-    def add_mcap_to_dataset(
+    # Backward compatibility
+    add_journal_json_to_dataset = add_journal_json
+
+    def add_mcap(
         self,
         path: Path | str,
         include_topics: Iterable[str] | None = None,
@@ -260,14 +269,17 @@ class Dataset(DataSource):
         """
         path = Path(path)
         with path.open("rb") as data_file:
-            self.add_mcap_to_dataset_from_io(
+            self.add_mcap_from_io(
                 data_file,
                 include_topics=include_topics,
                 exclude_topics=exclude_topics,
                 file_name=path_upload_name(path, FileTypes.MCAP),
             )
 
-    def add_mcap_to_dataset_from_io(
+    # Backward compatibility
+    add_mcap_to_dataset = add_mcap
+
+    def add_mcap_from_io(
         self,
         mcap: BinaryIO,
         include_topics: Iterable[str] | None = None,
@@ -312,7 +324,10 @@ class Dataset(DataSource):
         if resp.details.dataset is None or resp.details.dataset.dataset_rid is None:
             raise NominalIngestError("error ingesting mcap: no dataset created or updated")
 
-    def add_ardupilot_dataflash_to_dataset(
+    # Backward compatibility
+    add_mcap_to_dataset_from_io = add_mcap_from_io
+
+    def add_ardupilot_dataflash(
         self,
         path: Path | str,
     ) -> None:
@@ -330,6 +345,9 @@ class Dataset(DataSource):
         )
         request = _create_dataflash_ingest_request(s3_path, target)
         self._clients.ingest.ingest(self._clients.auth_header, request)
+
+    # Backward compatibility
+    add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
 
     def archive(self) -> None:
         """Archive this dataset.
