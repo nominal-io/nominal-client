@@ -8,7 +8,7 @@ from typing import Literal, Mapping
 import yaml
 from typing_extensions import Self  # typing.Self in 3.11+
 
-from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH as DEPRECATED_NOMINAL_CONFIG_PATH, _strip_scheme
+from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH as DEPRECATED_NOMINAL_CONFIG_PATH
 from nominal.exceptions import NominalConfigError
 
 DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.config/nominal/config.yml").expanduser().resolve()
