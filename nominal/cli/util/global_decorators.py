@@ -39,7 +39,10 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
     color_option = click.option("--no-color", is_flag=True, help="If provided, don't color terminal log output")
 
     @functools.wraps(func)
-    def wrapped_function(*args: Param.args, verbose: int, no_color: bool, **kwargs: Param.kwargs) -> T:
+    def wrapped_function(*args: Param.args, **kwargs: Param.kwargs) -> T:
+        verbose: int = kwargs.pop("verbose")  # type: ignore[assignment]
+        no_color: bool = kwargs.pop("no_color")  # type: ignore[assignment]
+
         log_level = logging.NOTSET
         if verbose == 0:
             log_level = logging.WARNING
@@ -69,7 +72,8 @@ def debug_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     )
 
     @functools.wraps(func)
-    def wrapped_function(*args: Param.args, debug: bool, **kwargs: Param.kwargs) -> T:
+    def wrapped_function(*args: Param.args, **kwargs: Param.kwargs) -> T:
+        debug: bool = kwargs.pop("debug", False)  # type: ignore[assignment]
         try:
             return func(*args, **kwargs)
         except Exception as e:
@@ -131,12 +135,13 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     @functools.wraps(func)
     def wrapped_function(
         *args: Param.args,
-        base_url: str,
-        token: str | None,
-        token_path: pathlib.Path,
-        trust_store_path: pathlib.Path | None,
         **kwargs: Param.kwargs,
     ) -> T:
+        base_url: str = kwargs.pop("base_url", "")  # type: ignore[assignment]
+        token: str | None = kwargs.pop("token")  # type: ignore[assignment]
+        token_path: pathlib.Path = kwargs.pop("token_path")  # type: ignore[assignment]
+        trust_store_path: pathlib.Path | None = kwargs.pop("trust_store_path")  # type: ignore[assignment]
+
         if token is None:
             if token_path.exists():
                 token = get_token(base_url, token_path)
