@@ -14,16 +14,19 @@ def auth_cmd() -> None:
     pass
 
 
-@auth_cmd.command(help="deprecated, use `nom config profile add` instead")
+@auth_cmd.command()
 @click.option("-u", "--base-url", default="https://api.gov.nominal.io/api", prompt=True)
 @click.option(
     "-t", "--token", required=True, prompt=True, help="access token, can be found in /sandbox on your Nominal instance"
 )
 @global_options
 def set_token(token: str, base_url: str) -> None:
-    """Update the token for a given URL in the Nominal config file"""
+    """deprecated: use `nom config profile add` instead"
+
+    Update the token for a given URL in the (deprecated) Nominal config file
+    """
     warnings.warn(
-        "nom auth set-token is deprecated, use `nom config profile add` instead",
+        "`nom auth set-token` is deprecated, use `nom config profile add` instead",
         UserWarning,
         stacklevel=2,
     )
