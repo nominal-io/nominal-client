@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class ConfigProfile:
     base_url: str
     token: str
-    workspace_rid: str | None
+    workspace_rid: str | None = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,7 @@ class NominalConfig:
       staging:
         base_url: https://api-staging.gov.nominal.io/api
         token: eyJ...
+        workspace_rid: ri.security.gov-staging.workspace.82db1f3a-568e-418e-a2d0-0575396f29a2
       dev:
         base_url: https://api.nominal.test
         token: eyJ...
