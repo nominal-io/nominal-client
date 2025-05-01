@@ -1,25 +1,19 @@
 from __future__ import annotations
 
-import itertools
-import warnings
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal, Mapping, Sequence
+from typing import Literal, Sequence
 
-from nominal_api import (
-    scout_datasource_connection_api,
-)
+from nominal_api import scout_datasource_connection_api
 
-from nominal.core._batch_processor import process_batch_legacy
-from nominal.core.datasource import DataSource
-from nominal.core.stream import WriteStream
+from nominal.core.datasource import DataSource, _get_write_stream
+from nominal.core.write_stream_base import WriteStreamBase
 
 
 @dataclass(frozen=True)
 class Connection(DataSource):
     name: str
     description: str | None
-    _tags: Mapping[str, Sequence[str]]
 
     @classmethod
     def _from_conjure(
@@ -31,7 +25,6 @@ class Connection(DataSource):
                 rid=response.rid,
                 name=response.display_name,
                 description=response.description,
-                _tags=response.available_tag_values,
                 _clients=clients,
                 nominal_data_source_rid=response.connection_details.nominal.nominal_data_source_rid,
             )
@@ -39,7 +32,6 @@ class Connection(DataSource):
             rid=response.rid,
             name=response.display_name,
             description=response.description,
-            _tags=response.available_tag_values,
             _clients=clients,
         )
 
@@ -56,75 +48,43 @@ class Connection(DataSource):
 
 @dataclass(frozen=True)
 class StreamingConnection(Connection):
-    nominal_data_source_rid: str
+    """A `StreamingConnection` is used to stream telemetry data to Nominal.
 
-    # Deprecated methods for backward compatibility
-    def get_nominal_write_stream(self, batch_size: int = 50_000, max_wait_sec: int = 1) -> WriteStream:
-        warnings.warn(
-            "get_nominal_write_stream is deprecated and will be removed in a future version. "
-            "use get_write_stream instead.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return self.get_write_stream(batch_size, timedelta(seconds=max_wait_sec))
+    This is now largely an antiquated mechanism for ingesting data into Nominal.
+    It is instead recommended that users simply retrieve a write stream to an existing
+    dataset using `Dataset.get_write_stream`, which has the same overall semantics of using
+    a `StreamingConnection`.
+    """
+
+    nominal_data_source_rid: str
 
     def get_write_stream(
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf"] = "json",
-    ) -> WriteStream:
+        data_format: Literal["json", "protobuf", "experimental"] = "json",
+    ) -> WriteStreamBase:
         """Stream to write non-blocking messages to a datasource.
 
         Args:
         ----
-            batch_size (int): How big the batch can get before writing to Nominal. Default 10
-            max_wait (timedelta): How long a batch can exist before being flushed to Nominal. Default 5 seconds
-            data_format (Literal["json", "protobuf"]): Send data as protobufs or as json. Default json
+            batch_size: How big the batch can get before writing to Nominal.
+            max_wait: How long a batch can exist before being flushed to Nominal.
+            data_format: Serialized data format to use during upload.
+                NOTE: selecting 'protobuf' requires that `nominal` was installed with `protos` extras.
 
-        Examples:
+        Returns:
         --------
-            Standard Usage:
-            ```py
-            with connection.get_write_stream() as stream:
-                stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
-                stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
-                ...
-            ```
-
-            Without a context manager:
-            ```py
-            stream = connection.get_write_stream()
-            stream.enqueue("my_channel_name", "2021-01-01T00:00:00Z", 42.0)
-            stream.enqueue("my_channel_name2", "2021-01-01T00:00:01Z", 43.0, {"tag1": "value1"})
-            ...
-            stream.close()
-            ```
-
+            Write stream object configured to send data to nominal. This may be used as a context manager
+            (so that resources are automatically released upon exiting the context), or if not used as a context
+            manager, should be explicitly `close()`-ed once no longer needed.
         """
-        if data_format == "json":
-            return WriteStream.create(
-                batch_size,
-                max_wait,
-                lambda batch: process_batch_legacy(
-                    batch, self.nominal_data_source_rid, self._clients.auth_header, self._clients.storage_writer
-                ),
-            )
-
-        try:
-            from nominal.core._batch_processor_proto import process_batch
-        except ImportError:
-            raise ImportError("nominal-api-protos is required to use get_write_stream with use_protos=True")
-
-        return WriteStream.create(
-            batch_size,
-            max_wait,
-            lambda batch: process_batch(
-                batch=batch,
-                nominal_data_source_rid=self.nominal_data_source_rid,
-                auth_header=self._clients.auth_header,
-                proto_write=self._clients.proto_write,
-            ),
+        return _get_write_stream(
+            batch_size=batch_size,
+            max_wait=max_wait,
+            data_format=data_format,
+            write_rid=self.nominal_data_source_rid,
+            clients=self._clients,
         )
 
 
@@ -132,9 +92,3 @@ def _get_connections(
     clients: Connection._Clients, connection_rids: Sequence[str]
 ) -> Sequence[scout_datasource_connection_api.Connection]:
     return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
-
-
-def _tag_product(tags: Mapping[str, Sequence[str]]) -> list[dict[str, str]]:
-    # {color: [red, green], size: [S, M, L]} -> [{color: red, size: S}, {color: red, size: M}, ...,
-    #                                            {color: green, size: L}]
-    return [dict(zip(tags.keys(), values)) for values in itertools.product(*tags.values())]

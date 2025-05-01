@@ -1,5 +1,94 @@
 # Changelog
 
+## [1.49.0](https://github.com/nominal-io/nominal-client/compare/v1.48.0...v1.49.0) (2025-04-22)
+
+
+### Features
+
+* allow creating empty videos ([#311](https://github.com/nominal-io/nominal-client/issues/311)) ([f5e63a1](https://github.com/nominal-io/nominal-client/commit/f5e63a1a476ad6a01e7f50c5e22a4d01bde3d0e0))
+* allow listing all ingested files on a dataset ([#316](https://github.com/nominal-io/nominal-client/issues/316)) ([a8f234f](https://github.com/nominal-io/nominal-client/commit/a8f234f5558c63c8efde9fec64b13066b669a2cf))
+* tag columns mapping ([#315](https://github.com/nominal-io/nominal-client/issues/315)) ([12b1a18](https://github.com/nominal-io/nominal-client/commit/12b1a18da8ef6a85b1b9f53b87994b570d5d682d))
+
+## [1.48.0](https://github.com/nominal-io/nominal-client/compare/v1.47.1...v1.48.0) (2025-04-17)
+
+
+### Features
+
+* expose workspaces to client ([#308](https://github.com/nominal-io/nominal-client/issues/308)) ([93549e7](https://github.com/nominal-io/nominal-client/commit/93549e7e9c89dde4b54e69136b51d720a57a896d))
+
+## [1.47.1](https://github.com/nominal-io/nominal-client/compare/v1.47.0...v1.47.1) (2025-04-15)
+
+
+### Bug Fixes
+
+* tie to a specific version of nominal-api ([#306](https://github.com/nominal-io/nominal-client/issues/306)) ([58f1dee](https://github.com/nominal-io/nominal-client/commit/58f1deea9a167b21355b5de0a49bcd25b74e1a49))
+
+## [1.47.0](https://github.com/nominal-io/nominal-client/compare/v1.46.0...v1.47.0) (2025-04-10)
+
+
+### Features
+
+* add log streaming, deprecate LogSets ([#300](https://github.com/nominal-io/nominal-client/issues/300)) ([8a95f1c](https://github.com/nominal-io/nominal-client/commit/8a95f1c589fb498de8f1e1abb585de979829cb73))
+* add workspace rids ([#299](https://github.com/nominal-io/nominal-client/issues/299)) ([08766ac](https://github.com/nominal-io/nominal-client/commit/08766acba58df4e6bc602dbeed33747c11e8d012))
+* enqueue from dict tags ([#304](https://github.com/nominal-io/nominal-client/issues/304)) ([b7189f6](https://github.com/nominal-io/nominal-client/commit/b7189f6fc640a52030fa2401f0c1ea6805b72545))
+* expose tags to enqueue_from_dict ([#302](https://github.com/nominal-io/nominal-client/issues/302)) ([42792d8](https://github.com/nominal-io/nominal-client/commit/42792d874a49c74c0961ab95c65d11564dba53dc))
+
+## [1.46.0](https://github.com/nominal-io/nominal-client/compare/v1.45.2...v1.46.0) (2025-04-08)
+
+
+### Features
+
+* add deprecation notices to consolidate dataset creation / addition methods ([#292](https://github.com/nominal-io/nominal-client/issues/292)) ([13944b1](https://github.com/nominal-io/nominal-client/commit/13944b129b1ed8d0a9b9fc5b4cd6a8307b6d498d))
+* allow datasources to create write streams ([#296](https://github.com/nominal-io/nominal-client/issues/296)) ([5314e15](https://github.com/nominal-io/nominal-client/commit/5314e15f3a1e886e359b226b24c9f594dc71cf6f))
+* allow users to optionally be warned when setting display-only units ([#284](https://github.com/nominal-io/nominal-client/issues/284)) ([7e0ed0d](https://github.com/nominal-io/nominal-client/commit/7e0ed0df0a09830cfd844985095aed75a594ac46))
+* document that tabular data methods accept parquets ([#289](https://github.com/nominal-io/nominal-client/issues/289)) ([561845b](https://github.com/nominal-io/nominal-client/commit/561845bb482493ead34e05035ba10f99d4e40db0))
+* plumb column tag keys ([#294](https://github.com/nominal-io/nominal-client/issues/294)) ([58a20a4](https://github.com/nominal-io/nominal-client/commit/58a20a457f11e0a1f9711c5ee7b2d4c22d70939e))
+* remove 3mo+ deprecations ([#295](https://github.com/nominal-io/nominal-client/issues/295)) ([18b07f0](https://github.com/nominal-io/nominal-client/commit/18b07f068dfbe52d1d9d7dee719e51408960d591))
+* support experimental streaming, handle latent streaming feedback ([#298](https://github.com/nominal-io/nominal-client/issues/298)) ([de49d9d](https://github.com/nominal-io/nominal-client/commit/de49d9db31b11df2debb784d4de7c49f44486db0))
+* update nominal-api to 0.618.0 ([#297](https://github.com/nominal-io/nominal-client/issues/297)) ([2afd31d](https://github.com/nominal-io/nominal-client/commit/2afd31dc9abac0adcde677e7e524aa62dcb43a27))
+
+
+### Bug Fixes
+
+* use nano level precision when getting dataset files from api ([#283](https://github.com/nominal-io/nominal-client/issues/283)) ([26531f1](https://github.com/nominal-io/nominal-client/commit/26531f109e93e471aa101171526d98f65a1e41db))
+
+## [1.45.2](https://github.com/nominal-io/nominal-client/compare/v1.45.1...v1.45.2) (2025-04-01)
+
+
+### Bug Fixes
+
+* fix nondeterminism in asset list_datasets ([#287](https://github.com/nominal-io/nominal-client/issues/287)) ([79a4eb0](https://github.com/nominal-io/nominal-client/commit/79a4eb00de36b62a6c01578e9711adbf56b89047))
+
+## [1.45.1](https://github.com/nominal-io/nominal-client/compare/v1.45.0...v1.45.1) (2025-04-01)
+
+
+### Bug Fixes
+
+* poll until ingestion completed exits if status is error ([#285](https://github.com/nominal-io/nominal-client/issues/285)) ([d656bd0](https://github.com/nominal-io/nominal-client/commit/d656bd031132727855c814900209b394b89e121d))
+
+## [1.45.0](https://github.com/nominal-io/nominal-client/compare/v1.44.0...v1.45.0) (2025-03-28)
+
+
+### Features
+
+* allow listing dataset files ([#281](https://github.com/nominal-io/nominal-client/issues/281)) ([500d301](https://github.com/nominal-io/nominal-client/commit/500d301128f2e7c313303351920ea7a2f2380b91))
+
+## [1.44.0](https://github.com/nominal-io/nominal-client/compare/v1.43.0...v1.44.0) (2025-03-27)
+
+
+### Features
+
+* add data from mcap io ([#279](https://github.com/nominal-io/nominal-client/issues/279)) ([9e7df67](https://github.com/nominal-io/nominal-client/commit/9e7df675b05cb284793323e3e984f2e5f63c4007))
+* create thirdparty subpackage and deprecate existing usage of third party code ([#276](https://github.com/nominal-io/nominal-client/issues/276)) ([de6b5fd](https://github.com/nominal-io/nominal-client/commit/de6b5fdb505c99bd4b8fde8dccba95d853f895b8))
+
+## [1.43.0](https://github.com/nominal-io/nominal-client/compare/v1.42.0...v1.43.0) (2025-03-25)
+
+
+### Features
+
+* allow custom derived units for channels ([#272](https://github.com/nominal-io/nominal-client/issues/272)) ([f6a1edf](https://github.com/nominal-io/nominal-client/commit/f6a1edf2029ee69e3865a7085480bd81d457e615))
+* prevent duplicated file extensions when using upload_multipart_io ([#274](https://github.com/nominal-io/nominal-client/issues/274)) ([3d5f349](https://github.com/nominal-io/nominal-client/commit/3d5f349e9c02dc7796b823a48295722dc59ca81e))
+
 ## [1.42.0](https://github.com/nominal-io/nominal-client/compare/v1.41.0...v1.42.0) (2025-03-21)
 
 
@@ -322,7 +411,7 @@
 ### Features
 
 * add content to Asset ([#125](https://github.com/nominal-io/nominal-client/issues/125)) ([de09dee](https://github.com/nominal-io/nominal-client/commit/de09deee1fa29cedf2bedbddcf813f0e3e1cf1f0))
-* add enqueue_batch to NominalWriteStream ([#138](https://github.com/nominal-io/nominal-client/issues/138)) ([447bfe9](https://github.com/nominal-io/nominal-client/commit/447bfe95c8f97d5cac79a8e89c4f2c80d3f4c700))
+* add enqueue_batch to WriteStreamBase ([#138](https://github.com/nominal-io/nominal-client/issues/138)) ([447bfe9](https://github.com/nominal-io/nominal-client/commit/447bfe95c8f97d5cac79a8e89c4f2c80d3f4c700))
 * allow users to interact with videos and runs ([#129](https://github.com/nominal-io/nominal-client/issues/129)) ([5b43856](https://github.com/nominal-io/nominal-client/commit/5b43856895c48581c2112c8f847b31c6d0baca03))
 * expose listing connections and logsets from a run object ([#128](https://github.com/nominal-io/nominal-client/issues/128)) ([14d4c36](https://github.com/nominal-io/nominal-client/commit/14d4c36d21140a8ff1f967c06b1f0e6c36b9fb2e))
 * make polling for io completion update dataset metadata ([#133](https://github.com/nominal-io/nominal-client/issues/133)) ([ac19e54](https://github.com/nominal-io/nominal-client/commit/ac19e54a0de072053af2f39233881a7cd757c47b))

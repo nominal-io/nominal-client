@@ -6,7 +6,7 @@ from typing import Protocol
 from nominal_api import scout, scout_notebook_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid
 
 
@@ -18,7 +18,7 @@ class Workbook(HasRid):
     run_rid: str | None
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def notebook(self) -> scout.NotebookService: ...
 

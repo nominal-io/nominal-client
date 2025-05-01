@@ -7,6 +7,7 @@ from typing import Protocol, Sequence
 
 from nominal_api import (
     scout,
+    scout_api,
     scout_checklistexecution_api,
     scout_checks_api,
     scout_datareview_api,
@@ -15,7 +16,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core import checklist
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -30,7 +31,7 @@ class DataReview(HasRid):
 
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
         @property
@@ -116,7 +117,7 @@ class CheckViolation:
             start=_SecondsNanos.from_api(check_alert.start).to_nanoseconds(),
             end=_SecondsNanos.from_api(check_alert.end).to_nanoseconds() if check_alert.end is not None else None,
             priority=checklist._conjure_priority_to_priority(check_alert.priority)
-            if check_alert.priority is not scout_checks_api.Priority.UNKNOWN
+            if check_alert.priority is not scout_api.Priority.UNKNOWN
             else None,
         )
 

@@ -10,14 +10,15 @@ from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
 from types import TracebackType
-from typing import Callable, Protocol, Sequence, Type
+from typing import Callable, Mapping, Protocol, Type
 
 from typing_extensions import Self
 
 from nominal.core._batch_processor_proto import SerializedBatch
-from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService, RequestMetrics
+from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService, RequestMetrics
 from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.core.stream import BatchItem
+from nominal.core.write_stream_base import WriteStreamBase
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class WriteStreamV2:
+class WriteStreamV2(WriteStreamBase):
     _item_queue: Queue[BatchItem | QueueShutdown]
     _batch_thread: threading.Thread
     _write_pool: ThreadPoolExecutor
@@ -35,7 +36,7 @@ class WriteStreamV2:
     _track_metrics: bool
     _add_metric: Callable[[str, int, float], None]
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def proto_write(self) -> ProtoWriteService: ...
 
@@ -91,76 +92,6 @@ class WriteStreamV2:
             _add_metric=add_metric_fn,
         )
 
-    def _add_metric_impl(self, channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
-        """Add a metric using the configured implementation."""
-        self._add_metric(channel_name, timestamp, value)
-
-    def close(self, cancel_futures: bool = False) -> None:
-        logger.debug("Closing write stream %s", cancel_futures)
-        self._item_queue.put(QueueShutdown())
-        self._batch_thread.join()
-
-        self._serializer.close(cancel_futures)
-        self._write_pool.shutdown(cancel_futures=cancel_futures)
-
-        self._batch_serialize_thread.join()
-
-    def enqueue(
-        self,
-        channel_name: str,
-        timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: float | str,
-        tags: dict[str, str] | None = None,
-    ) -> None:
-        """Write a single value."""
-        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-
-        item = BatchItem(channel_name, timestamp_normalized, value, tags)
-        self._item_queue.put(item)
-
-    def enqueue_batch(
-        self,
-        channel_name: str,
-        timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
-        values: Sequence[float | str],
-        tags: dict[str, str] | None = None,
-    ) -> None:
-        """Write multiple values."""
-        if len(timestamps) != len(values):
-            raise ValueError(
-                f"Expected equal numbers of timestamps and values! Received: {len(timestamps)} vs. {len(values)}"
-            )
-
-        for timestamp, value in zip(timestamps, values):
-            self.enqueue(channel_name, timestamp, value, tags)
-
-    def enqueue_from_dict(
-        self,
-        timestamp: str | datetime | IntegralNanosecondsUTC,
-        channel_values: dict[str, float | str],
-    ) -> None:
-        """Write multiple channel values at a single timestamp using a flattened dictionary.
-
-        Each key in the dictionary is treated as a channel name and
-        the corresponding value is enqueued with the provided timestamp.
-
-        Args:
-            timestamp: The common timestamp to use for all enqueued items.
-            channel_values: A dictionary mapping channel names to their values.
-        """
-        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        current_time_ns = time.time_ns()
-        enqueue_dict_timestamp_diff = current_time_ns - timestamp_normalized
-
-        for channel, value in channel_values.items():
-            self.enqueue(channel, timestamp, value)
-
-        current_time_ns = time.time_ns()
-        last_enqueue_timestamp_diff = current_time_ns - timestamp_normalized
-
-        self._add_metric_impl("enque_dict_start_staleness", timestamp_normalized, enqueue_dict_timestamp_diff / 1e9)
-        self._add_metric_impl("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp_diff / 1e9)
-
     def __enter__(self) -> WriteStreamV2:
         """Create the stream as a context manager."""
         return self
@@ -171,7 +102,63 @@ class WriteStreamV2:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close(cancel_futures=exc_type is not None)
+        self.close(wait=exc_type is None)
+
+    def enqueue(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: float | str,
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write a single value."""
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+
+        item = BatchItem(channel_name, timestamp_normalized, value, tags)
+        self._item_queue.put(item)
+
+    def enqueue_from_dict(
+        self,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        channel_values: Mapping[str, float | str],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write multiple channel values at a single timestamp using a flattened dictionary.
+
+        Each key in the dictionary is treated as a channel name and
+        the corresponding value is enqueued with the provided timestamp.
+
+        Args:
+            timestamp: The common timestamp to use for all enqueued items.
+            channel_values: A dictionary mapping channel names to their values.
+            tags: Key-value tags associated with the data being uploaded.
+                NOTE: This *should* include all `required_tags` used when creating a `Connection` to Nominal.
+        """
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        current_time_ns = time.time_ns()
+        enqueue_dict_timestamp_diff = current_time_ns - timestamp_normalized
+
+        super().enqueue_from_dict(timestamp, channel_values, tags)
+
+        current_time_ns = time.time_ns()
+        last_enqueue_timestamp_diff = current_time_ns - timestamp_normalized
+
+        self._add_metric_impl("enque_dict_start_staleness", timestamp_normalized, enqueue_dict_timestamp_diff / 1e9)
+        self._add_metric_impl("enque_dict_end_staleness", timestamp_normalized, last_enqueue_timestamp_diff / 1e9)
+
+    def close(self, wait: bool = True) -> None:
+        logger.debug("Closing write stream (wait=%s)", wait)
+        self._item_queue.put(QueueShutdown())
+        self._batch_thread.join()
+
+        self._serializer.close(cancel_futures=not wait)
+        self._write_pool.shutdown(cancel_futures=not wait)
+
+        self._batch_serialize_thread.join()
+
+    def _add_metric_impl(self, channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
+        """Add a metric using the configured implementation."""
+        self._add_metric(channel_name, timestamp, value)
 
 
 def _write_serialized_batch(
