@@ -247,6 +247,6 @@ def _abort(upload_client: upload_api.UploadService, auth_header: str, key: str, 
     )
     try:
         upload_client.abort_multipart_upload(auth_header, key, upload_id)
-    except Exception as e:
-        logger.critical("multipart upload abort failed", exc_info=e, extra={"key": key, "upload_id": upload_id})
-        raise e
+    except Exception as exc:
+        logger.critical("multipart upload abort failed", exc_info=exc, extra={"key": key, "upload_id": upload_id})
+        raise exc from e
