@@ -238,14 +238,14 @@ class _ConjureTimestampType(abc.ABC):
         pass
 
     @classmethod
-    def _from_conjure(cls, conjure_type: ingest_api.TimestampType) -> Self:
+    def _from_conjure(cls, conjure_type: ingest_api.TimestampType) -> TypedTimestampType:
         if conjure_type.absolute is not None:
             abs_timestamp_type = conjure_type.absolute
             if abs_timestamp_type.iso8601 is not None:
                 return Iso8601()
             elif abs_timestamp_type.epoch_of_time_unit is not None:
                 time_unit = abs_timestamp_type.epoch_of_time_unit
-                return Epoch._from_conjure(time_unit.time_unit)
+                return Epoch._from_time_unit(time_unit.time_unit)
             elif abs_timestamp_type.custom_format is not None:
                 custom_format = abs_timestamp_type.custom_format
                 return Custom(
@@ -257,7 +257,7 @@ class _ConjureTimestampType(abc.ABC):
                 raise ValueError(f"Unknown absolute timestamp type: {abs_timestamp_type.type}")
         elif conjure_type.relative is not None:
             rel_timestamp_type = conjure_type.relative
-            epoch = Epoch._from_conjure(rel_timestamp_type.time_unit)
+            epoch = Epoch._from_time_unit(rel_timestamp_type.time_unit)
 
             return Relative(
                 unit=epoch.unit,
@@ -290,7 +290,7 @@ class Epoch(_ConjureTimestampType):
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=epoch))
 
     @classmethod
-    def _from_conjure(cls, time_unit: api.TimeUnit) -> Self:
+    def _from_time_unit(cls, time_unit: api.TimeUnit) -> Self:
         if time_unit.value.lower() in get_args(_LiteralTimeUnit):
             return cls(time_unit.value.lower())
         else:

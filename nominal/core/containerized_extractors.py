@@ -101,7 +101,7 @@ class TagDetails:
         )
 
     def _to_conjure(self) -> ingest_api.TagDetails:
-        return ingest_api.TagDetails(default_tag=self.default_tag, tags=self.tags)
+        return ingest_api.TagDetails(default_tag=self.default_tag, tags=list(self.tags))
 
 
 @dataclass(frozen=True)
@@ -173,6 +173,12 @@ class TimestampMetadata:
             timestamp_type=_ConjureTimestampType._from_conjure(raw_metadata.timestamp_type),
         )
 
+    def _to_conjure(self) -> ingest_api.TimestampMetadata:
+        return ingest_api.TimestampMetadata(
+            series_name=self.series_name,
+            timestamp_type=self.timestamp_type._to_conjure_ingest_api(),
+        )
+
 
 @dataclass(frozen=True)
 class ContainerizedExtractor(HasRid):
@@ -232,20 +238,13 @@ class ContainerizedExtractor(HasRid):
         Returns:
             Updated version of this instance containing newly changed fields and their values.
         """
-        req_timestamp_metadata = None
-        if timestamp_metadata is not None:
-            req_timestamp_metadata = ingest_api.TimestampMetadata(
-                timestamp_metadata.series_name,
-                timestamp_type=timestamp_metadata._to_conjure_ingest_api(),
-            )
-
         request = ingest_api.UpdateContainerizedExtractorRequest(
             name=name,
             description=description,
-            properties=properties,
-            labels=labels,
-            timestamp_metadata=req_timestamp_metadata,
-            tags=tags,
+            properties=None if properties is None else {**properties},
+            labels=None if labels is None else list(labels),
+            timestamp_metadata=None if timestamp_metadata is None else timestamp_metadata._to_conjure(),
+            tags=None if tags is None else list(tags),
             default_tag=default_tag,
         )
 

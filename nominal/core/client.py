@@ -1473,6 +1473,10 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         description: str | None = None,
     ) -> ContainerizedExtractor:
+        workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:
+            workspace_rid = self.get_workspace().rid
+
         req = ingest_api.RegisterContainerizedExtractorRequest(
             image=docker_image._to_conjure(),
             inputs=[file_input._to_conjure() for file_input in inputs],
@@ -1480,7 +1484,7 @@ class NominalClient:
             name=name,
             properties={} if properties is None else {**properties},
             timestamp_metadata=timestamp_metadata._to_conjure(),
-            workspace=self._clients.workspace_rid,
+            workspace=workspace_rid,
             description=description,
         )
         resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
