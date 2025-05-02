@@ -98,8 +98,8 @@ class NominalClient:
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
         return cls.from_token(
-            prof.base_url,
             prof.token,
+            prof.base_url,
             workspace_rid=prof.workspace_rid,
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
