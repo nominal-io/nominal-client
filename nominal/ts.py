@@ -200,7 +200,7 @@ import abc
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import MappingProxyType
-from typing import Literal, Mapping, NamedTuple, Union
+from typing import Literal, Mapping, NamedTuple, Union, get_args
 
 import dateutil.parser
 from nominal_api import api, ingest_api, scout_run_api
@@ -212,12 +212,14 @@ __all__ = [
     "Relative",
     "Custom",
     "ISO_8601",
+    "EPOCH_PICOSECONDS",
     "EPOCH_NANOSECONDS",
     "EPOCH_MICROSECONDS",
     "EPOCH_MILLISECONDS",
     "EPOCH_SECONDS",
     "EPOCH_MINUTES",
     "EPOCH_HOURS",
+    "EPOCH_DAYS",
     "TypedTimestampType",
     "IntegralNanosecondsUTC",
     "LogTimestampType",
@@ -234,6 +236,35 @@ class _ConjureTimestampType(abc.ABC):
     @abc.abstractmethod
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         pass
+
+    @classmethod
+    def _from_conjure(cls, conjure_type: ingest_api.TimestampType) -> Self:
+        if conjure_type.absolute is not None:
+            abs_timestamp_type = conjure_type.absolute
+            if abs_timestamp_type.iso8601 is not None:
+                return Iso8601()
+            elif abs_timestamp_type.epoch_of_time_unit is not None:
+                time_unit = abs_timestamp_type.epoch_of_time_unit
+                return Epoch._from_conjure(time_unit.time_unit)
+            elif abs_timestamp_type.custom_format is not None:
+                custom_format = abs_timestamp_type.custom_format
+                return Custom(
+                    format=custom_format.format,
+                    default_year=custom_format.default_year,
+                    default_day_of_year=custom_format.default_day_of_year,
+                )
+            else:
+                raise ValueError(f"Unknown absolute timestamp type: {abs_timestamp_type.type}")
+        elif conjure_type.relative is not None:
+            rel_timestamp_type = conjure_type.relative
+            epoch = Epoch._from_conjure(rel_timestamp_type.time_unit)
+
+            return Relative(
+                unit=epoch.unit,
+                start=datetime.fromisoformat(rel_timestamp_type.offset) if rel_timestamp_type.offset else 0,
+            )
+        else:
+            raise ValueError(f"Unknown timestamp type: {conjure_type.type}")
 
 
 @dataclass(frozen=True)
@@ -257,6 +288,13 @@ class Epoch(_ConjureTimestampType):
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
         epoch = ingest_api.EpochTimestamp(time_unit=_time_unit_to_conjure(self.unit))
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(epoch_of_time_unit=epoch))
+
+    @classmethod
+    def _from_conjure(cls, time_unit: api.TimeUnit) -> Self:
+        if time_unit.value.lower() in get_args(_LiteralTimeUnit):
+            return cls(time_unit.value.lower())
+        else:
+            raise ValueError(f"Unknown absolute time unit: {time_unit}")
 
 
 @dataclass(frozen=True)
@@ -309,30 +347,36 @@ class Custom(_ConjureTimestampType):
 
 # constants for pedagogy, documentation, default arguments, etc.
 ISO_8601 = Iso8601()
+EPOCH_PICOSECONDS = Epoch("picoseconds")
 EPOCH_NANOSECONDS = Epoch("nanoseconds")
 EPOCH_MICROSECONDS = Epoch("microseconds")
 EPOCH_MILLISECONDS = Epoch("milliseconds")
 EPOCH_SECONDS = Epoch("seconds")
 EPOCH_MINUTES = Epoch("minutes")
 EPOCH_HOURS = Epoch("hours")
+EPOCH_DAYS = Epoch("days")
 
 _LiteralTimeUnit: TypeAlias = Literal[
+    "picoseconds",
     "nanoseconds",
     "microseconds",
     "milliseconds",
     "seconds",
     "minutes",
     "hours",
+    "days",
 ]
 
 _LiteralAbsolute: TypeAlias = Literal[
     "iso_8601",
+    "epoch_picoseconds",
     "epoch_nanoseconds",
     "epoch_microseconds",
     "epoch_milliseconds",
     "epoch_seconds",
     "epoch_minutes",
     "epoch_hours",
+    "epoch_days",
 ]
 
 TypedTimestampType: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
@@ -359,12 +403,14 @@ def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
 _str_to_type: Mapping[_LiteralAbsolute, Iso8601 | Epoch | Relative] = MappingProxyType(
     {
         "iso_8601": ISO_8601,
+        "epoch_picoseconds": EPOCH_PICOSECONDS,
         "epoch_nanoseconds": EPOCH_NANOSECONDS,
         "epoch_microseconds": EPOCH_MICROSECONDS,
         "epoch_milliseconds": EPOCH_MILLISECONDS,
         "epoch_seconds": EPOCH_SECONDS,
         "epoch_minutes": EPOCH_MINUTES,
         "epoch_hours": EPOCH_HOURS,
+        "epoch_days": EPOCH_DAYS,
     }
 )
 

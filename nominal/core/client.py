@@ -41,6 +41,12 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.containerized_extractors import (
+    ContainerizedExtractor,
+    DockerImageSource,
+    FileExtractionInput,
+    TimestampMetadata,
+)
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
@@ -1449,6 +1455,78 @@ class NominalClient:
                 break
 
         return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
+
+    def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
+        return ContainerizedExtractor._from_conjure(
+            self._clients,
+            self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
+        )
+
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        docker_image: DockerImageSource,
+        timestamp_metadata: TimestampMetadata,
+        inputs: Sequence[FileExtractionInput] = (),
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        description: str | None = None,
+    ) -> ContainerizedExtractor:
+        req = ingest_api.RegisterContainerizedExtractorRequest(
+            image=docker_image._to_conjure(),
+            inputs=[file_input._to_conjure() for file_input in inputs],
+            labels=list(*labels),
+            name=name,
+            properties={} if properties is None else {**properties},
+            timestamp_metadata=timestamp_metadata._to_conjure(),
+            workspace=self._clients.workspace_rid,
+            description=description,
+        )
+        resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
+        return self.get_containerized_extractor(resp.extractor_rid)
+
+    def search_containerized_extractors(
+        self,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        workspace: Workspace | str | None = None,
+    ) -> Sequence[ContainerizedExtractor]:
+        query = _create_search_containerized_extractors_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            workspace=workspace,
+        )
+        resp = self._clients.containerized_extractors.search_containerized_extractors(
+            self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
+        )
+        return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
+
+
+def _create_search_containerized_extractors_query(
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    workspace: Workspace | str | None = None,
+) -> ingest_api.SearchContainerizedExtractorsQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(ingest_api.SearchContainerizedExtractorsQuery(search_text=search_text))
+
+    if workspace is not None:
+        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=rid_from_instance_or_string(workspace)))
+
+    if labels is not None:
+        for label in labels:
+            queries.append(ingest_api.SearchContainerizedExtractorsQuery(label=label))
+
+    if properties is not None:
+        for name, value in properties.items():
+            queries.append(ingest_api.SearchContainerizedExtractorsQuery(property=api.Property(name=name, value=value)))
+
+    return ingest_api.SearchContainerizedExtractorsQuery(and_=queries)
 
 
 def _create_search_runs_query(
