@@ -221,6 +221,37 @@ class Dataset(DataSource):
     # Backward compatibility
     add_to_dataset_from_io = add_from_io
 
+    def add_from_s3(
+        self,
+        s3_path: str,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        file_type: tuple[str, str] | FileType = FileTypes.CSV,
+        tag_columns: Mapping[str, str] | None = None,
+    ) -> None:
+        """Append to a dataset from a file located at an S3 path.
+
+        Args:
+            s3_path: The S3 path where the file is located.
+            timestamp_column: The column in the dataset that contains the timestamp data.
+            timestamp_type: The type of timestamp data in the dataset.
+            file_type: A (extension, mimetype) pair describing the type of file.
+            tag_columns: A dictionary mapping tag keys to column names.
+        """
+        file_type = FileType(*file_type)
+
+        request = ingest_api.IngestRequest(
+            options=_construct_existing_ingest_options(
+                target_rid=self.rid,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                tag_columns=tag_columns,
+                s3_path=s3_path,
+            )
+        )
+        self._clients.ingest.ingest(self._clients.auth_header, request)
+
     def add_journal_json(
         self,
         path: Path | str,
