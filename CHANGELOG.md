@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.51.0](https://github.com/nominal-io/nominal-client/compare/v1.50.0...v1.51.0) (2025-05-09)
+
+
+### Features
+
+* add nicer dataset addition methods ([#318](https://github.com/nominal-io/nominal-client/issues/318)) ([d00e78f](https://github.com/nominal-io/nominal-client/commit/d00e78fabcc5832efc8b00b65b72b495b60d0aff))
+
+
+### Bug Fixes
+
+* fix function argument overwrite (propagate exception) ([#320](https://github.com/nominal-io/nominal-client/issues/320)) ([6f4b9f9](https://github.com/nominal-io/nominal-client/commit/6f4b9f9b6913705ee2f00180eb4cecc62e7f32ec))
+* fix incompatible type assignments ([#322](https://github.com/nominal-io/nominal-client/issues/322)) ([c54ef1f](https://github.com/nominal-io/nominal-client/commit/c54ef1fac24a9d43da0557382d199b4e9f461291))
+
 ## [1.50.0](https://github.com/nominal-io/nominal-client/compare/v1.49.0...v1.50.0) (2025-04-28)
 
 
