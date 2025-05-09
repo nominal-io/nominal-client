@@ -1578,7 +1578,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.49.0"
+version = "1.50.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1632,7 +1632,7 @@ requires-dist = [
     { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
-    { name = "nominal-api", specifier = "==0.653.0" },
+    { name = "nominal-api", specifier = "==0.656.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.549.0" },
     { name = "nptdms", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
@@ -1671,15 +1671,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.653.0"
+version = "0.656.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/be/4e/c02b696f2da34b84b8c72f11cc55b6c724d0966fa16f517bcfa04c67c598/nominal_api-0.653.0.tar.gz", hash = "sha256:bffb13d39c8912a80dc0bc707bda923d3b1e9ee0c3a3fc42d980acbcd1ffe41f", size = 333294 }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/39/68a02b40776369a725f1ba35d638ba74ec867a325375c7497fe387001d61/nominal_api-0.656.0.tar.gz", hash = "sha256:4599a3d2588e30d78d99dda631cd159b51754b37c4d4f033c01f3c67399151d7", size = 337767 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/1c/d5387ef798fbdb90cb55446fedea1a24b5f184d585f3bc6982febbf1100d/nominal_api-0.653.0-py3-none-any.whl", hash = "sha256:0a0ef2361251cf66c902eba76c26c038e0a7cb6f94ec339f2d6146673bdbaa6d", size = 354747 },
+    { url = "https://files.pythonhosted.org/packages/d9/62/43e79a1fb834f1cc174c403cba7848e59aeaa37af9be8915c6edcb7c2eae/nominal_api-0.656.0-py3-none-any.whl", hash = "sha256:fff1e40e175664c308dff03dc817db90e45751eba85d25b4749fe142348a635e", size = 359281 },
 ]
 
 [[package]]
