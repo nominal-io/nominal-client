@@ -358,6 +358,31 @@ class Dataset(DataSource):
     # Backward compatibility
     add_mcap_to_dataset_from_io = add_mcap_from_io
 
+    def add_mcap_from_s3(
+        self,
+        s3_path: str,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+    ) -> None:
+        """Add data to this dataset from an MCAP file located at an S3 path.
+
+        Args:
+        ----
+            s3_path: The S3 path where the MCAP file is located.
+            include_topics: If present, list of topics to restrict ingestion to.
+                If not present, defaults to all protobuf-encoded topics present in the MCAP.
+            exclude_topics: If present, list of topics to not ingest from the MCAP.
+        """
+        channels = _create_mcap_channels(include_topics, exclude_topics)
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+
+        request = _create_mcap_ingest_request(s3_path, channels, target)
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        if resp.details.dataset is None or resp.details.dataset.dataset_rid is None:
+            raise NominalIngestError("error ingesting mcap from s3: no dataset created or updated")
+
     def add_ardupilot_dataflash(
         self,
         path: Path | str,
