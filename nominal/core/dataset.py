@@ -283,6 +283,25 @@ class Dataset(DataSource):
     # Backward compatibility
     add_journal_json_to_dataset = add_journal_json
 
+    def add_journal_json_from_s3(
+        self,
+        s3_path: str,
+    ) -> None:
+        """Add a journald jsonl file from an S3 path to an existing dataset."""
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+        self._clients.ingest.ingest(
+            self._clients.auth_header,
+            ingest_api.IngestRequest(
+                options=ingest_api.IngestOptions(
+                    journal_json=ingest_api.JournalJsonOpts(
+                        source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)), target=target
+                    )
+                )
+            ),
+        )
+
     def add_mcap(
         self,
         path: Path | str,
