@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
@@ -33,6 +33,7 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import _config
+from nominal.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
@@ -79,6 +80,52 @@ class NominalClient:
     _clients: ClientsBunch = field(repr=False)
 
     @classmethod
+    def from_profile(
+        cls,
+        profile: str,
+        *,
+        trust_store_path: str | None = None,
+        connect_timeout: timedelta = timedelta(seconds=30),
+    ) -> Self:
+        """Create a connection to the Nominal platform from a named profile in the Nominal config.
+
+        Args:
+            profile: profile name in the Nominal config.
+            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
+                certifi's trust store is used.
+            connect_timeout: Request connection timeout.
+        """
+        config = NominalConfig.from_yaml()
+        prof = config.get_profile(profile)
+        return cls.from_token(
+            prof.token,
+            prof.base_url,
+            workspace_rid=prof.workspace_rid,
+            trust_store_path=trust_store_path,
+            connect_timeout=connect_timeout,
+        )
+
+    @classmethod
+    def from_token(
+        cls,
+        token: str,
+        base_url: str = "https://api.gov.nominal.io/api",
+        *,
+        workspace_rid: str | None = None,
+        trust_store_path: str | None = None,
+        connect_timeout: timedelta | float = timedelta(seconds=30),
+    ) -> Self:
+        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
+        timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
+        cfg = ServiceConfiguration(
+            uris=[base_url],
+            security=SslConfiguration(trust_store_path=trust_store_path),
+            connect_timeout=timeout_seconds,
+        )
+        agent = construct_user_agent_string()
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid))
+
+    @classmethod
     def create(
         cls,
         base_url: str,
@@ -100,14 +147,13 @@ class NominalClient:
         """
         if token is None:
             token = _config.get_token(base_url)
-        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
-        cfg = ServiceConfiguration(
-            uris=[base_url],
-            security=SslConfiguration(trust_store_path=trust_store_path),
+        return cls.from_token(
+            token,
+            base_url,
+            trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
+            workspace_rid=workspace_rid,
         )
-        agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid))
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
