@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
@@ -26,7 +26,6 @@ from nominal.core import (
 )
 from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
-from nominal.core.event import Event, EventType
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -550,32 +549,3 @@ def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
     conn = get_default_client()
     return conn.get_data_review(rid)
-
-
-def create_event(
-    name: str,
-    type: EventType,
-    start: str | datetime | ts.IntegralNanosecondsUTC,
-    duration: timedelta | ts.IntegralNanosecondsDuration = 0,
-    *,
-    assets: Iterable[Asset | str] = (),
-    properties: Mapping[str, str] | None = None,
-    labels: Iterable[str] = (),
-) -> Event:
-    """Create a new event"""
-    conn = get_default_client()
-    return conn.create_event(
-        name,
-        type,
-        ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
-        duration,
-        assets=assets,
-        properties=properties,
-        labels=labels,
-    )
-
-
-def get_events(uuids: Sequence[str]) -> Sequence[Event]:
-    """Get a set of events by their UUIDs"""
-    conn = get_default_client()
-    return conn.get_events(uuids)
