@@ -1329,20 +1329,15 @@ class NominalClient:
         Returns:
             All events which match all of the provided conditions
         """
-        return list(
-            self._iter_search_events(
-                _create_search_events_query(
-                    search_text=search_text,
-                    after=after,
-                    before=before,
-                    assets=None
-                    if assets is None
-                    else [asset.id if isinstance(asset, Asset) else asset for asset in assets],
-                    labels=labels,
-                    properties=properties,
-                )
-            )
+        query = _create_search_events_query(
+            search_text=search_text,
+            after=after,
+            before=before,
+            assets=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
+            labels=labels,
+            properties=properties,
         )
+        return list(self._iter_search_events(query))
 
 
 def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
@@ -1468,8 +1463,8 @@ def _create_search_events_query(
             queries.append(event.SearchQuery(label=label))
 
     if properties:
-        for property in properties:
-            queries.append(event.SearchQuery(property=property))
+        for name, value in properties.items():
+            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
 
     return event.SearchQuery(and_=queries)
 
