@@ -6,13 +6,11 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
 
-from nominal_api import (
-    event,
-)
+from nominal_api import event
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import update_dataclass
+from nominal.core._utils import rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset
 from nominal.core.checklist import _to_api_duration
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
@@ -30,10 +28,7 @@ class Event:
 
     _clients: _Clients = field(repr=False)
 
-    class _Clients(
-        HasAuthHeader,
-        Protocol,
-    ):
+    class _Clients(HasAuthHeader, Protocol):
         @property
         def event(self) -> event.EventService: ...
 
@@ -58,13 +53,11 @@ class Event:
             new_labels = ["new-label-a", "new-label-b"]
             for old_label in event.labels:
                 new_labels.append(old_label)
-            run = event.update(labels=new_labels)
+            event = event.update(labels=new_labels)
         """
         request = event.UpdateEvent(
             uuid=self.uuid,
-            asset_rids=None
-            if assets is None
-            else [asset.rid if isinstance(asset, Asset) else asset for asset in assets],
+            asset_rids=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
             duration=None if duration is None else _to_api_duration(duration),
             labels=None if labels is None else list(labels),
             name=name,
@@ -82,7 +75,7 @@ class Event:
         if event.duration.picos:
             warnings.warn(
                 f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: "
-                "currently, any sub-nanosecond precision will be ignored in nominal-client",
+                "currently, any sub-nanosecond precision will be truncated in nominal-client",
                 UserWarning,
                 stacklevel=2,
             )
