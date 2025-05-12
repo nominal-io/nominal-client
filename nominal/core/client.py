@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
@@ -16,6 +16,7 @@ from nominal_api import (
     attachments_api,
     datasource,
     datasource_logset_api,
+    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -52,6 +53,7 @@ from nominal.core.dataset import (
     _get_dataset,
     _get_datasets,
 )
+from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set
 from nominal.core.run import Run
@@ -63,10 +65,12 @@ from nominal.core.workbook import Workbook
 from nominal.core.workspace import Workspace
 from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
+    IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
     LogTimestampType,
     _AnyTimestampType,
     _SecondsNanos,
+    _to_api_duration,
 )
 
 logger = logging.getLogger(__name__)
@@ -1423,6 +1427,34 @@ class NominalClient:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
 
+    def create_event(
+        self,
+        name: str,
+        type: EventType,
+        start: datetime | IntegralNanosecondsUTC,
+        duration: timedelta | IntegralNanosecondsDuration = timedelta(),
+        *,
+        assets: Iterable[Asset | str] = (),
+        properties: Mapping[str, str] | None = None,
+        labels: Iterable[str] = (),
+    ) -> Event:
+        request = event.CreateEvent(
+            name=name,
+            asset_rids=[rid_from_instance_or_string(asset) for asset in assets],
+            timestamp=_SecondsNanos.from_flexible(start).to_api(),
+            duration=_to_api_duration(duration),
+            origins=[],
+            properties=dict(properties) if properties else {},
+            labels=list(labels),
+            type=type._to_api_event_type(),
+        )
+        response = self._clients.event.create_event(self._clients.auth_header, request)
+        return Event._from_conjure(self._clients, response)
+
+    def get_events(self, uuids: Sequence[str]) -> Sequence[Event]:
+        responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
+        return [Event._from_conjure(self._clients, response) for response in responses]
+
     def search_data_reviews(
         self,
         assets: Sequence[Asset | str] | None = None,
@@ -1449,6 +1481,68 @@ class NominalClient:
                 break
 
         return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
+
+    def _search_events_paginated(self, request: event.SearchEventsRequest) -> Iterable[event.Event]:
+        while True:
+            response = self._clients.event.search_events(self._clients.auth_header, request)
+            yield from response.results
+            if response.next_page_token is None:
+                break
+            request = event.SearchEventsRequest(
+                page_size=request.page_size,
+                query=request.query,
+                sort=request.sort,
+                next_page_token=response.next_page_token,
+            )
+
+    def _iter_search_events(
+        self,
+        query: event.SearchQuery,
+    ) -> Iterable[Event]:
+        request = event.SearchEventsRequest(
+            page_size=100,
+            query=query,
+            sort=event.SortOptions(
+                field=event.SortField.START_TIME,
+                is_descending=True,
+            ),
+        )
+        for e in self._search_events_paginated(request):
+            yield Event._from_conjure(self._clients, e)
+
+    def search_events(
+        self,
+        *,
+        search_text: str | None = None,
+        after: datetime | IntegralNanosecondsUTC | None = None,
+        before: datetime | IntegralNanosecondsUTC | None = None,
+        assets: Iterable[Asset | str] | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> Sequence[Event]:
+        """Search for events meeting the specified filters.
+        Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
+
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            assets: List of assets that must ALL be present on an event to be included.
+            labels: A list of labels that must ALL be present on an event to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+
+        Returns:
+            All events which match all of the provided conditions
+        """
+        query = _create_search_events_query(
+            search_text=search_text,
+            after=after,
+            before=before,
+            assets=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
+            labels=labels,
+            properties=properties,
+        )
+        return list(self._iter_search_events(query))
 
 
 def _create_search_runs_query(
@@ -1558,3 +1652,36 @@ def _create_search_checklists_query(
             queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
 
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
+
+
+def _create_search_events_query(
+    search_text: str | None = None,
+    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    before: str | datetime | IntegralNanosecondsUTC | None = None,
+    assets: Iterable[str] | None = None,
+    labels: Iterable[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> event.SearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(event.SearchQuery(search_text=search_text))
+
+    if after is not None:
+        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
+
+    if before is not None:
+        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+
+    if assets:
+        for asset in assets:
+            queries.append(event.SearchQuery(asset=asset))
+
+    if labels:
+        for label in labels:
+            queries.append(event.SearchQuery(label=label))
+
+    if properties:
+        for name, value in properties.items():
+            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
+
+    return event.SearchQuery(and_=queries)

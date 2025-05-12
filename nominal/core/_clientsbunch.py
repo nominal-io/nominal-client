@@ -10,6 +10,7 @@ from nominal_api import (
     attachments_api,
     authentication_api,
     datasource_logset,
+    event,
     ingest_api,
     scout,
     scout_assets,
@@ -136,6 +137,7 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
+    event: event.EventService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     workspace: security_api_workspace.WorkspaceService
     secrets: secrets_api.SecretService
@@ -171,6 +173,7 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
+            event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
             secrets=client_factory(secrets_api.SecretService),
