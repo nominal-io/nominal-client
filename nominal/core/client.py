@@ -1277,6 +1277,73 @@ class NominalClient:
 
         return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
 
+    def _search_events_paginated(self, request: event.SearchEventsRequest) -> Iterable[event.Event]:
+        while True:
+            response = self._clients.event.search_events(self._clients.auth_header, request)
+            yield from response.results
+            if response.next_page_token is None:
+                break
+            request = event.SearchEventsRequest(
+                page_size=request.page_size,
+                query=request.query,
+                sort=request.sort,
+                next_page_token=response.next_page_token,
+            )
+
+    def _iter_search_events(
+        self,
+        query: event.SearchQuery,
+    ) -> Iterable[Event]:
+        request = event.SearchEventsRequest(
+            page_size=100,
+            query=query,
+            sort=event.SortOptions(
+                field=event.SortField.START_TIME,
+                is_descending=True,
+            ),
+        )
+        for e in self._search_events_paginated(request):
+            yield Event._from_conjure(self._clients, e)
+
+    def search_events(
+        self,
+        *,
+        search_text: str | None = None,
+        after: datetime | IntegralNanosecondsUTC | None = None,
+        before: datetime | IntegralNanosecondsUTC | None = None,
+        assets: Iterable[Asset | str] | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> Sequence[Event]:
+        """Search for events meeting the specified filters.
+        Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
+
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            assets: List of assets that must ALL be present on an event to be included.
+            labels: A list of labels that must ALL be present on an event to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+
+        Returns:
+            All events which match all of the provided conditions
+        """
+        return list(
+            self._iter_search_events(
+                _create_search_events_query(
+                    search_text=search_text,
+                    after=after,
+                    before=before,
+                    assets=None
+                    if assets is None
+                    else [asset.id if isinstance(asset, Asset) else asset for asset in assets],
+                    labels=labels,
+                    properties=properties,
+                )
+            )
+        )
+
 
 def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
     if prefix_tree_delimiter is None:
@@ -1372,6 +1439,39 @@ def _create_search_checklists_query(
             queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
 
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
+
+
+def _create_search_events_query(
+    search_text: str | None = None,
+    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    before: str | datetime | IntegralNanosecondsUTC | None = None,
+    assets: Iterable[str] | None = None,
+    labels: Iterable[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+) -> event.SearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(event.SearchQuery(search_text=search_text))
+
+    if after is not None:
+        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
+
+    if before is not None:
+        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+
+    if assets:
+        for asset in assets:
+            queries.append(event.SearchQuery(asset=asset))
+
+    if labels:
+        for label in labels:
+            queries.append(event.SearchQuery(label=label))
+
+    if properties:
+        for property in properties:
+            queries.append(event.SearchQuery(property=property))
+
+    return event.SearchQuery(and_=queries)
 
 
 def _handle_deprecated_labels_properties(
