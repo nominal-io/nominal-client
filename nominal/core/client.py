@@ -40,7 +40,7 @@ from nominal.core._utils import construct_user_agent_string, rid_from_instance_o
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
-from nominal.core.checklist import Checklist, _to_api_duration
+from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
@@ -66,6 +66,7 @@ from nominal.ts import (
     LogTimestampType,
     _AnyTimestampType,
     _SecondsNanos,
+    _to_api_duration,
     _to_typed_timestamp_type,
 )
 

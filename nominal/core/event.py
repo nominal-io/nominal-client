@@ -12,8 +12,7 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasAuthHeader
 from nominal.core._utils import rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset
-from nominal.core.checklist import _to_api_duration
-from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
 @dataclass(frozen=True)
