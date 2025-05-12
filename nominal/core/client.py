@@ -1232,19 +1232,17 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
-        response = self._clients.event.create_event(
-            self._clients.auth_header,
-            event.CreateEvent(
-                name=name,
-                asset_rids=[asset.rid if isinstance(asset, Asset) else asset for asset in assets],
-                timestamp=_SecondsNanos.from_flexible(start).to_api(),
-                duration=_to_api_duration(duration),
-                origins=[],
-                properties=dict(properties) if properties else {},
-                labels=list(labels),
-                type=type._to_api_event_type(),
-            ),
+        request = event.CreateEvent(
+            name=name,
+            asset_rids=[rid_from_instance_or_string(asset) for asset in assets],
+            timestamp=_SecondsNanos.from_flexible(start).to_api(),
+            duration=_to_api_duration(duration),
+            origins=[],
+            properties=dict(properties) if properties else {},
+            labels=list(labels),
+            type=type._to_api_event_type(),
         )
+        response = self._clients.event.create_event(self._clients.auth_header, request)
         return Event._from_conjure(self._clients, response)
 
     def get_events(self, uuids: Sequence[str]) -> Sequence[Event]:
