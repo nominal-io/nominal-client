@@ -1320,7 +1320,7 @@ class NominalClient:
         Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
 
         Args:
-            search_text: Searches for a string in the run's metadata.
+            search_text: Searches for a string in the event's metadata.
             after: Filters to end times after this time, exclusive.
             before: Filters to start times before this time, exclusive.
             assets: List of assets that must ALL be present on an event to be included.
