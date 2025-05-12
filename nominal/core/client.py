@@ -1226,7 +1226,7 @@ class NominalClient:
         name: str,
         type: EventType,
         start: datetime | IntegralNanosecondsUTC,
-        duration: timedelta | IntegralNanosecondsDuration = 0,
+        duration: timedelta | IntegralNanosecondsDuration = timedelta(),
         *,
         assets: Iterable[Asset | str] = (),
         properties: Mapping[str, str] | None = None,
