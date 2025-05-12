@@ -9,7 +9,7 @@ from typing import Iterable, Mapping, Protocol, Sequence
 from nominal_api import event
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
@@ -27,7 +27,7 @@ class Event:
 
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def event(self) -> event.EventService: ...
 
