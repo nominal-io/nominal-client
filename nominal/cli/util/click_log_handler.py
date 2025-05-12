@@ -25,7 +25,7 @@ class ClickLogHandler(logging.StreamHandler):  # type: ignore[type-arg]
         logging.FATAL: "bright_red",
     }
 
-    def __init__(self, stream: typing.TextIO | None = None, no_color: bool = False):
+    def __init__(self, stream: typing.IO[str] | None = None, no_color: bool = False):
         """Instantiate a ClickLogHandler
 
         Args:

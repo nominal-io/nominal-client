@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from nominal_api import api, datasource_api, ingest_api, scout_catalog
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self, TypeAlias, deprecated
 
 from nominal._utils import deprecate_arguments
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
@@ -20,6 +20,7 @@ from nominal.core.channel import Channel
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.log import LogPoint, _write_logs
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _AnyTimestampType,
@@ -118,35 +119,79 @@ class Dataset(DataSource):
 
         return self.refresh()
 
+    @deprecated(
+        "`Dataset.add_csv_to_dataset` is deprecated and will be removed in a future version. "
+        "Use `Dataset.add_tabular_data` instead."
+    )
     def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
         """Append to a dataset from a csv on-disk."""
-        self.add_data_to_dataset(path, timestamp_column, timestamp_type)
+        self.add_tabular_data(path, timestamp_column, timestamp_type)
 
+    @deprecated(
+        "`Dataset.add_data_to_dataset` is deprecated and will be removed in a future version. "
+        "Use `Dataset.add_tabular_data` instead."
+    )
     def add_data_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
-        """Append to a dataset from data on-disk."""
+        """Append to a dataset from a tabular data file on-disk."""
+        self.add_tabular_data(path, timestamp_column, timestamp_type)
+
+    def add_tabular_data(
+        self,
+        path: Path | str,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        tag_columns: Mapping[str, str] | None = None,
+    ) -> None:
+        """Append to a dataset from tabular data on-disk.
+
+        Currently, the supported filetypes are:
+            - .csv / .csv.gz
+            - .parquet / .parquet.gz
+            - .parquet.tar / .parquet.tar.gz / .parquet.zip
+
+        Args:
+            path: Path to the file on disk to add to the dataset.
+            timestamp_column: Column within the file containing timestamp information.
+                NOTE: this is omitted as a channel from the data added to Nominal, and is instead used
+                      to set the timestamps for all other uploaded data channels.
+            timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
+            tag_columns: a dictionary mapping tag keys to column names.
+        """
         path = Path(path)
-        file_type = FileType.from_path_dataset(path)
+        file_type = FileType.from_tabular(path)
         with open(path, "rb") as data_file:
-            self.add_to_dataset_from_io(
-                data_file, timestamp_column, timestamp_type, file_type, file_name=path_upload_name(path, file_type)
+            self.add_from_io(
+                data_file,
+                timestamp_column,
+                timestamp_type,
+                file_type,
+                file_name=path_upload_name(path, file_type),
+                tag_columns=tag_columns,
             )
 
-    def add_to_dataset_from_io(
+    # Backward compatibility
+    add_tabular_data_to_dataset = add_tabular_data
+
+    def add_from_io(
         self,
         dataset: BinaryIO,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
         file_name: str | None = None,
+        tag_columns: Mapping[str, str] | None = None,
     ) -> None:
         """Append to a dataset from a file-like object.
 
+        dataset: a file-like object containing the data to append to the dataset.
+        timestamp_column: the column in the dataset that contains the timestamp data.
+        timestamp_type: the type of timestamp data in the dataset.
         file_type: a (extension, mimetype) pair describing the type of file.
+        file_name: the name of the file to upload.
+        tag_columns: a dictionary mapping tag keys to column names.
         """
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
-
-        self.poll_until_ingestion_completed()
 
         if file_name is None:
             file_name = self.name
@@ -154,37 +199,38 @@ class Dataset(DataSource):
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             dataset,
             file_name,
             file_type,
             self._clients.upload,
         )
+
         request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                csv=ingest_api.CsvOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
-                    ),
-                    timestamp_metadata=ingest_api.TimestampMetadata(
-                        series_name=timestamp_column,
-                        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
-                    ),
-                )
+            options=_construct_existing_ingest_options(
+                target_rid=self.rid,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                file_type=file_type,
+                tag_columns=tag_columns,
+                s3_path=s3_path,
             )
         )
         self._clients.ingest.ingest(self._clients.auth_header, request)
 
-    def add_journal_json_to_dataset(
+    # Backward compatibility
+    add_to_dataset_from_io = add_from_io
+
+    def add_journal_json(
         self,
         path: Path | str,
     ) -> None:
         """Add a journald jsonl file to an existing dataset."""
-        self.poll_until_ingestion_completed()
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             log_path,
             self._clients.upload,
             file_type=file_type,
@@ -203,7 +249,10 @@ class Dataset(DataSource):
             ),
         )
 
-    def add_mcap_to_dataset(
+    # Backward compatibility
+    add_journal_json_to_dataset = add_journal_json
+
+    def add_mcap(
         self,
         path: Path | str,
         include_topics: Iterable[str] | None = None,
@@ -220,14 +269,17 @@ class Dataset(DataSource):
         """
         path = Path(path)
         with path.open("rb") as data_file:
-            self.add_mcap_to_dataset_from_io(
+            self.add_mcap_from_io(
                 data_file,
                 include_topics=include_topics,
                 exclude_topics=exclude_topics,
                 file_name=path_upload_name(path, FileTypes.MCAP),
             )
 
-    def add_mcap_to_dataset_from_io(
+    # Backward compatibility
+    add_mcap_to_dataset = add_mcap
+
+    def add_mcap_from_io(
         self,
         mcap: BinaryIO,
         include_topics: Iterable[str] | None = None,
@@ -250,13 +302,12 @@ class Dataset(DataSource):
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"mcap {mcap} must be open in binary mode, rather than text mode")
 
-        self.poll_until_ingestion_completed()
-
         if file_name is None:
             file_name = self.name
 
         s3_path = upload_multipart_io(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             mcap,
             file_name,
             file_type=FileTypes.MCAP,
@@ -273,15 +324,18 @@ class Dataset(DataSource):
         if resp.details.dataset is None or resp.details.dataset.dataset_rid is None:
             raise NominalIngestError("error ingesting mcap: no dataset created or updated")
 
-    def add_ardupilot_dataflash_to_dataset(
+    # Backward compatibility
+    add_mcap_to_dataset_from_io = add_mcap_from_io
+
+    def add_ardupilot_dataflash(
         self,
         path: Path | str,
     ) -> None:
         """Add a Dataflash file to an existing dataset."""
-        self.poll_until_ingestion_completed()
         dataflash_path = Path(path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,
+            self._clients.workspace_rid,
             dataflash_path,
             self._clients.upload,
             file_type=FileTypes.DATAFLASH,
@@ -291,6 +345,9 @@ class Dataset(DataSource):
         )
         request = _create_dataflash_ingest_request(s3_path, target)
         self._clients.ingest.ingest(self._clients.auth_header, request)
+
+    # Backward compatibility
+    add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
 
     def archive(self) -> None:
         """Archive this dataset.
@@ -366,25 +423,61 @@ class Dataset(DataSource):
             else:
                 next_page_token = response.next_page_token
 
-    def list_files(self) -> Iterable[DatasetFile]:
+    def _list_files(self) -> Iterable[scout_catalog.DatasetFile]:
         next_page_token = None
         while True:
             files_page = self._clients.catalog.list_dataset_files(self._clients.auth_header, self.rid, next_page_token)
-            for file in files_page.files:
-                if file.ingest_status.type == "success":
-                    yield DatasetFile._from_conjure(file)
-                else:
-                    logger.debug(
-                        "Ignoring dataset file %s (id=%s)-- status '%s' is not 'success'!",
-                        file.name,
-                        file.id,
-                        file.ingest_status.type,
-                    )
-
+            yield from files_page.files
             if files_page.next_page is None:
                 break
-            else:
-                next_page_token = files_page.next_page
+            next_page_token = files_page.next_page
+
+    def list_files(self, *, successful_only: bool = True) -> Iterable[DatasetFile]:
+        """List files ingested to this dataset.
+
+        If successful_only, yields files with a 'success' ingest status only.
+        """
+        files = self._list_files()
+        if successful_only:
+            files = filter(lambda f: f.ingest_status.type == "success", files)
+        for file in files:
+            yield DatasetFile._from_conjure(file)
+
+    def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
+        r"""Stream logs to the datasource.
+
+        This method executes synchronously, i.e. it blocks until all logs are sent to the API.
+        Logs are sent in batches. The logs can be any iterable of LogPoints, including a generator.
+
+        Args:
+            logs: LogPoints to stream to Nominal.
+            channel_name: Name of the channel to stream logs to.
+            batch_size: Number of logs to send to the API at a time.
+
+        Example:
+            ```python
+            from nominal.core import LogPoint
+
+            def parse_logs_from_file(file_path: str) -> Iterable[LogPoint]:
+                # 2025-04-08T14:26:28.679052Z [INFO] Sent ACTUATE_MOTOR command
+                with open(file_path, "r") as f:
+                    for line in f:
+                        timestamp, message = line.removesuffix("\n").split(maxsplit=1)
+                        yield LogPoint.create(timestamp, message)
+
+            dataset = client.get_dataset("dataset_rid")
+            logs = parse_logs_from_file("logs.txt")
+            dataset.write_logs(logs)
+            ```
+        """
+        _write_logs(
+            auth_header=self._clients.auth_header,
+            client=self._clients.storage_writer,
+            data_source_rid=self.rid,
+            logs=logs,
+            channel_name=channel_name,
+            batch_size=batch_size,
+        )
 
 
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
@@ -464,3 +557,109 @@ def _create_mcap_channels(
     elif exclude_topics is not None:
         channels = ingest_api.McapChannels(exclude=[api.McapChannelLocator(topic=topic) for topic in exclude_topics])
     return channels
+
+
+def _build_channel_config(prefix_tree_delimiter: str | None) -> ingest_api.ChannelConfig | None:
+    if prefix_tree_delimiter is None:
+        return None
+    else:
+        return ingest_api.ChannelConfig(prefix_tree_delimiter=prefix_tree_delimiter)
+
+
+def _construct_new_ingest_options(
+    name: str,
+    timestamp_column: str,
+    timestamp_type: _AnyTimestampType,
+    file_type: FileType,
+    description: str | None,
+    labels: Sequence[str],
+    properties: Mapping[str, str],
+    prefix_tree_delimiter: str | None,
+    channel_prefix: str | None,
+    tag_columns: Mapping[str, str] | None,
+    s3_path: str,
+    workspace_rid: str | None,
+) -> ingest_api.IngestOptions:
+    source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+    target = ingest_api.DatasetIngestTarget(
+        new=ingest_api.NewDatasetIngestDestination(
+            labels=list(labels),
+            properties=dict(properties),
+            channel_config=_build_channel_config(prefix_tree_delimiter),
+            dataset_description=description,
+            dataset_name=name,
+            workspace=workspace_rid,
+        )
+    )
+    timestamp_metadata = ingest_api.TimestampMetadata(
+        series_name=timestamp_column,
+        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+    )
+    tag_columns = dict(tag_columns) if tag_columns else None
+
+    if file_type.is_parquet():
+        return ingest_api.IngestOptions(
+            parquet=ingest_api.ParquetOpts(
+                source=source,
+                target=target,
+                timestamp_metadata=timestamp_metadata,
+                channel_prefix=channel_prefix,
+                tag_columns=tag_columns,
+                is_archive=file_type.is_parquet_archive(),
+            )
+        )
+    else:
+        if file_type.is_csv():
+            logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
+
+        return ingest_api.IngestOptions(
+            csv=ingest_api.CsvOpts(
+                source=source,
+                target=target,
+                timestamp_metadata=timestamp_metadata,
+                channel_prefix=channel_prefix,
+                tag_columns=tag_columns,
+            )
+        )
+
+
+def _construct_existing_ingest_options(
+    target_rid: str,
+    timestamp_column: str,
+    timestamp_type: _AnyTimestampType,
+    file_type: FileType,
+    tag_columns: Mapping[str, str] | None,
+    s3_path: str,
+) -> ingest_api.IngestOptions:
+    source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+    target = ingest_api.DatasetIngestTarget(
+        existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=target_rid)
+    )
+    timestamp_metadata = ingest_api.TimestampMetadata(
+        series_name=timestamp_column,
+        timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+    )
+    tag_columns = dict(tag_columns) if tag_columns else None
+
+    if file_type.is_parquet():
+        return ingest_api.IngestOptions(
+            parquet=ingest_api.ParquetOpts(
+                source=source,
+                target=target,
+                timestamp_metadata=timestamp_metadata,
+                tag_columns=tag_columns,
+                is_archive=file_type.is_parquet_archive(),
+            )
+        )
+    else:
+        if file_type.is_csv():
+            logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
+
+        return ingest_api.IngestOptions(
+            csv=ingest_api.CsvOpts(
+                source=source,
+                target=target,
+                timestamp_metadata=timestamp_metadata,
+                tag_columns=tag_columns,
+            )
+        )

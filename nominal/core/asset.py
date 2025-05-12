@@ -11,7 +11,7 @@ from nominal_api import (
 )
 from typing_extensions import Self, TypeAlias, deprecated
 
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._conjure_utils import Link, _build_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -39,7 +39,7 @@ class Asset(HasRid):
         Video._Clients,
         LogSet._Clients,
         Attachment._Clients,
-        HasAuthHeader,
+        HasScoutParams,
         Protocol,
     ):
         @property
@@ -171,9 +171,17 @@ class Asset(HasRid):
         Returns (data_scope_name, dataset) pairs for each dataset.
         """
         scope_rid = self._scope_rid(stype="dataset")
-        datasets_meta = _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
+        if not scope_rid:
+            return []
+
+        datasets_map = {
+            dataset.rid: dataset
+            for dataset in _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
+        }
         return [
-            (scope, Dataset._from_conjure(self._clients, ds)) for (scope, ds) in zip(scope_rid.keys(), datasets_meta)
+            (name, Dataset._from_conjure(self._clients, datasets_map[rid]))
+            for name, rid in scope_rid.items()
+            if rid in datasets_map
         ]
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
@@ -197,10 +205,17 @@ class Asset(HasRid):
             for (scope, rid) in scope_rid.items()
         ]
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Logs should be stored as a log channel in a Nominal datasource instead."
+    )
     def list_logsets(self) -> Sequence[tuple[str, LogSet]]:
         """List the logsets associated with this asset.
         Returns (data_scope_name, logset) pairs for each logset.
         """
+        return self._list_logsets()
+
+    def _list_logsets(self) -> Sequence[tuple[str, LogSet]]:
         scope_rid = self._scope_rid(stype="logset")
         return [
             (scope, LogSet._from_conjure(self._clients, _get_log_set(self._clients, rid)))
@@ -212,7 +227,7 @@ class Asset(HasRid):
         Returns (data_scope_name, scope) pairs, where scope can be
         a dataset, connection, video, or logset.
         """
-        return (*self.list_datasets(), *self.list_connections(), *self.list_logsets(), *self.list_videos())
+        return (*self.list_datasets(), *self.list_connections(), *self._list_logsets(), *self.list_videos())
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""

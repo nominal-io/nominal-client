@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 import typing_extensions
 
 from nominal import Connection, _config, ts
-from nominal._utils import deprecate_keyword_argument
 from nominal.core import (
     Asset,
     Attachment,
@@ -157,6 +156,35 @@ def upload_polars(
     )
 
 
+def create_dataset(
+    name: str,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    prefix_tree_delimiter: str | None = None,
+) -> Dataset:
+    """Create an empty dataset.
+
+    Args:
+        name: Name of the dataset to create in Nominal.
+        description: Human readable description of the dataset.
+        labels: Text labels to apply to the created dataset
+        properties: Key-value properties to apply to the cleated dataset
+        prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+
+    Returns:
+        Reference to the created dataset in Nominal.
+    """
+    conn = get_default_client()
+    return conn.create_dataset(
+        name, description=description, labels=labels, properties=properties, prefix_tree_delimiter=prefix_tree_delimiter
+    )
+
+
+@typing_extensions.deprecated(
+    "`nominal.upload_csv` is deprecated and will be removed in a future version. "
+    "Use `nominal.create_dataset` or `nominal.get_dataset`, add data to an existing dataset instead."
+)
 def upload_csv(
     file: Path | str,
     name: str | None,
@@ -258,7 +286,6 @@ def create_run_csv(
     This is a convenience function that combines `upload_csv()` and `create_run()`.
     """
     dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
-    dataset.poll_until_ingestion_completed()
     dataset.refresh()
     assert dataset.bounds is not None
     run = create_run(name, start=dataset.bounds.start, end=dataset.bounds.end, description=description)
@@ -272,42 +299,29 @@ def get_run(rid: str) -> Run:
     return conn.get_run(rid)
 
 
-@deprecate_keyword_argument("name_substring", "exact_name")
 def search_runs(
     *,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
-    label: str | None = None,
     labels: Sequence[str] | None = None,
-    property: tuple[str, str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> Sequence[Run]:
     """Search for runs meeting the specified filters.
-    Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
+    Filters are ANDed together, e.g. `(labels in run.labels) AND (run.end <= end)`
 
     Args:
         start: Inclusive start time for filtering runs.
         end: Inclusive end time for filtering runs.
         name_substring: Searches for a (case-insensitive) substring in the name
-        label: Deprecated, use labels instead.
         labels: A sequence of labels that must ALL be present on a run to be included.
-        property: Deprecated, use properties instead.
         properties: A mapping of key-value pairs that must ALL be present on a run to be included.
 
     Returns:
         All runs which match all of the provided conditions
     """
     conn = get_default_client()
-    return conn.search_runs(
-        start=start,
-        end=end,
-        name_substring=name_substring,
-        label=label,
-        labels=labels,
-        property=property,
-        properties=properties,
-    )
+    return conn.search_runs(start=start, end=end, name_substring=name_substring, labels=labels, properties=properties)
 
 
 def upload_attachment(
@@ -383,14 +397,10 @@ def get_asset(rid: str) -> Asset:
     return conn.get_asset(rid)
 
 
-@deprecate_keyword_argument("properties", "property")
-@deprecate_keyword_argument("labels", "label")
 def search_assets(
     *,
     search_text: str | None = None,
-    label: str | None = None,
     labels: Sequence[str] | None = None,
-    property: tuple[str, str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> Sequence[Asset]:
     """Search for assets meeting the specified filters.
@@ -398,22 +408,14 @@ def search_assets(
 
     Args:
         search_text: case-insensitive search for any of the keywords in all string fields
-        label: Deprecated, use labels instead.
         labels: A sequence of labels that must ALL be present on a asset to be included.
-        property: Deprecated, use properties instead.
         properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
 
     Returns:
         All assets which match all of the provided conditions
     """
     conn = get_default_client()
-    return conn.search_assets(
-        search_text=search_text,
-        label=label,
-        property=property,
-        labels=labels,
-        properties=properties,
-    )
+    return conn.search_assets(search_text=search_text, labels=labels, properties=properties)
 
 
 def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
@@ -476,6 +478,10 @@ def upload_mcap_video(
     return video
 
 
+@typing_extensions.deprecated(
+    "`nominal.create_streaming_connection` is deprecated, use `nominal.create_dataset` "
+    "and then `Dataset.get_write_stream` instead."
+)
 def create_streaming_connection(
     datasource_id: str,
     connection_name: str,

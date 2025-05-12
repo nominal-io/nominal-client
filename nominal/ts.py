@@ -197,7 +197,6 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 from __future__ import annotations
 
 import abc
-import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
@@ -341,19 +340,10 @@ _LiteralAbsolute: TypeAlias = Literal[
     "epoch_hours",
 ]
 
-_LiteralRelativeDeprecated: TypeAlias = Literal[
-    "relative_nanoseconds",
-    "relative_microseconds",
-    "relative_milliseconds",
-    "relative_seconds",
-    "relative_minutes",
-    "relative_hours",
-]
-
 TypedTimestampType: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
 """Type alias for all of the strongly typed timestamp types."""
 
-_AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute, _LiteralRelativeDeprecated]
+_AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute]
 """Type alias for all of the allowable timestamp types, including string representations."""
 
 
@@ -362,14 +352,6 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
         return type_
     if not isinstance(type_, str):
         raise TypeError(f"timestamp type {type_} must be a string or an instance of one of: {TypedTimestampType}")
-    if type_.startswith("relative_"):
-        # until this is completely removed, we implicitly assume offset=1970-01-01 in the APIs
-        warnings.warn(
-            "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: "
-            "use `nm.ts.Relative` instead. "
-            "for example: instead of 'relative_seconds', use `nm.ts.Relative('seconds', start=datetime.now())`. ",
-            UserWarning,
-        )
     if type_ not in _str_to_type:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
@@ -379,7 +361,7 @@ def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
     return api.TimeUnit[unit.upper()]
 
 
-_str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | Epoch | Relative] = MappingProxyType(
+_str_to_type: Mapping[_LiteralAbsolute, Iso8601 | Epoch | Relative] = MappingProxyType(
     {
         "iso_8601": ISO_8601,
         "epoch_nanoseconds": EPOCH_NANOSECONDS,
@@ -388,12 +370,6 @@ _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | E
         "epoch_seconds": EPOCH_SECONDS,
         "epoch_minutes": EPOCH_MINUTES,
         "epoch_hours": EPOCH_HOURS,
-        "relative_nanoseconds": Relative("nanoseconds", start=0),
-        "relative_microseconds": Relative("microseconds", start=0),
-        "relative_milliseconds": Relative("milliseconds", start=0),
-        "relative_seconds": Relative("seconds", start=0),
-        "relative_minutes": Relative("minutes", start=0),
-        "relative_hours": Relative("hours", start=0),
     }
 )
 
@@ -459,6 +435,9 @@ class _SecondsNanos(NamedTuple):
         if isinstance(ts, int):
             return cls.from_nanoseconds(ts)
         if isinstance(ts, str):
+            # TODO(drake-nominal): by involving dateutil, this chops off any nano level precision provided
+            #                      in the timestamp. Update to not lose precision when converting to absolute
+            #                      nanos.
             ts = dateutil.parser.parse(ts)
         return cls.from_datetime(ts)
 

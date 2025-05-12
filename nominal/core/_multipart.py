@@ -73,6 +73,7 @@ def path_upload_name(path: pathlib.Path, file_type: FileType) -> str:
 
 def put_multipart_upload(
     auth_header: str,
+    workspace_rid: str | None,
     f: BinaryIO,
     filename: str,
     mimetype: str,
@@ -87,6 +88,7 @@ def put_multipart_upload(
 
     Args:
         auth_header: Nominal authorization token
+        workspace_rid: Nominal workspace rid
         f: Binary IO to upload
         filename: URL-safe filename to use when uploading to S3
         mimetype: Type of data contained within binary stream
@@ -110,7 +112,9 @@ def put_multipart_upload(
 
     q: Queue[bytes] = Queue(maxsize=2 * max_workers)  # allow for look-ahead
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    initiate_request = ingest_api.InitiateMultipartUploadRequest(filename=filename, filetype=mimetype)
+    initiate_request = ingest_api.InitiateMultipartUploadRequest(
+        filename=filename, filetype=mimetype, workspace=workspace_rid
+    )
     initiate_response = upload_client.initiate_multipart_upload(auth_header, initiate_request)
     key, upload_id = initiate_response.key, initiate_response.upload_id
     _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, auth_header, key, upload_id, q)
@@ -155,6 +159,7 @@ def put_multipart_upload(
 
 def upload_multipart_io(
     auth_header: str,
+    workspace_rid: str | None,
     f: BinaryIO,
     name: str,
     file_type: FileType,
@@ -166,6 +171,7 @@ def upload_multipart_io(
 
     Args:
         auth_header: Nominal authorization token
+        workspace_rid: Nominal workspace rid
         f: Binary IO to upload
         name: Name of the file to create in S3
             NOTE: does not need to be URL Safe
@@ -183,6 +189,7 @@ def upload_multipart_io(
     safe_filename = f"{urlsafe_name}{file_type.extension}"
     return put_multipart_upload(
         auth_header,
+        workspace_rid,
         f,
         safe_filename,
         file_type.mimetype,
@@ -194,6 +201,7 @@ def upload_multipart_io(
 
 def upload_multipart_file(
     auth_header: str,
+    workspace_rid: str | None,
     file: pathlib.Path,
     upload_client: upload_api.UploadService,
     file_type: FileType | None = None,
@@ -204,6 +212,7 @@ def upload_multipart_file(
 
     Args:
         auth_header: Nominal authorization token
+        workspace_rid: Nominal workspace rid
         file: File to upload to S3
         upload_client: Conjure upload client
         file_type: Manually override inferred file type for the given file
@@ -222,6 +231,7 @@ def upload_multipart_file(
     with file.open("rb") as file_handle:
         return upload_multipart_io(
             auth_header,
+            workspace_rid,
             file_handle,
             file_name,
             file_type,
@@ -237,6 +247,6 @@ def _abort(upload_client: upload_api.UploadService, auth_header: str, key: str, 
     )
     try:
         upload_client.abort_multipart_upload(auth_header, key, upload_id)
-    except Exception as e:
-        logger.critical("multipart upload abort failed", exc_info=e, extra={"key": key, "upload_id": upload_id})
-        raise e
+    except Exception as exc:
+        logger.critical("multipart upload abort failed", exc_info=exc, extra={"key": key, "upload_id": upload_id})
+        raise exc from e

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Iterable, Literal, Protocol, Sequence
 
 import typing_extensions
 from nominal_api import (
@@ -24,10 +24,13 @@ from nominal_api import (
 )
 
 from nominal._utils import warn_on_deprecated_argument
-from nominal.core._clientsbunch import HasAuthHeader, ProtoWriteService
-from nominal.core._conjure_utils import _available_units, _build_unit_update
+from nominal.core._batch_processor import process_batch_legacy
+from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._utils import HasRid, batched
 from nominal.core.channel import Channel, ChannelDataType
+from nominal.core.stream import WriteStream
+from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
+from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
@@ -41,7 +44,7 @@ class DataSource(HasRid):
     rid: str
     _clients: _Clients = field(repr=False)
 
-    class _Clients(Channel._Clients, HasAuthHeader, Protocol):
+    class _Clients(Channel._Clients, HasScoutParams, Protocol):
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
@@ -111,6 +114,38 @@ class DataSource(HasRid):
             )
             yield from (Channel._from_channel_metadata_api(self._clients, channel) for channel in response.responses)
 
+    def get_write_stream(
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+        data_format: Literal["json", "protobuf", "experimental"] = "json",
+    ) -> WriteStreamBase:
+        """Stream to write messages to a datasource.
+
+        Messages are written asynchronously.
+
+        Args:
+        ----
+            batch_size: How big the batch can get before writing to Nominal.
+            max_wait: How long a batch can exist before being flushed to Nominal.
+            data_format: Serialized data format to use during upload.
+                NOTE: selecting 'protobuf' or 'experimental' requires that `nominal` was installed
+                      with `protos` extras.
+
+        Returns:
+        --------
+            Write stream object configured to send data to nominal. This may be used as a context manager
+            (so that resources are automatically released upon exiting the context), or if not used as a context
+            manager, should be explicitly `close()`-ed once no longer needed.
+        """
+        return _get_write_stream(
+            batch_size=batch_size,
+            max_wait=max_wait,
+            data_format=data_format,
+            write_rid=self.rid,
+            clients=self._clients,
+        )
+
     def search_channels(
         self,
         exact_match: Sequence[str] = (),
@@ -161,7 +196,12 @@ class DataSource(HasRid):
 
         return datasource_to_dataframe(self, channel_exact_match, channel_fuzzy_search_text, start, end, tags)
 
-    def set_channel_units(self, channels_to_units: Mapping[str, str | None], validate_schema: bool = False) -> None:
+    def set_channel_units(
+        self,
+        channels_to_units: UnitMapping,
+        validate_schema: bool = False,
+        allow_display_only_units: bool = False,
+    ) -> None:
         """Set units for channels based on a provided mapping of channel names to units.
 
         Args:
@@ -170,55 +210,41 @@ class DataSource(HasRid):
                 NOTE: any existing units may be cleared from a channel by providing None as a symbol.
             validate_schema: If true, raises a ValueError if non-existent channel names are provided in
                 `channels_to_units`. Default is False.
+            allow_display_only_units: If true, allow units that would be treated as display-only by Nominal.
 
         Raises:
         ------
             ValueError: Unsupported unit symbol provided
             conjure_python_client.ConjureHTTPError: Error completing requests.
         """
-        # Validate that all user provided unit symbols are valid
+        channel_names = set(channel.name for channel in self.get_channels())
+
         if validate_schema:
-            # Get the set of all available unit symbols
-            supported_symbols = set(
-                [unit.symbol for unit in _available_units(self._clients.auth_header, self._clients.units)]
-            )
+            for channel in channels_to_units:
+                if channel not in channel_names:
+                    raise ValueError(f"Cannot update units for channel {channel}-- no such channel exists!")
+        else:
+            channels_to_units = {
+                channel: unit for channel, unit in channels_to_units.items() if channel in channel_names
+            }
 
-            for channel_name, unit_symbol in channels_to_units.items():
-                # User is clearing the unit for this channel-- don't validate
-                if unit_symbol is None:
-                    continue
+        if not channels_to_units:
+            logger.warning("No channels specified to have updated units, nothing to update.")
+            return
 
-                if unit_symbol not in supported_symbols:
-                    raise ValueError(
-                        f"Provided unit '{unit_symbol}' for channel '{channel_name}' does not resolve to a unit "
-                        "recognized by nominal. For more information on valid symbols, see https://ucum.org/ucum"
-                    )
-
-        # Get metadata for all requested channels
-        found_channels = {channel.name: channel for channel in self.get_channels(names=list(channels_to_units.keys()))}
+        if not allow_display_only_units:
+            _error_on_invalid_units(channels_to_units, self._clients.units, self._clients.auth_header)
 
         # For each channel / unit combination, create an update request
-        update_requests = []
-
-        for channel_name, unit in channels_to_units.items():
-            # No data uploaded to channel yet ...
-            if channel_name not in found_channels:
-                if validate_schema:
-                    raise ValueError(f"Unable to set unit for {channel_name} to {unit}: no data uploaded for channel")
-                else:
-                    logger.info("Not setting unit for channel %s: no data uploaded for channel", channel_name)
-                    continue
-
-            channel_request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
+        update_requests = [
+            timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
                 channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
                     channel_name=channel_name, data_source_rid=self.rid
                 ),
                 unit_update=_build_unit_update(unit),
             )
-            update_requests.append(channel_request)
-
-        if not update_requests:
-            return
+            for channel_name, unit in channels_to_units.items()
+        ]
 
         # Set units in database using batch update
         batch_request = timeseries_channelmetadata_api.BatchUpdateChannelMetadataRequest(requests=update_requests)
@@ -308,3 +334,64 @@ def _construct_export_request(
         ),
     )
     return request
+
+
+def _get_write_stream(
+    batch_size: int,
+    max_wait: timedelta,
+    data_format: Literal["json", "protobuf", "experimental"],
+    write_rid: str,
+    clients: DataSource._Clients,
+) -> WriteStreamBase:
+    if data_format == "json":
+        return WriteStream.create(
+            batch_size=batch_size,
+            max_wait=max_wait,
+            process_batch=lambda batch: process_batch_legacy(
+                batch=batch,
+                nominal_data_source_rid=write_rid,
+                auth_header=clients.auth_header,
+                storage_writer=clients.storage_writer,
+            ),
+        )
+    elif data_format == "protobuf":
+        try:
+            from nominal.core._batch_processor_proto import process_batch
+        except ImportError as ex:
+            raise ImportError(
+                "nominal-api-protos is required to use get_write_stream with data_format='protobuf'"
+            ) from ex
+
+        return WriteStream.create(
+            batch_size,
+            max_wait,
+            lambda batch: process_batch(
+                batch=batch,
+                nominal_data_source_rid=write_rid,
+                auth_header=clients.auth_header,
+                proto_write=clients.proto_write,
+            ),
+        )
+    elif data_format == "experimental":
+        try:
+            from nominal.experimental.stream_v2._serializer import BatchSerializer
+            from nominal.experimental.stream_v2._write_stream import WriteStreamV2
+        except ImportError as ex:
+            raise ImportError(
+                "nominal-api-protos is required to use get_write_stream with data_format='experimental'"
+            ) from ex
+
+        return WriteStreamV2.create(
+            clients=clients,
+            serializer=BatchSerializer.create(max_workers=None),
+            nominal_data_source_rid=write_rid,
+            max_batch_size=batch_size,
+            max_wait=max_wait,
+            max_queue_size=0,
+            track_metrics=True,
+            max_workers=None,
+        )
+    else:
+        raise ValueError(
+            f"Expected `data_format` to be one of {{json, protobuf, experimental}}, received '{data_format}'"
+        )

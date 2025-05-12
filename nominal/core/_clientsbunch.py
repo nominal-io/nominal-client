@@ -23,6 +23,8 @@ from nominal_api import (
     scout_datasource,
     scout_datasource_connection,
     scout_video,
+    secrets_api,
+    security_api_workspace,
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
@@ -109,6 +111,7 @@ class ProtoWriteService(Service):
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
+    workspace_rid: str | None
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
@@ -136,13 +139,16 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     event: event.EventService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
+    workspace: security_api_workspace.WorkspaceService
+    secrets: secrets_api.SecretService
 
     @classmethod
-    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
+    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str | None) -> Self:
         client_factory = partial(RequestsClient.create, user_agent=agent, service_config=cfg)
 
         return cls(
             auth_header=f"Bearer {token}",
+            workspace_rid=workspace_rid,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
@@ -169,9 +175,13 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
+            workspace=client_factory(security_api_workspace.WorkspaceService),
+            secrets=client_factory(secrets_api.SecretService),
         )
 
 
-class HasAuthHeader(Protocol):
+class HasScoutParams(Protocol):
     @property
     def auth_header(self) -> str: ...
+    @property
+    def workspace_rid(self) -> str | None: ...

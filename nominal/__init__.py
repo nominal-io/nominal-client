@@ -18,6 +18,7 @@ from nominal.core import (
     User,
     Video,
     Workbook,
+    Workspace,
     WriteStream,
 )
 from nominal.nominal import (
@@ -99,6 +100,7 @@ __all__ = [
     "LogSet",
     "Log",
     "Workbook",
+    "Workspace",
     "DataReview",
     "CheckViolation",
     "DataReviewBuilder",

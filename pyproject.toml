@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.45.0"
+version = "1.50.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -19,13 +19,13 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 requires-python = ">=3.9,<4"
 dependencies = [
     "click>=8,<9",
     "conjure-python-client>=2.8.0,<3",
-    "nominal-api==0.584.3",
     "nptdms>=1.9.0,<2",
     "tabulate>=0.9.0,<0.10",
     "typing-extensions>=4,<5",
@@ -36,6 +36,7 @@ dependencies = [
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
+    "nominal-api==0.653.0",
 ]
 
 
@@ -151,6 +152,10 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "ffmpeg"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disable_error_code = ["no-untyped-def"]
 
 [tool.pytest.ini_options]
 filterwarnings = [
