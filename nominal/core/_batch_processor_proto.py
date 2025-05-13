@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import groupby
-from typing import Sequence, cast
+from typing import Mapping, Sequence, cast
 
+import numpy as np
 from google.protobuf.timestamp_pb2 import Timestamp
 
 try:
@@ -24,7 +25,7 @@ except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._queueing import Batch
+from nominal.core._queueing import Batch, BatchV2
 from nominal.core._utils import _to_api_batch_key
 from nominal.core.stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -37,6 +38,13 @@ class SerializedBatch:
     data: bytes  # Serialized protobuf data
     oldest_timestamp: IntegralNanosecondsUTC  # Oldest timestamp in the batch
     newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
+
+
+@dataclass(frozen=True)
+class SerializedBatchV2:
+    """Result of batch serialization containing the protobuf data."""
+
+    data: bytes  # Serialized protobuf data
 
 
 def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
@@ -70,6 +78,39 @@ def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
         raise ValueError("only float and string are supported types for value")
 
 
+def make_points_proto_v2(
+    seconds: np.ndarray[int, np.dtype[np.int64]],
+    nanos: np.ndarray[int, np.dtype[np.int64]],
+    values: np.ndarray[float | str, np.dtype[np.float64 | np.str_]],
+) -> Points:
+    if values.dtype == np.float64:
+        return Points(
+            double_points=DoublePoints(
+                points=[
+                    DoublePoint(
+                        timestamp=_make_timestamp_v2(seconds[i], nanos[i]),
+                        value=cast(float, values[i]),
+                    )
+                    for i in range(len(seconds))
+                ]
+            )
+        )
+    elif values.dtype == np.str_:
+        return Points(
+            string_points=StringPoints(
+                points=[
+                    StringPoint(
+                        timestamp=_make_timestamp_v2(seconds[i], nanos[i]),
+                        value=cast(str, values[i]),
+                    )
+                    for i in range(len(seconds))
+                ]
+            )
+        )
+    else:
+        raise ValueError("only float and string are supported types for value")
+
+
 def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
     """Create a WriteRequestNominal from batches of items."""
     api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
@@ -85,6 +126,22 @@ def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
         ]
     )
 
+
+
+def create_write_request_v2(batch: BatchV2) -> WriteRequestNominal:
+    try:
+        return WriteRequestNominal(
+            series=[
+                Series(
+                    channel=NominalChannel(name=batch.channel_name),
+                    points=make_points_proto_v2(batch.seconds, batch.nanos, batch.values),
+                    tags=batch.tags or {},
+                )
+            ]
+        )
+    except Exception as e:
+        print(f"Write request creation error: {e}", exc_info=True)
+        raise
 
 def process_batch(
     batch: Sequence[BatchItem],
@@ -115,8 +172,23 @@ def serialize_batch(batch: Batch) -> SerializedBatch:
     )
 
 
+
+
+def serialize_batch_v2(batch: BatchV2) -> SerializedBatchV2:
+    try:
+        request = create_write_request_v2(batch)
+        return SerializedBatchV2(data=request.SerializeToString())
+    except Exception as e:
+        print(f"Serialization failure: {e}", exc_info=True)
+        raise
+
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:
     """Convert timestamp to protobuf Timestamp format."""
     seconds_nanos = _SecondsNanos.from_flexible(timestamp)
     ts = Timestamp(seconds=seconds_nanos.seconds, nanos=seconds_nanos.nanos)
     return ts
+
+
+def _make_timestamp_v2(seconds: int, nanos: int) -> Timestamp:
+    """Convert timestamp to protobuf Timestamp format."""
+    return Timestamp(seconds=seconds, nanos=nanos)

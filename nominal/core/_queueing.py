@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from queue import Empty, Queue
-from typing import Iterable, List, Protocol, TypeVar
+from typing import Iterable, List, Protocol, TypeVar, TypeAlias
+
+import numpy as np
 
 from nominal.core.stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC
@@ -13,6 +16,11 @@ from nominal.ts import IntegralNanosecondsUTC
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
 _T_contra = TypeVar("_T_contra", contravariant=True)
+
+# Type aliases for cleaner type annotations
+TimeArray: TypeAlias = np.ndarray[int, np.dtype[np.int64]]  # Array of timestamp seconds or nanoseconds
+ValueArray: TypeAlias = np.ndarray[float | str, np.dtype[np.float64 | np.str_]]  # Array of channel values
+TagsArray: TypeAlias = Mapping[str, str]
 
 # Maximum value for a 64-bit signed integer
 MAX_INT64 = 2**63 - 1
@@ -23,6 +31,15 @@ class Batch:
     items: List[BatchItem]
     oldest_timestamp: IntegralNanosecondsUTC
     newest_timestamp: IntegralNanosecondsUTC
+
+
+@dataclass(frozen=True)
+class BatchV2:
+    channel_name: str
+    seconds: TimeArray
+    nanos: TimeArray
+    values: ValueArray
+    tags: TagsArray
 
 
 class ReadQueue(Protocol[_T_co]):
