@@ -32,7 +32,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.network import NominalRequestsClient
+from nominal.network import GzipRequestsClient
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -143,7 +143,7 @@ class ClientsBunch:
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str | None) -> Self:
-        client_factory = partial(NominalRequestsClient.create, user_agent=agent, service_config=cfg)
+        client_factory = partial(GzipRequestsClient.create, user_agent=agent, service_config=cfg)
 
         return cls(
             auth_header=f"Bearer {token}",

@@ -1,3 +1,3 @@
-from nominal.network.nominal_session import NominalRequestsClient, NominalRequestsSession
+from nominal.network.nominal_session import GzipRequestsClient, GzipRequestsSession
 
-__all__ = ["NominalRequestsClient", "NominalRequestsSession"]
+__all__ = ["GzipRequestsClient", "GzipRequestsSession"]

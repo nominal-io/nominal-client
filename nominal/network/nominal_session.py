@@ -6,18 +6,20 @@ import logging
 from typing import Type, TypeVar
 
 import requests
-from conjure_python_client import RequestsClient, ServiceConfiguration
+from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import RetryWithJitter, TransportAdapter
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class NominalRequestsClient(RequestsClient):
+class GzipRequestsClient:
     """Wrapper around conjures RequestClient to automatically gzip post-requested data.
 
     In bandwidth constrained scenarios, this has been measured to have 5-6x speedups in
     uploading data, depending on its compressability.
+
+    See: https://github.com/palantir/conjure-python-client/blob/60d6d7639502a3b0fe18fad388ce84cbc54eb613/conjure_python_client/_http/requests_client.py#L181
     """
 
     @classmethod
@@ -41,7 +43,7 @@ class NominalRequestsClient(RequestsClient):
         transport_adapter = TransportAdapter(max_retries=retry, enable_keep_alive=enable_keep_alive)
         # create a session, for shared connection polling, user agent, etc
         if session is None:
-            session = NominalRequestsSession()
+            session = GzipRequestsSession()
 
         session.headers["User-Agent"] = user_agent
         if service_config.security is not None:
@@ -61,7 +63,7 @@ class NominalRequestsClient(RequestsClient):
         )
 
 
-class NominalRequestsSession(requests.Session):
+class GzipRequestsSession(requests.Session):
     def request(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         method = args[0]
         if method == "POST":
