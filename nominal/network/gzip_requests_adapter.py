@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import gzip
 import io
-from typing import Any, Mapping, MutableMapping
+from typing import Any, Mapping
 
 import requests
 from conjure_python_client._http.requests_client import TransportAdapter
@@ -34,7 +34,7 @@ class GzipRequestsAdapter(TransportAdapter):
             content_length = body.seek(0, 2)
             body.seek(0, 0)
 
-        headers: MutableMapping[str, str] = {
+        headers = {
             self.ACCEPT_ENCODING: "gzip",
             self.CONTENT_ENCODING: "gzip",
             self.CONTENT_LENGTH: str(content_length),
