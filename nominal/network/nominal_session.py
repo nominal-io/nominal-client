@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import gzip
 import json
 import logging
@@ -60,7 +62,7 @@ class NominalRequestsClient(RequestsClient):
 
 
 class NominalRequestsSession(requests.Session):
-    def request(self, *args, **kwargs):
+    def request(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         method = args[0]
         if method == "POST":
             # Set headers to indicate gzipped content
