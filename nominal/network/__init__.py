@@ -1,3 +1,4 @@
-from nominal.network.nominal_session import GzipRequestsClient, GzipRequestsSession
+from nominal.network.gzip_requests_adapter import GzipRequestsAdapter
+from nominal.network.gzip_requests_client import GzipRequestsClient
 
-__all__ = ["GzipRequestsClient", "GzipRequestsSession"]
+__all__ = ["GzipRequestsClient", "GzipRequestsAdapter"]
