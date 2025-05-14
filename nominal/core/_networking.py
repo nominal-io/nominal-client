@@ -30,6 +30,8 @@ class GzipRequestsAdapter(TransportAdapter):
         body = request.body
         if body is None:
             return
+        elif kwargs.get("stream", False):
+            return
 
         if isinstance(body, (bytes, str)):
             content_length = len(body)
