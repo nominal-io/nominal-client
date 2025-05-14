@@ -22,20 +22,25 @@ def profile_cmd() -> None:
 
 @profile_cmd.command("add")
 @click.argument("profile")
-@click.option("-u", "--base-url", default="https://api.gov.nominal.io/api", prompt=True)
-@click.option("-t", "--token", required=True, prompt=True, help="bearer token or api key")
+@click.option("-t", "--token", required=True, help="bearer token or api key")
+@click.option("-u", "--base-url", default="https://api.gov.nominal.io/api")
+@click.option("-w", "--workspace-rid", help="workspace RID  [optional]")
+@click.option("--validate/--no-validate", default=True, help="Validate authentication parameters")
 @global_options
-def add_profile(profile: str, base_url: str, token: str) -> None:
+def add_profile(profile: str, base_url: str, token: str, workspace_rid: str | None, validate: bool) -> None:
     """Add or update a profile to your Nominal config"""
     cfg = config.NominalConfig(profiles={}, version=2)
     try:
         cfg = config.NominalConfig.from_yaml()
     except FileNotFoundError:
         pass
-    validate_token_url(token, base_url)
-    new_cfg = dataclasses.replace(cfg, profiles={**cfg.profiles, profile: config.ConfigProfile(base_url, token)})
+    if validate:
+        validate_token_url(token, base_url, workspace_rid)
+    new_cfg = dataclasses.replace(
+        cfg, profiles={**cfg.profiles, profile: config.ConfigProfile(base_url, token, workspace_rid)}
+    )
     new_cfg.to_yaml()
-    click.secho(f"Added profile {profile} to {config.DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")
+    click.secho(f"Wrote profile {profile} to {config.DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")
 
 
 @profile_cmd.command("remove")
@@ -58,12 +63,15 @@ def migrate() -> None:
     profiles = {}
     for url, token in deprecated_cfg.environments.items():
         if click.prompt(f"Add profile for {url}?", default="y", type=bool):
-            name = click.prompt("Profile name")
-            new_url = click.prompt("Base url", default=f"https://{url}")
+            name = click.prompt("Profile name (used to create a client, e.g. NominalClient.from_profile('name'))")
+            new_url = click.prompt("API Base url", default=f"https://{url}")
             new_token = click.prompt("Token", default=token)
-            if click.prompt("Validate connection?", default="y", type=bool):
-                validate_token_url(new_token, new_url)
-            profiles[name] = config.ConfigProfile(new_url, new_token)
+            new_workspace_rid = None
+            if click.prompt("Add workspace?", default="n", type=bool):
+                new_workspace_rid = click.prompt("Workspace RID")
+            if click.prompt("Validate authentication?", default="y", type=bool):
+                validate_token_url(new_token, new_url, new_workspace_rid)
+            profiles[name] = config.ConfigProfile(new_url, new_token, new_workspace_rid)
     new_cfg = config.NominalConfig(profiles=profiles, version=2)
     new_cfg.to_yaml()
     click.secho(f"Migrated config to {config.DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")

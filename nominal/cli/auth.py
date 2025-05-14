@@ -31,6 +31,6 @@ def set_token(token: str, base_url: str) -> None:
         stacklevel=2,
     )
     path = _deprecated_config._DEFAULT_NOMINAL_CONFIG_PATH
-    validate_token_url(token, base_url)
+    validate_token_url(token, base_url, None)
     _deprecated_config.set_token(base_url, token)
     click.secho(f"Successfully set token for '{base_url}' in {path}", fg="green")
