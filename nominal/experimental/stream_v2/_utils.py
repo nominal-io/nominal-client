@@ -5,7 +5,7 @@ from typing import List as TypeList
 import numpy as np
 import pandas as pd
 
-from nominal.core._queueing import TagsArray, TimeArray, ValueArray
+from nominal.core._queueing import BatchV2, TagsArray, TimeArray, ValueArray
 
 # Type alias for channel data tuple
 ChannelData: TypeAlias = Tuple[TimeArray, TimeArray, ValueArray, int]  # (seconds, nanoseconds, values, count)
@@ -18,17 +18,16 @@ BatchChunkItem: TypeAlias = Tuple[
 BatchChunk: TypeAlias = TypeList[BatchChunkItem]
 
 
-def prepare_df_for_upload(df: pd.DataFrame, timestamp_column: str) -> Tuple[Optional[ChannelDict], int]:
+def prepare_df_for_upload(df: pd.DataFrame, timestamp_column: str) -> Optional[ChannelDict]:
     """Pre-process DataFrame to prepare timestamps and convert to numeric values"""
     if timestamp_column not in df.columns or df[timestamp_column].empty:
-        return None, 0
+        return None
 
     # Convert timestamps to seconds and nanos once
     ts_epoch_stamps = df[timestamp_column].map(datetime.timestamp)
     ts_seconds = ts_epoch_stamps.astype(np.int64)
     ts_nanos = ((ts_epoch_stamps - ts_seconds) * 1e9).astype(np.int64)
 
-    discarded_total = 0
     channel_data = {}
 
     for column in df.columns:
@@ -39,9 +38,6 @@ def prepare_df_for_upload(df: pd.DataFrame, timestamp_column: str) -> Tuple[Opti
         numeric_series = pd.to_numeric(df[column], errors="coerce")
         valid_mask = ~numeric_series.isna()
         valid_indices = valid_mask.index[valid_mask]
-
-        discarded = len(numeric_series) - len(valid_indices)
-        discarded_total += discarded
 
         if len(valid_indices) == 0:
             continue
@@ -59,37 +55,50 @@ def prepare_df_for_upload(df: pd.DataFrame, timestamp_column: str) -> Tuple[Opti
             len(valid_indices),
         )
 
-    return channel_data, discarded_total
+    return channel_data
 
 
 def split_into_chunks(
     channel_data: ChannelDict, target_size: int = 50000, tags: Optional[Mapping[str, str]] = None
-) -> TypeList[BatchChunk]:
+) -> TypeList[TypeList[BatchV2]]:
     """Split channel data into chunks of approximately target_size points.
 
+    Each channel's data is kept intact (not split across chunks). If adding a channel
+    would exceed the target_size for the current chunk, a new chunk is started.
+
+    Args:
+        channel_data: Dictionary mapping channel names to their data
+        target_size: Maximum target size for each chunk
+        tags: Optional mapping of tags to include with each batch item
+
     Returns:
-        A list of BatchChunks, where each BatchChunk is a list of BatchItems.
-        Each BatchItem is a tuple of (channel_name, seconds, nanos, values, tags).
+        A list of chunks, where each chunk is a list of BatchV2 objects.
     """
-    chunks: TypeList[BatchChunk] = []
-    current_chunk: BatchChunk = []
-    current_size = 0
+    tags_dict = tags or {}
+    chunks: TypeList[TypeList[BatchV2]] = []
+    current_chunk: TypeList[BatchV2] = []
+    points_in_chunk = 0
 
-    tags_array = tags or {}  # Default to empty dict if no tags provided
-
-    for channel, (seconds, nanos, values, count) in channel_data.items():
-        if current_size + count > target_size and current_size > 0:
-            # Start a new chunk if adding this channel would exceed target size
+    for channel_name, (seconds, nanoseconds, values, point_count) in channel_data.items():
+        # Start a new chunk if adding this channel would exceed target size
+        if points_in_chunk + point_count > target_size and points_in_chunk > 0:
             chunks.append(current_chunk)
             current_chunk = []
-            current_size = 0
+            points_in_chunk = 0
 
-        # Create a BatchItem with the channel name
-        batch_item = (channel, seconds, nanos, values, tags_array)
-        current_chunk.append(batch_item)
-        current_size += count
+        # Create BatchV2 object directly instead of tuple
+        batch = BatchV2(
+            channel_name=channel_name,
+            seconds=seconds,
+            nanos=nanoseconds,
+            values=values,
+            tags=tags_dict,
+        )
 
-    # Add the last chunk if not empty
+        current_chunk.append(batch)
+        points_in_chunk += point_count
+
+    # Add the final chunk if not empty
     if current_chunk:
         chunks.append(current_chunk)
 

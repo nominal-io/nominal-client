@@ -15,7 +15,6 @@ from typing_extensions import Self
 
 from nominal.core._batch_processor_proto import SerializedBatchV2
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
-from nominal.core._queueing import BatchV2
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.experimental.stream_v2._utils import prepare_df_for_upload, split_into_chunks
 
@@ -70,7 +69,7 @@ class WriteStreamV3:
         prepared_dataframes = []
         for df in dataframes:
             try:
-                channel_data, _discarded_total = prepare_df_for_upload(df, timestamp_column)
+                channel_data = prepare_df_for_upload(df, timestamp_column)
                 if channel_data:
                     prepared_dataframes.append((channel_data))
             except Exception as e:
@@ -88,16 +87,9 @@ class WriteStreamV3:
 
         total_points = 0
         for chunk in all_chunks:
-            for batch_item in chunk:
+            for batch in chunk:
                 try:
-                    batch = BatchV2(
-                        channel_name=batch_item[0],
-                        seconds=batch_item[1],
-                        nanos=batch_item[2],
-                        values=batch_item[3],
-                        tags=batch_item[4],
-                    )
-                    total_points += len(batch_item[3])
+                    total_points += len(batch.values)
                     callback = partial(
                         _write_serialized_batch_v2, self._write_pool, self._clients, self._nominal_data_source_rid
                     )
