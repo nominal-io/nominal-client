@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gzip
-import io
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
@@ -56,27 +55,11 @@ class GzipRequestsAdapter(TransportAdapter):
     ) -> requests.Response:
         """Compress data before sending."""
         if stream:
-            # Typechecking
-            if isinstance(request.body, (bytes, str)):
-                raise ValueError("Expected request body to not be bytes or string if stream")
-            elif request.body is None:
-                raise ValueError("Expected request body to be non-null whin streaming")
-
-            # Having a file-like object, therefore we need to stream the
-            # content into a new one through the compressor.
-            compressed_body = io.BytesIO()
-            compressed_body.name = request.url
-            compressor = gzip.open(compressed_body, mode="wb", compresslevel=self.COMPRESSION_LEVEL)
-
-            # Read, write and compress the content at the same time.
-            compressor.write(request.body.read())
-            compressor.flush()
-            compressor.close()
-
-            # Seek to beginning of stream to make it readable
-            compressed_body.seek(0, 0)
-            request.body = compressed_body
+            # We don't need to gzip streamed data via requests-- any such api endpoint today has a
+            # multi-part upload based mechanism for uploading large requests.
+            return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
         elif request.body is not None:
+            # If there is data being posted to the API, gzip-encode it to save network bandwidth
             body = request.body if isinstance(request.body, bytes) else request.body.encode("utf-8")
             request.body = gzip.compress(body, compresslevel=self.COMPRESSION_LEVEL)
 
