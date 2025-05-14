@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import groupby
-from typing import Mapping, Sequence, cast
+from typing import Sequence, cast
 
 import numpy as np
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -127,21 +127,17 @@ def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
     )
 
 
-
 def create_write_request_v2(batch: BatchV2) -> WriteRequestNominal:
-    try:
-        return WriteRequestNominal(
-            series=[
-                Series(
-                    channel=NominalChannel(name=batch.channel_name),
-                    points=make_points_proto_v2(batch.seconds, batch.nanos, batch.values),
-                    tags=batch.tags or {},
-                )
-            ]
-        )
-    except Exception as e:
-        print(f"Write request creation error: {e}", exc_info=True)
-        raise
+    return WriteRequestNominal(
+        series=[
+            Series(
+                channel=NominalChannel(name=batch.channel_name),
+                points=make_points_proto_v2(batch.seconds, batch.nanos, batch.values),
+                tags=batch.tags or {},
+            )
+        ]
+    )
+
 
 def process_batch(
     batch: Sequence[BatchItem],
@@ -172,15 +168,10 @@ def serialize_batch(batch: Batch) -> SerializedBatch:
     )
 
 
-
-
 def serialize_batch_v2(batch: BatchV2) -> SerializedBatchV2:
-    try:
-        request = create_write_request_v2(batch)
-        return SerializedBatchV2(data=request.SerializeToString())
-    except Exception as e:
-        print(f"Serialization failure: {e}", exc_info=True)
-        raise
+    request = create_write_request_v2(batch)
+    return SerializedBatchV2(data=request.SerializeToString())
+
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:
     """Convert timestamp to protobuf Timestamp format."""

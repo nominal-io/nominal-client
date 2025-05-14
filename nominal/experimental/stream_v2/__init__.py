@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import os  # Added OS import for cpu_count
 from datetime import timedelta
 from typing import Generator
 
@@ -44,7 +43,7 @@ def create_write_stream_v3(
     serializer = BatchSerializer.create(
         max_workers=serialize_process_workers,
     )
-    
+
     with WriteStreamV3.create(
         streaming_connection._clients,
         serializer,
@@ -90,7 +89,7 @@ def create_write_stream(
     serializer = BatchSerializer.create(
         max_workers=serialize_process_workers,
     )
-    
+
     with WriteStreamV2.create(
         streaming_connection._clients,
         serializer,

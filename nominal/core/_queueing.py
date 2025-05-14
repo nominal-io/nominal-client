@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from queue import Empty, Queue
-from typing import Iterable, List, Protocol, TypeVar, TypeAlias
+from typing import Iterable, List, Protocol, TypeAlias, TypeVar
 
 import numpy as np
 

@@ -3,20 +3,19 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import threading
-import requests
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Iterable, Mapping, Protocol, Type
 from types import TracebackType
+from typing import Iterable, Mapping, Protocol, Type, cast
 
 import pandas as pd
+import requests
 from typing_extensions import Self
 
 from nominal.core._batch_processor_proto import SerializedBatchV2
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._queueing import BatchV2
-from nominal.core.write_stream_base import WriteStreamBase
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.experimental.stream_v2._utils import prepare_df_for_upload, split_into_chunks
 
@@ -25,11 +24,13 @@ logger = logging.getLogger(__name__)
 # Thread-local storage for requests sessions
 thread_local = threading.local()
 
+
 def get_thread_local_session() -> requests.Session:
     """Get thread-local session to ensure thread safety"""
     if not hasattr(thread_local, "session"):
         thread_local.session = requests.Session()
-    return thread_local.session
+    return cast(requests.Session, thread_local.session)
+
 
 @dataclass(frozen=True)
 class WriteStreamV3:
@@ -105,7 +106,8 @@ class WriteStreamV3:
                 except Exception as e:
                     logger.error(f"Batch processing error: {e}", exc_info=True)
 
-        logger.info(f"Created {len(all_chunks)} chunks from {len(prepared_dataframes)} dataframes, sending {total_points} data points")
+        logger.info(f"Created {len(all_chunks)} chunks. Sending {total_points} data points")
+
     def __enter__(self) -> WriteStreamV3:
         """Create the stream as a context manager."""
         return self
@@ -120,7 +122,7 @@ class WriteStreamV3:
 
     def close(self, wait: bool = True) -> None:
         """Close the write stream and clean up resources.
-        
+
         Args:
             wait: If True, wait for all pending writes to complete before returning
         """
@@ -129,14 +131,8 @@ class WriteStreamV3:
         self._write_pool.shutdown(wait=wait, cancel_futures=not wait)
 
 
-def direct_write_nominal_batches(
-    auth_header: str,
-    data_source_rid: str,
-    data: bytes,
-    base_uri: str
-) -> None:
-    """
-    Send data directly using thread-local sessions instead of using the connection pool
+def direct_write_nominal_batches(auth_header: str, data_source_rid: str, data: bytes, base_uri: str) -> None:
+    """Send data directly using thread-local sessions instead of using the connection pool
     from the conjure_python_client's RequestsClient.
     """
     try:
@@ -164,18 +160,14 @@ def _write_serialized_batch_v2(
     if future.exception() is not None:
         logger.error(f"Error in serialization: {future.exception()}", exc_info=future.exception())
         return
-        
+
     try:
         serialized = future.result()
         # Use direct write method instead of ProtoWriteService
         # Extract base URI from the client
         base_uri = clients.proto_write._uri
         _write_future = pool.submit(
-            direct_write_nominal_batches,
-            clients.auth_header,
-            nominal_data_source_rid,
-            serialized.data,
-            base_uri
+            direct_write_nominal_batches, clients.auth_header, nominal_data_source_rid, serialized.data, base_uri
         )
     except Exception as e:
         logger.error(f"Error in _write_serialized_batch_v2: {e}", exc_info=True)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 import concurrent.futures
+import logging
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
 
@@ -11,6 +11,7 @@ from nominal.core._batch_processor_proto import SerializedBatch, SerializedBatch
 from nominal.core._queueing import Batch, BatchV2
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class BatchSerializer:
@@ -26,24 +27,23 @@ class BatchSerializer:
         self.pool.shutdown(wait=True, cancel_futures=cancel_futures)
 
     @classmethod
-    def create(cls, max_workers: int) -> Self:
+    def create(cls, max_workers: int | None = None) -> Self:
         """Create a new BatchSerializer.
-        
+
         Args:
             max_workers: Number of worker processes to use for serialization
-            maxtasksperchild: Maximum number of tasks a worker process can complete before 
+            maxtasksperchild: Maximum number of tasks a worker process can complete before
                 being replaced to prevent memory leaks (None means unlimited)
         """
         # Create a process pool with automatic process replacement
         pool = ProcessPoolExecutor(
-            max_workers=max_workers, 
-
+            max_workers=max_workers or 1,
         )
         return cls(pool=pool)
 
     def serialize(self, batch: Batch) -> Future[SerializedBatch]:
         """Serialize a batch in a separate process with error handling.
-        
+
         Returns a future that will contain the serialized batch or raise an exception
         if serialization fails.
         """
@@ -55,9 +55,6 @@ class BatchSerializer:
         except Exception as e:
             logger.error(f"Serialization error: {e}", exc_info=True)
             raise
-
-    
-
 
     def __enter__(self) -> BatchSerializer:
         return self

@@ -1,24 +1,24 @@
 from datetime import datetime
-from typing import Dict, List as TypeList, Mapping, Optional, Tuple, TypeAlias
+from typing import Dict, Mapping, Optional, Tuple, TypeAlias
+from typing import List as TypeList
 
 import numpy as np
 import pandas as pd
-from polars import List
 
-from nominal.core._queueing import TimeArray, ValueArray, TagsArray
+from nominal.core._queueing import TagsArray, TimeArray, ValueArray
 
 # Type alias for channel data tuple
 ChannelData: TypeAlias = Tuple[TimeArray, TimeArray, ValueArray, int]  # (seconds, nanoseconds, values, count)
 ChannelDict: TypeAlias = Dict[str, ChannelData]  # Dictionary mapping channel names to their data
 
 # Type alias for batch item used in write_stream
-BatchChunkItem: TypeAlias = Tuple[str, TimeArray, TimeArray, ValueArray, TagsArray]  # (channel_name, seconds, nanos, values, tags)
+BatchChunkItem: TypeAlias = Tuple[
+    str, TimeArray, TimeArray, ValueArray, TagsArray
+]  # (channel_name, seconds, nanos, values, tags)
 BatchChunk: TypeAlias = TypeList[BatchChunkItem]
 
-def prepare_df_for_upload(
-    df: pd.DataFrame, timestamp_column: str
-) -> Tuple[Optional[ChannelDict], int]:
-    
+
+def prepare_df_for_upload(df: pd.DataFrame, timestamp_column: str) -> Tuple[Optional[ChannelDict], int]:
     """Pre-process DataFrame to prepare timestamps and convert to numeric values"""
     if timestamp_column not in df.columns or df[timestamp_column].empty:
         return None, 0
@@ -56,7 +56,7 @@ def prepare_df_for_upload(
             channel_seconds.to_numpy(),
             channel_nanos.to_numpy(),
             channel_values.to_numpy(),
-            len(valid_indices)
+            len(valid_indices),
         )
 
     return channel_data, discarded_total
@@ -66,7 +66,7 @@ def split_into_chunks(
     channel_data: ChannelDict, target_size: int = 50000, tags: Optional[Mapping[str, str]] = None
 ) -> TypeList[BatchChunk]:
     """Split channel data into chunks of approximately target_size points.
-    
+
     Returns:
         A list of BatchChunks, where each BatchChunk is a list of BatchItems.
         Each BatchItem is a tuple of (channel_name, seconds, nanos, values, tags).
@@ -74,7 +74,7 @@ def split_into_chunks(
     chunks: TypeList[BatchChunk] = []
     current_chunk: BatchChunk = []
     current_size = 0
-    
+
     tags_array = tags or {}  # Default to empty dict if no tags provided
 
     for channel, (seconds, nanos, values, count) in channel_data.items():
