@@ -10,7 +10,6 @@ from nominal_api import (
     scout_checks_api,
     scout_datareview_api,
     scout_integrations_api,
-    scout_run_api,
 )
 from typing_extensions import Self
 
@@ -19,6 +18,7 @@ from nominal.core._utils import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
 from nominal.core.run import Run
+from nominal.ts import _to_api_duration
 
 
 @dataclass(frozen=True)
@@ -165,7 +165,3 @@ def _conjure_priority_to_priority(priority: scout_api.Priority) -> Priority:
     if priority in inverted_map:
         return inverted_map[priority]
     raise ValueError(f"unknown priority '{priority}', expected one of {_priority_to_conjure_map.values()}")
-
-
-def _to_api_duration(duration: timedelta) -> scout_run_api.Duration:
-    return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)
