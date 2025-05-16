@@ -82,6 +82,7 @@ DEFAULT_PAGE_SIZE = 100
 @dataclass(frozen=True)
 class NominalClient:
     _clients: ClientsBunch = field(repr=False)
+    _profile: str | None = None
 
     @classmethod
     def from_profile(
@@ -101,13 +102,15 @@ class NominalClient:
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
-        return cls.from_token(
+        client = cls.from_token(
             prof.token,
             prof.base_url,
             workspace_rid=prof.workspace_rid,
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
+            _profile=profile,
         )
+        return client
 
     @classmethod
     def from_token(
@@ -118,6 +121,7 @@ class NominalClient:
         workspace_rid: str | None = None,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = timedelta(seconds=30),
+        _profile: str | None = None,
     ) -> Self:
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -127,7 +131,7 @@ class NominalClient:
             connect_timeout=timeout_seconds,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid))
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid), _profile=_profile)
 
     @classmethod
     def create(
@@ -158,6 +162,14 @@ class NominalClient:
             connect_timeout=connect_timeout,
             workspace_rid=workspace_rid,
         )
+
+    def __repr__(self) -> str:
+        """Repr for the class that shows profile name, if available"""
+        out = "<NominalClient"
+        if self._profile:
+            out += f' profile="{self._profile}"'
+        out += ">"
+        return out
 
     def get_user(self) -> User:
         """Retrieve the user associated with this client."""
