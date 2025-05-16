@@ -1,17 +1,14 @@
 # Nominal Python SDK: Function Reference
 
-```py
-import nominal as nm
-```
-
 The main components of the SDK are:
 
-- An object-oriented interface for direct integration with the Nominal platform
-- A high-level, function oriented interface for common Nominal interactions
-- The `nom` CLI for common Nominal interactions
+- An object-oriented client interface (`nominal.core.NominalClient`)
+  for interacting with the Nominal platform
+- The `nom` CLI for performing common operations from the terminal
+- Extensions for working with thirdparty components (`nominal.thirdparty.pandas`, etc.)
 
 Use the navigation bar above to see examples and reference documentation.
 
-[Function reference](/nominal-client/reference/toplevel/)
+If you are new to Nominal and the Python client, we recommend that you read our [Quickstart guide](https://docs.nominal.io/python/quickstart).
 
-[Documentation home](https://docs.nominal.io/)
+Thereafter, navigate to the [API reference manual](./reference/toplevel.md).
