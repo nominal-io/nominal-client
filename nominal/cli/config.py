@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 
 import click
 
@@ -75,3 +76,36 @@ def migrate() -> None:
     new_cfg = config.NominalConfig(profiles=profiles, version=2)
     new_cfg.to_yaml()
     click.secho(f"Migrated config to {config.DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")
+
+
+@profile_cmd.command("list")
+@global_options
+def list_profiles() -> None:
+    """List the profiles in your Nominal config"""
+    cfg = config.NominalConfig(profiles={}, version=2)
+    try:
+        cfg = config.NominalConfig.from_yaml()
+    except FileNotFoundError:
+        pass
+
+    default_config_path = config.DEFAULT_NOMINAL_CONFIG_PATH
+    home = Path.home()
+    if home in default_config_path.parents:
+        config_path = "~/" + str(default_config_path.relative_to(home))
+    else:
+        config_path = str(default_config_path)
+
+    if len(cfg.profiles) == 0:
+        print(f"No profiles found in `{config_path}`")
+        return
+
+    print(f"Profiles from `{config_path}`:\n")
+
+    for profile_name, profile in cfg.profiles.items():
+        print(f"- {profile_name} (", end="")
+        print(profile.base_url, end="")
+        if not profile.token:
+            print(", missing token", end="")
+        if profile.workspace_rid:
+            print(", in workspace", end="")
+        print(")")
