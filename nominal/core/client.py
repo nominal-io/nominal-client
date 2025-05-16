@@ -45,6 +45,7 @@ from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
     FileExtractionInput,
+    FileOutputFormat,
     TimestampMetadata,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder
@@ -1363,7 +1364,7 @@ class NominalClient:
         request = scout_asset_api.SearchAssetsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=_create_search_assets_query(search_text, labels, properties),
-            sort=scout_asset_api.SortOptions(
+            sort=scout_asset_api.AssetSortOptions(
                 field=scout_asset_api.SortField.CREATED_AT,
                 is_descending=True,
             ),
@@ -1469,6 +1470,7 @@ class NominalClient:
         docker_image: DockerImageSource,
         timestamp_metadata: TimestampMetadata,
         inputs: Sequence[FileExtractionInput] = (),
+        fileOutputFormat: FileOutputFormat | None = None,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         description: str | None = None,
@@ -1486,6 +1488,7 @@ class NominalClient:
             timestamp_metadata=timestamp_metadata._to_conjure(),
             workspace=workspace_rid,
             description=description,
+            output_file_format=fileOutputFormat._to_conjure() if fileOutputFormat is not None else None,
         )
         resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
         return self.get_containerized_extractor(resp.extractor_rid)

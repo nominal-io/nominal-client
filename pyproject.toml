@@ -36,7 +36,7 @@ dependencies = [
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
-    "nominal-api==0.656.0",
+    "nominal-api==0.680.0",
 ]
 
 

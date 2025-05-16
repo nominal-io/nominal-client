@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Mapping, Protocol, Sequence
 
 from nominal_api import ingest_api
@@ -154,6 +155,27 @@ class DockerImageSource:
             repository=self.repository,
             tag_details=self.tag_details._to_conjure(),
         )
+
+
+class FileOutputFormat(Enum):  # Changed to Enum
+    """Details about the output file format for a containerized extractor."""
+
+    PARQUET_TAR = "PARQUET_TAR"
+    CSV = "CSV"
+    PARQUET = "PARQUET"
+
+    @classmethod
+    def _from_conjure(cls, raw_source: ingest_api.FileOutputFormat) -> Self:
+        return cls(raw_source.value)
+
+    def _to_conjure(self) -> ingest_api.FileOutputFormat:
+        return ingest_api.FileOutputFormat(self.value)
+
+    # Example enum member
+    # Add other formats here, e.g., CSV = "csv"
+
+    # The format of the output file # This comment might need adjustment or removal
+    # format: str # Removed field, enum values are the formats
 
 
 @dataclass(frozen=True)
