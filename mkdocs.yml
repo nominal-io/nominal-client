@@ -26,9 +26,9 @@ nav:
       - Core SDK: reference/core.md
       - Exceptions: reference/exceptions.md
       - nom cli: reference/nom-cli.md
-      # - Third Party:
-      #   - pandas: reference/thirdparty/pandas.md
-      #   - tdms: reference/thirdparty/tdms.md
+      - Third Party:
+        - pandas: reference/thirdparty/pandas.md
+        - tdms: reference/thirdparty/tdms.md
   - Development:
       - Contributing: contributing.md
   - Documentation: https://docs.nominal.io/python/quickstart

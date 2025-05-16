@@ -1,3 +1,1 @@
-<!--
 ::: nominal.thirdparty.pandas
--->
