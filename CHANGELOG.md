@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.51.1](https://github.com/nominal-io/nominal-client/compare/v1.51.0...v1.51.1) (2025-05-17)
+
+
+### Bug Fixes
+
+* remove warning on uploading CSV ([#336](https://github.com/nominal-io/nominal-client/issues/336)) ([744c371](https://github.com/nominal-io/nominal-client/commit/744c3714f39388f27522ff6a87a0e7422b2112c2))
+
+
+### Documentation
+
+* organize reference docs around namespace packages ([#334](https://github.com/nominal-io/nominal-client/issues/334)) ([310b0a1](https://github.com/nominal-io/nominal-client/commit/310b0a1f16454333d14f9a3f6fe1d293ba5678e7))
+
 ## [1.51.0](https://github.com/nominal-io/nominal-client/compare/v1.50.0...v1.51.0) (2025-05-12)
 
 
