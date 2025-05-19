@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import os
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
@@ -36,8 +37,8 @@ class GzipRequestsAdapter(TransportAdapter):
         if isinstance(body, (bytes, str)):
             content_length = len(body)
         else:
-            content_length = body.seek(0, 2)
-            body.seek(0, 0)
+            content_length = body.seek(0, os.SEEK_END)
+            body.seek(0, os.SEEK_SET)
 
         headers = {
             self.ACCEPT_ENCODING: "gzip",
