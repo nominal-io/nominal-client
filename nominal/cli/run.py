@@ -18,7 +18,7 @@ def run_cmd() -> None:
 @click.option("-n", "--name", required=True)
 @click.option("-s", "--start", required=True)
 @click.option("-e", "--end", required=True)
-@click.option("-d", "--desc")
+@click.option("-d", "--description", help="description of the run")
 @click.option("properties", "--property", type=(str, str), multiple=True)
 @click.option("labels", "--label", type=str, multiple=True)
 @client_options
@@ -27,7 +27,7 @@ def create(
     name: str,
     start: str,
     end: str,
-    desc: str | None,
+    description: str | None,
     properties: Sequence[tuple[str, str]],
     labels: Sequence[str],
     client: NominalClient,
@@ -37,7 +37,7 @@ def create(
         name,
         _SecondsNanos.from_flexible(start).to_nanoseconds(),
         _SecondsNanos.from_flexible(end).to_nanoseconds(),
-        desc,
+        description,
         properties=dict(properties),
         labels=labels,
     )

@@ -6,10 +6,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 
+from nominal_api import attachments_api
 from typing_extensions import Self
 
-from nominal._api.scout_service_api import attachments_api
-from nominal.core._clientsbunch import HasAuthHeader
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid, update_dataclass
 
 
@@ -22,7 +22,7 @@ class Attachment(HasRid):
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def attachment(self) -> attachments_api.AttachmentService: ...
 
@@ -74,6 +74,16 @@ class Attachment(HasRid):
             path.parent.mkdir(exist_ok=True, parents=True)
         with open(path, "wb") as wf:
             shutil.copyfileobj(self.get_contents(), wf)
+
+    def archive(self) -> None:
+        """Archive this attachment.
+        Archived attachments are not deleted, but are hidden from the UI.
+        """
+        self._clients.attachment.archive(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive this attachment, allowing it to be viewed in the UI."""
+        self._clients.attachment.unarchive(self._clients.auth_header, self.rid)
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, attachment: attachments_api.Attachment) -> Self:

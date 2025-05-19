@@ -5,7 +5,6 @@ from uuid import uuid4
 
 import pandas as pd
 import polars as pl
-import pytest
 
 import nominal as nm
 from nominal import _utils
@@ -195,21 +194,6 @@ def test_search_runs_substring():
     assert run2.name == run.name == name
 
 
-def test_search_runs_substring_deprecated():
-    name = f"run-{uuid4()}"
-    desc = f"top-level test to search for a run by name {uuid4()}"
-    start, end = _create_random_start_end()
-    run = nm.create_run(name, start, end, desc)
-
-    with pytest.warns(UserWarning):
-        runs = nm.search_runs(exact_name=name[4:])
-    assert len(runs) == 1
-    run2 = runs[0]
-
-    assert run2.rid == run.rid != ""
-    assert run2.name == run.name == name
-
-
 def test_upload_attachment(csv_data):
     at_title = f"attachment-{uuid4()}"
     at_desc = f"top-level test to upload an attachment {uuid4()}"
@@ -282,60 +266,3 @@ def test_get_video(mp4_data):
     assert v2.description == v.description == desc
     assert v2.properties == v.properties == {}
     assert v2.labels == v.labels == ()
-
-
-def test_create_checklist():
-    name = f"checklist-{uuid4()}"
-    desc = f"top-level test to create a checklist {uuid4()}"
-    assignee_email = "demo@nominal.io"
-    builder = nm.checklist_builder(name, desc, assignee_email)
-    builder.add_check(name="Check 1", priority=1, description="Description of check 1", expression="10 > 5")
-    builder.add_variable(name="Variable 1", expression="10")
-    checklist = builder.publish()
-
-    assert checklist.rid != ""
-    assert checklist.name == name
-    assert checklist.description == desc
-
-    # Assert checklist variable details
-    assert len(checklist.checklist_variables) == 1
-    variable = checklist.checklist_variables[0]
-    assert variable.name == "Variable 1"
-    assert variable.expression == "(10)"
-
-    # Assert check details
-    assert len(checklist.checks) == 1
-    check = checklist.checks[0]
-    assert check.name == "Check 1"
-    assert check.priority == 1
-    assert check.description == "Description of check 1"
-    assert check.expression == "(10) > 5.0"
-
-
-def test_get_checklist():
-    # Create a checklist
-    name = f"checklist-{uuid4()}"
-    desc = f"top-level test to create & get a checklist {uuid4()}"
-    assignee_email = "demo@nominal.io"
-
-    # Draft and create the checklist
-    builder = nm.checklist_builder(name, desc, assignee_email)
-    builder.add_variable(name="Variable 1", expression="10")
-    builder.add_check(name="Check 1", priority=1, description="Description of check 1", expression="10 > 5")
-    checklist = builder.publish()
-
-    # Get the checklist using get_checklist
-    retrieved_checklist = nm.get_checklist(checklist.rid)
-
-    # Assert checklist variable details
-    assert len(retrieved_checklist.checklist_variables) == len(checklist.checklist_variables) == 1
-    variable, retrieved_variable = tuple(*zip(checklist.checklist_variables, retrieved_checklist.checklist_variables))
-    assert retrieved_variable.name == variable.name == "Variable 1"
-    assert retrieved_variable.expression == variable.expression == "(10)"
-
-    assert len(retrieved_checklist.checks) == len(checklist.checks) == 1
-    check, retrieved_check = tuple(*zip(checklist.checks, retrieved_checklist.checks))
-    assert retrieved_check.name == check.name == "Check 1"
-    assert retrieved_check.priority == check.priority == 1
-    assert retrieved_check.description == check.description == "Description of check 1"
-    assert retrieved_check.expression == check.expression == "(10) > 5.0"

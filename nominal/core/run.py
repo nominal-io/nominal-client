@@ -5,16 +5,16 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, cast
 
-from typing_extensions import Self
-
-from nominal._api.scout_service_api import (
-    attachments_api,
+from nominal_api import (
     scout,
-    scout_catalog,
     scout_run_api,
 )
-from nominal.core._clientsbunch import HasAuthHeader
+from typing_extensions import Self, deprecated
+
+from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._conjure_utils import Link, _build_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
+from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
@@ -33,22 +33,15 @@ class Run(HasRid):
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
     run_number: int
+    assets: Sequence[str]
 
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        Attachment._Clients,
-        Connection._Clients,
-        Dataset._Clients,
-        LogSet._Clients,
-        Video._Clients,
-        HasAuthHeader,
+        Asset._Clients,
+        HasScoutParams,
         Protocol,
     ):
-        @property
-        def attachment(self) -> attachments_api.AttachmentService: ...
-        @property
-        def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def run(self) -> scout.RunService: ...
 
@@ -74,6 +67,10 @@ class Run(HasRid):
 
         return datasource_rids_by_ref_name
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this run.
 
@@ -81,6 +78,10 @@ class Run(HasRid):
         """
         self.add_log_sets({ref_name: log_set})
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def add_log_sets(self, log_sets: Mapping[str, LogSet | str]) -> None:
         """Add multiple log sets to this run.
 
@@ -109,6 +110,10 @@ class Run(HasRid):
             log_set = log_sets_by_rids[rid]
             yield (ref_name, log_set)
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Logs should be stored as a log channel in a Nominal datasource instead."
+    )
     def list_log_sets(self) -> Sequence[tuple[str, LogSet]]:
         """List the log_sets associated with this run.
         Returns (ref_name, logset) pairs for each logset.
@@ -210,9 +215,21 @@ class Run(HasRid):
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
 
+    def _iter_list_assets(self) -> Iterable[Asset]:
+        run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
+        for a in assets.values():
+            yield Asset._from_conjure(self._clients, a)
+
+    def list_assets(self) -> Sequence[Asset]:
+        """List assets associated with this run."""
+        return list(self._iter_list_assets())
+
     def archive(self) -> None:
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
+
+        NOTE: currently, it is not possible (yet) to unarchive a run once archived.
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
 
@@ -225,10 +242,13 @@ class Run(HasRid):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
+        links: Sequence[str] | Sequence[Link] | None = None,
     ) -> Self:
         """Replace run metadata.
         Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        Links can be URLs or tuples of (URL, name).
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
@@ -246,6 +266,7 @@ class Run(HasRid):
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
             assets=[],
+            links=_build_links(links),
         )
         response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._clients, response)
@@ -289,7 +310,9 @@ class Run(HasRid):
         run = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, run, fields=self.__dataclass_fields__)
 
-    def add_connection(self, ref_name: str, connection: Connection | str) -> None:
+    def add_connection(
+        self, ref_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
+    ) -> None:
         """Add a connection to this run.
 
         Ref_name maps "ref name" (the name within the run) to a Connection (or connection rid). The same type of
@@ -300,7 +323,7 @@ class Run(HasRid):
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                series_tags={},
+                series_tags=series_tags or {},
                 offset=None,
             )
         }
@@ -334,5 +357,6 @@ class Run(HasRid):
             start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             run_number=run.run_number,
+            assets=tuple(run.assets),
             _clients=clients,
         )

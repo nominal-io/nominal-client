@@ -197,17 +197,14 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 from __future__ import annotations
 
 import abc
-import warnings
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, Union
 
 import dateutil.parser
-import numpy as np
+from nominal_api import api, ingest_api, scout_run_api
 from typing_extensions import Self, TypeAlias
-
-from nominal._api.scout_service_api import api, ingest_api, scout_run_api
 
 __all__ = [
     "Iso8601",
@@ -223,12 +220,17 @@ __all__ = [
     "EPOCH_HOURS",
     "TypedTimestampType",
     "IntegralNanosecondsUTC",
+    "IntegralNanosecondsDuration",
     "LogTimestampType",
 ]
 
 IntegralNanosecondsUTC: TypeAlias = int
 """Alias for an `int` used in the code for documentation purposes.
 This value is a timestamp in nanoseconds since the Unix epoch, UTC."""
+
+IntegralNanosecondsDuration: TypeAlias = int
+"""Alias for an `int` used in the code for documentation purposes.
+This value is a duration measured in nanoseconds."""
 
 LogTimestampType: TypeAlias = Literal["absolute", "relative"]
 
@@ -298,9 +300,15 @@ class Custom(_ConjureTimestampType):
     """Must be in the format of the `DateTimeFormatter` class in Java."""
     default_year: int | None = None
     """Accepted as an optional field for cases like IRIG time codes, where the year is not present."""
+    default_day_of_year: int | None = None
+    """Accepted as an optional field for cases where the day of the year is not present."""
 
     def _to_conjure_ingest_api(self) -> ingest_api.TimestampType:
-        fmt = ingest_api.CustomTimestamp(format=self.format, default_year=self.default_year)
+        fmt = ingest_api.CustomTimestamp(
+            format=self.format,
+            default_year=self.default_year,
+            default_day_of_year=self.default_day_of_year,
+        )
         return ingest_api.TimestampType(absolute=ingest_api.AbsoluteTimestamp(custom_format=fmt))
 
 
@@ -332,19 +340,10 @@ _LiteralAbsolute: TypeAlias = Literal[
     "epoch_hours",
 ]
 
-_LiteralRelativeDeprecated: TypeAlias = Literal[
-    "relative_nanoseconds",
-    "relative_microseconds",
-    "relative_milliseconds",
-    "relative_seconds",
-    "relative_minutes",
-    "relative_hours",
-]
-
 TypedTimestampType: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
 """Type alias for all of the strongly typed timestamp types."""
 
-_AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute, _LiteralRelativeDeprecated]
+_AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute]
 """Type alias for all of the allowable timestamp types, including string representations."""
 
 
@@ -353,14 +352,6 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
         return type_
     if not isinstance(type_, str):
         raise TypeError(f"timestamp type {type_} must be a string or an instance of one of: {TypedTimestampType}")
-    if type_.startswith("relative_"):
-        # until this is completely removed, we implicitly assume offset=1970-01-01 in the APIs
-        warnings.warn(
-            "specifying 'relative_{unit}' as a string is deprecated and will be removed in a future version: "
-            "use `nm.ts.Relative` instead. "
-            "for example: instead of 'relative_seconds', use `nm.ts.Relative('seconds', start=datetime.now())`. ",
-            UserWarning,
-        )
     if type_ not in _str_to_type:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
@@ -370,7 +361,7 @@ def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
     return api.TimeUnit[unit.upper()]
 
 
-_str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | Epoch | Relative] = MappingProxyType(
+_str_to_type: Mapping[_LiteralAbsolute, Iso8601 | Epoch | Relative] = MappingProxyType(
     {
         "iso_8601": ISO_8601,
         "epoch_nanoseconds": EPOCH_NANOSECONDS,
@@ -379,12 +370,6 @@ _str_to_type: Mapping[_LiteralAbsolute | _LiteralRelativeDeprecated, Iso8601 | E
         "epoch_seconds": EPOCH_SECONDS,
         "epoch_minutes": EPOCH_MINUTES,
         "epoch_hours": EPOCH_HOURS,
-        "relative_nanoseconds": Relative("nanoseconds", start=0),
-        "relative_microseconds": Relative("microseconds", start=0),
-        "relative_milliseconds": Relative("milliseconds", start=0),
-        "relative_seconds": Relative("seconds", start=0),
-        "relative_minutes": Relative("minutes", start=0),
-        "relative_hours": Relative("hours", start=0),
     }
 )
 
@@ -408,12 +393,15 @@ class _SecondsNanos(NamedTuple):
         return api.Timestamp(seconds=self.seconds, nanos=self.nanos)
 
     def to_iso8601(self) -> str:
-        """datetime.datetime is only microsecond-precise, so we use np.datetime64[ns] to get nanosecond-precision for
-        printing. Note that nanosecond precision is the maximum allowable for conjure datetime fields.
+        """To an iso8601 string with nanosecond precision.
+
+        Note that nanos precision is the maximum allowable for conjure datetime fields.
         - https://github.com/palantir/conjure/blob/master/docs/concepts.md#built-in-types
         - https://github.com/palantir/conjure/pull/1643
         """
-        return str(np.datetime64(self.to_nanoseconds(), "ns")) + "Z"
+        # datetimes are only microsecond precise, so manually add in the nanos
+        dt_s = datetime.fromtimestamp(self.seconds, timezone.utc)
+        return f"{dt_s.strftime('%Y-%m-%dT%H:%M:%S')}.{self.nanos:09d}Z"
 
     def to_nanoseconds(self) -> IntegralNanosecondsUTC:
         return self.seconds * 1_000_000_000 + self.nanos
@@ -447,6 +435,9 @@ class _SecondsNanos(NamedTuple):
         if isinstance(ts, int):
             return cls.from_nanoseconds(ts)
         if isinstance(ts, str):
+            # TODO(drake-nominal): by involving dateutil, this chops off any nano level precision provided
+            #                      in the timestamp. Update to not lose precision when converting to absolute
+            #                      nanos.
             ts = dateutil.parser.parse(ts)
         return cls.from_datetime(ts)
 
@@ -457,3 +448,11 @@ _MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807)
 The maximum valid timestamp that can be represented in the APIs: 2262-04-11 19:47:16.854775807.
 The backend converts to long nanoseconds, and the maximum long (int64) value is 9,223,372,036,854,775,807.
 """
+
+
+def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout_run_api.Duration:
+    if isinstance(duration, timedelta):
+        return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)
+    else:
+        seconds, nanos = divmod(duration, 1_000_000_000)
+        return scout_run_api.Duration(seconds=seconds, nanos=nanos)

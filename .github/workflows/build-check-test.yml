@@ -19,12 +19,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v3
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
+          version: "0.4.x"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
           python-version: ${{ matrix.python-version }}
-      - uses: snok/install-poetry@v1
-      - uses: extractions/setup-just@v2
+      - name: Install just
+        uses: extractions/setup-just@v2
       - name: Install dependencies
         run: |
           just install

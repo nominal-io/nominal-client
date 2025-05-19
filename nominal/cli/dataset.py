@@ -42,7 +42,13 @@ def dataset_cmd() -> None:
     ),
     help="interpretation the primary timestamp column",
 )
-@click.option("-d", "--desc")
+@click.option("-d", "--description", help="description of the dataset")
+@click.option(
+    "--channel-name-delimiter",
+    default=".",
+    show_default=True,
+    help="the character used to delimit the hierarchy in the channel name",
+)
 @click.option("--wait/--no-wait", default=True, help="wait until the upload is complete")
 @client_options
 @global_options
@@ -51,7 +57,8 @@ def upload_csv(
     file: str,
     timestamp_column: str,
     timestamp_type: _LiteralAbsolute,
-    desc: str | None,
+    description: str | None,
+    channel_name_delimiter: str | None,
     wait: bool,
     client: NominalClient,
 ) -> None:
@@ -63,7 +70,8 @@ def upload_csv(
         name,
         timestamp_column=timestamp_column,
         timestamp_type=timestamp_type,
-        description=desc,
+        description=description,
+        prefix_tree_delimiter=channel_name_delimiter,
     )
 
     # block until ingestion completed, if requested
@@ -120,7 +128,6 @@ def summarize(
             data["dataset_name"].append(dataset.name)
 
             if show_rids:
-                data["channel rid"].append(metadata.rid)
                 data["dataset rid"].append(dataset.rid)
 
     output_str = _dataset_data_to_string(data, format)
