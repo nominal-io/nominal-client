@@ -166,3 +166,6 @@ cython_debug/
 playground/
 
 .vscode
+
+# from nix
+result
