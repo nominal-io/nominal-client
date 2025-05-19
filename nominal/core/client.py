@@ -77,6 +77,7 @@ from nominal.ts import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_PAGE_SIZE = 100
+DEFAULT_CONNECT_TIMEOUT = timedelta(seconds=30)
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,7 @@ class NominalClient:
         profile: str,
         *,
         trust_store_path: str | None = None,
-        connect_timeout: timedelta = timedelta(seconds=30),
+        connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
@@ -120,9 +121,20 @@ class NominalClient:
         *,
         workspace_rid: str | None = None,
         trust_store_path: str | None = None,
-        connect_timeout: timedelta | float = timedelta(seconds=30),
+        connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         _profile: str | None = None,
     ) -> Self:
+        """Create a connection to the Nominal platform from a token.
+
+        Args:
+            token: Authentication token to use for the connection.
+            base_url: The URL of the Nominal API platform.
+            workspace_rid: The workspace RID to use for all API calls that require it. If not provided, the default
+                workspace will be used (if one is configured for the tenant).
+            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
+                certifi's trust store is used.
+            connect_timeout: Request connection timeout.
+        """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
         cfg = ServiceConfiguration(
@@ -139,14 +151,14 @@ class NominalClient:
         base_url: str,
         token: str | None,
         trust_store_path: str | None = None,
-        connect_timeout: float = 30,
+        connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         *,
         workspace_rid: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
         base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-        token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
+        token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
         trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
             certifi's trust store is used.
         connect_timeout: Timeout for any single request to the Nominal API.
@@ -155,11 +167,12 @@ class NominalClient:
         """
         if token is None:
             token = _config.get_token(base_url)
+        timeout = connect_timeout if isinstance(connect_timeout, timedelta) else timedelta(seconds=connect_timeout)
         return cls.from_token(
             token,
             base_url,
             trust_store_path=trust_store_path,
-            connect_timeout=connect_timeout,
+            connect_timeout=timeout,
             workspace_rid=workspace_rid,
         )
 
