@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from functools import partial
 from typing import Iterable, Mapping, Protocol, Sequence, TypeVar
 
 from nominal_api import (
@@ -162,8 +161,7 @@ def search_events_paginated(
             next_page_token=page_token,
         )
 
-    rpc = partial(client.search_events, auth_header)
-    for response in _paginate(factory, rpc):
+    for response in _paginate(factory, client.search_events, auth_header):
         yield from response.results
 
 
@@ -183,8 +181,7 @@ def search_assets_paginated(
             next_page_token=page_token,
         )
 
-    rpc = partial(client.search_assets, auth_header)
-    for response in _paginate(factory, rpc):
+    for response in _paginate(factory, client.search_assets, auth_header):
         yield from response.results
 
 
@@ -206,8 +203,7 @@ def search_data_reviews_paginated(
             next_page_token=page_token,
         )
 
-    rpc = partial(datareview.find_data_reviews, auth_header)
-    for response in _paginate(factory, rpc):
+    for response in _paginate(factory, datareview.find_data_reviews, auth_header):
         yield from response.data_reviews
 
 
@@ -221,8 +217,7 @@ def list_streaming_checklists_paginated(
             page_token=page_token,
         )
 
-    rpc = partial(checklist_execution.list_streaming_checklist, auth_header)
-    for response in _paginate(factory, rpc):
+    for response in _paginate(factory, checklist_execution.list_streaming_checklist, auth_header):
         yield from response.checklists
 
 
@@ -236,8 +231,7 @@ def list_streaming_checklists_for_asset_paginated(
             page_token=page_token,
         )
 
-    rpc = partial(checklist_execution.list_streaming_checklist_for_asset, auth_header)
-    for response in _paginate(factory, rpc):
+    for response in _paginate(factory, checklist_execution.list_streaming_checklist_for_asset, auth_header):
         yield from response.checklists
 
 
@@ -254,8 +248,7 @@ def search_checklists_paginated(
             next_page_token=page_token,
         )
 
-    rpc = partial(checklist.search, auth_header)
-    for response in _paginate(factory, rpc):
+    for response in _paginate(factory, checklist.search, auth_header):
         yield from response.values
 
 
@@ -273,8 +266,7 @@ def search_runs_paginated(
             next_page_token=page_token,
         )
 
-    rpc = partial(run.search_runs, auth_header)
-    for response in _paginate(factory, rpc):
+    for response in _paginate(factory, run.search_runs, auth_header):
         yield from response.results
 
 
@@ -290,8 +282,7 @@ def search_secrets_paginated(
             token=page_token,
         )
 
-    rpc = partial(secrets.search, auth_header)
-    for response in _paginate(factory, rpc):
+    for response in _paginate(factory, secrets.search, auth_header):
         yield from response.results
 
 
@@ -313,18 +304,29 @@ class _RequestFactory(Protocol[T_co]):
 class _RPC(Protocol[T_contra, T_co]):
     """Invokes an RPC by passing a positional request."""
 
-    def __call__(self, _: T_contra, /) -> T_co: ...
+    def __call__(self, auth_header: str, _: T_contra, /) -> T_co: ...
 
 
 _RequestT = TypeVar("_RequestT")
 _ResponseT = TypeVar("_ResponseT", bound=_HasNextPageToken)
 
 
-def _paginate(factory: _RequestFactory[_RequestT], rpc: _RPC[_RequestT, _ResponseT]) -> Iterable[_ResponseT]:
+def _paginate(
+    factory: _RequestFactory[_RequestT], rpc: _RPC[_RequestT, _ResponseT], auth_header: str
+) -> Iterable[_ResponseT]:
+    """Paginate through results of an RPC call that returns a next page token.
+
+    Requests inconsistently use `next_page_token`, `page_token`, or `token`, so this function
+    takes a factory function which, when called with a token, returns a request object.
+
+    This function expects that the initial request uses `None` as the token to start pagination.
+
+    All responses have a `next_page_token`, expected to be `None` when there are no more pages.
+    """
     next_page_token = None
     while True:
         request = factory(next_page_token)
-        response = rpc(request)
+        response = rpc(auth_header, request)
         yield response
         if response.next_page_token is None:
             break
