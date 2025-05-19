@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from functools import partial
 from typing import Protocol
 
-from conjure_python_client import RequestsClient, Service, ServiceConfiguration
+from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
@@ -33,6 +32,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal.core._networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -144,7 +144,7 @@ class ClientsBunch:
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str | None) -> Self:
-        client_factory = partial(RequestsClient.create, user_agent=agent, service_config=cfg)
+        client_factory = create_conjure_client_factory(user_agent=agent, service_config=cfg)
 
         return cls(
             auth_header=f"Bearer {token}",
