@@ -87,7 +87,6 @@ def normalize_video(
     # Run ffmpeg in subprocess
     video_in = ffmpeg.input(str(input_path), **input_kwargs)
     video_out = video_in.output(str(output_path), **output_kwargs)
-    print(shlex.join(video_out.compile()))
     logger.info(f"Running command: '{shlex.join(video_out.compile())}'")
     video_out.run()
 
