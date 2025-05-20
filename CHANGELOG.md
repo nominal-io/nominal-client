@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.52.0](https://github.com/nominal-io/nominal-client/compare/v1.51.0...v1.52.0) (2025-05-20)
+
+
+### Features
+
+* gzip post contents by default ([#331](https://github.com/nominal-io/nominal-client/issues/331)) ([b45fb2b](https://github.com/nominal-io/nominal-client/commit/b45fb2b830b7bd21d322f5d5ae133dbb696fc77d))
+
+
+### Bug Fixes
+
+* print extension, instead of `FileType` tuple, in error message ([#337](https://github.com/nominal-io/nominal-client/issues/337)) ([d47f8f3](https://github.com/nominal-io/nominal-client/commit/d47f8f36355097ed9420b1ffca126de0ceaf01f6))
+* remove warning on uploading CSV ([#336](https://github.com/nominal-io/nominal-client/issues/336)) ([744c371](https://github.com/nominal-io/nominal-client/commit/744c3714f39388f27522ff6a87a0e7422b2112c2))
+
+
+### Documentation
+
+* organize reference docs around namespace packages ([#334](https://github.com/nominal-io/nominal-client/issues/334)) ([310b0a1](https://github.com/nominal-io/nominal-client/commit/310b0a1f16454333d14f9a3f6fe1d293ba5678e7))
+
 ## [1.51.0](https://github.com/nominal-io/nominal-client/compare/v1.50.0...v1.51.0) (2025-05-12)
 
 
