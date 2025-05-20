@@ -37,6 +37,7 @@ dependencies = [
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
     "nominal-api==0.653.0",
+    "coverage[toml]>=7.8.0",
 ]
 
 
@@ -169,3 +170,6 @@ testpaths = ["tests"]
 # make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
 addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"
+
+[tool.coverage.run]
+omit = ["tests/*", "*__init__*", "nominal/__main__.py"]
