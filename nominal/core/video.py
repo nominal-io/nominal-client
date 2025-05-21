@@ -117,7 +117,7 @@ class Video(HasRid):
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
-    def add_file_to_video(
+    def add_file(
         self,
         path: pathlib.Path | str,
         start: datetime | IntegralNanosecondsUTC | None = None,
@@ -150,7 +150,7 @@ class Video(HasRid):
                 file_type=file_type,
             )
 
-    add_file = add_file_to_video
+    add_file_to_video = add_file
 
     def add_from_io(
         self,
