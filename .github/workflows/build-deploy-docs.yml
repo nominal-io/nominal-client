@@ -3,7 +3,7 @@ name: Build and deploy mkdocs site to Pages
 on:
   push:
     branches: ["main"]
-  
+
   pull_request:
     branches: ["main"]
 
@@ -45,7 +45,7 @@ jobs:
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: ./docs/site
 
   # Deployment job
   deploy:
@@ -61,4 +61,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
