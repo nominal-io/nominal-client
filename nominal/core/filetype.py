@@ -87,7 +87,7 @@ class FileType(NamedTuple):
                 *FileTypes._PARQUET_FILE_TYPES,
                 *FileTypes._CSV_TYPES,
             )
-            raise ValueError(f"tabular path '{path}' must end in one of {allowed_extensions}")
+            raise ValueError(f"tabular path '{path}' must end in one of {[f.extension for f in allowed_extensions]}")
 
         return file_type
 
@@ -95,7 +95,9 @@ class FileType(NamedTuple):
     def from_path_journal_json(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_journal():
-            raise ValueError(f"journal jsonl path '{path}' must end in one of {FileTypes._JOURNAL_TYPES}")
+            raise ValueError(
+                f"journal jsonl path '{path}' must end in one of {[f.extension for f in FileTypes._JOURNAL_TYPES]}"
+            )
 
         return file_type
 
@@ -103,7 +105,7 @@ class FileType(NamedTuple):
     def from_video(cls, path: Path | str) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_video():
-            raise ValueError(f"video path '{path}' must end in one of {FileTypes._VIDEO_TYPES}")
+            raise ValueError(f"video path '{path}' must end in one of {[f.extension for f in FileTypes._VIDEO_TYPES]}")
 
         return file_type
 

@@ -1,10 +1,11 @@
 site_name: "Nominal Python SDK: Function Reference"
 repo_url: "https://github.com/nominal-io/nominal-client"
 repo_name: "nominal-io/nominal-client"
-site_dir: "site"
-watch: [mkdocs.yml, README.md, CHANGELOG.md, nominal]
+site_dir: site
+watch: [mkdocs.yml, ../README.md, ../CHANGELOG.md, ../nominal]
 copyright: Copyright &copy; 2024 Nominal, Inc.
 edit_uri: edit/main/docs/
+docs_dir: src
 
 validation:
   omitted_files: warn
@@ -81,7 +82,11 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.magiclink
   - pymdownx.snippets:
-      base_path: [!relative $config_dir]
+      base_path:
+        - !relative $config_dir
+        - CHANGELOG.md
+        - CONTRIBUTING.md
+        - LICENSE
       check_paths: true
   - pymdownx.superfences
   - pymdownx.tabbed:
