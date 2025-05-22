@@ -80,8 +80,8 @@ def normalize_video(
 
     # If the video does not have an audio track, add an empty track by default
     if not has_audio_track(input_path):
+        input_kwargs["f"] = "lavfi"
         input_kwargs["i"] = "anullsrc=channel_layout=stereo:sample_rate=44100"
-        output_kwargs["f"] = "lavfi"
         output_kwargs["shortest"] = None
 
     # Run ffmpeg in subprocess

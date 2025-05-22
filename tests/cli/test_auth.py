@@ -32,34 +32,37 @@ def mock_conjure_http_error(status_code):
 def test_invalid_token(mock_client: MagicMock, runner: CliRunner):
     mock_client.get_user.side_effect = mock_conjure_http_error(401)
 
-    result = runner.invoke(set_token, ["-t", "invalid-token", "-u", "https://api.gov.nominal.io/api"])
+    with pytest.warns(UserWarning):
+        result = runner.invoke(set_token, ["-t", "invalid-token", "-u", "https://api.gov.nominal.io/api"])
 
-    assert "Your authorization token seems to be incorrect" in result.output
+    assert "The authorization token may be invalid" in result.output
     assert result.exit_code == 1
 
 
 def test_invalid_url(mock_client: MagicMock, runner: CliRunner):
     mock_client.get_user.side_effect = mock_conjure_http_error(404)
+    with pytest.warns(UserWarning):
+        result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://invalid-url"])
 
-    result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://invalid-url"])
-
-    assert "Your base_url is not correct" in result.output
+    assert "The base_url may be incorrect" in result.output
     assert result.exit_code == 1
 
 
 def test_bad_request(mock_client: MagicMock, runner: CliRunner):
     mock_client.get_user.side_effect = mock_conjure_http_error(500)
 
-    result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://api.gov.nominal.io/api"])
+    with pytest.warns(UserWarning):
+        result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://api.gov.nominal.io/api"])
 
-    assert "misconfiguration between your base_url and token" in result.output
+    assert "misconfiguration between the base_url and token" in result.output
     assert result.exit_code == 1
 
 
 def test_good_request(mock_client: MagicMock, runner: CliRunner):
     mock_client.get_user.return_value = {}
 
-    result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://api.gov.nominal.io/api"])
+    with pytest.warns(UserWarning):
+        result = runner.invoke(set_token, ["-t", "valid-token", "-u", "https://api.gov.nominal.io/api"])
 
     assert "Successfully set token" in result.output
     assert result.exit_code == 0

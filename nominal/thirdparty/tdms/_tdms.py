@@ -13,7 +13,6 @@ from nominal import ts
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.thirdparty.pandas import _pandas
-from nominal.thirdparty.tdms import _tdms
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +53,11 @@ def upload_tdms(
         wait_until_complete=wait_until_complete,
     )
     if timestamp_column is not None and timestamp_type is not None:
-        df = _tdms._tdms_with_time_column_to_pandas(path, timestamp_column)
+        df = _tdms_with_time_column_to_pandas(path, timestamp_column)
         return upload_func(client, df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
     elif timestamp_column is None and timestamp_type is None:
         timestamp_column = "time_ns"
-        df = _tdms._tdms_with_waveform_props_to_pandas(path, timestamp_column)
+        df = _tdms_with_waveform_props_to_pandas(path, timestamp_column)
         return upload_func(client, df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
     raise ValueError("'timestamp_column' and 'timestamp_type' must be included together, or excluded together.")
 

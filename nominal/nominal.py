@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
 
+
 _DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
 
 # global variable which `set_base_url()` modifies
@@ -69,9 +70,9 @@ def get_default_client() -> NominalClient:
 
 
 def get_user() -> User:
-    """Retrieve the user associated with the default client."""
-    conn = get_default_client()
-    return conn.get_user()
+    """Retrieve current user."""
+    client = get_default_client()
+    return client.get_user()
 
 
 @typing_extensions.deprecated(
@@ -203,9 +204,9 @@ def upload_csv(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    conn = get_default_client()
+    client = get_default_client()
     return _upload_csv(
-        conn,
+        client,
         file,
         name,
         timestamp_column,
@@ -217,7 +218,7 @@ def upload_csv(
 
 
 def _upload_csv(
-    conn: NominalClient,
+    client: NominalClient,
     file: Path | str,
     name: str | None,
     timestamp_column: str,
@@ -227,7 +228,7 @@ def _upload_csv(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    dataset = conn.create_csv_dataset(
+    dataset = client.create_csv_dataset(
         file,
         name,
         timestamp_column=timestamp_column,
@@ -242,8 +243,8 @@ def _upload_csv(
 
 def get_dataset(rid: str) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_dataset(rid)
+    client = get_default_client()
+    return client.get_dataset(rid)
 
 
 def create_run(
@@ -262,8 +263,8 @@ def create_run(
 
     To add a dataset to the run, use `run.add_dataset()`.
     """
-    conn = get_default_client()
-    return conn.create_run(
+    client = get_default_client()
+    return client.create_run(
         name,
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
         end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
@@ -295,8 +296,8 @@ def create_run_csv(
 
 def get_run(rid: str) -> Run:
     """Retrieve a run from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_run(rid)
+    client = get_default_client()
+    return client.get_run(rid)
 
 
 def search_runs(
@@ -331,28 +332,28 @@ def upload_attachment(
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
     path = Path(file)
-    conn = get_default_client()
+    client = get_default_client()
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:
-        return conn.create_attachment_from_io(f, name, file_type, description)
+        return client.create_attachment_from_io(f, name, file_type, description)
 
 
 def get_attachment(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_attachment(rid)
+    client = get_default_client()
+    return client.get_attachment(rid)
 
 
 def get_log_set(rid: str) -> LogSet:
     """Retrieve a log set from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_log_set(rid)
+    client = get_default_client()
+    return client.get_log_set(rid)
 
 
 def download_attachment(rid: str, file: Path | str) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
-    conn = get_default_client()
-    attachment = conn.get_attachment(rid)
+    client = get_default_client()
+    attachment = client.get_attachment(rid)
     attachment.write(Path(file))
 
 
@@ -360,11 +361,11 @@ def upload_video(
     file: Path | str, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
 ) -> Video:
     """Upload a video to Nominal from a file."""
-    conn = get_default_client()
+    client = get_default_client()
     path = Path(file)
     file_type = FileType.from_path(path)
     with open(file, "rb") as f:
-        return conn.create_video_from_io(
+        return client.create_video_from_io(
             f,
             name,
             start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
@@ -375,8 +376,8 @@ def upload_video(
 
 def get_video(rid: str) -> Video:
     """Retrieve a video from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_video(rid)
+    client = get_default_client()
+    return client.get_video(rid)
 
 
 def create_asset(
@@ -387,14 +388,14 @@ def create_asset(
     labels: Sequence[str] = (),
 ) -> Asset:
     """Create an asset."""
-    conn = get_default_client()
-    return conn.create_asset(name, description, properties=properties, labels=labels)
+    client = get_default_client()
+    return client.create_asset(name, description, properties=properties, labels=labels)
 
 
 def get_asset(rid: str) -> Asset:
     """Retrieve an asset by its RID."""
-    conn = get_default_client()
-    return conn.get_asset(rid)
+    client = get_default_client()
+    return client.get_asset(rid)
 
 
 def search_assets(
@@ -424,8 +425,8 @@ def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]
     Args:
         asset: if provided, only return checklists associated with the given asset.
     """
-    conn = get_default_client()
-    return conn.list_streaming_checklists(asset)
+    client = get_default_client()
+    return client.list_streaming_checklists(asset)
 
 
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
@@ -438,8 +439,8 @@ def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
 
 
 def get_checklist(checklist_rid: str) -> Checklist:
-    conn = get_default_client()
-    return conn.get_checklist(checklist_rid)
+    client = get_default_client()
+    return client.get_checklist(checklist_rid)
 
 
 def upload_mcap_video(
@@ -458,7 +459,7 @@ def upload_mcap_video(
         returning. If you are uploading many videos, set `wait_until_complete=False` instead and call
         `wait_until_ingestion_complete()` after uploading all videos to allow for parallel ingestion.
     """
-    conn = get_default_client()
+    client = get_default_client()
 
     path = Path(file)
     file_type = FileType.from_path(path)
@@ -466,7 +467,7 @@ def upload_mcap_video(
         name = path.name
 
     with open(file, "rb") as f:
-        video = conn.create_video_from_mcap_io(
+        video = client.create_video_from_mcap_io(
             f,
             topic,
             name,
@@ -493,16 +494,16 @@ def create_streaming_connection(
 
     datasource_id: A human readable identifier. Must be unique within an organization.
     """
-    conn = get_default_client()
-    return conn.create_streaming_connection(
+    client = get_default_client()
+    return client.create_streaming_connection(
         datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
     )
 
 
 def get_connection(rid: str) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_connection(rid)
+    client = get_default_client()
+    return client.get_connection(rid)
 
 
 def create_workbook_from_template(
@@ -512,8 +513,8 @@ def create_workbook_from_template(
     template_rid: The template to use for the workbook.
     run_rid: The run to associate the workbook with.
     """
-    conn = get_default_client()
-    return conn.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
+    client = get_default_client()
+    return client.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
 
 
 def create_log_set(
@@ -527,8 +528,8 @@ def create_log_set(
     The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
     or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
     """
-    conn = get_default_client()
-    return conn.create_log_set(name, logs, timestamp_type, description)
+    client = get_default_client()
+    return client.create_log_set(name, logs, timestamp_type, description)
 
 
 def data_review_builder() -> DataReviewBuilder:
@@ -547,11 +548,11 @@ def data_review_builder() -> DataReviewBuilder:
         print(review.get_violations())
     ```
     """
-    conn = get_default_client()
-    return conn.data_review_builder()
+    client = get_default_client()
+    return client.data_review_builder()
 
 
 def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_data_review(rid)
+    client = get_default_client()
+    return client.get_data_review(rid)
