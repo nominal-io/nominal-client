@@ -31,8 +31,8 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import _config
-from nominal.core import _conjure_utils
 from nominal.config import NominalConfig
+from nominal.core import _conjure_utils
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
