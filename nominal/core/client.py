@@ -167,12 +167,11 @@ class NominalClient:
         """
         if token is None:
             token = _config.get_token(base_url)
-        timeout = connect_timeout if isinstance(connect_timeout, timedelta) else timedelta(seconds=connect_timeout)
         return cls.from_token(
             token,
             base_url,
             trust_store_path=trust_store_path,
-            connect_timeout=timeout,
+            connect_timeout=connect_timeout,
             workspace_rid=workspace_rid,
         )
 
