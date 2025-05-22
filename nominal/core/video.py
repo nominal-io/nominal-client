@@ -117,7 +117,7 @@ class Video(HasRid):
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
-    def add_file_to_video(
+    def add_file(
         self,
         path: pathlib.Path | str,
         start: datetime | IntegralNanosecondsUTC | None = None,
@@ -150,7 +150,9 @@ class Video(HasRid):
                 file_type=file_type,
             )
 
-    def add_to_video_from_io(
+    add_file_to_video = add_file
+
+    def add_from_io(
         self,
         video: BinaryIO,
         name: str,
@@ -207,7 +209,9 @@ class Video(HasRid):
             self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
         )
 
-    def add_mcap_to_video(
+    add_to_video_from_io = add_from_io
+
+    def add_mcap(
         self,
         path: pathlib.Path,
         topic: str,
@@ -236,7 +240,9 @@ class Video(HasRid):
                 file_type=file_type,
             )
 
-    def add_mcap_to_video_from_io(
+    add_mcap_to_video = add_mcap
+
+    def add_mcap_from_io(
         self,
         mcap: BinaryIO,
         name: str,
@@ -292,6 +298,8 @@ class Video(HasRid):
             self._clients,
             self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
         )
+
+    add_mcap_to_video_from_io = add_mcap_from_io
 
     def list_files(self) -> Sequence[VideoFile]:
         """List all video files associated with the video."""
