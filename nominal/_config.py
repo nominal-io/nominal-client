@@ -12,7 +12,7 @@ _DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.nominal.yml").expanduser().resolve()
 
 
 @dataclass
-class NominalConfig:
+class NominalConfigV1:
     environments: dict[str, str]
     """environments map base_urls (with no scheme) to auth tokens"""
 
@@ -45,12 +45,15 @@ class NominalConfig:
         raise NominalConfigError(f"url {url!r} not found in config: set a token with `nom auth set-token`")
 
 
+NominalConfig = NominalConfigV1
+
+
 def get_token(url: str, config_path: Path = _DEFAULT_NOMINAL_CONFIG_PATH) -> str:
-    return NominalConfig.from_yaml(path=config_path).get_token(_strip_scheme(url))
+    return NominalConfigV1.from_yaml(path=config_path).get_token(_strip_scheme(url))
 
 
 def set_token(url: str, token: str) -> None:
-    cfg = NominalConfig.from_yaml()
+    cfg = NominalConfigV1.from_yaml()
     cfg.set_token(_strip_scheme(url), token)
 
 
