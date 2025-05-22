@@ -12,7 +12,7 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._conjure_utils import Link, _build_links
+from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -266,7 +266,7 @@ class Run(HasRid):
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
             assets=[],
-            links=_build_links(links),
+            links=None if links is None else create_links(links),
         )
         response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._clients, response)
