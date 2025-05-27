@@ -1283,6 +1283,7 @@ class NominalClient:
         is_draft: bool = False,
     ) -> Workbook:
         template = self._clients.template.get(self._clients.auth_header, template_rid)
+
         request = scout_notebook_api.CreateNotebookRequest(
             title=title if title is not None else f"Workbook from {template.metadata.title}",
             description=description or "",
