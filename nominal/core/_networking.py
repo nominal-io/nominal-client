@@ -101,7 +101,7 @@ def create_gzip_service_client(
     retry = RetryWithJitter(
         total=service_config.max_num_retries,
         connect=service_config.max_num_retries,  # Allow connection error retries
-        read=service_config.max_num_retries,     # Allow read error retries (e.g., RemoteDisconnected)
+        read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
