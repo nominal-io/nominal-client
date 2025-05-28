@@ -229,7 +229,7 @@ class Asset(HasRid):
         a dataset, connection, video, or logset.
         """
         return (*self.list_datasets(), *self.list_connections(), *self._list_logsets(), *self.list_videos())
-    
+
     def get_or_create_dataset(
         self,
         *,
@@ -250,7 +250,7 @@ class Asset(HasRid):
                     description=description,
                     properties={} if properties is None else dict(properties),
                     labels=list(labels),
-                )
+                ),
             )
             self.add_dataset(data_scope_name, new_dataset)
             return new_dataset
