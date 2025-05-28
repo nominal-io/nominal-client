@@ -230,7 +230,15 @@ class Asset(HasRid):
         """
         return (*self.list_datasets(), *self.list_connections(), *self._list_logsets(), *self.list_videos())
     
-    def get_or_create_dataset(self, data_scope_name: str) -> Dataset:
+    def get_or_create_dataset(
+        self,
+        *,
+        data_scope_name: str,
+        name: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
         """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
         try:
             return self.get_dataset(data_scope_name)
@@ -238,10 +246,10 @@ class Asset(HasRid):
             new_dataset = self._clients.catalog.create_dataset(
                 self._clients.auth_header,
                 scout_catalog.CreateDatasetRequest(
-                    title=data_scope_name,
-                    description=None,
-                    properties={},
-                    labels=[],
+                    title=name or data_scope_name,
+                    description=description,
+                    properties={} if properties is None else dict(properties),
+                    labels=list(labels),
                 )
             )
             self.add_dataset(data_scope_name, new_dataset)
