@@ -245,7 +245,7 @@ class Asset(HasRid):
         except ValueError:
             new_dataset = self._clients.catalog.create_dataset(
                 self._clients.auth_header,
-                scout_catalog.CreateDatasetRequest(
+                scout_catalog.CreateDataset(
                     title=name or data_scope_name,
                     description=description,
                     properties={} if properties is None else dict(properties),
