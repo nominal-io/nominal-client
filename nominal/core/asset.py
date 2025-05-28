@@ -7,8 +7,8 @@ from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
 from nominal_api import (
     scout_asset_api,
     scout_assets,
-    scout_run_api,
     scout_catalog,
+    scout_run_api,
 )
 from typing_extensions import Self, TypeAlias, deprecated
 
