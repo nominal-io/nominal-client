@@ -17,6 +17,12 @@ _EMTPY_MAP: Mapping[str, str] = MappingProxyType({})
 
 @dataclass(frozen=True)
 class LogPoint:
+    """LogPoint is a single, timestamped log entry.
+
+    LogPoints are added to a Dataset using `Dataset.write_logs`.
+
+    """
+
     timestamp: IntegralNanosecondsUTC
     message: str
     args: Mapping[str, str]
