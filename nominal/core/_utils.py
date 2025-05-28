@@ -10,6 +10,8 @@ from nominal._utils import logger
 from nominal.core.stream import BatchItem
 
 T = TypeVar("T")
+T_co = TypeVar("T_co", covariant=True)
+T_contra = TypeVar("T_contra", contravariant=True)
 
 
 @runtime_checkable

@@ -12,7 +12,7 @@ from nominal_api import (
 from typing_extensions import Self, TypeAlias, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._conjure_utils import Link, _build_links
+from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
@@ -73,7 +73,7 @@ class Asset(HasRid):
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
             title=name,
-            links=_build_links(links),
+            links=None if links is None else create_links(links),
         )
         response = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
         asset = self.__class__._from_conjure(self._clients, response)

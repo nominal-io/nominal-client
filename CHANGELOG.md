@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.53.0](https://github.com/nominal-io/nominal-client/compare/v1.52.0...v1.53.0) (2025-05-27)
+
+
+### Features
+
+* bump version to fix workbook templates ([#346](https://github.com/nominal-io/nominal-client/issues/346)) ([99500a9](https://github.com/nominal-io/nominal-client/commit/99500a9e50353ffa7ca2552fd8e88b64424e6469))
+* provide profile-based NominalClient configuration ([#211](https://github.com/nominal-io/nominal-client/issues/211)) ([cd93d9e](https://github.com/nominal-io/nominal-client/commit/cd93d9ed6a3fb73af26d8dc1ac86329859f6c5cb))
+* refactor client: move pagination & query factories to conjure utils ([#333](https://github.com/nominal-io/nominal-client/issues/333)) ([12e1ff5](https://github.com/nominal-io/nominal-client/commit/12e1ff55877111de10d2a00ee2a678331196268f))
+
+
+### Bug Fixes
+
+* video conversion when there is no audio ([#339](https://github.com/nominal-io/nominal-client/issues/339)) ([5c527f3](https://github.com/nominal-io/nominal-client/commit/5c527f379fe5e6d35e4ee3f79f2a6c382705c7f0))
+
 ## [1.52.0](https://github.com/nominal-io/nominal-client/compare/v1.51.0...v1.52.0) (2025-05-20)
 
 
