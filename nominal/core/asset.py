@@ -8,6 +8,7 @@ from nominal_api import (
     scout_asset_api,
     scout_assets,
     scout_run_api,
+    scout_catalog,
 )
 from typing_extensions import Self, TypeAlias, deprecated
 
@@ -228,6 +229,23 @@ class Asset(HasRid):
         a dataset, connection, video, or logset.
         """
         return (*self.list_datasets(), *self.list_connections(), *self._list_logsets(), *self.list_videos())
+    
+    def get_or_create_dataset(self, data_scope_name: str) -> Dataset:
+        """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
+        try:
+            return self.get_dataset(data_scope_name)
+        except ValueError:
+            new_dataset = self._clients.catalog.create_dataset(
+                self._clients.auth_header,
+                scout_catalog.CreateDatasetRequest(
+                    title=data_scope_name,
+                    description=None,
+                    properties={},
+                    labels=[],
+                )
+            )
+            self.add_dataset(data_scope_name, new_dataset)
+            return new_dataset
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""
