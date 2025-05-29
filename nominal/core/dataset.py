@@ -197,7 +197,6 @@ class Dataset(DataSource):
             file_name = self.name
 
         file_type = FileType(*file_type)
-        
         s3_path = upload_multipart_io(
             self._clients.auth_header,
             self._clients.workspace_rid,
