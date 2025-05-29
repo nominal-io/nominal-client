@@ -532,8 +532,8 @@ def _create_dataset(
     request = scout_catalog.CreateDataset(
         name=name,
         description=description,
-        labels=[*labels],
-        properties={} if properties is None else {**properties},
+        labels=list(labels),
+        properties={} if properties is None else dict(properties),
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
