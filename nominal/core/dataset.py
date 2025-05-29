@@ -652,7 +652,7 @@ def _construct_existing_ingest_options(
             )
         )
     else:
-        if file_type.is_csv():
+        if not file_type.is_csv():
             logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
 
         return ingest_api.IngestOptions(
