@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.54.0](https://github.com/nominal-io/nominal-client/compare/v1.53.0...v1.54.0) (2025-05-29)
+
+
+### Features
+
+* retry read and connection errors ([#349](https://github.com/nominal-io/nominal-client/issues/349)) ([09a6768](https://github.com/nominal-io/nominal-client/commit/09a67685d2a0ba3252f3a86ebc25006b789fa399))
+* un-deprecate creating streaming connections ([#345](https://github.com/nominal-io/nominal-client/issues/345)) ([466b588](https://github.com/nominal-io/nominal-client/commit/466b588ecd7dfe6ac77c60baf75faa572fae3940))
+
 ## [1.53.0](https://github.com/nominal-io/nominal-client/compare/v1.52.0...v1.53.0) (2025-05-27)
 
 
