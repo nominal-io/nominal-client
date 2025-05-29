@@ -518,39 +518,28 @@ def _get_dataset(
         raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
     return datasets[0]
 
+
 def _create_dataset(
-        auth_header: str,
-        client: scout_catalog.CatalogService,
-        workspace_rid: str,
-        name: str,
-        *,
-        description: str | None = None,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None
-    ) -> scout_catalog.EnrichedDataset:
-        """Create an empty dataset.
-
-        Args:
-            name: Name of the dataset to create in Nominal.
-            description: Human readable description of the dataset.
-            labels: Text labels to apply to the created dataset
-            properties: Key-value properties to apply to the cleated dataset
-            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
-
-        Returns:
-            EnrichedDataset: The created dataset, with metadata populated.
-        """
-        request = scout_catalog.CreateDataset(
-            name=name,
-            description=description,
-            labels=[*labels],
-            properties={} if properties is None else {**properties},
-            is_v2_dataset=True,
-            metadata={},
-            origin_metadata=scout_catalog.DatasetOriginMetadata(),
-            workspace=workspace_rid,
-        )
-        return client.create_dataset(auth_header, request)
+    auth_header: str,
+    client: scout_catalog.CatalogService,
+    name: str,
+    *,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    workspace_rid: str | None = None,
+) -> scout_catalog.EnrichedDataset:
+    request = scout_catalog.CreateDataset(
+        name=name,
+        description=description,
+        labels=[*labels],
+        properties={} if properties is None else {**properties},
+        is_v2_dataset=True,
+        metadata={},
+        origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        workspace=workspace_rid,
+    )
+    return client.create_dataset(auth_header, request)
 
 
 def _create_dataflash_ingest_request(s3_path: str, target: ingest_api.DatasetIngestTarget) -> ingest_api.IngestRequest:

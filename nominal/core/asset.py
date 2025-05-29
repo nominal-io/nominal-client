@@ -7,7 +7,6 @@ from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
 from nominal_api import (
     scout_asset_api,
     scout_assets,
-    scout_catalog,
     scout_run_api,
 )
 from typing_extensions import Self, TypeAlias, deprecated
@@ -246,11 +245,11 @@ class Asset(HasRid):
             enriched_dataset = _create_dataset(
                 self._clients.auth_header,
                 self._clients.catalog,
-                self._clients.workspace_rid,
                 name or data_scope_name,
                 description=description,
                 properties=properties,
                 labels=labels,
+                workspace_rid=self._clients.workspace_rid,
             )
             dataset = Dataset._from_conjure(self._clients, enriched_dataset)
             self.add_dataset(data_scope_name, dataset)

@@ -18,7 +18,6 @@ from nominal_api import (
     event,
     ingest_api,
     scout_asset_api,
-    scout_catalog,
     scout_checks_api,
     scout_datasource_connection_api,
     scout_notebook_api,
@@ -47,11 +46,11 @@ from nominal.core.dataset import (
     _build_channel_config,
     _construct_new_ingest_options,
     _create_dataflash_ingest_request,
+    _create_dataset,
     _create_mcap_channels,
     _create_mcap_ingest_request,
     _get_dataset,
     _get_datasets,
-    _create_dataset,
 )
 from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
@@ -370,11 +369,11 @@ class NominalClient:
         response = _create_dataset(
             self._clients.auth_header,
             self._clients.catalog,
-            self._clients.workspace_rid,
             name,
             description=description,
             labels=labels,
             properties=properties,
+            workspace_rid=self._clients.workspace_rid,
         )
         dataset = Dataset._from_conjure(self._clients, response)
 
