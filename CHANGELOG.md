@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.54.1](https://github.com/nominal-io/nominal-client/compare/v1.54.0...v1.54.1) (2025-05-29)
+
+
+### Bug Fixes
+
+* correctly check parquet/csv types for tabular ingest ([#351](https://github.com/nominal-io/nominal-client/issues/351)) ([51967f1](https://github.com/nominal-io/nominal-client/commit/51967f15716be63e94c2d1ec7bb5627c232a6ecb))
+* pass workspace rid when creating empty video ([#354](https://github.com/nominal-io/nominal-client/issues/354)) ([1f42e11](https://github.com/nominal-io/nominal-client/commit/1f42e11baddb43743dba2636f064ea6e30f055a3))
+* reduce default key frame interval to 2s ([#352](https://github.com/nominal-io/nominal-client/issues/352)) ([a3c7f7c](https://github.com/nominal-io/nominal-client/commit/a3c7f7c7be76f4292f1c901df6c97e6a5d2a7590))
+
 ## [1.54.0](https://github.com/nominal-io/nominal-client/compare/v1.53.0...v1.54.0) (2025-05-29)
 
 
