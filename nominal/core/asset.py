@@ -243,17 +243,22 @@ class Asset(HasRid):
         try:
             return self.get_dataset(data_scope_name)
         except ValueError:
-            new_dataset = self._clients.catalog.create_dataset(
+            enriched_dataset = self._clients.catalog.create_dataset(
                 self._clients.auth_header,
                 scout_catalog.CreateDataset(
-                    title=name or data_scope_name,
+                    name=name or data_scope_name,
                     description=description,
                     properties={} if properties is None else dict(properties),
                     labels=list(labels),
+                    is_v2_dataset=True,
+                    metadata={},
+                    origin_metadata=scout_catalog.DatasetOriginMetadata(),
+                    workspace=self._clients.workspace_rid,
                 ),
             )
-            self.add_dataset(data_scope_name, new_dataset)
-            return new_dataset
+            dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+            self.add_dataset(data_scope_name, dataset)
+            return dataset
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""
