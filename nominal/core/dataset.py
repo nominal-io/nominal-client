@@ -197,6 +197,7 @@ class Dataset(DataSource):
             file_name = self.name
 
         file_type = FileType(*file_type)
+        
         s3_path = upload_multipart_io(
             self._clients.auth_header,
             self._clients.workspace_rid,
@@ -652,7 +653,7 @@ def _construct_existing_ingest_options(
             )
         )
     else:
-        if file_type.is_csv():
+        if not file_type.is_csv():
             logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
 
         return ingest_api.IngestOptions(
