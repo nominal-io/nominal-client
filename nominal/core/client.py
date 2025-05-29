@@ -51,6 +51,7 @@ from nominal.core.dataset import (
     _create_mcap_ingest_request,
     _get_dataset,
     _get_datasets,
+    _create_dataset,
 )
 from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
@@ -366,18 +367,16 @@ class NominalClient:
         Returns:
             Reference to the created dataset in Nominal.
         """
-        request = scout_catalog.CreateDataset(
-            name=name,
+        response = _create_dataset(
+            self._clients.auth_header,
+            self._clients.catalog,
+            self._clients.workspace_rid,
+            name,
             description=description,
-            labels=[*labels],
-            properties={} if properties is None else {**properties},
-            is_v2_dataset=True,
-            metadata={},
-            origin_metadata=scout_catalog.DatasetOriginMetadata(),
-            workspace=self._clients.workspace_rid,
+            labels=labels,
+            properties=properties,
         )
-        enriched_dataset = self._clients.catalog.create_dataset(self._clients.auth_header, request)
-        dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+        dataset = Dataset._from_conjure(self._clients, response)
 
         if prefix_tree_delimiter:
             dataset.set_channel_prefix_tree(prefix_tree_delimiter)

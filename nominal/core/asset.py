@@ -17,7 +17,7 @@ from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
@@ -243,18 +243,14 @@ class Asset(HasRid):
         try:
             return self.get_dataset(data_scope_name)
         except ValueError:
-            enriched_dataset = self._clients.catalog.create_dataset(
+            enriched_dataset = _create_dataset(
                 self._clients.auth_header,
-                scout_catalog.CreateDataset(
-                    name=name or data_scope_name,
-                    description=description,
-                    properties={} if properties is None else dict(properties),
-                    labels=list(labels),
-                    is_v2_dataset=True,
-                    metadata={},
-                    origin_metadata=scout_catalog.DatasetOriginMetadata(),
-                    workspace=self._clients.workspace_rid,
-                ),
+                self._clients.catalog,
+                self._clients.workspace_rid,
+                name or data_scope_name,
+                description=description,
+                properties=properties,
+                labels=labels,
             )
             dataset = Dataset._from_conjure(self._clients, enriched_dataset)
             self.add_dataset(data_scope_name, dataset)
