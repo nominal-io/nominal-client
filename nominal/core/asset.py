@@ -232,8 +232,8 @@ class Asset(HasRid):
 
     def get_or_create_dataset(
         self,
-        *,
         data_scope_name: str,
+        *,
         name: str | None = None,
         description: str | None = None,
         labels: Sequence[str] = (),
