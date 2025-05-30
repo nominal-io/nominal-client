@@ -781,6 +781,7 @@ class NominalClient:
             labels=list(labels),
             properties={} if properties is None else {**properties},
             description=description,
+            workspace=self._clients.workspace_rid,
         )
         raw_video = self._clients.video.create(self._clients.auth_header, request)
         return Video._from_conjure(self._clients, raw_video)
