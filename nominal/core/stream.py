@@ -26,6 +26,14 @@ class BatchItem:
 
 
 @dataclass(frozen=True)
+class BatchV2Item:
+    seconds: int
+    nanos: int
+    value: float | str
+    tags: Mapping[str, str] | None = None
+
+
+@dataclass(frozen=True)
 class WriteStream(WriteStreamBase):
     batch_size: int
     max_wait: timedelta
