@@ -11,6 +11,7 @@ from requests.adapters import CaseInsensitiveDict
 
 T = TypeVar("T")
 
+GZIP_COMPRESSION_LEVEL = 1
 
 class GzipRequestsAdapter(TransportAdapter):
     """Adapter used with `requests` library for sending gzip-compressed data.
@@ -21,8 +22,6 @@ class GzipRequestsAdapter(TransportAdapter):
     ACCEPT_ENCODING = "Accept-Encoding"
     CONTENT_ENCODING = "Content-Encoding"
     CONTENT_LENGTH = "Content-Length"
-
-    COMPRESSION_LEVEL = 1
 
     def add_headers(self, request: requests.PreparedRequest, **kwargs: Any) -> None:
         """Tell the server that we support compression."""
@@ -64,7 +63,7 @@ class GzipRequestsAdapter(TransportAdapter):
         elif request.body is not None:
             # If there is data being posted to the API, gzip-encode it to save network bandwidth
             body = request.body if isinstance(request.body, bytes) else request.body.encode("utf-8")
-            request.body = gzip.compress(body, compresslevel=self.COMPRESSION_LEVEL)
+            request.body = gzip.compress(body, compresslevel=GZIP_COMPRESSION_LEVEL)
 
         return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
 
