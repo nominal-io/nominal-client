@@ -117,7 +117,7 @@ class WriteStream(WriteStreamBase):
         Args:
         ----
             wait: If true, wait for the batch to complete uploading before returning
-            timeout: If wait is true, the time to wait for flush completion.
+            timeout: If wait is true, the time to wait for flush completion in seconds.
                      NOTE: If none, waits indefinitely.
 
         """
