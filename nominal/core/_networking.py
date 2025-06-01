@@ -13,6 +13,7 @@ T = TypeVar("T")
 
 GZIP_COMPRESSION_LEVEL = 1
 
+
 class GzipRequestsAdapter(TransportAdapter):
     """Adapter used with `requests` library for sending gzip-compressed data.
 
