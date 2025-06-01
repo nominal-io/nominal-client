@@ -47,8 +47,8 @@ class Dataset(DataSource):
         return f"https://app.gov.nominal.io/data-sources/{self.rid}"
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
-        """Block until dataset ingestion has completed.
-        This method polls Nominal for ingest status after uploading a dataset on an interval.
+        """Block until dataset file ingestion has completed.
+        This method polls Nominal for ingest status after uploading a file to a dataset on an interval.
 
         Raises:
         ------
@@ -652,7 +652,7 @@ def _construct_existing_ingest_options(
             )
         )
     else:
-        if file_type.is_csv():
+        if not file_type.is_csv():
             logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
 
         return ingest_api.IngestOptions(

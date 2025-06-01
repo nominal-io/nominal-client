@@ -50,10 +50,9 @@ class Connection(DataSource):
 class StreamingConnection(Connection):
     """A `StreamingConnection` is used to stream telemetry data to Nominal.
 
-    This is now largely an antiquated mechanism for ingesting data into Nominal.
-    It is instead recommended that users simply retrieve a write stream to an existing
-    dataset using `Dataset.get_write_stream`, which has the same overall semantics of using
-    a `StreamingConnection`.
+    This method of streaming is being phased out in favor of streaming to a dataset.
+    However, it is still available while we complete adding the same level of tag
+    support to datasets, and for backwards compatibility.
     """
 
     nominal_data_source_rid: str

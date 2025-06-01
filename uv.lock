@@ -1728,7 +1728,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.51.0"
+version = "1.53.0"
 source = { editable = "." }
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -1788,7 +1788,7 @@ requires-dist = [
     { name = "coverage", extras = ["toml"], specifier = ">=7.8.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
-    { name = "nominal-api", specifier = "==0.653.0" },
+    { name = "nominal-api", specifier = "==0.687.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.549.0" },
     { name = "nptdms", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
@@ -1827,15 +1827,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.653.0"
+version = "0.687.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/be/4e/c02b696f2da34b84b8c72f11cc55b6c724d0966fa16f517bcfa04c67c598/nominal_api-0.653.0.tar.gz", hash = "sha256:bffb13d39c8912a80dc0bc707bda923d3b1e9ee0c3a3fc42d980acbcd1ffe41f", size = 333294 }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/d0/9fe8c04fb3450328fe256eb7cd9d56e4dd28b9c6255ded715ca95c21e939/nominal_api-0.687.0.tar.gz", hash = "sha256:d356e113003e9f09af054ea60a027680b6f281238fa062a0647f32d67679f61f", size = 345471 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/1c/d5387ef798fbdb90cb55446fedea1a24b5f184d585f3bc6982febbf1100d/nominal_api-0.653.0-py3-none-any.whl", hash = "sha256:0a0ef2361251cf66c902eba76c26c038e0a7cb6f94ec339f2d6146673bdbaa6d", size = 354747 },
+    { url = "https://files.pythonhosted.org/packages/2b/50/0210eca24086ef2191c7fc8a474ebd0d6acd92312f6dc7acaa7f86be9916/nominal_api-0.687.0-py3-none-any.whl", hash = "sha256:50f2fefdad0e7e46e1645043f70207eedf182dfd0a0b8af0a5ad59aa1ff9ea03", size = 367115 },
 ]
 
 [[package]]
