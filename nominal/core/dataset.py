@@ -47,8 +47,8 @@ class Dataset(DataSource):
         return f"https://app.gov.nominal.io/data-sources/{self.rid}"
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
-        """Block until dataset ingestion has completed.
-        This method polls Nominal for ingest status after uploading a dataset on an interval.
+        """Block until dataset file ingestion has completed.
+        This method polls Nominal for ingest status after uploading a file to a dataset on an interval.
 
         Raises:
         ------
