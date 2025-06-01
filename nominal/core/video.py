@@ -141,7 +141,7 @@ class Video(HasRid):
         file_type = FileType.from_video(path)
 
         with path.open("rb") as video_file:
-            return self.add_to_video_from_io(
+            return self.add_from_io(
                 video_file,
                 name=path_upload_name(path, file_type),
                 start=start,
@@ -229,10 +229,12 @@ class Video(HasRid):
             Reference to the created video file.
         """
         path = pathlib.Path(path)
-        file_type = FileType.from_video(path)
+        file_type = FileType.from_path(path)
+        if file_type != FileTypes.MCAP:
+            raise ValueError(f"mcap path '{path}' must end in `{FileTypes.MCAP.extension}`")
 
         with path.open("rb") as video_file:
-            return self.add_mcap_to_video_from_io(
+            return self.add_mcap_from_io(
                 video_file,
                 name=path_upload_name(path, file_type),
                 topic=topic,
