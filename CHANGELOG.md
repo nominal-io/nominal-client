@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.55.0](https://github.com/nominal-io/nominal-client/compare/v1.54.1...v1.55.0) (2025-06-02)
+
+
+### Features
+
+* add get or create dataset by refname on assets ([#350](https://github.com/nominal-io/nominal-client/issues/350)) ([e99f52c](https://github.com/nominal-io/nominal-client/commit/e99f52c56ce2cc70db62c8e2fbe7ce27a9f7b665))
+* bump nominal-api to 0.703.0 ([#359](https://github.com/nominal-io/nominal-client/issues/359)) ([734a6f0](https://github.com/nominal-io/nominal-client/commit/734a6f0c28ce6cc7fd9f64e16997b0c2f5828f95))
+* clean up video api ([#340](https://github.com/nominal-io/nominal-client/issues/340)) ([fabf837](https://github.com/nominal-io/nominal-client/commit/fabf83728bda8c4f41f243a9a6f57b15b95319cd))
+* dont track metrics by default ([#360](https://github.com/nominal-io/nominal-client/issues/360)) ([0e12385](https://github.com/nominal-io/nominal-client/commit/0e12385482bb2b13a7acbf939d9069b0f2b3a56a))
+* make gzip level a global constant ([#357](https://github.com/nominal-io/nominal-client/issues/357)) ([5b024aa](https://github.com/nominal-io/nominal-client/commit/5b024aa6e6ad29099ef5da97f2954e883a1b3a3c))
+
+
+### Bug Fixes
+
+* mcap extension checking for video upload ([#356](https://github.com/nominal-io/nominal-client/issues/356)) ([30e4fa4](https://github.com/nominal-io/nominal-client/commit/30e4fa4311b1326ff109a95549b9819f1033b701))
+
+
+### Documentation
+
+* make `LogPoint` appear in the reference docs ([#347](https://github.com/nominal-io/nominal-client/issues/347)) ([50156ef](https://github.com/nominal-io/nominal-client/commit/50156ef5fca4a7c5f870f4b64c8f623135efdbde))
+
 ## [1.54.1](https://github.com/nominal-io/nominal-client/compare/v1.54.0...v1.54.1) (2025-05-29)
 
 
