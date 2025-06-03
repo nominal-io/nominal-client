@@ -1,5 +1,75 @@
 # Changelog
 
+## [1.55.0](https://github.com/nominal-io/nominal-client/compare/v1.54.1...v1.55.0) (2025-06-02)
+
+
+### Features
+
+* add get or create dataset by refname on assets ([#350](https://github.com/nominal-io/nominal-client/issues/350)) ([e99f52c](https://github.com/nominal-io/nominal-client/commit/e99f52c56ce2cc70db62c8e2fbe7ce27a9f7b665))
+* bump nominal-api to 0.703.0 ([#359](https://github.com/nominal-io/nominal-client/issues/359)) ([734a6f0](https://github.com/nominal-io/nominal-client/commit/734a6f0c28ce6cc7fd9f64e16997b0c2f5828f95))
+* clean up video api ([#340](https://github.com/nominal-io/nominal-client/issues/340)) ([fabf837](https://github.com/nominal-io/nominal-client/commit/fabf83728bda8c4f41f243a9a6f57b15b95319cd))
+* dont track metrics by default ([#360](https://github.com/nominal-io/nominal-client/issues/360)) ([0e12385](https://github.com/nominal-io/nominal-client/commit/0e12385482bb2b13a7acbf939d9069b0f2b3a56a))
+* make gzip level a global constant ([#357](https://github.com/nominal-io/nominal-client/issues/357)) ([5b024aa](https://github.com/nominal-io/nominal-client/commit/5b024aa6e6ad29099ef5da97f2954e883a1b3a3c))
+
+
+### Bug Fixes
+
+* mcap extension checking for video upload ([#356](https://github.com/nominal-io/nominal-client/issues/356)) ([30e4fa4](https://github.com/nominal-io/nominal-client/commit/30e4fa4311b1326ff109a95549b9819f1033b701))
+
+
+### Documentation
+
+* make `LogPoint` appear in the reference docs ([#347](https://github.com/nominal-io/nominal-client/issues/347)) ([50156ef](https://github.com/nominal-io/nominal-client/commit/50156ef5fca4a7c5f870f4b64c8f623135efdbde))
+
+## [1.54.1](https://github.com/nominal-io/nominal-client/compare/v1.54.0...v1.54.1) (2025-05-29)
+
+
+### Bug Fixes
+
+* correctly check parquet/csv types for tabular ingest ([#351](https://github.com/nominal-io/nominal-client/issues/351)) ([51967f1](https://github.com/nominal-io/nominal-client/commit/51967f15716be63e94c2d1ec7bb5627c232a6ecb))
+* pass workspace rid when creating empty video ([#354](https://github.com/nominal-io/nominal-client/issues/354)) ([1f42e11](https://github.com/nominal-io/nominal-client/commit/1f42e11baddb43743dba2636f064ea6e30f055a3))
+* reduce default key frame interval to 2s ([#352](https://github.com/nominal-io/nominal-client/issues/352)) ([a3c7f7c](https://github.com/nominal-io/nominal-client/commit/a3c7f7c7be76f4292f1c901df6c97e6a5d2a7590))
+
+## [1.54.0](https://github.com/nominal-io/nominal-client/compare/v1.53.0...v1.54.0) (2025-05-29)
+
+
+### Features
+
+* retry read and connection errors ([#349](https://github.com/nominal-io/nominal-client/issues/349)) ([09a6768](https://github.com/nominal-io/nominal-client/commit/09a67685d2a0ba3252f3a86ebc25006b789fa399))
+* un-deprecate creating streaming connections ([#345](https://github.com/nominal-io/nominal-client/issues/345)) ([466b588](https://github.com/nominal-io/nominal-client/commit/466b588ecd7dfe6ac77c60baf75faa572fae3940))
+
+## [1.53.0](https://github.com/nominal-io/nominal-client/compare/v1.52.0...v1.53.0) (2025-05-27)
+
+
+### Features
+
+* bump version to fix workbook templates ([#346](https://github.com/nominal-io/nominal-client/issues/346)) ([99500a9](https://github.com/nominal-io/nominal-client/commit/99500a9e50353ffa7ca2552fd8e88b64424e6469))
+* provide profile-based NominalClient configuration ([#211](https://github.com/nominal-io/nominal-client/issues/211)) ([cd93d9e](https://github.com/nominal-io/nominal-client/commit/cd93d9ed6a3fb73af26d8dc1ac86329859f6c5cb))
+* refactor client: move pagination & query factories to conjure utils ([#333](https://github.com/nominal-io/nominal-client/issues/333)) ([12e1ff5](https://github.com/nominal-io/nominal-client/commit/12e1ff55877111de10d2a00ee2a678331196268f))
+
+
+### Bug Fixes
+
+* video conversion when there is no audio ([#339](https://github.com/nominal-io/nominal-client/issues/339)) ([5c527f3](https://github.com/nominal-io/nominal-client/commit/5c527f379fe5e6d35e4ee3f79f2a6c382705c7f0))
+
+## [1.52.0](https://github.com/nominal-io/nominal-client/compare/v1.51.0...v1.52.0) (2025-05-20)
+
+
+### Features
+
+* gzip post contents by default ([#331](https://github.com/nominal-io/nominal-client/issues/331)) ([b45fb2b](https://github.com/nominal-io/nominal-client/commit/b45fb2b830b7bd21d322f5d5ae133dbb696fc77d))
+
+
+### Bug Fixes
+
+* print extension, instead of `FileType` tuple, in error message ([#337](https://github.com/nominal-io/nominal-client/issues/337)) ([d47f8f3](https://github.com/nominal-io/nominal-client/commit/d47f8f36355097ed9420b1ffca126de0ceaf01f6))
+* remove warning on uploading CSV ([#336](https://github.com/nominal-io/nominal-client/issues/336)) ([744c371](https://github.com/nominal-io/nominal-client/commit/744c3714f39388f27522ff6a87a0e7422b2112c2))
+
+
+### Documentation
+
+* organize reference docs around namespace packages ([#334](https://github.com/nominal-io/nominal-client/issues/334)) ([310b0a1](https://github.com/nominal-io/nominal-client/commit/310b0a1f16454333d14f9a3f6fe1d293ba5678e7))
+
 ## [1.51.0](https://github.com/nominal-io/nominal-client/compare/v1.50.0...v1.51.0) (2025-05-12)
 
 

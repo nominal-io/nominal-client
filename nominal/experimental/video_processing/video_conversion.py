@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_VIDEO_CODEC = "h264"
 DEFAULT_AUDIO_CODEC = "aac"
 DEFAULT_PIXEL_FORMAT = "yuv420p"
-DEFAULT_KEY_FRAME_INTERVAL_SEC = 10
+DEFAULT_KEY_FRAME_INTERVAL_SEC = 2
 
 
 def normalize_video(
@@ -26,7 +26,7 @@ def normalize_video(
     properly encoded in a way that is best supported by nominal.
     This includes:
         * Adding an empty audio track if no audio track is present in the video
-        * Ensuring that there are key-frames (I-frames) present approximately every 10s of video content
+        * Ensuring that there are key-frames (I-frames) present approximately every 2s of video content
         * Video is encoded with H264
         * Audio is encoded with AAC
         * Video has YUV4:2:0 planar color space
@@ -43,7 +43,7 @@ def normalize_video(
             NOTE: While this field is technically optional, setting the right value here
                   can be essential to allowing fluid playback on the frontend, in particular,
                   in network constrained environments. Setting this value too low or too high
-                  can impact performance negatively-- typically, a value at or around 10s is considered
+                  can impact performance negatively-- typically, a value at or around 2s is considered
                   "best of both worlds" as a reasonable default value.
         force: If true, forcibly delete existing output path if already exists.
 
@@ -80,8 +80,8 @@ def normalize_video(
 
     # If the video does not have an audio track, add an empty track by default
     if not has_audio_track(input_path):
+        input_kwargs["f"] = "lavfi"
         input_kwargs["i"] = "anullsrc=channel_layout=stereo:sample_rate=44100"
-        output_kwargs["f"] = "lavfi"
         output_kwargs["shortest"] = None
 
     # Run ffmpeg in subprocess

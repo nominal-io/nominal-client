@@ -191,6 +191,7 @@ class Channel:
                 channel=scout_compute_api.StringConstant(literal=self.name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
                 tags={},
+                tags_to_group_by=[],
             )
         )
 
@@ -232,6 +233,7 @@ class Channel:
                 channel=scout_compute_api.StringConstant(literal=self.name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
                 tags={},
+                tags_to_group_by=[],
             )
         )
         series = _create_series_from_channel(channel_series, self.data_type)

@@ -285,6 +285,7 @@ def _construct_export_request(
                                     channel=scout_compute_api.StringConstant(literal=channel.name),
                                     data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
                                     tags=converted_tags,
+                                    tags_to_group_by=[],
                                 )
                             )
                         )
@@ -302,6 +303,7 @@ def _construct_export_request(
                                     channel=scout_compute_api.StringConstant(literal=channel.name),
                                     data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
                                     tags=converted_tags,
+                                    tags_to_group_by=[],
                                 )
                             )
                         )
