@@ -1790,7 +1790,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
-    { name = "coverage", extras = ["toml"], specifier = ">=7.8.0" },
+    { name = "coverage", extras = ["toml"], specifier = ">=7.0.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
     { name = "nominal-api", specifier = "==0.703.0" },
@@ -1817,7 +1817,7 @@ dev = [
     { name = "mkdocstrings", specifier = ">=0.29.1,<1" },
     { name = "mkdocstrings-python", specifier = ">=1.16.10,<2" },
     { name = "mypy", specifier = ">=1.11.2,<2" },
-    { name = "nominal-api-protos", specifier = ">=0.549.0" },
+    { name = "nominal-api-protos", specifier = ">=0.703.0" },
     { name = "pandas-stubs", specifier = "~=2.0" },
     { name = "pytest", specifier = ">=8.3.2,<9" },
     { name = "pytest-cov", specifier = ">=5.0.0,<6" },
@@ -1844,14 +1844,14 @@ wheels = [
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.681.0"
+version = "0.706.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8e/09/1a363c4651a882f45e0225e1fcdd9e4e40a9e85ccd9ad7faa6f69987c43a/nominal_api_protos-0.681.0.tar.gz", hash = "sha256:8a08dac6de84bc2f6bbeef22557b26e83e72ae86f32f919723179d35b9d579da", size = 3092 }
+sdist = { url = "https://files.pythonhosted.org/packages/38/b0/5d7a2e595bd9f748e9906157420b4f4ac16009bb722473b8e17a7f730065/nominal_api_protos-0.706.0.tar.gz", hash = "sha256:fc17b7b6bb6bea55b896cf6861963fe7136a0a266b1e2ce1d2fb0069b0ca0367", size = 3081 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/a6/efa68f9dafea2eb489b414b4b0fbae64185290d9012a421070e52993efab/nominal_api_protos-0.681.0-py3-none-any.whl", hash = "sha256:60c2a81f343b3a9d52a5bc720bfe4f61009612e6c6fc66eb611ee629ee4a2559", size = 5180 },
+    { url = "https://files.pythonhosted.org/packages/0a/9e/01e0957296bed92f60de0c84a189860e0996e324e45c655530f661891cce/nominal_api_protos-0.706.0-py3-none-any.whl", hash = "sha256:d19ebd200e25fdabc4460d088ebec5836823e7710ea6af4b03123b6c21347520", size = 5179 },
 ]
 
 [[package]]

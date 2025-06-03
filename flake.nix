@@ -33,14 +33,14 @@
           conjure-python-client,
         }:
         let
-          version = "0.653.0";
+          version = "0.703.0";
         in
         buildPythonPackage {
           name = "nominal-api";
           src = fetchPypi {
             inherit version;
             pname = "nominal_api";
-            sha256 = "sha256-v/sT05yJEqgNwLxwe9qSPTsenuDDo/xC2YCsvNH/5B8=";
+            sha256 = "sha256-lFJEoTVLBUSTavt/iMnbEV7Fop9EVK2hw887hmFrkLA=";
           };
           propagatedBuildInputs = [
             requests
@@ -55,14 +55,14 @@
           protobuf,
         }:
         let
-          version = "0.653.0";
+          version = "0.703.0";
         in
         buildPythonPackage {
           name = "nominal-api-protos";
           src = fetchPypi {
             inherit version;
             pname = "nominal_api_protos";
-            sha256 = "sha256-azPnqPTq13j1HWnyM/HleXnVAQjQ/+kH2b+3NVzOx2A=";
+            sha256 = "sha256-ldZMxi36MEBjs1SgitQ1JH1aAfDYmmPgfHDF1AxPIKM=";
           };
           propagatedBuildInputs = [ protobuf ];
         };
@@ -81,15 +81,16 @@
           click,
           pyyaml,
           tabulate,
-          types-tabulate,
           ffmpeg-python,
+          types-tabulate,
+          coverage,
         }:
         buildPythonPackage {
           format = "pyproject";
-          version = "1.51.0";
+          version = "1.55.0";
           name = "nominal";
           src = lib.cleanSource ./.;
-          nativeBuildInputs = [ hatchling ];
+          nativeBuildInputs = [ hatchling coverage ];
           propagatedBuildInputs = [
             requests
             conjure-python-client
