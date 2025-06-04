@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.56.0](https://github.com/nominal-io/nominal-client/compare/v1.55.0...v1.56.0) (2025-06-04)
+
+
+### Features
+
+* allow creating clients by profile in cli decorators ([#364](https://github.com/nominal-io/nominal-client/issues/364)) ([41dcffb](https://github.com/nominal-io/nominal-client/commit/41dcffb97b99d4d4b51113bac1e027be023231c0))
+* simplify/cleanup dependencies ([#361](https://github.com/nominal-io/nominal-client/issues/361)) ([9a017b0](https://github.com/nominal-io/nominal-client/commit/9a017b06ad2d9ad484a36a952bd5459979601e67))
+
+
+### Bug Fixes
+
+* conjure_python_client 2.9.0+ was broken on some windows machines ([#363](https://github.com/nominal-io/nominal-client/issues/363)) ([b983738](https://github.com/nominal-io/nominal-client/commit/b983738c3c5c5bbb622ba9eb7f6e312ae00e5971))
+
 ## [1.55.0](https://github.com/nominal-io/nominal-client/compare/v1.54.1...v1.55.0) (2025-06-02)
 
 
