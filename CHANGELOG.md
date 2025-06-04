@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.57.0](https://github.com/nominal-io/nominal-client/compare/v1.56.0...v1.57.0) (2025-06-04)
+
+
+### Features
+
+* bump nominal-api-protos version when installing nominal[protos] ([#365](https://github.com/nominal-io/nominal-client/issues/365)) ([558d460](https://github.com/nominal-io/nominal-client/commit/558d460c264c1ca008102814d0cb1f052231b3a2))
+
 ## [1.56.0](https://github.com/nominal-io/nominal-client/compare/v1.55.0...v1.56.0) (2025-06-04)
 
 
