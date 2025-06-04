@@ -13,6 +13,8 @@ from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
 from nominal.cli.util.click_log_handler import install_log_handler
 from nominal.core.client import NominalClient
 
+logger = logging.getLogger(__name__)
+
 Param = typing_extensions.ParamSpec("Param")
 T = typing.TypeVar("T")
 
@@ -94,15 +96,23 @@ def global_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
 
 def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     """Decorator to add click options to a click command for dynamically creating and injecting an instance of the
-    NominalClient into commands based on user-provided flags containing the base API url and a path to a configuration
-    file containing an API Access Key.
+    NominalClient into commands based on user-provided flags to configure its creation.
 
-    This will add two options, --base-url and --token, which perform the two aforementioned configurations before
-    spawning a NominalClient.
+    This will add three options, --profile, --base-url, and --token, which perform the three aforementioned
+    configurations before spawning a NominalClient.
 
     NOTE: any click command utilizing this decorator MUST accept a key-value argument pair named client of type
         NominalClient.
     """
+    profile_option = click.option(
+        "--profile",
+        help=(
+            "If provided, use the given named config profile for instantiating a Nominal Client. "
+            "This is the preferred mechanism for instantiating a client today-- see `nom config profile add` "
+            "to create a configuration profile. If provided, takes precedence over --token, --token-path, and "
+            "--base-url."
+        ),
+    )
     url_option = click.option(
         "--base-url",
         default="https://api.gov.nominal.io/api",
@@ -127,7 +137,7 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
         "--trust-store-path",
         type=click.Path(dir_okay=False, exists=True, resolve_path=True, path_type=pathlib.Path),
         help=(
-            "Path to a trust store CA root file to initiate SSL connections."
+            "Path to a trust store CA root file to initiate SSL connections. "
             "If not provided, defaults to certifi's trust store."
         ),
     )
@@ -137,10 +147,24 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
         *args: Param.args,
         **kwargs: Param.kwargs,
     ) -> T:
+        profile: str | None = kwargs.pop("profile")  # type: ignore[assignment]
         base_url: str = kwargs.pop("base_url", "")  # type: ignore[assignment]
         token: str | None = kwargs.pop("token")  # type: ignore[assignment]
         token_path: pathlib.Path = kwargs.pop("token_path")  # type: ignore[assignment]
         trust_store_path: pathlib.Path | None = kwargs.pop("trust_store_path")  # type: ignore[assignment]
+
+        trust_store_str = str(trust_store_path) if trust_store_path else None
+
+        if profile is not None:
+            logger.info("Instantiating client from profile '%s'", profile)
+            client = NominalClient.from_profile(profile, trust_store_path=trust_store_str)
+            kwargs["client"] = client
+            return func(*args, **kwargs)
+
+        logger.warning(
+            "Creating a Nominal Client without using '--profile' is deprecated! "
+            "See 'https://docs.nominal.io/python/profile-migration' for details..."
+        )
 
         if token is None:
             if token_path.exists():
@@ -150,12 +174,8 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
                     f"Cannot instantiate client: no token provided and token path {token_path} does not exist."
                 )
 
-        client = NominalClient.create(
-            base_url,
-            token=token,
-            trust_store_path=str(trust_store_path) if trust_store_path else None,
-        )
+        client = NominalClient.create(base_url, token=token, trust_store_path=trust_store_str)
         kwargs["client"] = client
         return func(*args, **kwargs)
 
-    return trust_store_option(url_option(token_path_option(token_option(wrapped_function))))
+    return profile_option(token_option(token_path_option(url_option(trust_store_option(wrapped_function)))))
