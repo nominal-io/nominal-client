@@ -304,7 +304,7 @@ def _get_series_values_csv(
         context=scout_compute_api.Context(
             function_variables={},
             variables={
-                name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid))
+                name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid, tags_to_group_by=[]))
                 for rid, name in rid_to_name.items()
             },
         ),

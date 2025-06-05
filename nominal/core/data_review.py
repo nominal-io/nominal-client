@@ -43,6 +43,8 @@ class DataReview(HasRid):
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, data_review: scout_datareview_api.DataReview) -> Self:
+        if data_review.checklist is None:
+            raise Exception("Data review does not have an associated checklist")
         executing_states = [
             check.automatic_check.state._pending_execution or check.automatic_check.state._executing
             for check in data_review.checklist.checks
