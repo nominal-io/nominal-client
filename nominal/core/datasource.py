@@ -266,6 +266,7 @@ def _construct_export_request(
     start: api.Timestamp,
     end: api.Timestamp,
     tags: dict[str, str] | None,
+    enable_gzip: bool,
 ) -> scout_dataexport_api.ExportDataRequest:
     export_channels = []
 
@@ -334,6 +335,7 @@ def _construct_export_request(
         resolution=scout_dataexport_api.ResolutionOption(
             undecimated=scout_dataexport_api.UndecimatedResolution(),
         ),
+        compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
     )
     return request
 

@@ -144,6 +144,7 @@ def datasource_to_dataframe(
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     tags: dict[str, str] | None = None,
+    enable_gzip: bool = True,
 ) -> pd.DataFrame:
     """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
@@ -159,6 +160,8 @@ def datasource_to_dataframe(
         tags: Dictionary of tags to filter channels by
         start: The minimum data updated time to filter channels by
         end: The maximum data start time to filter channels by
+        enable_gzip: If true, use gzip when exporting data from Nominal. This will almost always make export
+            faster and use less bandwidth.
 
     Returns:
     -------
@@ -207,12 +210,14 @@ def datasource_to_dataframe(
     batch_size = 20
     all_dataframes = []
     for channel_batch in batched(filtered_channels, batch_size):
-        export_request = _construct_export_request(channel_batch, datasource.rid, start_time, end_time, tags)
+        export_request = _construct_export_request(
+            channel_batch, datasource.rid, start_time, end_time, tags, enable_gzip=enable_gzip
+        )
         export_response = cast(
             BinaryIO,
             datasource._clients.dataexport.export_channel_data(datasource._clients.auth_header, export_request),
         )
-        batch_df = pd.DataFrame(pd.read_csv(export_response))
+        batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
         if not batch_df.empty:
             all_dataframes.append(batch_df.set_index(_EXPORTED_TIMESTAMP_COL_NAME))
 
