@@ -134,6 +134,9 @@ def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
+_EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
+
+
 def datasource_to_dataframe(
     datasource: DataSource,
     channel_exact_match: Sequence[str] = (),
@@ -174,15 +177,35 @@ def datasource_to_dataframe(
     """
     start_time = ts._SecondsNanos.from_flexible(start).to_api() if start else ts._MIN_TIMESTAMP.to_api()
     end_time = ts._SecondsNanos.from_flexible(end).to_api() if end else ts._MAX_TIMESTAMP.to_api()
+
     # Get all channels from the datasource
-    filtered_channels = datasource.search_channels(
-        exact_match=channel_exact_match,
-        fuzzy_search_text=channel_fuzzy_search_text,
+    filtered_channels = list(
+        datasource.search_channels(
+            exact_match=channel_exact_match,
+            fuzzy_search_text=channel_fuzzy_search_text,
+        )
     )
+    if not filtered_channels:
+        logger.warning("Requested data for no columns: returning empty dataframe")
+        return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
+
+    # Warn about renamed channels
+    filtered_channel_names = set([ch.name for ch in filtered_channels])
+
+    # Handle channel names that will be renamed during export
+    renamed_timestamp_col = None
+    if _EXPORTED_TIMESTAMP_COL_NAME in filtered_channel_names:
+        idx = 1
+        while True:
+            other_col_name = f"timestamp.{idx}"
+            if other_col_name not in filtered_channel_names:
+                renamed_timestamp_col = other_col_name
+                break
+            else:
+                idx += 1
 
     batch_size = 20
     all_dataframes = []
-
     for channel_batch in batched(filtered_channels, batch_size):
         export_request = _construct_export_request(channel_batch, datasource.rid, start_time, end_time, tags)
         export_response = cast(
@@ -191,11 +214,14 @@ def datasource_to_dataframe(
         )
         batch_df = pd.DataFrame(pd.read_csv(export_response))
         if not batch_df.empty:
-            all_dataframes.append(batch_df)
+            all_dataframes.append(batch_df.set_index(_EXPORTED_TIMESTAMP_COL_NAME))
 
     if not all_dataframes:
         logger.warning(f"No data found for export from datasource {datasource.rid}")
-        raise RuntimeError(f"No data found for export from datasource {datasource.rid}")
+        return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
 
-    result_df = pd.concat(all_dataframes, axis=0)
+    result_df = pd.concat(all_dataframes, axis=1, join="outer", sort=True)
+    if renamed_timestamp_col is not None:
+        result_df.rename(columns={renamed_timestamp_col: _EXPORTED_TIMESTAMP_COL_NAME}, inplace=True)
+
     return result_df
