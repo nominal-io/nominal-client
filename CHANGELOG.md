@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.57.1](https://github.com/nominal-io/nominal-client/compare/v1.57.0...v1.57.1) (2025-06-05)
+
+
+### Bug Fixes
+
+* make dataframe actually use timestamps as the index column in datasource_to_dataframe ([#367](https://github.com/nominal-io/nominal-client/issues/367)) ([cca1748](https://github.com/nominal-io/nominal-client/commit/cca17489ea0696f6332c3515d88643b577d48298))
+
 ## [1.57.0](https://github.com/nominal-io/nominal-client/compare/v1.56.0...v1.57.0) (2025-06-04)
 
 
