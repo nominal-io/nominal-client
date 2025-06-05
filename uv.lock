@@ -1732,7 +1732,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.55.0"
+version = "1.57.0"
 source = { editable = "." }
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -1790,12 +1790,12 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8,<9" },
-    { name = "conjure-python-client", specifier = ">=2.8.0" },
+    { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.0.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
     { name = "nominal-api", specifier = "==0.703.0" },
-    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.549.0" },
+    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.703.0" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
     { name = "python-dateutil", specifier = ">=0.0.0" },
