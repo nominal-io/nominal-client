@@ -34,8 +34,9 @@ dependencies = [
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
-    "nominal-api==0.703.0",
+    "nominal-api==0.708.0",
     "coverage[toml]>=7.0.0",
+    "nominal-api-protos==0.708.0",
 ]
 
 
