@@ -1791,7 +1791,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8,<9" },
-    { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
+    { name = "conjure-python-client", specifier = ">=2.8.0,<4" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.0.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
