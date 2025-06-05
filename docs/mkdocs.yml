@@ -31,7 +31,6 @@ nav:
         - pandas: reference/thirdparty/pandas.md
         - tdms: reference/thirdparty/tdms.md
       - Experimental:
-        - Stream v2: reference/experimental/stream_v2.md
         - Video Processing: reference/experimental/video_processing.md
   - Development:
       - Contributing: contributing.md
