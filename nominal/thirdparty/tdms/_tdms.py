@@ -12,18 +12,18 @@ from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 from nominal import ts
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
-from nominal.thirdparty.pandas import _pandas
+from nominal.thirdparty.pandas import upload_dataframe, upload_dataframe_to_dataset
 
 logger = logging.getLogger(__name__)
 
 
 def _tdms_to_dataframe(
-    tdms_file: Path | str,
+    file: Path | str,
     timestamp_column: str | None = None,
     timestamp_type: ts._AnyTimestampType | None = None,
 ) -> Tuple[str, ts._AnyTimestampType, pd.DataFrame]:
     """Returns tuple of timestamp column, timestamp type, and dataframe"""
-    tdms_path = Path(tdms_file)
+    tdms_path = Path(file)
 
     use_waveform = timestamp_column is None and timestamp_type is None
     if use_waveform:
@@ -45,7 +45,7 @@ def _tdms_to_dataframe(
 
 def upload_tdms_to_dataset(
     dataset: Dataset,
-    tdms_file: Path | str,
+    file: Path | str,
     timestamp_column: str | None = None,
     timestamp_type: ts._AnyTimestampType | None = None,
     *,
@@ -57,7 +57,7 @@ def upload_tdms_to_dataset(
 
     Args:
         dataset: Dataset to upload the dataframe to
-        tdms_file: Path to the TDMS file to parse and upload
+        file: Path to the TDMS file to parse and upload
         timestamp_column: Column containing timestamps to use for their respective rows
             NOTE: if provided, only groups containing a signal of this name will be uploaded.
                   Furthermore, the length of all data columns must match their respective timestamp columns.
@@ -69,12 +69,12 @@ def upload_tdms_to_dataset(
             If not provided, defaults to using the dataset's name
         tag_columns: Mapping of column names => tag keys to use for their respective rows.
 
-    Channels will be namedas f"{group_name}.{channel_name}", with spaces replaced with underscores.
+    Channels will be named as f"{group_name}.{channel_name}", with spaces replaced with underscores.
 
     NOTE: `timestamp_column` and `timestamp_type` must both be provided or excluded together.
     """
-    timestamp_column, timestamp_type, df = _tdms_to_dataframe(tdms_file, timestamp_column, timestamp_type)
-    return _pandas.upload_dataframe_to_dataset(
+    timestamp_column, timestamp_type, df = _tdms_to_dataframe(file, timestamp_column, timestamp_type)
+    return upload_dataframe_to_dataset(
         dataset,
         df,
         timestamp_column=timestamp_column,
@@ -87,7 +87,7 @@ def upload_tdms_to_dataset(
 
 def upload_tdms(
     client: NominalClient,
-    tdms_file: Path | str,
+    file: Path | str,
     name: str | None = None,
     description: str | None = None,
     timestamp_column: str | None = None,
@@ -102,13 +102,13 @@ def upload_tdms(
     """Create a dataset in the Nominal platform from a tdms file.
 
     See `upload_tdms_to_dataset` for a description of arguments available, or
-    `nominal.thirdparty._pandas.upload_dataframe` for a description of dataset creation arguments available.
+    `nominal.thirdparty.pandas.upload_dataframe` for a description of dataset creation arguments available.
     """
     if name is None:
-        name = Path(tdms_file).name
+        name = Path(file).name
 
-    timestamp_column, timestamp_type, df = _tdms_to_dataframe(tdms_file, timestamp_column, timestamp_type)
-    return _pandas.upload_dataframe(
+    timestamp_column, timestamp_type, df = _tdms_to_dataframe(file, timestamp_column, timestamp_type)
+    return upload_dataframe(
         client,
         df,
         name=name,
