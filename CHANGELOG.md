@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.59.0](https://github.com/nominal-io/nominal-client/compare/v1.58.0...v1.59.0) (2025-06-06)
+
+
+### Features
+
+* allow creating an attachment by filepath ([#376](https://github.com/nominal-io/nominal-client/issues/376)) ([28b2e24](https://github.com/nominal-io/nominal-client/commit/28b2e241b2748bd42be04ae1b38ea62937f2549c))
+* allow exporting data in relative format ([#378](https://github.com/nominal-io/nominal-client/issues/378)) ([1eede44](https://github.com/nominal-io/nominal-client/commit/1eede4471945d16c5da4f6a64c605f7ff4903b4a))
+* allow uploading a pandas dataframe to an existing dataset ([#372](https://github.com/nominal-io/nominal-client/issues/372)) ([263d097](https://github.com/nominal-io/nominal-client/commit/263d097393cc1e633c5dbbcbeb3b39e9804626c6))
+* allow users to specify file-wide tag during upload ([#377](https://github.com/nominal-io/nominal-client/issues/377)) ([8dddc94](https://github.com/nominal-io/nominal-client/commit/8dddc944fd43d0e8f3219ac415aae69d95ac6483))
+* parallelize exporting data to dataframes ([#373](https://github.com/nominal-io/nominal-client/issues/373)) ([ea8f7aa](https://github.com/nominal-io/nominal-client/commit/ea8f7aa4034363cc9c25e1df14e325b53a4c7acb))
+
+
+### Bug Fixes
+
+* make coverage a dev dep ([#379](https://github.com/nominal-io/nominal-client/issues/379)) ([3d3b8f5](https://github.com/nominal-io/nominal-client/commit/3d3b8f5cb91271728cd93e42275a83fc76494b86))
+
 ## [1.58.0](https://github.com/nominal-io/nominal-client/compare/v1.57.1...v1.58.0) (2025-06-06)
 
 
