@@ -398,6 +398,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
         channel_prefix: str | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a CSV file.
 
@@ -415,6 +416,7 @@ class NominalClient:
             properties=properties,
             prefix_tree_delimiter=prefix_tree_delimiter,
             channel_prefix=channel_prefix,
+            tags=tags,
         )
 
     @deprecated(
@@ -477,6 +479,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
         channel_prefix: str | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a table-like file.
 
@@ -506,6 +509,7 @@ class NominalClient:
                 properties=properties,
                 prefix_tree_delimiter=prefix_tree_delimiter,
                 channel_prefix=channel_prefix,
+                tags=tags,
             )
 
     @deprecated(
@@ -582,6 +586,7 @@ class NominalClient:
         channel_prefix: str | None = None,
         file_name: str | None = None,
         tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -607,6 +612,7 @@ class NominalClient:
             channel_prefix: Prefix to apply to newly created channels
             file_name: Name of the file (without extension) to create when uploading.
             tag_columns: a dictionary mapping tag keys to column names.
+            tags: a dictionary of key-value tags to apply to all data within the file
 
         Returns:
             Reference to the constructed dataset object.
@@ -638,6 +644,7 @@ class NominalClient:
                 tag_columns=tag_columns,
                 s3_path=s3_path,
                 workspace_rid=self._clients.workspace_rid,
+                tags=tags,
             )
         )
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
