@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.58.0](https://github.com/nominal-io/nominal-client/compare/v1.57.1...v1.58.0) (2025-06-06)
+
+
+### Features
+
+* allow gzipping during pandas export ([#369](https://github.com/nominal-io/nominal-client/issues/369)) ([2d80044](https://github.com/nominal-io/nominal-client/commit/2d800444eb68777817aad791451dc0d54684ca8a))
+* bump nominal-api and nominal-api-protos ([#370](https://github.com/nominal-io/nominal-client/issues/370)) ([044ada0](https://github.com/nominal-io/nominal-client/commit/044ada05526c47674dcd90dacf2a00b3bfdabbdc))
+
 ## [1.57.1](https://github.com/nominal-io/nominal-client/compare/v1.57.0...v1.57.1) (2025-06-05)
 
 
