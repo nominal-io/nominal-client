@@ -30,6 +30,7 @@ def upload_dataframe_to_dataset(
     wait_until_complete: bool = True,
     file_name: str | None = None,
     tag_columns: Mapping[str, str] | None = None,
+    tags: Mapping[str, str] | None = None,
 ) -> None:
     """Upload a pandas dataframe to an existing dataset as if it were a gzipped-CSV file
 
@@ -42,6 +43,7 @@ def upload_dataframe_to_dataset(
         file_name: Manually override the name of the filename given to the uploaded data.
             If not provided, defaults to using the dataset's name
         tag_columns: Mapping of column names => tag keys to use for their respective rows.
+        tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.
     """
 
     # TODO (drake): convert to parquet if/when parquet added as library dependency
@@ -61,6 +63,7 @@ def upload_dataframe_to_dataset(
             file_type=FileTypes.CSV_GZ,
             file_name=file_name,
             tag_columns=tag_columns,
+            tags=tags,
         )
 
         # Await data upload to complete
@@ -83,6 +86,7 @@ def upload_dataframe(
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
     tag_columns: Mapping[str, str] | None = None,
+    tags: Mapping[str, str] | None = None,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a pandas.DataFrame.
 
@@ -98,6 +102,7 @@ def upload_dataframe(
         labels: String labels to apply to the created dataset
         properties: String key-value pairs to apply to the created dataset
         tag_columns: Mapping of column name => tag key to apply to the respective rows of data
+        tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.
 
     Returns:
         Created dataset
@@ -118,6 +123,7 @@ def upload_dataframe(
         wait_until_complete=wait_until_complete,
         file_name=name,
         tag_columns=tag_columns,
+        tags=tags,
     )
 
     return dataset
