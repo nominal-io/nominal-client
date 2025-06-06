@@ -127,11 +127,15 @@ def channel_to_series(
     channel: Channel,
     start: datetime | ts.IntegralNanosecondsUTC | None = None,
     end: datetime | ts.IntegralNanosecondsUTC | None = None,
+    relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,
+    relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
 ) -> pd.Series[Any]:
     """Retrieve the channel data as a pandas.Series.
 
     The index of the series is the timestamp of the data.
     The index name is "timestamp" and the series name is the channel name.
+
+    Use `relative_to` and `relative_resolution` to return timestamps relative to the given epoch.
 
     Example:
     -------
@@ -143,7 +147,9 @@ def channel_to_series(
     """
     start_time = ts._MIN_TIMESTAMP.to_api() if start is None else ts._SecondsNanos.from_flexible(start).to_api()
     end_time = ts._MAX_TIMESTAMP.to_api() if end is None else ts._SecondsNanos.from_flexible(end).to_api()
-    body = channel._get_series_values_csv(start_time, end_time)
+    body = channel._get_series_values_csv(
+        start_time, end_time, relative_to=relative_to, relative_resolution=relative_resolution
+    )
     df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
     return df[channel.name]
 
@@ -156,7 +162,7 @@ def channel_to_dataframe_decimated(
     buckets: int | None = None,
     resolution: int | None = None,
 ) -> pd.DataFrame:
-    """Retrieve the channel data as a pandas.DataFrame, decimated to the given buckets or resolution.
+    """Retrieve the channel summary as a pandas.DataFrame, decimated to the given buckets or resolution.
 
     Enter either the number of buckets or the resolution for the output.
     Resolution in picoseconds for picosecond-granularity dataset, nanoseconds otherwise.
@@ -210,6 +216,8 @@ def datasource_to_dataframe(
     channels: Sequence[Channel] | None = None,
     num_workers: int = 1,
     channel_batch_size: int = 20,
+    relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,
+    relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
 ) -> pd.DataFrame:
     """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
@@ -238,6 +246,8 @@ def datasource_to_dataframe(
             so reducing the number of channels will allow for a larger time window if channels come in at different
             times (e.g. channel A has timestamps 100, 200, 300... and channel B has timestamps 101, 201, 301, ...).
             This is particularly useful when combined with num_workers when attempting to maximally utilize a machine.
+        relative_to: If provided, return timestamps relative to the given epoch time
+        relative_resolution: If providing timestamps in relative time, the resolution to use
 
     Returns:
     -------
@@ -292,7 +302,14 @@ def datasource_to_dataframe(
 
     def _export_channel_batch(channel_batch: tuple[Channel, ...]) -> pd.DataFrame:
         export_request = _construct_export_request(
-            channel_batch, datasource.rid, start_time, end_time, tags, enable_gzip=enable_gzip
+            channel_batch,
+            datasource.rid,
+            start_time,
+            end_time,
+            tags,
+            enable_gzip=enable_gzip,
+            relative_to=relative_to,
+            relative_resolution=relative_resolution,
         )
         export_response = cast(
             BinaryIO,
