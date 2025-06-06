@@ -1002,6 +1002,28 @@ class NominalClient:
         query = _conjure_utils.create_search_checklists_query(search_text, labels, properties)
         return list(self._iter_search_checklists(query))
 
+    def create_attachment(
+        self,
+        attachment_file: Path | str,
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+    ) -> Attachment:
+        attachment_path = Path(attachment_file)
+        if not attachment_path.exists():
+            raise FileNotFoundError(f"No such attachment path: {attachment_path}")
+
+        with attachment_path.open("rb") as f:
+            return self.create_attachment_from_io(
+                f,
+                attachment_path.name,
+                FileTypes.BINARY,
+                description=description,
+                properties=properties,
+                labels=labels,
+            )
+
     def create_attachment_from_io(
         self,
         attachment: BinaryIO,
@@ -1016,7 +1038,6 @@ class NominalClient:
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
         """
-        # TODO(alkasm): create attachment from file/path
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
 
