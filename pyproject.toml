@@ -25,7 +25,7 @@ classifiers = [
 requires-python = ">=3.9,<4"
 dependencies = [
     "click>=8,<9",
-    "conjure-python-client>=2.8.0,<3",
+    "conjure-python-client>=2.8.0,<4",
     "tabulate>=0.9.0,<0.10",
     "typing-extensions>=4,<5",
     # Any version is okay for these dependencies
@@ -34,7 +34,7 @@ dependencies = [
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
-    "nominal-api==0.703.0",
+    "nominal-api==0.708.0",
     "coverage[toml]>=7.0.0",
 ]
 
@@ -68,7 +68,7 @@ dev = [
     "types-protobuf>=4.24.0.20240311,<5",
     "mkdocs-click>=0.9.0",
     "types-tabulate>=0.9.0.20241207,<0.10",
-    "nominal-api-protos>=0.703.0",
+    "nominal-api-protos>=0.708.0",
 ]
 
 [tool.uv.sources]
@@ -77,7 +77,7 @@ nominal = { workspace = true }
 
 [project.optional-dependencies]
 hdf5 = ["h5py>=3.0", "tables>=3.7"]
-protos = ["nominal-api-protos>=0.703.0"]
+protos = ["nominal-api-protos>=0.708.0"]
 tdms = ["nptdms>=1.9.0,<2"]
 
 [project.scripts]
