@@ -44,12 +44,13 @@ def upload_dataframe_to_dataset(
         tag_columns: Mapping of column names => tag keys to use for their respective rows.
     """
 
+    # TODO (drake): convert to parquet if/when parquet added as library dependency
     def write_and_close(df: pd.DataFrame, w: BinaryIO) -> None:
         df.to_csv(w, compression="gzip")
         w.close()
 
     with reader_writer() as (reader, writer):
-        # Write the dataframe to parquet and upload in background thread
+        # Write the dataframe to .csv.gz and upload in background thread
         t = Thread(target=write_and_close, args=(df, writer))
         t.start()
 
