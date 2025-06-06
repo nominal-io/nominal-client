@@ -173,7 +173,10 @@ def datasource_to_dataframe(
             roughly be corresponding to the strength of your network connection, with 4-8 workers being more than
             sufficient to completely saturate most connections.
         channel_batch_size: Number of channels to request at a time per worker thread. Reducing this number may allow
-            fetching a larger time duration, depending on how synchronized the timing is amongst the requested channels.
+            fetching a larger time duration (i.e., `end` - `start`), depending on how synchronized the timing is amongst
+            the requested channels. This is a result of a limit of 10_000_000 unique timestamps returned per request,
+            so reducing the number of channels will allow for a larger time window if channels come in at different
+            times (e.g. channel A has timestamps 100, 200, 300... and channel B has timestamps 101, 201, 301, ...).
             This is particularly useful when combined with num_workers when attempting to maximally utilize a machine.
 
     Returns:
@@ -201,6 +204,11 @@ def datasource_to_dataframe(
                 exact_match=channel_exact_match,
                 fuzzy_search_text=channel_fuzzy_search_text,
             )
+        )
+    elif channel_exact_match is not None or channel_fuzzy_search_text is not None:
+        logger.warning(
+            "'channel_exact_match' and 'channel_fuzzy_search_text' are ignored when a list of channels "
+            "are provided to 'datasource_to_dataframe'."
         )
 
     if not channels:
