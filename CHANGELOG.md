@@ -1,5 +1,61 @@
 # Changelog
 
+## [1.58.0](https://github.com/nominal-io/nominal-client/compare/v1.57.1...v1.58.0) (2025-06-06)
+
+
+### Features
+
+* allow gzipping during pandas export ([#369](https://github.com/nominal-io/nominal-client/issues/369)) ([2d80044](https://github.com/nominal-io/nominal-client/commit/2d800444eb68777817aad791451dc0d54684ca8a))
+* bump nominal-api and nominal-api-protos ([#370](https://github.com/nominal-io/nominal-client/issues/370)) ([044ada0](https://github.com/nominal-io/nominal-client/commit/044ada05526c47674dcd90dacf2a00b3bfdabbdc))
+
+## [1.57.1](https://github.com/nominal-io/nominal-client/compare/v1.57.0...v1.57.1) (2025-06-05)
+
+
+### Bug Fixes
+
+* make dataframe actually use timestamps as the index column in datasource_to_dataframe ([#367](https://github.com/nominal-io/nominal-client/issues/367)) ([cca1748](https://github.com/nominal-io/nominal-client/commit/cca17489ea0696f6332c3515d88643b577d48298))
+
+## [1.57.0](https://github.com/nominal-io/nominal-client/compare/v1.56.0...v1.57.0) (2025-06-04)
+
+
+### Features
+
+* bump nominal-api-protos version when installing nominal[protos] ([#365](https://github.com/nominal-io/nominal-client/issues/365)) ([558d460](https://github.com/nominal-io/nominal-client/commit/558d460c264c1ca008102814d0cb1f052231b3a2))
+
+## [1.56.0](https://github.com/nominal-io/nominal-client/compare/v1.55.0...v1.56.0) (2025-06-04)
+
+
+### Features
+
+* allow creating clients by profile in cli decorators ([#364](https://github.com/nominal-io/nominal-client/issues/364)) ([41dcffb](https://github.com/nominal-io/nominal-client/commit/41dcffb97b99d4d4b51113bac1e027be023231c0))
+* simplify/cleanup dependencies ([#361](https://github.com/nominal-io/nominal-client/issues/361)) ([9a017b0](https://github.com/nominal-io/nominal-client/commit/9a017b06ad2d9ad484a36a952bd5459979601e67))
+
+
+### Bug Fixes
+
+* conjure_python_client 2.9.0+ was broken on some windows machines ([#363](https://github.com/nominal-io/nominal-client/issues/363)) ([b983738](https://github.com/nominal-io/nominal-client/commit/b983738c3c5c5bbb622ba9eb7f6e312ae00e5971))
+
+## [1.55.0](https://github.com/nominal-io/nominal-client/compare/v1.54.1...v1.55.0) (2025-06-02)
+
+
+### Features
+
+* add get or create dataset by refname on assets ([#350](https://github.com/nominal-io/nominal-client/issues/350)) ([e99f52c](https://github.com/nominal-io/nominal-client/commit/e99f52c56ce2cc70db62c8e2fbe7ce27a9f7b665))
+* bump nominal-api to 0.703.0 ([#359](https://github.com/nominal-io/nominal-client/issues/359)) ([734a6f0](https://github.com/nominal-io/nominal-client/commit/734a6f0c28ce6cc7fd9f64e16997b0c2f5828f95))
+* clean up video api ([#340](https://github.com/nominal-io/nominal-client/issues/340)) ([fabf837](https://github.com/nominal-io/nominal-client/commit/fabf83728bda8c4f41f243a9a6f57b15b95319cd))
+* dont track metrics by default ([#360](https://github.com/nominal-io/nominal-client/issues/360)) ([0e12385](https://github.com/nominal-io/nominal-client/commit/0e12385482bb2b13a7acbf939d9069b0f2b3a56a))
+* make gzip level a global constant ([#357](https://github.com/nominal-io/nominal-client/issues/357)) ([5b024aa](https://github.com/nominal-io/nominal-client/commit/5b024aa6e6ad29099ef5da97f2954e883a1b3a3c))
+
+
+### Bug Fixes
+
+* mcap extension checking for video upload ([#356](https://github.com/nominal-io/nominal-client/issues/356)) ([30e4fa4](https://github.com/nominal-io/nominal-client/commit/30e4fa4311b1326ff109a95549b9819f1033b701))
+
+
+### Documentation
+
+* make `LogPoint` appear in the reference docs ([#347](https://github.com/nominal-io/nominal-client/issues/347)) ([50156ef](https://github.com/nominal-io/nominal-client/commit/50156ef5fca4a7c5f870f4b64c8f623135efdbde))
+
 ## [1.54.1](https://github.com/nominal-io/nominal-client/compare/v1.54.0...v1.54.1) (2025-05-29)
 
 

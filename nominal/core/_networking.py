@@ -74,7 +74,6 @@ def create_gzip_service_client(
     user_agent: str,
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
-    enable_keep_alive: bool = False,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
@@ -105,7 +104,7 @@ def create_gzip_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    transport_adapter = GzipRequestsAdapter(max_retries=retry, enable_keep_alive=enable_keep_alive)
+    transport_adapter = GzipRequestsAdapter(max_retries=retry)
     # create a session, for shared connection polling, user agent, etc
     session = requests.Session()
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
@@ -129,7 +128,6 @@ def create_conjure_client_factory(
     user_agent: str,
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
-    enable_keep_alive: bool = False,
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
@@ -142,7 +140,6 @@ def create_conjure_client_factory(
             user_agent=user_agent,
             service_config=service_config,
             return_none_for_unknown_union_types=return_none_for_unknown_union_types,
-            enable_keep_alive=enable_keep_alive,
         )
 
     return factory

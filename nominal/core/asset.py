@@ -16,7 +16,7 @@ from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
@@ -228,6 +228,32 @@ class Asset(HasRid):
         a dataset, connection, video, or logset.
         """
         return (*self.list_datasets(), *self.list_connections(), *self._list_logsets(), *self.list_videos())
+
+    def get_or_create_dataset(
+        self,
+        data_scope_name: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
+        try:
+            return self.get_dataset(data_scope_name)
+        except ValueError:
+            enriched_dataset = _create_dataset(
+                self._clients.auth_header,
+                self._clients.catalog,
+                name or data_scope_name,
+                description=description,
+                properties=properties,
+                labels=labels,
+                workspace_rid=self._clients.workspace_rid,
+            )
+            dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+            self.add_dataset(data_scope_name, dataset)
+            return dataset
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""

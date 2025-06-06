@@ -43,7 +43,7 @@ class Dataset(DataSource):
     @property
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
-        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
+        # TODO (drake): move logic into _from_conjure() factory function to accommodate different URL schemes
         return f"https://app.gov.nominal.io/data-sources/{self.rid}"
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
@@ -517,6 +517,29 @@ def _get_dataset(
     if len(datasets) > 1:
         raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
     return datasets[0]
+
+
+def _create_dataset(
+    auth_header: str,
+    client: scout_catalog.CatalogService,
+    name: str,
+    *,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    workspace_rid: str | None = None,
+) -> scout_catalog.EnrichedDataset:
+    request = scout_catalog.CreateDataset(
+        name=name,
+        description=description,
+        labels=list(labels),
+        properties={} if properties is None else dict(properties),
+        is_v2_dataset=True,
+        metadata={},
+        origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        workspace=workspace_rid,
+    )
+    return client.create_dataset(auth_header, request)
 
 
 def _create_dataflash_ingest_request(s3_path: str, target: ingest_api.DatasetIngestTarget) -> ingest_api.IngestRequest:

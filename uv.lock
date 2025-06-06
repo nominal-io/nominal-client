@@ -493,14 +493,14 @@ wheels = [
 
 [[package]]
 name = "conjure-python-client"
-version = "2.13.0"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/23/430dcac1c69df907384c5ec0a0b3fc3ee21c0ae3301ad48c899527a5cddc/conjure-python-client-2.13.0.tar.gz", hash = "sha256:df96fc082b199fdfd23d4bbdea4380f10158a18af928b38cb0c8da4f0b2c2c97", size = 16555 }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/29/aa5c3ef393f6bf8cfe91d12c959e3c1e700ce50a5dd718f9fd1e04c44943/conjure-python-client-2.8.0.tar.gz", hash = "sha256:e945e365b1b4776c1042fec31f8fc10df1e1b6ac5749c17f2d0cb2287ee48643", size = 15325 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/ec/a14283febaa77112df67fa3e061bdf53b0e4264284a531c899ab311dcf06/conjure_python_client-2.13.0-py2.py3-none-any.whl", hash = "sha256:f5fed153cf14499830b5888957363bc0954efa5435a3316daf99a998dfd15a5a", size = 20954 },
+    { url = "https://files.pythonhosted.org/packages/fd/b2/a31e381c7c82997f723cf3363ab28aafb7f2d0ada3ef5603c86c89b255de/conjure_python_client-2.8.0-py2.py3-none-any.whl", hash = "sha256:f2529a2784fe6ff42dabf10b7b198a865d485b3dcaea2af758336507a6994017", size = 20107 },
 ]
 
 [[package]]
@@ -1400,12 +1400,16 @@ wheels = [
 
 [[package]]
 name = "mkdocs-click"
-version = "0.8.1"
-source = { git = "https://github.com/alkasm/mkdocs-click?branch=alkasm%2Fkeep-context-settings#79edab265f6c869ee64451024f3f97f38a9157ee" }
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "click", version = "8.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "markdown" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a1/c7/8c25f3a3b379def41e6d0bb5c4beeab7aa8a394b17e749f498504102cfa5/mkdocs_click-0.9.0.tar.gz", hash = "sha256:6050917628d4740517541422b607404d044117bc31b770c4f9e9e1939a50c908", size = 18720 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/fc/9124ab36e2341e78d8d9c669511bd70f52ea0de8105760c31fabec1f9396/mkdocs_click-0.9.0-py3-none-any.whl", hash = "sha256:5208e828f4f68f63c847c1ef7be48edee9964090390afc8f5b3d4cbe5ea9bbed", size = 15104 },
 ]
 
 [[package]]
@@ -1728,7 +1732,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.53.0"
+version = "1.57.1"
 source = { editable = "." }
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -1737,9 +1741,7 @@ dependencies = [
     { name = "coverage", extra = ["toml"] },
     { name = "ffmpeg-python" },
     { name = "nominal-api" },
-    { name = "nptdms" },
     { name = "pandas" },
-    { name = "polars" },
     { name = "python-dateutil" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -1757,6 +1759,9 @@ hdf5 = [
 protos = [
     { name = "nominal-api-protos" },
 ]
+tdms = [
+    { name = "nptdms" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1772,6 +1777,7 @@ dev = [
     { name = "nominal-api-protos" },
     { name = "pandas-stubs", version = "2.2.2.240807", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "pandas-stubs", version = "2.2.3.250308", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "polars" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -1784,15 +1790,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8,<9" },
-    { name = "conjure-python-client", specifier = ">=2.8.0,<3" },
-    { name = "coverage", extras = ["toml"], specifier = ">=7.8.0" },
+    { name = "conjure-python-client", specifier = ">=2.8.0,<4" },
+    { name = "coverage", extras = ["toml"], specifier = ">=7.0.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.0" },
-    { name = "nominal-api", specifier = "==0.687.0" },
-    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.549.0" },
-    { name = "nptdms", specifier = ">=1.9.0,<2" },
+    { name = "nominal-api", specifier = "==0.708.0" },
+    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.708.0" },
+    { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
-    { name = "polars", specifier = ">=0.0.0" },
     { name = "python-dateutil", specifier = ">=0.0.0" },
     { name = "pyyaml", specifier = ">=0.0.0" },
     { name = "requests", specifier = ">=0.0.0" },
@@ -1800,7 +1805,7 @@ requires-dist = [
     { name = "tabulate", specifier = ">=0.9.0,<0.10" },
     { name = "typing-extensions", specifier = ">=4,<5" },
 ]
-provides-extras = ["hdf5", "protos"]
+provides-extras = ["hdf5", "protos", "tdms"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1808,13 +1813,14 @@ dev = [
     { name = "jupyter", specifier = ">=1.1.1,<2" },
     { name = "jupyterlab", specifier = ">=4.2.5,<5" },
     { name = "mkdocs", specifier = ">=1.6.1,<2" },
-    { name = "mkdocs-click", git = "https://github.com/alkasm/mkdocs-click?branch=alkasm%2Fkeep-context-settings" },
+    { name = "mkdocs-click", specifier = ">=0.9.0" },
     { name = "mkdocs-material", specifier = ">=9.5.34,<10" },
     { name = "mkdocstrings", specifier = ">=0.29.1,<1" },
     { name = "mkdocstrings-python", specifier = ">=1.16.10,<2" },
     { name = "mypy", specifier = ">=1.11.2,<2" },
-    { name = "nominal-api-protos", specifier = ">=0.549.0" },
+    { name = "nominal-api-protos", specifier = ">=0.708.0" },
     { name = "pandas-stubs", specifier = "~=2.0" },
+    { name = "polars", specifier = ">=0.0.0" },
     { name = "pytest", specifier = ">=8.3.2,<9" },
     { name = "pytest-cov", specifier = ">=5.0.0,<6" },
     { name = "ruff", specifier = ">=0.4.2,<0.5" },
@@ -1827,27 +1833,27 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.687.0"
+version = "0.708.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f9/d0/9fe8c04fb3450328fe256eb7cd9d56e4dd28b9c6255ded715ca95c21e939/nominal_api-0.687.0.tar.gz", hash = "sha256:d356e113003e9f09af054ea60a027680b6f281238fa062a0647f32d67679f61f", size = 345471 }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/d9/d8ef2a4a5754ac2a6c9ca0d88beb4f6eb5a242fe17d36b85560a1b31b7e7/nominal_api-0.708.0.tar.gz", hash = "sha256:81a310e1b2e17419034d4a073f909bd2f4b97a635c6206b9793bd5d931164225", size = 358507 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/50/0210eca24086ef2191c7fc8a474ebd0d6acd92312f6dc7acaa7f86be9916/nominal_api-0.687.0-py3-none-any.whl", hash = "sha256:50f2fefdad0e7e46e1645043f70207eedf182dfd0a0b8af0a5ad59aa1ff9ea03", size = 367115 },
+    { url = "https://files.pythonhosted.org/packages/b5/8d/90d3cb21b9f2efcc906dcb082066cab701d389aaa20bef28cee4ae6ce162/nominal_api-0.708.0-py3-none-any.whl", hash = "sha256:1bccf3c0d3b728817b9047a7faf8b515a847aebcab160121cd24c254c30f90fb", size = 381661 },
 ]
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.681.0"
+version = "0.708.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8e/09/1a363c4651a882f45e0225e1fcdd9e4e40a9e85ccd9ad7faa6f69987c43a/nominal_api_protos-0.681.0.tar.gz", hash = "sha256:8a08dac6de84bc2f6bbeef22557b26e83e72ae86f32f919723179d35b9d579da", size = 3092 }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/74/e7eb2925150e78917c5cb824fc1d34aba1eadb28b422b247b74ed67811ff/nominal_api_protos-0.708.0.tar.gz", hash = "sha256:118c81466982ab8380eb181fe09a5a8d4b65242964c713e7e3c5a69b2da6a8de", size = 3073 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/a6/efa68f9dafea2eb489b414b4b0fbae64185290d9012a421070e52993efab/nominal_api_protos-0.681.0-py3-none-any.whl", hash = "sha256:60c2a81f343b3a9d52a5bc720bfe4f61009612e6c6fc66eb611ee629ee4a2559", size = 5180 },
+    { url = "https://files.pythonhosted.org/packages/53/31/00c57160c8d02ce82a4551896cf261619625a8d48423bb986fa8b0cecae5/nominal_api_protos-0.708.0-py3-none-any.whl", hash = "sha256:949105ebfd2b9d5cbace248da7a1ff1b4723117a3b760e6001e00ec91647bb12", size = 5178 },
 ]
 
 [[package]]
@@ -2233,16 +2239,16 @@ wheels = [
 
 [[package]]
 name = "polars"
-version = "1.29.0"
+version = "1.30.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0b/92/8d0e80fef779a392b1a736b554ffba62403026bad7df8a9de8b61dce018f/polars-1.29.0.tar.gz", hash = "sha256:d2acb71fce1ff0ea76db5f648abd91a7a6c460fafabce9a2e8175184efa00d02", size = 4582973 }
+sdist = { url = "https://files.pythonhosted.org/packages/82/b6/8dbdf626c0705a57f052708c9fc0860ffc2aa97955930d5faaf6a66fcfd3/polars-1.30.0.tar.gz", hash = "sha256:dfe94ae84a5efd9ba74e616e3e125b24ca155494a931890a8f17480737c4db45", size = 4668318 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/5f/b277179cfce1258fecf4ad73cf627f670be41fdf088727090f68ca9c96ff/polars-1.29.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:d053ee3217df31468caf2f5ddb9fd0f3a94fd42afdf7d9abe23d9d424adca02b", size = 34206809 },
-    { url = "https://files.pythonhosted.org/packages/34/e7/634e5cb55ce8bef23ac8ad8e3834c9045f4b3cbdff1fb9e7826d864436e6/polars-1.29.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:14131078e365eae5ccda3e67383cd43c0c0598d7f760bdf1cb4082566c5494ce", size = 31100055 },
-    { url = "https://files.pythonhosted.org/packages/50/15/0e9072e410731980ebc567c60a0a5f02bc2183310e48704ef83682cdd54c/polars-1.29.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:54f6902da333f99208b8d27765d580ba0299b412787c0564275912122c228e40", size = 34828438 },
-    { url = "https://files.pythonhosted.org/packages/69/c0/90fcaac5c95aa225b3899698289c0424d429ef72248b593f15294f95a35e/polars-1.29.0-cp39-abi3-manylinux_2_24_aarch64.whl", hash = "sha256:7a0ac6a11088279af4d715f4b58068835f551fa5368504a53401743006115e78", size = 32073830 },
-    { url = "https://files.pythonhosted.org/packages/17/ed/e5e570e22a03549a3c5397035a006b2c6343856a9fd15cccb5db39bdfa0a/polars-1.29.0-cp39-abi3-win_amd64.whl", hash = "sha256:f5aac4656e58b1e12f9481950981ef68b5b0e53dd4903bd72472efd2d09a74c8", size = 34971841 },
-    { url = "https://files.pythonhosted.org/packages/45/fd/9039f609d76b3ebb13777f289502a00b52709aea5c35aed01d1090ac142f/polars-1.29.0-cp39-abi3-win_arm64.whl", hash = "sha256:0c105b07b980b77fe88c3200b015bf4695e53185385f0f244c13e2d1027c7bbf", size = 31298689 },
+    { url = "https://files.pythonhosted.org/packages/40/48/e9b2cb379abcc9f7aff2e701098fcdb9fe6d85dc4ad4cec7b35d39c70951/polars-1.30.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:4c33bc97c29b7112f0e689a2f8a33143973a3ff466c70b25c7fd1880225de6dd", size = 35704342 },
+    { url = "https://files.pythonhosted.org/packages/36/ca/f545f61282f75eea4dfde4db2944963dcd59abd50c20e33a1c894da44dad/polars-1.30.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:e3d05914c364b8e39a5b10dcf97e84d76e516b3b1693880bf189a93aab3ca00d", size = 32459857 },
+    { url = "https://files.pythonhosted.org/packages/76/20/e018cd87d7cb6f8684355f31f4e193222455a6e8f7b942f4a2934f5969c7/polars-1.30.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1a52af3862082b868c1febeae650af8ae8a2105d2cb28f0449179a7b44f54ccf", size = 36267243 },
+    { url = "https://files.pythonhosted.org/packages/cb/e7/b88b973021be07b13d91b9301cc14392c994225ef5107a32a8ffd3fd6424/polars-1.30.0-cp39-abi3-manylinux_2_24_aarch64.whl", hash = "sha256:ffb3ef133454275d4254442257c5f71dd6e393ce365c97997dadeb6fa9d6d4b5", size = 33416871 },
+    { url = "https://files.pythonhosted.org/packages/dd/7c/d46d4381adeac537b8520b653dc30cb8b7edbf59883d71fbb989e9005de1/polars-1.30.0-cp39-abi3-win_amd64.whl", hash = "sha256:c26b633a9bd530c5fc09d317fca3bb3e16c772bd7df7549a9d8ec1934773cc5d", size = 36363630 },
+    { url = "https://files.pythonhosted.org/packages/fb/b5/5056d0c12aadb57390d0627492bef8b1abf3549474abb9ae0fd4e2bfa885/polars-1.30.0-cp39-abi3-win_arm64.whl", hash = "sha256:476f1bde65bc7b4d9f80af370645c2981b5798d67c151055e58534e89e96f2a8", size = 32643590 },
 ]
 
 [[package]]
