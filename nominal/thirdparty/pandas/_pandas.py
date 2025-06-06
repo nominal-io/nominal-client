@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from datetime import datetime
 from threading import Thread
@@ -145,6 +146,10 @@ def datasource_to_dataframe(
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     tags: dict[str, str] | None = None,
     enable_gzip: bool = True,
+    *,
+    channels: Sequence[Channel] | None = None,
+    num_workers: int = 1,
+    channel_batch_size: int = 20,
 ) -> pd.DataFrame:
     """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
@@ -157,11 +162,22 @@ def datasource_to_dataframe(
             whereas a channel named 'engine_turbine_flowrate' would not!
         channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided
             string.
+        channels: List of channels to fetch data for. If provided, supercedes search parameters of
+            `channel_exact_match` and `channel_fuzzy_search_text`.
         tags: Dictionary of tags to filter channels by
         start: The minimum data updated time to filter channels by
         end: The maximum data start time to filter channels by
         enable_gzip: If true, use gzip when exporting data from Nominal. This will almost always make export
             faster and use less bandwidth.
+        num_workers: Use this many parallel processes for performing export requests against the backend. This should
+            roughly be corresponding to the strength of your network connection, with 4-8 workers being more than
+            sufficient to completely saturate most connections.
+        channel_batch_size: Number of channels to request at a time per worker thread. Reducing this number may allow
+            fetching a larger time duration (i.e., `end` - `start`), depending on how synchronized the timing is amongst
+            the requested channels. This is a result of a limit of 10_000_000 unique timestamps returned per request,
+            so reducing the number of channels will allow for a larger time window if channels come in at different
+            times (e.g. channel A has timestamps 100, 200, 300... and channel B has timestamps 101, 201, 301, ...).
+            This is particularly useful when combined with num_workers when attempting to maximally utilize a machine.
 
     Returns:
     -------
@@ -182,18 +198,25 @@ def datasource_to_dataframe(
     end_time = ts._SecondsNanos.from_flexible(end).to_api() if end else ts._MAX_TIMESTAMP.to_api()
 
     # Get all channels from the datasource
-    filtered_channels = list(
-        datasource.search_channels(
-            exact_match=channel_exact_match,
-            fuzzy_search_text=channel_fuzzy_search_text,
+    if channels is None:
+        channels = list(
+            datasource.search_channels(
+                exact_match=channel_exact_match,
+                fuzzy_search_text=channel_fuzzy_search_text,
+            )
         )
-    )
-    if not filtered_channels:
+    elif channel_exact_match is not None or channel_fuzzy_search_text is not None:
+        logger.warning(
+            "'channel_exact_match' and 'channel_fuzzy_search_text' are ignored when a list of channels "
+            "are provided to 'datasource_to_dataframe'."
+        )
+
+    if not channels:
         logger.warning("Requested data for no columns: returning empty dataframe")
         return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
 
     # Warn about renamed channels
-    filtered_channel_names = set([ch.name for ch in filtered_channels])
+    filtered_channel_names = set([ch.name for ch in channels])
 
     # Handle channel names that will be renamed during export
     renamed_timestamp_col = None
@@ -207,9 +230,7 @@ def datasource_to_dataframe(
             else:
                 idx += 1
 
-    batch_size = 20
-    all_dataframes = []
-    for channel_batch in batched(filtered_channels, batch_size):
+    def _export_channel_batch(channel_batch: tuple[Channel, ...]) -> pd.DataFrame:
         export_request = _construct_export_request(
             channel_batch, datasource.rid, start_time, end_time, tags, enable_gzip=enable_gzip
         )
@@ -218,8 +239,37 @@ def datasource_to_dataframe(
             datasource._clients.dataexport.export_channel_data(datasource._clients.auth_header, export_request),
         )
         batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
-        if not batch_df.empty:
-            all_dataframes.append(batch_df.set_index(_EXPORTED_TIMESTAMP_COL_NAME))
+        if batch_df.empty:
+            logger.warning(
+                "No data found for export from datasource %s for channels %s",
+                datasource.rid,
+                [ch.name for ch in channel_batch],
+            )
+            return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
+        else:
+            return batch_df.set_index(_EXPORTED_TIMESTAMP_COL_NAME)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
+        df_futures = {
+            pool.submit(_export_channel_batch, channel_batch): channel_batch
+            for channel_batch in batched(channels, channel_batch_size)
+        }
+
+        all_dataframes = []
+        for df_future in concurrent.futures.as_completed(df_futures):
+            channel_batch = df_futures[df_future]
+
+            ex = df_future.exception()
+            if ex is not None:
+                logger.error(
+                    "Failed exporting data for channels %s from datasource %s",
+                    [ch.name for ch in channel_batch],
+                    datasource.rid,
+                    exc_info=ex,
+                )
+                continue
+            else:
+                all_dataframes.append(df_future.result())
 
     if not all_dataframes:
         logger.warning(f"No data found for export from datasource {datasource.rid}")
