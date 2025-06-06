@@ -52,6 +52,7 @@ def upload_tdms_to_dataset(
     wait_until_complete: bool = True,
     file_name: str | None = None,
     tag_columns: Mapping[str, str] | None = None,
+    tags: Mapping[str, str] | None = None,
 ) -> None:
     """Process and upload a tdms file to an existing dataset as if it were a gzipped-CSV file
 
@@ -68,6 +69,7 @@ def upload_tdms_to_dataset(
         file_name: Manually override the name of the filename given to the uploaded data.
             If not provided, defaults to using the dataset's name
         tag_columns: Mapping of column names => tag keys to use for their respective rows.
+        tags: Mapping of key-value pairs to apply uniformly as tags to all data within the dataframe.
 
     Channels will be named as f"{group_name}.{channel_name}", with spaces replaced with underscores.
 
@@ -82,6 +84,7 @@ def upload_tdms_to_dataset(
         wait_until_complete=wait_until_complete,
         file_name=file_name,
         tag_columns=tag_columns,
+        tags=tags,
     )
 
 
@@ -98,6 +101,7 @@ def upload_tdms(
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
     tag_columns: Mapping[str, str] | None = None,
+    tags: Mapping[str, str] | None = None,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a tdms file.
 
@@ -120,6 +124,7 @@ def upload_tdms(
         labels=labels,
         properties=properties,
         tag_columns=tag_columns,
+        tags=tags,
     )
 
 
