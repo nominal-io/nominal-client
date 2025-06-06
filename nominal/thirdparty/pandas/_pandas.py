@@ -4,7 +4,7 @@ import concurrent.futures
 import logging
 from datetime import datetime
 from threading import Thread
-from typing import Any, BinaryIO, Sequence, cast
+from typing import Any, BinaryIO, Mapping, Sequence, cast
 
 import pandas as pd
 from nominal_api.api import Timestamp
@@ -21,6 +21,55 @@ from nominal.core.filetype import FileTypes
 logger = logging.getLogger(__name__)
 
 
+def upload_dataframe_to_dataset(
+    dataset: Dataset,
+    df: pd.DataFrame,
+    timestamp_column: str,
+    timestamp_type: ts._AnyTimestampType,
+    *,
+    wait_until_complete: bool = True,
+    file_name: str | None = None,
+    tag_columns: Mapping[str, str] | None = None,
+) -> None:
+    """Upload a pandas dataframe to an existing dataset as if it were a gzipped-CSV file
+
+    Args:
+        dataset: Dataset to upload the dataframe to
+        df: Dataframe to upload to the dataset
+        timestamp_column: Column containing timestamps to use for their respective rows
+        timestamp_type: Type of timestamp, e.g., epoch_seconds, iso8601, etc.
+        wait_until_complete: If true, block until data has been ingested
+        file_name: Manually override the name of the filename given to the uploaded data.
+            If not provided, defaults to using the dataset's name
+        tag_columns: Mapping of column names => tag keys to use for their respective rows.
+    """
+
+    # TODO (drake): convert to parquet if/when parquet added as library dependency
+    def write_and_close(df: pd.DataFrame, w: BinaryIO) -> None:
+        df.to_csv(w, compression="gzip")
+        w.close()
+
+    with reader_writer() as (reader, writer):
+        # Write the dataframe to .csv.gz and upload in background thread
+        t = Thread(target=write_and_close, args=(df, writer))
+        t.start()
+
+        dataset.add_from_io(
+            reader,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
+            file_type=FileTypes.CSV_GZ,
+            file_name=file_name,
+            tag_columns=tag_columns,
+        )
+
+        # Await data upload to complete
+        t.join()
+
+        if wait_until_complete:
+            dataset.poll_until_ingestion_completed()
+
+
 def upload_dataframe(
     client: NominalClient,
     df: pd.DataFrame,
@@ -31,35 +80,46 @@ def upload_dataframe(
     channel_name_delimiter: str | None = None,
     *,
     wait_until_complete: bool = True,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    tag_columns: Mapping[str, str] | None = None,
 ) -> Dataset:
     """Create a dataset in the Nominal platform from a pandas.DataFrame.
 
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    Args:
+        client: Client instance to use for creating the dataset
+        df: Dataframe to create a dataset from
+        name: Name of the dataset to create, as well as filename for the uploaded "file".
+        timestamp_column: Name of the column containing timestamp information for the dataframe
+        timestamp_type: Type of the timestamp column, e.g. epoch_seconds, iso8601, etc.
+        description: Description of the dataset to create
+        channel_name_delimiter: Delimiter to use for folding channel view to a tree view.
+        wait_until_complete: If true, wait until all data has been ingested successfully before returning
+        labels: String labels to apply to the created dataset
+        properties: String key-value pairs to apply to the created dataset
+        tag_columns: Mapping of column name => tag key to apply to the respective rows of data
+
+    Returns:
+        Created dataset
     """
-    # TODO(alkasm): use parquet instead of CSV as an intermediary
+    dataset = client.create_dataset(
+        name=name,
+        description=description,
+        labels=labels,
+        properties=properties,
+        prefix_tree_delimiter=channel_name_delimiter,
+    )
 
-    def write_and_close(df: pd.DataFrame, w: BinaryIO) -> None:
-        df.to_csv(w)
-        w.close()
+    upload_dataframe_to_dataset(
+        dataset,
+        df,
+        timestamp_column=timestamp_column,
+        timestamp_type=timestamp_type,
+        wait_until_complete=wait_until_complete,
+        file_name=name,
+        tag_columns=tag_columns,
+    )
 
-    with reader_writer() as (reader, writer):
-        # write the dataframe to CSV in another thread
-        t = Thread(target=write_and_close, args=(df, writer))
-        t.start()
-        dataset = client.create_dataset_from_io(
-            reader,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
-            description=description,
-            prefix_tree_delimiter=channel_name_delimiter,
-        )
-        t.join()
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
     return dataset
 
 
