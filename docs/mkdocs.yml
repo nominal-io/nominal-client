@@ -30,6 +30,8 @@ nav:
       - Third Party:
         - pandas: reference/thirdparty/pandas.md
         - tdms: reference/thirdparty/tdms.md
+      - Experimental:
+        - Video Processing: reference/experimental/video_processing.md
   - Development:
       - Contributing: contributing.md
   - Documentation: https://docs.nominal.io/python/quickstart
