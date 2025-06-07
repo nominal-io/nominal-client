@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal, Sequence
+from typing import Iterable, Literal, Sequence
 
 from nominal_api import scout_datasource_connection_api
 
@@ -91,3 +91,10 @@ def _get_connections(
     clients: Connection._Clients, connection_rids: Sequence[str]
 ) -> Sequence[scout_datasource_connection_api.Connection]:
     return [clients.connection.get_connection(clients.auth_header, rid) for rid in connection_rids]
+
+
+def _iter_connections(
+    clients: Connection._Clients, connection_rids: Iterable[str]
+) -> Iterable[scout_datasource_connection_api.Connection]:
+    for rid in connection_rids:
+        yield clients.connection.get_connection(clients.auth_header, rid)
