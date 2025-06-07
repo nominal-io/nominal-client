@@ -3,9 +3,9 @@ from __future__ import annotations
 import abc
 import datetime
 import logging
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias
+from typing import Iterable, Literal, Mapping, Protocol, Sequence
 
-from typing_extensions import deprecated
+from typing_extensions import TypeAlias, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid, rid_from_instance_or_string
