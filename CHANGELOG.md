@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.59.1](https://github.com/nominal-io/nominal-client/compare/v1.59.0...v1.59.1) (2025-06-07)
+
+
+### Bug Fixes
+
+* remove h5 dep ([4469947](https://github.com/nominal-io/nominal-client/commit/4469947add564b22dd8f3abee5b2bd882c91ae1e))
+* remove hdf5 dependency group ([#380](https://github.com/nominal-io/nominal-client/issues/380)) ([4469947](https://github.com/nominal-io/nominal-client/commit/4469947add564b22dd8f3abee5b2bd882c91ae1e))
+
+
+### Documentation
+
+* add experimental modules to API reference ([#338](https://github.com/nominal-io/nominal-client/issues/338)) ([b4b280d](https://github.com/nominal-io/nominal-client/commit/b4b280d9ea48956122c1dc68309ee61a755c30b9))
+
 ## [1.59.0](https://github.com/nominal-io/nominal-client/compare/v1.58.0...v1.59.0) (2025-06-06)
 
 
