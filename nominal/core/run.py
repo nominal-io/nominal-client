@@ -48,9 +48,9 @@ class Run(HasRid, DatasourceContainer):
         @property
         def run(self) -> scout.RunService: ...
 
-    def __post_init__(self) -> None:
-        """Initialize clientsbunch in DatasourceContainer abstract class."""
-        super().__init__(clients=self._clients)
+    # def __post_init__(self) -> None:
+    #     """Initialize clientsbunch in DatasourceContainer abstract class."""
+    #     super().__init__(clients=self._clients)
 
     @property
     def nominal_url(self) -> str:

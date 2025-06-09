@@ -43,9 +43,9 @@ class Asset(HasRid, DatasourceContainer):
         @property
         def assets(self) -> scout_assets.AssetService: ...
 
-    def __post_init__(self) -> None:
-        """Initialize clientsbunch in DatasourceContainer abstract class."""
-        super().__init__(clients=self._clients)
+    # def __post_init__(self) -> None:
+    #     """Initialize clientsbunch in DatasourceContainer abstract class."""
+    #     super().__init__(clients=self._clients)
 
     @property
     def nominal_url(self) -> str:
@@ -133,13 +133,14 @@ class Asset(HasRid, DatasourceContainer):
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
-    def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
+    def add_attachment(self, attachment: Attachment | str) -> None:
         """Add attachments that have already been uploaded to this asset.
 
         `attachments` can be `Attachment` instances, or attachment RIDs.
         """
-        rids = [rid_from_instance_or_string(a) for a in attachments]
-        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
+        request = scout_asset_api.UpdateAttachmentsRequest(
+            attachments_to_add=[rid_from_instance_or_string(attachment)], attachments_to_remove=[]
+        )
         self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
 
     def attachments(self) -> Iterable[Attachment]:

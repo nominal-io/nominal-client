@@ -40,7 +40,7 @@ class DatasourceContainer(abc.ABC):
         Args:
             clients: Clientsbunch to use for requests
         """
-        self.__clients = clients
+        self._clients = clients
 
     @abc.abstractmethod
     def _add_data_scope(
@@ -147,13 +147,13 @@ class DatasourceContainer(abc.ABC):
         if not rids_by_name:
             return
 
-        scope_rid_names = {rid: name for name, rid in rids_by_name.items()}
-        for dataset in _get_datasets(self.__clients.auth_header, self.__clients.catalog, scope_rid_names):
-            scope_name = rids_by_name.get(dataset.rid)
+        names_by_rid = {rid: name for name, rid in rids_by_name.items()}
+        for dataset in _get_datasets(self._clients.auth_header, self._clients.catalog, names_by_rid):
+            scope_name = names_by_rid.get(dataset.rid)
             if scope_name is None:
                 continue
 
-            yield scope_name, Dataset._from_conjure(self.__clients, dataset)
+            yield scope_name, Dataset._from_conjure(self._clients, dataset)
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List datasource (name, Dataset) pairs"""
@@ -193,13 +193,13 @@ class DatasourceContainer(abc.ABC):
         if not rids_by_name:
             return
 
-        scope_rid_names = {rid: name for name, rid in rids_by_name.items()}
-        for dataset in _iter_connections(self.__clients, scope_rid_names):
-            scope_name = rids_by_name.get(dataset.rid)
+        names_by_rid = {rid: name for name, rid in rids_by_name.items()}
+        for dataset in _iter_connections(self._clients, names_by_rid):
+            scope_name = names_by_rid.get(dataset.rid)
             if scope_name is None:
                 continue
 
-            yield scope_name, Connection._from_conjure(self.__clients, dataset)
+            yield scope_name, Connection._from_conjure(self._clients, dataset)
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List datasource (name, Connection) pairs"""
@@ -232,8 +232,8 @@ class DatasourceContainer(abc.ABC):
         """Iterate over datasource (name, Video) pairs"""
         rids_by_name = self._rids_by_scope_name(stype="video")
         for scope_name, rid in rids_by_name.items():
-            raw_video = _get_video(self.__clients, rid)
-            yield scope_name, Video._from_conjure(self.__clients, raw_video)
+            raw_video = _get_video(self._clients, rid)
+            yield scope_name, Video._from_conjure(self._clients, raw_video)
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List datasource (name, Video) pairs"""
@@ -278,8 +278,8 @@ class DatasourceContainer(abc.ABC):
         """Iterate over datasource (name, LogSet) pairs"""
         rids_by_name = self._rids_by_scope_name(stype="logset")
         for scope_name, rid in rids_by_name.items():
-            raw_log_set = _get_log_set(self.__clients, rid)
-            yield scope_name, LogSet._from_conjure(self.__clients, raw_log_set)
+            raw_log_set = _get_log_set(self._clients, rid)
+            yield scope_name, LogSet._from_conjure(self._clients, raw_log_set)
 
     @deprecated(
         "LogSets are deprecated and will be removed in a future version. "
