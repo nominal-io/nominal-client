@@ -206,8 +206,8 @@ class Asset(HasRid, _DataScopeContainer):
         `names` are scope names.
         `scopes` are rids or scope objects.
         """
-        data_scope_names = set(names or [])
-        data_sources = set([rid_from_instance_or_string(scope) for scope in scopes] if scopes else [])
+        data_scope_names = set() if names is None else set(names)
+        data_sources = set() if scopes is None else set([rid_from_instance_or_string(scope) for scope in scopes])
 
         if isinstance(data_sources, str):
             raise RuntimeError("Expect `data_sources` to be a sequence, not a string")
