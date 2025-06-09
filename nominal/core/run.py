@@ -181,7 +181,7 @@ class Run(HasRid, _DataScopeContainer):
         for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, run.attachments):
             yield Attachment._from_conjure(self._clients, a)
 
-    def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
+    def remove_attachments(self, attachments: Iterable[Attachment | str]) -> None:
         """Remove attachments from this run.
         Does not remove the attachments from Nominal.
 

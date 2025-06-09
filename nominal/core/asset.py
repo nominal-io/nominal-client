@@ -149,7 +149,7 @@ class Asset(HasRid, _DataScopeContainer):
     def list_attachments(self) -> Sequence[Attachment]:
         return list(self.attachments())
 
-    def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
+    def remove_attachments(self, attachments: Iterable[Attachment | str]) -> None:
         """Remove attachments from this asset.
         Does not remove the attachments from Nominal.
 
