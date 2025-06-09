@@ -16,17 +16,16 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.dataset import Dataset, _create_dataset
-from nominal.core.datasource_container import (
-    DatasourceContainer,
+from nominal.core.data_scope_container import (
     ScopeType,
     ScopeTypeSpecifier,
-    _DatasourceContainerClients,
+    _DataScopeContainer,
 )
+from nominal.core.dataset import Dataset, _create_dataset
 
 
 @dataclass(frozen=True)
-class Asset(HasRid, DatasourceContainer):
+class Asset(HasRid, _DataScopeContainer):
     rid: str
     name: str
     description: str | None
@@ -36,16 +35,12 @@ class Asset(HasRid, DatasourceContainer):
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        _DatasourceContainerClients,
+        _DataScopeContainer._Clients,
         HasScoutParams,
         Protocol,
     ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
-
-    # def __post_init__(self) -> None:
-    #     """Initialize clientsbunch in DatasourceContainer abstract class."""
-    #     super().__init__(clients=self._clients)
 
     @property
     def nominal_url(self) -> str:

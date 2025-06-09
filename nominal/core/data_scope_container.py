@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import abc
 import datetime
 import logging
 from typing import Iterable, Literal, Mapping, Protocol, Sequence
@@ -10,8 +9,8 @@ from typing_extensions import TypeAlias, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid, rid_from_instance_or_string
 from nominal.core.attachment import Attachment
-from nominal.core.connection import Connection, _iter_connections
-from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.connection import Connection, _get_connections
+from nominal.core.dataset import Dataset, _get_dataset
 from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
@@ -22,27 +21,7 @@ ScopeTypeSpecifier: TypeAlias = Literal["dataset", "video", "connection", "logse
 logger = logging.getLogger(__name__)
 
 
-class _DatasourceContainerClients(
-    Attachment._Clients,
-    DataSource._Clients,
-    LogSet._Clients,
-    Video._Clients,
-    HasScoutParams,
-    Protocol,
-):
-    pass
-
-
-class DatasourceContainer(abc.ABC):
-    def __init__(self, clients: _DatasourceContainerClients):
-        """Initialize datasource container
-
-        Args:
-            clients: Clientsbunch to use for requests
-        """
-        self._clients = clients
-
-    @abc.abstractmethod
+class _HasDataScopes(Protocol):
     def _add_data_scope(
         self,
         scope_name: str,
@@ -61,6 +40,7 @@ class DatasourceContainer(abc.ABC):
             series_tags: Mapping of tag key-value pairs to filter data with before adding to the container
             offset: Time offset to add the data source with, relative to the container start time.
         """
+        ...
 
     def _add_data_scopes(
         self,
@@ -73,52 +53,21 @@ class DatasourceContainer(abc.ABC):
         for scope_name, scope in scopes.items():
             self._add_data_scope(scope_name, scope, scope_type, series_tags=series_tags, offset=offset)
 
-    def data_scopes(self) -> Iterable[tuple[str, ScopeType]]:
-        yield from self.datasets()
-        yield from self.connections()
-        yield from self.videos()
-        yield from self.logsets()
-
-    def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
-        return list(self.data_scopes())
-
-    def get_data_scope(self, data_scope_name: str) -> ScopeType:
-        for name, scope in self.data_scopes():
-            if name == data_scope_name:
-                return scope
-
-        raise ValueError(f"No such data scope found with name {data_scope_name}")
-
-    @abc.abstractmethod
-    def remove_data_scopes(
-        self,
-        *,
-        names: Sequence[str] | None = None,
-        scopes: Sequence[ScopeType | str] | None = None,
-    ) -> None:
-        """Remove data scopes from this container.
-
-        Args:
-            names: data scope names to remove
-            scopes: rids or scope objects to remove
-        """
-
-    @deprecated("Use `remove_data_scopes` instead")
-    def remove_data_sources(
-        self,
-        *,
-        ref_names: Sequence[str] | None = None,
-        data_sources: Sequence[Connection | Dataset | Video | str] | None = None,
-    ) -> None:
-        """Remove data sources from this run.
-
-        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
-        """
-        self.remove_data_scopes(names=ref_names, scopes=data_sources)
-
-    @abc.abstractmethod
     def _rids_by_scope_name(self, stype: ScopeTypeSpecifier) -> Mapping[str, str]:
         """Return a mapping of data scope name => data scope rid"""
+        ...
+
+
+class _DatasetContainer(_HasDataScopes, Protocol):
+    class _Clients(
+        DataSource._Clients,
+        HasScoutParams,
+        Protocol,
+    ): ...
+
+    # Require that confirming classes have some clientsbunch
+    # that inherits from this one
+    _clients: _Clients
 
     def add_dataset(
         self,
@@ -147,24 +96,35 @@ class DatasourceContainer(abc.ABC):
         if not rids_by_name:
             return
 
-        names_by_rid = {rid: name for name, rid in rids_by_name.items()}
-        for dataset in _get_datasets(self._clients.auth_header, self._clients.catalog, names_by_rid):
-            scope_name = names_by_rid.get(dataset.rid)
-            if scope_name is None:
-                continue
-
-            yield scope_name, Dataset._from_conjure(self._clients, dataset)
+        for scope_name, rid in rids_by_name.items():
+            try:
+                dataset = _get_dataset(self._clients.auth_header, self._clients.catalog, rid)
+                yield scope_name, Dataset._from_conjure(self._clients, dataset)
+            except Exception:
+                logger.exception("Failed to get dataset '%s' with rid '%s'", scope_name, rid)
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List datasource (name, Dataset) pairs"""
         return list(self.datasets())
 
     def get_dataset(self, data_scope_name: str) -> Dataset:
-        scope = self.get_data_scope(data_scope_name)
-        if isinstance(scope, Dataset):
-            return scope
-        else:
-            raise ValueError(f"Data scope {data_scope_name} is not a dataset: ({type(scope)})")
+        for scope_name, dataset in self.datasets():
+            if scope_name == data_scope_name:
+                return dataset
+
+        raise ValueError(f"No dataset found with name {data_scope_name}")
+
+
+class _ConnectionContainer(_HasDataScopes, Protocol):
+    class _Clients(
+        DataSource._Clients,
+        HasScoutParams,
+        Protocol,
+    ): ...
+
+    # Require that confirming classes have some clientsbunch
+    # that inherits from this one
+    _clients: _Clients
 
     def add_connection(
         self,
@@ -193,24 +153,33 @@ class DatasourceContainer(abc.ABC):
         if not rids_by_name:
             return
 
-        names_by_rid = {rid: name for name, rid in rids_by_name.items()}
-        for dataset in _iter_connections(self._clients, names_by_rid):
-            scope_name = names_by_rid.get(dataset.rid)
-            if scope_name is None:
-                continue
-
-            yield scope_name, Connection._from_conjure(self._clients, dataset)
+        for scope_name, rid in rids_by_name.items():
+            try:
+                connection = _get_connections(self._clients, [rid])[0]
+                yield scope_name, Connection._from_conjure(self._clients, connection)
+            except Exception:
+                logger.exception("Failed to get connection '%s' with rid '%s'", scope_name, rid)
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List datasource (name, Connection) pairs"""
         return list(self.connections())
 
     def get_connection(self, data_scope_name: str) -> Connection:
-        scope = self.get_data_scope(data_scope_name)
-        if isinstance(scope, Connection):
-            return scope
-        else:
-            raise ValueError(f"Data scope {data_scope_name} is not a connection: ({type(scope)})")
+        for scope_name, connection in self.connections():
+            if scope_name == data_scope_name:
+                return connection
+
+        raise ValueError(f"No connection found with name {data_scope_name}")
+
+
+class _VideoContainer(_HasDataScopes, Protocol):
+    class _Clients(
+        Video._Clients,
+        HasScoutParams,
+        Protocol,
+    ): ...
+
+    _clients: _Clients
 
     def add_video(
         self,
@@ -232,19 +201,32 @@ class DatasourceContainer(abc.ABC):
         """Iterate over datasource (name, Video) pairs"""
         rids_by_name = self._rids_by_scope_name(stype="video")
         for scope_name, rid in rids_by_name.items():
-            raw_video = _get_video(self._clients, rid)
-            yield scope_name, Video._from_conjure(self._clients, raw_video)
+            try:
+                raw_video = _get_video(self._clients, rid)
+                yield scope_name, Video._from_conjure(self._clients, raw_video)
+            except Exception:
+                logger.exception("Failed to get video '%s' with rid '%s'", scope_name, rid)
 
     def list_videos(self) -> Sequence[tuple[str, Video]]:
         """List datasource (name, Video) pairs"""
         return list(self.videos())
 
     def get_video(self, data_scope_name: str) -> Video:
-        scope = self.get_data_scope(data_scope_name)
-        if isinstance(scope, Video):
-            return scope
-        else:
-            raise ValueError(f"Data scope {data_scope_name} is not a video: ({type(scope)})")
+        for scope_name, video in self.videos():
+            if scope_name == data_scope_name:
+                return video
+
+        raise ValueError(f"No video found with name {data_scope_name}")
+
+
+class _LogsetContainer(_HasDataScopes, Protocol):
+    class _Clients(
+        LogSet._Clients,
+        HasScoutParams,
+        Protocol,
+    ): ...
+
+    _clients: _Clients
 
     @deprecated(
         "LogSets are deprecated and will be removed in a future version. "
@@ -278,8 +260,11 @@ class DatasourceContainer(abc.ABC):
         """Iterate over datasource (name, LogSet) pairs"""
         rids_by_name = self._rids_by_scope_name(stype="logset")
         for scope_name, rid in rids_by_name.items():
-            raw_log_set = _get_log_set(self._clients, rid)
-            yield scope_name, LogSet._from_conjure(self._clients, raw_log_set)
+            try:
+                raw_log_set = _get_log_set(self._clients, rid)
+                yield scope_name, LogSet._from_conjure(self._clients, raw_log_set)
+            except Exception:
+                logger.exception("Failed to get logset '%s' with rid '%s'", scope_name, rid)
 
     @deprecated(
         "LogSets are deprecated and will be removed in a future version. "
@@ -294,28 +279,28 @@ class DatasourceContainer(abc.ABC):
         "Logs should be stored as a log channel in a Nominal datasource instead."
     )
     def get_logset(self, data_scope_name: str) -> LogSet:
-        scope = self.get_data_scope(data_scope_name)
-        if isinstance(scope, LogSet):
-            return scope
-        else:
-            raise ValueError(f"Data scope {data_scope_name} is not a logset: ({type(scope)})")
+        for scope_name, logset in self.logsets():
+            if scope_name == data_scope_name:
+                return logset
 
-    @abc.abstractmethod
-    def archive(self) -> None:
-        """Archive this container, hiding it from the UI"""
+        raise ValueError(f"No logset found with name {data_scope_name}")
 
-    @abc.abstractmethod
-    def unarchive(self) -> None:
-        """Unarchive this container, allowing it to be shown on the UI"""
 
-    @abc.abstractmethod
+class _AttachmentContainer(Protocol):
+    class _Clients(
+        Attachment._Clients,
+        HasScoutParams,
+        Protocol,
+    ): ...
+
+    _clients: _Clients
+
     def add_attachment(self, attachment: Attachment | str) -> None: ...
 
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         for attachment in attachments:
             self.add_attachment(attachment)
 
-    @abc.abstractmethod
     def attachments(self) -> Iterable[Attachment]: ...
 
     def list_attachments(self) -> Sequence[Attachment]:
@@ -324,5 +309,109 @@ class DatasourceContainer(abc.ABC):
     def remove_attachment(self, attachment: Attachment | str) -> None:
         self.remove_attachments([rid_from_instance_or_string(attachment)])
 
-    @abc.abstractmethod
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None: ...
+
+
+class _DataScopeContainer(
+    _DatasetContainer,
+    _ConnectionContainer,
+    _VideoContainer,
+    _LogsetContainer,
+    _AttachmentContainer,
+    Protocol,
+):
+    class _Clients(
+        _DatasetContainer._Clients,
+        _ConnectionContainer._Clients,
+        _VideoContainer._Clients,
+        _LogsetContainer._Clients,
+        _AttachmentContainer._Clients,
+        HasScoutParams,
+        Protocol,
+    ): ...
+
+    # Require that confirming classes have some clientsbunch
+    # that inherits from this one
+    _clients: _Clients
+
+    ####################
+    # Abstract Methods #
+    ####################
+
+    def _add_data_scope(
+        self,
+        scope_name: str,
+        scope: HasRid | str,
+        scope_type: ScopeTypeSpecifier,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: datetime.timedelta | None = None,
+    ) -> None:
+        """Add data source to the underlying container
+
+        Args:
+            scope_name: Datascope name to add the source with
+            scope: Instance or rid of the datasource to add to the underlying container
+            scope_type: Type of datasource being added
+            series_tags: Mapping of tag key-value pairs to filter data with before adding to the container
+            offset: Time offset to add the data source with, relative to the container start time.
+        """
+        ...
+
+    def _add_data_scopes(
+        self,
+        scopes: Mapping[str, HasRid | str],
+        scope_type: ScopeTypeSpecifier,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: datetime.timedelta | None = None,
+    ) -> None:
+        for scope_name, scope in scopes.items():
+            self._add_data_scope(scope_name, scope, scope_type, series_tags=series_tags, offset=offset)
+
+    def remove_data_scopes(
+        self,
+        *,
+        names: Sequence[str] | None = None,
+        scopes: Sequence[ScopeType | str] | None = None,
+    ) -> None:
+        """Remove data scopes from this container.
+
+        Args:
+            names: data scope names to remove
+            scopes: rids or scope objects to remove
+        """
+        ...
+
+    @deprecated("Use `remove_data_scopes` instead")
+    def remove_data_sources(
+        self,
+        *,
+        ref_names: Sequence[str] | None = None,
+        data_sources: Sequence[Connection | Dataset | Video | str] | None = None,
+    ) -> None:
+        """Remove data sources from this run.
+
+        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
+        """
+        self.remove_data_scopes(names=ref_names, scopes=data_sources)
+
+    def _rids_by_scope_name(self, stype: ScopeTypeSpecifier) -> Mapping[str, str]:
+        """Return a mapping of data scope name => data scope rid"""
+        ...
+
+    def data_scopes(self) -> Iterable[tuple[str, ScopeType]]:
+        yield from self.datasets()
+        yield from self.connections()
+        yield from self.videos()
+        yield from self.logsets()
+
+    def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
+        return list(self.data_scopes())
+
+    def get_data_scope(self, data_scope_name: str) -> ScopeType:
+        for name, scope in self.data_scopes():
+            if name == data_scope_name:
+                return scope
+
+        raise ValueError(f"No such data scope found with name {data_scope_name}")

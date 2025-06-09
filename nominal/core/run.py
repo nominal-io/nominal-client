@@ -16,17 +16,16 @@ from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.datasource_container import (
-    DatasourceContainer,
+from nominal.core.data_scope_container import (
     ScopeType,
     ScopeTypeSpecifier,
-    _DatasourceContainerClients,
+    _DataScopeContainer,
 )
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
-class Run(HasRid, DatasourceContainer):
+class Run(HasRid, _DataScopeContainer):
     rid: str
     name: str
     description: str
@@ -41,16 +40,12 @@ class Run(HasRid, DatasourceContainer):
 
     class _Clients(
         Asset._Clients,
-        _DatasourceContainerClients,
+        _DataScopeContainer._Clients,
         HasScoutParams,
         Protocol,
     ):
         @property
         def run(self) -> scout.RunService: ...
-
-    # def __post_init__(self) -> None:
-    #     """Initialize clientsbunch in DatasourceContainer abstract class."""
-    #     super().__init__(clients=self._clients)
 
     @property
     def nominal_url(self) -> str:
