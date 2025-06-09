@@ -15,7 +15,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
-ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
+ScopeType: TypeAlias = Connection | Dataset | LogSet | Video
 ScopeTypeSpecifier: TypeAlias = Literal["dataset", "video", "connection", "logset"]
 
 logger = logging.getLogger(__name__)
