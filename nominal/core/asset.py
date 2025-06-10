@@ -16,16 +16,16 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.data_scope_container import (
-    ScopeType,
-    ScopeTypeSpecifier,
-    _DataScopeContainer,
+from nominal.core.data_source_container import (
+    SourceType,
+    SourceTypeSpecifier,
+    _DataSourceContainer,
 )
 from nominal.core.dataset import Dataset, _create_dataset
 
 
 @dataclass(frozen=True)
-class Asset(HasRid, _DataScopeContainer):
+class Asset(HasRid, _DataSourceContainer):
     rid: str
     name: str
     description: str | None
@@ -35,7 +35,7 @@ class Asset(HasRid, _DataScopeContainer):
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        _DataScopeContainer._Clients,
+        _DataSourceContainer._Clients,
         HasScoutParams,
         Protocol,
     ):
@@ -91,7 +91,7 @@ class Asset(HasRid, _DataScopeContainer):
             raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
         return response[self.rid]
 
-    def _rids_by_scope_name(self, stype: ScopeTypeSpecifier) -> Mapping[str, str]:
+    def _rids_by_source_name(self, stype: SourceTypeSpecifier) -> Mapping[str, str]:
         asset = self._get_asset()
         rid_attrib = {"dataset": "dataset", "logset": "log_set", "connection": "connection", "video": "video"}
         return {
@@ -100,11 +100,11 @@ class Asset(HasRid, _DataScopeContainer):
             if scope.data_source.type.lower() == stype
         }
 
-    def _add_data_scope(
+    def _add_data_source(
         self,
-        scope_name: str,
-        scope: HasRid | str,
-        scope_type: ScopeTypeSpecifier,
+        source_name: str,
+        source: HasRid | str,
+        source_type: SourceTypeSpecifier,
         *,
         series_tags: Mapping[str, str] | None = None,
         offset: datetime.timedelta | None = None,
@@ -115,11 +115,11 @@ class Asset(HasRid, _DataScopeContainer):
             offset_duration = scout_run_api.Duration(nanos=int(nanos * 1e9), seconds=int(seconds))
 
         param_names = {"dataset": "dataset", "logset": "log_set", "connection": "connection", "video": "video"}
-        datasource_args = {param_names[scope_type]: rid_from_instance_or_string(scope)}
+        datasource_args = {param_names[source_type]: rid_from_instance_or_string(source)}
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
-                    data_scope_name=scope_name,
+                    data_scope_name=source_name,
                     data_source=scout_run_api.DataSource(**datasource_args),
                     series_tags={**series_tags} if series_tags else {},
                     offset=offset_duration,
@@ -161,7 +161,7 @@ class Asset(HasRid, _DataScopeContainer):
 
     def get_or_create_dataset(
         self,
-        data_scope_name: str,
+        data_source_name: str,
         *,
         name: str | None = None,
         description: str | None = None,
@@ -170,19 +170,19 @@ class Asset(HasRid, _DataScopeContainer):
     ) -> Dataset:
         """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
         try:
-            return self.get_dataset(data_scope_name)
+            return self.get_dataset(data_source_name)
         except ValueError:
             enriched_dataset = _create_dataset(
                 self._clients.auth_header,
                 self._clients.catalog,
-                name or data_scope_name,
+                data_source_name if name is None else name,
                 description=description,
                 properties=properties,
                 labels=labels,
                 workspace_rid=self._clients.workspace_rid,
             )
             dataset = Dataset._from_conjure(self._clients, enriched_dataset)
-            self.add_dataset(data_scope_name, dataset)
+            self.add_dataset(data_source_name, dataset)
             return dataset
 
     def archive(self) -> None:
@@ -195,19 +195,19 @@ class Asset(HasRid, _DataScopeContainer):
         """Unarchive this asset, allowing it to be viewed in the UI."""
         self._clients.assets.unarchive(self._clients.auth_header, self.rid)
 
-    def remove_data_scopes(
+    def remove_data_sources(
         self,
         *,
         names: Sequence[str] | None = None,
-        scopes: Sequence[ScopeType | str] | None = None,
+        sources: Sequence[SourceType | str] | None = None,
     ) -> None:
-        """Remove data scopes from this asset.
+        """Remove data sources from this asset.
 
-        `names` are scope names.
-        `scopes` are rids or scope objects.
+        `names` are datasource names.
+        `sources` are rids or datasource objects.
         """
-        data_scope_names = set() if names is None else set(names)
-        data_sources = set() if scopes is None else set([rid_from_instance_or_string(scope) for scope in scopes])
+        data_source_names = set() if names is None else set(names)
+        data_sources = set() if sources is None else set([rid_from_instance_or_string(scope) for scope in sources])
 
         if isinstance(data_sources, str):
             raise RuntimeError("Expect `data_sources` to be a sequence, not a string")
@@ -224,7 +224,7 @@ class Asset(HasRid, _DataScopeContainer):
                 offset=ds.offset,
             )
             for ds in conjure_asset.data_scopes
-            if ds.data_scope_name not in data_scope_names
+            if ds.data_scope_name not in data_source_names
             and (ds.data_source.dataset or ds.data_source.connection or ds.data_source.video or ds.data_source.log_set)
             not in data_source_rids
         ]

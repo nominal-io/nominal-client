@@ -16,16 +16,16 @@ from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.data_scope_container import (
-    ScopeType,
-    ScopeTypeSpecifier,
-    _DataScopeContainer,
+from nominal.core.data_source_container import (
+    SourceType,
+    SourceTypeSpecifier,
+    _DataSourceContainer,
 )
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
-class Run(HasRid, _DataScopeContainer):
+class Run(HasRid, _DataSourceContainer):
     rid: str
     name: str
     description: str
@@ -40,7 +40,7 @@ class Run(HasRid, _DataScopeContainer):
 
     class _Clients(
         Asset._Clients,
-        _DataScopeContainer._Clients,
+        _DataSourceContainer._Clients,
         HasScoutParams,
         Protocol,
     ):
@@ -93,11 +93,11 @@ class Run(HasRid, _DataScopeContainer):
         update_dataclass(self, run, fields=self.__dataclass_fields__)
         return self
 
-    def _add_data_scope(
+    def _add_data_source(
         self,
-        scope_name: str,
-        scope: HasRid | str,
-        scope_type: ScopeTypeSpecifier,
+        source_name: str,
+        source: HasRid | str,
+        source_type: SourceTypeSpecifier,
         *,
         series_tags: Mapping[str, str] | None = None,
         offset: timedelta | None = None,
@@ -108,12 +108,12 @@ class Run(HasRid, _DataScopeContainer):
             offset_duration = scout_run_api.Duration(nanos=int(nanos * 1e9), seconds=int(seconds))
 
         param_names = {"dataset": "dataset", "logset": "log_set", "connection": "connection", "video": "video"}
-        datasource_args = {param_names[scope_type]: rid_from_instance_or_string(scope)}
+        datasource_args = {param_names[source_type]: rid_from_instance_or_string(source)}
 
         self._clients.run.add_data_sources_to_run(
             self._clients.auth_header,
             {
-                scope_name: scout_run_api.CreateRunDataSource(
+                source_name: scout_run_api.CreateRunDataSource(
                     data_source=scout_run_api.DataSource(**datasource_args),
                     series_tags={**series_tags} if series_tags else {},
                     offset=offset_duration,
@@ -122,14 +122,14 @@ class Run(HasRid, _DataScopeContainer):
             self.rid,
         )
 
-    def remove_data_scopes(
+    def remove_data_sources(
         self,
         *,
         names: Sequence[str] | None = None,
-        scopes: Sequence[ScopeType | str] | None = None,
+        sources: Sequence[SourceType | str] | None = None,
     ) -> None:
-        ref_names = set(names or [])
-        data_source_rids = set([rid_from_instance_or_string(ds) for ds in scopes] if scopes else [])
+        ref_names = set() if names is None else set(names)
+        data_source_rids = set() if sources is None else set([rid_from_instance_or_string(ds) for ds in sources])
 
         conjure_run = self._clients.run.get_run(self._clients.auth_header, self.rid)
 
@@ -155,7 +155,7 @@ class Run(HasRid, _DataScopeContainer):
         run = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, run, fields=self.__dataclass_fields__)
 
-    def _rids_by_scope_name(self, stype: ScopeTypeSpecifier) -> Mapping[str, str]:
+    def _rids_by_source_name(self, stype: SourceTypeSpecifier) -> Mapping[str, str]:
         enriched_run = self._clients.run.get_run(self._clients.auth_header, self.rid)
         rid_attrib = {"dataset": "dataset", "logset": "log_set", "connection": "connection", "video": "video"}
         return {
