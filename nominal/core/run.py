@@ -20,7 +20,7 @@ from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
 @dataclass(frozen=True)
@@ -147,16 +147,11 @@ class Run(HasRid):
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
         """
-        offset_duration = None
-        if offset:
-            seconds, nanos = divmod(offset.total_seconds(), 1)
-            offset_duration = scout_run_api.Duration(nanos=int(nanos * 1e9), seconds=int(seconds))
-
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
                 series_tags={**series_tags} if series_tags else {},
-                offset=offset_duration,
+                offset=None if offset is None else _to_api_duration(offset),
             )
             for ref_name, dataset in datasets.items()
         }
@@ -341,16 +336,11 @@ class Run(HasRid):
         connection should use the same ref name across runs, since checklists and templates use ref names to reference
         connections.
         """
-        offset_duration = None
-        if offset:
-            seconds, nanos = divmod(offset.total_seconds(), 1)
-            offset_duration = scout_run_api.Duration(nanos=int(nanos * 1e9), seconds=int(seconds))
-
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
                 series_tags={**series_tags} if series_tags else {},
-                offset=offset_duration,
+                offset=None if offset is None else _to_api_duration(offset),
             )
         }
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)

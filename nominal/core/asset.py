@@ -21,6 +21,7 @@ from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
+from nominal.ts import _to_api_duration
 
 ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
 
@@ -101,18 +102,13 @@ class Asset(HasRid):
         datasets should use the same data scope name across assets, since checklists and templates use data scope names
         to reference datasets.
         """
-        offset_duration = None
-        if offset:
-            seconds, nanos = divmod(offset.total_seconds(), 1)
-            offset_duration = scout_run_api.Duration(nanos=int(nanos * 1e9), seconds=int(seconds))
-
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
-                    series_tags={},
-                    offset=offset_duration,
+                    series_tags={**series_tags} if series_tags else {},
+                    offset=None if offset is None else _to_api_duration(offset),
                 )
             ],
         )
@@ -416,18 +412,13 @@ class Asset(HasRid):
         type of connection should use the same data scope name across assets, since checklists and templates use data
         scope names to reference connections.
         """
-        offset_duration = None
-        if offset:
-            seconds, nanos = divmod(offset.total_seconds(), 1)
-            offset_duration = scout_run_api.Duration(nanos=int(nanos * 1e9), seconds=int(seconds))
-
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
                     series_tags={**series_tags} if series_tags else {},
-                    offset=offset_duration,
+                    offset=None if offset is None else _to_api_duration(offset),
                 )
             ]
         )
