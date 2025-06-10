@@ -86,20 +86,30 @@ class Asset(HasRid):
         # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
         return f"https://app.gov.nominal.io/assets/{self.rid}"
 
-    def add_dataset(self, data_scope_name: str, dataset: Dataset | str) -> None:
+    def add_dataset(
+        self,
+        data_scope_name: str,
+        dataset: Dataset | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+    ) -> None:
         """Add a dataset to this asset.
 
         Assets map "data_scope_name" (their name within the asset) to a Dataset (or dataset rid). The same type of
         datasets should use the same data scope name across assets, since checklists and templates use data scope names
         to reference datasets.
+
+        Args:
+            data_scope_name: logical name for the data scope within the asset
+            dataset: dataset to add to the asset
+            series_tags: Key-value tags to pre-filter the dataset with before adding to the asset.
         """
-        # TODO(alkasm): support series tags & offset
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
-                    series_tags={},
+                    series_tags={**series_tags} if series_tags else {},
                 )
             ],
         )
@@ -123,12 +133,16 @@ class Asset(HasRid):
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this asset.
 
         Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
         """
-        # TODO(alkasm): support series tags & offset
+        # TODO(alkasm): support series tags
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
@@ -382,22 +396,29 @@ class Asset(HasRid):
         self._remove_data_sources(data_scope_names=names, data_sources=scopes)
 
     def add_connection(
-        self, data_scope_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
+        self,
+        data_scope_name: str,
+        connection: Connection | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
     ) -> None:
         """Add a connection to this asset.
 
         Data_scope_name maps "data scope name" (the name within the asset) to a Connection (or connection rid). The same
         type of connection should use the same data scope name across assets, since checklists and templates use data
         scope names to reference connections.
+
+        Args:
+            data_scope_name: logical name for the data scope within the asset
+            connection: connection to add to the asset
+            series_tags: Key-value tags to pre-filter the connection with before adding to the asset.
         """
-        # TODO(alkasm): support series tags & offset
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                    series_tags=series_tags or {},
-                    offset=None,
+                    series_tags={**series_tags} if series_tags else {},
                 )
             ]
         )
