@@ -228,10 +228,6 @@ class Asset(HasRid):
         """
         return self._list_logsets()
 
-    @deprecated(
-        "LogSets are deprecated and will be removed in a future version. "
-        "Add logs to an existing dataset with dataset.write_logs instead."
-    )
     def _list_logsets(self) -> Sequence[tuple[str, LogSet]]:
         scope_rid = self._scope_rid(stype="logset")
         return [
