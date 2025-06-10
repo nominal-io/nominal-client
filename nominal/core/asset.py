@@ -21,7 +21,7 @@ from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
-from nominal.ts import _to_api_duration, IntegralNanosecondsDuration
+from nominal.ts import IntegralNanosecondsDuration, _to_api_duration
 
 ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
 
