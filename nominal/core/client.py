@@ -14,6 +14,7 @@ from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
     attachments_api,
+    authentication_api,
     datasource_logset_api,
     event,
     ingest_api,
@@ -58,7 +59,7 @@ from nominal.core.log import Log, LogSet, _get_log_set, _log_timestamp_type_to_c
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitMapping, _available_units, _build_unit_update
-from nominal.core.user import User, _get_user
+from nominal.core.user import User
 from nominal.core.video import Video, _build_video_file_timestamp_manifest
 from nominal.core.workbook import Workbook
 from nominal.core.workspace import Workspace
@@ -180,9 +181,41 @@ class NominalClient:
         out += ">"
         return out
 
-    def get_user(self) -> User:
-        """Retrieve the user associated with this client."""
-        return _get_user(self._clients.auth_header, self._clients.authentication)
+    def get_user(self, user_rid: str | None = None) -> User:
+        """Retrieve the specified user.
+
+        Args:
+            user_rid: Rid of the user to retrieve
+
+        Returns:
+            Details on the requested user, or the current user if no user rid is provided.
+        """
+        if user_rid is None:
+            raw_user = self._clients.authentication.get_my_profile(self._clients.auth_header)
+        else:
+            raw_user = self._clients.authentication.get_user(self._clients.auth_header, user_rid)
+
+        return User._from_conjure(raw_user)
+
+    def _iter_search_users(self, query: authentication_api.SearchUsersQuery) -> Iterable[User]:
+        for raw_user in _conjure_utils.search_users_paginated(
+            self._clients.authentication, self._clients.auth_header, query
+        ):
+            yield User._from_conjure(raw_user)
+
+    def search_users(self, exact_match: str | None = None, search_text: str | None = None) -> Sequence[User]:
+        """Search for users meeting the specified filters.
+        Filters are ANDed together, e.g., if exact_match and search_text are both provided, then both must match.
+
+        Args:
+            exact_match: Searches for an exact substring across display name and email
+            search_text: Searches for a (case-insensitive) substring across display name and email
+
+        Returns:
+            All users which match all of the provided conditions
+        """
+        query = _conjure_utils.create_search_users_query(exact_match, search_text)
+        return list(self._iter_search_users(query))
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
         """Get workspace via given RID, or the default workspace if no RID is provided.

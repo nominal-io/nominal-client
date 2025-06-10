@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from nominal_api import authentication_api
+from typing_extensions import Self
 
 from nominal.core._utils import HasRid
 
@@ -13,6 +14,10 @@ class User(HasRid):
     display_name: str
     email: str
 
+    @classmethod
+    def _from_conjure(cls, raw_user: authentication_api.UserV2) -> Self:
+        return cls(rid=raw_user.rid, display_name=raw_user.display_name, email=raw_user.email)
+
 
 def _get_user(
     auth_header: str,
@@ -20,7 +25,7 @@ def _get_user(
 ) -> User:
     """Retrieve the user with the set auth token"""
     response = client.get_my_profile(auth_header)
-    return User(rid=response.rid, display_name=response.display_name, email=response.email)
+    return User._from_conjure(response)
 
 
 def _get_user_rid_from_email(

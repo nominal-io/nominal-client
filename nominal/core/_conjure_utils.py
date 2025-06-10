@@ -5,6 +5,7 @@ from typing import Iterable, Mapping, Protocol, Sequence, TypeVar
 
 from nominal_api import (
     api,
+    authentication_api,
     event,
     scout,
     scout_asset_api,
@@ -53,6 +54,19 @@ def create_search_secrets_query(
             queries.append(secrets_api.SearchSecretsQuery(property=api.Property(name=name, value=value)))
 
     return secrets_api.SearchSecretsQuery(and_=queries)
+
+
+def create_search_users_query(
+    exact_match: str | None = None,
+    search_text: str | None = None,
+) -> authentication_api.SearchUsersQuery:
+    queries = []
+    if exact_match is not None:
+        queries.append(authentication_api.SearchUsersQuery(exact_match=exact_match))
+    if search_text is not None:
+        queries.append(authentication_api.SearchUsersQuery(search_text=search_text))
+
+    return authentication_api.SearchUsersQuery(and_=queries)
 
 
 def create_search_assets_query(
@@ -283,6 +297,22 @@ def search_secrets_paginated(
         )
 
     for response in _paginate(factory, secrets.search, auth_header):
+        yield from response.results
+
+
+def search_users_paginated(
+    authentication: authentication_api.AuthenticationServiceV2,
+    auth_header: str,
+    query: authentication_api.SearchUsersQuery,
+) -> Iterable[authentication_api.UserV2]:
+    def factory(page_token: str | None) -> authentication_api.SearchUsersRequest:
+        return authentication_api.SearchUsersRequest(
+            page_size=DEFAULT_PAGE_SIZE,
+            query=query,
+            sort_by=authentication_api.SortBy(field=authentication_api.SortByField.EMAIL, is_descending=False),
+        )
+
+    for response in _paginate(factory, authentication.search_users_v2, auth_header):
         yield from response.results
 
 
