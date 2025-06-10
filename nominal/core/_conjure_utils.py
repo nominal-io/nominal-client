@@ -112,6 +112,7 @@ def create_search_events_query(
     assets: Iterable[str] | None = None,
     labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
+    created_by: str | None = None,
 ) -> event.SearchQuery:
     queries = []
     if search_text is not None:
@@ -129,6 +130,8 @@ def create_search_events_query(
     if properties:
         for name, value in properties.items():
             queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
+    if created_by:
+        queries.append(event.SearchQuery(created_by=created_by))
 
     return event.SearchQuery(and_=queries)
 

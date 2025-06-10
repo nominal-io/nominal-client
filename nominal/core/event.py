@@ -25,6 +25,9 @@ class Event:
     properties: Mapping[str, str]
     type: EventType
 
+    # NOTE: may be missing for legacy events
+    created_by: str | None
+
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
@@ -86,6 +89,7 @@ class Event:
             duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
             type=EventType.from_api_event_type(event.type),
             properties=event.properties,
+            created_by=event.created_by,
             _clients=clients,
         )
 

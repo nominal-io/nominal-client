@@ -1503,6 +1503,7 @@ class NominalClient:
         assets: Iterable[Asset | str] | None = None,
         labels: Iterable[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        created_by: User | str | None = None,
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
         Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
@@ -1525,5 +1526,6 @@ class NominalClient:
             assets=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
             labels=labels,
             properties=properties,
+            created_by=None if created_by is None else rid_from_instance_or_string(created_by),
         )
         return list(self._iter_search_events(query))
