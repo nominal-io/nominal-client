@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import timedelta
 from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
 
@@ -21,7 +20,6 @@ from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
-from nominal.ts import IntegralNanosecondsDuration, _to_api_duration
 
 ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
 
@@ -94,7 +92,6 @@ class Asset(HasRid):
         dataset: Dataset | str,
         *,
         series_tags: Mapping[str, str] | None = None,
-        offset: timedelta | IntegralNanosecondsDuration | None = None,
     ) -> None:
         """Add a dataset to this asset.
 
@@ -108,7 +105,6 @@ class Asset(HasRid):
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
                     series_tags={**series_tags} if series_tags else {},
-                    offset=None if offset is None else _to_api_duration(offset),
                 )
             ],
         )
@@ -141,7 +137,7 @@ class Asset(HasRid):
 
         Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
         """
-        # TODO(alkasm): support series tags & offset
+        # TODO(alkasm): support series tags
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
@@ -400,7 +396,6 @@ class Asset(HasRid):
         connection: Connection | str,
         *,
         series_tags: Mapping[str, str] | None = None,
-        offset: timedelta | IntegralNanosecondsDuration | None = None,
     ) -> None:
         """Add a connection to this asset.
 
@@ -414,7 +409,6 @@ class Asset(HasRid):
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
                     series_tags={**series_tags} if series_tags else {},
-                    offset=None if offset is None else _to_api_duration(offset),
                 )
             ]
         )
