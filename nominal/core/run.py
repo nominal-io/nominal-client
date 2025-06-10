@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, cast
+from typing import ClassVar, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
     scout,
@@ -26,6 +26,15 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 @dataclass(frozen=True)
 class Run(HasRid, _DataSourceContainer):
+    class _Clients(
+        Asset._Clients,
+        _DataSourceContainer._Clients,
+        HasScoutParams,
+        Protocol,
+    ):
+        @property
+        def run(self) -> scout.RunService: ...
+
     rid: str
     name: str
     description: str
@@ -37,15 +46,6 @@ class Run(HasRid, _DataSourceContainer):
     assets: Sequence[str]
 
     _clients: _Clients = field(repr=False)
-
-    class _Clients(
-        Asset._Clients,
-        _DataSourceContainer._Clients,
-        HasScoutParams,
-        Protocol,
-    ):
-        @property
-        def run(self) -> scout.RunService: ...
 
     @property
     def nominal_url(self) -> str:
