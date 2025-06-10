@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
 
@@ -86,20 +87,32 @@ class Asset(HasRid):
         # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
         return f"https://app.gov.nominal.io/assets/{self.rid}"
 
-    def add_dataset(self, data_scope_name: str, dataset: Dataset | str) -> None:
+    def add_dataset(
+        self,
+        data_scope_name: str,
+        dataset: Dataset | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | None = None,
+    ) -> None:
         """Add a dataset to this asset.
 
         Assets map "data_scope_name" (their name within the asset) to a Dataset (or dataset rid). The same type of
         datasets should use the same data scope name across assets, since checklists and templates use data scope names
         to reference datasets.
         """
-        # TODO(alkasm): support series tags & offset
+        offset_duration = None
+        if offset:
+            seconds, nanos = divmod(offset.total_seconds(), 1)
+            offset_duration = scout_run_api.Duration(nanos=int(nanos * 1e9), seconds=int(seconds))
+
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
                     series_tags={},
+                    offset=offset_duration,
                 )
             ],
         )
@@ -123,6 +136,10 @@ class Asset(HasRid):
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this asset.
 
@@ -215,6 +232,10 @@ class Asset(HasRid):
         """
         return self._list_logsets()
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def _list_logsets(self) -> Sequence[tuple[str, LogSet]]:
         scope_rid = self._scope_rid(stype="logset")
         return [
@@ -382,7 +403,12 @@ class Asset(HasRid):
         self._remove_data_sources(data_scope_names=names, data_sources=scopes)
 
     def add_connection(
-        self, data_scope_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
+        self,
+        data_scope_name: str,
+        connection: Connection | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | None = None,
     ) -> None:
         """Add a connection to this asset.
 
@@ -390,14 +416,18 @@ class Asset(HasRid):
         type of connection should use the same data scope name across assets, since checklists and templates use data
         scope names to reference connections.
         """
-        # TODO(alkasm): support series tags & offset
+        offset_duration = None
+        if offset:
+            seconds, nanos = divmod(offset.total_seconds(), 1)
+            offset_duration = scout_run_api.Duration(nanos=int(nanos * 1e9), seconds=int(seconds))
+
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                    series_tags=series_tags or {},
-                    offset=None,
+                    series_tags={**series_tags} if series_tags else {},
+                    offset=offset_duration,
                 )
             ]
         )
