@@ -1515,6 +1515,7 @@ class NominalClient:
             assets: List of assets that must ALL be present on an event to be included.
             labels: A list of labels that must ALL be present on an event to be included.
             properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+            created_by: A User (or rid) of the auther that must be present on an event to be included.
 
         Returns:
             All events which match all of the provided conditions

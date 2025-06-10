@@ -26,7 +26,7 @@ class Event:
     type: EventType
 
     # NOTE: may be missing for legacy events
-    created_by: str | None
+    created_by_rid: str | None = field(repr=False)
 
     _clients: _Clients = field(repr=False)
 
@@ -89,7 +89,7 @@ class Event:
             duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
             type=EventType.from_api_event_type(event.type),
             properties=event.properties,
-            created_by=event.created_by,
+            created_by_rid=event.created_by,
             _clients=clients,
         )
 
