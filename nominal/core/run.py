@@ -132,6 +132,12 @@ class Run(HasRid):
 
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
+
+        Args:
+            ref_name: Logical name for the data scope within the run
+            dataset: Dataset to add to the run
+            series_tags: Key-value tags to pre-filter the dataset with before adding to the run.
+            offset: Add the dataset to the run with a pre-baked offset
         """
         self.add_datasets({ref_name: dataset}, series_tags=series_tags, offset=offset)
 
@@ -146,6 +152,11 @@ class Run(HasRid):
 
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
+
+        Args:
+            datasets: Mapping of logical names to datasets to add to the run
+            series_tags: Key-value tags to pre-filter the datasets with before adding to the run.
+            offset: Add the datasets to the run with a pre-baked offset
         """
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
@@ -335,6 +346,12 @@ class Run(HasRid):
         Ref_name maps "ref name" (the name within the run) to a Connection (or connection rid). The same type of
         connection should use the same ref name across runs, since checklists and templates use ref names to reference
         connections.
+
+        Args:
+            ref_name: Logical name for the connection to add to the run
+            connection: Connection to add to the run
+            series_tags: Key-value tags to pre-filter the connection with before adding to the run.
+            offset: Add the connection to the run with a pre-baked offset
         """
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(

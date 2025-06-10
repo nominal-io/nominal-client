@@ -98,6 +98,11 @@ class Asset(HasRid):
         Assets map "data_scope_name" (their name within the asset) to a Dataset (or dataset rid). The same type of
         datasets should use the same data scope name across assets, since checklists and templates use data scope names
         to reference datasets.
+
+        Args:
+            data_scope_name: logical name for the data scope within the asset
+            dataset: dataset to add to the asset
+            series_tags: Key-value tags to pre-filter the dataset with before adding to the asset.
         """
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
@@ -402,6 +407,11 @@ class Asset(HasRid):
         Data_scope_name maps "data scope name" (the name within the asset) to a Connection (or connection rid). The same
         type of connection should use the same data scope name across assets, since checklists and templates use data
         scope names to reference connections.
+
+        Args:
+            data_scope_name: logical name for the data scope within the asset
+            connection: connection to add to the asset
+            series_tags: Key-value tags to pre-filter the connection with before adding to the asset.
         """
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
