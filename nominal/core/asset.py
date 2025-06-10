@@ -21,7 +21,7 @@ from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
-from nominal.ts import _to_api_duration
+from nominal.ts import _to_api_duration, IntegralNanosecondsDuration
 
 ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
 
@@ -94,7 +94,7 @@ class Asset(HasRid):
         dataset: Dataset | str,
         *,
         series_tags: Mapping[str, str] | None = None,
-        offset: timedelta | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
     ) -> None:
         """Add a dataset to this asset.
 
@@ -404,7 +404,7 @@ class Asset(HasRid):
         connection: Connection | str,
         *,
         series_tags: Mapping[str, str] | None = None,
-        offset: timedelta | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
     ) -> None:
         """Add a connection to this asset.
 

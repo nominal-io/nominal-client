@@ -20,7 +20,7 @@ from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
 @dataclass(frozen=True)
@@ -126,7 +126,7 @@ class Run(HasRid):
         dataset: Dataset | str,
         *,
         series_tags: Mapping[str, str] | None = None,
-        offset: timedelta | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
     ) -> None:
         """Add a dataset to this run.
 
@@ -140,7 +140,7 @@ class Run(HasRid):
         datasets: Mapping[str, Dataset | str],
         *,
         series_tags: Mapping[str, str] | None = None,
-        offset: timedelta | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
     ) -> None:
         """Add multiple datasets to this run.
 
@@ -328,7 +328,7 @@ class Run(HasRid):
         connection: Connection | str,
         *,
         series_tags: Mapping[str, str] | None = None,
-        offset: timedelta | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
     ) -> None:
         """Add a connection to this run.
 
