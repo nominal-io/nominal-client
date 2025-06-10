@@ -207,7 +207,7 @@ def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
-def _to_pandas_unit(unit: ts._LiteralTimeUnit):
+def _to_pandas_unit(unit: ts._LiteralTimeUnit) -> str:
     return {
         "nanoseconds": "ns",
         "microseconds": "us",
@@ -219,6 +219,24 @@ def _to_pandas_unit(unit: ts._LiteralTimeUnit):
 
 
 _EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
+
+
+def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
+    filtered_channel_names = set([ch.name for ch in channels])
+
+    # Handle channel names that will be renamed during export
+    renamed_timestamp_col = _EXPORTED_TIMESTAMP_COL_NAME
+    if _EXPORTED_TIMESTAMP_COL_NAME in filtered_channel_names:
+        idx = 1
+        while True:
+            other_col_name = f"timestamp.{idx}"
+            if other_col_name not in filtered_channel_names:
+                renamed_timestamp_col = other_col_name
+                break
+            else:
+                idx += 1
+
+    return renamed_timestamp_col
 
 
 def datasource_to_dataframe(
@@ -303,19 +321,7 @@ def datasource_to_dataframe(
         return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
 
     # Warn about renamed channels
-    filtered_channel_names = set([ch.name for ch in channels])
-
-    # Handle channel names that will be renamed during export
-    renamed_timestamp_col = _EXPORTED_TIMESTAMP_COL_NAME
-    if _EXPORTED_TIMESTAMP_COL_NAME in filtered_channel_names:
-        idx = 1
-        while True:
-            other_col_name = f"timestamp.{idx}"
-            if other_col_name not in filtered_channel_names:
-                renamed_timestamp_col = other_col_name
-                break
-            else:
-                idx += 1
+    renamed_timestamp_col = _get_renamed_timestamp_column(list(channels))
 
     def _export_channel_batch(channel_batch: tuple[Channel, ...]) -> pd.DataFrame:
         export_request = _construct_export_request(
@@ -340,7 +346,9 @@ def datasource_to_dataframe(
                 channel_names,
                 datasource.rid,
             )
-            return pd.DataFrame({col: [] for col in channel_names + [_EXPORTED_TIMESTAMP_COL_NAME]}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
+            return pd.DataFrame({col: [] for col in channel_names + [_EXPORTED_TIMESTAMP_COL_NAME]}).set_index(
+                _EXPORTED_TIMESTAMP_COL_NAME
+            )
         else:
             if relative_to is None:
                 batch_df[renamed_timestamp_col] = pd.to_datetime(batch_df[renamed_timestamp_col], format="ISO8601")
