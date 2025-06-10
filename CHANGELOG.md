@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.60.0](https://github.com/nominal-io/nominal-client/compare/v1.59.0...v1.60.0) (2025-06-10)
+
+
+### Features
+
+* allow adding datasources to runs and assets with tags and offsets ([#383](https://github.com/nominal-io/nominal-client/issues/383)) ([e1349e1](https://github.com/nominal-io/nominal-client/commit/e1349e1a921a44e38d6d580f370b5a3d79bb234d))
+* allow users to upload tdms files to an existing dataset ([#374](https://github.com/nominal-io/nominal-client/issues/374)) ([85961c0](https://github.com/nominal-io/nominal-client/commit/85961c0472087748ee15540beeefac68f1dd6a13))
+
+
+### Bug Fixes
+
+* remove h5 dep ([4469947](https://github.com/nominal-io/nominal-client/commit/4469947add564b22dd8f3abee5b2bd882c91ae1e))
+* remove hdf5 dependency group ([#380](https://github.com/nominal-io/nominal-client/issues/380)) ([4469947](https://github.com/nominal-io/nominal-client/commit/4469947add564b22dd8f3abee5b2bd882c91ae1e))
+
+
+### Documentation
+
+* add experimental modules to API reference ([#338](https://github.com/nominal-io/nominal-client/issues/338)) ([b4b280d](https://github.com/nominal-io/nominal-client/commit/b4b280d9ea48956122c1dc68309ee61a755c30b9))
+
 ## [1.59.0](https://github.com/nominal-io/nominal-client/compare/v1.58.0...v1.59.0) (2025-06-06)
 
 
