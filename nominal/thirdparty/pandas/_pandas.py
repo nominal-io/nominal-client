@@ -207,7 +207,36 @@ def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
+def _to_pandas_unit(unit: ts._LiteralTimeUnit) -> str:
+    return {
+        "nanoseconds": "ns",
+        "microseconds": "us",
+        "milliseconds": "ms",
+        "seconds": "s",
+        "minutes": "m",
+        "hours": "h",
+    }[unit]
+
+
 _EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
+
+
+def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
+    filtered_channel_names = set([ch.name for ch in channels])
+
+    # Handle channel names that will be renamed during export
+    renamed_timestamp_col = _EXPORTED_TIMESTAMP_COL_NAME
+    if _EXPORTED_TIMESTAMP_COL_NAME in filtered_channel_names:
+        idx = 1
+        while True:
+            other_col_name = f"timestamp.{idx}"
+            if other_col_name not in filtered_channel_names:
+                renamed_timestamp_col = other_col_name
+                break
+            else:
+                idx += 1
+
+    return renamed_timestamp_col
 
 
 def datasource_to_dataframe(
@@ -292,19 +321,7 @@ def datasource_to_dataframe(
         return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
 
     # Warn about renamed channels
-    filtered_channel_names = set([ch.name for ch in channels])
-
-    # Handle channel names that will be renamed during export
-    renamed_timestamp_col = None
-    if _EXPORTED_TIMESTAMP_COL_NAME in filtered_channel_names:
-        idx = 1
-        while True:
-            other_col_name = f"timestamp.{idx}"
-            if other_col_name not in filtered_channel_names:
-                renamed_timestamp_col = other_col_name
-                break
-            else:
-                idx += 1
+    renamed_timestamp_col = _get_renamed_timestamp_column(list(channels))
 
     def _export_channel_batch(channel_batch: tuple[Channel, ...]) -> pd.DataFrame:
         export_request = _construct_export_request(
@@ -323,14 +340,20 @@ def datasource_to_dataframe(
         )
         batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
         if batch_df.empty:
+            channel_names = [ch.name for ch in channel_batch]
             logger.warning(
-                "No data found for export from datasource %s for channels %s",
+                "No data found for export for channels %s from datasource %s",
+                channel_names,
                 datasource.rid,
-                [ch.name for ch in channel_batch],
             )
-            return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
+            return pd.DataFrame({col: [] for col in channel_names + [_EXPORTED_TIMESTAMP_COL_NAME]}).set_index(
+                _EXPORTED_TIMESTAMP_COL_NAME
+            )
         else:
-            return batch_df.set_index(_EXPORTED_TIMESTAMP_COL_NAME)
+            if relative_to is None:
+                batch_df[renamed_timestamp_col] = pd.to_datetime(batch_df[renamed_timestamp_col], format="ISO8601")
+
+            return batch_df.set_index(renamed_timestamp_col)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
         df_futures = {
@@ -356,10 +379,17 @@ def datasource_to_dataframe(
 
     if not all_dataframes:
         logger.warning(f"No data found for export from datasource {datasource.rid}")
-        return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
+        all_column_names = [_EXPORTED_TIMESTAMP_COL_NAME] + [ch.name for ch in channels]
+        return pd.DataFrame({col: [] for col in all_column_names}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
 
-    result_df = pd.concat(all_dataframes, axis=1, join="outer", sort=True)
+    try:
+        result_df = pd.concat(all_dataframes, axis=1, join="outer", sort=True)
+    except Exception as ex:
+        raise RuntimeError(
+            "Failed to join dataframe chunks-- ensure you have properly specified the tags for your datascope"
+        ) from ex
+
     if renamed_timestamp_col is not None:
-        result_df.rename(columns={renamed_timestamp_col: _EXPORTED_TIMESTAMP_COL_NAME}, inplace=True)
+        result_df.index = result_df.index.rename(_EXPORTED_TIMESTAMP_COL_NAME)
 
     return result_df
