@@ -76,7 +76,7 @@ ResolutionSpecifier: TypeAlias = Literal[
     "2160p",
 ]
 
-AnyResolutionType: TypeAlias = ResolutionSpecifier | VideoResolution
+AnyResolutionType: TypeAlias = "ResolutionSpecifier | VideoResolution"
 
 
 def _resolution_from_specifier(specifier: ResolutionSpecifier) -> VideoResolution:
