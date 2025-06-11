@@ -31,7 +31,7 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import _config
-from nominal.config import NominalConfig
+from nominal.config import DEFAULT_NOMINAL_CONFIG_PATH, NominalConfig
 from nominal.core import _conjure_utils
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
@@ -90,6 +90,7 @@ class NominalClient:
         *,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
+        config_path: Path = DEFAULT_NOMINAL_CONFIG_PATH,
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
@@ -98,8 +99,9 @@ class NominalClient:
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
+            config_path: Path to the config containing authentication profiles
         """
-        config = NominalConfig.from_yaml()
+        config = NominalConfig.from_yaml(path=config_path)
         prof = config.get_profile(profile)
         client = cls.from_token(
             prof.token,
