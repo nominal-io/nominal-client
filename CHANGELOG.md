@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.61.0](https://github.com/nominal-io/nominal-client/compare/v1.60.0...v1.61.0) (2025-06-11)
+
+
+### Features
+
+* allow rescaling videos when normalizing, stop normalizing audio ([#388](https://github.com/nominal-io/nominal-client/issues/388)) ([8051b2a](https://github.com/nominal-io/nominal-client/commit/8051b2aa8314646c705b14bd9c7c56f842788238))
+* expose searching users ([#384](https://github.com/nominal-io/nominal-client/issues/384)) ([a745a12](https://github.com/nominal-io/nominal-client/commit/a745a123aa31a146fbb571e2437ecd15b2371074))
+* standardize TypeAlias on Union over string ([82730a8](https://github.com/nominal-io/nominal-client/commit/82730a8844b0cd47a41725cfac80879aeec32118))
+
+
+### Bug Fixes
+
+* standardize TypeAlias on Union over string ([#389](https://github.com/nominal-io/nominal-client/issues/389)) ([82730a8](https://github.com/nominal-io/nominal-client/commit/82730a8844b0cd47a41725cfac80879aeec32118))
+* timestamps being returned as strings, and with wrong column header ([#386](https://github.com/nominal-io/nominal-client/issues/386)) ([3a3a91b](https://github.com/nominal-io/nominal-client/commit/3a3a91b033ea3307f244c3dfbcc301d437587d31))
+
 ## [1.60.0](https://github.com/nominal-io/nominal-client/compare/v1.59.0...v1.60.0) (2025-06-10)
 
 
