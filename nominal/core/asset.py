@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, Union, cast
 
 from nominal_api import (
     scout_asset_api,
@@ -21,7 +21,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
-ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
+ScopeType: TypeAlias = Union[Connection, Dataset, LogSet, Video]
 
 
 @dataclass(frozen=True)
