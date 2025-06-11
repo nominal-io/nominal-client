@@ -59,7 +59,7 @@ class VideoResolution:
 
         # Set scale to desired resolution, and set the Sample Aspect Ratio (SAR) to be 1:1,
         # meaning that each pixel of the video presents as a square when viewing in a video player
-        return f"scale={width_str}:{height_str},setsar=1:1"
+        return f"scale={width_str}:{height_str},setsar=1/1"
 
 
 STANDARD_DEFINITION = VideoResolution(resolution_height=480, resolution_width=640)
