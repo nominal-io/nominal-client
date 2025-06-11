@@ -69,7 +69,6 @@ def normalize_video(
     # to allow for seamless play of this video content alongside content with audio tracks.
     # While the backend will do this for you automatically, it dramatically faster to do it here
     # than in the backend since we are already re-encoding video.
-    input_kwargs: dict[str, str | None] = {}
     output_kwargs: dict[str, str | None] = dict(
         acodec=DEFAULT_AUDIO_CODEC,
         vcodec=DEFAULT_VIDEO_CODEC,
@@ -89,7 +88,7 @@ def normalize_video(
         output_kwargs["vf"] = scale_factor_from_resolution(resolution)
 
     # Run ffmpeg in subprocess
-    video_in = ffmpeg.input(str(input_path), **input_kwargs)
+    video_in = ffmpeg.input(str(input_path))
     video_out = video_in.output(str(output_path), **output_kwargs)
     logger.info(f"Running command: '{shlex.join(video_out.compile())}'")
     video_out.run()

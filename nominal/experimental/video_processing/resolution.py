@@ -40,7 +40,7 @@ class VideoResolution:
     def scale_factor(self) -> str:
         """Output a video filter flag usable with Ffmpeg to rescale the resolution of a video."""
         # If the user has not provided a width, auto-compute a width that keeps the existing
-        # ascpect ratio while also ensuring that the width is divisible by 2 (required for h264)
+        # aspect ratio while also ensuring that the width is divisible by 2 (required for h264)
         width_str = "-2"
         if self.resolution_width is not None:
             if self.allow_upscaling:
@@ -49,7 +49,7 @@ class VideoResolution:
                 width_str = f"'min({self.resolution_width}, iw)'"
 
         # If the user has not provided a height, auto-compute a height that keeps the existing
-        # ascpect ratio while also ensuring that the height is divisible by 2 (required for h264)
+        # aspect ratio while also ensuring that the height is divisible by 2 (required for h264)
         height_str = "-2"
         if self.resolution_height is not None:
             if self.allow_upscaling:
@@ -65,8 +65,8 @@ class VideoResolution:
 STANDARD_DEFINITION = VideoResolution(resolution_height=480, resolution_width=640)
 HIGH_DEFINITION = VideoResolution(resolution_height=720, resolution_width=1280)
 FULL_HD = VideoResolution(resolution_height=1080, resolution_width=1920)
-QUAD_HD = VideoResolution(resolution_width=1440, resolution_height=2560)
-ULTRA_HD = VideoResolution(resolution_width=2160, resolution_height=3840)
+QUAD_HD = VideoResolution(resolution_height=1440, resolution_width=2560)
+ULTRA_HD = VideoResolution(resolution_height=2160, resolution_width=3840)
 
 ResolutionSpecifier: TypeAlias = Literal[
     "480p",
@@ -76,7 +76,7 @@ ResolutionSpecifier: TypeAlias = Literal[
     "2160p",
 ]
 
-AnyResolutionType: TypeAlias = "ResolutionSpecifier | VideoResolution"
+AnyResolutionType: TypeAlias = ResolutionSpecifier | VideoResolution
 
 
 def _resolution_from_specifier(specifier: ResolutionSpecifier) -> VideoResolution:
