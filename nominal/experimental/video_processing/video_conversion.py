@@ -6,6 +6,11 @@ import shlex
 
 import ffmpeg
 
+from nominal.experimental.video_processing.resolution import (
+    AnyResolutionType,
+    scale_factor_from_resolution,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_VIDEO_CODEC = "h264"
@@ -19,13 +24,13 @@ def normalize_video(
     output_path: pathlib.Path,
     key_frame_interval: int | None = DEFAULT_KEY_FRAME_INTERVAL_SEC,
     force: bool = True,
+    resolution: AnyResolutionType | None = None,
 ) -> None:
     """Convert video file to an h264 encoded video file using ffmpeg.
 
     This function will also perform several other processing tasks to ensure that video is
     properly encoded in a way that is best supported by nominal.
     This includes:
-        * Adding an empty audio track if no audio track is present in the video
         * Ensuring that there are key-frames (I-frames) present approximately every 2s of video content
         * Video is encoded with H264
         * Audio is encoded with AAC
@@ -46,6 +51,7 @@ def normalize_video(
                   can impact performance negatively-- typically, a value at or around 2s is considered
                   "best of both worlds" as a reasonable default value.
         force: If true, forcibly delete existing output path if already exists.
+        resolution: If provided, re-scale the video to the provided resolution
 
     NOTE: this requires that you have installed ffmpeg on your system with support for H264.
     """
@@ -78,11 +84,9 @@ def normalize_video(
     else:
         output_kwargs["force_key_frames"] = f"expr:gte(t,n_forced*{key_frame_interval})"
 
-    # If the video does not have an audio track, add an empty track by default
-    if not has_audio_track(input_path):
-        input_kwargs["f"] = "lavfi"
-        input_kwargs["i"] = "anullsrc=channel_layout=stereo:sample_rate=44100"
-        output_kwargs["shortest"] = None
+    # If user specified an output resolution, add respective video filters
+    if resolution is not None:
+        output_kwargs["vf"] = scale_factor_from_resolution(resolution)
 
     # Run ffmpeg in subprocess
     video_in = ffmpeg.input(str(input_path), **input_kwargs)
