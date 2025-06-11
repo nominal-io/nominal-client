@@ -69,7 +69,7 @@ def normalize_video(
     # to allow for seamless play of this video content alongside content with audio tracks.
     # While the backend will do this for you automatically, it dramatically faster to do it here
     # than in the backend since we are already re-encoding video.
-    input_kwargs = {}
+    input_kwargs: dict[str, str | None] = {}
     output_kwargs: dict[str, str | None] = dict(
         acodec=DEFAULT_AUDIO_CODEC,
         vcodec=DEFAULT_VIDEO_CODEC,

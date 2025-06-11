@@ -21,7 +21,7 @@ class VideoResolution:
     allow_upscaling: bool = False
     """If true, allow upscaling beyond original resolution (e.g. 1080p -> 4k)"""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate that provided resolution is valid"""
         if self.resolution_height is not None:
             if self.resolution_height <= 0 or self.resolution_height % 2 != 0:
