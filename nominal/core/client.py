@@ -1513,9 +1513,17 @@ class NominalClient:
         created_by: User | str | None = None,
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
-                Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
+        Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            assets: List of assets that must ALL be present on an event to be included.
+            labels: A list of labels that must ALL be present on an event to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+            created_by: A User (or rid) of the author that must be present on an event to be included.
         Returns:
-                    All events which match all of the provided conditions
+            All events which match all of the provided conditions
         """
         query = _conjure_utils.create_search_events_query(
             search_text=search_text,
