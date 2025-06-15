@@ -88,7 +88,7 @@ class FileExtractionInput:
 class TagDetails:
     """Details about docker image tags to register for a custom extractor."""
 
-    # All available tags of a docker image to use for a custom extractor
+    # All Docker image tags that may be used with the custom extractor
     tags: Sequence[str]
 
     # Default docker image tag to use with the custom extractor
