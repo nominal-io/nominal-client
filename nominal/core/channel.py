@@ -21,7 +21,7 @@ from typing_extensions import Self
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import update_dataclass
 from nominal.core.unit import UnitLike, _build_unit_update
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos, _time_unit_to_conjure
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -191,6 +191,7 @@ class Channel:
                 channel=scout_compute_api.StringConstant(literal=self.name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
                 tags={},
+                tags_to_group_by=[],
             )
         )
 
@@ -217,12 +218,16 @@ class Channel:
         self,
         start: api.Timestamp,
         end: api.Timestamp,
+        relative_to: datetime | IntegralNanosecondsUTC | None = None,
+        relative_resolution: _LiteralTimeUnit = "nanoseconds",
     ) -> BinaryIO:
         """Get the channel data as a CSV file-like object.
 
         Args:
             start: Start timestamp
             end: End timestamp
+            relative_to: If provided, timestamps are returned relative to the given timestamp
+            relative_resolution: If timestamps are returned in relative time, the resolution to use.
 
         Returns:
             A binary file-like object containing the CSV data
@@ -232,6 +237,7 @@ class Channel:
                 channel=scout_compute_api.StringConstant(literal=self.name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
                 tags={},
+                tags_to_group_by=[],
             )
         )
         series = _create_series_from_channel(channel_series, self.data_type)
@@ -249,9 +255,7 @@ class Channel:
                         # only one series will be returned, so no need to merge
                         none=scout_dataexport_api.NoneStrategy(),
                     ),
-                    output_timestamp_format=scout_dataexport_api.TimestampFormat(
-                        iso8601=scout_dataexport_api.Iso8601TimestampFormat()
-                    ),
+                    output_timestamp_format=_create_timestamp_format(relative_to, relative_resolution),
                 )
             ),
             start_time=start,
@@ -302,7 +306,7 @@ def _get_series_values_csv(
         context=scout_compute_api.Context(
             function_variables={},
             variables={
-                name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid))
+                name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid, tags_to_group_by=[]))
                 for rid, name in rid_to_name.items()
             },
         ),
@@ -338,3 +342,18 @@ def _create_series_from_channel(
         return scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
     else:
         raise ValueError(f"Unsupported channel data type: {data_type}")
+
+
+def _create_timestamp_format(
+    relative_to: datetime | IntegralNanosecondsUTC | None = None,
+    relative_resolution: _LiteralTimeUnit = "nanoseconds",
+) -> scout_dataexport_api.TimestampFormat:
+    if relative_to is None:
+        return scout_dataexport_api.TimestampFormat(iso8601=scout_dataexport_api.Iso8601TimestampFormat())
+    else:
+        return scout_dataexport_api.TimestampFormat(
+            relative=scout_dataexport_api.RelativeTimestampFormat(
+                relative_to=_SecondsNanos.from_flexible(relative_to).to_api(),
+                time_unit=_time_unit_to_conjure(relative_resolution),
+            )
+        )

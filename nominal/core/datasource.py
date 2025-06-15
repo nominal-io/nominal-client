@@ -27,11 +27,11 @@ from nominal._utils import warn_on_deprecated_argument
 from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._utils import HasRid, batched
-from nominal.core.channel import Channel, ChannelDataType
+from nominal.core.channel import Channel, ChannelDataType, _create_timestamp_format
 from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.core.write_stream_base import WriteStreamBase
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -266,6 +266,9 @@ def _construct_export_request(
     start: api.Timestamp,
     end: api.Timestamp,
     tags: dict[str, str] | None,
+    enable_gzip: bool,
+    relative_to: datetime | IntegralNanosecondsUTC | None = None,
+    relative_resolution: _LiteralTimeUnit = "nanoseconds",
 ) -> scout_dataexport_api.ExportDataRequest:
     export_channels = []
 
@@ -285,6 +288,7 @@ def _construct_export_request(
                                     channel=scout_compute_api.StringConstant(literal=channel.name),
                                     data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
                                     tags=converted_tags,
+                                    tags_to_group_by=[],
                                 )
                             )
                         )
@@ -302,6 +306,7 @@ def _construct_export_request(
                                     channel=scout_compute_api.StringConstant(literal=channel.name),
                                     data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
                                     tags=converted_tags,
+                                    tags_to_group_by=[],
                                 )
                             )
                         )
@@ -317,9 +322,7 @@ def _construct_export_request(
                     # only one series will be returned, so no need to merge
                     none=scout_dataexport_api.NoneStrategy(),
                 ),
-                output_timestamp_format=scout_dataexport_api.TimestampFormat(
-                    iso8601=scout_dataexport_api.Iso8601TimestampFormat()
-                ),
+                output_timestamp_format=_create_timestamp_format(relative_to, relative_resolution),
             )
         ),
         start_time=start,
@@ -332,6 +335,7 @@ def _construct_export_request(
         resolution=scout_dataexport_api.ResolutionOption(
             undecimated=scout_dataexport_api.UndecimatedResolution(),
         ),
+        compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
     )
     return request
 

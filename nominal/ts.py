@@ -198,7 +198,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, Union, get_args
 
@@ -222,12 +222,17 @@ __all__ = [
     "EPOCH_DAYS",
     "TypedTimestampType",
     "IntegralNanosecondsUTC",
+    "IntegralNanosecondsDuration",
     "LogTimestampType",
 ]
 
 IntegralNanosecondsUTC: TypeAlias = int
 """Alias for an `int` used in the code for documentation purposes.
 This value is a timestamp in nanoseconds since the Unix epoch, UTC."""
+
+IntegralNanosecondsDuration: TypeAlias = int
+"""Alias for an `int` used in the code for documentation purposes.
+This value is a duration measured in nanoseconds."""
 
 LogTimestampType: TypeAlias = Literal["absolute", "relative"]
 
@@ -489,3 +494,11 @@ _MAX_TIMESTAMP = _SecondsNanos(seconds=9223372036, nanos=854775807)
 The maximum valid timestamp that can be represented in the APIs: 2262-04-11 19:47:16.854775807.
 The backend converts to long nanoseconds, and the maximum long (int64) value is 9,223,372,036,854,775,807.
 """
+
+
+def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout_run_api.Duration:
+    if isinstance(duration, timedelta):
+        return scout_run_api.Duration(seconds=int(duration.total_seconds()), nanos=duration.microseconds * 1000)
+    else:
+        seconds, nanos = divmod(duration, 1_000_000_000)
+        return scout_run_api.Duration(seconds=seconds, nanos=nanos)

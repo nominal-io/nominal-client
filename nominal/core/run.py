@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, cast
 
@@ -12,7 +12,7 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._conjure_utils import Link, _build_links
+from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -20,7 +20,7 @@ from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
 @dataclass(frozen=True)
@@ -120,26 +120,49 @@ class Run(HasRid):
         """
         return list(self._iter_list_log_sets())
 
-    def add_dataset(self, ref_name: str, dataset: Dataset | str) -> None:
+    def add_dataset(
+        self,
+        ref_name: str,
+        dataset: Dataset | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
+    ) -> None:
         """Add a dataset to this run.
 
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
-        """
-        self.add_datasets({ref_name: dataset})
 
-    def add_datasets(self, datasets: Mapping[str, Dataset | str]) -> None:
+        Args:
+            ref_name: Logical name for the data scope within the run
+            dataset: Dataset to add to the run
+            series_tags: Key-value tags to pre-filter the dataset with before adding to the run.
+            offset: Add the dataset to the run with a pre-baked offset
+        """
+        self.add_datasets({ref_name: dataset}, series_tags=series_tags, offset=offset)
+
+    def add_datasets(
+        self,
+        datasets: Mapping[str, Dataset | str],
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
+    ) -> None:
         """Add multiple datasets to this run.
 
         Datasets map "ref names" (their name within the run) to a Dataset (or dataset rid). The same type of datasets
         should use the same ref name across runs, since checklists and templates use ref names to reference datasets.
+
+        Args:
+            datasets: Mapping of logical names to datasets to add to the run
+            series_tags: Key-value tags to pre-filter the datasets with before adding to the run.
+            offset: Add the datasets to the run with a pre-baked offset
         """
-        # TODO(alkasm): support series tags & offset
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
-                series_tags={},
-                offset=None,
+                series_tags={**series_tags} if series_tags else {},
+                offset=None if offset is None else _to_api_duration(offset),
             )
             for ref_name, dataset in datasets.items()
         }
@@ -266,7 +289,7 @@ class Run(HasRid):
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
             assets=[],
-            links=_build_links(links),
+            links=None if links is None else create_links(links),
         )
         response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         run = self.__class__._from_conjure(self._clients, response)
@@ -311,20 +334,30 @@ class Run(HasRid):
         update_dataclass(self, run, fields=self.__dataclass_fields__)
 
     def add_connection(
-        self, ref_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
+        self,
+        ref_name: str,
+        connection: Connection | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+        offset: timedelta | IntegralNanosecondsDuration | None = None,
     ) -> None:
         """Add a connection to this run.
 
         Ref_name maps "ref name" (the name within the run) to a Connection (or connection rid). The same type of
         connection should use the same ref name across runs, since checklists and templates use ref names to reference
         connections.
+
+        Args:
+            ref_name: Logical name for the connection to add to the run
+            connection: Connection to add to the run
+            series_tags: Key-value tags to pre-filter the connection with before adding to the run.
+            offset: Add the connection to the run with a pre-baked offset
         """
-        # TODO(alkasm): support series tags & offset
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                series_tags=series_tags or {},
-                offset=None,
+                series_tags={**series_tags} if series_tags else {},
+                offset=None if offset is None else _to_api_duration(offset),
             )
         }
         self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)

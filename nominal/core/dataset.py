@@ -43,12 +43,12 @@ class Dataset(DataSource):
     @property
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
-        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
+        # TODO (drake): move logic into _from_conjure() factory function to accommodate different URL schemes
         return f"https://app.gov.nominal.io/data-sources/{self.rid}"
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
-        """Block until dataset ingestion has completed.
-        This method polls Nominal for ingest status after uploading a dataset on an interval.
+        """Block until dataset file ingestion has completed.
+        This method polls Nominal for ingest status after uploading a file to a dataset on an interval.
 
         Raises:
         ------
@@ -123,17 +123,31 @@ class Dataset(DataSource):
         "`Dataset.add_csv_to_dataset` is deprecated and will be removed in a future version. "
         "Use `Dataset.add_tabular_data` instead."
     )
-    def add_csv_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
+    def add_csv_to_dataset(
+        self,
+        path: Path | str,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
         """Append to a dataset from a csv on-disk."""
-        self.add_tabular_data(path, timestamp_column, timestamp_type)
+        self.add_tabular_data(path, timestamp_column, timestamp_type, tag_columns=tag_columns, tags=tags)
 
     @deprecated(
         "`Dataset.add_data_to_dataset` is deprecated and will be removed in a future version. "
         "Use `Dataset.add_tabular_data` instead."
     )
-    def add_data_to_dataset(self, path: Path | str, timestamp_column: str, timestamp_type: _AnyTimestampType) -> None:
+    def add_data_to_dataset(
+        self,
+        path: Path | str,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
         """Append to a dataset from a tabular data file on-disk."""
-        self.add_tabular_data(path, timestamp_column, timestamp_type)
+        self.add_tabular_data(path, timestamp_column, timestamp_type, tag_columns=tag_columns, tags=tags)
 
     def add_tabular_data(
         self,
@@ -141,6 +155,7 @@ class Dataset(DataSource):
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> None:
         """Append to a dataset from tabular data on-disk.
 
@@ -156,6 +171,7 @@ class Dataset(DataSource):
                       to set the timestamps for all other uploaded data channels.
             timestamp_type: Type of timestamp data contained within the `timestamp_column` e.g. 'epoch_seconds'.
             tag_columns: a dictionary mapping tag keys to column names.
+            tags: key-value pairs to apply as tags to all data uniformly in the file
         """
         path = Path(path)
         file_type = FileType.from_tabular(path)
@@ -167,6 +183,7 @@ class Dataset(DataSource):
                 file_type,
                 file_name=path_upload_name(path, file_type),
                 tag_columns=tag_columns,
+                tags=tags,
             )
 
     # Backward compatibility
@@ -180,15 +197,18 @@ class Dataset(DataSource):
         file_type: tuple[str, str] | FileType = FileTypes.CSV,
         file_name: str | None = None,
         tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> None:
         """Append to a dataset from a file-like object.
 
-        dataset: a file-like object containing the data to append to the dataset.
-        timestamp_column: the column in the dataset that contains the timestamp data.
-        timestamp_type: the type of timestamp data in the dataset.
-        file_type: a (extension, mimetype) pair describing the type of file.
-        file_name: the name of the file to upload.
-        tag_columns: a dictionary mapping tag keys to column names.
+        Args:
+            dataset: a file-like object containing the data to append to the dataset.
+            timestamp_column: the column in the dataset that contains the timestamp data.
+            timestamp_type: the type of timestamp data in the dataset.
+            file_type: a (extension, mimetype) pair describing the type of file.
+            file_name: the name of the file to upload.
+            tag_columns: a dictionary mapping tag keys to column names.
+            tags: key-value pairs to apply as tags to all data uniformly in the file
         """
         if isinstance(dataset, TextIOBase):
             raise TypeError(f"dataset {dataset!r} must be open in binary mode, rather than text mode")
@@ -214,6 +234,7 @@ class Dataset(DataSource):
                 file_type=file_type,
                 tag_columns=tag_columns,
                 s3_path=s3_path,
+                tags=tags,
             )
         )
         self._clients.ingest.ingest(self._clients.auth_header, request)
@@ -519,6 +540,29 @@ def _get_dataset(
     return datasets[0]
 
 
+def _create_dataset(
+    auth_header: str,
+    client: scout_catalog.CatalogService,
+    name: str,
+    *,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    workspace_rid: str | None = None,
+) -> scout_catalog.EnrichedDataset:
+    request = scout_catalog.CreateDataset(
+        name=name,
+        description=description,
+        labels=list(labels),
+        properties={} if properties is None else dict(properties),
+        is_v2_dataset=True,
+        metadata={},
+        origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        workspace=workspace_rid,
+    )
+    return client.create_dataset(auth_header, request)
+
+
 def _create_dataflash_ingest_request(s3_path: str, target: ingest_api.DatasetIngestTarget) -> ingest_api.IngestRequest:
     return ingest_api.IngestRequest(
         ingest_api.IngestOptions(
@@ -579,6 +623,7 @@ def _construct_new_ingest_options(
     tag_columns: Mapping[str, str] | None,
     s3_path: str,
     workspace_rid: str | None,
+    tags: Mapping[str, str] | None,
 ) -> ingest_api.IngestOptions:
     source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
     target = ingest_api.DatasetIngestTarget(
@@ -606,10 +651,11 @@ def _construct_new_ingest_options(
                 channel_prefix=channel_prefix,
                 tag_columns=tag_columns,
                 is_archive=file_type.is_parquet_archive(),
+                additional_file_tags={**tags} if tags else None,
             )
         )
     else:
-        if file_type.is_csv():
+        if not file_type.is_csv():
             logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
 
         return ingest_api.IngestOptions(
@@ -619,6 +665,7 @@ def _construct_new_ingest_options(
                 timestamp_metadata=timestamp_metadata,
                 channel_prefix=channel_prefix,
                 tag_columns=tag_columns,
+                additional_file_tags={**tags} if tags else None,
             )
         )
 
@@ -630,6 +677,7 @@ def _construct_existing_ingest_options(
     file_type: FileType,
     tag_columns: Mapping[str, str] | None,
     s3_path: str,
+    tags: Mapping[str, str] | None,
 ) -> ingest_api.IngestOptions:
     source = ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
     target = ingest_api.DatasetIngestTarget(
@@ -649,10 +697,11 @@ def _construct_existing_ingest_options(
                 timestamp_metadata=timestamp_metadata,
                 tag_columns=tag_columns,
                 is_archive=file_type.is_parquet_archive(),
+                additional_file_tags={**tags} if tags else None,
             )
         )
     else:
-        if file_type.is_csv():
+        if not file_type.is_csv():
             logger.warning("Expected filetype %s to be parquet or csv for creating a dataset from io", file_type)
 
         return ingest_api.IngestOptions(
@@ -661,5 +710,6 @@ def _construct_existing_ingest_options(
                 target=target,
                 timestamp_metadata=timestamp_metadata,
                 tag_columns=tag_columns,
+                additional_file_tags={**tags} if tags else None,
             )
         )

@@ -1,6 +1,0 @@
-[run]
-omit =
-    tests/*
-    *__init__*
-    nominal/__main__.py
-    

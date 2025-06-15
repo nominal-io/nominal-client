@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from functools import partial
 from typing import Protocol
 
-from conjure_python_client import RequestsClient, Service, ServiceConfiguration
+from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
     datasource_logset,
+    event,
     ingest_api,
     scout,
     scout_assets,
@@ -32,6 +32,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal.core._networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -136,6 +137,7 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
+    event: event.EventService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
@@ -143,7 +145,7 @@ class ClientsBunch:
 
     @classmethod
     def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str | None) -> Self:
-        client_factory = partial(RequestsClient.create, user_agent=agent, service_config=cfg)
+        client_factory = create_conjure_client_factory(user_agent=agent, service_config=cfg)
 
         return cls(
             auth_header=f"Bearer {token}",
@@ -172,6 +174,7 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
+            event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),

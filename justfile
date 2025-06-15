@@ -70,4 +70,4 @@ clean:
 
 # build docs
 build-docs:
-    uv run mkdocs build
+    uv run mkdocs build --config-file docs/mkdocs.yml

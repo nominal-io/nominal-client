@@ -17,6 +17,12 @@ _EMTPY_MAP: Mapping[str, str] = MappingProxyType({})
 
 @dataclass(frozen=True)
 class LogPoint:
+    """LogPoint is a single, timestamped log entry.
+
+    LogPoints are added to a Dataset using `Dataset.write_logs`.
+
+    """
+
     timestamp: IntegralNanosecondsUTC
     message: str
     args: Mapping[str, str]
@@ -130,6 +136,14 @@ class Log:
         return cls(timestamp=_SecondsNanos.from_api(log.time).to_nanoseconds(), body=log.body.basic.message)
 
 
+def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:
+    if log_timestamp_type == "absolute":
+        return datasource.TimestampType.ABSOLUTE
+    elif log_timestamp_type == "relative":
+        return datasource.TimestampType.RELATIVE
+    raise ValueError(f"timestamp type {log_timestamp_type} must be 'relative' or 'absolute'")
+
+
 def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampType) -> LogTimestampType:
     if log_timestamp_type == datasource.TimestampType.ABSOLUTE:
         return "absolute"
@@ -140,3 +154,14 @@ def _log_timestamp_type_from_conjure(log_timestamp_type: datasource.TimestampTyp
 
 def _get_log_set(clients: LogSet._Clients, log_set_rid: str) -> datasource_logset_api.LogSetMetadata:
     return clients.logset.get_log_set_metadata(clients.auth_header, log_set_rid)
+
+
+def _logs_to_conjure(
+    logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
+) -> Iterable[datasource_logset_api.Log]:
+    for log in logs:
+        if isinstance(log, Log):
+            yield log._to_conjure()
+        elif isinstance(log, tuple):
+            ts, body = log
+            yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()

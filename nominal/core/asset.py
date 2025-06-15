@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, cast
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, Union, cast
 
 from nominal_api import (
     scout_asset_api,
@@ -12,16 +12,16 @@ from nominal_api import (
 from typing_extensions import Self, TypeAlias, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._conjure_utils import Link, _build_links
+from nominal.core._conjure_utils import Link, create_links
 from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
-ScopeType: TypeAlias = "Connection | Dataset | LogSet | Video"
+ScopeType: TypeAlias = Union[Connection, Dataset, LogSet, Video]
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class Asset(HasRid):
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(properties),
             title=name,
-            links=_build_links(links),
+            links=None if links is None else create_links(links),
         )
         response = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
         asset = self.__class__._from_conjure(self._clients, response)
@@ -86,20 +86,30 @@ class Asset(HasRid):
         # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
         return f"https://app.gov.nominal.io/assets/{self.rid}"
 
-    def add_dataset(self, data_scope_name: str, dataset: Dataset | str) -> None:
+    def add_dataset(
+        self,
+        data_scope_name: str,
+        dataset: Dataset | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+    ) -> None:
         """Add a dataset to this asset.
 
         Assets map "data_scope_name" (their name within the asset) to a Dataset (or dataset rid). The same type of
         datasets should use the same data scope name across assets, since checklists and templates use data scope names
         to reference datasets.
+
+        Args:
+            data_scope_name: logical name for the data scope within the asset
+            dataset: dataset to add to the asset
+            series_tags: Key-value tags to pre-filter the dataset with before adding to the asset.
         """
-        # TODO(alkasm): support series tags & offset
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
-                    series_tags={},
+                    series_tags={**series_tags} if series_tags else {},
                 )
             ],
         )
@@ -123,12 +133,16 @@ class Asset(HasRid):
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
+    @deprecated(
+        "LogSets are deprecated and will be removed in a future version. "
+        "Add logs to an existing dataset with dataset.write_logs instead."
+    )
     def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
         """Add a log set to this asset.
 
         Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
         """
-        # TODO(alkasm): support series tags & offset
+        # TODO(alkasm): support series tags
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
@@ -228,6 +242,32 @@ class Asset(HasRid):
         a dataset, connection, video, or logset.
         """
         return (*self.list_datasets(), *self.list_connections(), *self._list_logsets(), *self.list_videos())
+
+    def get_or_create_dataset(
+        self,
+        data_scope_name: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
+        try:
+            return self.get_dataset(data_scope_name)
+        except ValueError:
+            enriched_dataset = _create_dataset(
+                self._clients.auth_header,
+                self._clients.catalog,
+                name or data_scope_name,
+                description=description,
+                properties=properties,
+                labels=labels,
+                workspace_rid=self._clients.workspace_rid,
+            )
+            dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+            self.add_dataset(data_scope_name, dataset)
+            return dataset
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""
@@ -356,22 +396,29 @@ class Asset(HasRid):
         self._remove_data_sources(data_scope_names=names, data_sources=scopes)
 
     def add_connection(
-        self, data_scope_name: str, connection: Connection | str, *, series_tags: dict[str, str] | None = None
+        self,
+        data_scope_name: str,
+        connection: Connection | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
     ) -> None:
         """Add a connection to this asset.
 
         Data_scope_name maps "data scope name" (the name within the asset) to a Connection (or connection rid). The same
         type of connection should use the same data scope name across assets, since checklists and templates use data
         scope names to reference connections.
+
+        Args:
+            data_scope_name: logical name for the data scope within the asset
+            connection: connection to add to the asset
+            series_tags: Key-value tags to pre-filter the connection with before adding to the asset.
         """
-        # TODO(alkasm): support series tags & offset
         request = scout_asset_api.AddDataScopesToAssetRequest(
             data_scopes=[
                 scout_asset_api.CreateAssetDataScope(
                     data_scope_name=data_scope_name,
                     data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
-                    series_tags=series_tags or {},
-                    offset=None,
+                    series_tags={**series_tags} if series_tags else {},
                 )
             ]
         )

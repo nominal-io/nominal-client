@@ -140,7 +140,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+docs/site
 
 # mypy
 .mypy_cache/
@@ -166,3 +166,7 @@ cython_debug/
 playground/
 
 .vscode
+
+# Backup files
+*~
+\#*

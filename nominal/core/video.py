@@ -117,7 +117,7 @@ class Video(HasRid):
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
-    def add_file_to_video(
+    def add_file(
         self,
         path: pathlib.Path | str,
         start: datetime | IntegralNanosecondsUTC | None = None,
@@ -141,7 +141,7 @@ class Video(HasRid):
         file_type = FileType.from_video(path)
 
         with path.open("rb") as video_file:
-            return self.add_to_video_from_io(
+            return self.add_from_io(
                 video_file,
                 name=path_upload_name(path, file_type),
                 start=start,
@@ -150,7 +150,9 @@ class Video(HasRid):
                 file_type=file_type,
             )
 
-    def add_to_video_from_io(
+    add_file_to_video = add_file
+
+    def add_from_io(
         self,
         video: BinaryIO,
         name: str,
@@ -207,7 +209,9 @@ class Video(HasRid):
             self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
         )
 
-    def add_mcap_to_video(
+    add_to_video_from_io = add_from_io
+
+    def add_mcap(
         self,
         path: pathlib.Path,
         topic: str,
@@ -225,10 +229,12 @@ class Video(HasRid):
             Reference to the created video file.
         """
         path = pathlib.Path(path)
-        file_type = FileType.from_video(path)
+        file_type = FileType.from_path(path)
+        if file_type != FileTypes.MCAP:
+            raise ValueError(f"mcap path '{path}' must end in `{FileTypes.MCAP.extension}`")
 
         with path.open("rb") as video_file:
-            return self.add_mcap_to_video_from_io(
+            return self.add_mcap_from_io(
                 video_file,
                 name=path_upload_name(path, file_type),
                 topic=topic,
@@ -236,7 +242,9 @@ class Video(HasRid):
                 file_type=file_type,
             )
 
-    def add_mcap_to_video_from_io(
+    add_mcap_to_video = add_mcap
+
+    def add_mcap_from_io(
         self,
         mcap: BinaryIO,
         name: str,
@@ -292,6 +300,8 @@ class Video(HasRid):
             self._clients,
             self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
         )
+
+    add_mcap_to_video_from_io = add_mcap_from_io
 
     def list_files(self) -> Sequence[VideoFile]:
         """List all video files associated with the video."""

@@ -14,6 +14,7 @@ from nominal.core.containerized_extractors import (
 )
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
+from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogPoint, LogSet
 from nominal.core.run import Run
@@ -55,4 +56,7 @@ __all__ = [
     "Workbook",
     "Workspace",
     "WriteStream",
+    "Event",
+    "EventType",
+    "poll_until_ingestion_completed",
 ]

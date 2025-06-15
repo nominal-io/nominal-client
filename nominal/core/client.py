@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence
@@ -14,14 +14,12 @@ from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
     attachments_api,
-    datasource,
+    authentication_api,
     datasource_logset_api,
+    event,
     ingest_api,
     scout_asset_api,
-    scout_catalog,
-    scout_checklistexecution_api,
     scout_checks_api,
-    scout_datareview_api,
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
@@ -33,6 +31,8 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import _config
+from nominal.config import NominalConfig
+from nominal.core import _conjure_utils
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
@@ -54,36 +54,101 @@ from nominal.core.dataset import (
     _build_channel_config,
     _construct_new_ingest_options,
     _create_dataflash_ingest_request,
+    _create_dataset,
     _create_mcap_channels,
     _create_mcap_ingest_request,
     _get_dataset,
     _get_datasets,
 )
+from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.log import Log, LogSet, _get_log_set
+from nominal.core.log import Log, LogSet, _get_log_set, _log_timestamp_type_to_conjure, _logs_to_conjure
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitMapping, _available_units, _build_unit_update
-from nominal.core.user import User, _get_user
+from nominal.core.user import User
 from nominal.core.video import Video, _build_video_file_timestamp_manifest
 from nominal.core.workbook import Workbook
 from nominal.core.workspace import Workspace
 from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
+    IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
     LogTimestampType,
     _AnyTimestampType,
     _SecondsNanos,
+    _to_api_duration,
 )
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PAGE_SIZE = 100
+DEFAULT_CONNECT_TIMEOUT = timedelta(seconds=30)
 
 
 @dataclass(frozen=True)
 class NominalClient:
     _clients: ClientsBunch = field(repr=False)
+    _profile: str | None = None
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile: str,
+        *,
+        trust_store_path: str | None = None,
+        connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
+    ) -> Self:
+        """Create a connection to the Nominal platform from a named profile in the Nominal config.
+
+        Args:
+            profile: profile name in the Nominal config.
+            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
+                certifi's trust store is used.
+            connect_timeout: Request connection timeout.
+        """
+        config = NominalConfig.from_yaml()
+        prof = config.get_profile(profile)
+        client = cls.from_token(
+            prof.token,
+            prof.base_url,
+            workspace_rid=prof.workspace_rid,
+            trust_store_path=trust_store_path,
+            connect_timeout=connect_timeout,
+            _profile=profile,
+        )
+        return client
+
+    @classmethod
+    def from_token(
+        cls,
+        token: str,
+        base_url: str = "https://api.gov.nominal.io/api",
+        *,
+        workspace_rid: str | None = None,
+        trust_store_path: str | None = None,
+        connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
+        _profile: str | None = None,
+    ) -> Self:
+        """Create a connection to the Nominal platform from a token.
+
+        Args:
+            token: Authentication token to use for the connection.
+            base_url: The URL of the Nominal API platform.
+            workspace_rid: The workspace RID to use for all API calls that require it. If not provided, the default
+                workspace will be used (if one is configured for the tenant).
+            trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
+                certifi's trust store is used.
+            connect_timeout: Request connection timeout.
+        """
+        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
+        timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
+        cfg = ServiceConfiguration(
+            uris=[base_url],
+            security=SslConfiguration(trust_store_path=trust_store_path),
+            connect_timeout=timeout_seconds,
+        )
+        agent = construct_user_agent_string()
+        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid), _profile=_profile)
 
     @classmethod
     def create(
@@ -91,14 +156,14 @@ class NominalClient:
         base_url: str,
         token: str | None,
         trust_store_path: str | None = None,
-        connect_timeout: float = 30,
+        connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         *,
         workspace_rid: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
         base_url: The URL of the Nominal API platform, e.g. "https://api.gov.nominal.io/api".
-        token: An API token to authenticate with. By default, the token will be looked up in ~/.nominal.yml.
+        token: An API token to authenticate with. If None, the token will be looked up in ~/.nominal.yml.
         trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
             certifi's trust store is used.
         connect_timeout: Timeout for any single request to the Nominal API.
@@ -107,18 +172,57 @@ class NominalClient:
         """
         if token is None:
             token = _config.get_token(base_url)
-        trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
-        cfg = ServiceConfiguration(
-            uris=[base_url],
-            security=SslConfiguration(trust_store_path=trust_store_path),
+        return cls.from_token(
+            token,
+            base_url,
+            trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
+            workspace_rid=workspace_rid,
         )
-        agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid))
 
-    def get_user(self) -> User:
-        """Retrieve the user associated with this client."""
-        return _get_user(self._clients.auth_header, self._clients.authentication)
+    def __repr__(self) -> str:
+        """Repr for the class that shows profile name, if available"""
+        out = "<NominalClient"
+        if self._profile:
+            out += f' profile="{self._profile}"'
+        out += ">"
+        return out
+
+    def get_user(self, user_rid: str | None = None) -> User:
+        """Retrieve the specified user.
+
+        Args:
+            user_rid: Rid of the user to retrieve
+
+        Returns:
+            Details on the requested user, or the current user if no user rid is provided.
+        """
+        if user_rid is None:
+            raw_user = self._clients.authentication.get_my_profile(self._clients.auth_header)
+        else:
+            raw_user = self._clients.authentication.get_user(self._clients.auth_header, user_rid)
+
+        return User._from_conjure(raw_user)
+
+    def _iter_search_users(self, query: authentication_api.SearchUsersQuery) -> Iterable[User]:
+        for raw_user in _conjure_utils.search_users_paginated(
+            self._clients.authentication, self._clients.auth_header, query
+        ):
+            yield User._from_conjure(raw_user)
+
+    def search_users(self, exact_match: str | None = None, search_text: str | None = None) -> Sequence[User]:
+        """Search for users meeting the specified filters.
+        Filters are ANDed together, e.g., if exact_match and search_text are both provided, then both must match.
+
+        Args:
+            exact_match: Searches for an exact substring across display name and email
+            search_text: Searches for a (case-insensitive) substring across display name and email
+
+        Returns:
+            All users which match all of the provided conditions
+        """
+        query = _conjure_utils.create_search_users_query(exact_match, search_text)
+        return list(self._iter_search_users(query))
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
         """Get workspace via given RID, or the default workspace if no RID is provided.
@@ -186,32 +290,9 @@ class NominalClient:
         resp = self._clients.secrets.get(self._clients.auth_header, rid)
         return Secret._from_conjure(self._clients, resp)
 
-    def _iter_search_secrets(
-        self,
-        search_text: str | None = None,
-        labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
-    ) -> Iterable[Secret]:
-        request = secrets_api.SearchSecretsRequest(
-            page_size=DEFAULT_PAGE_SIZE,
-            query=_create_search_secrets_query(search_text, labels, properties),
-            sort=secrets_api.SortOptions(field=secrets_api.SortField.CREATED_AT, is_descending=True),
-            archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
-        )
-        while True:
-            resp = self._clients.secrets.search(self._clients.auth_header, request)
-            for raw_secret in resp.results:
-                yield Secret._from_conjure(self._clients, raw_secret)
-
-            if resp.next_page_token is None:
-                break
-            else:
-                request = secrets_api.SearchSecretsRequest(
-                    page_size=request.page_size,
-                    query=request.query,
-                    sort=request.sort,
-                    token=resp.next_page_token,
-                )
+    def _iter_search_secrets(self, query: secrets_api.SearchSecretsQuery) -> Iterable[Secret]:
+        for secret in _conjure_utils.search_secrets_paginated(self._clients.secrets, self._clients.auth_header, query):
+            yield Secret._from_conjure(self._clients, secret)
 
     def search_secrets(
         self,
@@ -230,7 +311,8 @@ class NominalClient:
         Returns:
             All secrets which match all of the provided conditions
         """
-        return list(self._iter_search_secrets(search_text=search_text, labels=labels, properties=properties))
+        query = _conjure_utils.create_search_secrets_query(search_text, labels, properties)
+        return list(self._iter_search_secrets(query))
 
     def create_run(
         self,
@@ -267,19 +349,6 @@ class NominalClient:
         response = self._clients.run.get_run(self._clients.auth_header, rid)
         return Run._from_conjure(self._clients, response)
 
-    def _search_runs_paginated(self, request: scout_run_api.SearchRunsRequest) -> Iterable[scout_run_api.Run]:
-        while True:
-            response = self._clients.run.search_runs(self._clients.auth_header, request)
-            yield from response.results
-            if response.next_page_token is None:
-                break
-            request = scout_run_api.SearchRunsRequest(
-                page_size=request.page_size,
-                query=request.query,
-                sort=request.sort,
-                next_page_token=response.next_page_token,
-            )
-
     def _iter_search_runs(
         self,
         start: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -288,15 +357,8 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Run]:
-        request = scout_run_api.SearchRunsRequest(
-            page_size=DEFAULT_PAGE_SIZE,
-            query=_create_search_runs_query(start, end, name_substring, labels, properties),
-            sort=scout_run_api.SortOptions(
-                field=scout_run_api.SortField.START_TIME,
-                is_descending=True,
-            ),
-        )
-        for run in self._search_runs_paginated(request):
+        query = _conjure_utils.create_search_runs_query(start, end, name_substring, labels, properties)
+        for run in _conjure_utils.search_runs_paginated(self._clients.run, self._clients.auth_header, query):
             yield Run._from_conjure(self._clients, run)
 
     def search_runs(
@@ -344,18 +406,16 @@ class NominalClient:
         Returns:
             Reference to the created dataset in Nominal.
         """
-        request = scout_catalog.CreateDataset(
-            name=name,
+        response = _create_dataset(
+            self._clients.auth_header,
+            self._clients.catalog,
+            name,
             description=description,
-            labels=[*labels],
-            properties={} if properties is None else {**properties},
-            is_v2_dataset=True,
-            metadata={},
-            origin_metadata=scout_catalog.DatasetOriginMetadata(),
-            workspace=self._clients.workspace_rid,
+            labels=labels,
+            properties=properties,
+            workspace_rid=self._clients.workspace_rid,
         )
-        enriched_dataset = self._clients.catalog.create_dataset(self._clients.auth_header, request)
-        dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+        dataset = Dataset._from_conjure(self._clients, response)
 
         if prefix_tree_delimiter:
             dataset.set_channel_prefix_tree(prefix_tree_delimiter)
@@ -378,6 +438,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
         channel_prefix: str | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a CSV file.
 
@@ -395,6 +456,7 @@ class NominalClient:
             properties=properties,
             prefix_tree_delimiter=prefix_tree_delimiter,
             channel_prefix=channel_prefix,
+            tags=tags,
         )
 
     @deprecated(
@@ -457,6 +519,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
         channel_prefix: str | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a table-like file.
 
@@ -486,6 +549,7 @@ class NominalClient:
                 properties=properties,
                 prefix_tree_delimiter=prefix_tree_delimiter,
                 channel_prefix=channel_prefix,
+                tags=tags,
             )
 
     @deprecated(
@@ -562,6 +626,7 @@ class NominalClient:
         channel_prefix: str | None = None,
         file_name: str | None = None,
         tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> Dataset:
         """Create a dataset from a file-like object.
         The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -587,6 +652,7 @@ class NominalClient:
             channel_prefix: Prefix to apply to newly created channels
             file_name: Name of the file (without extension) to create when uploading.
             tag_columns: a dictionary mapping tag keys to column names.
+            tags: a dictionary of key-value tags to apply to all data within the file
 
         Returns:
             Reference to the constructed dataset object.
@@ -618,6 +684,7 @@ class NominalClient:
                 tag_columns=tag_columns,
                 s3_path=s3_path,
                 workspace_rid=self._clients.workspace_rid,
+                tags=tags,
             )
         )
         response = self._clients.ingest.ingest(self._clients.auth_header, request)
@@ -759,6 +826,7 @@ class NominalClient:
             labels=list(labels),
             properties={} if properties is None else {**properties},
             description=description,
+            workspace=self._clients.workspace_rid,
         )
         raw_video = self._clients.video.create(self._clients.auth_header, request)
         return Video._from_conjure(self._clients, raw_video)
@@ -951,25 +1019,15 @@ class NominalClient:
         """Retrieve datasets by their RIDs."""
         return list(self._iter_get_datasets(rids))
 
-    def _search_datasets(self) -> Iterable[Dataset]:
-        # TODO(alkasm): search filters
-        # TODO(alkasm): put in public API when we decide if we only expose search, or search + list.
-        request = scout_catalog.SearchDatasetsRequest(
-            query=scout_catalog.SearchDatasetsQuery(
-                or_=[
-                    scout_catalog.SearchDatasetsQuery(archive_status=False),
-                    scout_catalog.SearchDatasetsQuery(archive_status=True),
-                ]
-            ),
-            sort_options=scout_catalog.SortOptions(field=scout_catalog.SortField.INGEST_DATE, is_descending=True),
-        )
-        response = self._clients.catalog.search_datasets(self._clients.auth_header, request)
-        for ds in response.results:
-            yield Dataset._from_conjure(self._clients, ds)
-
     def get_checklist(self, rid: str) -> Checklist:
         response = self._clients.checklist.get(self._clients.auth_header, rid)
         return Checklist._from_conjure(self._clients, response)
+
+    def _iter_search_checklists(self, query: scout_checks_api.ChecklistSearchQuery) -> Iterable[Checklist]:
+        for checklist in _conjure_utils.search_checklists_paginated(
+            self._clients.checklist, self._clients.auth_header, query
+        ):
+            yield Checklist._from_conjure(self._clients, checklist)
 
     def search_checklists(
         self,
@@ -988,25 +1046,30 @@ class NominalClient:
         Returns:
             All checklists which match all of the provided conditions
         """
-        page_token = None
-        query = _create_search_checklists_query(search_text, labels, properties)
-        archived_statuses = [api.ArchivedStatus.NOT_ARCHIVED]
+        query = _conjure_utils.create_search_checklists_query(search_text, labels, properties)
+        return list(self._iter_search_checklists(query))
 
-        raw_checklists = []
-        while True:
-            request = scout_checks_api.SearchChecklistsRequest(
-                query=query,
-                archived_statuses=archived_statuses,
-                next_page_token=page_token,
-                page_size=DEFAULT_PAGE_SIZE,
+    def create_attachment(
+        self,
+        attachment_file: Path | str,
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+    ) -> Attachment:
+        attachment_path = Path(attachment_file)
+        if not attachment_path.exists():
+            raise FileNotFoundError(f"No such attachment path: {attachment_path}")
+
+        with attachment_path.open("rb") as f:
+            return self.create_attachment_from_io(
+                f,
+                attachment_path.name,
+                FileTypes.BINARY,
+                description=description,
+                properties=properties,
+                labels=labels,
             )
-            response = self._clients.checklist.search(self._clients.auth_header, request)
-            raw_checklists.extend(response.values)
-            page_token = response.next_page_token
-            if not page_token:
-                break
-
-        return [Checklist._from_conjure(self._clients, checklist) for checklist in raw_checklists]
 
     def create_attachment_from_io(
         self,
@@ -1022,7 +1085,6 @@ class NominalClient:
         The attachment must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         If the file is not in binary-mode, the requests library blocks indefinitely.
         """
-        # TODO(alkasm): create attachment from file/path
         if isinstance(attachment, TextIOBase):
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
 
@@ -1230,10 +1292,6 @@ class NominalClient:
             raise NominalIngestError("error ingesting mcap video: no video created")
         return self.get_video(response.details.video.video_rid)
 
-    @deprecated(
-        "`NominalClient.create_streaming_connection` is deprecated and will be removed in a future version. "
-        "Instead, create a dataset with `create_dataset` and use `Dataset.get_write_stream` to stream data."
-    )
     def create_streaming_connection(
         self,
         datasource_id: str,
@@ -1288,26 +1346,23 @@ class NominalClient:
         is_draft: bool = False,
     ) -> Workbook:
         template = self._clients.template.get(self._clients.auth_header, template_rid)
-
-        notebook = self._clients.notebook.create(
-            self._clients.auth_header,
-            scout_notebook_api.CreateNotebookRequest(
-                title=title if title is not None else f"Workbook from {template.metadata.title}",
-                description=description or "",
-                notebook_type=None,
-                is_draft=is_draft,
-                state_as_json="{}",
-                charts=None,
-                run_rid=run_rid,
-                data_scope=None,
-                layout=template.layout,
-                content=template.content,
-                content_v2=None,
-                check_alert_refs=[],
-                event_refs=[],
-                workspace=self._clients.workspace_rid,
-            ),
+        request = scout_notebook_api.CreateNotebookRequest(
+            title=title if title is not None else f"Workbook from {template.metadata.title}",
+            description=description or "",
+            notebook_type=None,
+            is_draft=is_draft,
+            state_as_json="{}",
+            charts=None,
+            run_rid=run_rid,
+            data_scope=None,
+            layout=template.layout,
+            content=template.content,
+            content_v2=None,
+            check_alert_refs=[],
+            event_refs=[],
+            workspace=self._clients.workspace_rid,
         )
+        notebook = self._clients.notebook.create(self._clients.auth_header, request)
 
         return Workbook._from_conjure(self._clients, notebook)
 
@@ -1342,34 +1397,8 @@ class NominalClient:
             raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
         return Asset._from_conjure(self._clients, response[rid])
 
-    def _search_assets_paginated(self, request: scout_asset_api.SearchAssetsRequest) -> Iterable[scout_asset_api.Asset]:
-        while True:
-            response = self._clients.assets.search_assets(self._clients.auth_header, request)
-            yield from response.results
-            if response.next_page_token is None:
-                break
-            request = scout_asset_api.SearchAssetsRequest(
-                page_size=request.page_size,
-                query=request.query,
-                sort=request.sort,
-                next_page_token=response.next_page_token,
-            )
-
-    def _iter_search_assets(
-        self,
-        search_text: str | None = None,
-        labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
-    ) -> Iterable[Asset]:
-        request = scout_asset_api.SearchAssetsRequest(
-            page_size=DEFAULT_PAGE_SIZE,
-            query=_create_search_assets_query(search_text, labels, properties),
-            sort=scout_asset_api.AssetSortOptions(
-                field=scout_asset_api.SortField.CREATED_AT,
-                is_descending=True,
-            ),
-        )
-        for asset in self._search_assets_paginated(request):
+    def _iter_search_assets(self, query: scout_asset_api.SearchAssetsQuery) -> Iterable[Asset]:
+        for asset in _conjure_utils.search_assets_paginated(self._clients.assets, self._clients.auth_header, query):
             yield Asset._from_conjure(self._clients, asset)
 
     def search_assets(
@@ -1390,7 +1419,17 @@ class NominalClient:
         Returns:
             All assets which match all of the provided conditions
         """
-        return list(self._iter_search_assets(search_text, labels, properties))
+        query = _conjure_utils.create_search_assets_query(search_text, labels, properties)
+        return list(self._iter_search_assets(query))
+
+    def _iter_list_streaming_checklists(self, asset: str | None) -> Iterable[str]:
+        if asset is None:
+            return _conjure_utils.list_streaming_checklists_paginated(
+                self._clients.checklist_execution, self._clients.auth_header
+            )
+        return _conjure_utils.list_streaming_checklists_for_asset_paginated(
+            self._clients.checklist_execution, self._clients.auth_header, asset
+        )
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
         """List all Streaming Checklists.
@@ -1398,30 +1437,8 @@ class NominalClient:
         Args:
             asset: if provided, only return checklists associated with the given asset.
         """
-        next_page_token = None
-
-        while True:
-            if asset is None:
-                response = self._clients.checklist_execution.list_streaming_checklist(
-                    self._clients.auth_header,
-                    scout_checklistexecution_api.ListStreamingChecklistRequest(
-                        workspaces=[], page_token=next_page_token
-                    ),
-                )
-                yield from response.checklists
-                next_page_token = response.next_page_token
-            else:
-                for_asset_response = self._clients.checklist_execution.list_streaming_checklist_for_asset(
-                    self._clients.auth_header,
-                    scout_checklistexecution_api.ListStreamingChecklistForAssetRequest(
-                        asset_rid=rid_from_instance_or_string(asset), page_token=next_page_token
-                    ),
-                )
-                yield from for_asset_response.checklists
-                next_page_token = for_asset_response.next_page_token
-
-            if next_page_token is None:
-                break
+        asset = None if asset is None else rid_from_instance_or_string(asset)
+        return list(self._iter_list_streaming_checklists(asset))
 
     def data_review_builder(self) -> DataReviewBuilder:
         return DataReviewBuilder([], [], self._clients)
@@ -1430,32 +1447,86 @@ class NominalClient:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
         return DataReview._from_conjure(self._clients, response)
 
+    def create_event(
+        self,
+        name: str,
+        type: EventType,
+        start: datetime | IntegralNanosecondsUTC,
+        duration: timedelta | IntegralNanosecondsDuration = timedelta(),
+        *,
+        assets: Iterable[Asset | str] = (),
+        properties: Mapping[str, str] | None = None,
+        labels: Iterable[str] = (),
+    ) -> Event:
+        request = event.CreateEvent(
+            name=name,
+            asset_rids=[rid_from_instance_or_string(asset) for asset in assets],
+            timestamp=_SecondsNanos.from_flexible(start).to_api(),
+            duration=_to_api_duration(duration),
+            origins=[],
+            properties=dict(properties) if properties else {},
+            labels=list(labels),
+            type=type._to_api_event_type(),
+        )
+        response = self._clients.event.create_event(self._clients.auth_header, request)
+        return Event._from_conjure(self._clients, response)
+
+    def get_events(self, uuids: Sequence[str]) -> Sequence[Event]:
+        responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
+        return [Event._from_conjure(self._clients, response) for response in responses]
+
+    def _iter_search_data_reviews(
+        self,
+        assets: Sequence[Asset | str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+    ) -> Iterable[DataReview]:
+        for review in _conjure_utils.search_data_reviews_paginated(
+            self._clients.datareview,
+            self._clients.auth_header,
+            assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
+            runs=[rid_from_instance_or_string(run) for run in runs] if runs else None,
+        ):
+            yield DataReview._from_conjure(self._clients, review)
+
     def search_data_reviews(
         self,
         assets: Sequence[Asset | str] | None = None,
         runs: Sequence[Run | str] | None = None,
     ) -> Sequence[DataReview]:
         """Search for any data reviews present within a collection of runs and assets."""
-        page_token = None
-        raw_data_reviews = []
-        while True:
-            # TODO (drake-nominal): Expose checklist_refs to users
-            request = scout_datareview_api.FindDataReviewsRequest(
-                asset_rids=[rid_from_instance_or_string(asset) for asset in assets] if assets else [],
-                checklist_refs=[],
-                run_rids=[rid_from_instance_or_string(run) for run in runs] if runs else [],
-                archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
-                next_page_token=page_token,
-                page_size=DEFAULT_PAGE_SIZE,
-            )
-            response = self._clients.datareview.find_data_reviews(self._clients.auth_header, request)
-            raw_data_reviews.extend(response.data_reviews)
-            page_token = response.next_page_token
+        # TODO (drake-nominal): Expose checklist_refs to users
+        return list(self._iter_search_data_reviews(assets, runs))
 
-            if page_token is None:
-                break
+    def _iter_search_events(self, query: event.SearchQuery) -> Iterable[Event]:
+        for e in _conjure_utils.search_events_paginated(self._clients.event, self._clients.auth_header, query):
+            yield Event._from_conjure(self._clients, e)
 
-        return [DataReview._from_conjure(self._clients, data_review) for data_review in raw_data_reviews]
+    def search_events(
+        self,
+        *,
+        search_text: str | None = None,
+        after: datetime | IntegralNanosecondsUTC | None = None,
+        before: datetime | IntegralNanosecondsUTC | None = None,
+        assets: Iterable[Asset | str] | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        created_by: User | str | None = None,
+    ) -> Sequence[Event]:
+        """Search for events meeting the specified filters.
+                Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
+        Returns:
+                    All events which match all of the provided conditions
+        """
+        query = _conjure_utils.create_search_events_query(
+            search_text=search_text,
+            after=after,
+            before=before,
+            assets=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
+            labels=labels,
+            properties=properties,
+            created_by=None if created_by is None else rid_from_instance_or_string(created_by),
+        )
+        return list(self._iter_search_events(query))
 
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
         return ContainerizedExtractor._from_conjure(
@@ -1534,112 +1605,3 @@ def _create_search_containerized_extractors_query(
             queries.append(ingest_api.SearchContainerizedExtractorsQuery(property=api.Property(name=name, value=value)))
 
     return ingest_api.SearchContainerizedExtractorsQuery(and_=queries)
-
-
-def _create_search_runs_query(
-    start: str | datetime | IntegralNanosecondsUTC | None = None,
-    end: str | datetime | IntegralNanosecondsUTC | None = None,
-    name_substring: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-) -> scout_run_api.SearchQuery:
-    queries = []
-    if start is not None:
-        start_time = _SecondsNanos.from_flexible(start).to_scout_run_api()
-        queries.append(scout_run_api.SearchQuery(start_time_inclusive=start_time))
-
-    if end is not None:
-        end_time = _SecondsNanos.from_flexible(end).to_scout_run_api()
-        queries.append(scout_run_api.SearchQuery(end_time_inclusive=end_time))
-
-    if name_substring is not None:
-        queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
-
-    if labels:
-        for label in labels:
-            queries.append(scout_run_api.SearchQuery(label=label))
-
-    if properties:
-        for name, value in properties.items():
-            queries.append(scout_run_api.SearchQuery(property=api.Property(name=name, value=value)))
-
-    return scout_run_api.SearchQuery(and_=queries)
-
-
-def _log_timestamp_type_to_conjure(log_timestamp_type: LogTimestampType) -> datasource.TimestampType:
-    if log_timestamp_type == "absolute":
-        return datasource.TimestampType.ABSOLUTE
-    elif log_timestamp_type == "relative":
-        return datasource.TimestampType.RELATIVE
-    raise ValueError(f"timestamp type {log_timestamp_type} must be 'relative' or 'absolute'")
-
-
-def _logs_to_conjure(
-    logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
-) -> Iterable[datasource_logset_api.Log]:
-    for log in logs:
-        if isinstance(log, Log):
-            yield log._to_conjure()
-        elif isinstance(log, tuple):
-            ts, body = log
-            yield Log(timestamp=_SecondsNanos.from_flexible(ts).to_nanoseconds(), body=body)._to_conjure()
-
-
-def _create_search_secrets_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-) -> secrets_api.SearchSecretsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(secrets_api.SearchSecretsQuery(search_text=search_text))
-
-    if labels is not None:
-        for label in labels:
-            queries.append(secrets_api.SearchSecretsQuery(label=label))
-
-    if properties is not None:
-        for name, value in properties.items():
-            queries.append(secrets_api.SearchSecretsQuery(property=api.Property(name=name, value=value)))
-
-    return secrets_api.SearchSecretsQuery(and_=queries)
-
-
-def _create_search_assets_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-) -> scout_asset_api.SearchAssetsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(search_text=search_text))
-
-    if labels is not None:
-        for label in labels:
-            queries.append(scout_asset_api.SearchAssetsQuery(label=label))
-
-    if properties:
-        for name, value in properties.items():
-            queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
-
-    return scout_asset_api.SearchAssetsQuery(and_=queries)
-
-
-def _create_search_checklists_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-) -> scout_checks_api.ChecklistSearchQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
-
-    if labels is not None:
-        for label in labels:
-            queries.append(scout_checks_api.ChecklistSearchQuery(label=label))
-
-    if properties is not None:
-        for prop_key, prop_value in properties.items():
-            queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
-
-    return scout_checks_api.ChecklistSearchQuery(and_=queries)
