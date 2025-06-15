@@ -46,7 +46,6 @@ from nominal.core.containerized_extractors import (
     DockerImageSource,
     FileExtractionInput,
     FileOutputFormat,
-    TimestampMetadata,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
@@ -78,6 +77,7 @@ from nominal.ts import (
     _AnyTimestampType,
     _SecondsNanos,
     _to_api_duration,
+    _to_typed_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -1539,7 +1539,8 @@ class NominalClient:
         name: str,
         *,
         docker_image: DockerImageSource,
-        timestamp_metadata: TimestampMetadata,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
         inputs: Sequence[FileExtractionInput] = (),
         fileOutputFormat: FileOutputFormat | None = None,
         labels: Sequence[str] = (),
@@ -1556,7 +1557,10 @@ class NominalClient:
             labels=list(*labels),
             name=name,
             properties={} if properties is None else {**properties},
-            timestamp_metadata=timestamp_metadata._to_conjure(),
+            timestamp_metadata=ingest_api.TimestampMetadata(
+                series_name=timestamp_column,
+                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+            ),
             workspace=workspace_rid,
             description=description,
             output_file_format=fileOutputFormat._to_conjure() if fileOutputFormat is not None else None,
