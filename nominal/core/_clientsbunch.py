@@ -140,6 +140,7 @@ class ClientsBunch:
     event: event.EventService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     workspace: security_api_workspace.WorkspaceService
+    containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
 
     @classmethod
@@ -176,6 +177,7 @@ class ClientsBunch:
             event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
+            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
         )
 
