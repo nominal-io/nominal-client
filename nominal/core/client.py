@@ -1563,7 +1563,7 @@ class NominalClient:
         req = ingest_api.RegisterContainerizedExtractorRequest(
             image=docker_image._to_conjure(),
             inputs=[file_input._to_conjure() for file_input in inputs],
-            labels=list(*labels),
+            labels=list(labels),
             name=name,
             properties={} if properties is None else {**properties},
             timestamp_metadata=ingest_api.TimestampMetadata(
