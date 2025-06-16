@@ -1551,7 +1551,7 @@ class NominalClient:
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         inputs: Sequence[FileExtractionInput] = (),
-        fileOutputFormat: FileOutputFormat | None = None,
+        file_output_format: FileOutputFormat | None = None,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         description: str | None = None,
@@ -1572,7 +1572,7 @@ class NominalClient:
             ),
             workspace=workspace_rid,
             description=description,
-            output_file_format=fileOutputFormat._to_conjure() if fileOutputFormat is not None else None,
+            output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
         )
         resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
         return self.get_containerized_extractor(resp.extractor_rid)
@@ -1584,7 +1584,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         workspace: Workspace | str | None = None,
     ) -> Sequence[ContainerizedExtractor]:
-        query = _create_search_containerized_extractors_query(
+        query = _conjure_utils._create_search_containerized_extractors_query(
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -1594,27 +1594,3 @@ class NominalClient:
             self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
         )
         return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
-
-
-def _create_search_containerized_extractors_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    workspace: Workspace | str | None = None,
-) -> ingest_api.SearchContainerizedExtractorsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(search_text=search_text))
-
-    if workspace is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=rid_from_instance_or_string(workspace)))
-
-    if labels is not None:
-        for label in labels:
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(label=label))
-
-    if properties is not None:
-        for name, value in properties.items():
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(property=api.Property(name=name, value=value)))
-
-    return ingest_api.SearchContainerizedExtractorsQuery(and_=queries)

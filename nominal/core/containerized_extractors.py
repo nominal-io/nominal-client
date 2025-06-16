@@ -14,7 +14,13 @@ from nominal.ts import _ConjureTimestampType
 
 @dataclass(frozen=True)
 class UserPassAuth:
-    """User/password based authentication credentials for pulling a docker image."""
+    """User/password based authentication credentials for pulling a docker image.
+
+    Args:
+        username: Username for the docker registry containing the docker image.
+        password_rid: Resource ID of the Secret containing the password for authentication
+            with the docker registry.
+    """
 
     # Username for the docker registry containing the docker image
     username: str
@@ -40,22 +46,26 @@ class UserPassAuth:
 
 @dataclass(frozen=True)
 class FileExtractionInput:
-    """Configuration for a file extraction input in a containerized extractor."""
+    """Configuration for a file extraction input in a containerized extractor.
 
-    # Name of the file input
+    Args:
+        name: Human-readable name for this input configuration.
+        description: Optional detailed description of what this input represents.
+        environment_variable: Environment variable name that will be set in the container
+            to specify the input file path.
+        file_suffixes: List of file extensions that this input accepts (e.g., ['.csv', '.txt']).
+        required: Whether this input is mandatory for the extractor to run. Defaults to False.
+    """
+
     name: str
 
-    # Displayed description of the file input
     description: str | None
 
-    # Environment variable to populate with the input file path within the extractor
     environment_variable: str
 
-    # File suffixes to filter input files when selecting from the local filesystem
     file_suffixes: Sequence[str]
 
-    # Whether or not this input is required to perform extraction
-    required: bool | None
+    required: bool | None = None
 
     @classmethod
     def _from_conjure(cls, file_input: ingest_api.FileExtractionInput) -> Self:
@@ -71,7 +81,7 @@ class FileExtractionInput:
             description=file_input.description,
             environment_variable=file_input.environment_variable,
             file_suffixes=file_suffixes,
-            required=file_input.required,
+            required=file_input.required if file_input.required is not None else False,
         )
 
     def _to_conjure(self) -> ingest_api.FileExtractionInput:
@@ -86,12 +96,15 @@ class FileExtractionInput:
 
 @dataclass(frozen=True)
 class TagDetails:
-    """Details about docker image tags to register for a custom extractor."""
+    """Details about docker image tags to register for a custom extractor.
 
-    # All Docker image tags that may be used with the custom extractor
+    Args:
+        tags: Available image tags that can be used for this extractor.
+        default_tag: The tag that will be used by default when running the extractor.
+    """
+
     tags: Sequence[str]
 
-    # Default docker image tag to use with the custom extractor
     default_tag: str
 
     @classmethod
@@ -107,22 +120,24 @@ class TagDetails:
 
 @dataclass(frozen=True)
 class DockerImageSource:
-    """Details about docker images and their associated registry to register as custom extractors."""
+    """Details about docker images and their associated registry to register as custom extractors.
 
-    # Base docker registry name, e.g. `nvidia` for nvidia/cuda https://hub.docker.com/r/nvidia/cuda
+    Args:
+        registry: Docker registry hostname (e.g., 'docker.io', 'gcr.io').
+        repository: Repository path within the registry (e.g., 'my-org/my-extractor').
+        tag_details: Information about available tags and which tag to use by default.
+        authentication: Credentials for accessing private registries, or None for public images.
+        command: Optional command to override the default image entrypoint.
+    """
+
     registry: str
 
-    # Docker image name, e.g. `cuda` for nvidia/cuda https://hub.docker.com/r/nvidia/cuda
     repository: str
 
-    # Details on which tag(s) to register as extractors
     tag_details: TagDetails
 
-    # Authentication details for the provided docker registry, or None if no authentication is required
     authentication: UserPassAuth | None
 
-    # Command to run inside the container to start extraction.
-    # If None, then the default CMD from the dockerfile is used instead.
     command: str | None
 
     @classmethod
@@ -157,7 +172,7 @@ class DockerImageSource:
         )
 
 
-class FileOutputFormat(Enum):  # Changed to Enum
+class FileOutputFormat(Enum):
     """Details about the output file format for a containerized extractor."""
 
     PARQUET_TAR = "PARQUET_TAR"
@@ -171,21 +186,18 @@ class FileOutputFormat(Enum):  # Changed to Enum
     def _to_conjure(self) -> ingest_api.FileOutputFormat:
         return ingest_api.FileOutputFormat(self.value)
 
-    # Example enum member
-    # Add other formats here, e.g., CSV = "csv"
-
-    # The format of the output file # This comment might need adjustment or removal
-    # format: str # Removed field, enum values are the formats
-
 
 @dataclass(frozen=True)
 class TimestampMetadata:
-    """Metadata about the shared timestamp column provided by the output `.parquet.tar` file from the extractor."""
+    """Metadata about the shared timestamp column provided by the output `.parquet.tar` file from the extractor.
 
-    # Name of the channel containing timestamp metadata
+    Args:
+        series_name: Name of the column containing timestamp data in the output files.
+        timestamp_type: Type information specifying how timestamps should be interpreted.
+    """
+
     series_name: str
 
-    # Type of timestamp used by the channel containing timestamp metadata
     timestamp_type: _ConjureTimestampType
 
     @classmethod
@@ -206,28 +218,20 @@ class TimestampMetadata:
 class ContainerizedExtractor(HasRid):
     """Containerized extractor which can be used to parse custom data formats into Nominal using docker images."""
 
-    # Unique identifier for the extractor
     rid: str
 
-    # Human readable name for the extractor
     name: str
 
-    # Optional human readable description for the extractor
     description: str | None
 
-    # Details about the docker image to use for the extractor
     image: DockerImageSource
 
-    # Details about file inputs to the extractor
     inputs: Sequence[FileExtractionInput]
 
-    # Human readable properties to apply to the extractor
     properties: Mapping[str, str]
 
-    # Human readable labels to apply to the extractor
     labels: Sequence[str]
 
-    # Details about the channel containing timestamp data for outputs from the extractor
     timestamp_metadata: TimestampMetadata
 
     _clients: _Clients = field(repr=False)
