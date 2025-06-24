@@ -84,7 +84,7 @@ class Asset(HasRid):
     def nominal_url(self) -> str:
         """Returns a link to the page for this Asset in the Nominal app"""
         # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
-        return f"https://app.gov.nominal.io/assets/{self.rid}"
+        return f"{self._clients.APP_BASE_URL}/assets/{self.rid}"
 
     def add_dataset(
         self,

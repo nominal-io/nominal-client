@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import ClassVar, Protocol
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -32,6 +32,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal.core._constants import DEFAULT_APP_BASE_URL
 from nominal.core._networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -110,6 +111,8 @@ class ProtoWriteService(Service):
 
 @dataclass(frozen=True)
 class ClientsBunch:
+    APP_BASE_URL: ClassVar[str] = DEFAULT_APP_BASE_URL
+
     auth_header: str
     workspace_rid: str | None
 
@@ -185,3 +188,5 @@ class HasScoutParams(Protocol):
     def auth_header(self) -> str: ...
     @property
     def workspace_rid(self) -> str | None: ...
+    @property
+    def APP_BASE_URL(self) -> str: ...

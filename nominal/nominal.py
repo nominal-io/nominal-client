@@ -23,6 +23,7 @@ from nominal.core import (
     Workbook,
     poll_until_ingestion_completed,
 )
+from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 
@@ -31,10 +32,8 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-_DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
-
 # global variable which `set_base_url()` modifies
-_global_base_url = _DEFAULT_BASE_URL
+_global_base_url = DEFAULT_API_BASE_URL
 
 
 @cache
