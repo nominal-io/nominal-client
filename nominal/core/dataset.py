@@ -43,7 +43,6 @@ class Dataset(DataSource):
     @property
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
-        # TODO (drake): move logic into _from_conjure() factory function to accommodate different URL schemes
         return f"{self._clients.app_base_url}/data-sources/{self.rid}"
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
