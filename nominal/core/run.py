@@ -48,7 +48,6 @@ class Run(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Run in the Nominal app"""
-
         return f"{self._clients.app_base_url}/runs/{self.run_number}"
 
     def _list_datasource_rids(

@@ -25,7 +25,6 @@ class Workbook(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook in the Nominal app"""
-
         return f"{self._clients.app_base_url}/workbooks/{self.rid}"
 
     def archive(self) -> None:

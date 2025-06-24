@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
-from typing import ClassVar, Protocol
+from typing import Protocol
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -35,7 +36,6 @@ from typing_extensions import Self
 from nominal.core._constants import DEFAULT_APP_BASE_URL
 from nominal.core._networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
-import re
 
 
 @dataclass(frozen=True)
@@ -197,8 +197,7 @@ class HasScoutParams(Protocol):
 
 
 def api_base_url_to_app_base_url(api_base_url: str, fallback: str = DEFAULT_APP_BASE_URL) -> str:
-    """
-    - https://api$ANYTHING/api -> https://app$ANYTHING
+    """- https://api$ANYTHING/api -> https://app$ANYTHING
     - https://api$ANYTHING -> https://app$ANYTHING
 
     Examples:

@@ -83,7 +83,6 @@ class Asset(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Asset in the Nominal app"""
-
         return f"{self._clients.app_base_url}/assets/{self.rid}"
 
     def add_dataset(
