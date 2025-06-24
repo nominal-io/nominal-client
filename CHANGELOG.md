@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.62.0](https://github.com/nominal-io/nominal-client/compare/v1.61.0...v1.62.0) (2025-06-24)
+
+
+### Features
+
+* compose app base url from clients bunch ([#392](https://github.com/nominal-io/nominal-client/issues/392)) ([3f9b722](https://github.com/nominal-io/nominal-client/commit/3f9b722a0d898b827421a06e2201f8d592c48127))
+
 ## [1.61.0](https://github.com/nominal-io/nominal-client/compare/v1.60.0...v1.61.0) (2025-06-11)
 
 
