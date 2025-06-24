@@ -34,6 +34,7 @@ from nominal import _config
 from nominal.config import NominalConfig
 from nominal.core import _conjure_utils
 from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
@@ -115,7 +116,7 @@ class NominalClient:
     def from_token(
         cls,
         token: str,
-        base_url: str = "https://api.gov.nominal.io/api",
+        base_url: str = DEFAULT_API_BASE_URL,
         *,
         workspace_rid: str | None = None,
         trust_store_path: str | None = None,
@@ -141,7 +142,7 @@ class NominalClient:
             connect_timeout=timeout_seconds,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid), _profile=_profile)
+        return cls(_clients=ClientsBunch.from_config(cfg, base_url, agent, token, workspace_rid), _profile=_profile)
 
     @classmethod
     def create(

@@ -48,8 +48,7 @@ class Run(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Run in the Nominal app"""
-        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
-        return f"https://app.gov.nominal.io/runs/{self.run_number}"
+        return f"{self._clients.app_base_url}/runs/{self.run_number}"
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None
