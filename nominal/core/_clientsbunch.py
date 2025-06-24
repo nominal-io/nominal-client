@@ -197,7 +197,10 @@ class HasScoutParams(Protocol):
 
 
 def api_base_url_to_app_base_url(api_base_url: str, fallback: str = DEFAULT_APP_BASE_URL) -> str:
-    """- https://api$ANYTHING/api -> https://app$ANYTHING
+    """Convert from API base URL to APP base URL.
+
+    Rules:
+    - https://api$ANYTHING/api -> https://app$ANYTHING
     - https://api$ANYTHING -> https://app$ANYTHING
 
     Examples:
