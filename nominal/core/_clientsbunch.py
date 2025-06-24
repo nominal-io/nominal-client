@@ -35,6 +35,7 @@ from typing_extensions import Self
 from nominal.core._constants import DEFAULT_APP_BASE_URL
 from nominal.core._networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
+import re
 
 
 @dataclass(frozen=True)
@@ -111,10 +112,9 @@ class ProtoWriteService(Service):
 
 @dataclass(frozen=True)
 class ClientsBunch:
-    APP_BASE_URL: ClassVar[str] = DEFAULT_APP_BASE_URL
-
     auth_header: str
     workspace_rid: str | None
+    app_base_url: str
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
@@ -146,12 +146,16 @@ class ClientsBunch:
     secrets: secrets_api.SecretService
 
     @classmethod
-    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str, workspace_rid: str | None) -> Self:
+    def from_config(
+        cls, cfg: ServiceConfiguration, base_url: str, agent: str, token: str, workspace_rid: str | None
+    ) -> Self:
+        app_base_url = api_base_url_to_app_base_url(base_url)
         client_factory = create_conjure_client_factory(user_agent=agent, service_config=cfg)
 
         return cls(
             auth_header=f"Bearer {token}",
             workspace_rid=workspace_rid,
+            app_base_url=app_base_url,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
@@ -189,4 +193,21 @@ class HasScoutParams(Protocol):
     @property
     def workspace_rid(self) -> str | None: ...
     @property
-    def APP_BASE_URL(self) -> str: ...
+    def app_base_url(self) -> str: ...
+
+
+def api_base_url_to_app_base_url(api_base_url: str, fallback: str = DEFAULT_APP_BASE_URL) -> str:
+    """
+    - https://api$ANYTHING/api -> https://app$ANYTHING
+    - https://api$ANYTHING -> https://app$ANYTHING
+
+    Examples:
+    - https://api.gov.nominal.io/api -> https://app.gov.nominal.io
+    - https://api-staging.gov.nominal.io/api -> https://app-staging.gov.nominal.io
+    - https://api.nominal.test -> https://app.nominal.test
+    """
+    api_base_url = api_base_url.rstrip("/")
+    match = re.match(r"^(https?://)api([^/]*)(/api)?", api_base_url)
+    if match:
+        return f"{match.group(1)}app{match.group(2)}"
+    return fallback

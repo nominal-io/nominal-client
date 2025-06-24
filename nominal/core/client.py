@@ -142,7 +142,7 @@ class NominalClient:
             connect_timeout=timeout_seconds,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid), _profile=_profile)
+        return cls(_clients=ClientsBunch.from_config(cfg, base_url, agent, token, workspace_rid), _profile=_profile)
 
     @classmethod
     def create(
