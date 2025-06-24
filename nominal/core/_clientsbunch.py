@@ -33,7 +33,6 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core._constants import DEFAULT_APP_BASE_URL
 from nominal.core._networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -196,12 +195,12 @@ class HasScoutParams(Protocol):
     def app_base_url(self) -> str: ...
 
 
-def api_base_url_to_app_base_url(api_base_url: str, fallback: str = DEFAULT_APP_BASE_URL) -> str:
+def api_base_url_to_app_base_url(api_base_url: str, fallback: str = "") -> str:
     """Convert from API base URL to APP base URL.
 
     Rules:
     - https://api$ANYTHING/api -> https://app$ANYTHING
-    - https://api$ANYTHING -> https://app$ANYTHING
+    - https://api$ANYTHING -> https://app$ANYTHING (this is mainly for local dev @ api.nominal.test)
 
     Examples:
     - https://api.gov.nominal.io/api -> https://app.gov.nominal.io
