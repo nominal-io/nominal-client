@@ -41,6 +41,10 @@ def _get_or_create_connection(base_url: str, token: str) -> NominalClient:
     return NominalClient.create(base_url, token)
 
 
+@typing_extensions.deprecated(
+    "nominal.set_base_url is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.from_profile` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def set_base_url(base_url: str) -> None:
     """Set the default Nominal platform base url.
 
@@ -54,6 +58,10 @@ def set_base_url(base_url: str) -> None:
     _global_base_url = base_url
 
 
+@typing_extensions.deprecated(
+    "nominal.set_token is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.from_profile` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def set_token(base_url: str, token: str) -> None:
     """Set the default token to be used in association with a given base url.
 
@@ -62,15 +70,27 @@ def set_token(base_url: str, token: str) -> None:
     _config.set_token(base_url, token)
 
 
-def get_default_client() -> NominalClient:
-    """Retrieve the default client to the Nominal platform."""
+def _get_default_client() -> NominalClient:
     token = _config.get_token(_global_base_url)
     return _get_or_create_connection(_global_base_url, token)
 
 
+@typing_extensions.deprecated(
+    "nominal.get_default_client is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.from_profile` instead, see https://docs.nominal.io/python/profile-migration"
+)
+def get_default_client() -> NominalClient:
+    """Retrieve the default client to the Nominal platform."""
+    return _get_default_client()
+
+
+@typing_extensions.deprecated(
+    "nominal.get_user is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_user` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_user() -> User:
     """Retrieve current user."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_user()
 
 
@@ -90,7 +110,7 @@ def upload_tdms(
     """Create a dataset in the Nominal platform from a tdms file."""
     from nominal.thirdparty.tdms import upload_tdms
 
-    client = get_default_client()
+    client = _get_default_client()
     return upload_tdms(
         client, file, name, description, timestamp_column, timestamp_type, wait_until_complete=wait_until_complete
     )
@@ -113,9 +133,9 @@ def upload_pandas(
     """Create a dataset in the Nominal platform from a pandas.DataFrame."""
     from nominal.thirdparty.pandas import upload_dataframe
 
-    conn = get_default_client()
+    client = _get_default_client()
     return upload_dataframe(
-        conn,
+        client,
         df,
         name,
         timestamp_column,
@@ -143,7 +163,7 @@ def upload_polars(
     """Create a dataset in the Nominal platform from a polars.DataFrame."""
     from nominal.thirdparty.pandas import upload_dataframe
 
-    client = get_default_client()
+    client = _get_default_client()
     return upload_dataframe(
         client,
         df.to_pandas(),
@@ -156,6 +176,10 @@ def upload_polars(
     )
 
 
+@typing_extensions.deprecated(
+    "nominal.create_dataset is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_dataset` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def create_dataset(
     name: str,
     description: str | None = None,
@@ -175,8 +199,8 @@ def create_dataset(
     Returns:
         Reference to the created dataset in Nominal.
     """
-    conn = get_default_client()
-    return conn.create_dataset(
+    client = _get_default_client()
+    return client.create_dataset(
         name, description=description, labels=labels, properties=properties, prefix_tree_delimiter=prefix_tree_delimiter
     )
 
@@ -203,7 +227,7 @@ def upload_csv(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    client = get_default_client()
+    client = _get_default_client()
     return _upload_csv(
         client,
         file,
@@ -227,25 +251,35 @@ def _upload_csv(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    dataset = client.create_csv_dataset(
-        file,
-        name,
-        timestamp_column=timestamp_column,
-        timestamp_type=timestamp_type,
+    dataset = client.create_dataset(
+        name if name else Path(file).name,
         description=description,
         prefix_tree_delimiter=channel_name_delimiter,
+    )
+    dataset.add_tabular_data(
+        file,
+        timestamp_column=timestamp_column,
+        timestamp_type=timestamp_type,
     )
     if wait_until_complete:
         dataset.poll_until_ingestion_completed()
     return dataset
 
 
+@typing_extensions.deprecated(
+    "nominal.get_dataset is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_dataset` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_dataset(rid: str) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_dataset(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.create_run is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_run` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def create_run(
     name: str,
     start: datetime | str | ts.IntegralNanosecondsUTC,
@@ -262,7 +296,7 @@ def create_run(
 
     To add a dataset to the run, use `run.add_dataset()`.
     """
-    client = get_default_client()
+    client = _get_default_client()
     return client.create_run(
         name,
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
@@ -274,6 +308,11 @@ def create_run(
     )
 
 
+@typing_extensions.deprecated(
+    "nominal.create_run_csv is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_dataset` and `nominal.NominalClient.create_run` instead, "
+    "see https://docs.nominal.io/python/profile-migration"
+)
 def create_run_csv(
     file: Path | str,
     name: str,
@@ -293,12 +332,20 @@ def create_run_csv(
     return run
 
 
+@typing_extensions.deprecated(
+    "nominal.get_run is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_run` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_run(rid: str) -> Run:
     """Retrieve a run from the Nominal platform by its RID."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_run(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.search_runs is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.search_runs` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def search_runs(
     *,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
@@ -320,10 +367,14 @@ def search_runs(
     Returns:
         All runs which match all of the provided conditions
     """
-    conn = get_default_client()
-    return conn.search_runs(start=start, end=end, name_substring=name_substring, labels=labels, properties=properties)
+    client = _get_default_client()
+    return client.search_runs(start=start, end=end, name_substring=name_substring, labels=labels, properties=properties)
 
 
+@typing_extensions.deprecated(
+    "nominal.upload_attachment is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_attachment` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def upload_attachment(
     file: Path | str,
     name: str,
@@ -331,54 +382,84 @@ def upload_attachment(
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
     path = Path(file)
-    client = get_default_client()
+    client = _get_default_client()
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:
         return client.create_attachment_from_io(f, name, file_type, description)
 
 
+@typing_extensions.deprecated(
+    "nominal.get_attachment is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_attachment` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_attachment(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_attachment(rid)
 
 
+@typing_extensions.deprecated(
+    "LogSets are deprecated and will be removed in a future version. "
+    "Add logs to an existing dataset with dataset.write_logs instead."
+)
 def get_log_set(rid: str) -> LogSet:
     """Retrieve a log set from the Nominal platform by its RID."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_log_set(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.download_attachment is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_attachment` and `nominal.core.Attachment.write` instead, "
+    "see https://docs.nominal.io/python/profile-migration"
+)
 def download_attachment(rid: str, file: Path | str) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
-    client = get_default_client()
+    client = _get_default_client()
     attachment = client.get_attachment(rid)
     attachment.write(Path(file))
 
 
+@typing_extensions.deprecated(
+    "nominal.upload_video is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_video` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def upload_video(
     file: Path | str, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
 ) -> Video:
     """Upload a video to Nominal from a file."""
-    client = get_default_client()
+    client = _get_default_client()
     path = Path(file)
     file_type = FileType.from_path(path)
+    video = client.create_empty_video(
+        name=name,
+        description=description,
+    )
     with open(file, "rb") as f:
-        return client.create_video_from_io(
+        video.add_from_io(
             f,
             name,
             start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
             description=description,
             file_type=file_type,
         )
+    return video
 
 
+@typing_extensions.deprecated(
+    "nominal.get_video is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_video` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_video(rid: str) -> Video:
     """Retrieve a video from the Nominal platform by its RID."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_video(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.create_asset is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_asset` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def create_asset(
     name: str,
     description: str | None = None,
@@ -387,16 +468,24 @@ def create_asset(
     labels: Sequence[str] = (),
 ) -> Asset:
     """Create an asset."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.create_asset(name, description, properties=properties, labels=labels)
 
 
+@typing_extensions.deprecated(
+    "nominal.get_asset is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_asset` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_asset(rid: str) -> Asset:
     """Retrieve an asset by its RID."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_asset(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.search_assets is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.search_assets` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def search_assets(
     *,
     search_text: str | None = None,
@@ -414,20 +503,29 @@ def search_assets(
     Returns:
         All assets which match all of the provided conditions
     """
-    conn = get_default_client()
-    return conn.search_assets(search_text=search_text, labels=labels, properties=properties)
+    client = _get_default_client()
+    return client.search_assets(search_text=search_text, labels=labels, properties=properties)
 
 
+@typing_extensions.deprecated(
+    "nominal.list_streaming_checklists is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.list_streaming_checklists` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
     """List all Streaming Checklists.
 
     Args:
         asset: if provided, only return checklists associated with the given asset.
     """
-    client = get_default_client()
+    client = _get_default_client()
     return client.list_streaming_checklists(asset)
 
 
+@typing_extensions.deprecated(
+    "nominal.wait_until_ingestions_complete is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_dataset` and `nominal.core.Dataset.poll_until_ingestion_complete` "
+    "instead, see https://docs.nominal.io/python/profile-migration"
+)
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     """Wait until all datasets have completed ingestion.
 
@@ -437,11 +535,19 @@ def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     poll_until_ingestion_completed(datasets)
 
 
+@typing_extensions.deprecated(
+    "nominal.get_checklist is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_checklist` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_checklist(checklist_rid: str) -> Checklist:
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_checklist(checklist_rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.upload_mcap_video is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_mcap_video` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def upload_mcap_video(
     file: Path | str,
     topic: str,
@@ -458,7 +564,7 @@ def upload_mcap_video(
         returning. If you are uploading many videos, set `wait_until_complete=False` instead and call
         `wait_until_ingestion_complete()` after uploading all videos to allow for parallel ingestion.
     """
-    client = get_default_client()
+    client = _get_default_client()
 
     path = Path(file)
     file_type = FileType.from_path(path)
@@ -478,6 +584,10 @@ def upload_mcap_video(
     return video
 
 
+@typing_extensions.deprecated(
+    "nominal.create_streaming_connection is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_streaming_connection` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def create_streaming_connection(
     datasource_id: str,
     connection_name: str,
@@ -489,18 +599,26 @@ def create_streaming_connection(
 
     datasource_id: A human readable identifier. Must be unique within an organization.
     """
-    client = get_default_client()
+    client = _get_default_client()
     return client.create_streaming_connection(
         datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
     )
 
 
+@typing_extensions.deprecated(
+    "nominal.get_connection is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_connection` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_connection(rid: str) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_connection(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.create_workbook_from_template is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_workbook_from_template` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def create_workbook_from_template(
     template_rid: str, run_rid: str, *, title: str | None = None, description: str | None = None, is_draft: bool = False
 ) -> Workbook:
@@ -508,10 +626,14 @@ def create_workbook_from_template(
     template_rid: The template to use for the workbook.
     run_rid: The run to associate the workbook with.
     """
-    client = get_default_client()
+    client = _get_default_client()
     return client.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
 
 
+@typing_extensions.deprecated(
+    "LogSets are deprecated and will be removed in a future version. "
+    "Add logs to an existing dataset with dataset.write_logs instead."
+)
 def create_log_set(
     name: str,
     logs: Iterable[Log] | Iterable[tuple[datetime | ts.IntegralNanosecondsUTC, str]],
@@ -523,10 +645,14 @@ def create_log_set(
     The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
     or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
     """
-    client = get_default_client()
+    client = _get_default_client()
     return client.create_log_set(name, logs, timestamp_type, description)
 
 
+@typing_extensions.deprecated(
+    "nominal.data_review_builder is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.data_review_builder` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def data_review_builder() -> DataReviewBuilder:
     """Create a batch of data reviews to be initiated together.
 
@@ -543,11 +669,15 @@ def data_review_builder() -> DataReviewBuilder:
         print(review.get_violations())
     ```
     """
-    client = get_default_client()
+    client = _get_default_client()
     return client.data_review_builder()
 
 
+@typing_extensions.deprecated(
+    "nominal.get_data_review is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_data_review` instead, see https://docs.nominal.io/python/profile-migration"
+)
 def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
-    client = get_default_client()
+    client = _get_default_client()
     return client.get_data_review(rid)
