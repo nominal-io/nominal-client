@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.63.0](https://github.com/nominal-io/nominal-client/compare/v1.62.0...v1.63.0) (2025-06-25)
+
+
+### Features
+
+* allow exporting a single channels data with gzip ([#395](https://github.com/nominal-io/nominal-client/issues/395)) ([182a952](https://github.com/nominal-io/nominal-client/commit/182a952e184ba907c9cdf3879309513101482943))
+* deprecate all top level functions in nominal.py ([#391](https://github.com/nominal-io/nominal-client/issues/391)) ([91c3a51](https://github.com/nominal-io/nominal-client/commit/91c3a510114acf676d0e33f2a0735904ec07edbf))
+
 ## [1.62.0](https://github.com/nominal-io/nominal-client/compare/v1.61.0...v1.62.0) (2025-06-24)
 
 
