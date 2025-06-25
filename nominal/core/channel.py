@@ -220,6 +220,8 @@ class Channel:
         end: api.Timestamp,
         relative_to: datetime | IntegralNanosecondsUTC | None = None,
         relative_resolution: _LiteralTimeUnit = "nanoseconds",
+        *,
+        enable_gzip: bool = True,
     ) -> BinaryIO:
         """Get the channel data as a CSV file-like object.
 
@@ -228,6 +230,8 @@ class Channel:
             end: End timestamp
             relative_to: If provided, timestamps are returned relative to the given timestamp
             relative_resolution: If timestamps are returned in relative time, the resolution to use.
+            enable_gzip: If true, use gzip when exporting data from Nominal. This will almost always make export
+                faster and use less bandwidth.
 
         Returns:
             A binary file-like object containing the CSV data
@@ -268,57 +272,12 @@ class Channel:
             resolution=scout_dataexport_api.ResolutionOption(
                 undecimated=scout_dataexport_api.UndecimatedResolution(),
             ),
+            compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
         )
         response = self._clients.dataexport.export_channel_data(self._clients.auth_header, request)
         # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
         # this acts like a file-like object in binary-mode.
         return cast(BinaryIO, response)
-
-
-def _get_series_values_csv(
-    auth_header: str,
-    client: scout_dataexport_api.DataExportService,
-    rid_to_name: dict[str, str],
-    start: api.Timestamp,
-    end: api.Timestamp,
-) -> BinaryIO:
-    request = scout_dataexport_api.ExportDataRequest(
-        channels=scout_dataexport_api.ExportChannels(
-            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                channels=[
-                    scout_dataexport_api.TimeDomainChannel(
-                        column_name=name,
-                        compute_node=scout_compute_api.Series(raw=scout_compute_api.Reference(name=name)),
-                    )
-                    for name in rid_to_name.values()
-                ],
-                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                    # only one series will be returned, so no need to merge
-                    none=scout_dataexport_api.NoneStrategy(),
-                ),
-                output_timestamp_format=scout_dataexport_api.TimestampFormat(
-                    iso8601=scout_dataexport_api.Iso8601TimestampFormat()
-                ),
-            )
-        ),
-        start_time=start,
-        end_time=end,
-        context=scout_compute_api.Context(
-            function_variables={},
-            variables={
-                name: scout_compute_api.VariableValue(series=scout_compute_api.SeriesSpec(rid=rid, tags_to_group_by=[]))
-                for rid, name in rid_to_name.items()
-            },
-        ),
-        format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
-        resolution=scout_dataexport_api.ResolutionOption(
-            undecimated=scout_dataexport_api.UndecimatedResolution(),
-        ),
-    )
-    response = client.export_channel_data(auth_header, request)
-    # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
-    # this acts like a file-like object in binary-mode.
-    return cast(BinaryIO, response)
 
 
 def _create_series_from_channel(
