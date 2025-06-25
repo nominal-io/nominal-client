@@ -31,6 +31,15 @@ def make_points(api_batch: Sequence[BatchItem]) -> storage_writer_api.PointsExte
                 for item in api_batch
             ]
         )
+    elif isinstance(api_batch[0].value, int):
+        return storage_writer_api.PointsExternal(
+            int_=[
+                storage_writer_api.IntPoint(
+                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(), value=cast(int, item.value)
+                )
+                for item in api_batch
+            ]
+        )
     else:
         raise ValueError("only float and string are supported types for value")
 
