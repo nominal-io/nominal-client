@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class BatchItem:
     channel_name: str
     timestamp: IntegralNanosecondsUTC
-    value: float | str
+    value: float | int | str
     tags: Mapping[str, str] | None = None
 
 
