@@ -203,7 +203,7 @@ from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, Union
 
 import dateutil.parser
-from nominal_api import api, ingest_api, scout_run_api
+from nominal_api import api, ingest_api, scout_dataexport_api, scout_run_api
 from typing_extensions import Self, TypeAlias
 
 __all__ = [
@@ -355,6 +355,19 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if type_ not in _str_to_type:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
+
+
+def _to_export_timestamp_format(type_: _AnyTimestampType) -> scout_dataexport_api.TimestampFormat:
+    typed_timestamp_format = _to_typed_timestamp_type(type_)
+    if isinstance(typed_timestamp_format, (Iso8601, Epoch, Custom)):
+        return scout_dataexport_api.TimestampFormat(iso8601=scout_dataexport_api.Iso8601TimestampFormat())
+    else:
+        return scout_dataexport_api.TimestampFormat(
+            relative=scout_dataexport_api.RelativeTimestampFormat(
+                relative_to=_SecondsNanos.from_flexible(typed_timestamp_format.start).to_api(),
+                time_unit=_time_unit_to_conjure(typed_timestamp_format.unit),
+            )
+        )
 
 
 def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
