@@ -7,7 +7,7 @@ import pandas as pd
 import polars as pl
 
 import nominal as nm
-from nominal.utilities import reader_writer
+from nominal._utils import reader_writer
 from tests.e2e import _create_random_start_end
 
 

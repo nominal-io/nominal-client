@@ -10,13 +10,12 @@ import pandas as pd
 from nominal_api.api import Timestamp
 
 from nominal import ts
-from nominal.core._utils import batched
+from nominal._utils import batched, reader_writer
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
-from nominal.utilities import reader_writer
 
 logger = logging.getLogger(__name__)
 

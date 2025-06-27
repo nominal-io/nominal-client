@@ -18,11 +18,13 @@ from nominal_api import (
 )
 from typing_extensions import TypeAlias
 
-from nominal.core._utils import T_co, T_contra
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 DEFAULT_PAGE_SIZE = 100
 
+T = TypeVar("T")
+T_co = TypeVar("T_co", covariant=True)
+T_contra = TypeVar("T_contra", contravariant=True)
 
 Link: TypeAlias = tuple[str, str]
 

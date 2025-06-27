@@ -6,8 +6,8 @@ from typing import Protocol
 from nominal_api import scout, scout_notebook_api
 from typing_extensions import Self
 
+from nominal._utils import HasRid
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid
 
 
 @dataclass(frozen=True)

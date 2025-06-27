@@ -31,12 +31,12 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import _config
+from nominal._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.config import NominalConfig
 from nominal.core import _conjure_utils
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
-from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
