@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Iterable, Literal, Protocol, Sequence
 
-import typing_extensions
 from nominal_api import (
     api,
     datasource_api,
@@ -34,7 +33,7 @@ from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
 
 if TYPE_CHECKING:
-    import pandas as pd
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -178,23 +177,6 @@ class DataSource(HasRid):
             if response.next_page_token is None:
                 break
             next_page_token = response.next_page_token
-
-    @typing_extensions.deprecated(
-        "`datasource.to_pandas` is deprecated and will be removed in a future version. "
-        "Use `nominal.thirdparty.pandas.datasource_to_dataframe` instead."
-    )
-    def to_pandas(
-        self,
-        channel_exact_match: Sequence[str] = (),
-        channel_fuzzy_search_text: str = "",
-        start: str | datetime | IntegralNanosecondsUTC | None = None,
-        end: str | datetime | IntegralNanosecondsUTC | None = None,
-        tags: dict[str, str] | None = None,
-    ) -> pd.DataFrame:
-        """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset."""
-        from nominal.thirdparty.pandas import datasource_to_dataframe
-
-        return datasource_to_dataframe(self, channel_exact_match, channel_fuzzy_search_text, start, end, tags)
 
     def set_channel_units(
         self,
