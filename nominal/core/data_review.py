@@ -15,9 +15,9 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils import HasRid
 from nominal.core import checklist
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 

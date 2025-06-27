@@ -7,7 +7,7 @@ import pandas as pd
 import polars as pl
 
 import nominal as nm
-from nominal import _utils
+from nominal._utils import reader_writer
 from tests.e2e import _create_random_start_end
 
 
@@ -230,7 +230,7 @@ def test_download_attachment(csv_data):
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_title, at_desc)
 
-    with _utils.reader_writer() as (r, w):
+    with reader_writer() as (r, w):
         with mock.patch("builtins.open", return_value=w):
             nm.download_attachment(at.rid, "fake_path.csv")
             assert r.read() == csv_data
