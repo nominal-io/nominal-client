@@ -4,7 +4,7 @@ import enum
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, BinaryIO, Mapping, Protocol, cast
+from typing import TYPE_CHECKING, Any, Mapping, Protocol
 
 import typing_extensions
 from nominal_api import (
@@ -20,9 +20,8 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import update_dataclass
-from nominal.core.read_stream_base import ExportJob
 from nominal.core.unit import UnitLike, _build_unit_update
-from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos, _time_unit_to_conjure
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -192,7 +191,7 @@ class Channel:
             data_source=scout_compute_api.DataSourceChannel(
                 channel=scout_compute_api.StringConstant(literal=self.name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
-                tags={k: scout_compute_api.StringConstant(literal=v) for k,v in tags.items()} if tags else {},
+                tags={k: scout_compute_api.StringConstant(literal=v) for k, v in tags.items()} if tags else {},
                 tags_to_group_by=[],
             )
         )
@@ -236,6 +235,7 @@ class Channel:
         return scout_dataexport_api.TimeDomainChannel(
             column_name=self.name, compute_node=self._to_compute_series(tags=tags)
         )
+
 
 def _create_series_from_channel(
     channel_series: scout_compute_api.ChannelSeries, data_type: ChannelDataType | None

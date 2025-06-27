@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 ExportType = TypeVar("ExportType")
 
+
 class ExportStream(abc.ABC, ReadStreamBase, Generic[ExportType]):
     """Exports in-memory chunks of data from Nominal."""
 

@@ -356,6 +356,7 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
 
+
 def _to_export_timestamp_format(type_: _AnyTimestampType) -> scout_dataexport_api.TimestampFormat:
     typed_timestamp_format = _to_typed_timestamp_type(type_)
     if isinstance(typed_timestamp_format, (Iso8601, Epoch, Custom)):
@@ -367,6 +368,7 @@ def _to_export_timestamp_format(type_: _AnyTimestampType) -> scout_dataexport_ap
                 time_unit=_time_unit_to_conjure(typed_timestamp_format.unit),
             )
         )
+
 
 def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
     return api.TimeUnit[unit.upper()]

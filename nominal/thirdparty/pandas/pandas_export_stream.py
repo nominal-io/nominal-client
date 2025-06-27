@@ -7,7 +7,8 @@ from typing import BinaryIO, Sequence
 import pandas as pd
 from babel.dates import format_datetime
 
-from nominal.core.export_stream import ExportJob, ExportStream
+from nominal.core.export_stream import ExportStream
+from nominal.core.read_stream_base import ExportJob
 from nominal.ts import (
     Custom,
     Epoch,
@@ -18,6 +19,7 @@ from nominal.ts import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _to_pandas_unit(unit: _LiteralTimeUnit) -> str:
     return {
@@ -47,6 +49,7 @@ def _get_renamed_timestamp_column(channel_names: list[str]) -> str:
                 idx += 1
 
     return renamed_timestamp_col
+
 
 class PandasExportStream(ExportStream[pd.DataFrame]):
     @classmethod
