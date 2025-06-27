@@ -6,8 +6,8 @@ import sys
 from itertools import islice
 from typing import Iterable, Protocol, Sequence, TypeVar, runtime_checkable
 
-from nominal._utils import logger
 from nominal.core.stream import BatchItem
+from nominal.utilities.streaming_tools import logger
 
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)

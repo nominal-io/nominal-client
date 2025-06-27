@@ -23,7 +23,6 @@ from nominal_api import (
     upload_api,
 )
 
-from nominal._utils import warn_on_deprecated_argument
 from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._utils import HasRid, batched
@@ -32,6 +31,7 @@ from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
+from nominal.utilities import warn_on_deprecated_argument
 
 if TYPE_CHECKING:
     import pandas as pd

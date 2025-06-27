@@ -12,7 +12,6 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self, TypeAlias, deprecated
 
-from nominal._utils import deprecate_arguments
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core._utils import update_dataclass
 from nominal.core.bounds import Bounds
@@ -26,6 +25,7 @@ from nominal.ts import (
     _AnyTimestampType,
     _to_typed_timestamp_type,
 )
+from nominal.utilities import deprecate_arguments
 
 logger = logging.getLogger(__name__)
 
