@@ -4,9 +4,8 @@ import enum
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, BinaryIO, Protocol, cast
+from typing import BinaryIO, Protocol, cast
 
-import typing_extensions
 from nominal_api import (
     api,
     datasource_api,
@@ -22,9 +21,6 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import update_dataclass
 from nominal.core.unit import UnitLike, _build_unit_update
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos, _time_unit_to_conjure
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 class ChannelDataType(enum.Enum):
@@ -102,20 +98,6 @@ class Channel:
         update_dataclass(self, updated_channel, fields=self.__dataclass_fields__)
         return self
 
-    @typing_extensions.deprecated(
-        "`channel.to_pandas` is deprecated and will be removed in a future version. "
-        "Use `nominal.thirdparty.pandas.channel_to_series` instead."
-    )
-    def to_pandas(
-        self,
-        start: datetime | IntegralNanosecondsUTC | None = None,
-        end: datetime | IntegralNanosecondsUTC | None = None,
-    ) -> pd.Series[Any]:
-        """Retrieve the channel data as a pandas.Series."""
-        from nominal.thirdparty.pandas import channel_to_series
-
-        return channel_to_series(self, start=start, end=end)
-
     @classmethod
     def _from_conjure_datasource_api(cls, clients: _Clients, channel: datasource_api.ChannelMetadata) -> Self:
         # NOTE: intentionally ignoring archetype RID as it does not correspond to a Channel in the same way that a
@@ -161,23 +143,6 @@ class Channel:
             data_type=channel_data_type,
             _clients=clients,
         )
-
-    @typing_extensions.deprecated(
-        "`channel.get_decimated` is deprecated and will be removed in a future version. "
-        "Use `nominal.thirdparty.pandas.channel_to_dataframe_decimated` instead."
-    )
-    def get_decimated(
-        self,
-        start: str | datetime | IntegralNanosecondsUTC,
-        end: str | datetime | IntegralNanosecondsUTC,
-        *,
-        buckets: int | None = None,
-        resolution: int | None = None,
-    ) -> pd.DataFrame:
-        """Retrieve the channel data as a pandas.DataFrame, decimated to the given buckets or resolution."""
-        from nominal.thirdparty.pandas import channel_to_dataframe_decimated
-
-        return channel_to_dataframe_decimated(self, start=start, end=end, buckets=buckets, resolution=resolution)
 
     def _decimate_request(
         self,
