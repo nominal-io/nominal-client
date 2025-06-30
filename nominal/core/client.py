@@ -32,11 +32,28 @@ from typing_extensions import Self, deprecated
 
 from nominal import _config
 from nominal.config import NominalConfig
-from nominal.core import _conjure_utils
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._multipart import path_upload_name, upload_multipart_io
-from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core._utils import (
+    construct_user_agent_string,
+    create_search_assets_query,
+    create_search_checklists_query,
+    create_search_events_query,
+    create_search_runs_query,
+    create_search_secrets_query,
+    create_search_users_query,
+    list_streaming_checklists_for_asset_paginated,
+    list_streaming_checklists_paginated,
+    rid_from_instance_or_string,
+    search_assets_paginated,
+    search_checklists_paginated,
+    search_data_reviews_paginated,
+    search_events_paginated,
+    search_runs_paginated,
+    search_secrets_paginated,
+    search_users_paginated,
+)
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.channel import Channel
@@ -193,9 +210,7 @@ class NominalClient:
         return User._from_conjure(raw_user)
 
     def _iter_search_users(self, query: authentication_api.SearchUsersQuery) -> Iterable[User]:
-        for raw_user in _conjure_utils.search_users_paginated(
-            self._clients.authentication, self._clients.auth_header, query
-        ):
+        for raw_user in search_users_paginated(self._clients.authentication, self._clients.auth_header, query):
             yield User._from_conjure(raw_user)
 
     def search_users(self, exact_match: str | None = None, search_text: str | None = None) -> Sequence[User]:
@@ -209,7 +224,7 @@ class NominalClient:
         Returns:
             All users which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_users_query(exact_match, search_text)
+        query = create_search_users_query(exact_match, search_text)
         return list(self._iter_search_users(query))
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
@@ -279,7 +294,7 @@ class NominalClient:
         return Secret._from_conjure(self._clients, resp)
 
     def _iter_search_secrets(self, query: secrets_api.SearchSecretsQuery) -> Iterable[Secret]:
-        for secret in _conjure_utils.search_secrets_paginated(self._clients.secrets, self._clients.auth_header, query):
+        for secret in search_secrets_paginated(self._clients.secrets, self._clients.auth_header, query):
             yield Secret._from_conjure(self._clients, secret)
 
     def search_secrets(
@@ -299,7 +314,7 @@ class NominalClient:
         Returns:
             All secrets which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_secrets_query(search_text, labels, properties)
+        query = create_search_secrets_query(search_text, labels, properties)
         return list(self._iter_search_secrets(query))
 
     def create_run(
@@ -345,8 +360,8 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Run]:
-        query = _conjure_utils.create_search_runs_query(start, end, name_substring, labels, properties)
-        for run in _conjure_utils.search_runs_paginated(self._clients.run, self._clients.auth_header, query):
+        query = create_search_runs_query(start, end, name_substring, labels, properties)
+        for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
             yield Run._from_conjure(self._clients, run)
 
     def search_runs(
@@ -510,9 +525,7 @@ class NominalClient:
         return Checklist._from_conjure(self._clients, response)
 
     def _iter_search_checklists(self, query: scout_checks_api.ChecklistSearchQuery) -> Iterable[Checklist]:
-        for checklist in _conjure_utils.search_checklists_paginated(
-            self._clients.checklist, self._clients.auth_header, query
-        ):
+        for checklist in search_checklists_paginated(self._clients.checklist, self._clients.auth_header, query):
             yield Checklist._from_conjure(self._clients, checklist)
 
     def search_checklists(
@@ -532,7 +545,7 @@ class NominalClient:
         Returns:
             All checklists which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_checklists_query(search_text, labels, properties)
+        query = create_search_checklists_query(search_text, labels, properties)
         return list(self._iter_search_checklists(query))
 
     def create_attachment(
@@ -884,7 +897,7 @@ class NominalClient:
         return Asset._from_conjure(self._clients, response[rid])
 
     def _iter_search_assets(self, query: scout_asset_api.SearchAssetsQuery) -> Iterable[Asset]:
-        for asset in _conjure_utils.search_assets_paginated(self._clients.assets, self._clients.auth_header, query):
+        for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query):
             yield Asset._from_conjure(self._clients, asset)
 
     def search_assets(
@@ -905,15 +918,13 @@ class NominalClient:
         Returns:
             All assets which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_assets_query(search_text, labels, properties)
+        query = create_search_assets_query(search_text, labels, properties)
         return list(self._iter_search_assets(query))
 
     def _iter_list_streaming_checklists(self, asset: str | None) -> Iterable[str]:
         if asset is None:
-            return _conjure_utils.list_streaming_checklists_paginated(
-                self._clients.checklist_execution, self._clients.auth_header
-            )
-        return _conjure_utils.list_streaming_checklists_for_asset_paginated(
+            return list_streaming_checklists_paginated(self._clients.checklist_execution, self._clients.auth_header)
+        return list_streaming_checklists_for_asset_paginated(
             self._clients.checklist_execution, self._clients.auth_header, asset
         )
 
@@ -966,7 +977,7 @@ class NominalClient:
         assets: Sequence[Asset | str] | None = None,
         runs: Sequence[Run | str] | None = None,
     ) -> Iterable[DataReview]:
-        for review in _conjure_utils.search_data_reviews_paginated(
+        for review in search_data_reviews_paginated(
             self._clients.datareview,
             self._clients.auth_header,
             assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
@@ -984,7 +995,7 @@ class NominalClient:
         return list(self._iter_search_data_reviews(assets, runs))
 
     def _iter_search_events(self, query: event.SearchQuery) -> Iterable[Event]:
-        for e in _conjure_utils.search_events_paginated(self._clients.event, self._clients.auth_header, query):
+        for e in search_events_paginated(self._clients.event, self._clients.auth_header, query):
             yield Event._from_conjure(self._clients, e)
 
     def search_events(
@@ -1013,7 +1024,7 @@ class NominalClient:
         Returns:
             All events which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_events_query(
+        query = create_search_events_query(
             search_text=search_text,
             after=after,
             before=before,

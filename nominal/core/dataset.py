@@ -12,9 +12,8 @@ from typing import BinaryIO, Iterable, Mapping, Sequence
 from nominal_api import api, datasource_api, ingest_api, scout_catalog
 from typing_extensions import Self, TypeAlias
 
-from nominal._utils import deprecate_arguments
+from nominal._utils import deprecate_arguments, update_dataclass
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
-from nominal.core._utils import update_dataclass
 from nominal.core.bounds import Bounds
 from nominal.core.channel import Channel
 from nominal.core.dataset_file import DatasetFile

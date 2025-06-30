@@ -10,8 +10,7 @@ import pandas as pd
 from nominal_api.api import Timestamp
 
 from nominal import ts
-from nominal._utils import reader_writer
-from nominal.core._utils import batched
+from nominal._utils import batched, reader_writer
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
