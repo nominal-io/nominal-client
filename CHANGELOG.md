@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.64.0](https://github.com/nominal-io/nominal-client/compare/v1.63.0...v1.64.0) (2025-06-30)
+
+
+### Features
+
+* allow streaming ints with vanilla streaming ([#396](https://github.com/nominal-io/nominal-client/issues/396)) ([fdb6861](https://github.com/nominal-io/nominal-client/commit/fdb6861e9b53047849a665e9deb84d7089d2fc66))
+* allow streaming intsn with vanilla streaming ([fdb6861](https://github.com/nominal-io/nominal-client/commit/fdb6861e9b53047849a665e9deb84d7089d2fc66))
+* consolidate utilities in _utils subpackages, add timing utilities ([#399](https://github.com/nominal-io/nominal-client/issues/399)) ([4173af4](https://github.com/nominal-io/nominal-client/commit/4173af4ad16fdfa27444dfcfbe87f827b91acfb4))
+* delete methods that have been deprecated for several months ([#400](https://github.com/nominal-io/nominal-client/issues/400)) ([97ce525](https://github.com/nominal-io/nominal-client/commit/97ce52592fc6182ff2211357b95629e6bcff457d))
+
 ## [1.63.0](https://github.com/nominal-io/nominal-client/compare/v1.62.0...v1.63.0) (2025-06-25)
 
 
