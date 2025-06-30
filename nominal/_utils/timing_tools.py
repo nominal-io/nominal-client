@@ -4,7 +4,7 @@ import contextlib
 import logging
 import time
 from types import TracebackType
-from typing import Any, Type
+from typing import Type
 
 from typing_extensions import Self
 
@@ -20,7 +20,7 @@ class LogTiming(contextlib.ContextDecorator):
     Examples:
         Using as a context manager to time a block of code.
 
-        >>> with LogTiming("Processed %d records", 100, level=logging.INFO):
+        >>> with LogTiming("Processed 100 records", level=logging.INFO):
         ...     pass
         Processed 100 records (... seconds)
 
@@ -30,30 +30,17 @@ class LogTiming(contextlib.ContextDecorator):
         def my_function(name):
             pass
 
-        Incorrect usage will raise an error immediately.
-
-        >>> try:
-        ...     timer = LogTiming("Mismatched formatter %s %d", "hello")
-        ... except TypeError as e:
-        ...     print("Caught expected error!")
-        Caught expected error!
-
     """
 
-    def __init__(self, message: str, *log_args: Any, level: int = logging.DEBUG):
+    def __init__(self, message: str, level: int = logging.DEBUG):
         """Initialize and validate the log message and its arguments.
 
         Args:
-            message: Message template string to prefix log statement with (use standard logging format strings)
-            *log_args: Log arguments to interpolate into the provided `message` much like you would use with `logging`
+            message: Message template string to prefix log statement with
             level: Log level to print timing information with
         """
         self._message = message
-        self._log_args = log_args
         self._log_level = level
-
-        # Ensure user provided args / message are compatible
-        self._validate_log_format()
 
         self._start_time = 0.0
         self._end_time = 0.0
@@ -69,35 +56,5 @@ class LogTiming(contextlib.ContextDecorator):
         """Track end time of the context manager and print a log message with timing details."""
         self._end_time = time.time()
         logging.log(
-            self._log_level, f"{self._message} (%f seconds)", *self._log_args, self._end_time - self._start_time
+            self._log_level, "%s (%f seconds)", self._message, self._end_time - self._start_time
         )
-
-    def _validate_log_format(self) -> None:
-        """Validate that the provided log message prefix and arguments would properly format.
-
-        Throws:
-            TypeError: Message would fail to format
-        """
-        try:
-            # We create a dummy LogRecord to use the logging module's own
-            # formatting logic. This is the most reliable way to check.
-            # The getMessage() method will raise TypeError or ValueError
-            # if the message and args don't match.
-            record = logging.LogRecord(
-                name="validation",
-                level=self._log_level,
-                pathname="",
-                lineno=0,
-                msg=self._message,
-                args=self._log_args,
-                exc_info=None,
-            )
-
-            # Ensures there aren't too many args or incorrectly typed args
-            record.getMessage()
-
-            # Ensures there's enough args
-            _ = self._message % self._log_args
-        except (TypeError, ValueError) as e:
-            # Re-raise with a more user-friendly message, chaining the original exception.
-            raise TypeError(f"Log message {self._message!r} and arguments {self._log_args} are not compatible.") from e
