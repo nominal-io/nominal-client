@@ -55,6 +55,4 @@ class LogTiming(contextlib.ContextDecorator):
     ) -> None:
         """Track end time of the context manager and print a log message with timing details."""
         self._end_time = time.time()
-        logging.log(
-            self._log_level, "%s (%f seconds)", self._message, self._end_time - self._start_time
-        )
+        logging.log(self._log_level, "%s (%f seconds)", self._message, self._end_time - self._start_time)
