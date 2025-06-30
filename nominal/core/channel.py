@@ -4,7 +4,7 @@ import enum
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Protocol, cast
+from typing import Mapping, Protocol
 
 from nominal_api import (
     api,
@@ -20,7 +20,7 @@ from typing_extensions import Self
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core.unit import UnitLike, _build_unit_update
-from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos, _time_unit_to_conjure
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 class ChannelDataType(enum.Enum):
@@ -150,12 +150,13 @@ class Channel:
         end: str | datetime | IntegralNanosecondsUTC,
         buckets: int | None = None,
         resolution: int | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> scout_compute_api.ComputeNodeResponse:
         channel_series = scout_compute_api.ChannelSeries(
             data_source=scout_compute_api.DataSourceChannel(
                 channel=scout_compute_api.StringConstant(literal=self.name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
-                tags={},
+                tags={k: scout_compute_api.StringConstant(literal=v) for k, v in tags.items()} if tags else {},
                 tags_to_group_by=[],
             )
         )
@@ -179,70 +180,26 @@ class Channel:
         response = self._clients.compute.compute(self._clients.auth_header, request)
         return response
 
-    def _get_series_values_csv(
-        self,
-        start: api.Timestamp,
-        end: api.Timestamp,
-        relative_to: datetime | IntegralNanosecondsUTC | None = None,
-        relative_resolution: _LiteralTimeUnit = "nanoseconds",
-        *,
-        enable_gzip: bool = True,
-    ) -> BinaryIO:
-        """Get the channel data as a CSV file-like object.
+    def _to_compute_series(self, tags: Mapping[str, str] | None = None) -> scout_compute_api.Series:
+        if tags:
+            series_tags = {key: scout_compute_api.StringConstant(literal=value) for key, value in tags.items()}
+        else:
+            series_tags = {}
 
-        Args:
-            start: Start timestamp
-            end: End timestamp
-            relative_to: If provided, timestamps are returned relative to the given timestamp
-            relative_resolution: If timestamps are returned in relative time, the resolution to use.
-            enable_gzip: If true, use gzip when exporting data from Nominal. This will almost always make export
-                faster and use less bandwidth.
-
-        Returns:
-            A binary file-like object containing the CSV data
-        """
         channel_series = scout_compute_api.ChannelSeries(
             data_source=scout_compute_api.DataSourceChannel(
                 channel=scout_compute_api.StringConstant(literal=self.name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
-                tags={},
+                tags=series_tags,
                 tags_to_group_by=[],
             )
         )
-        series = _create_series_from_channel(channel_series, self.data_type)
+        return _create_series_from_channel(channel_series, self.data_type)
 
-        request = scout_dataexport_api.ExportDataRequest(
-            channels=scout_dataexport_api.ExportChannels(
-                time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                    channels=[
-                        scout_dataexport_api.TimeDomainChannel(
-                            column_name=self.name,
-                            compute_node=series,
-                        )
-                    ],
-                    merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                        # only one series will be returned, so no need to merge
-                        none=scout_dataexport_api.NoneStrategy(),
-                    ),
-                    output_timestamp_format=_create_timestamp_format(relative_to, relative_resolution),
-                )
-            ),
-            start_time=start,
-            end_time=end,
-            context=scout_compute_api.Context(
-                function_variables={},
-                variables={},
-            ),
-            format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
-            resolution=scout_dataexport_api.ResolutionOption(
-                undecimated=scout_dataexport_api.UndecimatedResolution(),
-            ),
-            compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
+    def _to_time_domain_channel(self, tags: Mapping[str, str] | None = None) -> scout_dataexport_api.TimeDomainChannel:
+        return scout_dataexport_api.TimeDomainChannel(
+            column_name=self.name, compute_node=self._to_compute_series(tags=tags)
         )
-        response = self._clients.dataexport.export_channel_data(self._clients.auth_header, request)
-        # note: the response is the same as the requests.Response.raw field, with stream=True on the request;
-        # this acts like a file-like object in binary-mode.
-        return cast(BinaryIO, response)
 
 
 def _create_series_from_channel(
@@ -266,18 +223,3 @@ def _create_series_from_channel(
         return scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
     else:
         raise ValueError(f"Unsupported channel data type: {data_type}")
-
-
-def _create_timestamp_format(
-    relative_to: datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
-) -> scout_dataexport_api.TimestampFormat:
-    if relative_to is None:
-        return scout_dataexport_api.TimestampFormat(iso8601=scout_dataexport_api.Iso8601TimestampFormat())
-    else:
-        return scout_dataexport_api.TimestampFormat(
-            relative=scout_dataexport_api.RelativeTimestampFormat(
-                relative_to=_SecondsNanos.from_flexible(relative_to).to_api(),
-                time_unit=_time_unit_to_conjure(relative_resolution),
-            )
-        )

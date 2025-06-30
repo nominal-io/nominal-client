@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Iterable, Literal, Protocol, Sequence
 
 from nominal_api import (
-    api,
     datasource_api,
     ingest_api,
     scout,
     scout_catalog,
-    scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
@@ -26,11 +24,10 @@ from nominal._utils import batched, warn_on_deprecated_argument
 from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._utils import HasRid
-from nominal.core.channel import Channel, ChannelDataType, _create_timestamp_format
+from nominal.core.channel import Channel
 from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.core.write_stream_base import WriteStreamBase
-from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
 
 logger = logging.getLogger(__name__)
 
@@ -237,86 +234,6 @@ class DataSource(HasRid):
         """
         request = datasource_api.IndexChannelPrefixTreeRequest(self.rid, delimiter=delimiter)
         self._clients.datasource.index_channel_prefix_tree(self._clients.auth_header, request)
-
-
-def _construct_export_request(
-    channels: Sequence[Channel],
-    datasource_rid: str,
-    start: api.Timestamp,
-    end: api.Timestamp,
-    tags: dict[str, str] | None,
-    enable_gzip: bool,
-    relative_to: datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
-) -> scout_dataexport_api.ExportDataRequest:
-    export_channels = []
-
-    converted_tags = {}
-    if tags:
-        for key, value in tags.items():
-            converted_tags[key] = scout_compute_api.StringConstant(literal=value)
-    for channel in channels:
-        if channel.data_type == ChannelDataType.DOUBLE:
-            export_channels.append(
-                scout_dataexport_api.TimeDomainChannel(
-                    column_name=channel.name,
-                    compute_node=scout_compute_api.Series(
-                        numeric=scout_compute_api.NumericSeries(
-                            channel=scout_compute_api.ChannelSeries(
-                                data_source=scout_compute_api.DataSourceChannel(
-                                    channel=scout_compute_api.StringConstant(literal=channel.name),
-                                    data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
-                                    tags=converted_tags,
-                                    tags_to_group_by=[],
-                                )
-                            )
-                        )
-                    ),
-                )
-            )
-        elif channel.data_type == ChannelDataType.STRING:
-            export_channels.append(
-                scout_dataexport_api.TimeDomainChannel(
-                    column_name=channel.name,
-                    compute_node=scout_compute_api.Series(
-                        enum=scout_compute_api.EnumSeries(
-                            channel=scout_compute_api.ChannelSeries(
-                                data_source=scout_compute_api.DataSourceChannel(
-                                    channel=scout_compute_api.StringConstant(literal=channel.name),
-                                    data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
-                                    tags=converted_tags,
-                                    tags_to_group_by=[],
-                                )
-                            )
-                        )
-                    ),
-                )
-            )
-
-    request = scout_dataexport_api.ExportDataRequest(
-        channels=scout_dataexport_api.ExportChannels(
-            time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                channels=export_channels,
-                merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
-                    # only one series will be returned, so no need to merge
-                    none=scout_dataexport_api.NoneStrategy(),
-                ),
-                output_timestamp_format=_create_timestamp_format(relative_to, relative_resolution),
-            )
-        ),
-        start_time=start,
-        end_time=end,
-        context=scout_compute_api.Context(
-            function_variables={},
-            variables={},
-        ),
-        format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
-        resolution=scout_dataexport_api.ResolutionOption(
-            undecimated=scout_dataexport_api.UndecimatedResolution(),
-        ),
-        compression=scout_dataexport_api.CompressionFormat.GZIP if enable_gzip else None,
-    )
-    return request
 
 
 def _get_write_stream(

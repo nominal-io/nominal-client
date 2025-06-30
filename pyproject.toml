@@ -35,6 +35,7 @@ dependencies = [
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
     "nominal-api==0.708.0",
+    "babel>=2.17.0",
 ]
 
 
