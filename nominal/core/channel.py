@@ -4,7 +4,7 @@ import enum
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, BinaryIO, Protocol, cast
+from typing import BinaryIO, Protocol, cast
 
 from nominal_api import (
     api,
@@ -21,9 +21,6 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import update_dataclass
 from nominal.core.unit import UnitLike, _build_unit_update
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos, _time_unit_to_conjure
-
-if TYPE_CHECKING:
-    pass
 
 
 class ChannelDataType(enum.Enum):

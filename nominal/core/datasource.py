@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Iterable, Literal, Protocol, Sequence
+from typing import Iterable, Literal, Protocol, Sequence
 
 from nominal_api import (
     api,
@@ -31,9 +31,6 @@ from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
