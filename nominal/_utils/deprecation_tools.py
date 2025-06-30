@@ -2,31 +2,16 @@ from __future__ import annotations
 
 import inspect
 import logging
-import os
 import warnings
-from contextlib import contextmanager
 from functools import wraps
-from typing import BinaryIO, Callable, Iterator, TypeVar
+from typing import Callable, TypeVar
 
 from typing_extensions import ParamSpec
 
 logger = logging.getLogger(__name__)
 
-
 Param = ParamSpec("Param")
 T = TypeVar("T")
-
-
-@contextmanager
-def reader_writer() -> Iterator[tuple[BinaryIO, BinaryIO]]:
-    rd, wd = os.pipe()
-    r = open(rd, "rb")
-    w = open(wd, "wb")
-    try:
-        yield r, w
-    finally:
-        w.close()
-        r.close()
 
 
 def warn_on_deprecated_argument(

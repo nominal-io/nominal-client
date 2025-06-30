@@ -10,6 +10,7 @@ from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogPoint, LogSet
 from nominal.core.run import Run
+from nominal.core.secret import Secret
 from nominal.core.stream import WriteStream
 from nominal.core.user import User
 from nominal.core.video import Video
