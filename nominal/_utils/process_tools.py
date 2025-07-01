@@ -1,6 +1,8 @@
 import concurrent.futures
 import contextlib
-from typing import Any, Generator, Literal, TypeAlias
+from typing import Any, Generator, Literal
+
+from typing_extensions import TypeAlias
 
 PoolType: TypeAlias = Literal["thread", "process"]
 
