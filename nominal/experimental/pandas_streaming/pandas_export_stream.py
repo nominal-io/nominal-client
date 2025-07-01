@@ -5,12 +5,10 @@ import logging
 from typing import BinaryIO, Sequence
 
 import pandas as pd
-from babel.dates import format_datetime
 
 from nominal.core.export_stream import ExportStream
 from nominal.core.read_stream_base import ExportJob
 from nominal.ts import (
-    Custom,
     Epoch,
     Iso8601,
     Relative,
@@ -81,13 +79,6 @@ class PandasExportStream(ExportStream[pd.DataFrame]):
             pd_unit = _to_pandas_unit(typed_timestamp_type.unit)
             offset_time_col = time_col - pd.to_datetime(0, utc=True)
             batch_df[renamed_timestamp_col] = offset_time_col / pd.Timedelta(f"1{pd_unit}")
-        elif isinstance(typed_timestamp_type, Custom):
-            batch_df[renamed_timestamp_col] = pd.Series(
-                [
-                    format_datetime(stamp, typed_timestamp_type.format, tzinfo=stamp.tz, locale="en_US")
-                    for stamp in time_col
-                ]
-            )
         elif isinstance(typed_timestamp_type, Iso8601):
             # do nothing-- already in iso format
             batch_df[renamed_timestamp_col] = time_col

@@ -3,19 +3,20 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from threading import Thread
-from typing import Any, BinaryIO, Generator, Mapping, Sequence
+from typing import Any, BinaryIO, Iterable, Mapping, Sequence
 
 import pandas as pd
 from nominal_api.api import Timestamp
 
 from nominal import ts
 from nominal._utils import reader_writer
+from nominal._utils.typing_tools import copy_signature_from
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileTypes
-from nominal.thirdparty.pandas.pandas_export_stream import _EXPORTED_TIMESTAMP_COL_NAME, PandasExportStream
+from nominal.experimental.pandas_streaming.pandas_export_stream import _EXPORTED_TIMESTAMP_COL_NAME, PandasExportStream
 
 logger = logging.getLogger(__name__)
 
@@ -153,20 +154,20 @@ def channel_to_series(
     ```
 
     """
-    export_stream = PandasExportStream()
+    export_stream = PandasExportStream(num_workers=1)
 
     start_sn = ts._MIN_TIMESTAMP if start is None else ts._SecondsNanos.from_flexible(start)
     end_sn = ts._MAX_TIMESTAMP if end is None else ts._SecondsNanos.from_flexible(end)
 
-    timestamp_format: ts._AnyTimestampType = "iso_8601"
+    timestamp_format: ts._AnyNativeTimestampType = "iso_8601"
     if relative_to:
         timestamp_format = ts.Relative(unit=relative_resolution, start=relative_to)
 
     return pd.concat(
         export_stream.export(
             channels=[channel],
-            start_ns=start_sn.to_nanoseconds(),
-            end_ns=end_sn.to_nanoseconds(),
+            start=start_sn.to_nanoseconds(),
+            end=end_sn.to_nanoseconds(),
             tags=tags,
             timestamp_type=timestamp_format,
         ),
@@ -234,7 +235,7 @@ def datasource_to_dataframe_batches(
     channel_batch_size: int = 20,
     relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,
     relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
-) -> Generator[pd.DataFrame, None, None]:
+) -> Iterable[pd.DataFrame]:
     """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
     Args:
@@ -292,64 +293,27 @@ def datasource_to_dataframe_batches(
         logger.warning("Requested data for no columns: returning empty dataframe")
         return
 
-    timestamp_format: ts._AnyTimestampType = "iso_8601"
+    timestamp_format: ts._AnyNativeTimestampType = "iso_8601"
     if relative_to:
         timestamp_format = ts.Relative(unit=relative_resolution, start=relative_to)
 
     export_stream = PandasExportStream(num_workers=num_workers, max_channels_per_request=channel_batch_size)
     yield from export_stream.export(
         channels=channels,
-        start_ns=start_time.to_nanoseconds(),
-        end_ns=end_time.to_nanoseconds(),
+        start=start_time.to_nanoseconds(),
+        end=end_time.to_nanoseconds(),
         tags=tags,
         timestamp_type=timestamp_format,
     )
 
 
-def datasource_to_dataframe(
-    datasource: DataSource,
-    channel_exact_match: Sequence[str] = (),
-    channel_fuzzy_search_text: str = "",
-    start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
-    end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
-    tags: dict[str, str] | None = None,
-    enable_gzip: bool = True,
-    *,
-    channels: Sequence[Channel] | None = None,
-    num_workers: int = 1,
-    channel_batch_size: int = 20,
-    relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,
-    relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
-) -> pd.DataFrame:
+@copy_signature_from(datasource_to_dataframe_batches)
+def datasource_to_dataframe(*args: Any, **kwargs: Any) -> pd.DataFrame:
     """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
-    Args:
-    ----
-        datasource: The datasource to download data from
-        channel_exact_match: Filter the returned channels to those whose names match all provided strings
-            (case insensitive).
-            For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
-            whereas a channel named 'engine_turbine_flowrate' would not!
-        channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided
-            string.
-        channels: List of channels to fetch data for. If provided, supercedes search parameters of
-            `channel_exact_match` and `channel_fuzzy_search_text`.
-        tags: Dictionary of tags to filter channels by
-        start: The minimum data updated time to filter channels by
-        end: The maximum data start time to filter channels by
-        enable_gzip: If true, use gzip when exporting data from Nominal. This will almost always make export
-            faster and use less bandwidth.
-        num_workers: Use this many parallel processes for performing export requests against the backend. This should
-            roughly be corresponding to the strength of your network connection, with 4-8 workers being more than
-            sufficient to completely saturate most connections.
-        channel_batch_size: Number of channels to request at a time per worker thread. Reducing this number may allow
-            fetching a larger time duration (i.e., `end` - `start`), depending on how synchronized the timing is amongst
-            the requested channels. This is a result of a limit of 10_000_000 unique timestamps returned per request,
-            so reducing the number of channels will allow for a larger time window if channels come in at different
-            times (e.g. channel A has timestamps 100, 200, 300... and channel B has timestamps 101, 201, 301, ...).
-            This is particularly useful when combined with num_workers when attempting to maximally utilize a machine.
-        relative_to: If provided, return timestamps relative to the given epoch time
-        relative_resolution: If providing timestamps in relative time, the resolution to use
+    See:
+    ---
+        See `datasource_to_dataframe_batches` for descriptions of available function arguments
 
     Returns:
     -------
@@ -366,21 +330,7 @@ def datasource_to_dataframe(
     ```
 
     """
-    dfs = [
-        *datasource_to_dataframe_batches(
-            datasource=datasource,
-            channel_exact_match=channel_exact_match,
-            channel_fuzzy_search_text=channel_fuzzy_search_text,
-            start=start,
-            end=end,
-            tags=tags,
-            channels=channels,
-            num_workers=num_workers,
-            channel_batch_size=channel_batch_size,
-            relative_to=relative_to,
-            relative_resolution=relative_resolution,
-        )
-    ]
+    dfs = [*datasource_to_dataframe_batches(*args, **kwargs)]
 
     if dfs:
         return pd.concat(dfs, sort=True)

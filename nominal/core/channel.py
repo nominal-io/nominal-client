@@ -181,11 +181,7 @@ class Channel:
         return response
 
     def _to_compute_series(self, tags: Mapping[str, str] | None = None) -> scout_compute_api.Series:
-        if tags:
-            series_tags = {key: scout_compute_api.StringConstant(literal=value) for key, value in tags.items()}
-        else:
-            series_tags = {}
-
+        series_tags = {key: scout_compute_api.StringConstant(literal=value) for key, value in (tags or {}).items()}
         channel_series = scout_compute_api.ChannelSeries(
             data_source=scout_compute_api.DataSourceChannel(
                 channel=scout_compute_api.StringConstant(literal=self.name),

@@ -10,10 +10,12 @@ from typing import Mapping, Sequence
 from nominal_api import api, scout_compute_api, scout_dataexport_api
 from typing_extensions import Self
 
+from nominal._utils import LogTiming
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.ts import (
+    IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
-    _AnyTimestampType,
+    _AnyNativeTimestampType,
     _SecondsNanos,
     _to_api_duration,
     _to_export_timestamp_format,
@@ -216,8 +218,8 @@ def _group_channels_by_datatype(channels: Sequence[Channel]) -> Mapping[ChannelD
 
 @dataclasses.dataclass(frozen=True, unsafe_hash=True, order=True)
 class TimeRange:
-    start_time: int
-    end_time: int
+    start_time: IntegralNanosecondsUTC
+    end_time: IntegralNanosecondsUTC
 
     @property
     def start_api(self) -> api.Timestamp:
@@ -229,11 +231,11 @@ class TimeRange:
         """Gets the end time of the range in conjure API format."""
         return _SecondsNanos.from_nanoseconds(self.end_time).to_api()
 
-    def subdivide(self, duration_ns: int) -> Sequence[Self]:
+    def subdivide(self, duration: IntegralNanosecondsDuration) -> Sequence[Self]:
         """Subdivides the duration into chunks with at most the given duration."""
         return [
-            self.__class__(curr_ns, min(curr_ns + duration_ns, self.end_time))
-            for curr_ns in range(self.start_time, self.end_time, duration_ns)
+            self.__class__(curr_ns, min(curr_ns + duration, self.end_time))
+            for curr_ns in range(self.start_time, self.end_time, duration)
         ]
 
 
@@ -253,19 +255,19 @@ class ExportJob:
 
     # Decimation settings
     buckets: int | None = None
-    resolution_ns: int | None = None
+    resolution: IntegralNanosecondsDuration | None = None
 
     # Timestamp formatting
-    timestamp_type: _AnyTimestampType = "epoch_seconds"
+    timestamp_type: _AnyNativeTimestampType = "epoch_seconds"
 
     def resolution_options(self) -> scout_dataexport_api.ResolutionOption:
         """Construct data export resolution options based on bucketing and resolution parameters."""
-        if self.buckets is not None and self.resolution_ns is not None:
-            raise ValueError("Only one of buckets or resolution_ns may be provided")
-        elif self.buckets is None and self.resolution_ns is None:
+        if self.buckets is not None and self.resolution is not None:
+            raise ValueError("Only one of buckets or resolution may be provided")
+        elif self.buckets is None and self.resolution is None:
             return scout_dataexport_api.ResolutionOption(undecimated=scout_dataexport_api.UndecimatedResolution())
         else:
-            return scout_dataexport_api.ResolutionOption(nanoseconds=self.resolution_ns, buckets=self.buckets)
+            return scout_dataexport_api.ResolutionOption(nanoseconds=self.resolution, buckets=self.buckets)
 
     def export_channels(self) -> scout_dataexport_api.ExportChannels:
         """Construct data export channels for the configured channels and export options."""
@@ -321,15 +323,16 @@ class ReadStreamBase:
         self._points_per_slice = points_per_slice
         self._max_channels_per_request = max_channels_per_request
 
+    @LogTiming("Built data export jobs")
     def _build_download_queue(
         self,
         channels: Sequence[Channel],
         time_range: TimeRange,
-        timestamp_type: _AnyTimestampType,
+        timestamp_type: _AnyNativeTimestampType,
         tags: Mapping[str, str] | None = None,
         batch_duration: datetime.timedelta | None = None,
         buckets: int | None = None,
-        resolution_ns: int | None = None,
+        resolution: IntegralNanosecondsDuration | None = None,
     ) -> Mapping[TimeRange, Sequence[ExportJob]]:
         """Given a list of channels, a time range, and other assorted configuration details, build export jobs.
 
@@ -342,8 +345,8 @@ class ReadStreamBase:
                 NOTE: if not provided, this is computed based on sampled data rates for each
                       channel and the configured request / batch point maximums.
             buckets: Number of buckets to decimate data into within each exported batch of data
-                NOTE: may not be used alongside `resolution_ns`
-            resolution_ns: Resolution, in nanoseconds, between decimated points.
+                NOTE: may not be used alongside `resolution`
+            resolution: Resolution, in nanoseconds, between decimated points.
                 NOTE: may not be used alongside `buckets`
 
         Returns:
@@ -433,7 +436,7 @@ class ReadStreamBase:
                     time_slice=slice,
                     tags=tags if tags else {},
                     buckets=buckets,
-                    resolution_ns=resolution_ns,
+                    resolution=resolution,
                     timestamp_type=timestamp_type,
                 )
                 for channel_group in channel_groups
@@ -451,7 +454,7 @@ class ReadStreamBase:
                             time_slice=sub_slice,
                             tags=tags if tags else {},
                             buckets=buckets,
-                            resolution_ns=resolution_ns,
+                            resolution=resolution,
                             timestamp_type=timestamp_type,
                         )
                     )
