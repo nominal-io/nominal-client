@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import collections
 import concurrent.futures
+import contextlib
 import dataclasses
 import datetime
 import logging
-from typing import Mapping, Sequence
+from typing import Generator, Mapping, Sequence
 
 from nominal_api import api, scout_compute_api, scout_dataexport_api
 from typing_extensions import Self
 
 from nominal._utils import LogTiming
+from nominal._utils.process_tools import DEFAULT_POOL_TYPE, BackgroundPool, PoolType
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.ts import (
     IntegralNanosecondsDuration,
@@ -35,7 +37,7 @@ DEFAULT_CHANNELS_PER_REQUEST = 25
 DEFAULT_POINTS_PER_REQUEST = 1_000_000
 
 # Number of points to export at once in a single dataframe from Nominal
-DEFAULT_POINTS_PER_SLICE = 10_000_000
+DEFAULT_POINTS_PER_BATCH = 10_000_000
 
 
 def _batch_channel_points_per_second(
@@ -304,24 +306,33 @@ class ReadStreamBase:
 
     def __init__(
         self,
-        num_workers: int = DEFAULT_NUM_WORKERS,
+        *,
         points_per_request: int = DEFAULT_POINTS_PER_REQUEST,
-        points_per_slice: int = DEFAULT_POINTS_PER_SLICE,
+        points_per_batch: int = DEFAULT_POINTS_PER_BATCH,
         max_channels_per_request: int = DEFAULT_CHANNELS_PER_REQUEST,
+        num_workers: int = DEFAULT_NUM_WORKERS,
+        pool_type: PoolType = DEFAULT_POOL_TYPE,
     ):
         """Initialize ReadStreamBase.
 
         Args:
-            num_workers: Number of parallel workers to use within internal process pools
             points_per_request: Maximum number of points to request from nominal within a single request
-            points_per_slice: Maximum number of points (excluding interpolated NaNs) to retrieve in a single export
+            points_per_batch: Maximum number of points (excluding interpolated NaNs) to retrieve in a single export
             max_channels_per_request: Maximum number of channels to include in a single request to Nominal
+            num_workers: Number of parallel workers to use within internal executor pools
+            pool_type: Type of background executor to use
 
         """
         self._num_workers = num_workers
         self._points_per_request = points_per_request
-        self._points_per_slice = points_per_slice
+        self._points_per_batch = points_per_batch
         self._max_channels_per_request = max_channels_per_request
+        self._pool_type: PoolType = pool_type
+
+    @contextlib.contextmanager
+    def _background_pool(self) -> Generator[concurrent.futures.Executor, None, None]:
+        with BackgroundPool(max_workers=self._num_workers, pool_type=self._pool_type) as pool:
+            yield pool
 
     @LogTiming("Built data export jobs")
     def _build_download_queue(
@@ -368,7 +379,7 @@ class ReadStreamBase:
                 raise ValueError("Must provide either float channels or slice duration")
 
         # Compute max data rates per float channels
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self._num_workers) as pool:
+        with self._background_pool() as pool:
             points_per_second = _channel_points_per_second(
                 executor=pool,
                 channels=float_channels,
@@ -389,7 +400,7 @@ class ReadStreamBase:
                 )
 
             total_point_rate = sum(points_per_second.values())
-            computed_duration = datetime.timedelta(seconds=self._points_per_slice / total_point_rate)
+            computed_duration = datetime.timedelta(seconds=self._points_per_batch / total_point_rate)
             requested_duration = datetime.timedelta(seconds=(time_range.end_time - time_range.start_time) / 1e9)
             batch_duration = min(computed_duration, requested_duration)
             logger.info(

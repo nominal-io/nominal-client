@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Iterable, Literal, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Literal, Protocol, Sequence, cast, overload
 
 from nominal_api import (
     datasource_api,
@@ -21,13 +21,23 @@ from nominal_api import (
 )
 
 from nominal._utils import batched, warn_on_deprecated_argument
+from nominal._utils.process_tools import DEFAULT_POOL_TYPE, PoolType
 from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel
+from nominal.core.export_stream import ExportStream, ExportType
+from nominal.core.read_stream_base import (
+    DEFAULT_CHANNELS_PER_REQUEST,
+    DEFAULT_POINTS_PER_BATCH,
+    DEFAULT_POINTS_PER_REQUEST,
+)
 from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.core.write_stream_base import WriteStreamBase
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +149,50 @@ class DataSource(HasRid):
             clients=self._clients,
         )
 
+    @overload  # type: ignore[misc]
+    def get_read_stream(
+        self,
+        format: Literal["pandas"],
+        *,
+        points_per_request: int = DEFAULT_POINTS_PER_REQUEST,
+        points_per_batch: int = DEFAULT_POINTS_PER_BATCH,
+        channels_per_request: int = DEFAULT_CHANNELS_PER_REQUEST,
+        num_workers: int = 1,
+        pool_type: PoolType = DEFAULT_POOL_TYPE,
+    ) -> ExportStream[pd.DataFrame]: ...
+
+    def get_read_stream(
+        self,
+        format: Literal["pandas"],
+        *,
+        points_per_request: int = DEFAULT_POINTS_PER_REQUEST,
+        points_per_batch: int = DEFAULT_POINTS_PER_BATCH,
+        channels_per_request: int = DEFAULT_CHANNELS_PER_REQUEST,
+        num_workers: int = 1,
+        pool_type: PoolType = DEFAULT_POOL_TYPE,
+    ) -> ExportStream[ExportType]:
+        """Get a stream capable of exporting data from Nominal.
+
+        Args:
+            format: Type of read stream to create
+            points_per_request: Maximum number of points to request from nominal within a single request
+            points_per_batch: Maximum number of points (excluding interpolated NaNs) to retrieve in a single export
+            channels_per_request: Maximum number of channels to include in a single request to Nominal
+            num_workers: Number of parallel workers to use within internal executor pools
+            pool_type: Type of background executor to use
+
+        Returns:
+            Export stream with the provided configuration
+        """
+        return _get_read_stream(
+            format,
+            channels_per_request=channels_per_request,
+            points_per_request=points_per_request,
+            points_per_batch=points_per_batch,
+            num_workers=num_workers,
+            pool_type=pool_type,
+        )
+
     def search_channels(
         self,
         exact_match: Sequence[str] = (),
@@ -234,6 +288,30 @@ class DataSource(HasRid):
         """
         request = datasource_api.IndexChannelPrefixTreeRequest(self.rid, delimiter=delimiter)
         self._clients.datasource.index_channel_prefix_tree(self._clients.auth_header, request)
+
+
+def _get_read_stream(
+    format: Literal["pandas"],
+    *,
+    channels_per_request: int,
+    points_per_request: int,
+    points_per_batch: int,
+    num_workers: int,
+    pool_type: PoolType,
+) -> ExportStream[ExportType]:
+    if format == "pandas":
+        from nominal.experimental.pandas_streaming import PandasExportStream
+
+        stream = PandasExportStream(
+            num_workers=num_workers,
+            points_per_request=points_per_request,
+            points_per_batch=points_per_batch,
+            max_channels_per_request=channels_per_request,
+            pool_type=pool_type,
+        )
+        return cast(ExportStream[ExportType], stream)
+    else:
+        raise ValueError(f"Expected `format` to equal one of {{pandas}}, but received {format}")
 
 
 def _get_write_stream(

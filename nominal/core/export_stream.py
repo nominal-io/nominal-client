@@ -71,16 +71,15 @@ class ExportStream(abc.ABC, ReadStreamBase, Generic[ExportType]):
         # Step 1: Determine download schedule #
         #######################################
 
-        with LogTiming("Built export jobs"):
-            download_batches = self._build_download_queue(
-                channels,
-                time_range=TimeRange(start, end),
-                timestamp_type=timestamp_type,
-                tags=tags,
-                batch_duration=batch_duration,
-                buckets=buckets,
-                resolution=resolution,
-            )
+        download_batches = self._build_download_queue(
+            channels,
+            time_range=TimeRange(start, end),
+            timestamp_type=timestamp_type,
+            tags=tags,
+            batch_duration=batch_duration,
+            buckets=buckets,
+            resolution=resolution,
+        )
 
         ##############################
         # Step 2: Kick off downloads #
@@ -88,7 +87,7 @@ class ExportStream(abc.ABC, ReadStreamBase, Generic[ExportType]):
 
         with (
             LogTiming(f"Downloaded {len(download_batches)} batches"),
-            concurrent.futures.ProcessPoolExecutor(max_workers=self._num_workers) as pool,
+            self._background_pool() as pool,
             multiprocessing.Manager() as manager,
         ):
             for batch_idx, batch in enumerate(download_batches.items()):

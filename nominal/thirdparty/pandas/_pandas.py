@@ -297,7 +297,9 @@ def datasource_to_dataframe_batches(
     if relative_to:
         timestamp_format = ts.Relative(unit=relative_resolution, start=relative_to)
 
-    export_stream = PandasExportStream(num_workers=num_workers, max_channels_per_request=channel_batch_size)
+    export_stream = datasource.get_read_stream(
+        "pandas", num_workers=num_workers, channels_per_request=channel_batch_size
+    )
     yield from export_stream.export(
         channels=channels,
         start=start_time.to_nanoseconds(),

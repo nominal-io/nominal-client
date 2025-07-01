@@ -10,6 +10,8 @@ from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_TIMING_LOG_LEVEL: int = logging.DEBUG
+
 
 class LogTiming(contextlib.ContextDecorator):
     """Timing manager that provides logged timing information for code within a context manager.
@@ -32,7 +34,7 @@ class LogTiming(contextlib.ContextDecorator):
 
     """
 
-    def __init__(self, message: str, level: int = logging.DEBUG):
+    def __init__(self, message: str, level: int | None = None):
         """Initialize and validate the log message and its arguments.
 
         Args:
@@ -55,4 +57,9 @@ class LogTiming(contextlib.ContextDecorator):
     ) -> None:
         """Track end time of the context manager and print a log message with timing details."""
         self._end_time = time.time()
-        logging.log(self._log_level, "%s (%f seconds)", self._message, self._end_time - self._start_time)
+        logging.log(
+            self._log_level or DEFAULT_TIMING_LOG_LEVEL,
+            "%s (%f seconds)",
+            self._message,
+            self._end_time - self._start_time,
+        )
