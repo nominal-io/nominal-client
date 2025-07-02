@@ -971,21 +971,13 @@ class NominalClient:
         return Event._from_conjure(self._clients, response)
 
     def get_event(self, rid: str) -> Event:
-        events = self.get_events_by_rid([rid])
+        events = self.get_events([rid])
         if len(events) != 1:
             raise RuntimeError(f"Expected to receive exactly one event, received {len(events)}")
 
         return events[0]
 
-    @deprecated(
-        "Getting an event by uuid is deprecated and will be removed in a future release. "
-        "Use `get_events_by_rid` instead"
-    )
-    def get_events(self, uuids: Sequence[str]) -> Sequence[Event]:
-        responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
-        return [Event._from_conjure(self._clients, response) for response in responses]
-
-    def get_events_by_rid(self, rids: Sequence[str]) -> Sequence[Event]:
+    def get_events(self, rids: Sequence[str]) -> Sequence[Event]:
         responses = self._clients.event.batch_get_events(self._clients.auth_header, list(rids))
         return [Event._from_conjure(self._clients, response) for response in responses]
 
