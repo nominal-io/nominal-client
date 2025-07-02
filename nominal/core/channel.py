@@ -46,13 +46,6 @@ class Channel:
     unit: str | None
     description: str | None
     _clients: _Clients = field(repr=False)
-    _rid: str
-
-    @property
-    def rid(self) -> str:
-        """Get the rid value with a deprecation warning."""
-        warnings.warn("Accessing Channel.rid is deprecated and now returns an empty string.", UserWarning, stacklevel=2)
-        return self._rid
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -105,7 +98,6 @@ class Channel:
         channel_unit = channel.unit.symbol if channel.unit else None
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
         return cls(
-            _rid="",
             name=channel.name,
             data_source=channel.data_source,
             unit=channel_unit,
@@ -120,7 +112,6 @@ class Channel:
     ) -> Self:
         channel_data_type = ChannelDataType._from_conjure(series.series_data_type) if series.series_data_type else None
         return cls(
-            _rid="",
             name=series.channel,
             data_source=series.data_source_rid,
             unit=series.unit,
@@ -135,7 +126,6 @@ class Channel:
     ) -> Self:
         channel_data_type = ChannelDataType._from_conjure(channel.data_type) if channel.data_type else None
         return cls(
-            _rid="",
             name=channel.channel_identifier.channel_name,
             data_source=channel.channel_identifier.data_source_rid,
             unit=channel.unit,
