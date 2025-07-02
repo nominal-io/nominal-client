@@ -3,6 +3,7 @@ from nominal.core._utils.api_tools import (
     Link,
     _to_api_batch_key,
     construct_user_agent_string,
+    create_api_tags,
     create_links,
     rid_from_instance_or_string,
 )
@@ -29,6 +30,7 @@ from nominal.core._utils.query_tools import (
 __all__ = [
     "_to_api_batch_key",
     "construct_user_agent_string",
+    "create_api_tags",
     "create_links",
     "create_search_assets_query",
     "create_search_checklists_query",
