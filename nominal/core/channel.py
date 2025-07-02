@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import enum
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import BinaryIO, Protocol, cast

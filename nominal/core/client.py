@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -26,7 +25,6 @@ from nominal_api import (
     scout_video_api,
     secrets_api,
     storage_datasource_api,
-    timeseries_logicalseries_api,
 )
 from typing_extensions import Self, deprecated
 
@@ -56,7 +54,6 @@ from nominal.core._utils import (
 )
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
@@ -71,7 +68,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set, _log_timestamp_type_to_conjure, _logs_to_conjure
 from nominal.core.run import Run
 from nominal.core.secret import Secret
-from nominal.core.unit import Unit, UnitMapping, _available_units, _build_unit_update
+from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
