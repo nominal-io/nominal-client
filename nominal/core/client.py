@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -26,7 +25,6 @@ from nominal_api import (
     scout_video_api,
     secrets_api,
     storage_datasource_api,
-    timeseries_logicalseries_api,
 )
 from typing_extensions import Self, deprecated
 
@@ -56,7 +54,6 @@ from nominal.core._utils import (
 )
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
@@ -71,7 +68,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set, _log_timestamp_type_to_conjure, _logs_to_conjure
 from nominal.core.run import Run
 from nominal.core.secret import Secret
-from nominal.core.unit import Unit, UnitMapping, _available_units, _build_unit_update
+from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
@@ -650,57 +647,6 @@ class NominalClient:
             Unit._from_conjure(unit)
             for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
         ]
-
-    def get_channel(self, rid: str) -> Channel:
-        """Get metadata for a given channel by looking up its rid
-        Args:
-            rid: Identifier for the channel to look up
-        Returns:
-            Resolved metadata for the requested channel
-        Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
-                This typically occurs when there is no such channel for the given RID.
-        """
-        warnings.warn(
-            "get_channel is deprecated. Use dataset.get_channel() or connection.get_channel() instead.",
-            UserWarning,
-        )
-        return Channel._from_conjure_logicalseries_api(
-            self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
-        )
-
-    def set_channel_units(self, rids_to_types: UnitMapping) -> Iterable[Channel]:
-        """Sets the units for a set of channels based on user-provided unit symbols
-        Args:
-            rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
-                NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
-
-        Returns:
-        -------
-            A sequence of metadata for all updated channels
-        Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the channel.
-                This typically occurs when either the units are invalid, or there are no
-                channels with the given RIDs present.
-
-        """
-        warnings.warn(
-            "set_channel_units is deprecated. Use dataset.set_channel_units() or connection.set_channel_units()",
-            UserWarning,
-        )
-
-        series_updates = []
-        for rid, series_type in rids_to_types.items():
-            series_updates.append(
-                timeseries_logicalseries_api.UpdateLogicalSeries(
-                    logical_series_rid=rid,
-                    unit_update=_build_unit_update(series_type),
-                )
-            )
-
-        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
-        response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
-        return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
 
     def get_connection(self, rid: str) -> Connection:
         """Retrieve a connection by its RID."""
