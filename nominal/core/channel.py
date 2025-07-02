@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import enum
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Protocol, cast
+from typing import BinaryIO, Iterable, Mapping, Protocol, cast, overload
 
 from nominal_api import (
     api,
@@ -18,13 +19,28 @@ from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._utils.api_tools import create_api_tags
+from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _build_unit_update
-from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit, _SecondsNanos, _time_unit_to_conjure
+from nominal.ts import (
+    _MAX_TIMESTAMP,
+    _MIN_TIMESTAMP,
+    IntegralNanosecondsUTC,
+    _InferrableTimestampType,
+    _LiteralTimeUnit,
+    _SecondsNanos,
+    _time_unit_to_conjure,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class ChannelDataType(enum.Enum):
+    # TODO (drake): support DOUBLE_ARRAY and STRING_ARRAY
     DOUBLE = "DOUBLE"
     STRING = "STRING"
+    LOG = "LOG"
+    INT = "INT"
     UNKNOWN = "UNKNOWN"
 
     @classmethod
@@ -90,6 +106,101 @@ class Channel:
         update_dataclass(self, updated_channel, fields=self.__dataclass_fields__)
         return self
 
+    @overload
+    def search_logs(
+        self,
+        *,
+        tags: Mapping[str, str] | None = None,
+        regex_match: str,
+        start: _InferrableTimestampType | None = None,
+        end: _InferrableTimestampType | None = None,
+    ) -> Iterable[LogPoint]: ...
+
+    @overload
+    def search_logs(
+        self,
+        *,
+        tags: Mapping[str, str] | None = None,
+        insensitive_match: str,
+        start: _InferrableTimestampType | None = None,
+        end: _InferrableTimestampType | None = None,
+    ) -> Iterable[LogPoint]: ...
+
+    @overload
+    def search_logs(
+        self,
+        *,
+        tags: Mapping[str, str] | None = None,
+        start: _InferrableTimestampType | None = None,
+        end: _InferrableTimestampType | None = None,
+    ) -> Iterable[LogPoint]: ...
+
+    def search_logs(
+        self,
+        *,
+        regex_match: str | None = None,
+        insensitive_match: str | None = None,
+        tags: Mapping[str, str] | None = None,
+        start: _InferrableTimestampType | None = None,
+        end: _InferrableTimestampType | None = None,
+    ) -> Iterable[LogPoint]:
+        """Yields logpoints from the current channel that match the provided arguments
+
+        Args:
+            regex_match: If provided, a regex match to filter potential log messages by
+                NOTE: must not be present with `insensitive_match`
+            insensitive_match: If provided, a case insensitive string that yielded logs match exactly
+                NOTE: must not be present with `regex_match`
+            tags: Tags to filter logs from the channel with
+            start: Timestamp to start yielding results from. If not present, searches starting from unix epoch
+            end: Timestamp after which to stop yielding results from. If not present, searches until end of time.
+        """
+        # Must be <= 500
+        PAGE_SIZE = 200
+
+        if self.data_type is not ChannelDataType.LOG:
+            raise TypeError(f"Not searching channel {self.name} for logs-- not a log channel!")
+
+        api_start = (_SecondsNanos.from_flexible(start) if start else _MIN_TIMESTAMP).to_api()
+        api_end = (_SecondsNanos.from_flexible(end) if end else _MAX_TIMESTAMP).to_api()
+
+        filtered_series = scout_compute_api.LogSeries(
+            filter=scout_compute_api.LogFilterSeries(
+                input=scout_compute_api.LogSeries(channel=self._to_channel_series(tags=tags)),
+                operator=_log_filter_operator(regex_match=regex_match, insensitive_match=insensitive_match),
+            )
+        )
+        compute_series = scout_compute_api.Series(log=filtered_series)
+
+        page_token = None
+        while True:
+            # TODO(drake): Support filtering logs by arguments once supported by the backend
+            request = scout_compute_api.ComputeNodeRequest(
+                context=scout_compute_api.Context(function_variables={}, variables={}),
+                start=api_start,
+                end=api_end,
+                node=scout_compute_api.ComputableNode(
+                    series=scout_compute_api.SummarizeSeries(
+                        input=compute_series,
+                        summarization_strategy=scout_compute_api.SummarizationStrategy(
+                            page=scout_compute_api.PageStrategy(
+                                page_info=scout_compute_api.PageInfo(page_size=PAGE_SIZE, page_token=page_token)
+                            )
+                        ),
+                    )
+                ),
+            )
+            resp = self._clients.compute.compute(self._clients.auth_header, request=request)
+            if not resp.paged_log:
+                raise RuntimeError(f"Expected response to be a paged_log, received {resp.type}")
+
+            for timestamp, log in zip(resp.paged_log.timestamps, resp.paged_log.values):
+                yield LogPoint._from_compute_api(log, timestamp)
+
+            page_token = resp.paged_log.next_page_token
+            if page_token is None:
+                break
+
     @classmethod
     def _from_conjure_datasource_api(cls, clients: _Clients, channel: datasource_api.ChannelMetadata) -> Self:
         # NOTE: intentionally ignoring archetype RID as it does not correspond to a Channel in the same way that a
@@ -133,29 +244,39 @@ class Channel:
             _clients=clients,
         )
 
-    def _decimate_request(
-        self,
-        start: str | datetime | IntegralNanosecondsUTC,
-        end: str | datetime | IntegralNanosecondsUTC,
-        buckets: int | None = None,
-        resolution: int | None = None,
-    ) -> scout_compute_api.ComputeNodeResponse:
-        channel_series = scout_compute_api.ChannelSeries(
+    def _to_channel_series(self, tags: Mapping[str, str] | None = None) -> scout_compute_api.ChannelSeries:
+        return scout_compute_api.ChannelSeries(
             data_source=scout_compute_api.DataSourceChannel(
                 channel=scout_compute_api.StringConstant(literal=self.name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
-                tags={},
+                tags=create_api_tags(tags),
                 tags_to_group_by=[],
             )
         )
 
-        series = _create_series_from_channel(channel_series, self.data_type)
+    def _to_compute_series(self, tags: Mapping[str, str] | None = None) -> scout_compute_api.Series:
+        channel_series = self._to_channel_series(tags=tags)
+        return _create_series_from_channel(channel_series, self.data_type)
+
+    def _to_time_domain_channel(self, tags: Mapping[str, str] | None = None) -> scout_dataexport_api.TimeDomainChannel:
+        return scout_dataexport_api.TimeDomainChannel(
+            column_name=self.name, compute_node=self._to_compute_series(tags=tags)
+        )
+
+    def _decimate_request(
+        self,
+        start: str | datetime | IntegralNanosecondsUTC,
+        end: str | datetime | IntegralNanosecondsUTC,
+        tags: Mapping[str, str] | None = None,
+        buckets: int | None = None,
+        resolution: int | None = None,
+    ) -> scout_compute_api.ComputeNodeResponse:
         request = scout_compute_api.ComputeNodeRequest(
             start=_SecondsNanos.from_flexible(start).to_api(),
             end=_SecondsNanos.from_flexible(end).to_api(),
             node=scout_compute_api.ComputableNode(
                 series=scout_compute_api.SummarizeSeries(
-                    input=series,
+                    input=self._to_compute_series(tags=tags),
                     buckets=buckets,
                     resolution=resolution,
                 )
@@ -176,6 +297,7 @@ class Channel:
         relative_resolution: _LiteralTimeUnit = "nanoseconds",
         *,
         enable_gzip: bool = True,
+        tags: Mapping[str, str] | None = None,
     ) -> BinaryIO:
         """Get the channel data as a CSV file-like object.
 
@@ -186,29 +308,15 @@ class Channel:
             relative_resolution: If timestamps are returned in relative time, the resolution to use.
             enable_gzip: If true, use gzip when exporting data from Nominal. This will almost always make export
                 faster and use less bandwidth.
+            tags: Tags to filter the series by
 
         Returns:
             A binary file-like object containing the CSV data
         """
-        channel_series = scout_compute_api.ChannelSeries(
-            data_source=scout_compute_api.DataSourceChannel(
-                channel=scout_compute_api.StringConstant(literal=self.name),
-                data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
-                tags={},
-                tags_to_group_by=[],
-            )
-        )
-        series = _create_series_from_channel(channel_series, self.data_type)
-
         request = scout_dataexport_api.ExportDataRequest(
             channels=scout_dataexport_api.ExportChannels(
                 time_domain=scout_dataexport_api.ExportTimeDomainChannels(
-                    channels=[
-                        scout_dataexport_api.TimeDomainChannel(
-                            column_name=self.name,
-                            compute_node=series,
-                        )
-                    ],
+                    channels=[self._to_time_domain_channel(tags=tags)],
                     merge_timestamp_strategy=scout_dataexport_api.MergeTimestampStrategy(
                         # only one series will be returned, so no need to merge
                         none=scout_dataexport_api.NoneStrategy(),
@@ -251,8 +359,10 @@ def _create_series_from_channel(
     """
     if data_type == ChannelDataType.STRING:
         return scout_compute_api.Series(enum=scout_compute_api.EnumSeries(channel=channel_series))
-    elif data_type == ChannelDataType.DOUBLE:
+    elif data_type in (ChannelDataType.DOUBLE, ChannelDataType.INT):
         return scout_compute_api.Series(numeric=scout_compute_api.NumericSeries(channel=channel_series))
+    elif data_type == ChannelDataType.LOG:
+        return scout_compute_api.Series(log=scout_compute_api.LogSeries(channel=channel_series))
     else:
         raise ValueError(f"Unsupported channel data type: {data_type}")
 

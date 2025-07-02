@@ -5,7 +5,7 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol
 
-from nominal_api import datasource, datasource_logset, datasource_logset_api, storage_writer_api
+from nominal_api import api, datasource, datasource_logset, datasource_logset_api, scout_compute_api, storage_writer_api
 from typing_extensions import Self
 
 from nominal._utils import batched
@@ -46,6 +46,14 @@ class LogPoint:
             args=MappingProxyType(point.value.args),
         )
 
+    @classmethod
+    def _from_compute_api(cls, point: scout_compute_api.LogValue, timestamp: api.Timestamp) -> Self:
+        return cls(
+            timestamp=_SecondsNanos.from_api(timestamp).to_nanoseconds(),
+            message=point.message,
+            args=point.args,
+        )
+
     def _to_conjure(self) -> storage_writer_api.LogPoint:
         return storage_writer_api.LogPoint(
             timestamp=_SecondsNanos.from_nanoseconds(self.timestamp).to_api(),
@@ -53,6 +61,23 @@ class LogPoint:
                 message=self.message,
                 args=dict(self.args),
             ),
+        )
+
+
+def _log_filter_operator(
+    regex_match: str | None = None, insensitive_match: str | None = None
+) -> scout_compute_api.LogFilterOperator:
+    if regex_match and insensitive_match:
+        raise ValueError("Only one of `regex_match` or `insensitive_match` may be provided")
+    elif regex_match:
+        return scout_compute_api.LogFilterOperator(
+            regex_filter=scout_compute_api.LogRegexFilterOperator(regex=regex_match)
+        )
+    else:
+        return scout_compute_api.LogFilterOperator(
+            exact_match_case_insensitive_filter=scout_compute_api.LogExactMatchCaseInsensitiveFilter(
+                token=insensitive_match or ""
+            )
         )
 
 
