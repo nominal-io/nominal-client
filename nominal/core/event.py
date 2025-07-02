@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import event
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
@@ -18,13 +18,16 @@ from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _Sec
 
 @dataclass(frozen=True)
 class Event:
-    uuid: str
+    rid: str
     asset_rids: Sequence[str]
     name: str
+    description: str
     start: IntegralNanosecondsUTC
     duration: IntegralNanosecondsDuration
     properties: Mapping[str, str]
     type: EventType
+
+    _uuid: str = field(repr=False)
 
     # NOTE: may be missing for legacy events
     created_by_rid: str | None = field(repr=False)
@@ -35,10 +38,16 @@ class Event:
         @property
         def event(self) -> event.EventService: ...
 
+    @property
+    @deprecated("The uuid field of an event is deprecated and will be removed in a future release")
+    def uuid(self) -> str:
+        return self._uuid
+
     def update(
         self,
         *,
         name: str | None = None,
+        description: str | None = None,
         assets: Iterable[Asset | str] | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         duration: timedelta | IntegralNanosecondsDuration | None = None,
@@ -58,18 +67,27 @@ class Event:
                 new_labels.append(old_label)
             event = event.update(labels=new_labels)
         """
-        request = event.UpdateEvent(
-            uuid=self.uuid,
-            asset_rids=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
-            duration=None if duration is None else _to_api_duration(duration),
-            labels=None if labels is None else list(labels),
-            name=name,
-            properties=None if properties is None else dict(properties),
-            timestamp=None if start is None else _SecondsNanos.from_flexible(start).to_api(),
-            type=None if type is None else type._to_api_event_type(),
+        request = event.BatchUpdateEventRequest(
+            requests=[
+                event.UpdateEventRequest(
+                    rid=self.rid,
+                    asset_rids=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
+                    duration=None if duration is None else _to_api_duration(duration),
+                    labels=None if labels is None else list(labels),
+                    name=name,
+                    description=description,
+                    properties=None if properties is None else dict(properties),
+                    timestamp=None if start is None else _SecondsNanos.from_flexible(start).to_api(),
+                    type=None if type is None else type._to_api_event_type(),
+                )
+            ]
         )
-        response = self._clients.event.update_event(self._clients.auth_header, request)
-        e = self.__class__._from_conjure(self._clients, response)
+        response = self._clients.event.batch_update_event(self._clients.auth_header, request)
+        if len(response.events) != 1:
+            raise RuntimeError(f"Expected to receive exactly one updated event, but received {len(response.events)}")
+
+        raw_event = response.events[0]
+        e = self.__class__._from_conjure(self._clients, raw_event)
         update_dataclass(self, e, fields=self.__dataclass_fields__)
         return self
 
@@ -77,20 +95,22 @@ class Event:
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
         if event.duration.picos:
             warnings.warn(
-                f"event '{event.name}' ({event.uuid}) has a duration specified in picoseconds: "
+                f"event '{event.name}' ({event.rid}) has a duration specified in picoseconds: "
                 "currently, any sub-nanosecond precision will be truncated in nominal-client",
                 UserWarning,
                 stacklevel=2,
             )
         return cls(
-            uuid=event.uuid,
+            rid=event.rid,
             asset_rids=tuple(event.asset_rids),
             name=event.name,
+            description=event.description,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
             duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
             type=EventType.from_api_event_type(event.type),
             properties=event.properties,
             created_by_rid=event.created_by,
+            _uuid=event.uuid,
             _clients=clients,
         )
 
