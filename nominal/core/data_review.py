@@ -6,6 +6,9 @@ from time import sleep
 from typing import Protocol, Sequence
 
 from nominal_api import (
+    event as event_api,
+)
+from nominal_api import (
     scout,
     scout_api,
     scout_checklistexecution_api,
@@ -13,9 +16,9 @@ from nominal_api import (
     scout_datareview_api,
     scout_integrations_api,
 )
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
-from nominal.core import checklist
+from nominal.core import checklist, event
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -38,6 +41,8 @@ class DataReview(HasRid):
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
+        @property
+        def event(self) -> event_api.EventService: ...
         @property
         def run(self) -> scout.RunService: ...
 
@@ -62,10 +67,26 @@ class DataReview(HasRid):
             self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
         )
 
+    @deprecated(
+        "CheckViolations are deprecated and will be removed in a future version. "
+        "Checklists now produce Events. Use get_events() instead."
+    )
     def get_violations(self) -> Sequence[CheckViolation]:
         """Retrieves the list of check violations for the data review."""
         response = self._clients.datareview.get_check_alerts_for_data_review(self._clients.auth_header, self.rid)
         return [CheckViolation._from_conjure(alert) for alert in response]
+
+    def get_events(self) -> Sequence[event.Event]:
+        """Retrieves the list of events for the data review."""
+        data_review_response = self._clients.datareview.get(self._clients.auth_header, self.rid).check_evaluations
+        all_event_rids = [
+            event_rid
+            for check in data_review_response
+            if check.state._generated_alerts
+            for event_rid in check.state._generated_alerts.event_rids
+        ]
+        event_response = self._clients.event.batch_get_events(self._clients.auth_header, all_event_rids)
+        return [event.Event._from_conjure(self._clients, data_review_event) for data_review_event in event_response]
 
     def reload(self) -> DataReview:
         """Reloads the data review from the server."""

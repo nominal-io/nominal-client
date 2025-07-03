@@ -803,7 +803,6 @@ class NominalClient:
             layout=template.layout,
             content=template.content,
             content_v2=None,
-            check_alert_refs=[],
             event_refs=[],
             workspace=self._clients.workspace_rid,
         )
