@@ -23,6 +23,7 @@ from nominal_api import (
     scout_notebook_api,
     scout_run_api,
     scout_video_api,
+    scout_workbookcommon_api,
     secrets_api,
     storage_datasource_api,
 )
@@ -794,15 +795,11 @@ class NominalClient:
         request = scout_notebook_api.CreateNotebookRequest(
             title=title if title is not None else f"Workbook from {template.metadata.title}",
             description=description or "",
-            notebook_type=None,
             is_draft=is_draft,
             state_as_json="{}",
-            charts=None,
-            run_rid=run_rid,
-            data_scope=None,
+            data_scope=scout_notebook_api.NotebookDataScope(run_rids=[run_rid]),
             layout=template.layout,
-            content=template.content,
-            content_v2=None,
+            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template.content),
             event_refs=[],
             workspace=self._clients.workspace_rid,
         )
