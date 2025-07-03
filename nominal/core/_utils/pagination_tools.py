@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Protocol, Sequence, TypeVar
+from typing import Any, Iterable, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
     api,
@@ -39,7 +39,7 @@ def search_events_paginated(
             next_page_token=page_token,
         )
 
-    for response in _paginate(factory, client.search_events, auth_header):
+    for response in paginate_rpc(client.search_events, auth_header, request_factory=factory):
         yield from response.results
 
 
@@ -59,7 +59,7 @@ def search_assets_paginated(
             next_page_token=page_token,
         )
 
-    for response in _paginate(factory, client.search_assets, auth_header):
+    for response in paginate_rpc(client.search_assets, auth_header, request_factory=factory):
         yield from response.results
 
 
@@ -81,7 +81,7 @@ def search_data_reviews_paginated(
             next_page_token=page_token,
         )
 
-    for response in _paginate(factory, datareview.find_data_reviews, auth_header):
+    for response in paginate_rpc(datareview.find_data_reviews, auth_header, request_factory=factory):
         yield from response.data_reviews
 
 
@@ -95,7 +95,7 @@ def list_streaming_checklists_paginated(
             page_token=page_token,
         )
 
-    for response in _paginate(factory, checklist_execution.list_streaming_checklist, auth_header):
+    for response in paginate_rpc(checklist_execution.list_streaming_checklist, auth_header, request_factory=factory):
         yield from response.checklists
 
 
@@ -109,7 +109,9 @@ def list_streaming_checklists_for_asset_paginated(
             page_token=page_token,
         )
 
-    for response in _paginate(factory, checklist_execution.list_streaming_checklist_for_asset, auth_header):
+    for response in paginate_rpc(
+        checklist_execution.list_streaming_checklist_for_asset, auth_header, request_factory=factory
+    ):
         yield from response.checklists
 
 
@@ -126,7 +128,7 @@ def search_checklists_paginated(
             next_page_token=page_token,
         )
 
-    for response in _paginate(factory, checklist.search, auth_header):
+    for response in paginate_rpc(checklist.search, auth_header, request_factory=factory):
         yield from response.values
 
 
@@ -144,7 +146,7 @@ def search_runs_paginated(
             next_page_token=page_token,
         )
 
-    for response in _paginate(factory, run.search_runs, auth_header):
+    for response in paginate_rpc(run.search_runs, auth_header, request_factory=factory):
         yield from response.results
 
 
@@ -160,7 +162,7 @@ def search_secrets_paginated(
             token=page_token,
         )
 
-    for response in _paginate(factory, secrets.search, auth_header):
+    for response in paginate_rpc(secrets.search, auth_header, request_factory=factory):
         yield from response.results
 
 
@@ -172,12 +174,26 @@ def search_users_paginated(
     def factory(page_token: str | None) -> authentication_api.SearchUsersRequest:
         return authentication_api.SearchUsersRequest(
             page_size=DEFAULT_PAGE_SIZE,
+            next_page_token=page_token,
             query=query,
             sort_by=authentication_api.SortBy(field=authentication_api.SortByField.EMAIL, is_descending=False),
         )
 
-    for response in _paginate(factory, authentication.search_users_v2, auth_header):
+    for response in paginate_rpc(authentication.search_users_v2, auth_header, request_factory=factory):
         yield from response.results
+
+
+_TokenT = TypeVar("_TokenT")
+_TokenT_co = TypeVar("_TokenT_co", covariant=True)
+_TokenT_contra = TypeVar("_TokenT_contra", contravariant=True)
+
+_RequestT = TypeVar("_RequestT")
+_RequestT_co = TypeVar("_RequestT_co", covariant=True)
+_RequestT_contra = TypeVar("_RequestT_contra", contravariant=True)
+
+_ResponseT = TypeVar("_ResponseT")
+_ResponseT_co = TypeVar("_ResponseT_co", covariant=True)
+_ResponseT_contra = TypeVar("_ResponseT_contra", contravariant=True)
 
 
 class _HasNextPageToken(Protocol):
@@ -185,43 +201,57 @@ class _HasNextPageToken(Protocol):
     def next_page_token(self) -> str | None: ...
 
 
-class _RequestFactory(Protocol[T_co]):
-    """Creates a request by passing a positional page token.
-
-    Note that we use a positional explicitly because the argument is inconsistently named
-    `token`, `page_token`, or `next_page_token` in the API.
-    """
-
-    def __call__(self, _: str | None, /) -> T_co: ...
+_DefaultResponseT = TypeVar("_DefaultResponseT", bound=_HasNextPageToken)
 
 
-class _RPC(Protocol[T_contra, T_co]):
-    """Invokes an RPC by passing a positional request."""
-
-    def __call__(self, auth_header: str, _: T_contra, /) -> T_co: ...
+class _PaginatedRpc(Protocol[_RequestT_contra, _ResponseT_co]):
+    def __call__(self, auth_header: str, _: _RequestT_contra, /) -> _ResponseT_co: ...
 
 
-_RequestT = TypeVar("_RequestT")
-_ResponseT = TypeVar("_ResponseT", bound=_HasNextPageToken)
+class _RequestFactory(Protocol[_TokenT_contra, _RequestT_co]):
+    def __call__(self, page_token: _TokenT_contra | None, /) -> _RequestT_co: ...
 
 
-def _paginate(
-    factory: _RequestFactory[_RequestT], rpc: _RPC[_RequestT, _ResponseT], auth_header: str
-) -> Iterable[_ResponseT]:
-    """Paginate through results of an RPC call that returns a next page token.
+class _TokenFactory(Protocol[_ResponseT_contra, _TokenT_co]):
+    def __call__(self, response: _ResponseT_contra, /) -> _TokenT_co | None: ...
 
-    Requests inconsistently use `next_page_token`, `page_token`, or `token`, so this function
-    takes a factory function which, when called with a token, returns a request object.
 
-    This function expects that the initial request uses `None` as the token to start pagination.
+def _default_token_factory(response: _HasNextPageToken) -> str | None:
+    return response.next_page_token
 
-    All responses have a `next_page_token`, expected to be `None` when there are no more pages.
-    """
+
+@overload
+def paginate_rpc(
+    rpc: _PaginatedRpc[_RequestT, _DefaultResponseT],
+    auth_header: str,
+    *,
+    request_factory: _RequestFactory[str, _RequestT],
+) -> Iterable[_DefaultResponseT]: ...
+
+
+@overload
+def paginate_rpc(
+    rpc: _PaginatedRpc[_RequestT, _ResponseT],
+    auth_header: str,
+    *,
+    request_factory: _RequestFactory[_TokenT, _RequestT],
+    token_factory: _TokenFactory[_ResponseT, _TokenT],
+) -> Iterable[_ResponseT]: ...
+
+
+# Using Any because overloads provide strong type safety
+def paginate_rpc(
+    rpc: _PaginatedRpc[Any, Any],
+    auth_header: str,
+    *,
+    request_factory: _RequestFactory[Any, Any],
+    token_factory: _TokenFactory[Any, Any] = _default_token_factory,
+) -> Iterable[Any]:
     next_page_token = None
     while True:
-        request = factory(next_page_token)
+        request = request_factory(next_page_token)
         response = rpc(auth_header, request)
         yield response
-        if response.next_page_token is None:
+        next_page_token = token_factory(response)
+        if next_page_token is None:
             break
-        next_page_token = response.next_page_token
