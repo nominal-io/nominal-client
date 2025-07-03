@@ -20,6 +20,7 @@ from typing_extensions import Self
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import create_api_tags
+from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _build_unit_update
 from nominal.ts import (
@@ -172,10 +173,8 @@ class Channel:
         )
         compute_series = scout_compute_api.Series(log=filtered_series)
 
-        page_token = None
-        while True:
-            # TODO(drake): Support filtering logs by arguments once supported by the backend
-            request = scout_compute_api.ComputeNodeRequest(
+        def request_factory(page_token: scout_compute_api.PageToken | None) -> scout_compute_api.ComputeNodeRequest:
+            return scout_compute_api.ComputeNodeRequest(
                 context=scout_compute_api.Context(function_variables={}, variables={}),
                 start=api_start,
                 end=api_end,
@@ -190,16 +189,24 @@ class Channel:
                     )
                 ),
             )
-            resp = self._clients.compute.compute(self._clients.auth_header, request=request)
-            if not resp.paged_log:
-                raise RuntimeError(f"Expected response to be a paged_log, received {resp.type}")
 
-            for timestamp, log in zip(resp.paged_log.timestamps, resp.paged_log.values):
-                yield LogPoint._from_compute_api(log, timestamp)
+        def token_factory(response: scout_compute_api.ComputeNodeResponse) -> scout_compute_api.PageToken | None:
+            if response.paged_log:
+                return response.paged_log.next_page_token
+            else:
+                raise RuntimeError(f"Expected response to support paging, received {response.type}")
 
-            page_token = resp.paged_log.next_page_token
-            if page_token is None:
-                break
+        for resp in paginate_rpc(
+            self._clients.compute.compute,
+            self._clients.auth_header,
+            request_factory=request_factory,
+            token_factory=token_factory,
+        ):
+            if resp.paged_log:
+                for timestamp, log in zip(resp.paged_log.timestamps, resp.paged_log.values):
+                    yield LogPoint._from_compute_api(log, timestamp)
+            else:
+                raise RuntimeError(f"Expected response type to be `paged_log`, received: `{resp.type}`")
 
     @classmethod
     def _from_conjure_datasource_api(cls, clients: _Clients, channel: datasource_api.ChannelMetadata) -> Self:
