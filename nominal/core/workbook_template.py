@@ -8,8 +8,10 @@ from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
-from nominal.core.workbook import Workbook
+from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core.asset import Asset
+from nominal.core.run import Run
+from nominal.core.workbook import Workbook, WorkbookType
 
 
 @dataclass(frozen=True)
@@ -19,7 +21,7 @@ class WorkbookTemplate(HasRid):
     description: str
     labels: Sequence[str]
     properties: Mapping[str, str]
-    published: bool
+    workbook_type: WorkbookType
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
@@ -88,8 +90,7 @@ class WorkbookTemplate(HasRid):
         *,
         title: str | None = None,
         description: str | None = None,
-        is_draft: bool = False,
-        run_rids: Sequence[str],
+        run: Run | str,
     ) -> Workbook: ...
 
     @overload
@@ -98,8 +99,7 @@ class WorkbookTemplate(HasRid):
         *,
         title: str | None = None,
         description: str | None = None,
-        is_draft: bool = False,
-        asset_rids: Sequence[str],
+        asset: Asset | str,
     ) -> Workbook: ...
 
     def create_workbook(
@@ -107,38 +107,41 @@ class WorkbookTemplate(HasRid):
         *,
         title: str | None = None,
         description: str | None = None,
-        is_draft: bool = False,
-        run_rids: Sequence[str] | None = None,
-        asset_rids: Sequence[str] | None = None,
+        run: Run | str | None = None,
+        asset: Asset | str | None = None,
     ) -> Workbook:
         """Create workbook from this workbook template
 
         Args:
             title: Title of the workbook to create. By default, uses the title of this template
             description: Description of the workbook to create. By default, uses the description of this template
-            is_draft: If true, creates the workbook in "draft" mode
-            run_rids: Runs to visualize in the workbook
-                NOTE: may not be provided alongside `asset_rids`
-                NOTE: only provide multiple run rids when instantiating a comparison workbook
-            asset_rids: Assets to visualize in the workbook
-                NOTE: may not be provided alongside `run_rids`
+            run: Run to visualize in the workbook
+                NOTE: may not be provided alongside `asset`
+            asset: Asset to visualize in the workbook
+                NOTE: may not be provided alongside `run`
+
+        NOTE: only supports singular `run` instead of a list of `runs` because workbook templates only support
+              standard workbooks and not comparison workbooks.
+        NOTE: only supports singular `asset` instead of a list of `assets` because workbook templates only support
+              single asset workbooks.
 
         Returns:
             The instantiated workbook
         """
-        if run_rids is not None and asset_rids is not None:
-            raise ValueError("Only one of `run_rids` and `asset_rids` may be used to create a workbook from a template")
-        elif run_rids is None and asset_rids is None:
-            raise ValueError("One of `run_rids` or `asset_rids` must be provided to create a workbook from a template")
+        if run is not None and asset is not None:
+            raise ValueError("Only one of `run` and `asset` may be used to create a workbook from a template")
+        elif run is None and asset is None:
+            raise ValueError("One of `run` or `asset` must be provided to create a workbook from a template")
 
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
         request = scout_notebook_api.CreateNotebookRequest(
-            title=title if title is not None else f"Workbook from {self.title}",
-            description=description if description is not None else self.description,
-            is_draft=is_draft,
+            title=f"Workbook from '{self.title}'" if title is None else title,
+            description=self.description if description is None else description,
+            is_draft=False,
             state_as_json="{}",
             data_scope=scout_notebook_api.NotebookDataScope(
-                run_rids=[*run_rids] if run_rids else None, asset_rids=[*asset_rids] if asset_rids else None
+                run_rids=None if run is None else [rid_from_instance_or_string(run)],
+                asset_rids=None if asset is None else [rid_from_instance_or_string(asset)],
             ),
             layout=raw_template.layout,
             content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=raw_template.content),
@@ -147,6 +150,11 @@ class WorkbookTemplate(HasRid):
         )
         raw_notebook = self._clients.notebook.create(self._clients.auth_header, request)
         return Workbook._from_conjure(self._clients, raw_notebook)
+
+    def is_published(self) -> bool:
+        """Returns whether or not the workbook template has been published and can be viewed by other users."""
+        raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
+        return raw_template.metadata.is_published
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, template: scout_template_api.Template) -> Self:
@@ -162,6 +170,6 @@ class WorkbookTemplate(HasRid):
             description=template.metadata.description,
             labels=template.metadata.labels,
             properties=template.metadata.properties,
-            published=template.metadata.is_published,
+            workbook_type=WorkbookType.COMPARISON_WORKBOOK,
             _clients=clients,
         )

@@ -24,7 +24,6 @@ from nominal_api import (
     scout_run_api,
     scout_template_api,
     scout_video_api,
-    scout_workbookcommon_api,
     secrets_api,
     storage_datasource_api,
 )
@@ -973,41 +972,44 @@ class NominalClient:
         return Workbook._from_conjure(self._clients, raw_workbook)
 
     def _iter_search_workbooks(
-        self, query: scout_notebook_api.SearchNotebooksQuery, include_drafts: bool, include_archived: bool
+        self, query: scout_notebook_api.SearchNotebooksQuery, include_archived: bool
     ) -> Iterable[Workbook]:
         for raw_workbook in search_workbooks_paginated(
-            self._clients.notebook, self._clients.auth_header, query, include_drafts, include_archived
+            self._clients.notebook, self._clients.auth_header, query, include_archived
         ):
-            yield Workbook._from_notebook_metadata(self._clients, raw_workbook)
+            try:
+                yield Workbook._from_notebook_metadata(self._clients, raw_workbook)
+            except ValueError:
+                logger.exception(
+                    "Failed to deserialize workbook metadata with rid %s: %s", raw_workbook.rid, raw_workbook
+                )
 
     def search_workbooks(
         self,
         *,
-        include_drafts: bool = False,
         include_archived: bool = False,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
-        asset_rid: str | None = None,
-        exact_asset_rids: Sequence[str] | None = None,
-        author_rid: str | None = None,
-        run_rid: str | None = None,
+        asset: Asset | str | None = None,
+        exact_assets: Sequence[Asset | str] | None = None,
+        created_by: User | str | None = None,
+        run: Run | str | None = None,
     ) -> Sequence[Workbook]:
         """Search for workbooks meeting the specified filters.
-        Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
+        Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
 
         Args:
-            include_drafts: If true, include draft workbooks in results
             include_archived: If true, include archived workbooks in results
             exact_match: Searches for a string to match exactly in the workbook's metadata
             search_text: Fuzzy-searches for a string in the workbook's metadata
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
-            asset_rid: Searches for workbooks that include the given asset rid
-            exact_asset_rids: Searches for workbooks that have the exact given asset rids
-            author_rid: Searches for workbooks with the given author
-            run_rid: Searches for workbooks with the given run rid
+            asset: Searches for workbooks that include the given asset
+            exact_assets: Searches for workbooks that have the exact given assets
+            created_by: Searches for workbooks with the given author
+            run: Searches for workbooks with the given run
 
         Returns:
             All workbooks which match all of the provided conditions
@@ -1017,12 +1019,14 @@ class NominalClient:
             search_text=search_text,
             labels=labels,
             properties=properties,
-            asset_rid=asset_rid,
-            exact_asset_rids=exact_asset_rids,
-            author_rid=author_rid,
-            run_rid=run_rid,
+            asset_rid=None if asset is None else rid_from_instance_or_string(asset),
+            exact_asset_rids=None
+            if exact_assets is None
+            else [rid_from_instance_or_string(asset) for asset in exact_assets],
+            author_rid=None if created_by is None else rid_from_instance_or_string(created_by),
+            run_rid=None if run is None else rid_from_instance_or_string(run),
         )
-        return list(self._iter_search_workbooks(query, include_drafts, include_archived))
+        return list(self._iter_search_workbooks(query, include_archived))
 
     def get_workbook_template(self, rid: str) -> WorkbookTemplate:
         """Gets the given workbook template by rid."""
@@ -1044,12 +1048,13 @@ class NominalClient:
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
-        created_by: str | None = None,
+        created_by: User | str | None = None,
     ) -> Sequence[WorkbookTemplate]:
         """Search for workbook templates meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
 
-        Args:exact_match: Searches for a string to match exactly in the template's metadata
+        Args:
+            exact_match: Searches for a string to match exactly in the template's metadata
             search_text: Fuzzy-searches for a string in the template's metadata
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
@@ -1063,7 +1068,7 @@ class NominalClient:
             search_text=search_text,
             labels=labels,
             properties=properties,
-            created_by=created_by,
+            created_by=None if created_by is None else rid_from_instance_or_string(created_by),
         )
         return list(self._iter_search_workbook_templates(query))
 
@@ -1079,18 +1084,13 @@ class NominalClient:
         description: str | None = None,
         is_draft: bool = False,
     ) -> Workbook:
-        template = self._clients.template.get(self._clients.auth_header, template_rid)
-        request = scout_notebook_api.CreateNotebookRequest(
-            title=title if title is not None else f"Workbook from {template.metadata.title}",
-            description=description or "",
-            is_draft=is_draft,
-            state_as_json="{}",
-            data_scope=scout_notebook_api.NotebookDataScope(run_rids=[run_rid]),
-            layout=template.layout,
-            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template.content),
-            event_refs=[],
-            workspace=self._clients.workspace_rid,
-        )
-        notebook = self._clients.notebook.create(self._clients.auth_header, request)
+        """Creates a workbook from a workbook template.
 
-        return Workbook._from_conjure(self._clients, notebook)
+        NOTE: is_draft is intentionally unused and will be removed in a future release.
+        """
+        template = self.get_workbook_template(template_rid)
+        return template.create_workbook(
+            title=title,
+            description=description,
+            run=run_rid,
+        )
