@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Mapping, Protocol, Sequence
 
 from nominal_api import scout, scout_notebook_api
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
@@ -16,7 +16,7 @@ class Workbook(HasRid):
     rid: str
     title: str
     description: str
-    run_rids: Sequence[str] | None
+    run_rid: str | None
     asset_rids: Sequence[str] | None
     is_draft: bool
     is_locked: bool
@@ -30,22 +30,6 @@ class Workbook(HasRid):
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook in the Nominal app"""
         return f"{self._clients.app_base_url}/workbooks/{self.rid}"
-
-    @property
-    @deprecated(
-        "Accessing the singular run rid of a workbook is deprecated and will be removed in a future release. "
-        "Use `run_rids` or `asset_rids` instead."
-    )
-    def run_rid(self) -> str:
-        if self.run_rids is not None:
-            if len(self.run_rids) == 1:
-                return self.run_rids[0]
-            else:
-                raise RuntimeError(
-                    f"Cannot retrieve singular run rid-- {len(self.run_rids)} runs are present on workbook"
-                )
-        else:
-            raise RuntimeError("Cannot retrieve singular run rid-- workbook is created for assets")
 
     def update(
         self,
@@ -128,12 +112,16 @@ class Workbook(HasRid):
 
     @classmethod
     def _from_notebook_metadata(cls, clients: _Clients, notebook: scout_notebook_api.NotebookMetadataWithRid) -> Self:
+        data_scope = notebook.metadata.data_scope
+        if data_scope.run_rids is not None and len(data_scope.run_rids) != 1:
+            raise ValueError("Workbooks with more than 1 run are not yet supported")
+
         return cls(
             rid=notebook.rid,
             title=notebook.metadata.title,
             description=notebook.metadata.description,
-            run_rids=notebook.metadata.data_scope.run_rids,
-            asset_rids=notebook.metadata.data_scope.asset_rids,
+            run_rid=None if data_scope.run_rids is None else data_scope.run_rids[0],
+            asset_rids=data_scope.asset_rids,
             is_draft=notebook.metadata.is_draft,
             is_locked=notebook.metadata.lock.is_locked,
             _clients=clients,

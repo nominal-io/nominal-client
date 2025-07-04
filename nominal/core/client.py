@@ -24,7 +24,6 @@ from nominal_api import (
     scout_run_api,
     scout_template_api,
     scout_video_api,
-    scout_workbookcommon_api,
     secrets_api,
     storage_datasource_api,
 )
@@ -1079,18 +1078,10 @@ class NominalClient:
         description: str | None = None,
         is_draft: bool = False,
     ) -> Workbook:
-        template = self._clients.template.get(self._clients.auth_header, template_rid)
-        request = scout_notebook_api.CreateNotebookRequest(
-            title=title if title is not None else f"Workbook from {template.metadata.title}",
-            description=description or "",
+        template = self.get_workbook_template(template_rid)
+        return template.create_workbook(
+            title=title,
+            description=description,
             is_draft=is_draft,
-            state_as_json="{}",
-            data_scope=scout_notebook_api.NotebookDataScope(run_rids=[run_rid]),
-            layout=template.layout,
-            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template.content),
-            event_refs=[],
-            workspace=self._clients.workspace_rid,
+            run_rid=run_rid,
         )
-        notebook = self._clients.notebook.create(self._clients.auth_header, request)
-
-        return Workbook._from_conjure(self._clients, notebook)
