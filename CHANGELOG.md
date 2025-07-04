@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.65.0](https://github.com/nominal-io/nominal-client/compare/v1.64.0...v1.65.0) (2025-07-03)
+
+
+### Features
+
+* add description and rid to events ([#402](https://github.com/nominal-io/nominal-client/issues/402)) ([7c138fb](https://github.com/nominal-io/nominal-client/commit/7c138fbc442ed5be64bc6900079d2a9559a4423c))
+* clean up DataReview API usage ([#406](https://github.com/nominal-io/nominal-client/issues/406)) ([4574297](https://github.com/nominal-io/nominal-client/commit/45742978068f20e6bc628104791933937a224966))
+* delete deprecated channel methods ([#403](https://github.com/nominal-io/nominal-client/issues/403)) ([dd4cff9](https://github.com/nominal-io/nominal-client/commit/dd4cff99f2293a7d0a4cf012493f434c3fd8a1d4))
+
 ## [1.64.0](https://github.com/nominal-io/nominal-client/compare/v1.63.0...v1.64.0) (2025-06-30)
 
 
