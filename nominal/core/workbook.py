@@ -31,11 +31,11 @@ class Workbook(HasRid):
         """Returns a link to the page for this Workbook in the Nominal app"""
         return f"{self._clients.app_base_url}/workbooks/{self.rid}"
 
+    @property
     @deprecated(
         "Accessing the singular run rid of a workbook is deprecated and will be removed in a future release. "
         "Use `run_rids` or `asset_rids` instead."
     )
-    @property
     def run_rid(self) -> str:
         if self.run_rids is not None:
             if len(self.run_rids) == 1:
