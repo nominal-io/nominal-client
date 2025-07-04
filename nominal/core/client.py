@@ -22,6 +22,7 @@ from nominal_api import (
     scout_datasource_connection_api,
     scout_notebook_api,
     scout_run_api,
+    scout_template_api,
     scout_video_api,
     scout_workbookcommon_api,
     secrets_api,
@@ -52,7 +53,10 @@ from nominal.core._utils import (
     search_runs_paginated,
     search_secrets_paginated,
     search_users_paginated,
+    search_workbook_templates_paginated,
+    search_workbooks_paginated,
 )
+from nominal.core._utils.query_tools import create_search_workbook_templates_query, create_search_workbooks_query
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
@@ -73,6 +77,7 @@ from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
+from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
 from nominal.exceptions import NominalError, NominalIngestError
 from nominal.ts import (
@@ -783,30 +788,6 @@ class NominalClient:
             return conn
         raise NominalError(f"Expected StreamingConnection but got {type(conn).__name__}")
 
-    def create_workbook_from_template(
-        self,
-        template_rid: str,
-        run_rid: str,
-        title: str | None = None,
-        description: str | None = None,
-        is_draft: bool = False,
-    ) -> Workbook:
-        template = self._clients.template.get(self._clients.auth_header, template_rid)
-        request = scout_notebook_api.CreateNotebookRequest(
-            title=title if title is not None else f"Workbook from {template.metadata.title}",
-            description=description or "",
-            is_draft=is_draft,
-            state_as_json="{}",
-            data_scope=scout_notebook_api.NotebookDataScope(run_rids=[run_rid]),
-            layout=template.layout,
-            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template.content),
-            event_refs=[],
-            workspace=self._clients.workspace_rid,
-        )
-        notebook = self._clients.notebook.create(self._clients.auth_header, request)
-
-        return Workbook._from_conjure(self._clients, notebook)
-
     def create_asset(
         self,
         name: str,
@@ -985,3 +966,131 @@ class NominalClient:
             created_by=None if created_by is None else rid_from_instance_or_string(created_by),
         )
         return list(self._iter_search_events(query))
+
+    def get_workbook(self, rid: str) -> Workbook:
+        """Gets the given workbook by rid."""
+        raw_workbook = self._clients.notebook.get(self._clients.auth_header, rid)
+        return Workbook._from_conjure(self._clients, raw_workbook)
+
+    def _iter_search_workbooks(
+        self, query: scout_notebook_api.SearchNotebooksQuery, include_drafts: bool, include_archived: bool
+    ) -> Iterable[Workbook]:
+        for raw_workbook in search_workbooks_paginated(
+            self._clients.notebook, self._clients.auth_header, query, include_drafts, include_archived
+        ):
+            yield Workbook._from_notebook_metadata(self._clients, raw_workbook)
+
+    def search_workbooks(
+        self,
+        *,
+        include_drafts: bool = False,
+        include_archived: bool = False,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        asset_rid: str | None = None,
+        exact_asset_rids: Sequence[str] | None = None,
+        author_rid: str | None = None,
+        run_rid: str | None = None,
+    ) -> Sequence[Workbook]:
+        """Search for workbooks meeting the specified filters.
+        Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
+
+        Args:
+            include_drafts: If true, include draft workbooks in results
+            include_archived: If true, include archived workbooks in results
+            exact_match: Searches for a string to match exactly in the workbook's metadata
+            search_text: Fuzzy-searches for a string in the workbook's metadata
+            labels: A list of labels that must ALL be present on an workbook to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
+            asset_rid: Searches for workbooks that include the given asset rid
+            exact_asset_rids: Searches for workbooks that have the exact given asset rids
+            author_rid: Searches for workbooks with the given author
+            run_rid: Searches for workbooks with the given run rid
+
+        Returns:
+            All workbooks which match all of the provided conditions
+        """
+        query = create_search_workbooks_query(
+            exact_match=exact_match,
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            asset_rid=asset_rid,
+            exact_asset_rids=exact_asset_rids,
+            author_rid=author_rid,
+            run_rid=run_rid,
+        )
+        return list(self._iter_search_workbooks(query, include_drafts, include_archived))
+
+    def get_workbook_template(self, rid: str) -> WorkbookTemplate:
+        """Gets the given workbook template by rid."""
+        raw_template = self._clients.template.get(self._clients.auth_header, rid)
+        return WorkbookTemplate._from_conjure(self._clients, raw_template)
+
+    def _iter_search_workbook_templates(
+        self, query: scout_template_api.SearchTemplatesQuery
+    ) -> Iterable[WorkbookTemplate]:
+        for raw_template in search_workbook_templates_paginated(
+            self._clients.template, self._clients.auth_header, query
+        ):
+            yield WorkbookTemplate._from_template_summary(self._clients, raw_template)
+
+    def search_workbook_templates(
+        self,
+        *,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        created_by: str | None = None,
+    ) -> Sequence[WorkbookTemplate]:
+        """Search for workbook templates meeting the specified filters.
+        Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
+
+        Args:exact_match: Searches for a string to match exactly in the template's metadata
+            search_text: Fuzzy-searches for a string in the template's metadata
+            labels: A list of labels that must ALL be present on an workbook to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
+            created_by: Searches for workbook templates with the given creator's rid
+
+        Returns:
+            All workbook templates which match all of the provided conditions
+        """
+        query = create_search_workbook_templates_query(
+            exact_match=exact_match,
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            created_by=created_by,
+        )
+        return list(self._iter_search_workbook_templates(query))
+
+    @deprecated(
+        "Calling `NominalClient.create_workbook_from_template` is deprecated and will be removed "
+        "in a future release. Use `Template.create_workbook` instead"
+    )
+    def create_workbook_from_template(
+        self,
+        template_rid: str,
+        run_rid: str,
+        title: str | None = None,
+        description: str | None = None,
+        is_draft: bool = False,
+    ) -> Workbook:
+        template = self._clients.template.get(self._clients.auth_header, template_rid)
+        request = scout_notebook_api.CreateNotebookRequest(
+            title=title if title is not None else f"Workbook from {template.metadata.title}",
+            description=description or "",
+            is_draft=is_draft,
+            state_as_json="{}",
+            data_scope=scout_notebook_api.NotebookDataScope(run_rids=[run_rid]),
+            layout=template.layout,
+            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template.content),
+            event_refs=[],
+            workspace=self._clients.workspace_rid,
+        )
+        notebook = self._clients.notebook.create(self._clients.auth_header, request)
+
+        return Workbook._from_conjure(self._clients, notebook)
