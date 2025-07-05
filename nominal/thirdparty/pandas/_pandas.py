@@ -136,6 +136,7 @@ def channel_to_series(
     relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
     *,
     enable_gzip: bool = True,
+    tags: Mapping[str, str] | None = None,
 ) -> pd.Series[Any]:
     """Retrieve the channel data as a pandas.Series.
 
@@ -160,6 +161,7 @@ def channel_to_series(
         relative_to=relative_to,
         relative_resolution=relative_resolution,
         enable_gzip=enable_gzip,
+        tags=tags,
     )
     df = pd.read_csv(
         body, parse_dates=["timestamp"], index_col="timestamp", compression="gzip" if enable_gzip else "infer"
@@ -174,6 +176,7 @@ def channel_to_dataframe_decimated(
     *,
     buckets: int | None = None,
     resolution: int | None = None,
+    tags: Mapping[str, str] | None = None,
 ) -> pd.DataFrame:
     """Retrieve the channel summary as a pandas.DataFrame, decimated to the given buckets or resolution.
 
@@ -183,7 +186,7 @@ def channel_to_dataframe_decimated(
     if buckets is not None and resolution is not None:
         raise ValueError("Either buckets or resolution should be provided")
 
-    result = channel._decimate_request(start, end, buckets, resolution)
+    result = channel._decimate_request(start, end, tags=tags, buckets=buckets, resolution=resolution)
 
     # when there are less than 1000 points, the result is numeric
     # TODO(alkasm): why should this return differently shaped dataframes?
@@ -252,7 +255,7 @@ def datasource_to_dataframe(
     channel_fuzzy_search_text: str = "",
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
-    tags: dict[str, str] | None = None,
+    tags: Mapping[str, str] | None = None,
     enable_gzip: bool = True,
     *,
     channels: Sequence[Channel] | None = None,
@@ -333,10 +336,9 @@ def datasource_to_dataframe(
     def _export_channel_batch(channel_batch: tuple[Channel, ...]) -> pd.DataFrame:
         export_request = _construct_export_request(
             channel_batch,
-            datasource.rid,
             start_time,
             end_time,
-            tags,
+            tags=tags,
             enable_gzip=enable_gzip,
             relative_to=relative_to,
             relative_resolution=relative_resolution,
