@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-import concurrent.futures
 import logging
 from datetime import datetime
 from threading import Thread
-from typing import Any, BinaryIO, Mapping, Sequence, cast
+from typing import Any, BinaryIO, Iterable, Mapping, Sequence
 
 import pandas as pd
 from nominal_api.api import Timestamp
 
 from nominal import ts
-from nominal._utils import batched, reader_writer
+from nominal._utils import reader_writer
+from nominal._utils.typing_tools import copy_signature_from
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
-from nominal.core.datasource import DataSource, _construct_export_request
+from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileTypes
+from nominal.experimental.pandas_streaming.pandas_export_stream import _EXPORTED_TIMESTAMP_COL_NAME, PandasExportStream
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,7 @@ def channel_to_series(
     relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
     *,
     enable_gzip: bool = True,
+    tags: Mapping[str, str] | None = None,
 ) -> pd.Series[Any]:
     """Retrieve the channel data as a pandas.Series.
 
@@ -152,19 +154,25 @@ def channel_to_series(
     ```
 
     """
-    start_time = ts._MIN_TIMESTAMP.to_api() if start is None else ts._SecondsNanos.from_flexible(start).to_api()
-    end_time = ts._MAX_TIMESTAMP.to_api() if end is None else ts._SecondsNanos.from_flexible(end).to_api()
-    body = channel._get_series_values_csv(
-        start_time,
-        end_time,
-        relative_to=relative_to,
-        relative_resolution=relative_resolution,
-        enable_gzip=enable_gzip,
-    )
-    df = pd.read_csv(
-        body, parse_dates=["timestamp"], index_col="timestamp", compression="gzip" if enable_gzip else "infer"
-    )
-    return df[channel.name]
+    export_stream = PandasExportStream(num_workers=1)
+
+    start_sn = ts._MIN_TIMESTAMP if start is None else ts._SecondsNanos.from_flexible(start)
+    end_sn = ts._MAX_TIMESTAMP if end is None else ts._SecondsNanos.from_flexible(end)
+
+    timestamp_format: ts._AnyNativeTimestampType = "iso_8601"
+    if relative_to:
+        timestamp_format = ts.Relative(unit=relative_resolution, start=relative_to)
+
+    return pd.concat(
+        export_stream.export(
+            channels=[channel],
+            start=start_sn.to_nanoseconds(),
+            end=end_sn.to_nanoseconds(),
+            tags=tags,
+            timestamp_type=timestamp_format,
+        ),
+        sort=True,
+    )[channel.name]
 
 
 def channel_to_dataframe_decimated(
@@ -214,53 +222,20 @@ def _to_pandas_timestamp(timestamp: Timestamp) -> pd.Timestamp:
     return pd.Timestamp(timestamp.seconds, unit="s", tz="UTC") + pd.Timedelta(timestamp.nanos, unit="ns")
 
 
-def _to_pandas_unit(unit: ts._LiteralTimeUnit) -> str:
-    return {
-        "nanoseconds": "ns",
-        "microseconds": "us",
-        "milliseconds": "ms",
-        "seconds": "s",
-        "minutes": "m",
-        "hours": "h",
-    }[unit]
-
-
-_EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
-
-
-def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
-    filtered_channel_names = set([ch.name for ch in channels])
-
-    # Handle channel names that will be renamed during export
-    renamed_timestamp_col = _EXPORTED_TIMESTAMP_COL_NAME
-    if _EXPORTED_TIMESTAMP_COL_NAME in filtered_channel_names:
-        idx = 1
-        while True:
-            other_col_name = f"timestamp.{idx}"
-            if other_col_name not in filtered_channel_names:
-                renamed_timestamp_col = other_col_name
-                break
-            else:
-                idx += 1
-
-    return renamed_timestamp_col
-
-
-def datasource_to_dataframe(
+def datasource_to_dataframe_batches(
     datasource: DataSource,
     channel_exact_match: Sequence[str] = (),
     channel_fuzzy_search_text: str = "",
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     tags: dict[str, str] | None = None,
-    enable_gzip: bool = True,
     *,
     channels: Sequence[Channel] | None = None,
     num_workers: int = 1,
     channel_batch_size: int = 20,
     relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,
     relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
-) -> pd.DataFrame:
+) -> Iterable[pd.DataFrame]:
     """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
 
     Args:
@@ -293,21 +268,12 @@ def datasource_to_dataframe(
 
     Returns:
     -------
-        A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected
-            channels.
-
-    Example:
-    -------
-    ```
-    rid = "..." # Taken from the UI or via the SDK
-    dataset = client.get_dataset(rid)
-    df = datasource_to_dataframe(dataset)
-    print(df.head())  # Show first few rows of data
-    ```
+        A sequence of pandas dataframes whose index is the timestamp of the data, and column names match those of the
+        selected channels.
 
     """
-    start_time = ts._SecondsNanos.from_flexible(start).to_api() if start else ts._MIN_TIMESTAMP.to_api()
-    end_time = ts._SecondsNanos.from_flexible(end).to_api() if end else ts._MAX_TIMESTAMP.to_api()
+    start_time = ts._SecondsNanos.from_flexible(start) if start else ts._MIN_TIMESTAMP
+    end_time = ts._SecondsNanos.from_flexible(end) if end else ts._MAX_TIMESTAMP
 
     # Get all channels from the datasource
     if channels is None:
@@ -325,78 +291,50 @@ def datasource_to_dataframe(
 
     if not channels:
         logger.warning("Requested data for no columns: returning empty dataframe")
+        return
+
+    timestamp_format: ts._AnyNativeTimestampType = "iso_8601"
+    if relative_to:
+        timestamp_format = ts.Relative(unit=relative_resolution, start=relative_to)
+
+    export_stream = datasource.get_read_stream(
+        "pandas", num_workers=num_workers, channels_per_request=channel_batch_size
+    )
+    yield from export_stream.export(
+        channels=channels,
+        start=start_time.to_nanoseconds(),
+        end=end_time.to_nanoseconds(),
+        tags=tags,
+        timestamp_type=timestamp_format,
+    )
+
+
+@copy_signature_from(datasource_to_dataframe_batches)
+def datasource_to_dataframe(*args: Any, **kwargs: Any) -> pd.DataFrame:
+    """Download a dataset to a pandas dataframe, optionally filtering for only specific channels of the dataset.
+
+    See:
+    ---
+        See `datasource_to_dataframe_batches` for descriptions of available function arguments
+
+    Returns:
+    -------
+        A pandas dataframe whose index is the timestamp of the data, and column names match those of the selected
+            channels.
+
+    Example:
+    -------
+    ```
+    rid = "..." # Taken from the UI or via the SDK
+    dataset = client.get_dataset(rid)
+    df = datasource_to_dataframe(dataset)
+    print(df.head())  # Show first few rows of data
+    ```
+
+    """
+    dfs = [*datasource_to_dataframe_batches(*args, **kwargs)]
+
+    if dfs:
+        return pd.concat(dfs, sort=True)
+    else:
         return pd.DataFrame({_EXPORTED_TIMESTAMP_COL_NAME: []}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
-
-    # Warn about renamed channels
-    renamed_timestamp_col = _get_renamed_timestamp_column(list(channels))
-
-    def _export_channel_batch(channel_batch: tuple[Channel, ...]) -> pd.DataFrame:
-        export_request = _construct_export_request(
-            channel_batch,
-            datasource.rid,
-            start_time,
-            end_time,
-            tags,
-            enable_gzip=enable_gzip,
-            relative_to=relative_to,
-            relative_resolution=relative_resolution,
-        )
-        export_response = cast(
-            BinaryIO,
-            datasource._clients.dataexport.export_channel_data(datasource._clients.auth_header, export_request),
-        )
-        batch_df = pd.DataFrame(pd.read_csv(export_response, compression="gzip" if enable_gzip else "infer"))
-        if batch_df.empty:
-            channel_names = [ch.name for ch in channel_batch]
-            logger.warning(
-                "No data found for export for channels %s from datasource %s",
-                channel_names,
-                datasource.rid,
-            )
-            return pd.DataFrame({col: [] for col in channel_names + [_EXPORTED_TIMESTAMP_COL_NAME]}).set_index(
-                _EXPORTED_TIMESTAMP_COL_NAME
-            )
-        else:
-            if relative_to is None:
-                batch_df[renamed_timestamp_col] = pd.to_datetime(batch_df[renamed_timestamp_col], format="ISO8601")
-
-            return batch_df.set_index(renamed_timestamp_col)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
-        df_futures = {
-            pool.submit(_export_channel_batch, channel_batch): channel_batch
-            for channel_batch in batched(channels, channel_batch_size)
-        }
-
-        all_dataframes = []
-        for df_future in concurrent.futures.as_completed(df_futures):
-            channel_batch = df_futures[df_future]
-
-            ex = df_future.exception()
-            if ex is not None:
-                logger.error(
-                    "Failed exporting data for channels %s from datasource %s",
-                    [ch.name for ch in channel_batch],
-                    datasource.rid,
-                    exc_info=ex,
-                )
-                continue
-            else:
-                all_dataframes.append(df_future.result())
-
-    if not all_dataframes:
-        logger.warning(f"No data found for export from datasource {datasource.rid}")
-        all_column_names = [_EXPORTED_TIMESTAMP_COL_NAME] + [ch.name for ch in channels]
-        return pd.DataFrame({col: [] for col in all_column_names}).set_index(_EXPORTED_TIMESTAMP_COL_NAME)
-
-    try:
-        result_df = pd.concat(all_dataframes, axis=1, join="outer", sort=True)
-    except Exception as ex:
-        raise RuntimeError(
-            "Failed to join dataframe chunks-- ensure you have properly specified the tags for your datascope"
-        ) from ex
-
-    if renamed_timestamp_col is not None:
-        result_df.index = result_df.index.rename(_EXPORTED_TIMESTAMP_COL_NAME)
-
-    return result_df
