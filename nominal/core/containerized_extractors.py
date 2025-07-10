@@ -190,8 +190,7 @@ class FileOutputFormat(Enum):
 
 @dataclass(frozen=True)
 class TimestampMetadata:
-    """Metadata about the shared timestamp column provided by the output `.parquet.tar` file from the extractor.
-
+    """
     Args:
         series_name: Name of the column containing timestamp data in the output files.
         timestamp_type: Type information specifying how timestamps should be interpreted.
