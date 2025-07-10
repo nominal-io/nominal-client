@@ -6,7 +6,6 @@ from nominal_api import (
     api,
     authentication_api,
     event,
-    ingest_api,
     scout,
     scout_asset_api,
     scout_assets,
@@ -16,11 +15,6 @@ from nominal_api import (
     scout_run_api,
     secrets_api,
 )
-from typing_extensions import TypeAlias
-
-from nominal.core._utils import T_co, T_contra, rid_from_instance_or_string
-from nominal.core.workspace import Workspace
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 DEFAULT_PAGE_SIZE = 100
 
@@ -231,27 +225,3 @@ def _paginate(
         if response.next_page_token is None:
             break
         next_page_token = response.next_page_token
-
-
-def _create_search_containerized_extractors_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    workspace: Workspace | str | None = None,
-) -> ingest_api.SearchContainerizedExtractorsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(search_text=search_text))
-
-    if workspace is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=rid_from_instance_or_string(workspace)))
-
-    if labels is not None:
-        for label in labels:
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(label=label))
-
-    if properties is not None:
-        for name, value in properties.items():
-            queries.append(ingest_api.SearchContainerizedExtractorsQuery(property=api.Property(name=name, value=value)))
-
-    return ingest_api.SearchContainerizedExtractorsQuery(and_=queries)

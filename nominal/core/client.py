@@ -29,7 +29,7 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal import _config
+from nominal import _config, ts
 from nominal.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
@@ -53,6 +53,7 @@ from nominal.core._utils import (
     search_secrets_paginated,
     search_users_paginated,
 )
+from nominal.core._utils.query_tools import create_search_containerized_extractors_query
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
@@ -1004,7 +1005,7 @@ class NominalClient:
         *,
         docker_image: DockerImageSource,
         timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
+        timestamp_type: ts._AnyTimestampType,
         inputs: Sequence[FileExtractionInput] = (),
         file_output_format: FileOutputFormat | None = None,
         labels: Sequence[str] = (),
@@ -1039,7 +1040,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         workspace: Workspace | str | None = None,
     ) -> Sequence[ContainerizedExtractor]:
-        query = _conjure_utils._create_search_containerized_extractors_query(
+        query = create_search_containerized_extractors_query(
             search_text=search_text,
             labels=labels,
             properties=properties,
