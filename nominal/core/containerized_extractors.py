@@ -23,7 +23,6 @@ class UserPassAuth:
             with the docker registry.
     """
 
-    # Username for the docker registry containing the docker image
     username: str
 
     # rid of the Secret containing the password for authentication with the docker registry
@@ -97,9 +96,11 @@ class FileExtractionInput:
 
 @dataclass(frozen=True)
 class TagDetails:
-    """Args:
-    tags: Available image tags that can be used for this extractor.
-    default_tag: The tag that will be used by default when running the extractor.
+    """Details about docker image tags to register for a custom extractor.
+
+    Args:
+        tags: Available image tags that can be used for this extractor.
+        default_tag: The tag that will be used by default when running the extractor.
     """
 
     tags: Sequence[str]
@@ -119,14 +120,6 @@ class TagDetails:
 
 @dataclass(frozen=True)
 class DockerImageSource:
-    """Args:
-    registry: Docker registry hostname (e.g., 'docker.io', 'gcr.io').
-    repository: Repository path within the registry (e.g., 'my-org/my-extractor').
-    tag_details: Information about available tags and which tag to use by default.
-    authentication: Credentials for accessing private registries, or None for public images.
-    command: Optional command to override the default image entrypoint.
-    """
-
     registry: str
 
     repository: str
@@ -184,9 +177,11 @@ class FileOutputFormat(Enum):
 
 @dataclass(frozen=True)
 class TimestampMetadata:
-    """Args:
-    series_name: Name of the column containing timestamp data in the output files.
-    timestamp_type: Type information specifying how timestamps should be interpreted.
+    """Metadata about the timestamp output from the extractor.
+
+    Args:
+        series_name: Name of the column containing timestamp data in the output files.
+        timestamp_type: Type information specifying how timestamps should be interpreted.
     """
 
     series_name: str
@@ -243,10 +238,8 @@ class ContainerizedExtractor(HasRid):
         tags: Sequence[str] | None = None,
         default_tag: str | None = None,
     ) -> Self:
-        """Update metadata for the custom extractor.
-
-        Returns:
-            Updated version of this instance containing newly changed fields and their values.
+        """Returns:
+        Updated version of this instance containing newly changed fields and their values.
         """
         request = ingest_api.UpdateContainerizedExtractorRequest(
             name=name,
