@@ -9,8 +9,9 @@ from typing import Protocol
 from nominal_api import scout_video, scout_video_api
 from typing_extensions import Self
 
+from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid, update_dataclass
+from nominal.core._utils import HasRid
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 

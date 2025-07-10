@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.65.0](https://github.com/nominal-io/nominal-client/compare/v1.64.0...v1.65.0) (2025-07-03)
+
+
+### Features
+
+* add description and rid to events ([#402](https://github.com/nominal-io/nominal-client/issues/402)) ([7c138fb](https://github.com/nominal-io/nominal-client/commit/7c138fbc442ed5be64bc6900079d2a9559a4423c))
+* clean up DataReview API usage ([#406](https://github.com/nominal-io/nominal-client/issues/406)) ([4574297](https://github.com/nominal-io/nominal-client/commit/45742978068f20e6bc628104791933937a224966))
+* delete deprecated channel methods ([#403](https://github.com/nominal-io/nominal-client/issues/403)) ([dd4cff9](https://github.com/nominal-io/nominal-client/commit/dd4cff99f2293a7d0a4cf012493f434c3fd8a1d4))
+
+## [1.64.0](https://github.com/nominal-io/nominal-client/compare/v1.63.0...v1.64.0) (2025-06-30)
+
+
+### Features
+
+* allow streaming ints with vanilla streaming ([#396](https://github.com/nominal-io/nominal-client/issues/396)) ([fdb6861](https://github.com/nominal-io/nominal-client/commit/fdb6861e9b53047849a665e9deb84d7089d2fc66))
+* allow streaming intsn with vanilla streaming ([fdb6861](https://github.com/nominal-io/nominal-client/commit/fdb6861e9b53047849a665e9deb84d7089d2fc66))
+* consolidate utilities in _utils subpackages, add timing utilities ([#399](https://github.com/nominal-io/nominal-client/issues/399)) ([4173af4](https://github.com/nominal-io/nominal-client/commit/4173af4ad16fdfa27444dfcfbe87f827b91acfb4))
+* delete methods that have been deprecated for several months ([#400](https://github.com/nominal-io/nominal-client/issues/400)) ([97ce525](https://github.com/nominal-io/nominal-client/commit/97ce52592fc6182ff2211357b95629e6bcff457d))
+
+## [1.63.0](https://github.com/nominal-io/nominal-client/compare/v1.62.0...v1.63.0) (2025-06-25)
+
+
+### Features
+
+* allow exporting a single channels data with gzip ([#395](https://github.com/nominal-io/nominal-client/issues/395)) ([182a952](https://github.com/nominal-io/nominal-client/commit/182a952e184ba907c9cdf3879309513101482943))
+* deprecate all top level functions in nominal.py ([#391](https://github.com/nominal-io/nominal-client/issues/391)) ([91c3a51](https://github.com/nominal-io/nominal-client/commit/91c3a510114acf676d0e33f2a0735904ec07edbf))
+
+## [1.62.0](https://github.com/nominal-io/nominal-client/compare/v1.61.0...v1.62.0) (2025-06-24)
+
+
+### Features
+
+* compose app base url from clients bunch ([#392](https://github.com/nominal-io/nominal-client/issues/392)) ([3f9b722](https://github.com/nominal-io/nominal-client/commit/3f9b722a0d898b827421a06e2201f8d592c48127))
+
 ## [1.61.0](https://github.com/nominal-io/nominal-client/compare/v1.60.0...v1.61.0) (2025-06-11)
 
 

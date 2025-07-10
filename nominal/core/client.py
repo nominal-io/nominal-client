@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -24,21 +23,38 @@ from nominal_api import (
     scout_notebook_api,
     scout_run_api,
     scout_video_api,
+    scout_workbookcommon_api,
     secrets_api,
     storage_datasource_api,
-    timeseries_logicalseries_api,
 )
 from typing_extensions import Self, deprecated
 
 from nominal import _config
 from nominal.config import NominalConfig
-from nominal.core import _conjure_utils
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
-from nominal.core._utils import construct_user_agent_string, rid_from_instance_or_string
+from nominal.core._constants import DEFAULT_API_BASE_URL
+from nominal.core._multipart import path_upload_name, upload_multipart_io
+from nominal.core._utils import (
+    construct_user_agent_string,
+    create_search_assets_query,
+    create_search_checklists_query,
+    create_search_events_query,
+    create_search_runs_query,
+    create_search_secrets_query,
+    create_search_users_query,
+    list_streaming_checklists_for_asset_paginated,
+    list_streaming_checklists_paginated,
+    rid_from_instance_or_string,
+    search_assets_paginated,
+    search_checklists_paginated,
+    search_data_reviews_paginated,
+    search_events_paginated,
+    search_runs_paginated,
+    search_secrets_paginated,
+    search_users_paginated,
+)
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
 from nominal.core.containerized_extractors import (
@@ -50,12 +66,7 @@ from nominal.core.containerized_extractors import (
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
-    _build_channel_config,
-    _construct_new_ingest_options,
-    _create_dataflash_ingest_request,
     _create_dataset,
-    _create_mcap_channels,
-    _create_mcap_ingest_request,
     _get_dataset,
     _get_datasets,
 )
@@ -64,9 +75,9 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import Log, LogSet, _get_log_set, _log_timestamp_type_to_conjure, _logs_to_conjure
 from nominal.core.run import Run
 from nominal.core.secret import Secret
-from nominal.core.unit import Unit, UnitMapping, _available_units, _build_unit_update
+from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
-from nominal.core.video import Video, _build_video_file_timestamp_manifest
+from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.core.workspace import Workspace
 from nominal.exceptions import NominalError, NominalIngestError
@@ -74,7 +85,6 @@ from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
     LogTimestampType,
-    _AnyTimestampType,
     _SecondsNanos,
     _to_api_duration,
     _to_typed_timestamp_type,
@@ -122,7 +132,7 @@ class NominalClient:
     def from_token(
         cls,
         token: str,
-        base_url: str = "https://api.gov.nominal.io/api",
+        base_url: str = DEFAULT_API_BASE_URL,
         *,
         workspace_rid: str | None = None,
         trust_store_path: str | None = None,
@@ -148,7 +158,7 @@ class NominalClient:
             connect_timeout=timeout_seconds,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, agent, token, workspace_rid), _profile=_profile)
+        return cls(_clients=ClientsBunch.from_config(cfg, base_url, agent, token, workspace_rid), _profile=_profile)
 
     @classmethod
     def create(
@@ -205,9 +215,7 @@ class NominalClient:
         return User._from_conjure(raw_user)
 
     def _iter_search_users(self, query: authentication_api.SearchUsersQuery) -> Iterable[User]:
-        for raw_user in _conjure_utils.search_users_paginated(
-            self._clients.authentication, self._clients.auth_header, query
-        ):
+        for raw_user in search_users_paginated(self._clients.authentication, self._clients.auth_header, query):
             yield User._from_conjure(raw_user)
 
     def search_users(self, exact_match: str | None = None, search_text: str | None = None) -> Sequence[User]:
@@ -221,7 +229,7 @@ class NominalClient:
         Returns:
             All users which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_users_query(exact_match, search_text)
+        query = create_search_users_query(exact_match, search_text)
         return list(self._iter_search_users(query))
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
@@ -291,7 +299,7 @@ class NominalClient:
         return Secret._from_conjure(self._clients, resp)
 
     def _iter_search_secrets(self, query: secrets_api.SearchSecretsQuery) -> Iterable[Secret]:
-        for secret in _conjure_utils.search_secrets_paginated(self._clients.secrets, self._clients.auth_header, query):
+        for secret in search_secrets_paginated(self._clients.secrets, self._clients.auth_header, query):
             yield Secret._from_conjure(self._clients, secret)
 
     def search_secrets(
@@ -311,7 +319,7 @@ class NominalClient:
         Returns:
             All secrets which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_secrets_query(search_text, labels, properties)
+        query = create_search_secrets_query(search_text, labels, properties)
         return list(self._iter_search_secrets(query))
 
     def create_run(
@@ -357,8 +365,8 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Iterable[Run]:
-        query = _conjure_utils.create_search_runs_query(start, end, name_substring, labels, properties)
-        for run in _conjure_utils.search_runs_paginated(self._clients.run, self._clients.auth_header, query):
+        query = create_search_runs_query(start, end, name_substring, labels, properties)
+        for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
             yield Run._from_conjure(self._clients, run)
 
     def search_runs(
@@ -422,386 +430,6 @@ class NominalClient:
 
         return dataset
 
-    @deprecated(
-        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
-    )
-    def create_csv_dataset(
-        self,
-        path: Path | str,
-        name: str | None,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-        description: str | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        prefix_tree_delimiter: str | None = None,
-        channel_prefix: str | None = None,
-        tags: Mapping[str, str] | None = None,
-    ) -> Dataset:
-        """Create a dataset from a CSV file.
-
-        If name is None, the name of the file will be used.
-
-        See `create_dataset_from_io` for more details.
-        """
-        return self.create_tabular_dataset(
-            path,
-            name,
-            timestamp_column,
-            timestamp_type,
-            description,
-            labels=labels,
-            properties=properties,
-            prefix_tree_delimiter=prefix_tree_delimiter,
-            channel_prefix=channel_prefix,
-            tags=tags,
-        )
-
-    @deprecated(
-        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
-    )
-    def create_ardupilot_dataflash_dataset(
-        self,
-        path: Path | str,
-        name: str | None,
-        description: str | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        prefix_tree_delimiter: str | None = None,
-    ) -> Dataset:
-        """Create a dataset from an ArduPilot DataFlash log file.
-
-        If name is None, the name of the file will be used.
-
-        See `create_dataset_from_io` for more details.
-        """
-        path = Path(path)
-        file_type = FileTypes.DATAFLASH
-        if name is None:
-            name = path.name
-
-        s3_path = upload_multipart_file(
-            self._clients.auth_header, self._clients.workspace_rid, path, self._clients.upload, file_type
-        )
-        target = ingest_api.DatasetIngestTarget(
-            new=ingest_api.NewDatasetIngestDestination(
-                labels=list(labels),
-                properties={} if properties is None else dict(properties),
-                dataset_description=description,
-                dataset_name=name,
-                channel_config=_build_channel_config(prefix_tree_delimiter),
-                workspace=self._clients.workspace_rid,
-            )
-        )
-        request = _create_dataflash_ingest_request(s3_path, target)
-        response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if response.details.dataset is None:
-            raise NominalIngestError("error ingesting dataflash: no dataset created")
-        return self.get_dataset(response.details.dataset.dataset_rid)
-
-    @deprecated(
-        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
-    )
-    def create_tabular_dataset(
-        self,
-        path: Path | str,
-        name: str | None,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-        description: str | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        prefix_tree_delimiter: str | None = None,
-        channel_prefix: str | None = None,
-        tags: Mapping[str, str] | None = None,
-    ) -> Dataset:
-        """Create a dataset from a table-like file.
-
-        Currently, the supported filetypes are:
-            - .csv / .csv.gz
-            - .parquet / .parquet.gz
-            - .parquet.tar / .parquet.tar.gz / .parquet.zip
-
-        If name is None, the name of the file will be used.
-
-        See `create_dataset_from_io` for more details.
-        """
-        path = Path(path)
-        file_type = FileType.from_tabular(path)
-        if name is None:
-            name = path.name
-
-        with path.open("rb") as data_file:
-            return self.create_dataset_from_io(
-                data_file,
-                name=name,
-                timestamp_column=timestamp_column,
-                timestamp_type=timestamp_type,
-                file_type=file_type,
-                description=description,
-                labels=labels,
-                properties=properties,
-                prefix_tree_delimiter=prefix_tree_delimiter,
-                channel_prefix=channel_prefix,
-                tags=tags,
-            )
-
-    @deprecated(
-        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
-    )
-    def create_journal_json_dataset(
-        self,
-        path: Path | str,
-        name: str | None,
-        description: str | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        prefix_tree_delimiter: str | None = None,
-    ) -> Dataset:
-        """Create a dataset from a journal log file with json output format.
-
-        Intended to be used with the recorded output of `journalctl --output json ...`.
-        The path extension is expected to be `.jsonl` or `.jsonl.gz` if gzipped.
-
-        If name is None, the name of the file will be used.
-
-        See `create_dataset_from_io` for more details.
-        """
-        path = Path(path)
-        file_type = FileType.from_path_journal_json(path)
-
-        if name is None:
-            name = path.name
-
-        s3_path = upload_multipart_file(
-            self._clients.auth_header, self._clients.workspace_rid, path, self._clients.upload, file_type
-        )
-        request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                journal_json=ingest_api.JournalJsonOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
-                    target=ingest_api.DatasetIngestTarget(
-                        new=ingest_api.NewDatasetIngestDestination(
-                            labels=list(labels),
-                            properties={} if properties is None else dict(properties),
-                            dataset_description=description,
-                            dataset_name=name,
-                            channel_config=_build_channel_config(prefix_tree_delimiter),
-                            workspace=self._clients.workspace_rid,
-                        )
-                    ),
-                )
-            ),
-        )
-
-        response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if response.details.dataset is None:
-            raise NominalIngestError("error ingesting journal json: no dataset created")
-        return self.get_dataset(response.details.dataset.dataset_rid)
-
-    @deprecated(
-        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
-    )
-    def create_dataset_from_io(
-        self,
-        dataset: BinaryIO,
-        name: str,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-        file_type: tuple[str, str] | FileType = FileTypes.CSV,
-        description: str | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        prefix_tree_delimiter: str | None = None,
-        channel_prefix: str | None = None,
-        file_name: str | None = None,
-        tag_columns: Mapping[str, str] | None = None,
-        tags: Mapping[str, str] | None = None,
-    ) -> Dataset:
-        """Create a dataset from a file-like object.
-        The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
-        If the file is not in binary-mode, the requests library blocks indefinitely.
-
-        Timestamp column types must be a `CustomTimestampFormat` or one of the following literals:
-            "iso_8601": ISO 8601 formatted strings,
-            "epoch_{unit}": epoch timestamps in UTC (floats or ints),
-            "relative_{unit}": relative timestamps (floats or ints),
-            where {unit} is one of: nanoseconds | microseconds | milliseconds | seconds | minutes | hours | days
-
-        Args:
-            dataset: Binary file-like tabular data stream
-            name: Name of the dataset to create
-            timestamp_column: Column of data containing timestamp information for all other columns
-            timestamp_type: Type of timestamps contained within timestamp_column
-            file_type: Type of file being ingested (e.g. CSV, parquet, etc.). Used for naming the file uploaded
-                to cloud storage as part of ingestion.
-            description: Human-readable description of the dataset to create
-            labels: Text labels to apply to the created dataset
-            properties: Key-value properties to apply to the cleated dataset
-            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
-            channel_prefix: Prefix to apply to newly created channels
-            file_name: Name of the file (without extension) to create when uploading.
-            tag_columns: a dictionary mapping tag keys to column names.
-            tags: a dictionary of key-value tags to apply to all data within the file
-
-        Returns:
-            Reference to the constructed dataset object.
-        """
-        if isinstance(dataset, TextIOBase):
-            raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
-
-        file_type = FileType(*file_type)
-
-        # Prevent breaking changes from customers using create_dataset_from_io directly
-        if file_name is None:
-            file_name = name
-
-        s3_path = upload_multipart_io(
-            self._clients.auth_header, self._clients.workspace_rid, dataset, file_name, file_type, self._clients.upload
-        )
-
-        request = ingest_api.IngestRequest(
-            options=_construct_new_ingest_options(
-                name=name,
-                timestamp_column=timestamp_column,
-                timestamp_type=timestamp_type,
-                file_type=file_type,
-                description=description,
-                labels=labels,
-                properties={} if properties is None else properties,
-                prefix_tree_delimiter=prefix_tree_delimiter,
-                channel_prefix=channel_prefix,
-                tag_columns=tag_columns,
-                s3_path=s3_path,
-                workspace_rid=self._clients.workspace_rid,
-                tags=tags,
-            )
-        )
-        response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if not response.details.dataset:
-            raise NominalIngestError("error ingesting dataset: no dataset created")
-        return self.get_dataset(response.details.dataset.dataset_rid)
-
-    @deprecated(
-        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
-    )
-    def create_mcap_dataset(
-        self,
-        path: Path | str,
-        name: str | None,
-        description: str | None = None,
-        include_topics: Iterable[str] | None = None,
-        exclude_topics: Iterable[str] | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        prefix_tree_delimiter: str | None = None,
-    ) -> Dataset:
-        """Create a dataset from an MCAP file.
-
-        If name is None, the name of the file will be used.
-
-        See `create_dataset_from_mcap_io` for more details on the other arguments.
-        """
-        mcap_path = Path(path)
-        if name is None:
-            name = mcap_path.name
-
-        with mcap_path.open("rb") as mcap_file:
-            return self.create_dataset_from_mcap_io(
-                mcap_file,
-                name=name,
-                description=description,
-                include_topics=include_topics,
-                exclude_topics=exclude_topics,
-                labels=labels,
-                properties=properties,
-                prefix_tree_delimiter=prefix_tree_delimiter,
-                file_name=path_upload_name(mcap_path, FileTypes.MCAP),
-            )
-
-    @deprecated(
-        "Creating a dataset from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_dataset`, `get_dataset`, or `search_datasets` and add data to an existing dataset instead."
-    )
-    def create_dataset_from_mcap_io(
-        self,
-        dataset: BinaryIO,
-        name: str,
-        description: str | None = None,
-        include_topics: Iterable[str] | None = None,
-        exclude_topics: Iterable[str] | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        prefix_tree_delimiter: str | None = None,
-        file_name: str | None = None,
-    ) -> Dataset:
-        """Create a dataset from an mcap file-like object.
-
-        The dataset must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
-        If the file is not in binary-mode, the requests library blocks indefinitely.
-
-        Args:
-            dataset: Binary file-like MCAP stream
-            name: Name of the dataset to create
-            description: Human-readable description of the dataset to create
-            include_topics: If present, list of topics to restrict ingestion to.
-                If not present, defaults to all protobuf-encoded topics present in the MCAP.
-            exclude_topics: If present, list of topics to not ingest from the MCAP.
-            labels: Text labels to apply to the created dataset
-            properties: Key-value properties to apply to the cleated dataset
-            prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
-            file_name: If present, name (without extension) to use when uploading file. Otherwise, defaults to name.
-
-        Returns:
-            Reference to the constructed dataset object.
-        """
-        if isinstance(dataset, TextIOBase):
-            raise TypeError(f"dataset {dataset} must be open in binary mode, rather than text mode")
-
-        if file_name is None:
-            file_name = name
-
-        s3_path = upload_multipart_io(
-            self._clients.auth_header,
-            self._clients.workspace_rid,
-            dataset,
-            file_name,
-            file_type=FileTypes.MCAP,
-            upload_client=self._clients.upload,
-        )
-        channels = _create_mcap_channels(include_topics, exclude_topics)
-        target = ingest_api.DatasetIngestTarget(
-            new=ingest_api.NewDatasetIngestDestination(
-                dataset_name=name,
-                dataset_description=description,
-                properties={} if properties is None else dict(properties),
-                labels=list(labels),
-                channel_config=_build_channel_config(prefix_tree_delimiter),
-                workspace=self._clients.workspace_rid,
-            )
-        )
-        request = _create_mcap_ingest_request(s3_path, channels, target)
-        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if resp.details.dataset is not None:
-            dataset_rid = resp.details.dataset.dataset_rid
-            if dataset_rid is not None:
-                return self.get_dataset(dataset_rid)
-            raise NominalIngestError("error ingesting mcap: no dataset rid")
-        raise NominalIngestError("error ingesting mcap: no dataset created")
-
     def create_empty_video(
         self,
         name: str,
@@ -830,128 +458,6 @@ class NominalClient:
         )
         raw_video = self._clients.video.create(self._clients.auth_header, request)
         return Video._from_conjure(self._clients, raw_video)
-
-    @deprecated(
-        "Creating a video from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_empty_video` or `get_video` and add video files to an existing video instead."
-    )
-    def create_video(
-        self,
-        path: Path | str,
-        name: str | None = None,
-        start: datetime | IntegralNanosecondsUTC | None = None,
-        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
-        description: str | None = None,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-    ) -> Video:
-        """Create a video from an h264/h265 encoded video file (mp4, mkv, ts, etc.).
-
-        If name is None, the name of the file will be used.
-
-        See `create_video_from_io` for more details.
-        """
-        path = Path(path)
-        file_type = FileType.from_video(path)
-        if name is None:
-            name = path.name
-
-        with path.open("rb") as data_file:
-            return self.create_video_from_io(
-                data_file,
-                name=name,
-                start=start,
-                frame_timestamps=frame_timestamps,
-                file_type=file_type,
-                description=description,
-                labels=labels,
-                properties=properties,
-                file_name=path_upload_name(path, file_type),
-            )
-
-    @deprecated(
-        "Creating a video from a file via the client is deprecated and will be removed in a future version. "
-        "Use `create_empty_video` or `get_video` and add video files to an existing video instead."
-    )
-    def create_video_from_io(
-        self,
-        video: BinaryIO,
-        name: str,
-        start: datetime | IntegralNanosecondsUTC | None = None,
-        frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
-        description: str | None = None,
-        file_type: tuple[str, str] | FileType = FileTypes.MP4,
-        *,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        file_name: str | None = None,
-    ) -> Video:
-        """Create a video from a file-like object.
-        The video must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
-
-        Args:
-        ----
-            video: file-like object to read video data from
-            name: Name of the video to create in Nominal
-            start: Starting timestamp of the video
-            frame_timestamps: Per-frame timestamps (in nanoseconds since unix epoch) for every frame of the video
-            description: Description of the video to create in nominal
-            file_type: Type of data being uploaded, used for naming the file uploaded to cloud storage as part
-                of ingestion.
-            labels: Labels to apply to the video in nominal
-            properties: Properties to apply to the video in nominal
-            file_name: Name (without extension) to use when uploading the video file. Defaults to video name.
-
-        Returns:
-        -------
-            Handle to the created video
-
-        Note:
-        ----
-            Exactly one of 'start' and 'frame_timestamps' **must** be provided. Most users will
-            want to provide a starting timestamp: frame_timestamps is primarily useful when the scale
-            of the video data is not 1:1 with the playback speed or non-uniform over the course of the video,
-            for example, 200fps video artificially slowed to 30 fps without dropping frames. This will result
-            in the playhead on charts within the product playing at the rate of the underlying data rather than
-            time elapsed in the video playback.
-
-        """
-        if isinstance(video, TextIOBase):
-            raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
-
-        timestamp_manifest = _build_video_file_timestamp_manifest(
-            self._clients.auth_header, self._clients.workspace_rid, self._clients.upload, start, frame_timestamps
-        )
-
-        if file_name is None:
-            file_name = name
-
-        file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(
-            self._clients.auth_header, self._clients.workspace_rid, video, file_name, file_type, self._clients.upload
-        )
-        request = ingest_api.IngestRequest(
-            ingest_api.IngestOptions(
-                video=ingest_api.VideoOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
-                    target=ingest_api.VideoIngestTarget(
-                        new=ingest_api.NewVideoIngestDestination(
-                            title=name,
-                            description=description,
-                            properties={} if properties is None else dict(properties),
-                            labels=list(labels),
-                            workspace=self._clients.workspace_rid,
-                        )
-                    ),
-                    timestamp_manifest=timestamp_manifest,
-                )
-            )
-        )
-        response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if response.details.video is None:
-            raise NominalIngestError("error ingesting video: no video created")
-        return self.get_video(response.details.video.video_rid)
 
     @deprecated(
         "LogSets are deprecated and will be removed in a future version. "
@@ -1024,9 +530,7 @@ class NominalClient:
         return Checklist._from_conjure(self._clients, response)
 
     def _iter_search_checklists(self, query: scout_checks_api.ChecklistSearchQuery) -> Iterable[Checklist]:
-        for checklist in _conjure_utils.search_checklists_paginated(
-            self._clients.checklist, self._clients.auth_header, query
-        ):
+        for checklist in search_checklists_paginated(self._clients.checklist, self._clients.auth_header, query):
             yield Checklist._from_conjure(self._clients, checklist)
 
     def search_checklists(
@@ -1046,7 +550,7 @@ class NominalClient:
         Returns:
             All checklists which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_checklists_query(search_text, labels, properties)
+        query = create_search_checklists_query(search_text, labels, properties)
         return list(self._iter_search_checklists(query))
 
     def create_attachment(
@@ -1151,57 +655,6 @@ class NominalClient:
             Unit._from_conjure(unit)
             for unit in self._clients.units.get_commensurable_units(self._clients.auth_header, unit_symbol)
         ]
-
-    def get_channel(self, rid: str) -> Channel:
-        """Get metadata for a given channel by looking up its rid
-        Args:
-            rid: Identifier for the channel to look up
-        Returns:
-            Resolved metadata for the requested channel
-        Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while looking up the channel.
-                This typically occurs when there is no such channel for the given RID.
-        """
-        warnings.warn(
-            "get_channel is deprecated. Use dataset.get_channel() or connection.get_channel() instead.",
-            UserWarning,
-        )
-        return Channel._from_conjure_logicalseries_api(
-            self._clients, self._clients.logical_series.get_logical_series(self._clients.auth_header, rid)
-        )
-
-    def set_channel_units(self, rids_to_types: UnitMapping) -> Iterable[Channel]:
-        """Sets the units for a set of channels based on user-provided unit symbols
-        Args:
-            rids_to_types: Mapping of channel RIDs -> unit symbols (e.g. 'm/s').
-                NOTE: Providing `None` as the unit symbol clears any existing units for the channels.
-
-        Returns:
-        -------
-            A sequence of metadata for all updated channels
-        Raises:
-            conjure_python_client.ConjureHTTPError: An error occurred while setting metadata on the channel.
-                This typically occurs when either the units are invalid, or there are no
-                channels with the given RIDs present.
-
-        """
-        warnings.warn(
-            "set_channel_units is deprecated. Use dataset.set_channel_units() or connection.set_channel_units()",
-            UserWarning,
-        )
-
-        series_updates = []
-        for rid, series_type in rids_to_types.items():
-            series_updates.append(
-                timeseries_logicalseries_api.UpdateLogicalSeries(
-                    logical_series_rid=rid,
-                    unit_update=_build_unit_update(series_type),
-                )
-            )
-
-        request = timeseries_logicalseries_api.BatchUpdateLogicalSeriesRequest(series_updates)
-        response = self._clients.logical_series.batch_update_logical_series(self._clients.auth_header, request)
-        return [Channel._from_conjure_logicalseries_api(self._clients, resp) for resp in response.responses]
 
     def get_connection(self, rid: str) -> Connection:
         """Retrieve a connection by its RID."""
@@ -1349,16 +802,11 @@ class NominalClient:
         request = scout_notebook_api.CreateNotebookRequest(
             title=title if title is not None else f"Workbook from {template.metadata.title}",
             description=description or "",
-            notebook_type=None,
             is_draft=is_draft,
             state_as_json="{}",
-            charts=None,
-            run_rid=run_rid,
-            data_scope=None,
+            data_scope=scout_notebook_api.NotebookDataScope(run_rids=[run_rid]),
             layout=template.layout,
-            content=template.content,
-            content_v2=None,
-            check_alert_refs=[],
+            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template.content),
             event_refs=[],
             workspace=self._clients.workspace_rid,
         )
@@ -1398,7 +846,7 @@ class NominalClient:
         return Asset._from_conjure(self._clients, response[rid])
 
     def _iter_search_assets(self, query: scout_asset_api.SearchAssetsQuery) -> Iterable[Asset]:
-        for asset in _conjure_utils.search_assets_paginated(self._clients.assets, self._clients.auth_header, query):
+        for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query):
             yield Asset._from_conjure(self._clients, asset)
 
     def search_assets(
@@ -1419,15 +867,13 @@ class NominalClient:
         Returns:
             All assets which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_assets_query(search_text, labels, properties)
+        query = create_search_assets_query(search_text, labels, properties)
         return list(self._iter_search_assets(query))
 
     def _iter_list_streaming_checklists(self, asset: str | None) -> Iterable[str]:
         if asset is None:
-            return _conjure_utils.list_streaming_checklists_paginated(
-                self._clients.checklist_execution, self._clients.auth_header
-            )
-        return _conjure_utils.list_streaming_checklists_for_asset_paginated(
+            return list_streaming_checklists_paginated(self._clients.checklist_execution, self._clients.auth_header)
+        return list_streaming_checklists_for_asset_paginated(
             self._clients.checklist_execution, self._clients.auth_header, asset
         )
 
@@ -1454,12 +900,14 @@ class NominalClient:
         start: datetime | IntegralNanosecondsUTC,
         duration: timedelta | IntegralNanosecondsDuration = timedelta(),
         *,
+        description: str | None = None,
         assets: Iterable[Asset | str] = (),
         properties: Mapping[str, str] | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
         request = event.CreateEvent(
             name=name,
+            description=description,
             asset_rids=[rid_from_instance_or_string(asset) for asset in assets],
             timestamp=_SecondsNanos.from_flexible(start).to_api(),
             duration=_to_api_duration(duration),
@@ -1471,8 +919,15 @@ class NominalClient:
         response = self._clients.event.create_event(self._clients.auth_header, request)
         return Event._from_conjure(self._clients, response)
 
-    def get_events(self, uuids: Sequence[str]) -> Sequence[Event]:
-        responses = self._clients.event.get_events(self._clients.auth_header, event.GetEvents(list(uuids)))
+    def get_event(self, rid: str) -> Event:
+        events = self.get_events([rid])
+        if len(events) != 1:
+            raise RuntimeError(f"Expected to receive exactly one event, received {len(events)}")
+
+        return events[0]
+
+    def get_events(self, rids: Sequence[str]) -> Sequence[Event]:
+        responses = self._clients.event.batch_get_events(self._clients.auth_header, list(rids))
         return [Event._from_conjure(self._clients, response) for response in responses]
 
     def _iter_search_data_reviews(
@@ -1480,7 +935,7 @@ class NominalClient:
         assets: Sequence[Asset | str] | None = None,
         runs: Sequence[Run | str] | None = None,
     ) -> Iterable[DataReview]:
-        for review in _conjure_utils.search_data_reviews_paginated(
+        for review in search_data_reviews_paginated(
             self._clients.datareview,
             self._clients.auth_header,
             assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
@@ -1498,7 +953,7 @@ class NominalClient:
         return list(self._iter_search_data_reviews(assets, runs))
 
     def _iter_search_events(self, query: event.SearchQuery) -> Iterable[Event]:
-        for e in _conjure_utils.search_events_paginated(self._clients.event, self._clients.auth_header, query):
+        for e in search_events_paginated(self._clients.event, self._clients.auth_header, query):
             yield Event._from_conjure(self._clients, e)
 
     def search_events(
@@ -1526,7 +981,7 @@ class NominalClient:
         Returns:
             All events which match all of the provided conditions
         """
-        query = _conjure_utils.create_search_events_query(
+        query = create_search_events_query(
             search_text=search_text,
             after=after,
             before=before,

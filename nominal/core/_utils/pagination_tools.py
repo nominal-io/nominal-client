@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Iterable, Mapping, Protocol, Sequence, TypeVar
+from typing import Iterable, Protocol, Sequence, TypeVar
 
 from nominal_api import (
     api,
@@ -25,143 +24,9 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 DEFAULT_PAGE_SIZE = 100
 
-
-Link: TypeAlias = tuple[str, str]
-
-
-def create_links(links: Sequence[str] | Sequence[Link]) -> list[scout_run_api.Link]:
-    links_conjure = []
-    for link in links:
-        if isinstance(link, tuple):
-            url, title = link
-            links_conjure.append(scout_run_api.Link(url=url, title=title))
-        else:
-            links_conjure.append(scout_run_api.Link(url=link))
-    return links_conjure
-
-
-def create_search_secrets_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-) -> secrets_api.SearchSecretsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(secrets_api.SearchSecretsQuery(search_text=search_text))
-    if labels is not None:
-        for label in labels:
-            queries.append(secrets_api.SearchSecretsQuery(label=label))
-    if properties is not None:
-        for name, value in properties.items():
-            queries.append(secrets_api.SearchSecretsQuery(property=api.Property(name=name, value=value)))
-
-    return secrets_api.SearchSecretsQuery(and_=queries)
-
-
-def create_search_users_query(
-    exact_match: str | None = None,
-    search_text: str | None = None,
-) -> authentication_api.SearchUsersQuery:
-    queries = []
-    if exact_match is not None:
-        queries.append(authentication_api.SearchUsersQuery(exact_match=exact_match))
-    if search_text is not None:
-        queries.append(authentication_api.SearchUsersQuery(search_text=search_text))
-
-    return authentication_api.SearchUsersQuery(and_=queries)
-
-
-def create_search_assets_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-) -> scout_asset_api.SearchAssetsQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(search_text=search_text))
-    if labels is not None:
-        for label in labels:
-            queries.append(scout_asset_api.SearchAssetsQuery(label=label))
-    if properties:
-        for name, value in properties.items():
-            queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
-
-    return scout_asset_api.SearchAssetsQuery(and_=queries)
-
-
-def create_search_checklists_query(
-    search_text: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-) -> scout_checks_api.ChecklistSearchQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
-    if labels is not None:
-        for label in labels:
-            queries.append(scout_checks_api.ChecklistSearchQuery(label=label))
-    if properties is not None:
-        for prop_key, prop_value in properties.items():
-            queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
-
-    return scout_checks_api.ChecklistSearchQuery(and_=queries)
-
-
-def create_search_events_query(
-    search_text: str | None = None,
-    after: str | datetime | IntegralNanosecondsUTC | None = None,
-    before: str | datetime | IntegralNanosecondsUTC | None = None,
-    assets: Iterable[str] | None = None,
-    labels: Iterable[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    created_by: str | None = None,
-) -> event.SearchQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(event.SearchQuery(search_text=search_text))
-    if after is not None:
-        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
-    if before is not None:
-        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
-    if assets:
-        for asset in assets:
-            queries.append(event.SearchQuery(asset=asset))
-    if labels:
-        for label in labels:
-            queries.append(event.SearchQuery(label=label))
-    if properties:
-        for name, value in properties.items():
-            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
-    if created_by:
-        queries.append(event.SearchQuery(created_by=created_by))
-
-    return event.SearchQuery(and_=queries)
-
-
-def create_search_runs_query(
-    start: str | datetime | IntegralNanosecondsUTC | None = None,
-    end: str | datetime | IntegralNanosecondsUTC | None = None,
-    name_substring: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-) -> scout_run_api.SearchQuery:
-    queries = []
-    if start is not None:
-        start_time = _SecondsNanos.from_flexible(start).to_scout_run_api()
-        queries.append(scout_run_api.SearchQuery(start_time_inclusive=start_time))
-    if end is not None:
-        end_time = _SecondsNanos.from_flexible(end).to_scout_run_api()
-        queries.append(scout_run_api.SearchQuery(end_time_inclusive=end_time))
-    if name_substring is not None:
-        queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
-    if labels:
-        for label in labels:
-            queries.append(scout_run_api.SearchQuery(label=label))
-    if properties:
-        for name, value in properties.items():
-            queries.append(scout_run_api.SearchQuery(property=api.Property(name=name, value=value)))
-
-    return scout_run_api.SearchQuery(and_=queries)
+T = TypeVar("T")
+T_co = TypeVar("T_co", covariant=True)
+T_contra = TypeVar("T_contra", contravariant=True)
 
 
 def search_events_paginated(

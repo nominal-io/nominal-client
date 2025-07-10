@@ -11,9 +11,9 @@ from nominal_api import (
 )
 from typing_extensions import Self, TypeAlias, deprecated
 
+from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._conjure_utils import Link, create_links
-from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
+from nominal.core._utils import HasRid, Link, create_links, rid_from_instance_or_string
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
@@ -83,8 +83,7 @@ class Asset(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Asset in the Nominal app"""
-        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
-        return f"https://app.gov.nominal.io/assets/{self.rid}"
+        return f"{self._clients.app_base_url}/assets/{self.rid}"
 
     def add_dataset(
         self,
@@ -368,20 +367,6 @@ class Asset(HasRid):
         asset = self.__class__._from_conjure(self._clients, response)
         update_dataclass(self, asset, fields=self.__dataclass_fields__)
 
-    @deprecated("Use `remove_data_scopes` instead")
-    def remove_data_sources(
-        self,
-        *,
-        data_scope_names: Sequence[str] | None = None,
-        data_sources: Sequence[ScopeType | str] | None = None,
-    ) -> None:
-        """Remove data sources from this asset.
-
-        The list data_sources can contain Connection, Dataset, Video instances, or rids as string.
-        """
-        self._remove_data_sources(data_scope_names=data_scope_names, data_sources=data_sources)
-
-    # Newer alias to replace `remove_data_sources`
     def remove_data_scopes(
         self,
         *,

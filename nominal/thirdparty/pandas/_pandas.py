@@ -10,8 +10,7 @@ import pandas as pd
 from nominal_api.api import Timestamp
 
 from nominal import ts
-from nominal._utils import reader_writer
-from nominal.core._utils import batched
+from nominal._utils import batched, reader_writer
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
@@ -135,6 +134,8 @@ def channel_to_series(
     end: datetime | ts.IntegralNanosecondsUTC | None = None,
     relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,
     relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
+    *,
+    enable_gzip: bool = True,
 ) -> pd.Series[Any]:
     """Retrieve the channel data as a pandas.Series.
 
@@ -154,9 +155,15 @@ def channel_to_series(
     start_time = ts._MIN_TIMESTAMP.to_api() if start is None else ts._SecondsNanos.from_flexible(start).to_api()
     end_time = ts._MAX_TIMESTAMP.to_api() if end is None else ts._SecondsNanos.from_flexible(end).to_api()
     body = channel._get_series_values_csv(
-        start_time, end_time, relative_to=relative_to, relative_resolution=relative_resolution
+        start_time,
+        end_time,
+        relative_to=relative_to,
+        relative_resolution=relative_resolution,
+        enable_gzip=enable_gzip,
     )
-    df = pd.read_csv(body, parse_dates=["timestamp"], index_col="timestamp")
+    df = pd.read_csv(
+        body, parse_dates=["timestamp"], index_col="timestamp", compression="gzip" if enable_gzip else "infer"
+    )
     return df[channel.name]
 
 

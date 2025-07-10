@@ -11,9 +11,9 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
+from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._conjure_utils import Link, create_links
-from nominal.core._utils import HasRid, rid_from_instance_or_string, update_dataclass
+from nominal.core._utils import HasRid, Link, create_links, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
@@ -48,8 +48,7 @@ class Run(HasRid):
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Run in the Nominal app"""
-        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
-        return f"https://app.gov.nominal.io/runs/{self.run_number}"
+        return f"{self._clients.app_base_url}/runs/{self.run_number}"
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None

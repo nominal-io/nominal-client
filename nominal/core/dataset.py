@@ -10,11 +10,10 @@ from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from nominal_api import api, datasource_api, ingest_api, scout_catalog
-from typing_extensions import Self, TypeAlias, deprecated
+from typing_extensions import Self, TypeAlias
 
-from nominal._utils import deprecate_arguments
+from nominal._utils import deprecate_arguments, update_dataclass
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
-from nominal.core._utils import update_dataclass
 from nominal.core.bounds import Bounds
 from nominal.core.channel import Channel
 from nominal.core.dataset_file import DatasetFile
@@ -43,8 +42,7 @@ class Dataset(DataSource):
     @property
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
-        # TODO (drake): move logic into _from_conjure() factory function to accommodate different URL schemes
-        return f"https://app.gov.nominal.io/data-sources/{self.rid}"
+        return f"{self._clients.app_base_url}/data-sources/{self.rid}"
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
         """Block until dataset file ingestion has completed.
@@ -118,36 +116,6 @@ class Dataset(DataSource):
         self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
 
         return self.refresh()
-
-    @deprecated(
-        "`Dataset.add_csv_to_dataset` is deprecated and will be removed in a future version. "
-        "Use `Dataset.add_tabular_data` instead."
-    )
-    def add_csv_to_dataset(
-        self,
-        path: Path | str,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-        tag_columns: Mapping[str, str] | None = None,
-        tags: Mapping[str, str] | None = None,
-    ) -> None:
-        """Append to a dataset from a csv on-disk."""
-        self.add_tabular_data(path, timestamp_column, timestamp_type, tag_columns=tag_columns, tags=tags)
-
-    @deprecated(
-        "`Dataset.add_data_to_dataset` is deprecated and will be removed in a future version. "
-        "Use `Dataset.add_tabular_data` instead."
-    )
-    def add_data_to_dataset(
-        self,
-        path: Path | str,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-        tag_columns: Mapping[str, str] | None = None,
-        tags: Mapping[str, str] | None = None,
-    ) -> None:
-        """Append to a dataset from a tabular data file on-disk."""
-        self.add_tabular_data(path, timestamp_column, timestamp_type, tag_columns=tag_columns, tags=tags)
 
     def add_tabular_data(
         self,
