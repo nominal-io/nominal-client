@@ -253,15 +253,6 @@ class ContainerizedExtractor(HasRid):
     ) -> Self:
         """Update metadata for the custom extractor.
 
-        Args:
-            name: Update the name of the extractor, if provided.
-            description: Update the description of the extractor, if provided.
-            properties: Update the properties of the extractor, if provided.
-            labels: Update the labels of the extractor, if provided.
-            timestamp_metadata: Update the timestamp channel metadata of the extractor, if provided.
-            tags: Update the tags of the extractor, if provided.
-            default_tag: Update the default tag used for the extractor, if provided.
-
         Returns:
             Updated version of this instance containing newly changed fields and their values.
         """
@@ -285,11 +276,9 @@ class ContainerizedExtractor(HasRid):
         return self
 
     def archive(self) -> None:
-        """Archive the extractor, preventing it from being shown to users when uploading data."""
         self._clients.containerized_extractors.archive_containerized_extractor(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive the extractor, allowing it to be shown to users when uploading data."""
         self._clients.containerized_extractors.unarchive_containerized_extractor(self._clients.auth_header, self.rid)
 
     @classmethod
