@@ -97,6 +97,14 @@ class NominalLogHandler(logging.Handler):
                 break
         return batch
 
+    def _flush_batch(self, batch: list[LogPoint]) -> None:
+        if batch:
+            try:
+                self.dataset.write_logs(batch, channel_name=self.log_channel, batch_size=self.max_batch_size)
+                self.last_flush_time = time.monotonic()
+            except Exception:
+                logging.exception("Error writing logs to Nominal")
+
     def _worker(self) -> None:
         """The background thread that processes the log queue."""
         while not self._should_shutdown:
@@ -121,11 +129,13 @@ class NominalLogHandler(logging.Handler):
                     batch = self._get_batch()
 
             if batch:
-                try:
-                    self.dataset.write_logs(batch, channel_name=self.log_channel, batch_size=self.max_batch_size)
-                    self.last_flush_time = time.monotonic()
-                except Exception:
-                    logging.exception("Error writing logs to Nominal")
+                self._flush_batch(batch)
+
+        # On shutdown, flush any remaining items in the queue
+        batch = self._get_batch()
+        while batch:
+            self._flush_batch(batch)
+            batch = self._get_batch()
 
     def start(self) -> None:
         # Already started
