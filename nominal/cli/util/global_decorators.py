@@ -10,8 +10,8 @@ import click
 import typing_extensions
 
 from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
-from nominal.cli.util.click_log_handler import install_log_handler
 from nominal.core.client import NominalClient
+from nominal.experimental.logging import install_click_log_handler
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
         elif verbose >= 2:
             log_level = logging.DEBUG
 
-        install_log_handler(level=log_level, no_color=no_color)
+        install_click_log_handler(level=log_level, no_color=no_color)
         return func(*args, **kwargs)
 
     return color_option(verbosity_option(wrapped_function))
