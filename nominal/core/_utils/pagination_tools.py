@@ -172,6 +172,7 @@ def search_users_paginated(
     def factory(page_token: str | None) -> authentication_api.SearchUsersRequest:
         return authentication_api.SearchUsersRequest(
             page_size=DEFAULT_PAGE_SIZE,
+            next_page_token=page_token,
             query=query,
             sort_by=authentication_api.SortBy(field=authentication_api.SortByField.EMAIL, is_descending=False),
         )
