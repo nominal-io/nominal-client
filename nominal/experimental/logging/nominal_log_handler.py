@@ -12,7 +12,7 @@ from nominal.core.log import LogPoint
 
 DEFAULT_LOG_CHANNEL = "logs"
 DEFAULT_LOG_BATCH_SIZE = 1000
-DEFAULT_LOG_FLUSH_INTERVAL = datetime.timedelta(seconds=5)
+DEFAULT_LOG_FLUSH_INTERVAL = datetime.timedelta(seconds=1)
 
 
 class NominalLogHandler(logging.Handler):
@@ -56,24 +56,31 @@ class NominalLogHandler(logging.Handler):
         self.worker_thread: threading.Thread | None = None
         self.last_flush_time = 0.0
 
+        # Coordinate notifications to worker thread
+        self._condition = threading.Condition()
+        self._should_shutdown = False
+
     def emit(self, record: logging.LogRecord) -> None:
         """Puts a log record into the queue"""
-        filtered = self.filter(record)
-        if not filtered:
+        if not self.filter(record):
             return
 
-        try:
-            extra_data = getattr(record, "nominal_args") if hasattr(record, "nominal_args") else {}
-            args = {
-                "level": record.levelname,
-                "filename": record.filename,
-                "function": record.funcName,
-                "line": str(record.lineno),
-                **{str(k): str(v) for k, v in extra_data.items()},
-            }
+        extra_data = getattr(record, "nominal_args") if hasattr(record, "nominal_args") else {}
+        args = {
+            "level": record.levelname,
+            "filename": record.filename,
+            "function": record.funcName,
+            "line": str(record.lineno),
+            **{str(k): str(v) for k, v in extra_data.items()},
+        }
+        log_entry = LogPoint(int(record.created * 1e9), message=self.format(record), args=args)
 
-            log_entry = LogPoint(int(record.created * 1e9), message=self.format(record), args=args)
+        try:
             self.queue.put(log_entry, block=False)
+
+            # Notify worker that a new log point is available
+            with self._condition:
+                self._condition.notify()
         except queue.Full:
             # Handle the case where the queue is full by logging a warning on the root logger
             logging.warning("Nominal Log queue is full, dropping new log messages.")
@@ -92,22 +99,33 @@ class NominalLogHandler(logging.Handler):
 
     def _worker(self) -> None:
         """The background thread that processes the log queue."""
-        while True:
-            time_since_last_flush = time.monotonic() - self.last_flush_time
-            if self.queue.qsize() >= self.max_batch_size or (
-                self.queue.qsize() > 0 and time_since_last_flush >= self.flush_interval.total_seconds()
-            ):
-                batch = self._get_batch()
-                if batch:
-                    try:
-                        self.dataset.write_logs(batch, channel_name=self.log_channel)
-                        self.last_flush_time = time.monotonic()
-                    except Exception:
-                        # Handle exceptions from the backend here.
-                        logging.exception("Error writing logs to Nominal")
-            else:
-                # Sleep for a short duration to avoid busy-waiting.
-                time.sleep(0.1)
+        while not self._should_shutdown:
+            batch = None
+            with self._condition:
+                # If the queue is empty and we aren't shutting down, await new logs
+                if self.queue.empty() and not self._should_shutdown:
+                    self._condition.wait()
+
+                # If a shutdown is requested, exit
+                if self._should_shutdown:
+                    break
+
+                # If we have logs, but not a full batch worth, wait the remaining flush interval
+                if self.queue.qsize() < self.max_batch_size:
+                    self._condition.wait(self.flush_interval.total_seconds())
+
+                time_since_last_flush = time.monotonic() - self.last_flush_time
+                flush_due = time_since_last_flush >= self.flush_interval.total_seconds() and not self.queue.empty()
+                batch_full = self.queue.qsize() >= self.max_batch_size
+                if batch_full or flush_due:
+                    batch = self._get_batch()
+
+            if batch:
+                try:
+                    self.dataset.write_logs(batch, channel_name=self.log_channel, batch_size=self.max_batch_size)
+                    self.last_flush_time = time.monotonic()
+                except Exception:
+                    logging.exception("Error writing logs to Nominal")
 
     def start(self) -> None:
         # Already started
@@ -115,6 +133,8 @@ class NominalLogHandler(logging.Handler):
             return
 
         self.last_flush_time = time.monotonic()
+        self._should_shutdown = False
+
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
 
@@ -127,17 +147,19 @@ class NominalLogHandler(logging.Handler):
         if self.worker_thread is None:
             return
 
-        # Signal the worker to flush everything
-        remaining_logs = self._get_batch()
-        if remaining_logs:
-            try:
-                self.dataset.write_logs(remaining_logs)
-            except Exception:
-                logging.exception("Error flushing logs to Nominal at program shutdown")
-        self.queue.join()
+        # Signal worker to shutdown, wake it up in case it was awaiting logs
+        with self._condition:
+            self._should_shutdown = True
+            self._condition.notify_all()
 
+        # Await worker to finish processing
+        self.worker_thread.join()
         self.worker_thread = None
-        atexit.unregister(self.shutdown)
+
+        try:
+            atexit.unregister(self.shutdown)
+        except Exception:
+            pass
 
 
 class ModuleFilter(logging.Filter):
