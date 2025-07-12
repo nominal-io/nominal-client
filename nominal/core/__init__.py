@@ -4,6 +4,14 @@ from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient
 from nominal.core.connection import Connection
+from nominal.core.containerized_extractors import (
+    ContainerizedExtractor,
+    DockerImageSource,
+    FileExtractionInput,
+    TagDetails,
+    TimestampMetadata,
+    UserPassAuth,
+)
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
 from nominal.core.event import Event, EventType
@@ -24,18 +32,26 @@ __all__ = [
     "Checklist",
     "CheckViolation",
     "Connection",
+    "ContainerizedExtractor",
     "DataReview",
     "DataReviewBuilder",
     "Dataset",
+    "DockerImageSource",
+    "FileExtractionInput",
     "FileType",
     "FileTypes",
     "Log",
     "LogPoint",
     "LogSet",
     "NominalClient",
+    "poll_until_ingestion_completed",
+    "RegistryAuth",
     "Run",
     "Secret",
+    "TagDetails",
+    "TimestampMetadata",
     "User",
+    "UserPassAuth",
     "Video",
     "Workbook",
     "Workspace",

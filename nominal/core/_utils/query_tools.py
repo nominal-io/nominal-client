@@ -7,12 +7,15 @@ from nominal_api import (
     api,
     authentication_api,
     event,
+    ingest_api,
     scout_asset_api,
     scout_checks_api,
     scout_run_api,
     secrets_api,
 )
 
+from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core.workspace import Workspace
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -45,6 +48,30 @@ def create_search_users_query(
         queries.append(authentication_api.SearchUsersQuery(search_text=search_text))
 
     return authentication_api.SearchUsersQuery(and_=queries)
+
+
+def create_search_containerized_extractors_query(
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    workspace: Workspace | str | None = None,
+) -> ingest_api.SearchContainerizedExtractorsQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(ingest_api.SearchContainerizedExtractorsQuery(search_text=search_text))
+
+    if workspace is not None:
+        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=rid_from_instance_or_string(workspace)))
+
+    if labels is not None:
+        for label in labels:
+            queries.append(ingest_api.SearchContainerizedExtractorsQuery(label=label))
+
+    if properties is not None:
+        for name, value in properties.items():
+            queries.append(ingest_api.SearchContainerizedExtractorsQuery(property=api.Property(name=name, value=value)))
+
+    return ingest_api.SearchContainerizedExtractorsQuery(and_=queries)
 
 
 def create_search_assets_query(
