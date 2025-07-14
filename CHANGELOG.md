@@ -13,7 +13,6 @@
 ### Bug Fixes
 
 * pagination in search users would infinitely loop with sufficient user count ([78ae4b9](https://github.com/nominal-io/nominal-client/commit/78ae4b905bf675599bad715793d031502bf5d877))
-* pagination in search_users would infinitely loop with sufficient users ([#408](https://github.com/nominal-io/nominal-client/issues/408)) ([78ae4b9](https://github.com/nominal-io/nominal-client/commit/78ae4b905bf675599bad715793d031502bf5d877))
 
 ## [1.65.0](https://github.com/nominal-io/nominal-client/compare/v1.64.0...v1.65.0) (2025-07-03)
 
