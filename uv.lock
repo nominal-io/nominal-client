@@ -1496,6 +1496,7 @@ dependencies = [
     { name = "ffmpeg-python" },
     { name = "nominal-api" },
     { name = "pandas" },
+    { name = "pebble" },
     { name = "python-dateutil" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -1545,6 +1546,7 @@ requires-dist = [
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.708.0" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
+    { name = "pebble", specifier = ">=5.1.1" },
     { name = "python-dateutil", specifier = ">=0.0.0" },
     { name = "pyyaml", specifier = ">=0.0.0" },
     { name = "requests", specifier = ">=0.0.0" },
@@ -1905,6 +1907,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ca/bc/f35b8446f4531a7cb215605d100cd88b7ac6f44ab3fc94870c120ab3adbf/pathspec-0.12.1.tar.gz", hash = "sha256:a482d51503a1ab33b1c67a6c3813a26953dbdc71c31dacaef9a838c4e29f5712", size = 51043, upload-time = "2023-12-10T22:30:45Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cc/20/ff623b09d963f88bfde16306a54e12ee5ea43e9b597108672ff3a408aad6/pathspec-0.12.1-py3-none-any.whl", hash = "sha256:a0d503e138a4c123b27490a4f7beda6a01c6f288df0e4a8b79c7eb0dc7b4cc08", size = 31191, upload-time = "2023-12-10T22:30:43.14Z" },
+]
+
+[[package]]
+name = "pebble"
+version = "5.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/5b/90bf2acce03a12750a570cede27b9cddd4b6f5f2cf4de1048231bb21c382/pebble-5.1.1.tar.gz", hash = "sha256:4e91a5b8e48b30b26eaa5391ba2cf65fbb3594fba17b88bc0b3351cf849d0305", size = 38672, upload-time = "2025-03-16T16:23:08.219Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/a7/bece0e6b17b75506c4bf13eb79728931e2f240d7928a02f0e6d2ca9c41e9/pebble-5.1.1-py3-none-any.whl", hash = "sha256:c262c94159cf6419fd4ac27ff72408650a16d6c3cf000171fb2a0386038c416e", size = 34598, upload-time = "2025-03-16T16:22:26.954Z" },
 ]
 
 [[package]]
