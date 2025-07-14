@@ -12,7 +12,9 @@ from nominal_api import (
     scout_checklistexecution_api,
     scout_checks_api,
     scout_datareview_api,
+    scout_notebook_api,
     scout_run_api,
+    scout_template_api,
     secrets_api,
 )
 
@@ -180,6 +182,36 @@ def search_users_paginated(
         )
 
     for response in paginate_rpc(authentication.search_users_v2, auth_header, request_factory=factory):
+        yield from response.results
+
+
+def search_workbooks_paginated(
+    workbook: scout.NotebookService,
+    auth_header: str,
+    query: scout_notebook_api.SearchNotebooksQuery,
+    include_archived: bool,
+) -> Iterable[scout_notebook_api.NotebookMetadataWithRid]:
+    def factory(page_token: str | None) -> scout_notebook_api.SearchNotebooksRequest:
+        return scout_notebook_api.SearchNotebooksRequest(
+            query=query,
+            show_drafts=False,
+            show_archived=include_archived,
+            next_page_token=page_token,
+        )
+
+    for response in paginate_rpc(workbook.search, auth_header, request_factory=factory):
+        yield from response.results
+
+
+def search_workbook_templates_paginated(
+    template: scout.TemplateService,
+    auth_header: str,
+    query: scout_template_api.SearchTemplatesQuery,
+) -> Iterable[scout_template_api.TemplateSummary]:
+    def factory(page_token: str | None) -> scout_template_api.SearchTemplatesRequest:
+        return scout_template_api.SearchTemplatesRequest(query=query, next_page_token=page_token)
+
+    for response in paginate_rpc(template.search_templates, auth_header, request_factory=factory):
         yield from response.results
 
 
