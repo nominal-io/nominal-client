@@ -1,0 +1,23 @@
+DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): api-staging.gov.nominal.io:443
+DEBUG:urllib3.connectionpool:https://api-staging.gov.nominal.io:443 "POST /api/catalog/v1/datasets/multiple HTTP/1.1" 200 855
+WARNING:nominal.experimental.pandas_data_handler.pandas_import_handler:Waited 1.703000s to retrieve upload task
+DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): api-staging.gov.nominal.io:443
+WARNING:nominal.experimental.pandas_data_handler.pandas_import_handler:Waited 1.765000s to retrieve upload task
+DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): api-staging.gov.nominal.io:443
+WARNING:nominal.experimental.pandas_data_handler.pandas_import_handler:Waited 1.812000s to retrieve upload task
+DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): api-staging.gov.nominal.io:443
+WARNING:nominal.experimental.pandas_data_handler.pandas_import_handler:Waited 1.875000s to retrieve upload task
+INFO:nominal.experimental.pandas_data_handler.pandas_import_handler:Spent 0.266000s encoding data with 200000 points (751879.699239/s) [encoding: 0.188000s] [compressing: 0.062000s] [enqueueing: 0.000000s]
+DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): api-staging.gov.nominal.io:443
+DEBUG:urllib3.connectionpool:https://api-staging.gov.nominal.io:443 "POST /api/storage/writer/v1/columnar HTTP/1.1" 204 0
+DEBUG:nominal.experimental.pandas_data_handler.pandas_import_handler:Posted batch in 0.641000s (1/3)
+INFO:nominal.experimental.pandas_data_handler.pandas_import_handler:Successfully uploaded 240894 bytes in 0.641000s (1 attempts)
+DEBUG:urllib3.connectionpool:https://api-staging.gov.nominal.io:443 "POST /api/storage/writer/v1/columnar HTTP/1.1" 204 0
+DEBUG:nominal.experimental.pandas_data_handler.pandas_import_handler:Posted batch in 0.563000s (1/3)
+INFO:nominal.experimental.pandas_data_handler.pandas_import_handler:Successfully uploaded 245476 bytes in 0.563000s (1 attempts)
+DEBUG:urllib3.connectionpool:https://api-staging.gov.nominal.io:443 "POST /api/storage/writer/v1/columnar HTTP/1.1" 204 0
+DEBUG:nominal.experimental.pandas_data_handler.pandas_import_handler:Posted batch in 0.672000s (1/3)
+INFO:nominal.experimental.pandas_data_handler.pandas_import_handler:Successfully uploaded 238181 bytes in 0.672000s (1 attempts)
+DEBUG:urllib3.connectionpool:https://api-staging.gov.nominal.io:443 "POST /api/storage/writer/v1/columnar HTTP/1.1" 204 0
+DEBUG:nominal.experimental.pandas_data_handler.pandas_import_handler:Posted batch in 0.594000s (1/3)
+INFO:nominal.experimental.pandas_data_handler.pandas_import_handler:Successfully uploaded 243826 bytes in 0.594000s (1 attempts)
