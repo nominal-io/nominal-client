@@ -40,9 +40,19 @@ class Workbook(HasRid):
     rid: str
     title: str
     description: str
-    run_rids: Sequence[str] | None
-    asset_rids: Sequence[str] | None
     workbook_type: WorkbookType
+
+    run_rids: Sequence[str] | None
+    """Mutually exclusive with `asset_rids`.
+
+    May be empty when a workbook is a fresh comparison workbook.
+    """
+
+    asset_rids: Sequence[str] | None
+    """Mutually exclusive with `run_rids`.
+
+    May be empty when a workbook is a fresh comparison workbook.
+    """
 
     _clients: _Clients = field(repr=False)
 
