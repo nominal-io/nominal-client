@@ -9,7 +9,7 @@ def download_presigned_uri(
 ) -> pathlib.Path:
     if destination.exists():
         if destination.is_dir():
-            filename = unquote(pathlib.Path(urlparse(uri).path).name)
+            filename = unquote(pathlib.Path(urlparse(uri).path).name).replace(":", "-")
             destination = destination / filename
         else:
             raise FileExistsError(f"Cannot download {uri} to {destination}-- already exists!")

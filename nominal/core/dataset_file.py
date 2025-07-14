@@ -6,9 +6,7 @@ import pathlib
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol, Sequence
-from urllib.parse import unquote, urlparse
 
-import httpx
 from nominal_api import api, scout_catalog
 from typing_extensions import Self
 
@@ -93,10 +91,10 @@ class DatasetFile:
             return []
 
         if destination.exists():
-            if len(origin_uris) == 1:
-                raise FileExistsError(f"Cannot download origin uri to {destination}: already exists!")
+            if len(origin_uris) == 1 and destination.is_file():
+                raise FileExistsError(f"Cannot download origin file to {destination}: already exists!")
             elif destination.is_file():
-                raise FileExistsError(f"Cannot download origin uris to {destination}: already exists as a file!")
+                raise FileExistsError(f"Cannot download origin files to {destination}: already exists as a file!")
         elif len(origin_uris) == 1:
             destination.parent.mkdir(parents=True, exist_ok=True)
         else:
