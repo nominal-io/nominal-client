@@ -3,14 +3,16 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import pathlib
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol, Sequence
 
+from cachetools.func import ttl_cache
 from nominal_api import api, scout_catalog
 from typing_extensions import Self
 
-from nominal._utils.download_tools import download_presigned_uri
+from nominal._utils.download_tools import download_presigned_uri, filename_from_uri
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core.bounds import Bounds
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -53,64 +55,133 @@ class DatasetFile:
             _clients=clients,
         )
 
-    def download(self, destination: pathlib.Path) -> pathlib.Path:
+    def download(
+        self,
+        output_directory: pathlib.Path,
+        force: bool = False,
+    ) -> pathlib.Path:
         """Download the dataset file to a destination on local disk.
 
         Args:
-            destination: If an existing directory, downloads the file to the given directory.
-                Otherwise, downloads the file to the given path.
+            output_directory: Download file to the given directory
+            force: If true, delete any files that exist / create parent directories if nonexistant
 
         Returns:
             Path that the file was downloaded to
 
         Raises:
+            FileNotFoundError: Output directory doesn't exist and force=False
             FileExistsError: File already exists at destination
+            ValueError: Output directory exists and is not a directory
             RuntimeError: Error downloading file
         """
-        uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
-        logger.info("Downloading %s (%s) => %s", self.name, uri, destination)
-        return download_presigned_uri(uri, destination)
+        if output_directory.exists() and not output_directory.is_dir():
+            raise ValueError(f"Output directory is not a directory: {output_directory}")
 
-    def download_origin_files(self, destination: pathlib.Path) -> Sequence[pathlib.Path]:
-        """Download the origin files for a given dataset file to a destination on local disk.
+        api_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id)
+        destination = output_directory / filename_from_uri(api_uri.uri)
+
+        logger.info("Downloading %s (%s) => %s", self.name, api_uri.uri, destination)
+        download_presigned_uri(api_uri.uri, destination, force=force)
+        return destination
+
+    @ttl_cache(ttl=30.0)
+    def _presigned_origin_files(self) -> Sequence[scout_catalog.OriginFileUri]:
+        return self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
+
+    def _download_origin_file(self, origin_path: str, destination: pathlib.Path, force: bool, num_retries: int) -> None:
+        last_exception = None
+        for attempt in range(num_retries):
+            origin_uris = self._presigned_origin_files()
+            origin_uri = None
+            for api_uri in origin_uris:
+                if api_uri.path == origin_path:
+                    origin_uri = api_uri.uri
+                    break
+
+            if origin_uri is None:
+                raise RuntimeError(f"No such origin path: {origin_path}")
+
+            logger.info("Downloading %s => %s (%d / %d)", origin_path, destination, attempt + 1, num_retries)
+            try:
+                download_presigned_uri(origin_uri, destination, force=force)
+
+                # Success-- return
+                return
+            except Exception as ex:
+                last_exception = ex
+                logger.error(
+                    "Failed to download %s => %s (%d / %d)",
+                    origin_path,
+                    destination,
+                    attempt + 1,
+                    num_retries,
+                    exc_info=ex,
+                )
+
+            # Delete any partially downloaded response
+            destination.unlink(missing_ok=True)
+
+            # Sleep to allow backend to catch up
+            time.sleep(3)
+
+        # All attempts failed, raise exception
+        raise RuntimeError(
+            f"Failed to download {origin_path} => {destination} in {num_retries} tries"
+        ) from last_exception
+
+    def download_original_files(
+        self, output_directory: pathlib.Path, force: bool = True, parallel_downloads: int = 8, num_retries: int = 3
+    ) -> Sequence[pathlib.Path]:
+        """Download the input file(s) for a containerized extractor to a destination on local disk.
 
         Args:
-            destination: Destination to download file(s) to.
-                NOTE: If multiple files are requested for export, must be a directory.
-                NOTE: If a single file is requested for export, mest be an existing directory or the path
-                    to write the file as
+            output_directory: Download file(s) to the given directory
+            force: If true, delete any files that exist / create parent directories if nonexistant
+            parallel_downloads: Number of files to download concurrently
+            num_retries: Number of retries to perform per file download if any exception occurs
 
         Returns:
-            List of downloaded file locations.
+            Path(s) that the file(s) were downloaded to
 
-        Raises:
-            FileExistsError: File already exists at the destination
+        NOTE: any file that fails to download will result in an error log and will not be returned
         """
+        if output_directory.exists() and not output_directory.is_dir():
+            raise ValueError(f"Output directory is not a directory: {output_directory}")
+
         origin_uris = self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
         if not origin_uris:
+            logger.warning(
+                "Dataset file %s (id=%s) has no origin files... was this from a containerized extractor?",
+                self.name,
+                self.id,
+            )
             return []
 
-        if destination.exists():
-            if len(origin_uris) == 1 and destination.is_file():
-                raise FileExistsError(f"Cannot download origin file to {destination}: already exists!")
-            elif destination.is_file():
-                raise FileExistsError(f"Cannot download origin files to {destination}: already exists as a file!")
-        elif len(origin_uris) == 1:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            destination.mkdir(parents=True, exist_ok=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=parallel_downloads) as pool:
+            futures = {}
+            for uri in origin_uris:
+                destination = output_directory / filename_from_uri(uri.uri)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(origin_uris)) as pool:
-            futures = {pool.submit(download_presigned_uri, uri.uri, destination): uri for uri in origin_uris}
+                future = pool.submit(
+                    self._download_origin_file,
+                    uri.path,
+                    destination,
+                    force,
+                    num_retries,
+                )
+                futures[future] = (uri, destination)
+
             results = []
-            for future in concurrent.futures.as_completed(futures):
-                uri = futures[future]
+            for idx, future in enumerate(concurrent.futures.as_completed(futures)):
+                uri, destination = futures[future]
                 ex = future.exception()
                 if ex is not None:
                     logger.error("Failed to download %s => %s", uri.path, destination, exc_info=ex)
                     continue
 
-                results.append(future.result())
+                logger.info("Successfully downloaded %s => %s (%d / %d)", uri.path, destination, idx + 1, len(futures))
+                results.append(destination)
             return results
 
 
