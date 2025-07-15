@@ -377,7 +377,7 @@ class Dataset(DataSource):
         if successful_only:
             files = filter(lambda f: f.ingest_status.type == "success", files)
         for file in files:
-            yield DatasetFile._from_conjure(file)
+            yield DatasetFile._from_conjure(self._clients, file)
 
     def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
         r"""Stream logs to the datasource.
