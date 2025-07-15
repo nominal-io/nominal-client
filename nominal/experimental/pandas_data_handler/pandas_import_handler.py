@@ -8,7 +8,7 @@ import multiprocessing
 import queue
 import time
 from multiprocessing.managers import SyncManager
-from typing import Iterator, Mapping, cast
+from typing import Iterator, Mapping, Self, cast
 
 import pandas as pd
 import pebble
@@ -29,11 +29,14 @@ def _to_api_json_timestamp(timestamp: IntegralNanosecondsUTC) -> dict[str, int]:
 
 
 def _to_api_dtype(dtype: DtypeObj) -> str:
-    if dtype == object:
+    # The linter prefers using `is`, `is not`, or `isinstance` for the following checks,
+    # but they don't actually work without much more specific types being used unless
+    # `==` is used for the following checks
+    if dtype == object:  # noqa: E721
         return "strings"
-    elif dtype == int:
+    elif dtype == int:  # noqa: E721
         return "ints"
-    elif dtype == float:
+    elif dtype == float:  # noqa: E721
         return "doubles"
     else:
         raise ValueError(f"Unknown datatype for streaming data: {dtype}")
@@ -76,7 +79,7 @@ class _StopWorking:
 
 
 class _TaskWorker(abc.ABC):
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = multiprocessing.get_logger()
 
     @abc.abstractmethod
@@ -103,8 +106,8 @@ class _TaskWorker(abc.ABC):
 class _EncodeWorker(_TaskWorker):
     def __init__(
         self,
-        input_queue: queue.Queue[pd.DataFrame | None],
-        output_queue: queue.Queue[bytes | None],
+        input_queue: queue.Queue[pd.DataFrame | _StopWorking],
+        output_queue: queue.Queue[bytes | _StopWorking],
         datasource_rid: str,
         timestamp_column: str,
         tags: Mapping[str, str] | None,
@@ -149,6 +152,9 @@ class _EncodeWorker(_TaskWorker):
         start = time.monotonic()
         df = self._input_queue.get()
         end = time.monotonic()
+
+        if isinstance(df, _StopWorking):
+            return None
 
         diff = end - start
         if diff >= 1.0:
@@ -207,6 +213,8 @@ class _EncodeWorker(_TaskWorker):
 
     def _run_task(self) -> bool:
         df = self._retrieve_df()
+
+        # Stop requested
         if df is None:
             return False
 
@@ -228,7 +236,9 @@ class _EncodeWorker(_TaskWorker):
 
 
 class _UploadWorker(_TaskWorker):
-    def __init__(self, input_queue: queue.Queue[bytes | None], auth_header: str, api_base_url: str, num_retries: int):
+    def __init__(
+        self, input_queue: queue.Queue[bytes | _StopWorking], auth_header: str, api_base_url: str, num_retries: int
+    ):
         super().__init__()
 
         self._input_queue = input_queue
@@ -248,6 +258,10 @@ class _UploadWorker(_TaskWorker):
         start = time.monotonic()
         data = self._input_queue.get()
         end = time.monotonic()
+
+        if isinstance(data, _StopWorking):
+            return None
+
         diff = end - start
         if diff >= 1.0:
             self.logger.warning("Waited %fs to retrieve upload task", diff)
@@ -387,26 +401,26 @@ class PandasImportHandler:
         self._manager: SyncManager | None = None
 
         # None queued values are used to signal background processes to stop processing
-        self._encode_queue: queue.Queue[pd.DataFrame | None] | None = None
+        self._encode_queue: queue.Queue[pd.DataFrame | _StopWorking] | None = None
         self._encode_queue_size = encode_queue_size
 
         self._encode_pool: pebble.ProcessPool | None = None
         self._encode_pool_size = num_encode_workers
 
         # None queued values are used to signal background threads to stop processing
-        self._upload_queue: queue.Queue[bytes | None] | None = None
+        self._upload_queue: queue.Queue[bytes | _StopWorking] | None = None
         self._upload_queue_size = upload_queue_size
 
         self._upload_pool: pebble.ThreadPool | None = None
         self._upload_pool_size = num_upload_workers
 
     @classmethod
-    def from_datasource(
+    def from_datasource(  # type: ignore[no-untyped-def]
         cls,
         datasource: DataSource,
         timestamp_column: str,
         **kwargs,
-    ):
+    ) -> Self:
         return cls(
             datasource_rid=datasource.rid,
             timestamp_column=timestamp_column,
@@ -492,12 +506,12 @@ class PandasImportHandler:
             self._manager = None
 
         if self._encode_pool:
-            self._encode_pool.stop()
+            self._encode_pool.stop()  # type: ignore[no-untyped-call]
             self._encode_pool.join()
             self._encode_pool = None
 
         if self._upload_pool:
-            self._upload_pool.stop()
+            self._upload_pool.stop()  # type: ignore[no-untyped-call]
             self._upload_pool.join()
             self._upload_pool = None
 
@@ -513,24 +527,24 @@ class PandasImportHandler:
         assert self._encode_queue is not None
         logger.info("Scheduling stop requests for encode workers")
         for _ in range(self._encode_pool_size):
-            self._encode_queue.put(None)
+            self._encode_queue.put(_StopWorking())
 
         # Should not be None if handler has been started-- just for type checking
         assert self._encode_pool is not None
         logger.info("Waiting gracefully for encode workers to shutdown")
-        self._encode_pool.close()
+        self._encode_pool.close()  # type: ignore[no-untyped-call]
         self._encode_pool.join()
 
         # Should not be None if the handler has been started-- just for type checking
         assert self._upload_queue is not None
         logger.info("Scheduling stop requests for upload workers")
         for _ in range(self._upload_pool_size):
-            self._upload_queue.put(None)
+            self._upload_queue.put(_StopWorking())
 
         # Should not be None if handler has been started-- just for type checking
         assert self._upload_pool is not None
         logger.info("Waiting gracefully for upload workers to shutdown")
-        self._upload_pool.close()
+        self._upload_pool.close()  # type: ignore[no-untyped-call]
         self._upload_pool.join()
 
         logger.info("Fully tearing down import handler")

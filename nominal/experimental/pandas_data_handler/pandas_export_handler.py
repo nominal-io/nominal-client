@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pandas as pd
-
 
 class PandasExportHandler:
     """Manages streaming data out of Nominal using pandas dataframes."""
