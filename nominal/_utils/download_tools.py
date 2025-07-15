@@ -1,7 +1,6 @@
 import logging
 import pathlib
 import shutil
-import time
 from urllib.parse import unquote, urlparse
 
 import requests

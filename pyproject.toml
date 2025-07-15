@@ -36,6 +36,7 @@ dependencies = [
     "ffmpeg-python>=0.2.0",
     "nominal-api==0.708.0",
     "cachetools>=6.1.0",
+    "types-cachetools>=6.0.0.20250525",
 ]
 
 

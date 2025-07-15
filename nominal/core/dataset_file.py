@@ -6,7 +6,7 @@ import pathlib
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol, Sequence
+from typing import Mapping, Protocol, Sequence
 
 from cachetools.func import ttl_cache
 from nominal_api import api, scout_catalog
@@ -64,7 +64,7 @@ class DatasetFile:
 
         Args:
             output_directory: Download file to the given directory
-            force: If true, delete any files that exist / create parent directories if nonexistant
+            force: If true, delete any files that exist / create parent directories if nonexistent
 
         Returns:
             Path that the file was downloaded to
@@ -72,11 +72,11 @@ class DatasetFile:
         Raises:
             FileNotFoundError: Output directory doesn't exist and force=False
             FileExistsError: File already exists at destination
-            ValueError: Output directory exists and is not a directory
+            NotADirectoryError: Output directory exists and is not a directory
             RuntimeError: Error downloading file
         """
         if output_directory.exists() and not output_directory.is_dir():
-            raise ValueError(f"Output directory is not a directory: {output_directory}")
+            raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
 
         api_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id)
         destination = output_directory / filename_from_uri(api_uri.uri)
@@ -86,19 +86,28 @@ class DatasetFile:
         return destination
 
     @ttl_cache(ttl=30.0)
-    def _presigned_origin_files(self) -> Sequence[scout_catalog.OriginFileUri]:
-        return self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
+    def _presigned_origin_files(self) -> Mapping[str, str]:
+        """Returns a mapping of s3 paths to presigned s3 uris for all origin files"""
+        return {
+            uri.path: uri.uri
+            for uri in self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
+        }
 
     def _download_origin_file(self, origin_path: str, destination: pathlib.Path, force: bool, num_retries: int) -> None:
+        """Download the origin file with the given origin path to the given destination.
+
+        Args:
+            origin_path: Path to the file to download
+            destination: Path to the location to download the file to
+            force: If true, create any parent directories and delete any existing files in the destination
+            num_retries: Number of retries to use when downloading the file in case of transient networking errors.
+
+        Raises:
+            RuntimeError: Unable to download the origin file
+        """
         last_exception = None
         for attempt in range(num_retries):
-            origin_uris = self._presigned_origin_files()
-            origin_uri = None
-            for api_uri in origin_uris:
-                if api_uri.path == origin_path:
-                    origin_uri = api_uri.uri
-                    break
-
+            origin_uri = self._presigned_origin_files().get(origin_path)
             if origin_uri is None:
                 raise RuntimeError(f"No such origin path: {origin_path}")
 
@@ -137,17 +146,20 @@ class DatasetFile:
 
         Args:
             output_directory: Download file(s) to the given directory
-            force: If true, delete any files that exist / create parent directories if nonexistant
+            force: If true, delete any files that exist / create parent directories if nonexistent
             parallel_downloads: Number of files to download concurrently
             num_retries: Number of retries to perform per file download if any exception occurs
 
         Returns:
             Path(s) that the file(s) were downloaded to
 
+        Raises:
+            NotADirectoryError: Output directory is not a directory
+
         NOTE: any file that fails to download will result in an error log and will not be returned
         """
         if output_directory.exists() and not output_directory.is_dir():
-            raise ValueError(f"Output directory is not a directory: {output_directory}")
+            raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
 
         origin_uris = self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
         if not origin_uris:
