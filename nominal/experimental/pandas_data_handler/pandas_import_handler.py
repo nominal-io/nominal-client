@@ -15,10 +15,20 @@ import pebble
 import requests
 from pandas._typing import DtypeObj
 
+from nominal._utils import SharedCounter
 from nominal.core.datasource import DataSource
 from nominal.ts import IntegralNanosecondsUTC
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_NUM_RETRIES = 3
+DEFAULT_COMPRESSION_LEVEL = 6
+DEFAULT_BATCH_SIZE = 50_000
+DEFAULT_NUM_ENCODE_WORKERS = 4
+DEFAULT_NUM_UPLOAD_WORKERS = 4
+DEFAULT_ENCODE_QUEUE_SIZE = 256
+DEFAULT_UPLOAD_QUEUE_SIZE = 2048
 
 
 def _to_api_json_timestamp(timestamp: IntegralNanosecondsUTC) -> dict[str, int]:
@@ -79,8 +89,9 @@ class _StopWorking:
 
 
 class _TaskWorker(abc.ABC):
-    def __init__(self) -> None:
-        self.logger = multiprocessing.get_logger()
+    def __init__(self, *, logger: logging.Logger | None = None):
+        """Initialize logger instance for the task worker"""
+        self._logger = logger
 
     @abc.abstractmethod
     def _run_task(self) -> bool:
@@ -90,7 +101,19 @@ class _TaskWorker(abc.ABC):
             True if should continue to accept more tasks, or False if not.
         """
 
+    @property
+    def logger(self) -> logging.Logger:
+        """Logger instance to use for logging"""
+        if self._logger is None:
+            self._logger = logging.getLogger(__name__)
+
+        return self._logger
+
     def run(self) -> None:
+        """Run tasks within the worker until stop signal is given."""
+        # Reset logging for task
+        self._logger = None
+
         while True:
             try:
                 if not self._run_task():
@@ -101,9 +124,24 @@ class _TaskWorker(abc.ABC):
                 return
             except Exception:
                 self.logger.exception("Failed to perform task")
+                break
 
 
-class _EncodeWorker(_TaskWorker):
+class _ProcessWorker(_TaskWorker):
+    """Task workers specifically for use in multiprocessing"""
+
+    @property
+    def logger(self) -> logging.Logger:
+        if self._logger is None:
+            self._logger = logging.getLogger(__name__)
+            self._logger.handlers = multiprocessing.get_logger().handlers
+
+        return self._logger
+
+
+class _EncodeWorker(_ProcessWorker):
+    """Worker process to encode dataframes into batched streaming requests"""
+
     def __init__(
         self,
         input_queue: queue.Queue[pd.DataFrame | _StopWorking],
@@ -113,6 +151,7 @@ class _EncodeWorker(_TaskWorker):
         tags: Mapping[str, str] | None,
         compression_level: int,
         batch_size: int,
+        points_encoded: SharedCounter,
     ):
         super().__init__()
 
@@ -126,11 +165,12 @@ class _EncodeWorker(_TaskWorker):
         self._compression_level = compression_level
         self._batch_size = batch_size
 
+        self._points_encoded = points_encoded
+
         # Progress tracking
         self._reset_progress()
 
     def _reset_progress(self) -> None:
-        self._total_points = 0
         self._task_points = 0
         self._task_encode_time = 0.0
         self._task_compress_time = 0.0
@@ -138,7 +178,7 @@ class _EncodeWorker(_TaskWorker):
         self._task_time = 0.0
 
     def _log_timing(self) -> None:
-        self.logger.debug(
+        self.logger.info(
             "Spent %fs encoding data with %d points (%f/s) [encoding: %fs] [compressing: %fs] [enqueueing: %fs]",
             self._task_time,
             self._task_points,
@@ -187,7 +227,7 @@ class _EncodeWorker(_TaskWorker):
         diff = end - start
         self._task_encode_time += diff
         self._task_points += len(values)
-        self._total_points += len(values)
+        self._points_encoded.increment(len(values))
 
         return encoded
 
@@ -236,8 +276,15 @@ class _EncodeWorker(_TaskWorker):
 
 
 class _UploadWorker(_TaskWorker):
+    """Worker process to upload encoded requests of streaming data to Nominal"""
+
     def __init__(
-        self, input_queue: queue.Queue[bytes | _StopWorking], auth_header: str, api_base_url: str, num_retries: int
+        self,
+        input_queue: queue.Queue[bytes | _StopWorking],
+        auth_header: str,
+        api_base_url: str,
+        num_retries: int,
+        bytes_uploaded: SharedCounter,
     ):
         super().__init__()
 
@@ -245,7 +292,7 @@ class _UploadWorker(_TaskWorker):
         self._num_retries = num_retries
 
         self._task_uploading_time = 0.0
-        self._bytes_uploaded = 0.0
+        self._bytes_uploaded = bytes_uploaded
 
         self._headers = {
             "Authorization": auth_header,
@@ -300,10 +347,10 @@ class _UploadWorker(_TaskWorker):
         end = time.monotonic()
         diff = end - start
         self._task_uploading_time += diff
-        self._bytes_uploaded += byte_count
+        self._bytes_uploaded.increment(byte_count)
 
         if success:
-            self.logger.debug("Successfully uploaded %d bytes in %fs (%d attempts)", byte_count, diff, try_count)
+            self.logger.info("Successfully uploaded %d bytes in %fs (%d attempts)", byte_count, diff, try_count)
         else:
             self.logger.error("Failed to upload %d bytes in %d tries!", byte_count, self._num_retries)
 
@@ -318,15 +365,6 @@ class _UploadWorker(_TaskWorker):
             self.logger.error("Some data failed to upload! Check Nominal to ensure data integrity!")
 
         return True
-
-
-DEFAULT_NUM_RETRIES = 3
-DEFAULT_COMPRESSION_LEVEL = 6
-DEFAULT_BATCH_SIZE = 50_000
-DEFAULT_NUM_ENCODE_WORKERS = 4
-DEFAULT_NUM_UPLOAD_WORKERS = 16
-DEFAULT_ENCODE_QUEUE_SIZE = 256
-DEFAULT_UPLOAD_QUEUE_SIZE = 2048
 
 
 class PandasImportHandler:
@@ -414,6 +452,9 @@ class PandasImportHandler:
         self._upload_pool: pebble.ThreadPool | None = None
         self._upload_pool_size = num_upload_workers
 
+        self._points_encoded: SharedCounter | None = None
+        self._bytes_uploaded: SharedCounter | None = None
+
     @classmethod
     def from_datasource(  # type: ignore[no-untyped-def]
         cls,
@@ -439,6 +480,14 @@ class PandasImportHandler:
             raise RuntimeError("Cannot access ingest queue-- import handler has not been started")
 
         return cast(queue.Queue[pd.DataFrame], self._encode_queue)
+
+    @property
+    def points_encoded(self) -> float:
+        return 0.0 if self._points_encoded is None else self._points_encoded.value()
+
+    @property
+    def bytes_uploaded(self) -> float:
+        return 0.0 if self._bytes_uploaded is None else self._bytes_uploaded.value()
 
     def ingest(self, data: pd.DataFrame) -> None:
         """Ingest data to Nominal."""
@@ -466,9 +515,11 @@ class PandasImportHandler:
         # Start background pools and workers
         self._encode_queue = self._manager.Queue(self._encode_queue_size)
         self._encode_pool = pebble.ProcessPool(max_workers=self._encode_pool_size)
+        self._points_encoded = SharedCounter.from_manager(self._manager)
 
         self._upload_queue = self._manager.Queue(self._upload_queue_size)
         self._upload_pool = pebble.ThreadPool(max_workers=self._upload_pool_size)
+        self._bytes_uploaded = SharedCounter.from_manager(self._manager)
 
         self._encode_workers = [
             _EncodeWorker(
@@ -479,6 +530,7 @@ class PandasImportHandler:
                 tags=self._tags,
                 compression_level=self._compression_level,
                 batch_size=self._batch_size,
+                points_encoded=self._points_encoded,
             )
             for _ in range(self._encode_pool_size)
         ]
@@ -490,6 +542,7 @@ class PandasImportHandler:
                 auth_header=self._auth_header,
                 api_base_url=self._api_base_url,
                 num_retries=self._num_retries,
+                bytes_uploaded=self._bytes_uploaded,
             )
             for _ in range(self._upload_pool_size)
         ]
@@ -497,23 +550,48 @@ class PandasImportHandler:
 
         self._started = True
 
-    def _teardown(self) -> None:
+    def teardown(self) -> None:
+        """Immediately terminate background processes and shutdown handler."""
         if not self._started:
+            logger.warning("Import handler not started-- not tearing down!")
             return
 
-        if self._manager:
-            self._manager.shutdown()
-            self._manager = None
+        # Should not be None if the handler has been started-- just for type checking
+        assert self._encode_queue is not None
+        logger.info("Scheduling stop requests for encode workers")
+        for _ in range(self._encode_pool_size):
+            try:
+                self._encode_queue.put(_StopWorking(), block=False)
+            except:
+                pass
+
+        # Should not be None if the handler has been started-- just for type checking
+        assert self._upload_queue is not None
+        logger.info("Scheduling stop requests for upload workers")
+        for _ in range(self._upload_pool_size):
+            try:
+                self._upload_queue.put(_StopWorking(), block=False)
+            except:
+                pass
 
         if self._encode_pool:
+            print("Stopping encode pool")
             self._encode_pool.stop()  # type: ignore[no-untyped-call]
+            print("joining encode pool")
             self._encode_pool.join()
             self._encode_pool = None
 
         if self._upload_pool:
+            print("Stopping upload pool")
             self._upload_pool.stop()  # type: ignore[no-untyped-call]
+            print("joining upload pool")
             self._upload_pool.join()
             self._upload_pool = None
+
+        if self._manager:
+            print("Shutting down manager")
+            self._manager.shutdown()
+            self._manager = None
 
         self._started = False
 
@@ -547,14 +625,4 @@ class PandasImportHandler:
         self._upload_pool.close()  # type: ignore[no-untyped-call]
         self._upload_pool.join()
 
-        logger.info("Fully tearing down import handler")
-        self._teardown()
-
-    def terminate(self) -> None:
-        """Immediately terminate background processes and shutdown handler."""
-        if not self._started:
-            logger.warning("Import handler not started-- not terminating.")
-            return
-
-        logger.info("Forcefully tearing down import handler")
-        self._teardown()
+        self._started = False
