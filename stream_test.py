@@ -33,5 +33,6 @@ if __name__ == "__main__":
     import_handler.stop()
     end = time.monotonic()
     diff = end - start
+    print("Total seconds:", diff)
     print("Points encoded:", import_handler.points_encoded, import_handler.points_encoded / diff, "per second")
     print("Bytes uploaded:", import_handler.bytes_uploaded, import_handler.bytes_uploaded / diff, "per second")

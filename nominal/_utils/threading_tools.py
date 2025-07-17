@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from multiprocessing.managers import SyncManager, ValueProxy
-from threading import Lock
+import multiprocessing
+from multiprocessing.managers import SyncManager  # , ValueProxy
+from multiprocessing.sharedctypes import Synchronized
+from multiprocessing.synchronize import Lock
 
+# from threading import Lock
 from typing_extensions import Self
 
 
 class SharedCounter:
     """Multi-processing friendly atomic counter."""
 
-    def __init__(self, lock: Lock, initial_value: ValueProxy):
+    def __init__(self, lock: Lock, initial_value: Synchronized):
         self._lock = lock
         self._value = initial_value
 
@@ -20,8 +23,8 @@ class SharedCounter:
         NOTE: the shared counter instance is valid only so long as the provided manager is valid.
         """
         return cls(
-            manager.Lock(),
-            manager.Value("d", initial_value),
+            multiprocessing.Lock(),
+            multiprocessing.Value("d", initial_value),
         )
 
     def increment(self, amount: float = 1.0):
@@ -29,4 +32,5 @@ class SharedCounter:
             self._value.value += amount
 
     def value(self) -> float:
-        return self._value.value
+        with self._lock:
+            return self._value.value

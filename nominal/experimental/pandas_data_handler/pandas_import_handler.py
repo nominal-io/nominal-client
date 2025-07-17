@@ -10,7 +10,8 @@ import queue
 import signal
 import time
 from multiprocessing.managers import SyncManager
-from threading import Condition, Event, Thread
+from multiprocessing.synchronize import Event
+from threading import Condition, Thread
 from typing import Generic, Iterator, Mapping, Self, TypeVar, cast
 
 import pandas as pd
@@ -111,8 +112,10 @@ class StoppableQueue(Generic[T]):
         manager: SyncManager,
         queue_size: int = 0,
     ):
-        stop_flag = manager.Event()
-        interrupt_flag = manager.Event()
+        # stop_flag = manager.Event()
+        # interrupt_flag = manager.Event()
+        stop_flag = multiprocessing.Event()
+        interrupt_flag = multiprocessing.Event()
 
         return cls(
             # manager.Queue(maxsize=queue_size),
@@ -352,8 +355,10 @@ class _EncodeWorker(_BiWorker[pd.DataFrame, bytes]):
         end = time.monotonic()
         diff = end - start
         self._task_encode_time += diff
-        self._task_points += len(values)
-        self._points_encoded.increment(len(values))
+
+        num_values = len(values)
+        self._task_points += num_values
+        self._points_encoded.increment(num_values)
 
         return encoded
 
