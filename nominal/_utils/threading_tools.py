@@ -25,7 +25,6 @@ class SharedCounter:
         )
 
     def increment(self, amount: float = 1.0):
-        print("incrementing counter", amount)
         with self._lock:
             self._value.value += amount
 

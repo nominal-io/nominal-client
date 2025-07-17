@@ -5,10 +5,13 @@ import gzip
 import json
 import logging
 import multiprocessing
+import os
 import queue
+import signal
 import time
 from multiprocessing.managers import SyncManager
-from typing import Iterator, Mapping, Self, cast
+from threading import Condition, Event, Thread
+from typing import Generic, Iterator, Mapping, Self, TypeVar, cast
 
 import pandas as pd
 import pebble
@@ -88,18 +91,136 @@ class _StopWorking:
     """Sentinel value to tell task workers to stop working."""
 
 
-class _TaskWorker(abc.ABC):
-    def __init__(self, *, logger: logging.Logger | None = None):
-        """Initialize logger instance for the task worker"""
+T = TypeVar("T")
+
+
+class StoppableQueue(Generic[T]):
+    def __init__(
+        self,
+        queue: queue.Queue[T | _StopWorking],
+        get_condition: Condition,
+        put_condition: Condition,
+        stop_flag: Event,
+        interrupt_flag: Event,
+    ):
+        self._queue = queue
+        self.get_condition = get_condition
+        self.put_condition = put_condition
+        self.stop_flag = stop_flag
+        self.interrupt_flag = interrupt_flag
+
+    @classmethod
+    def from_manager(
+        cls,
+        manager: SyncManager,
+        queue_size: int = 0,
+        stop_flag: Event | None = None,
+        interrupt_flag: Event | None = None,
+    ):
+        if stop_flag is None:
+            stop_flag = manager.Event()
+
+        if interrupt_flag is None:
+            interrupt_flag = manager.Event()
+
+        lock = manager.Lock()
+        return cls(
+            manager.Queue(maxsize=queue_size),
+            manager.Condition(lock),
+            manager.Condition(lock),
+            stop_flag,
+            interrupt_flag,
+        )
+
+    def stop(self) -> None:
+        """Immediately stop all processes blocking on the queue and stop future enqueues or dequeues."""
+        with self.get_condition, self.put_condition:
+            self.stop_flag.set()
+            self.get_condition.notify_all()
+            self.put_condition.notify_all()
+
+    def interrupt(self) -> None:
+        """Prevent new items from being added to the queue, useful during shutdown operations"""
+        with self.put_condition:
+            self.interrupt_flag.set()
+            self.put_condition.notify_all()
+
+    def wait(self) -> None:
+        """Blocks until all tasks are completed within the queue."""
+        self._queue.join()
+
+    def get(self) -> T | None:
+        """Block until stop is signalled or data is received and return the oldest member of the queue."""
+        while True:
+            with self.get_condition:
+                # While there is no data available, wait for signal of data
+                while self._queue.empty() and not self.stop_flag.is_set():
+                    self.get_condition.wait()
+
+                # If user requested exit, return nothing
+                if self.stop_flag.is_set():
+                    return None
+
+                try:
+                    maybe_item = self._queue.get_nowait()
+                    self._queue.task_done()
+                except queue.Empty:
+                    # Another process retrieved the element we awoke for... start over at the top
+                    continue
+
+            # Signal that space has opened up in the queue
+            with self.put_condition:
+                self.put_condition.notify()
+
+            return None if isinstance(maybe_item, _StopWorking) else maybe_item
+
+    def put(self, item: T | _StopWorking) -> None:
+        """Block until stop is signalled or space is available and insert an element in the queue"""
+        while True:
+            with self.put_condition:
+                # While there is no space available, wait for signal of space or exit
+                while True:
+                    if self.stop_flag.is_set() or not self._queue.full():
+                        break
+                    elif self.interrupt_flag.is_set() and not isinstance(item, _StopWorking):
+                        break
+
+                    self.put_condition.wait()
+
+                # If user requested exit, put nothing
+                if self.stop_flag.is_set():
+                    return
+                elif self.interrupt_flag.is_set() and not isinstance(item, _StopWorking):
+                    return
+
+                try:
+                    self._queue.put_nowait(item)
+                except queue.Full:
+                    # Another process pushed data and filled the queue... start over at the top
+                    continue
+
+            # Signal that data has entered the queue
+            with self.get_condition:
+                self.get_condition.notify()
+
+            break
+
+
+InputT = TypeVar("InputT")
+OutputT = TypeVar("OutputT")
+
+
+class _Worker(abc.ABC, Generic[InputT]):
+    def __init__(self, *, logger: logging.Logger | None = None, input_queue: StoppableQueue[InputT]):
+        self.input_queue = input_queue
         self._logger = logger
 
+    @property
     @abc.abstractmethod
-    def _run_task(self) -> bool:
-        """Run a single task.
+    def name(self) -> str: ...
 
-        Returns:
-            True if should continue to accept more tasks, or False if not.
-        """
+    @abc.abstractmethod
+    def process(self, task_input: InputT) -> bool: ...
 
     @property
     def logger(self) -> logging.Logger:
@@ -107,45 +228,159 @@ class _TaskWorker(abc.ABC):
         if self._logger is None:
             self._logger = logging.getLogger(__name__)
 
+            # If we are in a subprocess, use the handlers as setup by the multiprocessing library
+            if multiprocessing.parent_process() is not None:
+                self._logger.handlers = multiprocessing.get_logger().handlers
+
         return self._logger
 
-    def run(self) -> None:
-        """Run tasks within the worker until stop signal is given."""
+    def get_input(self) -> InputT | None:
+        start = time.monotonic()
+        maybe_task = self.input_queue.get()
+        if maybe_task is None:
+            return None
+
+        end = time.monotonic()
+        diff = end - start
+        if diff >= 1.0:
+            self.logger.warning("Waited %fs to retrieve task for %s", diff, self.name)
+
+        return maybe_task
+
+    def run(self, exit_on_exception: bool = False) -> None:
         # Reset logging for task
         self._logger = None
 
         while True:
+            task_input = self.get_input()
+            if task_input is None:
+                logger.info("Worker signaled to stop... exiting!")
+                return
+
             try:
-                if not self._run_task():
-                    self.logger.info("Stop request received! Shutting down worker...")
+                if not self.process(task_input):
+                    self.logger.warning("Processing task signalled for worker shutdown... exiting!")
                     return
             except KeyboardInterrupt:
-                self.logger.info("User requested shutdown...")
+                self.logger.info("User signalled shutdown... exiting!")
                 return
             except Exception:
-                self.logger.exception("Failed to perform task")
-                break
+                self.logger.exception("Failed to perform task...")
+
+                # If we should stop work upon any exception... stop working!
+                if exit_on_exception:
+                    return
 
 
-class _ProcessWorker(_TaskWorker):
-    """Task workers specifically for use in multiprocessing"""
+class _BiWorker(_Worker[InputT], Generic[InputT, OutputT]):
+    def __init__(
+        self,
+        *,
+        logger: logging.Logger | None = None,
+        input_queue: StoppableQueue[InputT],
+        output_queue: StoppableQueue[OutputT],
+    ):
+        super().__init__(logger=logger, input_queue=input_queue)
 
-    @property
-    def logger(self) -> logging.Logger:
-        if self._logger is None:
-            self._logger = logging.getLogger(__name__)
-            self._logger.handlers = multiprocessing.get_logger().handlers
+        self.output_queue = output_queue
 
-        return self._logger
+    def put_output(self, output: OutputT) -> None:
+        start = time.monotonic()
+        self.output_queue.put(output)
+        end = time.monotonic()
+        diff = end - start
+        if diff >= 1.0:
+            self.logger.warning("Waited %fs to enqueue data for %s", diff, self.name)
 
 
-class _EncodeWorker(_ProcessWorker):
+class _QueuePool(abc.ABC, Generic[T]):
+    def __init__(
+        self,
+        *,
+        num_workers: int,
+        use_threads: bool = True,
+        logger: logging.Logger | None = None,
+        input_queue: StoppableQueue[T],
+        queue_condition: Condition,
+        should_stop: Event,
+    ):
+        self._num_workers = num_workers
+        self._workers: list[Thread | multiprocessing.Process] = []
+        self._use_threads = use_threads
+
+        self._logger = logger
+        self._input_queue = input_queue
+        self._queue_condition = queue_condition
+        self._should_stop = should_stop
+
+        self._stop_scheduled = False
+
+    @abc.abstractmethod
+    def build_worker(self) -> _QueueWorker: ...
+
+    def start(self) -> None:
+        """Start task workers"""
+        for _ in range(self._num_workers):
+            worker = self.build_worker()
+            kwargs = {"exit_on_exception": False}
+
+            if self._use_threads:
+                self._workers.append(Thread(target=worker.run, kwargs=kwargs, daemon=True))
+            else:
+                self._workers.append(multiprocessing.Process(target=worker.run, kwargs=kwargs, daemon=True))
+
+        for worker in self._workers:
+            worker.start()
+
+    def schedule_stop(self) -> None:
+        """Gracefully schedule the pool to stop after completing all of the queued actions."""
+        if self._stop_scheduled:
+            logger.warning("Stop already scheduled!")
+
+        with self._queue_condition:
+            for _ in range(self._num_workers):
+                self._input_queue.put(_StopWorking())
+                self._queue_condition.notify()
+
+        self._stop_scheduled = True
+
+    def terminate(self) -> None:
+        """Immediately signal the pool to stop without completing any of the queued actions.
+
+        NOTE: only works for process pools, and has no affect on threads
+        """
+        thread_workers = [worker for worker in self._workers if isinstance(worker, Thread)]
+        process_workers = [worker for worker in self._workers if isinstance(worker, multiprocessing.Process)]
+
+        with self._queue_condition:
+            self._should_stop.set()
+            self._queue_condition.notify_all()
+
+        if thread_workers:
+            logger.warning("Unable to terminate thread workers... just sending immediate graceful shutdown request")
+
+        for worker in process_workers:
+            if worker.pid:
+                os.kill(worker.pid, signal.SIGINT)
+            else:
+                logger.warning("Process worker has no pid... unable to send interrupt signal")
+
+    def join(self) -> None:
+        """Wait for all tasks to complete. Should call schedule_stop first."""
+        if not self._stop_scheduled:
+            logger.warning("schedule_stop() not called before join()... may block indefinitely...")
+
+        for worker in self._workers:
+            worker.join()
+
+
+class _EncodeWorker(_BiWorker[pd.DataFrame, bytes]):
     """Worker process to encode dataframes into batched streaming requests"""
 
     def __init__(
         self,
-        input_queue: queue.Queue[pd.DataFrame | _StopWorking],
-        output_queue: queue.Queue[bytes | _StopWorking],
+        input_queue: StoppableQueue[pd.DataFrame],
+        output_queue: StoppableQueue[bytes],
         datasource_rid: str,
         timestamp_column: str,
         tags: Mapping[str, str] | None,
@@ -153,10 +388,7 @@ class _EncodeWorker(_ProcessWorker):
         batch_size: int,
         points_encoded: SharedCounter,
     ):
-        super().__init__()
-
-        self._input_queue = input_queue
-        self._output_queue = output_queue
+        super().__init__(input_queue=input_queue, output_queue=output_queue)
 
         self._datasource_rid = datasource_rid
         self._tags = tags or {}
@@ -169,6 +401,10 @@ class _EncodeWorker(_ProcessWorker):
 
         # Progress tracking
         self._reset_progress()
+
+    @property
+    def name(self) -> str:
+        return "Encode Worker"
 
     def _reset_progress(self) -> None:
         self._task_points = 0
@@ -187,20 +423,6 @@ class _EncodeWorker(_ProcessWorker):
             self._task_compress_time,
             self._task_enqueue_time,
         )
-
-    def _retrieve_df(self) -> pd.DataFrame | None:
-        start = time.monotonic()
-        df = self._input_queue.get()
-        end = time.monotonic()
-
-        if isinstance(df, _StopWorking):
-            return None
-
-        diff = end - start
-        if diff >= 1.0:
-            self.logger.warning("Waited %fs to retrieve encode task", diff)
-
-        return df
 
     def _encode_batch(self, df_slice: pd.DataFrame, value_col: str) -> bytes:
         start = time.monotonic()
@@ -235,7 +457,6 @@ class _EncodeWorker(_ProcessWorker):
         start = time.monotonic()
         compressed_data = gzip.compress(encoded_batches, compresslevel=self._compression_level)
         end = time.monotonic()
-
         diff = end - start
         self._task_compress_time += diff
 
@@ -243,24 +464,15 @@ class _EncodeWorker(_ProcessWorker):
 
     def _enqueue_batch_data(self, encoded_data: bytes) -> None:
         start = time.monotonic()
-        self._output_queue.put(encoded_data)
+        self.put_output(encoded_data)
         end = time.monotonic()
-
         diff = end - start
-        self._task_encode_time += diff
-        if diff >= 1.0:
-            self.logger.warning("Waited %fs to enqueue encoded data", diff)
+        self._task_enqueue_time += diff
 
-    def _run_task(self) -> bool:
-        df = self._retrieve_df()
-
-        # Stop requested
-        if df is None:
-            return False
-
+    def process(self, task_input: pd.DataFrame) -> bool:
         start = time.monotonic()
         for column_name, df_slice in _extract_batches_from_dataframe(
-            df, timestamp_column=self._timestamp_column, max_batch_size=self._batch_size
+            task_input, timestamp_column=self._timestamp_column, max_batch_size=self._batch_size
         ):
             encoded_batch = self._encode_batch(df_slice, column_name)
             compressed_batch = self._compress_batches(encoded_batch)
@@ -275,18 +487,18 @@ class _EncodeWorker(_ProcessWorker):
         return True
 
 
-class _UploadWorker(_TaskWorker):
+class _UploadWorker(_Worker[bytes]):
     """Worker process to upload encoded requests of streaming data to Nominal"""
 
     def __init__(
         self,
-        input_queue: queue.Queue[bytes | _StopWorking],
+        input_queue: StoppableQueue[bytes],
         auth_header: str,
         api_base_url: str,
         num_retries: int,
         bytes_uploaded: SharedCounter,
     ):
-        super().__init__()
+        super().__init__(input_queue=input_queue)
 
         self._input_queue = input_queue
         self._num_retries = num_retries
@@ -301,30 +513,17 @@ class _UploadWorker(_TaskWorker):
         }
         self._url = f"{api_base_url}/storage/writer/v1/columnar"
 
-    def _retrieve_request(self) -> bytes | None:
-        start = time.monotonic()
-        data = self._input_queue.get()
-        end = time.monotonic()
+    @property
+    def name(self) -> str:
+        return "Upload Worker"
 
-        if isinstance(data, _StopWorking):
-            return None
-
-        diff = end - start
-        if diff >= 1.0:
-            self.logger.warning("Waited %fs to retrieve upload task", diff)
-
-        return data
-
-    def _upload_data(self, batch_data: bytes) -> bool:
-        byte_count = len(batch_data)
-        success = False
+    def _upload_data(self, data: bytes) -> bool:
         try_count = 0
-        start = time.monotonic()
         for _ in range(self._num_retries):
             try_count += 1
             req_start = time.monotonic()
             try:
-                resp = requests.post(self._url, headers=self._headers, data=batch_data)
+                resp = requests.post(self._url, headers=self._headers, data=data)
             except requests.exceptions.RequestException:
                 self.logger.exception("Failed to make request (%d/%d)", try_count, self._num_retries)
                 continue
@@ -341,28 +540,27 @@ class _UploadWorker(_TaskWorker):
                 )
                 continue
 
-            success = True
-            break
+            return True
+        return False
 
+    def process(self, task_input: bytes) -> bool:
+        start = time.monotonic()
+        success = self._upload_data(task_input)
         end = time.monotonic()
         diff = end - start
         self._task_uploading_time += diff
+
+        byte_count = len(task_input)
         self._bytes_uploaded.increment(byte_count)
 
         if success:
-            self.logger.info("Successfully uploaded %d bytes in %fs (%d attempts)", byte_count, diff, try_count)
+            self.logger.info("Successfully uploaded %d bytes in %fs", byte_count, diff)
         else:
-            self.logger.error("Failed to upload %d bytes in %d tries!", byte_count, self._num_retries)
-
-        return success
-
-    def _run_task(self) -> bool:
-        req = self._retrieve_request()
-        if req is None:
-            return False
-
-        if not self._upload_data(req):
-            self.logger.error("Some data failed to upload! Check Nominal to ensure data integrity!")
+            self.logger.error(
+                "Failed to upload %d bytes in %d tries! Check Nominal for data integrity",
+                byte_count,
+                self._num_retries,
+            )
 
         return True
 
@@ -438,15 +636,19 @@ class PandasImportHandler:
         # Used to manage shared state between background processes
         self._manager: SyncManager | None = None
 
+        # Used to signal stops within subprocesses
+        self._stop_flag: Event | None = None
+        self._interrupt_flag: Event | None = None
+
         # None queued values are used to signal background processes to stop processing
-        self._encode_queue: queue.Queue[pd.DataFrame | _StopWorking] | None = None
+        self._encode_queue: StoppableQueue[pd.DataFrame] | None = None
         self._encode_queue_size = encode_queue_size
 
         self._encode_pool: pebble.ProcessPool | None = None
         self._encode_pool_size = num_encode_workers
 
         # None queued values are used to signal background threads to stop processing
-        self._upload_queue: queue.Queue[bytes | _StopWorking] | None = None
+        self._upload_queue: StoppableQueue[bytes] | None = None
         self._upload_queue_size = upload_queue_size
 
         self._upload_pool: pebble.ThreadPool | None = None
@@ -471,7 +673,7 @@ class PandasImportHandler:
         )
 
     @property
-    def ingest_queue(self) -> queue.Queue[pd.DataFrame]:
+    def ingest_queue(self) -> StoppableQueue[pd.DataFrame]:
         """Queue for directly scheduling data to be published to Nominal.
 
         May be used within subprocesses.
@@ -479,7 +681,18 @@ class PandasImportHandler:
         if self._encode_queue is None:
             raise RuntimeError("Cannot access ingest queue-- import handler has not been started")
 
-        return cast(queue.Queue[pd.DataFrame], self._encode_queue)
+        return self._encode_queue
+
+    @property
+    def upload_queue(self) -> StoppableQueue[bytes]:
+        """Queue for directly scheduling requests to be published to the Nominal backend.
+
+        May be used within subprocesses.
+        """
+        if self._upload_queue is None:
+            raise RuntimeError("Cannot access upload queue-- import handler has not been started")
+
+        return self._upload_queue
 
     @property
     def points_encoded(self) -> float:
@@ -493,17 +706,6 @@ class PandasImportHandler:
         """Ingest data to Nominal."""
         self.ingest_queue.put(data)
 
-    @property
-    def upload_queue(self) -> queue.Queue[bytes]:
-        """Queue for directly scheduling requests to be published to the Nominal backend.
-
-        May be used within subprocesses.
-        """
-        if self._upload_queue is None:
-            raise RuntimeError("Cannot access upload queue-- import handler has not been started")
-
-        return cast(queue.Queue[bytes], self._upload_queue)
-
     def start(self) -> None:
         """Start background processes and prepare the handler for import."""
         if self._started:
@@ -513,12 +715,18 @@ class PandasImportHandler:
         self._manager = multiprocessing.Manager()
 
         # Start background pools and workers
-        self._encode_queue = self._manager.Queue(self._encode_queue_size)
+        self._encode_queue = StoppableQueue.from_manager(
+            self._manager,
+            queue_size=self._encode_queue_size,
+        )
+        self._upload_queue = StoppableQueue.from_manager(
+            self._manager,
+            queue_size=self._upload_queue_size,
+        )
         self._encode_pool = pebble.ProcessPool(max_workers=self._encode_pool_size)
-        self._points_encoded = SharedCounter.from_manager(self._manager)
-
-        self._upload_queue = self._manager.Queue(self._upload_queue_size)
         self._upload_pool = pebble.ThreadPool(max_workers=self._upload_pool_size)
+
+        self._points_encoded = SharedCounter.from_manager(self._manager)
         self._bytes_uploaded = SharedCounter.from_manager(self._manager)
 
         self._encode_workers = [
@@ -556,35 +764,21 @@ class PandasImportHandler:
             logger.warning("Import handler not started-- not tearing down!")
             return
 
-        # Should not be None if the handler has been started-- just for type checking
-        assert self._encode_queue is not None
-        logger.info("Scheduling stop requests for encode workers")
-        for _ in range(self._encode_pool_size):
-            try:
-                self._encode_queue.put(_StopWorking(), block=False)
-            except:
-                pass
+        if self._encode_queue:
+            self._encode_queue.stop()
+            self._encode_queue = None
 
-        # Should not be None if the handler has been started-- just for type checking
-        assert self._upload_queue is not None
-        logger.info("Scheduling stop requests for upload workers")
-        for _ in range(self._upload_pool_size):
-            try:
-                self._upload_queue.put(_StopWorking(), block=False)
-            except:
-                pass
+        if self._upload_queue:
+            self._upload_queue.stop()
+            self._upload_queue = None
 
         if self._encode_pool:
-            print("Stopping encode pool")
             self._encode_pool.stop()  # type: ignore[no-untyped-call]
-            print("joining encode pool")
             self._encode_pool.join()
             self._encode_pool = None
 
         if self._upload_pool:
-            print("Stopping upload pool")
             self._upload_pool.stop()  # type: ignore[no-untyped-call]
-            print("joining upload pool")
             self._upload_pool.join()
             self._upload_pool = None
 
@@ -596,33 +790,35 @@ class PandasImportHandler:
         self._started = False
 
     def stop(self) -> None:
-        """Gracefully signal stops to background processes and shutdown handler."""
+        """Gracefully stops background processes and shuts down handler."""
         if not self._started:
             logger.warning("Import handler not started-- not stopping.")
             return
 
-        # Should not be None if the handler has been started-- just for type checking
-        assert self._encode_queue is not None
         logger.info("Scheduling stop requests for encode workers")
+        self.ingest_queue.interrupt()
         for _ in range(self._encode_pool_size):
-            self._encode_queue.put(_StopWorking())
+            self.ingest_queue.put(_StopWorking())
+        self._encode_queue = None
 
         # Should not be None if handler has been started-- just for type checking
         assert self._encode_pool is not None
         logger.info("Waiting gracefully for encode workers to shutdown")
         self._encode_pool.close()  # type: ignore[no-untyped-call]
         self._encode_pool.join()
+        self._encode_pool = None
 
-        # Should not be None if the handler has been started-- just for type checking
-        assert self._upload_queue is not None
         logger.info("Scheduling stop requests for upload workers")
+        self.upload_queue.interrupt()
         for _ in range(self._upload_pool_size):
-            self._upload_queue.put(_StopWorking())
+            self.upload_queue.put(_StopWorking())
+        self._upload_queue = None
 
         # Should not be None if handler has been started-- just for type checking
         assert self._upload_pool is not None
         logger.info("Waiting gracefully for upload workers to shutdown")
         self._upload_pool.close()  # type: ignore[no-untyped-call]
         self._upload_pool.join()
+        self._upload_pool = None
 
-        self._started = False
+        self.teardown()
