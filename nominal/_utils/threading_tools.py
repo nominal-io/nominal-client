@@ -34,7 +34,7 @@ class SharedCounter:
             return self._value.value
 
 
-class _StopWorking:
+class StopWorking:
     """Sentinel value to tell task workers to stop working."""
 
 
@@ -44,7 +44,7 @@ T = TypeVar("T")
 class StoppableQueue(Generic[T]):
     def __init__(
         self,
-        queue: multiprocessing.Queue[T | _StopWorking],
+        queue: multiprocessing.Queue[T | StopWorking],
         stop_flag: Event,
         interrupt_flag: Event,
     ):
@@ -72,7 +72,7 @@ class StoppableQueue(Generic[T]):
         self.interrupt_flag.set()
         if num_stops:
             for _ in range(num_stops):
-                self.put(_StopWorking())
+                self.put(StopWorking())
 
     def wait(self) -> None:
         """Blocks until all tasks are completed within the queue.
@@ -90,7 +90,7 @@ class StoppableQueue(Generic[T]):
         while not self.stop_flag.is_set():
             try:
                 item = self._queue.get(timeout=0.1)
-                if isinstance(item, _StopWorking):
+                if isinstance(item, StopWorking):
                     return None
                 else:
                     return item
@@ -99,11 +99,11 @@ class StoppableQueue(Generic[T]):
 
         return None
 
-    def put(self, item: T | _StopWorking) -> None:
+    def put(self, item: T | StopWorking) -> None:
         """Block until stop is signalled or space is available and insert an element in the queue"""
         # If stop flag is set, or the interrupt flag is set and the item isn't a stop work order,
         # stop trying to add to the queue
-        while not (self.stop_flag.is_set() or (self.interrupt_flag.is_set() and not isinstance(item, _StopWorking))):
+        while not (self.stop_flag.is_set() or (self.interrupt_flag.is_set() and not isinstance(item, StopWorking))):
             try:
                 self._queue.put(item, timeout=0.1)
                 return
