@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_NUM_RETRIES = 3
 DEFAULT_COMPRESSION_LEVEL = 6
 DEFAULT_BATCH_SIZE = 50_000
-DEFAULT_NUM_ENCODE_WORKERS = 4
-DEFAULT_NUM_UPLOAD_WORKERS = 4
+DEFAULT_NUM_ENCODE_WORKERS = 8
+DEFAULT_NUM_UPLOAD_WORKERS = 16
 DEFAULT_ENCODE_QUEUE_SIZE = 256
 DEFAULT_UPLOAD_QUEUE_SIZE = 2048
 
@@ -97,15 +97,11 @@ T = TypeVar("T")
 class StoppableQueue(Generic[T]):
     def __init__(
         self,
-        queue: queue.Queue[T | _StopWorking],
-        get_condition: Condition,
-        put_condition: Condition,
+        queue: multiprocessing.Queue[T | _StopWorking],  # queue.Queue[T | _StopWorking],
         stop_flag: Event,
         interrupt_flag: Event,
     ):
         self._queue = queue
-        self.get_condition = get_condition
-        self.put_condition = put_condition
         self.stop_flag = stop_flag
         self.interrupt_flag = interrupt_flag
 
@@ -114,96 +110,65 @@ class StoppableQueue(Generic[T]):
         cls,
         manager: SyncManager,
         queue_size: int = 0,
-        stop_flag: Event | None = None,
-        interrupt_flag: Event | None = None,
     ):
-        if stop_flag is None:
-            stop_flag = manager.Event()
+        stop_flag = manager.Event()
+        interrupt_flag = manager.Event()
 
-        if interrupt_flag is None:
-            interrupt_flag = manager.Event()
-
-        lock = manager.Lock()
         return cls(
-            manager.Queue(maxsize=queue_size),
-            manager.Condition(lock),
-            manager.Condition(lock),
+            # manager.Queue(maxsize=queue_size),
+            multiprocessing.Queue(maxsize=queue_size),
+            # manager.Condition(lock),
+            # manager.Condition(lock),
             stop_flag,
             interrupt_flag,
         )
 
     def stop(self) -> None:
         """Immediately stop all processes blocking on the queue and stop future enqueues or dequeues."""
-        with self.get_condition, self.put_condition:
-            self.stop_flag.set()
-            self.get_condition.notify_all()
-            self.put_condition.notify_all()
+        self.stop_flag.set()
 
-    def interrupt(self) -> None:
+    def interrupt(self, num_stops: int | None = None) -> None:
         """Prevent new items from being added to the queue, useful during shutdown operations"""
-        with self.put_condition:
-            self.interrupt_flag.set()
-            self.put_condition.notify_all()
+        self.interrupt_flag.set()
+        if num_stops:
+            for _ in range(num_stops):
+                self.put(_StopWorking())
 
     def wait(self) -> None:
-        """Blocks until all tasks are completed within the queue."""
-        self._queue.join()
+        """Blocks until all tasks are completed within the queue.
+
+        Should be called after using interrupt(), but unecessary after a stop()
+        """
+        while not self.stop_flag.is_set():
+            if self._queue.empty():
+                return
+
+            time.sleep(0.25)
 
     def get(self) -> T | None:
         """Block until stop is signalled or data is received and return the oldest member of the queue."""
-        while True:
-            with self.get_condition:
-                # While there is no data available, wait for signal of data
-                while self._queue.empty() and not self.stop_flag.is_set():
-                    self.get_condition.wait()
-
-                # If user requested exit, return nothing
-                if self.stop_flag.is_set():
+        while not self.stop_flag.is_set():
+            try:
+                item = self._queue.get(timeout=0.1)
+                if isinstance(item, _StopWorking):
                     return None
+                else:
+                    return item
+            except queue.Empty:
+                continue
 
-                try:
-                    maybe_item = self._queue.get_nowait()
-                    self._queue.task_done()
-                except queue.Empty:
-                    # Another process retrieved the element we awoke for... start over at the top
-                    continue
-
-            # Signal that space has opened up in the queue
-            with self.put_condition:
-                self.put_condition.notify()
-
-            return None if isinstance(maybe_item, _StopWorking) else maybe_item
+        return None
 
     def put(self, item: T | _StopWorking) -> None:
         """Block until stop is signalled or space is available and insert an element in the queue"""
-        while True:
-            with self.put_condition:
-                # While there is no space available, wait for signal of space or exit
-                while True:
-                    if self.stop_flag.is_set() or not self._queue.full():
-                        break
-                    elif self.interrupt_flag.is_set() and not isinstance(item, _StopWorking):
-                        break
-
-                    self.put_condition.wait()
-
-                # If user requested exit, put nothing
-                if self.stop_flag.is_set():
-                    return
-                elif self.interrupt_flag.is_set() and not isinstance(item, _StopWorking):
-                    return
-
-                try:
-                    self._queue.put_nowait(item)
-                except queue.Full:
-                    # Another process pushed data and filled the queue... start over at the top
-                    continue
-
-            # Signal that data has entered the queue
-            with self.get_condition:
-                self.get_condition.notify()
-
-            break
+        # If stop flag is set, or the interrupt flag is set and the item isn't a stop work order,
+        # stop trying to add to the queue
+        while not (self.stop_flag.is_set() or (self.interrupt_flag.is_set() and not isinstance(item, _StopWorking))):
+            try:
+                self._queue.put(item, timeout=0.1)
+                return
+            except queue.Full:
+                continue
 
 
 InputT = TypeVar("InputT")
@@ -211,8 +176,8 @@ OutputT = TypeVar("OutputT")
 
 
 class _Worker(abc.ABC, Generic[InputT]):
-    def __init__(self, *, logger: logging.Logger | None = None, input_queue: StoppableQueue[InputT]):
-        self.input_queue = input_queue
+    def __init__(self, *, logger: logging.Logger | None = None):
+        self._input_queue = None
         self._logger = logger
 
     @property
@@ -234,6 +199,13 @@ class _Worker(abc.ABC, Generic[InputT]):
 
         return self._logger
 
+    @property
+    def input_queue(self) -> StoppableQueue[InputT]:
+        if self._input_queue is None:
+            raise RuntimeError("Cannot access input queue... not running!")
+
+        return self._input_queue
+
     def get_input(self) -> InputT | None:
         start = time.monotonic()
         maybe_task = self.input_queue.get()
@@ -247,9 +219,10 @@ class _Worker(abc.ABC, Generic[InputT]):
 
         return maybe_task
 
-    def run(self, exit_on_exception: bool = False) -> None:
+    def run(self, input_queue: StoppableQueue[InputT], *, exit_on_exception: bool = False) -> None:
         # Reset logging for task
         self._logger = None
+        self._input_queue = input_queue
 
         while True:
             task_input = self.get_input()
@@ -277,12 +250,16 @@ class _BiWorker(_Worker[InputT], Generic[InputT, OutputT]):
         self,
         *,
         logger: logging.Logger | None = None,
-        input_queue: StoppableQueue[InputT],
-        output_queue: StoppableQueue[OutputT],
     ):
-        super().__init__(logger=logger, input_queue=input_queue)
+        super().__init__(logger=logger)
+        self._output_queue = None
 
-        self.output_queue = output_queue
+    @property
+    def output_queue(self) -> StoppableQueue[OutputT]:
+        if self._output_queue is None:
+            raise RuntimeError("Cannot access output queue... not running!")
+
+        return self._output_queue
 
     def put_output(self, output: OutputT) -> None:
         start = time.monotonic()
@@ -292,86 +269,15 @@ class _BiWorker(_Worker[InputT], Generic[InputT, OutputT]):
         if diff >= 1.0:
             self.logger.warning("Waited %fs to enqueue data for %s", diff, self.name)
 
-
-class _QueuePool(abc.ABC, Generic[T]):
-    def __init__(
+    def run(
         self,
+        input_queue: StoppableQueue[InputT],
+        output_queue: StoppableQueue[OutputT],
         *,
-        num_workers: int,
-        use_threads: bool = True,
-        logger: logging.Logger | None = None,
-        input_queue: StoppableQueue[T],
-        queue_condition: Condition,
-        should_stop: Event,
-    ):
-        self._num_workers = num_workers
-        self._workers: list[Thread | multiprocessing.Process] = []
-        self._use_threads = use_threads
-
-        self._logger = logger
-        self._input_queue = input_queue
-        self._queue_condition = queue_condition
-        self._should_stop = should_stop
-
-        self._stop_scheduled = False
-
-    @abc.abstractmethod
-    def build_worker(self) -> _QueueWorker: ...
-
-    def start(self) -> None:
-        """Start task workers"""
-        for _ in range(self._num_workers):
-            worker = self.build_worker()
-            kwargs = {"exit_on_exception": False}
-
-            if self._use_threads:
-                self._workers.append(Thread(target=worker.run, kwargs=kwargs, daemon=True))
-            else:
-                self._workers.append(multiprocessing.Process(target=worker.run, kwargs=kwargs, daemon=True))
-
-        for worker in self._workers:
-            worker.start()
-
-    def schedule_stop(self) -> None:
-        """Gracefully schedule the pool to stop after completing all of the queued actions."""
-        if self._stop_scheduled:
-            logger.warning("Stop already scheduled!")
-
-        with self._queue_condition:
-            for _ in range(self._num_workers):
-                self._input_queue.put(_StopWorking())
-                self._queue_condition.notify()
-
-        self._stop_scheduled = True
-
-    def terminate(self) -> None:
-        """Immediately signal the pool to stop without completing any of the queued actions.
-
-        NOTE: only works for process pools, and has no affect on threads
-        """
-        thread_workers = [worker for worker in self._workers if isinstance(worker, Thread)]
-        process_workers = [worker for worker in self._workers if isinstance(worker, multiprocessing.Process)]
-
-        with self._queue_condition:
-            self._should_stop.set()
-            self._queue_condition.notify_all()
-
-        if thread_workers:
-            logger.warning("Unable to terminate thread workers... just sending immediate graceful shutdown request")
-
-        for worker in process_workers:
-            if worker.pid:
-                os.kill(worker.pid, signal.SIGINT)
-            else:
-                logger.warning("Process worker has no pid... unable to send interrupt signal")
-
-    def join(self) -> None:
-        """Wait for all tasks to complete. Should call schedule_stop first."""
-        if not self._stop_scheduled:
-            logger.warning("schedule_stop() not called before join()... may block indefinitely...")
-
-        for worker in self._workers:
-            worker.join()
+        exit_on_exception: bool = False,
+    ) -> None:
+        self._output_queue = output_queue
+        super().run(input_queue, exit_on_exception=exit_on_exception)
 
 
 class _EncodeWorker(_BiWorker[pd.DataFrame, bytes]):
@@ -379,8 +285,6 @@ class _EncodeWorker(_BiWorker[pd.DataFrame, bytes]):
 
     def __init__(
         self,
-        input_queue: StoppableQueue[pd.DataFrame],
-        output_queue: StoppableQueue[bytes],
         datasource_rid: str,
         timestamp_column: str,
         tags: Mapping[str, str] | None,
@@ -388,7 +292,7 @@ class _EncodeWorker(_BiWorker[pd.DataFrame, bytes]):
         batch_size: int,
         points_encoded: SharedCounter,
     ):
-        super().__init__(input_queue=input_queue, output_queue=output_queue)
+        super().__init__()
 
         self._datasource_rid = datasource_rid
         self._tags = tags or {}
@@ -492,15 +396,14 @@ class _UploadWorker(_Worker[bytes]):
 
     def __init__(
         self,
-        input_queue: StoppableQueue[bytes],
         auth_header: str,
         api_base_url: str,
         num_retries: int,
         bytes_uploaded: SharedCounter,
     ):
-        super().__init__(input_queue=input_queue)
+        super().__init__()
 
-        self._input_queue = input_queue
+        # self._input_queue = input_queue
         self._num_retries = num_retries
 
         self._task_uploading_time = 0.0
@@ -554,7 +457,7 @@ class _UploadWorker(_Worker[bytes]):
         self._bytes_uploaded.increment(byte_count)
 
         if success:
-            self.logger.info("Successfully uploaded %d bytes in %fs", byte_count, diff)
+            self.logger.debug("Successfully uploaded %d bytes in %fs", byte_count, diff)
         else:
             self.logger.error(
                 "Failed to upload %d bytes in %d tries! Check Nominal for data integrity",
@@ -635,10 +538,6 @@ class PandasImportHandler:
 
         # Used to manage shared state between background processes
         self._manager: SyncManager | None = None
-
-        # Used to signal stops within subprocesses
-        self._stop_flag: Event | None = None
-        self._interrupt_flag: Event | None = None
 
         # None queued values are used to signal background processes to stop processing
         self._encode_queue: StoppableQueue[pd.DataFrame] | None = None
@@ -731,8 +630,6 @@ class PandasImportHandler:
 
         self._encode_workers = [
             _EncodeWorker(
-                input_queue=self._encode_queue,
-                output_queue=self._upload_queue,
                 datasource_rid=self._datasource_rid,
                 timestamp_column=self._timestamp_column,
                 tags=self._tags,
@@ -742,11 +639,32 @@ class PandasImportHandler:
             )
             for _ in range(self._encode_pool_size)
         ]
-        self._encode_futures = [self._encode_pool.schedule(worker.run) for worker in self._encode_workers]
+        self._encode_processes = [
+            multiprocessing.Process(
+                target=worker.run,
+                args=(
+                    self._encode_queue,
+                    self._upload_queue,
+                ),
+                daemon=True,
+            )
+            for worker in self._encode_workers
+        ]
+        for proc in self._encode_processes:
+            proc.start()
+        # self._encode_futures = [
+        #     self._encode_pool.schedule(
+        #         worker.run,
+        #         args=[
+        #             self._encode_queue,
+        #             self._upload_queue,
+        #         ],
+        #     )
+        #     for worker in self._encode_workers
+        # ]
 
         self._upload_workers = [
             _UploadWorker(
-                input_queue=self._upload_queue,
                 auth_header=self._auth_header,
                 api_base_url=self._api_base_url,
                 num_retries=self._num_retries,
@@ -754,7 +672,19 @@ class PandasImportHandler:
             )
             for _ in range(self._upload_pool_size)
         ]
-        self._upload_futures = [self._upload_pool.schedule(worker.run) for worker in self._upload_workers]
+        self._upload_threads = [
+            Thread(
+                target=worker.run,
+                args=(self._upload_queue,),
+                daemon=True,
+            )
+            for worker in self._upload_workers
+        ]
+        for thread in self._upload_threads:
+            thread.start()
+        # self._upload_futures = [
+        #     self._upload_pool.schedule(worker.run, args=[self._upload_queue]) for worker in self._upload_workers
+        # ]
 
         self._started = True
 
@@ -771,6 +701,9 @@ class PandasImportHandler:
         if self._upload_queue:
             self._upload_queue.stop()
             self._upload_queue = None
+
+        for proc in self._encode_processes:
+            proc.terminate()
 
         if self._encode_pool:
             self._encode_pool.stop()  # type: ignore[no-untyped-call]
@@ -790,35 +723,24 @@ class PandasImportHandler:
         self._started = False
 
     def stop(self) -> None:
-        """Gracefully stops background processes and shuts down handler."""
+        """Gracefully stops background processes.
+
+        Call teardown() after to free resources
+        """
         if not self._started:
             logger.warning("Import handler not started-- not stopping.")
             return
 
         logger.info("Scheduling stop requests for encode workers")
-        self.ingest_queue.interrupt()
-        for _ in range(self._encode_pool_size):
-            self.ingest_queue.put(_StopWorking())
-        self._encode_queue = None
-
-        # Should not be None if handler has been started-- just for type checking
-        assert self._encode_pool is not None
-        logger.info("Waiting gracefully for encode workers to shutdown")
-        self._encode_pool.close()  # type: ignore[no-untyped-call]
-        self._encode_pool.join()
-        self._encode_pool = None
+        self.ingest_queue.interrupt(num_stops=self._encode_pool_size)
+        logger.info("Awaiting encode tasks to finish")
+        self.ingest_queue.wait()
+        for proc in self._encode_processes:
+            proc.join()
 
         logger.info("Scheduling stop requests for upload workers")
-        self.upload_queue.interrupt()
-        for _ in range(self._upload_pool_size):
-            self.upload_queue.put(_StopWorking())
-        self._upload_queue = None
-
-        # Should not be None if handler has been started-- just for type checking
-        assert self._upload_pool is not None
-        logger.info("Waiting gracefully for upload workers to shutdown")
-        self._upload_pool.close()  # type: ignore[no-untyped-call]
-        self._upload_pool.join()
-        self._upload_pool = None
-
-        self.teardown()
+        self.upload_queue.interrupt(num_stops=self._upload_pool_size)
+        logger.info("Awaiting upload tasks to finish")
+        self.upload_queue.wait()
+        for thread in self._upload_threads:
+            thread.join()
