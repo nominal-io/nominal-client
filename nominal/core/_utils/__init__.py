@@ -19,6 +19,7 @@ from nominal.core._utils.pagination_tools import (
     search_users_paginated,
     search_workbook_templates_paginated,
     search_workbooks_paginated,
+    search_datasets_paginated,
 )
 from nominal.core._utils.query_tools import (
     create_search_assets_query,
@@ -29,6 +30,7 @@ from nominal.core._utils.query_tools import (
     create_search_users_query,
     create_search_workbook_templates_query,
     create_search_workbooks_query,
+    create_search_datasets_query,
 )
 
 __all__ = [
@@ -58,4 +60,6 @@ __all__ = [
     "search_users_paginated",
     "search_workbook_templates_paginated",
     "search_workbooks_paginated",
+    "create_search_datasets_query",
+    "search_datasets_paginated",
 ]

@@ -26,6 +26,7 @@ from nominal_api import (
     scout_video_api,
     secrets_api,
     storage_datasource_api,
+    scout_catalog,
 )
 from typing_extensions import Self, deprecated
 
@@ -42,6 +43,7 @@ from nominal.core._utils import (
     create_search_runs_query,
     create_search_secrets_query,
     create_search_users_query,
+    create_search_datasets_query,
     list_streaming_checklists_for_asset_paginated,
     list_streaming_checklists_paginated,
     rid_from_instance_or_string,
@@ -54,6 +56,7 @@ from nominal.core._utils import (
     search_users_paginated,
     search_workbook_templates_paginated,
     search_workbooks_paginated,
+    search_datasets_paginated,
 )
 from nominal.core._utils.query_tools import create_search_workbook_templates_query, create_search_workbooks_query
 from nominal.core.asset import Asset
@@ -228,6 +231,32 @@ class NominalClient:
         """
         query = create_search_users_query(exact_match, search_text)
         return list(self._iter_search_users(query))
+    
+    def _iter_search_datasets(self, query: scout_catalog.SearchDatasetsQuery) -> Iterable[Dataset]:
+        for raw_dataset in search_datasets_paginated(self._clients.catalog, self._clients.auth_header, query):
+            yield Dataset._from_conjure(self._clients, raw_dataset)
+    
+    def search_datasets(
+        self,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+    ) -> Sequence[Dataset]:
+        """Search for datasets the specified filters.
+        Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
+
+        Args:
+            exact_match: Searches for an exact substring of dataset name
+            search_text: Searches for a (case-insensitive) substring across all text fields.
+            labels: A sequence of labels that must ALL be present on a secret to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
+
+        Returns:
+            All datasets which match all of the provided conditions
+        """
+        query = create_search_datasets_query(exact_match, search_text, labels, properties)
+        return list(self._iter_search_datasets(query))
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
         """Get workspace via given RID, or the default workspace if no RID is provided.
