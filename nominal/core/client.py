@@ -18,6 +18,7 @@ from nominal_api import (
     event,
     ingest_api,
     scout_asset_api,
+    scout_catalog,
     scout_checks_api,
     scout_datasource_connection_api,
     scout_notebook_api,
@@ -26,7 +27,6 @@ from nominal_api import (
     scout_video_api,
     secrets_api,
     storage_datasource_api,
-    scout_catalog,
 )
 from typing_extensions import Self, deprecated
 
@@ -39,24 +39,24 @@ from nominal.core._utils import (
     construct_user_agent_string,
     create_search_assets_query,
     create_search_checklists_query,
+    create_search_datasets_query,
     create_search_events_query,
     create_search_runs_query,
     create_search_secrets_query,
     create_search_users_query,
-    create_search_datasets_query,
     list_streaming_checklists_for_asset_paginated,
     list_streaming_checklists_paginated,
     rid_from_instance_or_string,
     search_assets_paginated,
     search_checklists_paginated,
     search_data_reviews_paginated,
+    search_datasets_paginated,
     search_events_paginated,
     search_runs_paginated,
     search_secrets_paginated,
     search_users_paginated,
     search_workbook_templates_paginated,
     search_workbooks_paginated,
-    search_datasets_paginated,
 )
 from nominal.core._utils.query_tools import create_search_workbook_templates_query, create_search_workbooks_query
 from nominal.core.asset import Asset
@@ -231,11 +231,11 @@ class NominalClient:
         """
         query = create_search_users_query(exact_match, search_text)
         return list(self._iter_search_users(query))
-    
+
     def _iter_search_datasets(self, query: scout_catalog.SearchDatasetsQuery) -> Iterable[Dataset]:
         for raw_dataset in search_datasets_paginated(self._clients.catalog, self._clients.auth_header, query):
             yield Dataset._from_conjure(self._clients, raw_dataset)
-    
+
     def search_datasets(
         self,
         exact_match: str | None = None,

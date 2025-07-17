@@ -8,12 +8,12 @@ from nominal_api import (
     authentication_api,
     event,
     scout_asset_api,
+    scout_catalog,
     scout_checks_api,
     scout_notebook_api,
     scout_run_api,
     scout_template_api,
     secrets_api,
-    scout_catalog,
 )
 
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -85,11 +85,12 @@ def create_search_checklists_query(
 
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
+
 def create_search_datasets_query(
-        exact_match: str | None = None,
-        search_text: str | None = None,
-        labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+    exact_match: str | None = None,
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
 ) -> scout_catalog.SearchDatasetsQuery:
     queries = []
     if search_text is not None:
