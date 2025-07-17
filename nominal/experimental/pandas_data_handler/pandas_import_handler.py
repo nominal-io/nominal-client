@@ -28,10 +28,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_NUM_RETRIES = 3
 DEFAULT_COMPRESSION_LEVEL = 6
-DEFAULT_BATCH_SIZE = 50_000
-DEFAULT_NUM_ENCODE_WORKERS = 8
-DEFAULT_NUM_UPLOAD_WORKERS = 16
-DEFAULT_ENCODE_QUEUE_SIZE = 256
+DEFAULT_BATCH_SIZE = 100_000
+DEFAULT_NUM_ENCODE_WORKERS = 4
+DEFAULT_NUM_UPLOAD_WORKERS = 32
+DEFAULT_ENCODE_QUEUE_SIZE = 128
 DEFAULT_UPLOAD_QUEUE_SIZE = 2048
 
 
@@ -334,32 +334,28 @@ class _EncodeWorker(_BiWorker[pd.DataFrame, bytes]):
     def _encode_batch(self, df_slice: pd.DataFrame, value_col: str) -> bytes:
         start = time.monotonic()
 
-        values = df_slice[value_col].to_list()
-        timestamps = df_slice[self._timestamp_column].apply(_to_api_json_timestamp).to_list()
-        assert len(timestamps) == len(values)
-
         dtype_str = _to_api_dtype(df_slice[value_col].dtype)
         request = {
             "batches": [
                 {
                     "channel": value_col,
-                    "timestamps": timestamps,
+                    "timestamps": df_slice[self._timestamp_column].apply(_to_api_json_timestamp).to_list(),
                     "tags": self._tags,
-                    "values": {"type": dtype_str, dtype_str: values},
+                    "values": {"type": dtype_str, dtype_str: df_slice[value_col].to_list()},
                 },
             ],
             "dataSourceRid": self._datasource_rid,
         }
+
         encoded = json.dumps(request).encode("utf-8")
 
         end = time.monotonic()
         diff = end - start
         self._task_encode_time += diff
 
-        num_values = len(values)
+        num_values = len(request["batches"][0]["timestamps"])
         self._task_points += num_values
         self._points_encoded.increment(num_values)
-
         return encoded
 
     def _compress_batches(self, encoded_batches: bytes) -> bytes:
