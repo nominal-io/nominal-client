@@ -58,13 +58,9 @@ class FileExtractionInput:
     """
 
     name: str
-
     description: str | None
-
     environment_variable: str
-
     file_suffixes: Sequence[str]
-
     required: bool | None = None
 
     @classmethod
