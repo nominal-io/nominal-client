@@ -238,6 +238,7 @@ class NominalClient:
 
     def search_datasets(
         self,
+        *,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
