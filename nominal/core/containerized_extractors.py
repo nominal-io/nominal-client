@@ -61,7 +61,7 @@ class FileExtractionInput:
     description: str | None
     environment_variable: str
     file_suffixes: Sequence[str]
-    required: bool | None = None
+    required: bool
 
     @classmethod
     def _from_conjure(cls, file_input: ingest_api.FileExtractionInput) -> Self:
