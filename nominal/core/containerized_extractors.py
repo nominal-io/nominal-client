@@ -176,7 +176,6 @@ class TimestampMetadata:
     """
 
     series_name: str
-
     timestamp_type: _ConjureTimestampType
 
     @classmethod
