@@ -10,6 +10,8 @@ import ffmpeg
 
 from nominal.experimental.video_processing.resolution import (
     AnyResolutionType,
+    VideoResolution,
+    _resolution_from_specifier,
     scale_factor_from_resolution,
 )
 
@@ -147,7 +149,7 @@ def normalize_video(
     resolution: AnyResolutionType | None = None,
     gpu_acceleration: GPUAcceleration | str | None = None,
     gpu_preset: str = "fast",
-    auto_rotate: bool = True,
+    preserve_aspect_ratio: bool = True,
 ) -> None:
     """Convert video file to an h264 encoded video file using ffmpeg with optional GPU acceleration.
 
@@ -183,8 +185,9 @@ def normalize_video(
             - Intel: "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"
             - AMD: "speed", "balanced", "quality"
             - Apple: "veryslow", "slower", "slow", "medium", "fast", "faster", "veryfast"
-        auto_rotate: If True, automatically apply rotation from video metadata (e.g., from phone/camera).
-            This fixes videos that appear stretched or sideways due to rotation metadata.
+        preserve_aspect_ratio: If True, maintain the original aspect ratio when resizing.
+            Adds letterboxing/pillarboxing as needed to fit the target resolution.
+            If False, stretches the video to exactly fill the target resolution.
 
     NOTE: this requires that you have ffmpeg installed on your system with support for H264.
           For GPU acceleration, you need appropriate drivers and ffmpeg compiled with hardware support.
@@ -196,20 +199,23 @@ def normalize_video(
         # Auto-detect and use best available GPU acceleration
         normalize_video(input_path, output_path, gpu_acceleration="auto")
         
-        # Explicitly use NVIDIA GPU acceleration with rotation handling
-        normalize_video(input_path, output_path, gpu_acceleration="nvidia", gpu_preset="fast", auto_rotate=True)
+        # Explicitly use NVIDIA GPU acceleration with letterboxing
+        normalize_video(input_path, output_path, resolution="1080p", gpu_acceleration="nvidia", gpu_preset="fast")
         
-        # Process without auto-rotation (preserve original orientation)
-        normalize_video(input_path, output_path, auto_rotate=False)
+        # Process vertical video with letterboxing to fit horizontal resolution
+        normalize_video(input_path, output_path, resolution="1080p", preserve_aspect_ratio=True)
+        
+        # Stretch video to exact resolution (may distort)
+        normalize_video(input_path, output_path, resolution="1080p", preserve_aspect_ratio=False)
         
         # Check what GPU options are available
         from nominal.experimental.video_processing.video_conversion import check_gpu_acceleration
         available_gpus = check_gpu_acceleration()  # Prints options and returns list
         
-        # Check video rotation before processing
+        # Check video rotation metadata (for information only)
         from nominal.experimental.video_processing.video_conversion import get_video_rotation
         rotation = get_video_rotation(input_path)
-        print(f"Video rotation: {rotation} degrees")
+        print(f"Video has rotation metadata: {rotation} degrees")
     """
     assert input_path.exists(), "Input path must exist"
     assert output_path.suffix.lower() in (".mkv", ".mp4")
@@ -302,29 +308,19 @@ def normalize_video(
     else:
         output_kwargs["force_key_frames"] = f"expr:gte(t,n_forced*{key_frame_interval})"
 
-    # Build video filters for rotation and scaling
-    video_filters = []
-    
-    # Handle rotation if auto_rotate is enabled
-    if auto_rotate:
-        rotation = get_video_rotation(input_path)
-        if rotation != 0:
-            logger.info(f"Detected video rotation: {rotation} degrees")
-            if rotation == 90:
-                video_filters.append("transpose=1")  # 90 degrees clockwise
-            elif rotation == 180:
-                video_filters.append("transpose=1,transpose=1")  # 180 degrees
-            elif rotation == 270:
-                video_filters.append("transpose=2")  # 90 degrees counter-clockwise
-    
-    # If user specified an output resolution, add scaling filter
+    # Build video filters for scaling with letterboxing
     if resolution is not None:
-        scale_filter = scale_factor_from_resolution(resolution)
-        video_filters.append(scale_filter)
-    
-    # Apply video filters if any
-    if video_filters:
-        output_kwargs["vf"] = ",".join(video_filters)
+        if preserve_aspect_ratio:
+            # Use letterboxing to maintain aspect ratio
+            target_width, target_height = _get_resolution_dimensions(resolution)
+            video_filter = _build_letterbox_filter(target_width, target_height)
+            logger.info(f"Applying letterboxing to {target_width}x{target_height}")
+        else:
+            # Stretch to exact resolution (may distort aspect ratio)
+            video_filter = scale_factor_from_resolution(resolution)
+            logger.info("Scaling without preserving aspect ratio")
+        
+        output_kwargs["vf"] = video_filter
 
     # Run ffmpeg in subprocess
     video_in = ffmpeg.input(str(input_path))
@@ -361,6 +357,56 @@ def frame_count(video_path: pathlib.Path) -> int:
         return 0
 
     return int(probe_resp["streams"][0]["nb_read_packets"])
+
+
+def _get_resolution_dimensions(resolution: AnyResolutionType) -> tuple[int, int]:
+    """Get width and height from resolution parameter.
+    
+    Args:
+        resolution: Resolution specifier or VideoResolution object.
+        
+    Returns:
+        Tuple of (width, height) in pixels.
+        
+    Raises:
+        ValueError: If resolution cannot be determined.
+    """
+    if isinstance(resolution, VideoResolution):
+        width = resolution.resolution_width
+        height = resolution.resolution_height
+    else:
+        res_obj = _resolution_from_specifier(resolution)
+        width = res_obj.resolution_width
+        height = res_obj.resolution_height
+    
+    if width is None or height is None:
+        raise ValueError(f"Cannot determine target dimensions from resolution: {resolution}")
+    
+    return width, height
+
+
+def _build_letterbox_filter(target_width: int, target_height: int) -> str:
+    """Build ffmpeg filter for letterboxing video to exact target resolution.
+    
+    This scales the video to fit within the target resolution while maintaining
+    aspect ratio, then adds padding (letterboxing/pillarboxing) to reach the
+    exact target dimensions.
+    
+    Args:
+        target_width: Target width in pixels.
+        target_height: Target height in pixels.
+        
+    Returns:
+        FFmpeg video filter string.
+    """
+    # Scale to fit within target resolution, maintaining aspect ratio
+    scale_filter = f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease"
+    
+    # Add padding to reach exact target resolution
+    # (ow-iw)/2 centers horizontally, (oh-ih)/2 centers vertically
+    pad_filter = f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black"
+    
+    return f"{scale_filter},{pad_filter}"
 
 
 def get_video_rotation(video_path: pathlib.Path) -> int:
