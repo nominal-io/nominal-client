@@ -10,12 +10,12 @@ from nominal.experimental.video_processing.resolution import (
     scale_factor_from_resolution,
 )
 from nominal.experimental.video_processing.video_conversion import (
+    GPUAcceleration,
     check_gpu_acceleration,
     frame_count,
     get_video_rotation,
     has_audio_track,
     normalize_video,
-    GPUAcceleration,
 )
 
 __all__ = [

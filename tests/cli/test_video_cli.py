@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Simple test script for the video CLI commands.
-"""
+"""Simple test script for the video CLI commands."""
 
 import subprocess
 import sys
@@ -12,7 +10,7 @@ def run_command(cmd: list[str]) -> tuple[int, str, str]:
     try:
         result = subprocess.run(
             cmd,
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=60,  # Increased timeout for GPU commands
             shell=False,  # Explicit shell setting
@@ -93,16 +91,15 @@ def test_video_commands():
             if any(keyword in stdout.lower() for keyword in keywords):
                 print("✅ Output contains expected keywords")
             passed += 1
+        elif allow_failure:
+            print(f"⚠️  Failed with exit code {exit_code} (allowed to fail in subprocess)")
+            print("   ℹ️  This command should work when run directly in terminal")
+            passed += 1  # Count as pass since failure is allowed
         else:
-            if allow_failure:
-                print(f"⚠️  Failed with exit code {exit_code} (allowed to fail in subprocess)")
-                print("   ℹ️  This command should work when run directly in terminal")
-                passed += 1  # Count as pass since failure is allowed
-            else:
-                print(f"❌ Failed with exit code {exit_code}")
-                failed += 1
-                if stderr:
-                    print(f"STDERR: {stderr[:400]}...")
+            print(f"❌ Failed with exit code {exit_code}")
+            failed += 1
+            if stderr:
+                print(f"STDERR: {stderr[:400]}...")
 
         print("-" * 50)
 
@@ -146,7 +143,7 @@ def test_video_commands():
 
     # Summary
     total = passed + failed
-    print(f"\n📊 Test Summary:")
+    print("\n📊 Test Summary:")
     print(f"   ✅ Passed: {passed}/{total}")
     print(f"   ❌ Failed: {failed}/{total}")
 

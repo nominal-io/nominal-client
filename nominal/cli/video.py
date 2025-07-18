@@ -210,7 +210,7 @@ def convert_video(
             if frames > 0 and duration > 0:
                 fps_processed = frames / duration
                 click.echo(f"🎬 Processing rate: {fps_processed:.0f} frames/second")
-        except:
+        except (ZeroDivisionError, TypeError):
             pass  # Skip if frame count unavailable
 
         # Show GPU acceleration performance hint

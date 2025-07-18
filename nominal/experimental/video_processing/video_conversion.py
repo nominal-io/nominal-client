@@ -83,7 +83,7 @@ def _get_available_gpu_acceleration() -> list[GPUAcceleration]:
 
     try:
         # Get list of available encoders from ffmpeg
-        result = subprocess.run(["ffmpeg", "-encoders"], capture_output=True, text=True, timeout=10)
+        result = subprocess.run(["ffmpeg", "-encoders"], check=False, capture_output=True, text=True, timeout=10)
 
         if result.returncode != 0:
             logger.warning("ffmpeg command failed, cannot detect GPU acceleration")
@@ -261,7 +261,10 @@ def normalize_video(
                 valid_presets = GPU_PRESET_MAP.get(gpu_acceleration, [])
                 if valid_presets and gpu_preset not in valid_presets:
                     logger.warning(
-                        f"Preset '{gpu_preset}' not in recommended presets for {gpu_acceleration.value}: {valid_presets}. Using anyway."
+                        "Preset '%s' not in recommended presets for %s: %s. Using anyway.",
+                        gpu_preset,
+                        gpu_acceleration.value,
+                        valid_presets,
                     )
 
                 # Add GPU-specific encoding parameters
@@ -447,7 +450,7 @@ def get_video_rotation(video_path: pathlib.Path) -> int:
                 "csv=p=0",
                 str(video_path),
             ],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=10,
         )
