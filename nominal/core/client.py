@@ -1018,6 +1018,7 @@ class NominalClient:
 
     def search_containerized_extractors(
         self,
+        *,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
