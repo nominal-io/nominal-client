@@ -10,7 +10,8 @@ def run_command(cmd: list[str]) -> tuple[int, str, str]:
     try:
         result = subprocess.run(
             cmd,
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             timeout=60,  # Increased timeout for GPU commands
             shell=False,  # Explicit shell setting

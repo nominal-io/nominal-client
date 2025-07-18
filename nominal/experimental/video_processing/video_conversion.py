@@ -450,7 +450,8 @@ def get_video_rotation(video_path: pathlib.Path) -> int:
                 "csv=p=0",
                 str(video_path),
             ],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             timeout=10,
         )
