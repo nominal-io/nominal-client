@@ -212,6 +212,7 @@ class ContainerizedExtractor(HasRid):
 
     def update(
         self,
+        *,
         name: str | None = None,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
