@@ -12,7 +12,7 @@ from nominal.experimental.video_processing.resolution import (
 from nominal.experimental.video_processing.video_conversion import (
     check_gpu_acceleration,
     frame_count,
-    get_video_rotation, 
+    get_video_rotation,
     has_audio_track,
     normalize_video,
     GPUAcceleration,
@@ -22,7 +22,7 @@ __all__ = [
     "check_gpu_acceleration",
     "frame_count",
     "get_video_rotation",
-    "has_audio_track", 
+    "has_audio_track",
     "normalize_video",
     "GPUAcceleration",
     "VideoResolution",
