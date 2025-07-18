@@ -242,6 +242,9 @@ class NominalClient:
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        workspace_rid: str | None = None,
     ) -> Sequence[Dataset]:
         """Search for datasets the specified filters.
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
@@ -251,11 +254,14 @@ class NominalClient:
             search_text: Searches for a (case-insensitive) substring across all text fields.
             labels: A sequence of labels that must ALL be present on a secret to be included.
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
+            before: Searches for datasets created before some time (inclusive).
+            after: Searches for datasets created before after time (inclusive).
+            workspace_rid: Filters search to given workspace. If None, searches within default workspace
 
         Returns:
             All datasets which match all of the provided conditions
         """
-        query = create_search_datasets_query(exact_match, search_text, labels, properties)
+        query = create_search_datasets_query(exact_match, search_text, labels, properties, before, after, workspace_rid)
         return list(self._iter_search_datasets(query))
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
