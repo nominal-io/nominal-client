@@ -197,21 +197,13 @@ class ContainerizedExtractor(HasRid):
     """Containerized extractor which can be used to parse custom data formats into Nominal using docker images."""
 
     rid: str
-
     name: str
-
     description: str | None
-
     image: DockerImageSource
-
     inputs: Sequence[FileExtractionInput]
-
     properties: Mapping[str, str]
-
     labels: Sequence[str]
-
     timestamp_metadata: TimestampMetadata
-
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
