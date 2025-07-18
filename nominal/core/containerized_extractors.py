@@ -116,13 +116,9 @@ class TagDetails:
 @dataclass(frozen=True)
 class DockerImageSource:
     registry: str
-
     repository: str
-
     tag_details: TagDetails
-
     authentication: UserPassAuth | None
-
     command: str | None
 
     @classmethod
