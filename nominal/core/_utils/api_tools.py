@@ -4,9 +4,9 @@ import importlib.metadata
 import logging
 import platform
 import sys
-from typing import Protocol, Sequence, TypeVar, runtime_checkable
+from typing import Mapping, Protocol, Sequence, TypeVar, runtime_checkable
 
-from nominal_api import scout_run_api
+from nominal_api import scout_compute_api, scout_run_api
 from typing_extensions import TypeAlias
 
 from nominal.core.stream import BatchItem
@@ -63,3 +63,10 @@ def create_links(links: Sequence[str] | Sequence[Link]) -> list[scout_run_api.Li
         else:
             links_conjure.append(scout_run_api.Link(url=link))
     return links_conjure
+
+
+def create_api_tags(tags: Mapping[str, str] | None = None) -> dict[str, scout_compute_api.StringConstant]:
+    if not tags:
+        return {}
+
+    return {key: scout_compute_api.StringConstant(literal=value) for key, value in tags.items()}

@@ -10,7 +10,9 @@ from nominal_api import (
     ingest_api,
     scout_asset_api,
     scout_checks_api,
+    scout_notebook_api,
     scout_run_api,
+    scout_template_api,
     secrets_api,
 )
 
@@ -165,3 +167,73 @@ def create_search_runs_query(
             queries.append(scout_run_api.SearchQuery(property=api.Property(name=name, value=value)))
 
     return scout_run_api.SearchQuery(and_=queries)
+
+
+def create_search_workbooks_query(
+    exact_match: str | None = None,
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    asset_rid: str | None = None,
+    exact_asset_rids: Sequence[str] | None = None,
+    author_rid: str | None = None,
+    run_rid: str | None = None,
+) -> scout_notebook_api.SearchNotebooksQuery:
+    queries = []
+
+    if exact_match is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(exact_match=exact_match))
+
+    if search_text is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(search_text=search_text))
+
+    if asset_rid is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(asset_rid=asset_rid))
+
+    if exact_asset_rids is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(exact_asset_rids=[*exact_asset_rids]))
+
+    if author_rid is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(author_rid=author_rid))
+
+    if run_rid is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(run_rid=run_rid))
+
+    if labels:
+        for label in labels:
+            queries.append(scout_notebook_api.SearchNotebooksQuery(label=label))
+
+    if properties:
+        for key, value in properties.items():
+            queries.append(scout_notebook_api.SearchNotebooksQuery(property=api.Property(key, value)))
+
+    return scout_notebook_api.SearchNotebooksQuery(and_=queries)
+
+
+def create_search_workbook_templates_query(
+    exact_match: str | None = None,
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    created_by: str | None = None,
+) -> scout_template_api.SearchTemplatesQuery:
+    queries = []
+
+    if exact_match is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(exact_match=exact_match))
+
+    if search_text is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(search_text=search_text))
+
+    if created_by is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(created_by=created_by))
+
+    if labels:
+        for label in labels:
+            queries.append(scout_template_api.SearchTemplatesQuery(label=label))
+
+    if properties:
+        for key, value in properties.items():
+            queries.append(scout_template_api.SearchTemplatesQuery(property=api.Property(key, value)))
+
+    return scout_template_api.SearchTemplatesQuery(and_=queries)

@@ -9,13 +9,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
-from nominal_api import api, datasource_api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self, TypeAlias
 
-from nominal._utils import deprecate_arguments, update_dataclass
+from nominal._utils import update_dataclass
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core.bounds import Bounds
-from nominal.core.channel import Channel
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
@@ -360,58 +359,6 @@ class Dataset(DataSource):
             _clients=clients,
         )
 
-    @deprecate_arguments(
-        deprecated_args=["exact_match", "fuzzy_search_text"],
-        new_kwarg="names",
-        new_method=DataSource.get_channels,
-    )
-    def get_channels(
-        self,
-        exact_match: Sequence[str] = (),
-        fuzzy_search_text: str = "",
-        *,
-        names: Iterable[str] | None = None,
-    ) -> Iterable[Channel]:
-        """Look up the metadata for all matching channels associated with this dataset.
-
-        Args:
-        ----
-            exact_match: Filter the returned channels to those whose names match all provided strings
-                (case insensitive).
-                For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
-                whereas a channel named 'engine_turbine_flowrate' would not!
-            fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
-            names: List of channel names to look up metadata for. This parameter is preferred over
-                exact_match and fuzzy_search_text, which are deprecated.
-
-        Yields:
-        ------
-            Yields a sequence of channel metadata objects which match the provided query parameters
-
-        """
-        next_page_token = None
-        while True:
-            query = datasource_api.SearchChannelsRequest(
-                data_sources=[self.rid],
-                exact_match=list(exact_match),
-                fuzzy_search_text=fuzzy_search_text,
-                previously_selected_channels={},
-                next_page_token=next_page_token,
-                page_size=None,
-                prefix=None,
-            )
-            response = self._clients.datasource.search_channels(self._clients.auth_header, query)
-            for channel_metadata in response.results:
-                # Skip series archetypes for now-- they aren't handled by the rest of the SDK in a graceful manner
-                if channel_metadata.series_rid.logical_series is None:
-                    continue
-                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
-
-            if response.next_page_token is None:
-                break
-            else:
-                next_page_token = response.next_page_token
-
     def _list_files(self) -> Iterable[scout_catalog.DatasetFile]:
         next_page_token = None
         while True:
@@ -430,7 +377,7 @@ class Dataset(DataSource):
         if successful_only:
             files = filter(lambda f: f.ingest_status.type == "success", files)
         for file in files:
-            yield DatasetFile._from_conjure(file)
+            yield DatasetFile._from_conjure(self._clients, file)
 
     def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
         r"""Stream logs to the datasource.

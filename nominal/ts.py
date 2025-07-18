@@ -419,6 +419,9 @@ _str_to_type: Mapping[_LiteralAbsolute, Iso8601 | Epoch | Relative] = MappingPro
     }
 )
 
+_InferrableTimestampType: TypeAlias = Union[str, datetime, IntegralNanosecondsUTC]
+"""Timestamp types that can be converted to a _SecondsNanos using flexible deduction"""
+
 
 class _SecondsNanos(NamedTuple):
     """A simple internal timestamp representation that can be converted to/from various formats.
@@ -477,7 +480,7 @@ class _SecondsNanos(NamedTuple):
         return cls(seconds, nanos)
 
     @classmethod
-    def from_flexible(cls, ts: str | datetime | IntegralNanosecondsUTC) -> Self:
+    def from_flexible(cls, ts: _InferrableTimestampType) -> Self:
         if isinstance(ts, int):
             return cls.from_nanoseconds(ts)
         if isinstance(ts, str):

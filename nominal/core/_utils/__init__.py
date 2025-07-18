@@ -3,6 +3,7 @@ from nominal.core._utils.api_tools import (
     Link,
     _to_api_batch_key,
     construct_user_agent_string,
+    create_api_tags,
     create_links,
     rid_from_instance_or_string,
 )
@@ -16,6 +17,8 @@ from nominal.core._utils.pagination_tools import (
     search_runs_paginated,
     search_secrets_paginated,
     search_users_paginated,
+    search_workbook_templates_paginated,
+    search_workbooks_paginated,
 )
 from nominal.core._utils.query_tools import (
     create_search_assets_query,
@@ -24,11 +27,14 @@ from nominal.core._utils.query_tools import (
     create_search_runs_query,
     create_search_secrets_query,
     create_search_users_query,
+    create_search_workbook_templates_query,
+    create_search_workbooks_query,
 )
 
 __all__ = [
     "_to_api_batch_key",
     "construct_user_agent_string",
+    "create_api_tags",
     "create_links",
     "create_search_assets_query",
     "create_search_checklists_query",
@@ -36,6 +42,8 @@ __all__ = [
     "create_search_runs_query",
     "create_search_secrets_query",
     "create_search_users_query",
+    "create_search_workbook_templates_query",
+    "create_search_workbooks_query",
     "HasRid",
     "Link",
     "list_streaming_checklists_for_asset_paginated",
@@ -48,4 +56,6 @@ __all__ = [
     "search_runs_paginated",
     "search_secrets_paginated",
     "search_users_paginated",
+    "search_workbook_templates_paginated",
+    "search_workbooks_paginated",
 ]

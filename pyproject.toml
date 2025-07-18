@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.65.0"
+version = "1.66.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -35,6 +35,8 @@ dependencies = [
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
     "nominal-api==0.708.0",
+    "cachetools>=6.1.0",
+    "types-cachetools>=6.0.0.20250525",
 ]
 
 

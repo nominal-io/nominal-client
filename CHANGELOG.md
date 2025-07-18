@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.66.0](https://github.com/nominal-io/nominal-client/compare/v1.65.0...v1.66.0) (2025-07-14)
+
+
+### Features
+
+* add nominal log handler for pythonically uploading logs to nominal ([#410](https://github.com/nominal-io/nominal-client/issues/410)) ([aee908d](https://github.com/nominal-io/nominal-client/commit/aee908d274964c1774fceb3e6234a97bb046f844))
+* export logs from log channels, and allow searching for channels of a given type(s) ([#405](https://github.com/nominal-io/nominal-client/issues/405)) ([877c736](https://github.com/nominal-io/nominal-client/commit/877c7365dc64aa4ef867e9b074eefbc970b5b3cf))
+* expose workbooks and workbook templates more fully ([#407](https://github.com/nominal-io/nominal-client/issues/407)) ([6bfb75a](https://github.com/nominal-io/nominal-client/commit/6bfb75a1d3660edd3cab16e15ab813a267575f50))
+
+
+### Bug Fixes
+
+* pagination in search users would infinitely loop with sufficient user count ([78ae4b9](https://github.com/nominal-io/nominal-client/commit/78ae4b905bf675599bad715793d031502bf5d877))
+
 ## [1.65.0](https://github.com/nominal-io/nominal-client/compare/v1.64.0...v1.65.0) (2025-07-03)
 
 

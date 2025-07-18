@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Iterable, Literal, Protocol, Sequence
+from typing import Iterable, Literal, Mapping, Protocol, Sequence
 
 from nominal_api import (
     api,
@@ -22,7 +22,7 @@ from nominal_api import (
     upload_api,
 )
 
-from nominal._utils import batched, warn_on_deprecated_argument
+from nominal._utils import batched
 from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._utils import HasRid
@@ -64,10 +64,7 @@ class DataSource(HasRid):
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
 
-    @warn_on_deprecated_argument(
-        "tags", "The 'tags' argument is deprecated because it's not used and will be removed in a future version."
-    )
-    def get_channel(self, name: str, tags: dict[str, str] | None = None) -> Channel:
+    def get_channel(self, name: str) -> Channel:
         for channel in self.get_channels(names=[name]):
             if channel.name == name:
                 return channel
@@ -146,6 +143,8 @@ class DataSource(HasRid):
         self,
         exact_match: Sequence[str] = (),
         fuzzy_search_text: str = "",
+        *,
+        data_types: Sequence[ChannelDataType] | None = None,
     ) -> Iterable[Channel]:
         """Look up channels associated with a datasource.
 
@@ -153,10 +152,12 @@ class DataSource(HasRid):
             exact_match: Filter the returned channels to those whose names match all provided strings
                 (case insensitive).
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
+            data_types: Filter the returned channels to those that match any of the provided types
 
         Yields:
             Channel objects for each matching channel
         """
+        allowable_types = set(data_types) if data_types else None
         next_page_token = None
         while True:
             query = datasource_api.SearchChannelsRequest(
@@ -170,6 +171,17 @@ class DataSource(HasRid):
             )
             response = self._clients.datasource.search_channels(self._clients.auth_header, query)
             for channel_metadata in response.results:
+                # If user provided a set of datatypes to filter on, ensure the channel has the right type
+                # TODO (drake): move this into the backend
+                if allowable_types is not None:
+                    data_type = (
+                        ChannelDataType._from_conjure(channel_metadata.data_type)
+                        if channel_metadata.data_type
+                        else None
+                    )
+                    if data_type not in allowable_types:
+                        continue
+
                 yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
             if response.next_page_token is None:
                 break
@@ -241,58 +253,14 @@ class DataSource(HasRid):
 
 def _construct_export_request(
     channels: Sequence[Channel],
-    datasource_rid: str,
     start: api.Timestamp,
     end: api.Timestamp,
-    tags: dict[str, str] | None,
+    tags: Mapping[str, str] | None,
     enable_gzip: bool,
     relative_to: datetime | IntegralNanosecondsUTC | None = None,
     relative_resolution: _LiteralTimeUnit = "nanoseconds",
 ) -> scout_dataexport_api.ExportDataRequest:
-    export_channels = []
-
-    converted_tags = {}
-    if tags:
-        for key, value in tags.items():
-            converted_tags[key] = scout_compute_api.StringConstant(literal=value)
-    for channel in channels:
-        if channel.data_type == ChannelDataType.DOUBLE:
-            export_channels.append(
-                scout_dataexport_api.TimeDomainChannel(
-                    column_name=channel.name,
-                    compute_node=scout_compute_api.Series(
-                        numeric=scout_compute_api.NumericSeries(
-                            channel=scout_compute_api.ChannelSeries(
-                                data_source=scout_compute_api.DataSourceChannel(
-                                    channel=scout_compute_api.StringConstant(literal=channel.name),
-                                    data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
-                                    tags=converted_tags,
-                                    tags_to_group_by=[],
-                                )
-                            )
-                        )
-                    ),
-                )
-            )
-        elif channel.data_type == ChannelDataType.STRING:
-            export_channels.append(
-                scout_dataexport_api.TimeDomainChannel(
-                    column_name=channel.name,
-                    compute_node=scout_compute_api.Series(
-                        enum=scout_compute_api.EnumSeries(
-                            channel=scout_compute_api.ChannelSeries(
-                                data_source=scout_compute_api.DataSourceChannel(
-                                    channel=scout_compute_api.StringConstant(literal=channel.name),
-                                    data_source_rid=scout_compute_api.StringConstant(literal=datasource_rid),
-                                    tags=converted_tags,
-                                    tags_to_group_by=[],
-                                )
-                            )
-                        )
-                    ),
-                )
-            )
-
+    export_channels = [channel._to_time_domain_channel(tags=tags) for channel in channels]
     request = scout_dataexport_api.ExportDataRequest(
         channels=scout_dataexport_api.ExportChannels(
             time_domain=scout_dataexport_api.ExportTimeDomainChannels(
