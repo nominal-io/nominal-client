@@ -8,6 +8,7 @@ from nominal_api import (
     authentication_api,
     event,
     scout_asset_api,
+    scout_catalog,
     scout_checks_api,
     scout_notebook_api,
     scout_run_api,
@@ -83,6 +84,50 @@ def create_search_checklists_query(
             queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
 
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
+
+
+def create_search_datasets_query(
+    exact_match: str | None = None,
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    ingested_before_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
+    ingested_after_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
+    workspace_id: str | None = None,
+) -> scout_catalog.SearchDatasetsQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(scout_catalog.SearchDatasetsQuery(search_text=search_text))
+
+    if exact_match is not None:
+        queries.append(scout_catalog.SearchDatasetsQuery(exact_match=exact_match))
+
+    if labels is not None:
+        for label in labels:
+            queries.append(scout_catalog.SearchDatasetsQuery(label=label))
+
+    if properties is not None:
+        for prop_key, prop_value in properties.items():
+            queries.append(scout_catalog.SearchDatasetsQuery(properties=api.Property(prop_key, prop_value)))
+
+    if ingested_before_inclusive is not None:
+        queries.append(
+            scout_catalog.SearchDatasetsQuery(
+                ingested_before_inclusive=_SecondsNanos.from_flexible(ingested_before_inclusive).to_iso8601()
+            )
+        )
+
+    if ingested_after_inclusive is not None:
+        queries.append(
+            scout_catalog.SearchDatasetsQuery(
+                ingested_after_inclusive=_SecondsNanos.from_flexible(ingested_after_inclusive).to_iso8601()
+            )
+        )
+
+    if workspace_id is not None:
+        queries.append(scout_catalog.SearchDatasetsQuery(workspace=workspace_id))
+
+    return scout_catalog.SearchDatasetsQuery(and_=queries)
 
 
 def create_search_events_query(

@@ -9,6 +9,7 @@ from nominal_api import (
     scout,
     scout_asset_api,
     scout_assets,
+    scout_catalog,
     scout_checklistexecution_api,
     scout_checks_api,
     scout_datareview_api,
@@ -42,6 +43,24 @@ def search_events_paginated(
         )
 
     for response in paginate_rpc(client.search_events, auth_header, request_factory=factory):
+        yield from response.results
+
+
+def search_datasets_paginated(
+    client: scout_catalog.CatalogService, auth_header: str, query: scout_catalog.SearchDatasetsQuery
+) -> Iterable[scout_catalog.EnrichedDataset]:
+    def factory(page_token: str | None) -> scout_catalog.SearchDatasetsRequest:
+        return scout_catalog.SearchDatasetsRequest(
+            page_size=DEFAULT_PAGE_SIZE,
+            query=query,
+            sort_options=scout_catalog.SortOptions(
+                field=scout_catalog.SortField.INGEST_DATE,
+                is_descending=True,
+            ),
+            token=page_token,
+        )
+
+    for response in paginate_rpc(client.search_datasets, auth_header, request_factory=factory):
         yield from response.results
 
 

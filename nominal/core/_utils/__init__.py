@@ -13,6 +13,7 @@ from nominal.core._utils.pagination_tools import (
     search_assets_paginated,
     search_checklists_paginated,
     search_data_reviews_paginated,
+    search_datasets_paginated,
     search_events_paginated,
     search_runs_paginated,
     search_secrets_paginated,
@@ -23,6 +24,7 @@ from nominal.core._utils.pagination_tools import (
 from nominal.core._utils.query_tools import (
     create_search_assets_query,
     create_search_checklists_query,
+    create_search_datasets_query,
     create_search_events_query,
     create_search_runs_query,
     create_search_secrets_query,
@@ -58,4 +60,6 @@ __all__ = [
     "search_users_paginated",
     "search_workbook_templates_paginated",
     "search_workbooks_paginated",
+    "create_search_datasets_query",
+    "search_datasets_paginated",
 ]
