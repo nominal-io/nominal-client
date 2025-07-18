@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.67.0](https://github.com/nominal-io/nominal-client/compare/v1.66.0...v1.67.0) (2025-07-18)
+
+
+### Features
+
+* allow downloading dataset files ([#411](https://github.com/nominal-io/nominal-client/issues/411)) ([c80c95a](https://github.com/nominal-io/nominal-client/commit/c80c95aaee2bf5e692a339e7151fcc5c3c3c2b89))
+* allow searching datasets ([#413](https://github.com/nominal-io/nominal-client/issues/413)) ([f854c49](https://github.com/nominal-io/nominal-client/commit/f854c498dcd3fe70aeaa0fd93a7105ebba78e5b8))
+
 ## [1.66.0](https://github.com/nominal-io/nominal-client/compare/v1.65.0...v1.66.0) (2025-07-14)
 
 
