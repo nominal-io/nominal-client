@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "normalize_video",
-    "check_gpu_acceleration", 
+    "check_gpu_acceleration",
     "frame_count",
     "has_audio_track",
     "get_video_rotation",
@@ -33,19 +33,22 @@ DEFAULT_AUDIO_CODEC = "aac"
 DEFAULT_PIXEL_FORMAT = "yuv420p"
 DEFAULT_KEY_FRAME_INTERVAL_SEC = 2
 
+
 # Hardware acceleration codec mappings
 class GPUAcceleration(Enum):
     """Supported GPU acceleration types."""
+
     NONE = "none"
     NVIDIA = "nvidia"  # NVENC
-    INTEL = "intel"    # Quick Sync Video
-    AMD = "amd"        # AMF
-    APPLE = "apple"    # VideoToolbox (Apple Silicon/Intel)
+    INTEL = "intel"  # Quick Sync Video
+    AMD = "amd"  # AMF
+    APPLE = "apple"  # VideoToolbox (Apple Silicon/Intel)
+
 
 # GPU codec mappings
 GPU_CODEC_MAP = {
     GPUAcceleration.NVIDIA: "h264_nvenc",
-    GPUAcceleration.INTEL: "h264_qsv", 
+    GPUAcceleration.INTEL: "h264_qsv",
     GPUAcceleration.AMD: "h264_amf",
     GPUAcceleration.APPLE: "h264_videotoolbox",
 }
@@ -58,16 +61,17 @@ GPU_PRESET_MAP = {
     GPUAcceleration.APPLE: ["veryslow", "slower", "slow", "medium", "fast", "faster", "veryfast"],
 }
 
+
 def _get_available_gpu_acceleration() -> list[GPUAcceleration]:
     """Detect available GPU acceleration options on the system.
-    
-    This function checks if ffmpeg has been compiled with support for various 
+
+    This function checks if ffmpeg has been compiled with support for various
     hardware acceleration encoders by parsing the output of `ffmpeg -encoders`.
-    
+
     Returns:
         List of available GPU acceleration types, ordered by preference.
         Empty list if no GPU acceleration is available.
-    
+
     Examples:
         >>> available = check_gpu_acceleration(verbose=False)
         >>> if available:
@@ -75,23 +79,18 @@ def _get_available_gpu_acceleration() -> list[GPUAcceleration]:
         ... else:
         ...     print("No GPU acceleration available")
     """
-    available = []
-    
+    available: list[GPUAcceleration] = []
+
     try:
         # Get list of available encoders from ffmpeg
-        result = subprocess.run(
-            ["ffmpeg", "-encoders"],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        
+        result = subprocess.run(["ffmpeg", "-encoders"], capture_output=True, text=True, timeout=10)
+
         if result.returncode != 0:
             logger.warning("ffmpeg command failed, cannot detect GPU acceleration")
             return available
-            
+
         encoders_output = result.stdout + result.stderr
-        
+
         # Check for specific hardware encoders (order matters for preference)
         if "h264_nvenc" in encoders_output:
             available.append(GPUAcceleration.NVIDIA)
@@ -101,28 +100,28 @@ def _get_available_gpu_acceleration() -> list[GPUAcceleration]:
             available.append(GPUAcceleration.AMD)
         if "h264_videotoolbox" in encoders_output:
             available.append(GPUAcceleration.APPLE)
-            
+
     except subprocess.TimeoutExpired:
         logger.warning("ffmpeg command timed out while detecting GPU encoders")
     except FileNotFoundError:
         logger.warning("ffmpeg not found in PATH, cannot detect GPU acceleration")
     except Exception as e:
         logger.warning(f"Could not detect available GPU encoders: {e}")
-    
+
     return available
 
 
 def check_gpu_acceleration(verbose: bool = True) -> list[GPUAcceleration]:
     """Check and optionally print available GPU acceleration options on this system.
-    
+
     Args:
         verbose: If True, prints the results to stdout. If False, just returns the list.
-        
+
     Returns:
         List of available GPU acceleration types.
     """
     available = _get_available_gpu_acceleration()
-    
+
     if verbose:
         if not available:
             print("No GPU acceleration available. CPU encoding will be used.")
@@ -135,9 +134,9 @@ def check_gpu_acceleration(verbose: bool = True) -> list[GPUAcceleration]:
             for gpu in available:
                 codec = GPU_CODEC_MAP.get(gpu, "unknown")
                 print(f"  - {gpu.value}: {codec}")
-            
+
             print(f"\nRecommended usage: gpu_acceleration='{available[0].value}'")
-    
+
     return available
 
 
@@ -177,7 +176,7 @@ def normalize_video(
                   "best of both worlds" as a reasonable default value.
         force: If true, forcibly delete existing output path if already exists.
         resolution: If provided, re-scale the video to the provided resolution.
-        gpu_acceleration: Type of GPU acceleration to use. Can be GPUAcceleration enum, 
+        gpu_acceleration: Type of GPU acceleration to use. Can be GPUAcceleration enum,
             string ("nvidia", "intel", "amd", "apple"), or None for CPU encoding.
             If "auto", will automatically detect and use the best available option.
         gpu_preset: Encoding preset for GPU acceleration. Options vary by GPU:
@@ -191,27 +190,27 @@ def normalize_video(
 
     NOTE: this requires that you have ffmpeg installed on your system with support for H264.
           For GPU acceleration, you need appropriate drivers and ffmpeg compiled with hardware support.
-    
+
     Examples:
         # Basic CPU encoding (original behavior)
         normalize_video(input_path, output_path)
-        
+
         # Auto-detect and use best available GPU acceleration
         normalize_video(input_path, output_path, gpu_acceleration="auto")
-        
+
         # Explicitly use NVIDIA GPU acceleration with letterboxing
         normalize_video(input_path, output_path, resolution="1080p", gpu_acceleration="nvidia", gpu_preset="fast")
-        
+
         # Process vertical video with letterboxing to fit horizontal resolution
         normalize_video(input_path, output_path, resolution="1080p", preserve_aspect_ratio=True)
-        
+
         # Stretch video to exact resolution (may distort)
         normalize_video(input_path, output_path, resolution="1080p", preserve_aspect_ratio=False)
-        
+
         # Check what GPU options are available
         from nominal.experimental.video_processing.video_conversion import check_gpu_acceleration
         available_gpus = check_gpu_acceleration()  # Prints options and returns list
-        
+
         # Check video rotation metadata (for information only)
         from nominal.experimental.video_processing.video_conversion import get_video_rotation
         rotation = get_video_rotation(input_path)
@@ -230,7 +229,7 @@ def normalize_video(
     # Determine video codec based on GPU acceleration preference
     video_codec = DEFAULT_VIDEO_CODEC
     additional_args = {}
-    
+
     if gpu_acceleration:
         if isinstance(gpu_acceleration, str):
             if gpu_acceleration == "auto":
@@ -249,42 +248,54 @@ def normalize_video(
                 except ValueError as e:
                     valid_options = [gpu.value for gpu in GPUAcceleration]
                     logger.error(f"Invalid GPU acceleration type: {gpu_acceleration}. Valid options: {valid_options}")
-                    raise ValueError(f"Unsupported GPU acceleration: {gpu_acceleration}. Valid options: {valid_options}") from e
-        
+                    raise ValueError(
+                        f"Unsupported GPU acceleration: {gpu_acceleration}. Valid options: {valid_options}"
+                    ) from e
+
         if gpu_acceleration and gpu_acceleration != GPUAcceleration.NONE:
             if gpu_acceleration in GPU_CODEC_MAP:
                 video_codec = GPU_CODEC_MAP[gpu_acceleration]
                 logger.info(f"Using GPU acceleration: {gpu_acceleration.value} with codec {video_codec}")
-                
+
                 # Validate preset for this GPU type
                 valid_presets = GPU_PRESET_MAP.get(gpu_acceleration, [])
                 if valid_presets and gpu_preset not in valid_presets:
-                    logger.warning(f"Preset '{gpu_preset}' not in recommended presets for {gpu_acceleration.value}: {valid_presets}. Using anyway.")
-                
+                    logger.warning(
+                        f"Preset '{gpu_preset}' not in recommended presets for {gpu_acceleration.value}: {valid_presets}. Using anyway."
+                    )
+
                 # Add GPU-specific encoding parameters
                 if gpu_acceleration == GPUAcceleration.NVIDIA:
-                    additional_args.update({
-                        "preset": gpu_preset,
-                        "rc": "vbr",  # Variable bitrate
-                        "cq": "23",   # Constant quality (similar to CRF)
-                    })
+                    additional_args.update(
+                        {
+                            "preset": gpu_preset,
+                            "rc": "vbr",  # Variable bitrate
+                            "cq": "23",  # Constant quality (similar to CRF)
+                        }
+                    )
                 elif gpu_acceleration == GPUAcceleration.INTEL:
-                    additional_args.update({
-                        "preset": gpu_preset,
-                        "global_quality": "23",
-                    })
+                    additional_args.update(
+                        {
+                            "preset": gpu_preset,
+                            "global_quality": "23",
+                        }
+                    )
                 elif gpu_acceleration == GPUAcceleration.AMD:
-                    additional_args.update({
-                        "quality": gpu_preset,
-                        "rc": "cqp",  # Constant quantization parameter
-                        "qp_i": "23",
-                        "qp_p": "23",
-                    })
+                    additional_args.update(
+                        {
+                            "quality": gpu_preset,
+                            "rc": "cqp",  # Constant quantization parameter
+                            "qp_i": "23",
+                            "qp_p": "23",
+                        }
+                    )
                 elif gpu_acceleration == GPUAcceleration.APPLE:
-                    additional_args.update({
-                        "preset": gpu_preset,
-                        "q:v": "23",  # Quality level
-                    })
+                    additional_args.update(
+                        {
+                            "preset": gpu_preset,
+                            "q:v": "23",  # Quality level
+                        }
+                    )
             else:
                 logger.warning(f"GPU acceleration {gpu_acceleration.value} not supported, using CPU encoding")
                 gpu_acceleration = None
@@ -298,7 +309,7 @@ def normalize_video(
         vcodec=video_codec,
         force_key_frames="source",
         pix_fmt=DEFAULT_PIXEL_FORMAT,
-        **additional_args
+        **additional_args,
     )
 
     # If user has opted out of forcing key-frames, keep key frames at the same timestamps as
@@ -319,7 +330,7 @@ def normalize_video(
             # Stretch to exact resolution (may distort aspect ratio)
             video_filter = scale_factor_from_resolution(resolution)
             logger.info("Scaling without preserving aspect ratio")
-        
+
         output_kwargs["vf"] = video_filter
 
     # Run ffmpeg in subprocess
@@ -361,13 +372,13 @@ def frame_count(video_path: pathlib.Path) -> int:
 
 def _get_resolution_dimensions(resolution: AnyResolutionType) -> tuple[int, int]:
     """Get width and height from resolution parameter.
-    
+
     Args:
         resolution: Resolution specifier or VideoResolution object.
-        
+
     Returns:
         Tuple of (width, height) in pixels.
-        
+
     Raises:
         ValueError: If resolution cannot be determined.
     """
@@ -378,57 +389,69 @@ def _get_resolution_dimensions(resolution: AnyResolutionType) -> tuple[int, int]
         res_obj = _resolution_from_specifier(resolution)
         width = res_obj.resolution_width
         height = res_obj.resolution_height
-    
+
     if width is None or height is None:
         raise ValueError(f"Cannot determine target dimensions from resolution: {resolution}")
-    
+
     return width, height
 
 
 def _build_letterbox_filter(target_width: int, target_height: int) -> str:
     """Build ffmpeg filter for letterboxing video to exact target resolution.
-    
+
     This scales the video to fit within the target resolution while maintaining
     aspect ratio, then adds padding (letterboxing/pillarboxing) to reach the
     exact target dimensions.
-    
+
     Args:
         target_width: Target width in pixels.
         target_height: Target height in pixels.
-        
+
     Returns:
         FFmpeg video filter string.
     """
     # Scale to fit within target resolution, maintaining aspect ratio
     scale_filter = f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease"
-    
+
     # Add padding to reach exact target resolution
     # (ow-iw)/2 centers horizontally, (oh-ih)/2 centers vertically
     pad_filter = f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black"
-    
+
     return f"{scale_filter},{pad_filter}"
 
 
 def get_video_rotation(video_path: pathlib.Path) -> int:
     """Get the rotation angle of a video file from its metadata.
-    
+
     Args:
         video_path: Path to the video file.
-        
+
     Returns:
         Rotation angle in degrees (0, 90, 180, or 270).
         Returns 0 if no rotation metadata is found.
     """
     assert video_path.exists()
-    
+
     try:
         # Use ffprobe to get rotation information
-        result = subprocess.run([
-            "ffprobe", "-v", "quiet", "-select_streams", "v:0", 
-            "-show_entries", "stream_side_data=rotation", 
-            "-of", "csv=p=0", str(video_path)
-        ], capture_output=True, text=True, timeout=10)
-        
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream_side_data=rotation",
+                "-of",
+                "csv=p=0",
+                str(video_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
         if result.returncode == 0 and result.stdout.strip():
             rotation = float(result.stdout.strip())
             # Normalize rotation to 0, 90, 180, 270
@@ -436,10 +459,10 @@ def get_video_rotation(video_path: pathlib.Path) -> int:
             if rotation < 0:
                 rotation += 360
             return rotation
-            
+
         # Fallback: try to get rotation from stream metadata using ffmpeg-python
         probe_output = ffmpeg.probe(str(video_path))
-        
+
         if "streams" in probe_output:
             for stream in probe_output["streams"]:
                 if stream.get("codec_type") == "video":
@@ -450,7 +473,7 @@ def get_video_rotation(video_path: pathlib.Path) -> int:
                         if rotation < 0:
                             rotation += 360
                         return rotation
-                    
+
                     # Check side data for displaymatrix
                     side_data = stream.get("side_data_list", [])
                     for data in side_data:
@@ -459,10 +482,10 @@ def get_video_rotation(video_path: pathlib.Path) -> int:
                             if rotation < 0:
                                 rotation += 360
                             return rotation
-                            
+
     except Exception as e:
         logger.warning(f"Could not determine video rotation: {e}")
-        
+
     return 0
 
 
