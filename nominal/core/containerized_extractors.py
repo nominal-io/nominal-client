@@ -100,7 +100,6 @@ class TagDetails:
     """
 
     tags: Sequence[str]
-
     default_tag: str
 
     @classmethod
