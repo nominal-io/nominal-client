@@ -21,6 +21,21 @@ from nominal.experimental.video_processing.video_conversion import (
 )
 
 
+def format_duration(seconds: float) -> str:
+    """Format duration in a human-readable way."""
+    if seconds < 60:
+        return f"{seconds:.1f} seconds"
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        remaining_seconds = seconds % 60
+        return f"{minutes}m {remaining_seconds:.1f}s"
+    else:
+        hours = int(seconds // 3600)
+        remaining_minutes = int((seconds % 3600) // 60)
+        remaining_seconds = seconds % 60
+        return f"{hours}h {remaining_minutes}m {remaining_seconds:.1f}s"
+
+
 @click.group(name="video")
 def video_cmd() -> None:
     """Video processing and conversion commands."""
@@ -174,20 +189,6 @@ def convert_video(
         # End timing
         end_time = time.time()
         duration = end_time - start_time
-
-        # Format duration in a human-readable way
-        def format_duration(seconds: float) -> str:
-            if seconds < 60:
-                return f"{seconds:.1f} seconds"
-            elif seconds < 3600:
-                minutes = int(seconds // 60)
-                remaining_seconds = seconds % 60
-                return f"{minutes}m {remaining_seconds:.1f}s"
-            else:
-                hours = int(seconds // 3600)
-                remaining_minutes = int((seconds % 3600) // 60)
-                remaining_seconds = seconds % 60
-                return f"{hours}h {remaining_minutes}m {remaining_seconds:.1f}s"
 
         # Show results
         input_size = input_path.stat().st_size / (1024 * 1024)

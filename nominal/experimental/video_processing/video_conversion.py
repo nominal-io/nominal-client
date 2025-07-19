@@ -25,6 +25,7 @@ __all__ = [
     "get_video_rotation",
     "GPUAcceleration",
     "GPU_CODEC_MAP",
+    "GPU_CONFIG_MAP",
     "GPU_PRESET_MAP",
 ]
 
@@ -45,12 +46,32 @@ class GPUAcceleration(Enum):
     APPLE = "apple"  # VideoToolbox (Apple Silicon/Intel)
 
 
-# GPU codec mappings
-GPU_CODEC_MAP = {
+# GPU codec mapping for different acceleration types
+GPU_CODEC_MAP: dict[GPUAcceleration, str] = {
     GPUAcceleration.NVIDIA: "h264_nvenc",
     GPUAcceleration.INTEL: "h264_qsv",
     GPUAcceleration.AMD: "h264_amf",
     GPUAcceleration.APPLE: "h264_videotoolbox",
+}
+
+# GPU encoding parameter configurations
+GPU_CONFIG_MAP: dict[GPUAcceleration, dict[str, str]] = {
+    GPUAcceleration.NVIDIA: {
+        "rc": "vbr",  # Variable bitrate
+        "cq": "23",  # Constant quality (similar to CRF)
+    },
+    GPUAcceleration.INTEL: {
+        "global_quality": "23",
+    },
+    GPUAcceleration.AMD: {
+        "quality": "balanced",  # Default preset
+        "rc": "cqp",  # Constant quantization parameter
+        "qp_i": "23",
+        "qp_p": "23",
+    },
+    GPUAcceleration.APPLE: {
+        "q:v": "23",  # Quality level
+    },
 }
 
 # Valid presets for each GPU type
@@ -138,6 +159,76 @@ def check_gpu_acceleration(verbose: bool = True) -> list[GPUAcceleration]:
             print(f"\nRecommended usage: gpu_acceleration='{available[0].value}'")
 
     return available
+
+
+def _setup_gpu_acceleration(
+    gpu_acceleration: GPUAcceleration | str | None,
+    gpu_preset: str
+) -> tuple[str, dict[str, str]]:
+    """Setup GPU acceleration and return codec and additional arguments.
+    
+    Args:
+        gpu_acceleration: GPU acceleration type or None for CPU
+        gpu_preset: Encoding preset for GPU
+        
+    Returns:
+        Tuple of (video_codec, additional_args_dict)
+    """
+    video_codec = DEFAULT_VIDEO_CODEC
+    additional_args = {}
+
+    if not gpu_acceleration:
+        return video_codec, additional_args
+
+    # Convert string to enum if needed
+    if isinstance(gpu_acceleration, str):
+        if gpu_acceleration == "auto":
+            # Auto-detect best available GPU acceleration
+            available_gpu = _get_available_gpu_acceleration()
+            if available_gpu:
+                gpu_acceleration = available_gpu[0]  # Use first available
+                logger.info(f"Auto-detected GPU acceleration: {gpu_acceleration.value}")
+            else:
+                logger.warning("No GPU acceleration available, falling back to CPU encoding")
+                return video_codec, additional_args
+        else:
+            # Convert string to enum
+            try:
+                gpu_acceleration = GPUAcceleration(gpu_acceleration.lower())
+            except ValueError as e:
+                valid_options = [gpu.value for gpu in GPUAcceleration]
+                logger.error(f"Invalid GPU acceleration type: {gpu_acceleration}. Valid options: {valid_options}")
+                raise ValueError(
+                    f"Unsupported GPU acceleration: {gpu_acceleration}. Valid options: {valid_options}"
+                ) from e
+
+    # Skip if NONE type
+    if gpu_acceleration == GPUAcceleration.NONE:
+        return video_codec, additional_args
+
+    # Get codec and config for this GPU type
+    if gpu_acceleration in GPU_CODEC_MAP:
+        video_codec = GPU_CODEC_MAP[gpu_acceleration]
+        logger.info(f"Using GPU acceleration: {gpu_acceleration.value} with codec {video_codec}")
+
+        # Validate preset for this GPU type
+        valid_presets = GPU_PRESET_MAP.get(gpu_acceleration, [])
+        if valid_presets and gpu_preset not in valid_presets:
+            logger.warning(
+                "Preset '%s' not in recommended presets for %s: %s. Using anyway.",
+                gpu_preset,
+                gpu_acceleration.value,
+                valid_presets,
+            )
+
+        # Get base config and add preset
+        additional_args = GPU_CONFIG_MAP.get(gpu_acceleration, {}).copy()
+        additional_args["preset"] = gpu_preset
+
+    else:
+        logger.warning(f"GPU acceleration {gpu_acceleration.value} not supported, using CPU encoding")
+
+    return video_codec, additional_args
 
 
 def normalize_video(
@@ -230,78 +321,8 @@ def normalize_video(
     video_codec = DEFAULT_VIDEO_CODEC
     additional_args = {}
 
-    if gpu_acceleration:
-        if isinstance(gpu_acceleration, str):
-            if gpu_acceleration == "auto":
-                # Auto-detect best available GPU acceleration
-                available_gpu = _get_available_gpu_acceleration()
-                if available_gpu:
-                    gpu_acceleration = available_gpu[0]  # Use first available
-                    logger.info(f"Auto-detected GPU acceleration: {gpu_acceleration.value}")
-                else:
-                    logger.warning("No GPU acceleration available, falling back to CPU encoding")
-                    gpu_acceleration = None
-            else:
-                # Convert string to enum
-                try:
-                    gpu_acceleration = GPUAcceleration(gpu_acceleration.lower())
-                except ValueError as e:
-                    valid_options = [gpu.value for gpu in GPUAcceleration]
-                    logger.error(f"Invalid GPU acceleration type: {gpu_acceleration}. Valid options: {valid_options}")
-                    raise ValueError(
-                        f"Unsupported GPU acceleration: {gpu_acceleration}. Valid options: {valid_options}"
-                    ) from e
-
-        if gpu_acceleration and gpu_acceleration != GPUAcceleration.NONE:
-            if gpu_acceleration in GPU_CODEC_MAP:
-                video_codec = GPU_CODEC_MAP[gpu_acceleration]
-                logger.info(f"Using GPU acceleration: {gpu_acceleration.value} with codec {video_codec}")
-
-                # Validate preset for this GPU type
-                valid_presets = GPU_PRESET_MAP.get(gpu_acceleration, [])
-                if valid_presets and gpu_preset not in valid_presets:
-                    logger.warning(
-                        "Preset '%s' not in recommended presets for %s: %s. Using anyway.",
-                        gpu_preset,
-                        gpu_acceleration.value,
-                        valid_presets,
-                    )
-
-                # Add GPU-specific encoding parameters
-                if gpu_acceleration == GPUAcceleration.NVIDIA:
-                    additional_args.update(
-                        {
-                            "preset": gpu_preset,
-                            "rc": "vbr",  # Variable bitrate
-                            "cq": "23",  # Constant quality (similar to CRF)
-                        }
-                    )
-                elif gpu_acceleration == GPUAcceleration.INTEL:
-                    additional_args.update(
-                        {
-                            "preset": gpu_preset,
-                            "global_quality": "23",
-                        }
-                    )
-                elif gpu_acceleration == GPUAcceleration.AMD:
-                    additional_args.update(
-                        {
-                            "quality": gpu_preset,
-                            "rc": "cqp",  # Constant quantization parameter
-                            "qp_i": "23",
-                            "qp_p": "23",
-                        }
-                    )
-                elif gpu_acceleration == GPUAcceleration.APPLE:
-                    additional_args.update(
-                        {
-                            "preset": gpu_preset,
-                            "q:v": "23",  # Quality level
-                        }
-                    )
-            else:
-                logger.warning(f"GPU acceleration {gpu_acceleration.value} not supported, using CPU encoding")
-                gpu_acceleration = None
+    # Use the new helper function to set up GPU acceleration
+    video_codec, additional_args = _setup_gpu_acceleration(gpu_acceleration, gpu_preset)
 
     # Determine if input video has an audio track. If it doesn't, add in an empty audio track
     # to allow for seamless play of this video content alongside content with audio tracks.
