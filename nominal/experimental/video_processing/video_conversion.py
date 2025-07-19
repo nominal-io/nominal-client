@@ -162,15 +162,14 @@ def check_gpu_acceleration(verbose: bool = True) -> list[GPUAcceleration]:
 
 
 def _setup_gpu_acceleration(
-    gpu_acceleration: GPUAcceleration | str | None,
-    gpu_preset: str
+    gpu_acceleration: GPUAcceleration | str | None, gpu_preset: str
 ) -> tuple[str, dict[str, str]]:
     """Setup GPU acceleration and return codec and additional arguments.
-    
+
     Args:
         gpu_acceleration: GPU acceleration type or None for CPU
         gpu_preset: Encoding preset for GPU
-        
+
     Returns:
         Tuple of (video_codec, additional_args_dict)
     """

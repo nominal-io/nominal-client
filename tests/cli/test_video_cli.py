@@ -14,7 +14,7 @@ def run_command(cmd: list[str]) -> tuple[int, str, str]:
             text=True,
             timeout=60,  # Increased timeout for GPU commands
             shell=False,  # Explicit shell setting
-            cwd=None,     # Use current working directory
+            cwd=None,  # Use current working directory
         )
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
@@ -26,13 +26,10 @@ def run_command(cmd: list[str]) -> tuple[int, str, str]:
 
 
 def check_command_result(
-    cmd: list[str],
-    description: str,
-    expected_keywords: list[str],
-    allow_failure: bool = False
+    cmd: list[str], description: str, expected_keywords: list[str], allow_failure: bool = False
 ) -> bool:
     """Check if a command executes successfully and contains expected keywords.
-    
+
     Returns True if test passed, False otherwise.
     """
     print(f"Testing: {description}")
@@ -69,7 +66,7 @@ def validate_output(stdout: str, keywords: list[str]) -> bool:
 
 def test_help_commands() -> tuple[int, int]:
     """Test help commands that should always work.
-    
+
     Returns (passed_count, failed_count).
     """
     help_commands = [
@@ -98,7 +95,7 @@ def test_help_commands() -> tuple[int, int]:
 
 def test_functional_commands() -> tuple[int, int]:
     """Test functional commands that may fail in subprocess.
-    
+
     Returns (passed_count, failed_count).
     """
     functional_commands = [
@@ -124,7 +121,7 @@ def test_functional_commands() -> tuple[int, int]:
 
 def test_subcommand_help() -> tuple[int, int]:
     """Test help for all subcommands.
-    
+
     Returns (passed_count, failed_count).
     """
     print("\n🔧 Testing help for all subcommands...")
@@ -148,7 +145,7 @@ def test_subcommand_help() -> tuple[int, int]:
 
 def validate_command_structure() -> tuple[int, int]:
     """Verify that all expected commands exist in help output.
-    
+
     Returns (passed_count, failed_count).
     """
     print("\n🔍 Verifying command structure...")
