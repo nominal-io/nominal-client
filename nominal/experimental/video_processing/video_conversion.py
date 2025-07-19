@@ -174,7 +174,7 @@ def _setup_gpu_acceleration(
         Tuple of (video_codec, additional_args_dict)
     """
     video_codec = DEFAULT_VIDEO_CODEC
-    additional_args = {}
+    additional_args: dict[str, str] = {}
 
     if not gpu_acceleration:
         return video_codec, additional_args
@@ -318,7 +318,7 @@ def normalize_video(
 
     # Determine video codec based on GPU acceleration preference
     video_codec = DEFAULT_VIDEO_CODEC
-    additional_args = {}
+    additional_args: dict[str, str] = {}
 
     # Use the new helper function to set up GPU acceleration
     video_codec, additional_args = _setup_gpu_acceleration(gpu_acceleration, gpu_preset)
