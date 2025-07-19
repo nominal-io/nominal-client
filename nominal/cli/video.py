@@ -36,6 +36,116 @@ def format_duration(seconds: float) -> str:
         return f"{hours}h {remaining_minutes}m {remaining_seconds:.1f}s"
 
 
+def _determine_target_resolution(
+    resolution: Optional[str], width: Optional[int], height: Optional[int]
+) -> AnyResolutionType | None:
+    """Determine target resolution from CLI arguments."""
+    if width and height:
+        if width % 2 != 0 or height % 2 != 0:
+            raise click.BadParameter("Width and height must be even numbers")
+        return VideoResolution(resolution_width=width, resolution_height=height)
+    elif resolution:
+        return cast(ResolutionSpecifier, resolution)
+    elif width or height:
+        raise click.BadParameter("Both width and height must be specified together")
+    return None
+
+
+def _display_video_info(
+    input_path: pathlib.Path,
+    output_path: pathlib.Path,
+    target_resolution: AnyResolutionType | None,
+    preserve_aspect: bool,
+) -> tuple[int, int, bool]:
+    """Display video information and return metadata."""
+    click.echo(f"📹 Input: {input_path}")
+    click.echo(f"📁 Output: {output_path}")
+
+    # Get video info
+    rotation = get_video_rotation(input_path)
+    frames = frame_count(input_path)
+    has_audio = has_audio_track(input_path)
+
+    # Display rotation info
+    if rotation != 0:
+        click.echo(f"🔄 Rotation metadata: {rotation}° (orientation will be preserved)")
+
+    # Display resolution info
+    if target_resolution:
+        if isinstance(target_resolution, str):
+            click.echo(f"🎯 Target resolution: {target_resolution}")
+        else:
+            click.echo(
+                f"🎯 Target resolution: {target_resolution.resolution_width}x{target_resolution.resolution_height}"
+            )
+
+    click.echo(f"🎬 Frame count: {frames:,}")
+    click.echo(f"🔊 Audio track: {'Yes' if has_audio else 'No'}")
+    click.echo(f"📦 Aspect ratio: {'Preserved with letterboxing' if preserve_aspect else 'Will be stretched to fit'}")
+
+    return rotation, frames, has_audio
+
+
+def _display_gpu_info(gpu_accel: str | None, gpu: str) -> str | None:
+    """Display GPU acceleration info and return processed gpu_accel."""
+    if gpu_accel:
+        available_gpu = check_gpu_acceleration(verbose=False)
+        if available_gpu:
+            click.echo(f"🚀 GPU acceleration: {gpu}")
+            return gpu_accel
+        else:
+            click.echo("🖥️  GPU acceleration: Not available, using CPU")
+            return None
+    else:
+        click.echo("🖥️  GPU acceleration: Disabled")
+        return None
+
+
+def _display_conversion_results(
+    input_path: pathlib.Path,
+    output_path: pathlib.Path,
+    duration: float,
+    frames: int,
+    gpu_accel: str | None,
+) -> None:
+    """Display conversion results and performance metrics."""
+    # Calculate file sizes and metrics
+    input_size = input_path.stat().st_size / (1024 * 1024)
+    output_size = output_path.stat().st_size / (1024 * 1024)
+    compression_ratio = output_size / input_size
+    processing_speed = input_size / duration if duration > 0 else 0
+
+    # Display basic results
+    click.echo()
+    click.secho("✅ Conversion completed successfully!", fg="green")
+    click.echo(f"⏱️  Processing time: {format_duration(duration)}")
+    click.echo(f"🚀 Processing speed: {processing_speed:.1f} MB/s")
+    click.echo(f"📊 Input size:  {input_size:.1f} MB")
+    click.echo(f"📊 Output size: {output_size:.1f} MB")
+    click.echo(f"📊 Compression: {compression_ratio:.2f}x")
+
+    # Display frame processing rate if available
+    try:
+        if frames > 0 and duration > 0:
+            fps_processed = frames / duration
+            click.echo(f"🎬 Processing rate: {fps_processed:.0f} frames/second")
+    except (ZeroDivisionError, TypeError):
+        pass  # Skip if frame count unavailable
+
+    # Display GPU performance hint
+    if gpu_accel and processing_speed > 0:
+        estimated_cpu_time = duration * 5  # Conservative estimate
+        if estimated_cpu_time > 60:
+            time_saved = format_duration(estimated_cpu_time - duration)
+            click.secho(f"💡 GPU acceleration likely saved ~{time_saved} vs CPU encoding", fg="cyan")
+
+    # Display compression feedback
+    if compression_ratio > 1.2:
+        click.secho("ℹ️  Output is larger than input - consider adjusting quality settings", fg="yellow")
+    elif compression_ratio < 0.3:
+        click.secho("ℹ️  High compression achieved - verify quality is acceptable", fg="cyan")
+
+
 @click.group(name="video")
 def video_cmd() -> None:
     """Video processing and conversion commands."""
@@ -116,55 +226,16 @@ def convert_video(
         raise click.BadParameter("Output file must have .mp4 or .mkv extension")
 
     # Determine resolution
-    target_resolution: AnyResolutionType | None = None
-    if width and height:
-        if width % 2 != 0 or height % 2 != 0:
-            raise click.BadParameter("Width and height must be even numbers")
-        target_resolution = VideoResolution(resolution_width=width, resolution_height=height)
-    elif resolution:
-        target_resolution = cast(ResolutionSpecifier, resolution)
-    elif width or height:
-        raise click.BadParameter("Both width and height must be specified together")
+    target_resolution: AnyResolutionType | None = _determine_target_resolution(resolution, width, height)
 
     # Convert GPU string to enum or None
     gpu_accel = None if gpu == "none" else gpu
 
-    # Show video info before conversion
-    click.echo(f"📹 Input: {input_path}")
-    click.echo(f"📁 Output: {output_path}")
+    # Show video info and get metadata
+    rotation, frames, has_audio = _display_video_info(input_path, output_path, target_resolution, preserve_aspect)
 
-    # Get video info
-    rotation = get_video_rotation(input_path)
-    frames = frame_count(input_path)
-    has_audio = has_audio_track(input_path)
-
-    if rotation != 0:
-        click.echo(f"🔄 Rotation metadata: {rotation}° (orientation will be preserved)")
-    if target_resolution:
-        if isinstance(target_resolution, str):
-            click.echo(f"🎯 Target resolution: {target_resolution}")
-        else:
-            click.echo(
-                f"🎯 Target resolution: {target_resolution.resolution_width}x{target_resolution.resolution_height}"
-            )
-    click.echo(f"🎬 Frame count: {frames:,}")
-    click.echo(f"🔊 Audio track: {'Yes' if has_audio else 'No'}")
-
-    if preserve_aspect:
-        click.echo("📦 Aspect ratio: Preserved with letterboxing")
-    else:
-        click.echo("⚠️  Aspect ratio: Will be stretched to fit")
-
-    # Show GPU acceleration info
-    if gpu_accel:
-        available_gpu = check_gpu_acceleration(verbose=False)
-        if available_gpu:
-            click.echo(f"🚀 GPU acceleration: {gpu}")
-        else:
-            click.echo("🖥️  GPU acceleration: Not available, using CPU")
-            gpu_accel = None
-    else:
-        click.echo("🖥️  GPU acceleration: Disabled")
+    # Display GPU acceleration info and get processed gpu_accel
+    gpu_accel = _display_gpu_info(gpu_accel, gpu)
 
     click.echo()
 
@@ -191,41 +262,7 @@ def convert_video(
         duration = end_time - start_time
 
         # Show results
-        input_size = input_path.stat().st_size / (1024 * 1024)
-        output_size = output_path.stat().st_size / (1024 * 1024)
-        compression_ratio = output_size / input_size
-
-        # Calculate processing speed
-        processing_speed = input_size / duration if duration > 0 else 0
-
-        click.echo()
-        click.secho("✅ Conversion completed successfully!", fg="green")
-        click.echo(f"⏱️  Processing time: {format_duration(duration)}")
-        click.echo(f"🚀 Processing speed: {processing_speed:.1f} MB/s")
-        click.echo(f"📊 Input size:  {input_size:.1f} MB")
-        click.echo(f"📊 Output size: {output_size:.1f} MB")
-        click.echo(f"📊 Compression: {compression_ratio:.2f}x")
-
-        # Calculate frames per second if we have frame count
-        try:
-            if frames > 0 and duration > 0:
-                fps_processed = frames / duration
-                click.echo(f"🎬 Processing rate: {fps_processed:.0f} frames/second")
-        except (ZeroDivisionError, TypeError):
-            pass  # Skip if frame count unavailable
-
-        # Show GPU acceleration performance hint
-        if gpu_accel and processing_speed > 0:
-            # Rough estimate: GPU should be 3-10x faster than CPU
-            estimated_cpu_time = duration * 5  # Conservative estimate
-            if estimated_cpu_time > 60:
-                time_saved = format_duration(estimated_cpu_time - duration)
-                click.secho(f"💡 GPU acceleration likely saved ~{time_saved} vs CPU encoding", fg="cyan")
-
-        if compression_ratio > 1.2:
-            click.secho("ℹ️  Output is larger than input - consider adjusting quality settings", fg="yellow")
-        elif compression_ratio < 0.3:
-            click.secho("ℹ️  High compression achieved - verify quality is acceptable", fg="cyan")
+        _display_conversion_results(input_path, output_path, duration, frames, gpu_accel)
 
     except Exception as e:
         click.secho(f"❌ Conversion failed: {e}", fg="red", err=True)
