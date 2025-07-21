@@ -996,7 +996,7 @@ class NominalClient:
         description: str | None = None,
     ) -> ContainerizedExtractor:
         workspace_rid = self._clients.workspace_rid
-        if workspace_rid is None:
+        if workspace_rid is None:  # TODO: Remove this once workspace_rid is required on the client
             workspace_rid = self.get_workspace().rid
 
         req = ingest_api.RegisterContainerizedExtractorRequest(
