@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.68.0](https://github.com/nominal-io/nominal-client/compare/v1.67.0...v1.68.0) (2025-07-22)
+
+
+### Features
+
+* allow archiving events ([#415](https://github.com/nominal-io/nominal-client/issues/415)) ([ef816e4](https://github.com/nominal-io/nominal-client/commit/ef816e4df87a39fbb0dedb92cf5322bf153e0a5d))
+
 ## [1.67.0](https://github.com/nominal-io/nominal-client/compare/v1.66.0...v1.67.0) (2025-07-18)
 
 
