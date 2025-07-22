@@ -25,6 +25,7 @@ class Event:
     start: IntegralNanosecondsUTC
     duration: IntegralNanosecondsDuration
     properties: Mapping[str, str]
+    labels: Sequence[str]
     type: EventType
 
     _uuid: str = field(repr=False)
@@ -117,6 +118,7 @@ class Event:
             duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
             type=EventType.from_api_event_type(event.type),
             properties=event.properties,
+            labels=event.labels,
             created_by_rid=event.created_by,
             _uuid=event.uuid,
             _clients=clients,
