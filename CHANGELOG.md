@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.69.0](https://github.com/nominal-io/nominal-client/compare/v1.68.0...v1.69.0) (2025-07-22)
+
+
+### Features
+
+* add labels to event class ([#418](https://github.com/nominal-io/nominal-client/issues/418)) ([f016fd5](https://github.com/nominal-io/nominal-client/commit/f016fd5a1ec3a5ace0ae8c7695fb4c86858c56c7))
+
 ## [1.68.0](https://github.com/nominal-io/nominal-client/compare/v1.67.0...v1.68.0) (2025-07-22)
 
 
