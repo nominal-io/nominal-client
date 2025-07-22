@@ -91,6 +91,14 @@ class Event:
         update_dataclass(self, e, fields=self.__dataclass_fields__)
         return self
 
+    def archive(self) -> None:
+        """Archives the event, preventing it from showing up in workbooks."""
+        self._clients.event.batch_archive_event(self._clients.auth_header, [self.rid])
+
+    def unarchive(self) -> None:
+        """Unarchives the event, allowing it to show up in workbooks."""
+        self._clients.event.batch_unarchive_event(self._clients.auth_header, [self.rid])
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
         if event.duration.picos:
