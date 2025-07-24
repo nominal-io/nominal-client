@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.69.1](https://github.com/nominal-io/nominal-client/compare/v1.69.0...v1.69.1) (2025-07-24)
+
+
+### Bug Fixes
+
+* parse event duration nanos ([#420](https://github.com/nominal-io/nominal-client/issues/420)) ([0eb883d](https://github.com/nominal-io/nominal-client/commit/0eb883d7141fc44bf15e77fcf9270a585ab52f53))
+
 ## [1.69.0](https://github.com/nominal-io/nominal-client/compare/v1.68.0...v1.69.0) (2025-07-22)
 
 
