@@ -115,7 +115,7 @@ class Event:
             name=event.name,
             description=event.description,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
-            duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
+            duration=event.duration.seconds * 1_000_000_000 + event.duration.nanos,
             type=EventType.from_api_event_type(event.type),
             properties=event.properties,
             labels=event.labels,
