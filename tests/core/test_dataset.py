@@ -1,9 +1,10 @@
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from nominal.core.dataset import Dataset, DatasetBounds
+from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
@@ -101,3 +102,47 @@ def test_poll_until_ingestion_completed_unknown_status(mock_sleep: MagicMock, mo
     with pytest.raises(NominalIngestError, match="unhandled ingest status 'unknown_status' for dataset 'test-rid'"):
         mock_dataset.poll_until_ingestion_completed(interval=timedelta(seconds=1))
     mock_sleep.assert_not_called()
+
+
+def test_write_logs_more_than_batch(mock_dataset: Dataset):
+    endpoint = Mock()
+    mock_dataset._clients.storage_writer.write_logs = endpoint
+
+    log_0 = LogPoint(0, "a", {})
+    log_1 = LogPoint(1, "b", {})
+    log_2 = LogPoint(2, "c", {})
+
+    def log_generator():
+        yield log_0
+        yield log_1
+        yield log_2
+
+    mock_dataset.write_logs(log_generator(), batch_size=2)
+
+    assert len(endpoint.call_args_list) == 2
+
+    _auth, _rid, first_req = endpoint.call_args_list[0][0]
+    assert len(first_req.logs) == 2
+
+    _auth, _rid, second_req = endpoint.call_args_list[1][0]
+    assert len(second_req.logs) == 1
+
+
+def test_write_logs_less_than_batch(mock_dataset: Dataset):
+    endpoint = Mock()
+    mock_dataset._clients.storage_writer.write_logs = endpoint
+
+    log_0 = LogPoint(0, "a", {})
+    log_1 = LogPoint(1, "b", {})
+    log_2 = LogPoint(2, "c", {})
+
+    def log_generator():
+        yield log_0
+        yield log_1
+        yield log_2
+
+    mock_dataset.write_logs(log_generator(), batch_size=1000)
+
+    assert len(endpoint.call_args_list) == 1
+    _auth, _rid, req = endpoint.call_args_list[0][0]
+    assert len(req.logs) == 3

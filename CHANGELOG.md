@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.69.1](https://github.com/nominal-io/nominal-client/compare/v1.69.0...v1.69.1) (2025-07-24)
+
+
+### Bug Fixes
+
+* parse event duration nanos ([#420](https://github.com/nominal-io/nominal-client/issues/420)) ([0eb883d](https://github.com/nominal-io/nominal-client/commit/0eb883d7141fc44bf15e77fcf9270a585ab52f53))
+
+## [1.69.0](https://github.com/nominal-io/nominal-client/compare/v1.68.0...v1.69.0) (2025-07-22)
+
+
+### Features
+
+* add labels to event class ([#418](https://github.com/nominal-io/nominal-client/issues/418)) ([f016fd5](https://github.com/nominal-io/nominal-client/commit/f016fd5a1ec3a5ace0ae8c7695fb4c86858c56c7))
+
+## [1.68.0](https://github.com/nominal-io/nominal-client/compare/v1.67.0...v1.68.0) (2025-07-22)
+
+
+### Features
+
+* allow archiving events ([#415](https://github.com/nominal-io/nominal-client/issues/415)) ([ef816e4](https://github.com/nominal-io/nominal-client/commit/ef816e4df87a39fbb0dedb92cf5322bf153e0a5d))
+
+## [1.67.0](https://github.com/nominal-io/nominal-client/compare/v1.66.0...v1.67.0) (2025-07-18)
+
+
+### Features
+
+* allow downloading dataset files ([#411](https://github.com/nominal-io/nominal-client/issues/411)) ([c80c95a](https://github.com/nominal-io/nominal-client/commit/c80c95aaee2bf5e692a339e7151fcc5c3c3c2b89))
+* allow searching datasets ([#413](https://github.com/nominal-io/nominal-client/issues/413)) ([f854c49](https://github.com/nominal-io/nominal-client/commit/f854c498dcd3fe70aeaa0fd93a7105ebba78e5b8))
+
 ## [1.66.0](https://github.com/nominal-io/nominal-client/compare/v1.65.0...v1.66.0) (2025-07-14)
 
 

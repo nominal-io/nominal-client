@@ -25,6 +25,7 @@ class Event:
     start: IntegralNanosecondsUTC
     duration: IntegralNanosecondsDuration
     properties: Mapping[str, str]
+    labels: Sequence[str]
     type: EventType
 
     _uuid: str = field(repr=False)
@@ -91,6 +92,14 @@ class Event:
         update_dataclass(self, e, fields=self.__dataclass_fields__)
         return self
 
+    def archive(self) -> None:
+        """Archives the event, preventing it from showing up in workbooks."""
+        self._clients.event.batch_archive_event(self._clients.auth_header, [self.rid])
+
+    def unarchive(self) -> None:
+        """Unarchives the event, allowing it to show up in workbooks."""
+        self._clients.event.batch_unarchive_event(self._clients.auth_header, [self.rid])
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
         if event.duration.picos:
@@ -106,9 +115,10 @@ class Event:
             name=event.name,
             description=event.description,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
-            duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
+            duration=event.duration.seconds * 1_000_000_000 + event.duration.nanos,
             type=EventType.from_api_event_type(event.type),
             properties=event.properties,
+            labels=event.labels,
             created_by_rid=event.created_by,
             _uuid=event.uuid,
             _clients=clients,

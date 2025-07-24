@@ -258,6 +258,7 @@ class Channel:
                 data_source_rid=scout_compute_api.StringConstant(literal=self.data_source),
                 tags=create_api_tags(tags),
                 tags_to_group_by=[],
+                group_by_tags=[],
             )
         )
 
