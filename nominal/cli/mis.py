@@ -35,8 +35,6 @@ class Channel_Updater:
         self.client = NominalClient.from_profile(profile)
         self.dataset = self.client.get_dataset(dataset_rid)
         self.channel_list = self.dataset.get_channels()
-        # Create a mapping of channel names to channel objects for O(1) lookups
-        # dictionary comprehension
         self.channel_map = {channel.name: channel for channel in self.channel_list}
 
     def update_channels(self, mis_data: dict):
