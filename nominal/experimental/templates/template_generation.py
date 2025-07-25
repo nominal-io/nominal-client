@@ -2,7 +2,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TextIO
+from typing import Any, TextIO, Union
 
 import yaml
 from nominal_api import (
@@ -78,7 +78,7 @@ class TemplateGenerator:
         self.refname = reference_refname
         self._channel_map: dict[str, str] = {}  # channel variables are global for a WB
 
-    def _parse_yaml_to_raw_template(self, yaml_input: str | TextIO) -> Raw_Template:
+    def _parse_yaml_to_raw_template(self, yaml_input: Union[str, TextIO]) -> Raw_Template:
         try:
             if isinstance(yaml_input, str):
                 with open(yaml_input, "r") as file:
@@ -258,7 +258,7 @@ class TemplateGenerator:
         )
 
     def _create_split_panel(
-        self, panel_one: str | scout_layout_api.Panel, panel_two: str | scout_layout_api.Panel
+        self, panel_one: Union[str, scout_layout_api.Panel], panel_two: Union[str, scout_layout_api.Panel]
     ) -> scout_layout_api.Panel:
         # TODO: orientation choice?
         vert, horz = scout_layout_api.SplitPanelOrientation.VERTICAL, scout_layout_api.SplitPanelOrientation.HORIZONTAL
@@ -405,7 +405,7 @@ class TemplateGenerator:
             is_published=True,
         )
 
-    def create_template_from_yaml(self, yaml_input: str | TextIO) -> WorkbookTemplate:
+    def create_template_from_yaml(self, yaml_input: Union[str, TextIO]) -> WorkbookTemplate:
         """Main user facing function for creating template.
         TODO: Think of better object for user to pass. Would be better to use primitives
                and create object ourselves
