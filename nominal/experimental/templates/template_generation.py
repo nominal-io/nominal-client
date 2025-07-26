@@ -10,6 +10,7 @@ from nominal_api import (
     scout_channelvariables_api,
     scout_chartdefinition_api,
     scout_comparisonrun_api,
+    scout_compute_api,
     scout_layout_api,
     scout_rids_api,
     scout_template_api,
@@ -28,10 +29,24 @@ class SupportedPanels(Enum):
     """
 
     TIMESERIES = 1
+    SCATTER = 2
+    HISTOGRAM = 3
+
+
+@dataclass
+class CountStrategy:
+    num_buckets: int
+
+
+@dataclass
+class WidthStrategy:
+    bucket_width: float
+    offset: float
 
 
 TemplateAxis = tuple[str, str]  # (axis title, axis side (0=R/1=L))
 TemplateRow = dict[str, tuple[str, TemplateAxis]]  # {channel name: (color, TemplateAxis)}
+TemplatePlot = TemplateRow  # same structure but restricted to 1 per channel
 
 
 @dataclass
@@ -44,18 +59,35 @@ class Comparisons:
 
 
 @dataclass
-class Template_Panel:
+class Panel:
     type: SupportedPanels
+    comparison_runs: list[Comparisons]
+
+
+@dataclass
+class Timeseries_Panel(Panel):
     row_data: list[TemplateRow]
     row_names: list[str]
-    comparison_runs: list[Comparisons]
+
+
+@dataclass
+class Cartesian_Panel(Panel):
+    x_axis_data: tuple[str, str]  # <channel_name, axis_name>
+    y_axis_data: TemplatePlot
+
+
+@dataclass
+class Histogram_Panel(Panel):
+    channels_w_colors: list[tuple[str, str]]  # <channel_name, color>
+    stacked: bool = False
+    bucket_strat: Union[WidthStrategy, CountStrategy, None] = None
 
 
 @dataclass
 class Template_Tab:
     """Object used to represent a tab"""
 
-    panels: list[Template_Panel]
+    panels: list[Panel]
     name: str
 
 
@@ -78,6 +110,96 @@ class TemplateGenerator:
         self.refname = reference_refname
         self._channel_map: dict[str, str] = {}  # channel variables are global for a WB
 
+    def _get_panel_type(self, type: str) -> SupportedPanels:
+        if type == "TIMESERIES":
+            return SupportedPanels.TIMESERIES
+        elif type == "SCATTER":
+            return SupportedPanels.SCATTER
+        elif type == "HISTOGRAM":
+            return SupportedPanels.HISTOGRAM
+        else:
+            raise NotImplementedError(f"We currently do not support {type}")
+
+    def _parse_yaml_timeseries_panel(
+        self, panel_data: dict[str, Any], comparison_runs: list[Comparisons]
+    ) -> Timeseries_Panel:
+        row_data = []
+        row_names = []
+        # Parse rows
+        for row_name, row_channels in panel_data["rows"].items():
+            row_names.append(row_name)
+            template_row = {}
+
+            # Parse channels within the row
+            for channel_name, channel_info in row_channels.items():
+                color = channel_info[0]
+                axis_name = channel_info[1]
+                axis_side = channel_info[2]
+
+                template_axis = (axis_name, axis_side)
+                template_row[channel_name.replace("/", ".")] = (color, template_axis)
+
+            row_data.append(template_row)
+        return Timeseries_Panel(
+            type=SupportedPanels.TIMESERIES, row_data=row_data, row_names=row_names, comparison_runs=comparison_runs
+        )
+
+    def _parse_yaml_scatter_panel(
+        self, panel_data: dict[str, Any], comparison_runs: list[Comparisons]
+    ) -> Cartesian_Panel:
+        plots_data = panel_data["plots"]
+
+        # Parse x_axis data
+        x_axis_info = plots_data["x_axis"]
+        x_channel_name = x_axis_info[0]
+        x_axis_title = x_axis_info[1]
+        x_axis_data = (x_channel_name.replace("/", "."), x_axis_title)
+
+        # Parse y_axis data
+        y_axis_info = plots_data["y_axis"]
+        y_axis_data = {}
+
+        for channel_name, channel_data in y_axis_info.items():
+            color = channel_data[0]
+            axis_title = channel_data[1]
+            axis_side = channel_data[2]
+
+            template_axis = (axis_title, axis_side)
+            y_axis_data[channel_name.replace("/", ".")] = (color, template_axis)
+
+        return Cartesian_Panel(
+            type=SupportedPanels.SCATTER,
+            x_axis_data=x_axis_data,
+            y_axis_data=y_axis_data,
+            comparison_runs=comparison_runs,
+        )
+
+    def _parse_yaml_bucket_strategy(
+        self, data: Union[None, dict[str, Any]]
+    ) -> Union[None, WidthStrategy, CountStrategy]:
+        if not data:
+            return None
+        # TODO: better validation
+        strat_type = data["type"]
+
+        if strat_type == "COUNT":
+            return CountStrategy(num_buckets=data["num_buckets"])
+        elif strat_type == "WIDTH":
+            return WidthStrategy(bucket_width=float(data["bucket_width"]), offset=float(data.get("offset", 0)))
+        else:
+            raise ValueError(f"Bucket strategy: {strat_type} NOT SUPPORTED")
+
+    def _parse_yaml_histogram_panel(self, panel_data: dict[str, Any]) -> Histogram_Panel:
+        channels_with_colors = [(pair[0], pair[1]) for pair in panel_data["channels"]]
+        bucket_strat = self._parse_yaml_bucket_strategy(panel_data.get("bucket_strategy"))
+        return Histogram_Panel(
+            type=SupportedPanels.HISTOGRAM,
+            bucket_strat=bucket_strat,
+            stacked=True if panel_data.get("stacked") == "true" else False,
+            channels_w_colors=channels_with_colors,
+            comparison_runs=[],  # TODO: hist panel inherits from panel but doesnt have comparison runs
+        )
+
     def _parse_yaml_to_raw_template(self, yaml_input: Union[str, TextIO]) -> Raw_Template:
         try:
             if isinstance(yaml_input, str):
@@ -91,37 +213,14 @@ class TemplateGenerator:
         # Parse tabs
         tabs = []
         for tab_name, tab_data in data["tabs"].items():
-            panels = []
+            panels: list[Panel] = []
 
             # tab_data['panels'] should be a list of panel definitions
             for panel_data in tab_data["panels"]:
-                row_data = []
-                row_names = []
                 comparison_runs = []
 
-                # Get panel type or error
-                panel_type = SupportedPanels.TIMESERIES if panel_data.get("type") == "TIMESERIES" else None
-                if not panel_type:
-                    raise RuntimeError("Illegal panel type! We currently only support timeseries")
-
-                # Parse rows
-                if "rows" in panel_data:
-                    for row_name, row_channels in panel_data["rows"].items():
-                        row_names.append(row_name)
-                        template_row = {}
-
-                        # Parse channels within the row
-                        for channel_name, channel_info in row_channels.items():
-                            color = channel_info[0]
-                            axis_name = channel_info[1]
-                            axis_side = channel_info[2]
-
-                            template_axis = (axis_name, axis_side)
-                            template_row[channel_name.replace("/", ".")] = (color, template_axis)
-
-                        row_data.append(template_row)
-
                 # Parse comparison runs if they exist
+                # Doing this first since it is panel type agnostic
                 if "comparison_runs" in panel_data:
                     for run_name, run_info in panel_data["comparison_runs"].items():
                         comparison = Comparisons(
@@ -131,11 +230,18 @@ class TemplateGenerator:
                         )
                         comparison_runs.append(comparison)
 
-                # Create the panel
-                panel = Template_Panel(
-                    type=panel_type, row_data=row_data, row_names=row_names, comparison_runs=comparison_runs
-                )
-                panels.append(panel)
+                # Get panel type or error
+                panel_type = self._get_panel_type(panel_data.get("type"))
+
+                if panel_type == SupportedPanels.TIMESERIES and "rows" in panel_data:
+                    panels.append(self._parse_yaml_timeseries_panel(panel_data, comparison_runs))
+                elif panel_type == SupportedPanels.SCATTER and "plots" in panel_data:
+                    # TODO: currently cant do comparison runs for non timeseries panel (even in FE)
+                    panels.append(self._parse_yaml_scatter_panel(panel_data, comparison_runs))
+                elif panel_type == SupportedPanels.HISTOGRAM and "channels" in panel_data:
+                    panels.append(self._parse_yaml_histogram_panel(panel_data))
+                else:
+                    raise NotImplementedError(f"We do not yet support this panel type! {panel_type}")
 
             # Create the tab
             tab = Template_Tab(panels=panels, name=tab_name)
@@ -211,7 +317,9 @@ class TemplateGenerator:
             domain_type=scout_chartdefinition_api.AxisDomainType.NUMERIC,
         )
 
-    def _create_plot(self, var_name: str, axis_id: str, color: str) -> scout_chartdefinition_api.TimeSeriesPlotV2:
+    def _create_timeseries_plot(
+        self, var_name: str, axis_id: str, color: str
+    ) -> scout_chartdefinition_api.TimeSeriesPlotV2:
         return scout_chartdefinition_api.TimeSeriesPlotV2(
             type=scout_chartdefinition_api.TimeSeriesPlotConfig(
                 scout_chartdefinition_api.TimeSeriesNumericPlot(
@@ -226,14 +334,65 @@ class TemplateGenerator:
             enabled=True,
         )
 
-    def _create_row(
+    def _create_cartesian_plot(
+        self, var_name_x: str, var_name_y: str, axis_id_x: str, axis_id_y: str, color: str
+    ) -> scout_chartdefinition_api.CartesianPlot:
+        return scout_chartdefinition_api.CartesianPlot(
+            color=color,
+            x_axis_id=axis_id_x,
+            x_variable_name=var_name_x,
+            y_axis_id=axis_id_y,
+            y_variable_name=var_name_y,
+            enabled=True,
+        )
+
+    def _create_histogram_plot(self, color: str, var_name: str) -> scout_chartdefinition_api.HistogramPlot:
+        return scout_chartdefinition_api.HistogramPlot(color=color, variable_name=var_name, enabled=True)
+
+    def _create_histogram_bucket_strategy(
+        self, bucket_strat: Union[WidthStrategy, CountStrategy]
+    ) -> scout_compute_api.NumericHistogramBucketStrategy:
+        if isinstance(bucket_strat, WidthStrategy):
+            return scout_compute_api.NumericHistogramBucketStrategy(
+                bucket_width_and_offset=scout_compute_api.NumericHistogramBucketWidthAndOffset(
+                    width=scout_compute_api.DoubleConstant(literal=bucket_strat.bucket_width),
+                    offset=scout_compute_api.DoubleConstant(literal=bucket_strat.offset),
+                )
+            )
+        else:
+            return scout_compute_api.NumericHistogramBucketStrategy(
+                bucket_count=scout_compute_api.IntegerConstant(literal=bucket_strat.num_buckets)
+            )
+
+    def _create_timeseries_row(
         self, plots: list[scout_chartdefinition_api.TimeSeriesPlotV2], row_name: str
     ) -> scout_chartdefinition_api.TimeSeriesRow:
         return scout_chartdefinition_api.TimeSeriesRow(
             plots=[], plots_v2=plots, row_flex_size=1, title=row_name, enabled=True
         )
 
-    def _create_all_variables(self, channels: set[str]) -> dict[str, scout_channelvariables_api.ChannelVariable]:
+    def _get_channel_names_from_panel(self, panel: Panel) -> list[str]:
+        """Extract channel names from a panel based on its type"""
+        if panel.type == SupportedPanels.TIMESERIES and isinstance(panel, Timeseries_Panel):
+            return [channel_name for row in panel.row_data for channel_name in row.keys()]
+        elif panel.type == SupportedPanels.SCATTER and isinstance(panel, Cartesian_Panel):
+            channels = []
+            channels.append(panel.x_axis_data[0])
+            channels.extend(panel.y_axis_data.keys())
+            return channels
+        elif panel.type == SupportedPanels.HISTOGRAM and isinstance(panel, Histogram_Panel):
+            return [channel[0] for channel in panel.channels_w_colors]
+        else:
+            raise NotImplementedError(f"Channel extraction not implemented for panel type: {panel.type}")
+
+    def _create_all_variables(self, template: Raw_Template) -> dict[str, scout_channelvariables_api.ChannelVariable]:
+        channel_list = [
+            channel_name
+            for tab in template.tabs
+            for panel in tab.panels
+            for channel_name in self._get_channel_names_from_panel(panel)
+        ]
+        channels = set(channel_list)
         channel_variables = {}
         compute_specs = [self._define_compute_spec_v1_as_JSON(c, self.refname) for c in channels]
         for i, channel in enumerate(channels):
@@ -295,6 +454,120 @@ class TemplateGenerator:
             )
         )
 
+    def _create_scatter_chart(
+        self,
+        plots: list[scout_chartdefinition_api.CartesianPlot],
+        value_axes: list[scout_chartdefinition_api.ValueAxis],
+        comparison_run_groups: list[Comparisons],
+    ) -> scout_chartdefinition_api.VizDefinition:
+        comparison_run_objects = [
+            self._create_comparison_run_group(cmp.name, cmp.color, cmp.run_rids) for cmp in comparison_run_groups
+        ]
+        return scout_chartdefinition_api.VizDefinition(
+            cartesian=scout_chartdefinition_api.CartesianChartDefinition(
+                v1=scout_chartdefinition_api.CartesianChartDefinitionV1(
+                    plots=plots,
+                    value_axes=value_axes,
+                    comparison_run_groups=comparison_run_objects,
+                    title="Scatter plot chart",
+                )
+            )
+        )
+
+    def _create_histogram_chart(
+        self,
+        is_stacked: bool,
+        plots: list[scout_chartdefinition_api.HistogramPlot],
+        bucket_strategy: Union[None, WidthStrategy, CountStrategy],
+    ) -> scout_chartdefinition_api.VizDefinition:
+        return scout_chartdefinition_api.VizDefinition(
+            histogram=scout_chartdefinition_api.HistogramChartDefinition(
+                v1=scout_chartdefinition_api.HistogramChartDefinitionV1(
+                    display_settings=scout_chartdefinition_api.HistogramDisplaySettings(
+                        sort=scout_chartdefinition_api.HistogramSortOrder.VALUE_ASCENDING,
+                        stacked=is_stacked,
+                    ),
+                    plots=plots,
+                    numeric_bucket_strategy=(
+                        None if bucket_strategy is None else self._create_histogram_bucket_strategy(bucket_strategy)
+                    ),
+                    title="Histogram chart",
+                    # value_axis=value_axis TODO: seems better off being auto generated?
+                )
+            )
+        )
+
+    def _parse_timeseries_panel(self, panel: Timeseries_Panel) -> scout_chartdefinition_api.VizDefinition:
+        """Parsing function for timeseries panels"""
+        panel_rows = []
+        panel_axes = []
+
+        for row_index, row in enumerate(panel.row_data):
+            row_plots = []
+
+            axis_mappings: dict[TemplateAxis, str] = {}
+
+            for channel_name, (color, axis_name) in row.items():
+                # plot identifier
+                var_name = self._channel_map[channel_name]
+                # make plot with appropriate color
+                if axis_name in axis_mappings:
+                    axis_id = axis_mappings[axis_name]
+                else:
+                    axis_id = str(uuid.uuid4())
+                    axis_mappings[axis_name] = axis_id
+                    panel_axes.append(self._create_channel_axis(axis_id, axis_name))
+
+                row_plots.append(self._create_timeseries_plot(var_name, axis_id, color))
+
+            row_name = panel.row_names[row_index]
+            panel_rows.append(self._create_timeseries_row(row_plots, row_name))
+        return self._create_timeseries_chart(panel_rows, panel_axes, panel.comparison_runs)
+
+    def _parse_cartesian_panel(self, panel: Cartesian_Panel) -> scout_chartdefinition_api.VizDefinition:
+        """Parsing function for cartesian panels"""
+        panel_plots: list[scout_chartdefinition_api.CartesianPlot] = []
+        panel_axes: list[scout_chartdefinition_api.ValueAxis] = []
+
+        # first, define x axis params (only 1 x axis for a plot)
+        x_axis_channel, x_axis_name = panel.x_axis_data
+        x_axis_var_name = self._channel_map[x_axis_channel]
+        x_axis_id = str(uuid.uuid4())
+        panel_axes.append(self._create_channel_axis(x_axis_id, (x_axis_name, "0")))
+
+        axis_mappings: dict[TemplateAxis, str] = {}
+        for channel_name, (color, axis_name) in panel.y_axis_data.items():
+            # plot id
+            y_axis_var_name = self._channel_map[channel_name]
+            if axis_name in axis_mappings:
+                y_axis_id = axis_mappings[axis_name]
+            else:
+                y_axis_id = str(uuid.uuid4())
+                axis_mappings[axis_name] = y_axis_id
+                panel_axes.append(self._create_channel_axis(y_axis_id, axis_name))
+
+            panel_plots.append(
+                self._create_cartesian_plot(
+                    var_name_x=x_axis_var_name,
+                    var_name_y=y_axis_var_name,
+                    axis_id_x=x_axis_id,
+                    axis_id_y=y_axis_id,
+                    color=color,
+                )
+            )
+
+        return self._create_scatter_chart(panel_plots, panel_axes, panel.comparison_runs)
+
+    def _parse_histogram_panel(self, panel: Histogram_Panel) -> scout_chartdefinition_api.VizDefinition:
+        """Parsing function for histogram panels"""
+        panel_plots: list[scout_chartdefinition_api.HistogramPlot] = []
+        for channel_name, color in panel.channels_w_colors:
+            panel_plots.append(self._create_histogram_plot(color, self._channel_map[channel_name]))
+
+        return self._create_histogram_chart(
+            is_stacked=panel.stacked, plots=panel_plots, bucket_strategy=panel.bucket_strat
+        )
+
     def _create_tab(self, panel_rids: list[str], title: str) -> scout_layout_api.SingleTab:
         if len(panel_rids) == 1:
             panel = self._create_single_panel(panel_rids[0])
@@ -323,60 +596,28 @@ class TemplateGenerator:
             raise RuntimeError("Sorry this function only supports template v0")
 
         """Creates template request object"""
-        channel_name_list = [
-            channel_name
-            for tab in raw_template.tabs
-            for panel in tab.panels
-            for row in panel.row_data
-            for channel_name in row.keys()
-        ]
-
-        channel_variables = self._create_all_variables(set(channel_name_list))
+        # populate global channel variables
+        channel_variables = self._create_all_variables(raw_template)
         # Create separate charts for each tab
         charts: dict[str, scout_chartdefinition_api.VizDefinition] = {}
         tabs: list[scout_layout_api.SingleTab] = []
 
-        var_index = 0
         for tab_index, tab in enumerate(raw_template.tabs):
             panel_charts = []
             for panel_index, panel in enumerate(tab.panels):
                 # Create chart for this panel
                 chart_rid = f"{CHART_RID_BASE}{uuid.uuid4()}"
 
-                # Create rows/axes for just this panel's channels
-                panel_rows = []
-                panel_axes = []
-
-                for row_index, row in enumerate(panel.row_data):
-                    row_plots = []
-
-                    axis_mappings: dict[TemplateAxis, str] = {}
-
-                    for channel_name, (color, axis_name) in row.items():
-                        # plot identifier
-                        var_name = self._channel_map[channel_name]
-                        # make plot with appropriate color
-                        if axis_name in axis_mappings:
-                            axis_id = axis_mappings[axis_name]
-                        else:
-                            axis_id = str(uuid.uuid4())
-                            axis_mappings[axis_name] = axis_id
-                            panel_axes.append(self._create_channel_axis(axis_id, axis_name))
-
-                        row_plots.append(self._create_plot(var_name, axis_id, color))
-                        var_index += 1
-
-                    row_name = panel.row_names[row_index]
-                    panel_rows.append(self._create_row(row_plots, row_name))
-
-                # Create chart with just this panel's rows/axes
-                if panel.type == SupportedPanels.TIMESERIES:
-                    charts[chart_rid] = self._create_timeseries_chart(panel_rows, panel_axes, panel.comparison_runs)
-                    panel_charts.append(chart_rid)
+                if panel.type == SupportedPanels.TIMESERIES and isinstance(panel, Timeseries_Panel):
+                    charts[chart_rid] = self._parse_timeseries_panel(panel)
+                elif panel.type == SupportedPanels.SCATTER and isinstance(panel, Cartesian_Panel):
+                    charts[chart_rid] = self._parse_cartesian_panel(panel)
+                elif panel.type == SupportedPanels.HISTOGRAM and isinstance(panel, Histogram_Panel):
+                    charts[chart_rid] = self._parse_histogram_panel(panel)
                 else:
-                    # TODO: only supports timeseries for now
                     continue
 
+                panel_charts.append(chart_rid)
             # Create tab pointing to this chart
             tabs.append(self._create_tab(panel_charts, tab.name))
 
