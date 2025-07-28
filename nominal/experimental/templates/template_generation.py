@@ -31,6 +31,10 @@ class SupportedPanels(Enum):
     TIMESERIES = 1
     SCATTER = 2
     HISTOGRAM = 3
+    GEOMAP = 4
+
+
+"""Helper classes for Histogram template"""
 
 
 @dataclass
@@ -44,9 +48,12 @@ class WidthStrategy:
     offset: float
 
 
+"""Aliases for timeseries template objects"""
 TemplateAxis = tuple[str, str]  # (axis title, axis side (0=R/1=L))
 TemplateRow = dict[str, tuple[str, TemplateAxis]]  # {channel name: (color, TemplateAxis)}
-TemplatePlot = TemplateRow  # same structure but restricted to 1 per channel
+
+"""Alias for scatter plot objects"""
+TemplatePlot = TemplateRow
 
 
 @dataclass
@@ -60,6 +67,11 @@ class Comparisons:
 
 @dataclass
 class Panel:
+    """Base class for different panels we support
+    Model is based on the assumption that all panel types will
+    eventually support comparison runs
+    """
+
     type: SupportedPanels
     comparison_runs: list[Comparisons]
 
@@ -84,6 +96,13 @@ class Histogram_Panel(Panel):
 
 
 @dataclass
+class Geomap_Panel(Panel):
+    latlongs_w_color: list[tuple[str, tuple[str, str, str]]]  # <plot_name, (lat_channel, long_channel, color)>
+    plot_type: str  # 'STREET' or 'SATELLITE'
+    geopoints: list[tuple[float, float]]  # <lat_val, long_val>
+
+
+@dataclass
 class Template_Tab:
     """Object used to represent a tab"""
 
@@ -93,11 +112,9 @@ class Template_Tab:
 
 @dataclass
 class Raw_Template:
-    """Pythonic object we are using to represent template...
-    subject to change
-    """
+    """Object to represent template"""
 
-    version: int
+    version: int  # yaml structure version
     title: str
     tabs: list[Template_Tab]
     labels: list[str]
@@ -105,7 +122,10 @@ class Raw_Template:
 
 class TemplateGenerator:
     def __init__(self, client: NominalClient, reference_refname: str):
-        """Define a template generator object"""
+        """Define a template generator object
+        Important to not that templates are specific to a refname so defining
+        this accurately is important
+        """
         self.client = client
         self.refname = reference_refname
         self._channel_map: dict[str, str] = {}  # channel variables are global for a WB
@@ -117,6 +137,8 @@ class TemplateGenerator:
             return SupportedPanels.SCATTER
         elif type == "HISTOGRAM":
             return SupportedPanels.HISTOGRAM
+        elif type == "GEOMAP":
+            return SupportedPanels.GEOMAP
         else:
             raise NotImplementedError(f"We currently do not support {type}")
 
@@ -130,16 +152,21 @@ class TemplateGenerator:
             row_names.append(row_name)
             template_row = {}
 
-            # Parse channels within the row
-            for channel_name, channel_info in row_channels.items():
-                color = channel_info[0]
-                axis_name = channel_info[1]
-                axis_side = channel_info[2]
+            try:
+                # Parse channels within the row
+                for channel_name, channel_info in row_channels.items():
+                    color = channel_info[0]
+                    axis_name = channel_info[1]
+                    axis_side = channel_info[2]
 
-                template_axis = (axis_name, axis_side)
-                template_row[channel_name.replace("/", ".")] = (color, template_axis)
+                    template_axis = (axis_name, axis_side)
+                    # TODO: question - do we universally replace / with . ?
+                    template_row[channel_name.replace("/", ".")] = (color, template_axis)
 
-            row_data.append(template_row)
+                row_data.append(template_row)
+            except Exception:
+                raise ValueError(f"Bad structure of timeseries channel structure for row: {row_name}")
+
         return Timeseries_Panel(
             type=SupportedPanels.TIMESERIES, row_data=row_data, row_names=row_names, comparison_runs=comparison_runs
         )
@@ -150,22 +177,28 @@ class TemplateGenerator:
         plots_data = panel_data["plots"]
 
         # Parse x_axis data
-        x_axis_info = plots_data["x_axis"]
-        x_channel_name = x_axis_info[0]
-        x_axis_title = x_axis_info[1]
-        x_axis_data = (x_channel_name.replace("/", "."), x_axis_title)
+        try:
+            x_axis_info = plots_data["x_axis"]
+            x_channel_name = x_axis_info[0]
+            x_axis_title = x_axis_info[1]
+            x_axis_data = (x_channel_name.replace("/", "."), x_axis_title)
+        except Exception:
+            raise ValueError("Invalid x axis data for scatter panel! See docs.")
 
         # Parse y_axis data
-        y_axis_info = plots_data["y_axis"]
-        y_axis_data = {}
+        try:
+            y_axis_info = plots_data["y_axis"]
+            y_axis_data = {}
 
-        for channel_name, channel_data in y_axis_info.items():
-            color = channel_data[0]
-            axis_title = channel_data[1]
-            axis_side = channel_data[2]
+            for channel_name, channel_data in y_axis_info.items():
+                color = channel_data[0]
+                axis_title = channel_data[1]
+                axis_side = channel_data[2]
 
-            template_axis = (axis_title, axis_side)
-            y_axis_data[channel_name.replace("/", ".")] = (color, template_axis)
+                template_axis = (axis_title, axis_side)
+                y_axis_data[channel_name.replace("/", ".")] = (color, template_axis)
+        except Exception:
+            raise ValueError("Invalid y axis data for scatter panel! See docs.")
 
         return Cartesian_Panel(
             type=SupportedPanels.SCATTER,
@@ -179,8 +212,10 @@ class TemplateGenerator:
     ) -> Union[None, WidthStrategy, CountStrategy]:
         if not data:
             return None
-        # TODO: better validation
-        strat_type = data["type"]
+        try:
+            strat_type = data["type"]
+        except Exception:
+            raise ValueError("Histogram bucket strategy could not be determined. Ensure 'type' field is present")
 
         if strat_type == "COUNT":
             return CountStrategy(num_buckets=data["num_buckets"])
@@ -190,17 +225,46 @@ class TemplateGenerator:
             raise ValueError(f"Bucket strategy: {strat_type} NOT SUPPORTED")
 
     def _parse_yaml_histogram_panel(self, panel_data: dict[str, Any]) -> Histogram_Panel:
-        channels_with_colors = [(pair[0], pair[1]) for pair in panel_data["channels"]]
+        try:
+            channels_with_colors = [(pair[0], pair[1]) for pair in panel_data["channels"]]
+        except Exception:
+            raise ValueError("Bad channel structure for histogram panel! See docs.")
         bucket_strat = self._parse_yaml_bucket_strategy(panel_data.get("bucket_strategy"))
         return Histogram_Panel(
             type=SupportedPanels.HISTOGRAM,
             bucket_strat=bucket_strat,
             stacked=True if panel_data.get("stacked") == "true" else False,
             channels_w_colors=channels_with_colors,
-            comparison_runs=[],  # TODO: hist panel inherits from panel but doesnt have comparison runs
+            comparison_runs=[],
         )
 
-    def _parse_yaml_to_raw_template(self, yaml_input: Union[str, TextIO]) -> Raw_Template:
+    def _parse_yaml_geomap_panel(self, panel_data: dict[str, Any]) -> Geomap_Panel:
+        latlongs_w_color: list[tuple[str, tuple[str, str, str]]] = []
+        geopoints = []
+
+        plot_type = panel_data.get("tile_type", "STREET")
+
+        if "geopoints" in panel_data:
+            for point in panel_data["geopoints"]:
+                lat_val, long_val = point[0], point[1]
+                geopoints.append((lat_val, long_val))
+
+        plots_data = panel_data["plots"]
+
+        try:
+            for plot_name, plot_data in plots_data.items():
+                lat_channel = plot_data[0]
+                long_channel = plot_data[1]
+                color = plot_data[2]
+
+                latlongs_w_color.append((plot_name, (lat_channel, long_channel, color)))
+        except Exception:
+            raise ValueError("Bad channel structure for geomap panel! See docs")
+
+        return Geomap_Panel(SupportedPanels.GEOMAP, [], latlongs_w_color, plot_type, geopoints)
+
+    def _safe_open(self, yaml_input: Union[str, TextIO]) -> Any:
+        """Open either a file object or a filepath"""
         try:
             if isinstance(yaml_input, str):
                 with open(yaml_input, "r") as file:
@@ -209,18 +273,27 @@ class TemplateGenerator:
                 data = yaml.safe_load(yaml_input)
         except Exception as e:
             raise IOError(f"Error opening file: {e}")
+        return data
+
+    def _parse_yaml_to_raw_template(self, yaml_input: Union[str, TextIO]) -> Raw_Template:
+        """Main parsing script for the YAML template"""
+        data = self._safe_open(yaml_input)
+        if "tabs" not in data:
+            raise ValueError("Could not find 'tabs' in yaml. See docs for structure")
 
         # Parse tabs
         tabs = []
         for tab_name, tab_data in data["tabs"].items():
             panels: list[Panel] = []
 
+            if "panels" not in tab_data:
+                raise ValueError(f"Could not find 'panels' for tab: {tab_name}. See docs.")
+
             # tab_data['panels'] should be a list of panel definitions
             for panel_data in tab_data["panels"]:
                 comparison_runs = []
 
                 # Parse comparison runs if they exist
-                # Doing this first since it is panel type agnostic
                 if "comparison_runs" in panel_data:
                     for run_name, run_info in panel_data["comparison_runs"].items():
                         comparison = Comparisons(
@@ -240,6 +313,8 @@ class TemplateGenerator:
                     panels.append(self._parse_yaml_scatter_panel(panel_data, comparison_runs))
                 elif panel_type == SupportedPanels.HISTOGRAM and "channels" in panel_data:
                     panels.append(self._parse_yaml_histogram_panel(panel_data))
+                elif panel_type == SupportedPanels.GEOMAP and "plots" in panel_data:
+                    panels.append(self._parse_yaml_geomap_panel(panel_data))
                 else:
                     raise NotImplementedError(f"We do not yet support this panel type! {panel_type}")
 
@@ -302,6 +377,9 @@ class TemplateGenerator:
         }
 
     def _create_channel_axis(self, axis_id: str, axis_obj: TemplateAxis) -> scout_chartdefinition_api.ValueAxis:
+        """Currently creates a generally ranged channel axis. An extension could be to have more
+        user definition within the axis creation if necessary.
+        """
         axis_name, side = axis_obj
         return scout_chartdefinition_api.ValueAxis(
             id=axis_id,
@@ -382,10 +460,15 @@ class TemplateGenerator:
             return channels
         elif panel.type == SupportedPanels.HISTOGRAM and isinstance(panel, Histogram_Panel):
             return [channel[0] for channel in panel.channels_w_colors]
+        elif panel.type == SupportedPanels.GEOMAP and isinstance(panel, Geomap_Panel):
+            return [val for plot in panel.latlongs_w_color for val in plot[1][0:1]]
         else:
             raise NotImplementedError(f"Channel extraction not implemented for panel type: {panel.type}")
 
     def _create_all_variables(self, template: Raw_Template) -> dict[str, scout_channelvariables_api.ChannelVariable]:
+        """Defines all global channel variabls (currently just using letters starting from a)
+        TODO: check if this will cause eventual bugs
+        """
         channel_list = [
             channel_name
             for tab in template.tabs
@@ -419,7 +502,7 @@ class TemplateGenerator:
     def _create_split_panel(
         self, panel_one: Union[str, scout_layout_api.Panel], panel_two: Union[str, scout_layout_api.Panel]
     ) -> scout_layout_api.Panel:
-        # TODO: orientation choice?
+        """Currently we define orientation choices. An extension could be to have more user definition"""
         vert, horz = scout_layout_api.SplitPanelOrientation.VERTICAL, scout_layout_api.SplitPanelOrientation.HORIZONTAL
         return scout_layout_api.Panel(
             split=scout_layout_api.SplitPanel(
@@ -492,9 +575,21 @@ class TemplateGenerator:
                         None if bucket_strategy is None else self._create_histogram_bucket_strategy(bucket_strategy)
                     ),
                     title="Histogram chart",
-                    # value_axis=value_axis TODO: seems better off being auto generated?
                 )
             )
+        )
+
+    def _create_geoplot(
+        self, plot_name: str, lat_var_name: str, long_var_name: str, color: str
+    ) -> scout_chartdefinition_api.GeoPlotFromLatLong:
+        return scout_chartdefinition_api.GeoPlotFromLatLong(
+            label=plot_name,
+            latitude_variable_name=lat_var_name,
+            longitude_variable_name=long_var_name,
+            visualization_options=scout_chartdefinition_api.GeoPlotVisualizationOptions(
+                color=color, line_style=scout_chartdefinition_api.GeoLineStyle(value="SOLID")
+            ),
+            enabled=True,
         )
 
     def _parse_timeseries_panel(self, panel: Timeseries_Panel) -> scout_chartdefinition_api.VizDefinition:
@@ -568,7 +663,36 @@ class TemplateGenerator:
             is_stacked=panel.stacked, plots=panel_plots, bucket_strategy=panel.bucket_strat
         )
 
+    def _parse_geomap_panel(self, panel: Geomap_Panel) -> scout_chartdefinition_api.VizDefinition:
+        """Parsing function for geomap panels"""
+        panel_plots: list[scout_chartdefinition_api.GeoPlotFromLatLong] = []
+        for plot_name, (lat, long, color) in panel.latlongs_w_color:
+            panel_plots.append(self._create_geoplot(plot_name, self._channel_map[lat], self._channel_map[long], color))
+
+        return scout_chartdefinition_api.VizDefinition(
+            geo=scout_chartdefinition_api.GeoVizDefinition(
+                v1=scout_chartdefinition_api.GeoVizDefinitionV1(
+                    title="Geomap plot",
+                    plots=panel_plots,
+                    custom_features=[
+                        scout_chartdefinition_api.GeoCustomFeature(
+                            point=scout_chartdefinition_api.GeoPoint(
+                                icon="circle-dot", latitude=lat, longitude=long, variables=[]
+                            )
+                        )
+                        for lat, long in panel.geopoints
+                    ],
+                    base_tileset=scout_chartdefinition_api.GeoBaseTileset(
+                        value=panel.plot_type if panel.plot_type in ("STREET", "SATELLITE") else "SATELLITE"
+                    ),
+                )
+            )
+        )
+
     def _create_tab(self, panel_rids: list[str], title: str) -> scout_layout_api.SingleTab:
+        """Currently supports a max of panels per tab. Can imagine how this can be extended as we
+        support greater panel limts
+        """
         if len(panel_rids) == 1:
             panel = self._create_single_panel(panel_rids[0])
         elif len(panel_rids) == 2:
@@ -614,6 +738,8 @@ class TemplateGenerator:
                     charts[chart_rid] = self._parse_cartesian_panel(panel)
                 elif panel.type == SupportedPanels.HISTOGRAM and isinstance(panel, Histogram_Panel):
                     charts[chart_rid] = self._parse_histogram_panel(panel)
+                elif panel.type == SupportedPanels.GEOMAP and isinstance(panel, Geomap_Panel):
+                    charts[chart_rid] = self._parse_geomap_panel(panel)
                 else:
                     continue
 
@@ -648,11 +774,17 @@ class TemplateGenerator:
 
     def create_template_from_yaml(self, yaml_input: Union[str, TextIO]) -> WorkbookTemplate:
         """Main user facing function for creating template.
-        TODO: Think of better object for user to pass. Would be better to use primitives
-               and create object ourselves
+        TODO: goal is to catch maximum errors to abstract away internals and have user focusing
+        on template structure
         """
-        template = self._parse_yaml_to_raw_template(yaml_input)
-        request = self._create_template_request(template)
+        try:
+            template = self._parse_yaml_to_raw_template(yaml_input)
+        except Exception:
+            raise ValueError("Error parsing template! See our docs for structure.")
 
-        conjure_template = self.client._clients.template.create(self.client._clients.auth_header, request)
-        return WorkbookTemplate._from_conjure(self.client._clients, conjure_template)
+        try:
+            request = self._create_template_request(template)
+            conjure_template = self.client._clients.template.create(self.client._clients.auth_header, request)
+            return WorkbookTemplate._from_conjure(self.client._clients, conjure_template)
+        except Exception:
+            raise ValueError("Could not create template. Please check values!")
