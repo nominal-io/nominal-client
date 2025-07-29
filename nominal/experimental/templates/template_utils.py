@@ -13,7 +13,7 @@ def validate_hex_color(color: str) -> bool:
     """Validate that a color string is in valid hex format (#RRGGBB)"""
     if not isinstance(color, str):
         return False
-    return bool(re.match(r'^#[0-9A-Fa-f]{6}$', color))
+    return bool(re.match(r"^#[0-9A-Fa-f]{6}$", color))
 
 
 @dataclass

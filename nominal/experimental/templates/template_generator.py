@@ -13,6 +13,7 @@ class TemplateGenerator:
         self.client = client
 
     """Helper functions for parsing yaml into RawTemplate"""
+
     def _validate_overall_structure(self, data: Any) -> None:
         # Validate required top-level fields
         required_fields = ["version", "title", "tabs"]
@@ -49,7 +50,7 @@ class TemplateGenerator:
 
     def create_template_from_yaml(
         self, yaml_input: Union[str, TextIO], refname: str, commit_message: str
-        ) -> WorkbookTemplate:
+    ) -> WorkbookTemplate:
         """Main user facing function for creating template.
         TODO: currently creates a new template every call. an updating mechanism would be useful
         """

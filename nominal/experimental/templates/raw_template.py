@@ -23,6 +23,7 @@ from nominal.experimental.templates.template_utils import Comparisons
 
 CHART_RID_BASE = "ri.scout.cerulean-staging.chart."
 
+
 @dataclass
 class TemplateTab:
     """Object used to represent a tab"""
@@ -181,7 +182,7 @@ class RawTemplate:
             )
         }
 
-    def _create_all_variables(self) -> dict[str, scout_channelvariables_api.ChannelVariable]:
+    def _create_all_variables(self) -> tuple[dict[str, scout_channelvariables_api.ChannelVariable], dict[str, str]]:
         """Defines all global channel variabls"""
         channel_list = [
             channel_name for tab in self.tabs for panel in tab.panels for channel_name in panel.get_channel_names()
@@ -192,7 +193,7 @@ class RawTemplate:
         compute_specs = [self._define_compute_spec_v1_as_JSON(c, self.refname) for c in channels]
         for i, channel in enumerate(channels):
             var_name = ""
-            num = i+1
+            num = i + 1
             # generate unique var name for all channels: 'a','b'...'z', 'aa', 'ab'...
             while num > 0:
                 num -= 1

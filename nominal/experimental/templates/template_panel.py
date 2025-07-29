@@ -77,7 +77,7 @@ class Panel(ABC):
         """Validate hex color format"""
         if not isinstance(color, str):
             return False
-        return bool(re.match(r'^#[0-9A-Fa-f]{6}$', color))
+        return bool(re.match(r"^#[0-9A-Fa-f]{6}$", color))
 
     @abstractmethod
     def to_viz_def(self, channel_map: dict[str, str]) -> scout_chartdefinition_api.VizDefinition:
@@ -86,6 +86,7 @@ class Panel(ABC):
         """
         pass
 
+
 class TimeseriesPanel(Panel):
     row_data: list[TemplateRow] = []
     row_names: list[str] = []
@@ -93,7 +94,7 @@ class TimeseriesPanel(Panel):
     def __init__(self, panel_data: dict[str, Any], comparison_runs: list[Comparisons] = []):
         """Initializes timeseries panel object from YAML config"""
         try:
-            assert("rows" in panel_data and isinstance(panel_data["rows"], dict))
+            assert "rows" in panel_data and isinstance(panel_data["rows"], dict)
         except Exception:
             raise ValueError("Bad TIMESERIES row structure! See docs.")
         # Parse rows
@@ -198,6 +199,7 @@ class TimeseriesPanel(Panel):
             panel_rows.append(self._create_timeseries_row(row_plots, row_name))
         return self._create_timeseries_chart(panel_rows, panel_axes, self.comparison_runs)
 
+
 class CartesianPanel(Panel):
     x_axis_data: tuple[str, str]  # <channel_name, axis_name>
     y_axis_data: TemplatePlot = {}
@@ -205,7 +207,7 @@ class CartesianPanel(Panel):
     def __init__(self, panel_data: dict[str, Any], comparison_runs: list[Comparisons] = []):
         """Initializes cartesian panel object from YAML config"""
         try:
-            assert("plots" in panel_data and isinstance(panel_data["plots"], dict))
+            assert "plots" in panel_data and isinstance(panel_data["plots"], dict)
         except Exception:
             raise ValueError("Bad SCATTER plot structure! See docs.")
         plots_data = panel_data["plots"]
@@ -253,8 +255,10 @@ class CartesianPanel(Panel):
                 enabled=True,
             )
         else:
-            raise ValueError(f"SCATTER panel y_axis channel has invalid color '{color}'.\
-                                      Must be hex format like '#FF0000'")
+            raise ValueError(
+                f"SCATTER panel y_axis channel has invalid color '{color}'.\
+                                      Must be hex format like '#FF0000'"
+            )
 
     def _create_cartesian_chart(
         self,
@@ -310,16 +314,20 @@ class CartesianPanel(Panel):
 
         return self._create_cartesian_chart(panel_plots, panel_axes, self.comparison_runs)
 
+
 class HistogramPanel(Panel):
     """Helper classes for Histogram template"""
+
     @dataclass
     class CountStrategy:
         """Define a COUNT stategy"""
+
         num_buckets: int
 
     @dataclass
     class WidthStrategy:
         """Define a WIDTH strategy"""
+
         bucket_width: float
         offset: float
 
@@ -349,17 +357,17 @@ class HistogramPanel(Panel):
         try:
             if strat_type == "COUNT":
                 num_buckets = int(data["num_buckets"])
-                assert(num_buckets > 0)
+                assert num_buckets > 0
                 return self.CountStrategy(num_buckets)
             elif strat_type == "WIDTH":
                 bucket_width = float(data["bucket_width"])
-                offset = float(data.get("offset", 0.))
-                assert(bucket_width>0)
+                offset = float(data.get("offset", 0.0))
+                assert bucket_width > 0
                 return self.WidthStrategy(bucket_width, offset)
             else:
                 raise ValueError(f"Bucket strategy: {strat_type} NOT SUPPORTED")
         except Exception:
-            return None # default bucket strat if not formated properly
+            return None  # default bucket strat if not formated properly
 
     """Helper functions for turning to scout api object"""
 
@@ -367,8 +375,10 @@ class HistogramPanel(Panel):
         if self._validate_hex_color(color):
             return scout_chartdefinition_api.HistogramPlot(color=color, variable_name=var_name, enabled=True)
         else:
-            raise ValueError(f"HISTOGRAM panel channel has invalid color '{color}'.\
-                                      Must be hex format like '#FF0000'")
+            raise ValueError(
+                f"HISTOGRAM panel channel has invalid color '{color}'.\
+                                      Must be hex format like '#FF0000'"
+            )
 
     def _create_histogram_bucket_strategy(
         self, bucket_strat: Union[WidthStrategy, CountStrategy]
@@ -417,8 +427,9 @@ class HistogramPanel(Panel):
             is_stacked=self.stacked, plots=panel_plots, bucket_strategy=self.bucket_strat
         )
 
+
 class GeomapPanel(Panel):
-    latlongs_w_color: list[tuple[str, tuple[str, str, str]]] = [] # <plot_name, (lat_channel, long_channel, color)>
+    latlongs_w_color: list[tuple[str, tuple[str, str, str]]] = []  # <plot_name, (lat_channel, long_channel, color)>
     plot_type: str  # 'STREET' or 'SATELLITE'
     geopoints: list[tuple[float, float]] = []  # <lat_val, long_val>
 
@@ -432,7 +443,7 @@ class GeomapPanel(Panel):
                 self.geopoints.append((lat_val, long_val))
 
         try:
-            assert("plots" in panel_data and isinstance(panel_data["plots"], dict))
+            assert "plots" in panel_data and isinstance(panel_data["plots"], dict)
         except Exception:
             raise ValueError("Bad GEOMAP plot structure! See docs.")
 
@@ -466,8 +477,10 @@ class GeomapPanel(Panel):
                 enabled=True,
             )
         else:
-            raise ValueError(f"GEOMAP panel plot '{plot_name}' has invalid color '{color}'.\
-                              Must be hex format like '#FF0000'")
+            raise ValueError(
+                f"GEOMAP panel plot '{plot_name}' has invalid color '{color}'.\
+                              Must be hex format like '#FF0000'"
+            )
 
     def to_viz_def(self, channel_map: dict[str, str]) -> scout_chartdefinition_api.VizDefinition:
         """Parsing function for geomap panels"""
@@ -494,4 +507,3 @@ class GeomapPanel(Panel):
                 )
             )
         )
-
