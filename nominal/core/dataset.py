@@ -362,7 +362,7 @@ class Dataset(DataSource):
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
             sources: Mapping of environment variables to source files to use with the extractor.
                 NOTE: these must match the registered inputs of the containerized extractor exactly
-            tag: Docker image tag to use the extractor of.
+            tag: Tag of the Docker container which hosts the extractor.
                 NOTE: if not provided, the default registered docker tag will be used.
         """
         if isinstance(extractor, str):
