@@ -76,14 +76,18 @@ class TemplateGenerator:
         else:
             return properties
 
-    def create_template_from_yaml(self, yaml_input: Union[str, TextIO], refname: str) -> WorkbookTemplate:
+    @staticmethod
+    def from_yaml(client: NominalClient,
+                                  yaml_input: Union[str, TextIO], refname: str) -> WorkbookTemplate:
         """Main user facing function for creating template.
         TODO: currently creates a new template every call. an updating mechanism would be useful
         """
+        generator = TemplateGenerator(client)
+
         try:
-            data = self._safe_open(yaml_input)
+            data = generator._safe_open(yaml_input)
             ## check if data already exists
-            wb_or_hash = self._search_for_duplicates(data)
+            wb_or_hash = generator._search_for_duplicates(data)
             if isinstance(wb_or_hash, WorkbookTemplate):
                 return wb_or_hash
 
@@ -93,7 +97,8 @@ class TemplateGenerator:
 
         try:
             template_request = template.create_request(wb_or_hash)
-            conjure_template = self.client._clients.template.create(self.client._clients.auth_header, template_request)
-            return WorkbookTemplate._from_conjure(self.client._clients, conjure_template)
+            conjure_template = generator.client._clients.template.create(generator.client._clients.auth_header,
+                                                                         template_request)
+            return WorkbookTemplate._from_conjure(generator.client._clients, conjure_template)
         except Exception as e:
             raise ValueError(f"Error creating template: {e}")
