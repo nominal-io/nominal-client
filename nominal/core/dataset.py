@@ -15,6 +15,7 @@ from typing_extensions import Self, TypeAlias
 from nominal._utils import update_dataclass
 from nominal.core._multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core.bounds import Bounds
+from nominal.core.containerized_extractors import ContainerizedExtractor
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
@@ -333,6 +334,67 @@ class Dataset(DataSource):
         )
         request = _create_dataflash_ingest_request(s3_path, target)
         self._clients.ingest.ingest(self._clients.auth_header, request)
+
+    def add_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, Path | str],
+        tag: str | None = None,
+    ) -> None:
+        """Add data from proprietary data formats using a pre-registered custom extractor.
+
+        Args:
+            extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
+            sources: Mapping of environment variables to source files to use with the extractor.
+             NOTE: these must match the registered inputs of the containerized extractor exactly
+            tag: Tag of the Docker container which hosts the extractor.
+                NOTE: if not provided, the default registered docker tag will be used.
+        """
+        if isinstance(extractor, str):
+            extractor = ContainerizedExtractor._from_conjure(
+                self._clients,
+                self._clients.containerized_extractors.get_containerized_extractor(
+                    self._clients.auth_header, extractor
+                ),
+            )
+        # Ensure all required inputs are present
+        registered_inputs = set()
+        for extractor_input in extractor.inputs:
+            registered_inputs.add(extractor_input.environment_variable)
+            if extractor_input.required and extractor_input.environment_variable not in sources:
+                raise ValueError(f"Required input '{extractor_input.environment_variable}' not present in sources!")
+
+        # Upload all inputs to s3 before ingestion
+        s3_inputs = {}
+        for source, source_path in sources.items():
+            logger.info("Uploading %s (%s) to s3", source_path, source)
+            s3_path = upload_multipart_file(
+                self._clients.auth_header,
+                self._clients.workspace_rid,
+                Path(source_path),
+                self._clients.upload,
+            )
+            logger.info("Uploaded %s -> %s", source_path, s3_path)
+            s3_inputs[source] = s3_path
+        logger.info("Triggering custom extractor %s (tag=%s) with %s", extractor.name, tag, s3_inputs)
+        self._clients.ingest.ingest(
+            self._clients.auth_header,
+            trigger_ingest=ingest_api.IngestRequest(
+                options=ingest_api.IngestOptions(
+                    containerized=ingest_api.ContainerizedOpts(
+                        extractor_rid=extractor.rid,
+                        sources={
+                            source: ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
+                            for source, s3_path in s3_inputs.items()
+                        },
+                        target=ingest_api.DatasetIngestTarget(
+                            existing=ingest_api.ExistingDatasetIngestDestination(self.rid)
+                        ),
+                        tag=tag,
+                    )
+                )
+            ),
+        )
 
     # Backward compatibility
     add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
