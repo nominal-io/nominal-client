@@ -350,7 +350,7 @@ class Dataset(DataSource):
     # Backward compatibility
     add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
 
-    def add_custom(
+    def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, Path],
