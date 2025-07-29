@@ -352,7 +352,10 @@ class Dataset(DataSource):
         """
         if isinstance(extractor, str):
             extractor = ContainerizedExtractor._from_conjure(
-                self._clients, self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, extractor)
+                self._clients,
+                self._clients.containerized_extractors.get_containerized_extractor(
+                    self._clients.auth_header, extractor
+                ),
             )
         # Ensure all required inputs are present
         registered_inputs = set()
