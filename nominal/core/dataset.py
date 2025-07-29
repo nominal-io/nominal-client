@@ -383,7 +383,7 @@ class Dataset(DataSource):
             if source not in registered_inputs:
                 raise ValueError(f"Unexpected input '{source}' with path '{source_path}' received!")
             elif not source_path.exists():
-                raise FileNotFoundError(f"Provided input '{source}' has nonexistant path '{source_path}'")
+                raise FileNotFoundError(f"Provided input '{source}' has nonexistent path '{source_path}'")
 
         # Upload all inputs to s3 before ingestion
         s3_inputs = {}
