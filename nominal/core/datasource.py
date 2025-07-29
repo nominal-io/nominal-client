@@ -23,13 +23,11 @@ from nominal_api import (
 )
 
 from nominal._utils import batched
-from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel, ChannelDataType, _create_timestamp_format
-from nominal.core.stream import WriteStream
+from nominal.core.stream import WriteStream, WriteStreamBase, process_batch_legacy
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
-from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
 
 logger = logging.getLogger(__name__)
@@ -115,9 +113,9 @@ class DataSource(HasRid):
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf", "experimental"] = "json",
     ) -> WriteStreamBase:
-        """Stream to write messages to a datasource.
+        """Stream to write timeseries data to a datasource.
 
-        Messages are written asynchronously.
+        Data is written asynchronously.
 
         Args:
         ----
@@ -309,7 +307,7 @@ def _get_write_stream(
         )
     elif data_format == "protobuf":
         try:
-            from nominal.core._batch_processor_proto import process_batch
+            from nominal.core.stream.batch_processor_proto import process_batch
         except ImportError as ex:
             raise ImportError(
                 "nominal-api-protos is required to use get_write_stream with data_format='protobuf'"
