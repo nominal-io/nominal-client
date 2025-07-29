@@ -210,7 +210,7 @@ class RawTemplate:
 
     """Takes the current template object and turns it into a Template Request"""
 
-    def create_request(self, commit_message: str) -> scout_template_api.CreateTemplateRequest:
+    def create_request(self, properties: dict[str, str]) -> scout_template_api.CreateTemplateRequest:
         if self.version != 0:
             raise RuntimeError("Sorry this function only supports template v0")
 
@@ -250,8 +250,8 @@ class RawTemplate:
             title=self.title,
             description="",
             labels=self.labels,
-            properties={},
+            properties=properties,
             layout=layout,
-            message=commit_message,
+            message="auto-generated",
             is_published=True,
         )

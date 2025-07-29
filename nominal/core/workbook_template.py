@@ -156,6 +156,11 @@ class WorkbookTemplate(HasRid):
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
         return raw_template.metadata.is_published
 
+    def is_archived(self) -> bool:
+        """Returns whether or not the workbook template has been archived"""
+        raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
+        return raw_template.metadata.is_archived
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, template: scout_template_api.Template) -> Self:
         return cls._from_template_summary(
