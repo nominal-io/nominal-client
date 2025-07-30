@@ -7,7 +7,7 @@ from typing import Literal, Sequence
 from nominal_api import scout_datasource_connection_api
 
 from nominal.core.datasource import DataSource, _get_write_stream
-from nominal.core.write_stream_base import WriteStreamBase
+from nominal.core.stream.write_stream_base import WriteStreamBase
 
 
 @dataclass(frozen=True)

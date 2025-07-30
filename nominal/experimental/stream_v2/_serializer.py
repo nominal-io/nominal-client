@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 from typing_extensions import Self
 
-from nominal.core._batch_processor_proto import SerializedBatch, serialize_batch
-from nominal.core._queueing import Batch
+from nominal.core._utils import Batch
+from nominal.core.stream.batch_processor_proto import SerializedBatch, serialize_batch
 
 
 @dataclass(frozen=True)

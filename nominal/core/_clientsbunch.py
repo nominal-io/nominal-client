@@ -33,7 +33,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core._networking import create_conjure_client_factory
+from nominal.core._utils import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
 
 

@@ -9,8 +9,6 @@ from typing import Mapping, Protocol, Sequence, TypeVar, runtime_checkable
 from nominal_api import scout_compute_api, scout_run_api
 from typing_extensions import TypeAlias
 
-from nominal.core.stream import BatchItem
-
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -29,10 +27,6 @@ def rid_from_instance_or_string(value: HasRid | str) -> str:
     elif isinstance(value, HasRid):
         return value.rid
     raise TypeError(f"{value!r} is not a string nor an instance with a 'rid' attribute")
-
-
-def _to_api_batch_key(item: BatchItem) -> tuple[str, Sequence[tuple[str, str]], str]:
-    return item.channel_name, sorted(item.tags.items()) if item.tags is not None else [], type(item.value).__name__
 
 
 def construct_user_agent_string() -> str:

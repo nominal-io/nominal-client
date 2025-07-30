@@ -11,7 +11,7 @@ from typing import Callable, Mapping, Sequence, Type
 
 from typing_extensions import Self
 
-from nominal.core.write_stream_base import WriteStreamBase
+from nominal.core.stream.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,13 @@ class BatchItem:
     timestamp: IntegralNanosecondsUTC
     value: float | int | str
     tags: Mapping[str, str] | None = None
+
+    def _to_api_batch_key(self) -> tuple[str, Sequence[tuple[str, str]], str]:
+        return self.channel_name, sorted(self.tags.items()) if self.tags is not None else [], type(self.value).__name__
+
+    @classmethod
+    def sort_key(cls, item: Self) -> tuple[str, Sequence[tuple[str, str]], str]:
+        return item._to_api_batch_key()
 
 
 @dataclass(frozen=True)

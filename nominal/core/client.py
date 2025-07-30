@@ -34,7 +34,6 @@ from nominal import _config, ts
 from nominal.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
-from nominal.core._multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils import (
     construct_user_agent_string,
     create_search_assets_query,
@@ -46,6 +45,7 @@ from nominal.core._utils import (
     create_search_users_query,
     list_streaming_checklists_for_asset_paginated,
     list_streaming_checklists_paginated,
+    path_upload_name,
     rid_from_instance_or_string,
     search_assets_paginated,
     search_checklists_paginated,
@@ -57,6 +57,7 @@ from nominal.core._utils import (
     search_users_paginated,
     search_workbook_templates_paginated,
     search_workbooks_paginated,
+    upload_multipart_io,
 )
 from nominal.core._utils.query_tools import (
     create_search_containerized_extractors_query,
