@@ -13,7 +13,7 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid
 from nominal.ts import IntegralNanosecondsUTC, LogTimestampType, _SecondsNanos
 
-_EMTPY_MAP: Mapping[str, str] = MappingProxyType({})
+_EMPTY_MAP: Mapping[str, str] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,7 @@ class LogPoint:
         return cls(
             timestamp=_SecondsNanos.from_flexible(timestamp).to_nanoseconds(),
             message=message,
-            args=_EMTPY_MAP if args is None else MappingProxyType(args),
+            args=_EMPTY_MAP if args is None else MappingProxyType(args),
         )
 
     @classmethod
