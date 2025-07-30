@@ -1,4 +1,5 @@
 import hashlib
+from dataclasses import dataclass
 from typing import Any, TextIO, Union
 
 import yaml
@@ -8,16 +9,9 @@ from nominal.core.workbook_template import WorkbookTemplate
 from nominal.experimental.templates.raw_template import RawTemplate
 
 
+@dataclass(frozen=True)
 class TemplateGenerator:
-    def __init__(self, client: NominalClient):
-        """Define a template generator object"""
-        # make sure client is valid
-        try:
-            client.get_user()
-        except Exception:
-            raise ValueError("Client error! Could not locate client")
-
-        self.client = client
+    client: NominalClient
 
     """Helper functions for parsing yaml into RawTemplate"""
 
@@ -77,10 +71,17 @@ class TemplateGenerator:
             return properties
 
     @staticmethod
-    def from_yaml(client: NominalClient,
-                                  yaml_input: Union[str, TextIO], refname: str) -> WorkbookTemplate:
-        """Main user facing function for creating template.
-        TODO: currently creates a new template every call. an updating mechanism would be useful
+    def from_yaml(client: NominalClient, yaml_input: Union[str, TextIO], refname: str) -> WorkbookTemplate:
+        """Create a WorkbookTemplate from a YAML input.
+
+        Args:
+            client: NominalClient instance to use for API calls
+            yaml_input: Either a file path or a file object containing the YAML template
+            refname: Data source refname for the template (must match the one used in the run you want to visualize)
+            NOTE: this is used to create the template, not the workbook
+
+        Returns:
+            WorkbookTemplate instance created from the YAML input
         """
         generator = TemplateGenerator(client)
 
@@ -97,8 +98,9 @@ class TemplateGenerator:
 
         try:
             template_request = template.create_request(wb_or_hash)
-            conjure_template = generator.client._clients.template.create(generator.client._clients.auth_header,
-                                                                         template_request)
+            conjure_template = generator.client._clients.template.create(
+                generator.client._clients.auth_header, template_request
+            )
             return WorkbookTemplate._from_conjure(generator.client._clients, conjure_template)
         except Exception as e:
             raise ValueError(f"Error creating template: {e}")
