@@ -9,7 +9,6 @@ from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
-    datasource_logset,
     event,
     ingest_api,
     scout,
@@ -125,7 +124,6 @@ class ClientsBunch:
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
     logical_series: timeseries_logicalseries.LogicalSeriesService
-    logset: datasource_logset.LogSetService
     run: scout.RunService
     units: scout.UnitsService
     upload: upload_api.UploadService
@@ -166,7 +164,6 @@ class ClientsBunch:
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
             logical_series=client_factory(timeseries_logicalseries.LogicalSeriesService),
-            logset=client_factory(datasource_logset.LogSetService),
             run=client_factory(scout.RunService),
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
