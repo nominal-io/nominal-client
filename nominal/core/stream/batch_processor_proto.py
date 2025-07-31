@@ -24,9 +24,8 @@ except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._queueing import Batch
-from nominal.core._utils import _to_api_batch_key
-from nominal.core.stream import BatchItem
+from nominal.core._utils import Batch
+from nominal.core.stream.write_stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -72,7 +71,7 @@ def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
 
 def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
     """Create a WriteRequestNominal from batches of items."""
-    api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
+    api_batched = groupby(sorted(batch, key=BatchItem.sort_key), key=BatchItem.sort_key)
     api_batches = [list(api_batch) for _, api_batch in api_batched]
     return WriteRequestNominal(
         series=[

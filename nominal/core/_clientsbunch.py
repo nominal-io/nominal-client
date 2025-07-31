@@ -33,7 +33,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core._networking import create_conjure_client_factory
+from nominal.core._utils import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -142,6 +142,7 @@ class ClientsBunch:
     event: event.EventService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     workspace: security_api_workspace.WorkspaceService
+    containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
 
     @classmethod
@@ -182,6 +183,7 @@ class ClientsBunch:
             event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
+            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
         )
 

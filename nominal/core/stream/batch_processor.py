@@ -5,8 +5,7 @@ from typing import Sequence, cast
 
 from nominal_api import storage_writer_api
 
-from nominal.core._utils import _to_api_batch_key
-from nominal.core.stream import BatchItem
+from nominal.core.stream.write_stream import BatchItem
 from nominal.ts import _SecondsNanos
 
 
@@ -50,7 +49,7 @@ def process_batch_legacy(
     auth_header: str,
     storage_writer: storage_writer_api.NominalChannelWriterService,
 ) -> None:
-    api_batched = itertools.groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
+    api_batched = itertools.groupby(sorted(batch, key=BatchItem.sort_key), key=BatchItem.sort_key)
 
     api_batches = [list(api_batch) for _, api_batch in api_batched]
     request = storage_writer_api.WriteBatchesRequestExternal(

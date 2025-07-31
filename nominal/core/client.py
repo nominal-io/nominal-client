@@ -30,11 +30,10 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal import _config
+from nominal import _config, ts
 from nominal.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
-from nominal.core._multipart import path_upload_name, upload_multipart_io
 from nominal.core._utils import (
     construct_user_agent_string,
     create_search_assets_query,
@@ -46,6 +45,7 @@ from nominal.core._utils import (
     create_search_users_query,
     list_streaming_checklists_for_asset_paginated,
     list_streaming_checklists_paginated,
+    path_upload_name,
     rid_from_instance_or_string,
     search_assets_paginated,
     search_checklists_paginated,
@@ -57,12 +57,23 @@ from nominal.core._utils import (
     search_users_paginated,
     search_workbook_templates_paginated,
     search_workbooks_paginated,
+    upload_multipart_io,
 )
-from nominal.core._utils.query_tools import create_search_workbook_templates_query, create_search_workbooks_query
+from nominal.core._utils.query_tools import (
+    create_search_containerized_extractors_query,
+    create_search_workbook_templates_query,
+    create_search_workbooks_query,
+)
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.containerized_extractors import (
+    ContainerizedExtractor,
+    DockerImageSource,
+    FileExtractionInput,
+    FileOutputFormat,
+)
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
@@ -88,6 +99,7 @@ from nominal.ts import (
     LogTimestampType,
     _SecondsNanos,
     _to_api_duration,
+    _to_typed_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -978,7 +990,6 @@ class NominalClient:
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
         Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
-
         Args:
             search_text: Searches for a string in the event's metadata.
             after: Filters to end times after this time, exclusive.
@@ -1001,6 +1012,65 @@ class NominalClient:
             created_by=None if created_by is None else rid_from_instance_or_string(created_by),
         )
         return list(self._iter_search_events(query))
+
+    def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
+        return ContainerizedExtractor._from_conjure(
+            self._clients,
+            self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
+        )
+
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        docker_image: DockerImageSource,
+        timestamp_column: str,
+        timestamp_type: ts._AnyTimestampType,
+        inputs: Sequence[FileExtractionInput] = (),
+        file_output_format: FileOutputFormat | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        description: str | None = None,
+    ) -> ContainerizedExtractor:
+        workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:  # TODO: Remove this once workspace_rid is required on the client
+            workspace_rid = self.get_workspace().rid
+
+        req = ingest_api.RegisterContainerizedExtractorRequest(
+            image=docker_image._to_conjure(),
+            inputs=[file_input._to_conjure() for file_input in inputs],
+            labels=list(labels),
+            name=name,
+            properties={} if properties is None else {**properties},
+            timestamp_metadata=ingest_api.TimestampMetadata(
+                series_name=timestamp_column,
+                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+            ),
+            workspace=workspace_rid,
+            description=description,
+            output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
+        )
+        resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
+        return self.get_containerized_extractor(resp.extractor_rid)
+
+    def search_containerized_extractors(
+        self,
+        *,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        workspace: Workspace | str | None = None,
+    ) -> Sequence[ContainerizedExtractor]:
+        query = create_search_containerized_extractors_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            workspace=workspace,
+        )
+        resp = self._clients.containerized_extractors.search_containerized_extractors(
+            self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
+        )
+        return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""

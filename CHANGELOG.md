@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.70.0](https://github.com/nominal-io/nominal-client/compare/v1.69.1...v1.70.0) (2025-07-29)
+
+
+### Features
+
+* allow registering and working with custom extractors ([#328](https://github.com/nominal-io/nominal-client/issues/328)) ([bf4fa43](https://github.com/nominal-io/nominal-client/commit/bf4fa43b4fcae86feedd1d2fbed58d99c9a73a19))
+* ingest using containerized extractors ([#425](https://github.com/nominal-io/nominal-client/issues/425)) ([d199f46](https://github.com/nominal-io/nominal-client/commit/d199f4678bbd017713fc0cf643b2f8420a297e40))
+
+## [1.69.1](https://github.com/nominal-io/nominal-client/compare/v1.69.0...v1.69.1) (2025-07-24)
+
+
+### Bug Fixes
+
+* parse event duration nanos ([#420](https://github.com/nominal-io/nominal-client/issues/420)) ([0eb883d](https://github.com/nominal-io/nominal-client/commit/0eb883d7141fc44bf15e77fcf9270a585ab52f53))
+
 ## [1.69.0](https://github.com/nominal-io/nominal-client/compare/v1.68.0...v1.69.0) (2025-07-22)
 
 
