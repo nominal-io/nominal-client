@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.71.0](https://github.com/nominal-io/nominal-client/compare/v1.70.0...v1.71.0) (2025-07-31)
+
+
+### Features
+
+* move utilities into core _utils and stream folders ([#426](https://github.com/nominal-io/nominal-client/issues/426)) ([3fbb9ad](https://github.com/nominal-io/nominal-client/commit/3fbb9ad815b411cc5e530f8ec385379ee76b7d2f))
+* remove logsets ([#430](https://github.com/nominal-io/nominal-client/issues/430)) ([f12722a](https://github.com/nominal-io/nominal-client/commit/f12722a7315b5598030132275d2af97cc29165fc))
+
+
+### Bug Fixes
+
+* _EMTPY_MAP =&gt; _EMPTY_MAP ([#428](https://github.com/nominal-io/nominal-client/issues/428)) ([d7e3fab](https://github.com/nominal-io/nominal-client/commit/d7e3fab136ac0e0c3897a4b30dcea27869850a3c))
+
 ## [1.70.0](https://github.com/nominal-io/nominal-client/compare/v1.69.1...v1.70.0) (2025-07-29)
 
 
