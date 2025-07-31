@@ -16,7 +16,7 @@ from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuild
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
 from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.log import Log, LogPoint, LogSet
+from nominal.core.log import LogPoint
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.stream import WriteStream
@@ -42,10 +42,8 @@ __all__ = [
     "FileTypes",
     "Log",
     "LogPoint",
-    "LogSet",
     "NominalClient",
     "poll_until_ingestion_completed",
-    "RegistryAuth",
     "Run",
     "Secret",
     "TagDetails",

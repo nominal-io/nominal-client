@@ -151,27 +151,6 @@ def test_add_attachment_to_run_and_list_attachments(csv_data):
     assert at2.get_contents().read() == at.get_contents().read() == csv_data
 
 
-def test_create_get_log_set(client: nm.NominalClient):
-    name = f"logset-{uuid4()}"
-    desc = f"core test to create & get a log set {uuid4()}"
-    start, _ = _create_random_start_end()
-    logs = [
-        (nm.ts._SecondsNanos.from_datetime(start + timedelta(seconds=i)).to_nanoseconds(), f"Log message {i}")
-        for i in range(5)
-    ]
-
-    logset = client.create_log_set(name, logs, "absolute", desc)
-    logset2 = nm.get_log_set(logset.rid)
-    assert logset2.rid == logset.rid != ""
-    assert logset2.name == logset.name == name
-    assert logset2.description == logset.description == desc
-    assert logset2.timestamp_type == logset.timestamp_type == "absolute"
-
-    retrieved_logs = [(log.timestamp, log.body) for log in logset2.stream_logs()]
-    assert len(retrieved_logs) == 5
-    assert retrieved_logs == logs
-
-
 def test_get_channel(csv_data):
     name = f"dataset-{uuid4()}"
     desc = f"core test to get a channel of data {uuid4()}"
