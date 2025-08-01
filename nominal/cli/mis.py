@@ -87,7 +87,7 @@ def process(mis_path: Path, dataset_rid: str, profile: str) -> None:
     channel_updater.update_channels(mis_data)
 
 
-@mis_cmd.command(name="check-units", help="Validate units in an MIS file against available units in Nominal.")
+@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
 @click.argument("mis_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
 def check_units(mis_path: str, profile: str) -> None:
@@ -120,7 +120,7 @@ def check_units(mis_path: str, profile: str) -> None:
             click.echo(f"  - {unit}")
         click.echo(
             click.style(
-                "Your units will still show in Nominal but will not work with the "
+                "The listed units will still show in Nominal but will not work with the "
                 "'Unit Conversion' transform. You can use the 'list-units' command to see all available units.",
                 fg="red",
             )
