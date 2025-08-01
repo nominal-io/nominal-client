@@ -9,7 +9,7 @@ from nominal_api import (
     scout,
     scout_run_api,
 )
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
@@ -18,7 +18,6 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
-from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
@@ -65,59 +64,6 @@ class Run(HasRid):
             datasource_rids_by_ref_name[ref_name] = rid
 
         return datasource_rids_by_ref_name
-
-    @deprecated(
-        "LogSets are deprecated and will be removed in a future version. "
-        "Add logs to an existing dataset with dataset.write_logs instead."
-    )
-    def add_log_set(self, ref_name: str, log_set: LogSet | str) -> None:
-        """Add a log set to this run.
-
-        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
-        """
-        self.add_log_sets({ref_name: log_set})
-
-    @deprecated(
-        "LogSets are deprecated and will be removed in a future version. "
-        "Add logs to an existing dataset with dataset.write_logs instead."
-    )
-    def add_log_sets(self, log_sets: Mapping[str, LogSet | str]) -> None:
-        """Add multiple log sets to this run.
-
-        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
-        """
-        data_sources = {
-            ref_name: scout_run_api.CreateRunDataSource(
-                data_source=scout_run_api.DataSource(log_set=rid_from_instance_or_string(log_set)),
-                series_tags={},
-                offset=None,
-            )
-            for ref_name, log_set in log_sets.items()
-        }
-        self._clients.run.add_data_sources_to_run(self._clients.auth_header, data_sources, self.rid)
-
-    def _iter_list_log_sets(self) -> Iterable[tuple[str, LogSet]]:
-        log_set_rids_by_ref_name = self._list_datasource_rids("logSet", property_name="log_set")
-        log_sets_by_rids = {
-            rid: LogSet._from_conjure(
-                self._clients,
-                _get_log_set(self._clients, rid),
-            )
-            for rid in log_set_rids_by_ref_name.values()
-        }
-        for ref_name, rid in log_set_rids_by_ref_name.items():
-            log_set = log_sets_by_rids[rid]
-            yield (ref_name, log_set)
-
-    @deprecated(
-        "LogSets are deprecated and will be removed in a future version. "
-        "Logs should be stored as a log channel in a Nominal datasource instead."
-    )
-    def list_log_sets(self) -> Sequence[tuple[str, LogSet]]:
-        """List the log_sets associated with this run.
-        Returns (ref_name, logset) pairs for each logset.
-        """
-        return list(self._iter_list_log_sets())
 
     def add_dataset(
         self,

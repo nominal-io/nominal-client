@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, Union, cast
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, Union
 
 from nominal_api import (
     scout_asset_api,
     scout_assets,
     scout_run_api,
 )
-from typing_extensions import Self, TypeAlias, deprecated
+from typing_extensions import Self, TypeAlias
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
@@ -18,10 +18,9 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.log import LogSet, _get_log_set
 from nominal.core.video import Video, _get_video
 
-ScopeType: TypeAlias = Union[Connection, Dataset, LogSet, Video]
+ScopeType: TypeAlias = Union[Connection, Dataset, Video]
 
 
 @dataclass(frozen=True)
@@ -37,7 +36,6 @@ class Asset(HasRid):
     class _Clients(
         DataSource._Clients,
         Video._Clients,
-        LogSet._Clients,
         Attachment._Clients,
         HasScoutParams,
         Protocol,
@@ -132,27 +130,6 @@ class Asset(HasRid):
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
 
-    @deprecated(
-        "LogSets are deprecated and will be removed in a future version. "
-        "Add logs to an existing dataset with dataset.write_logs instead."
-    )
-    def add_log_set(self, data_scope_name: str, log_set: LogSet | str) -> None:
-        """Add a log set to this asset.
-
-        Log sets map "ref names" (their name within the run) to a Log set (or log set rid).
-        """
-        # TODO(alkasm): support series tags
-        request = scout_asset_api.AddDataScopesToAssetRequest(
-            data_scopes=[
-                scout_asset_api.CreateAssetDataScope(
-                    data_scope_name=data_scope_name,
-                    data_source=scout_run_api.DataSource(log_set=rid_from_instance_or_string(log_set)),
-                    series_tags={},
-                )
-            ],
-        )
-        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
-
     def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Add attachments that have already been uploaded to this asset.
 
@@ -170,14 +147,9 @@ class Asset(HasRid):
             raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
         return response[self.rid]
 
-    def _scope_rid(self, stype: Literal["dataset", "video", "connection", "logset"]) -> dict[str, str]:
+    def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
         asset = self._get_asset()
-        rid_attrib = {"dataset": "dataset", "logset": "log_set", "connection": "connection", "video": "video"}
-        return {
-            scope.data_scope_name: cast(str, getattr(scope.data_source, rid_attrib[stype]))
-            for scope in asset.data_scopes
-            if scope.data_source.type.lower() == stype
-        }
+        return {scope.data_scope_name: stype for scope in asset.data_scopes if scope.data_source.type.lower() == stype}
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
@@ -218,29 +190,13 @@ class Asset(HasRid):
             for (scope, rid) in scope_rid.items()
         ]
 
-    @deprecated(
-        "LogSets are deprecated and will be removed in a future version. "
-        "Logs should be stored as a log channel in a Nominal datasource instead."
-    )
-    def list_logsets(self) -> Sequence[tuple[str, LogSet]]:
-        """List the logsets associated with this asset.
-        Returns (data_scope_name, logset) pairs for each logset.
-        """
-        return self._list_logsets()
-
-    def _list_logsets(self) -> Sequence[tuple[str, LogSet]]:
-        scope_rid = self._scope_rid(stype="logset")
-        return [
-            (scope, LogSet._from_conjure(self._clients, _get_log_set(self._clients, rid)))
-            for (scope, rid) in scope_rid.items()
-        ]
-
     def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
         """List scopes associated with this asset.
-        Returns (data_scope_name, scope) pairs, where scope can be
-        a dataset, connection, video, or logset.
+
+        Returns:
+            (data_scope_name, scope) pairs, where scope can be a dataset, connection, or video.
         """
-        return (*self.list_datasets(), *self.list_connections(), *self._list_logsets(), *self.list_videos())
+        return (*self.list_datasets(), *self.list_connections(), *self.list_videos())
 
     def get_or_create_dataset(
         self,
@@ -353,8 +309,7 @@ class Asset(HasRid):
             )
             for ds in conjure_asset.data_scopes
             if ds.data_scope_name not in data_scope_names
-            and (ds.data_source.dataset or ds.data_source.connection or ds.data_source.video or ds.data_source.log_set)
-            not in data_source_rids
+            and (ds.data_source.dataset or ds.data_source.connection or ds.data_source.video) not in data_source_rids
         ]
 
         response = self._clients.assets.update_asset(
