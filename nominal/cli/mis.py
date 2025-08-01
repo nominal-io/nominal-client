@@ -63,6 +63,12 @@ MIS must be in the format of a CSV with the following columns:
 - Channel Name
 - Channel Description
 - UCUM Unit
+
+Example:
+
+Channel Name,Channel Description,UCUM Unit
+RPM, Engine RPM, rpm
+ECT1, Engine Coolant Temperature Main, Cel
 """
 )
 def mis_cmd() -> None:
