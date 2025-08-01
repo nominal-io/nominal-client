@@ -1,6 +1,6 @@
 import csv
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Union
 
 import click
 
@@ -70,7 +70,7 @@ def mis_cmd() -> None:
     pass
 
 
-@mis_cmd.command()
+@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
 @click.argument("mis_path", type=click.Path(exists=True))
 @click.option("--dataset-rid", type=str, required=True)
 @click.option("--profile", type=str, required=True)
@@ -81,16 +81,10 @@ def process(mis_path: Path, dataset_rid: str, profile: str) -> None:
     channel_updater.update_channels(mis_data)
 
 
-@mis_cmd.group()
-def validate() -> None:
-    """Commands for validating MIS files."""
-    pass
-
-
-@validate.command(name="check-units", help="Validate units in an MIS file against available units in Nominal.")
+@mis_cmd.command(name="check-units", help="Validate units in an MIS file against available units in Nominal.")
 @click.argument("mis_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
-def validate_file(mis_path: str, profile: str) -> None:
+def check_units(mis_path: str, profile: str) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     click.echo(f"Validating MIS file: {mis_path}")
 
@@ -129,7 +123,7 @@ def validate_file(mis_path: str, profile: str) -> None:
         raise click.exceptions.Exit(1)
 
 
-@validate.command(name="list-units", help="List all available units in Nominal.")
+@mis_cmd.command(name="list-units", help="List all available units in Nominal.")
 @click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
 @click.option(
     "--csv",
@@ -137,7 +131,7 @@ def validate_file(mis_path: str, profile: str) -> None:
     type=click.Path(dir_okay=False, writable=True),
     help="Path to write the units to as a CSV file.",
 )
-def list_units(profile: str, csv_path: str | None) -> None:
+def list_units(profile: str, csv_path: Union[str, None]) -> None:
     """List all available units in Nominal."""
     client = NominalClient.from_profile(profile)
     units = client.get_all_units()
