@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import abc
+import collections
 import logging
 import multiprocessing
 import time
-from typing import Generic, Iterator, TypeVar
+from typing import Generic, Iterator, Mapping, Sequence, TypeVar
 
 import pandas as pd
 from pandas._typing import DtypeObj
 
 from nominal._utils.threading_tools import StoppableQueue
-from nominal.ts import IntegralNanosecondsUTC
+from nominal.core.channel import Channel, ChannelDataType
+from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,17 @@ def to_api_dtype(dtype: DtypeObj) -> str:
         return "doubles"
     else:
         raise ValueError(f"Unknown datatype for streaming data: {dtype}")
+
+
+def to_pandas_unit(unit: _LiteralTimeUnit) -> str:
+    return {
+        "nanoseconds": "ns",
+        "microseconds": "us",
+        "milliseconds": "ms",
+        "seconds": "s",
+        "minutes": "m",
+        "hours": "h",
+    }[unit]
 
 
 def extract_batches_from_dataframe(
@@ -66,6 +79,25 @@ def extract_batches_from_dataframe(
                 continue
 
             yield col_name, df_slice
+
+
+def group_channels_by_datatype(channels: Sequence[Channel]) -> Mapping[ChannelDataType, Sequence[Channel]]:
+    """Partition the provided channels by data type.
+
+    Channels with no datatype are grouped into the UNKNOWN partition of channels.
+
+    Args:
+        channels: Channels to partition
+    Returns:
+        Mapping of data type to a list of the corresponding channels
+    """
+    channel_groups = collections.defaultdict(list)
+    for channel in channels:
+        if channel.data_type:
+            channel_groups[channel.data_type].append(channel)
+        else:
+            channel_groups[ChannelDataType.UNKNOWN].append(channel)
+    return {**channel_groups}
 
 
 InputT = TypeVar("InputT")

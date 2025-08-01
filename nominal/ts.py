@@ -203,7 +203,7 @@ from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, Union
 
 import dateutil.parser
-from nominal_api import api, ingest_api, scout_run_api
+from nominal_api import api, ingest_api, scout_dataexport_api, scout_run_api
 from typing_extensions import Self, TypeAlias
 
 __all__ = [
@@ -340,8 +340,14 @@ _LiteralAbsolute: TypeAlias = Literal[
     "epoch_hours",
 ]
 
-TypedTimestampType: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
+_TypedNativeTimestampType: TypeAlias = Union[Iso8601, Epoch, Relative]
+"""Type alias for all of the strongly typed timestamp types that can be converted to a native python datetime"""
+
+TypedTimestampType: TypeAlias = Union[_TypedNativeTimestampType, Custom]
 """Type alias for all of the strongly typed timestamp types."""
+
+_AnyNativeTimestampType: TypeAlias = Union[_TypedNativeTimestampType, _LiteralAbsolute]
+"""Type alias for all of the allowable timestamp types that can be converted to a native python datetime"""
 
 _AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute]
 """Type alias for all of the allowable timestamp types, including string representations."""
@@ -355,6 +361,21 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if type_ not in _str_to_type:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
+
+
+def _to_export_timestamp_format(type_: _AnyNativeTimestampType) -> scout_dataexport_api.TimestampFormat:
+    typed_timestamp_format = _to_typed_timestamp_type(type_)
+    if isinstance(typed_timestamp_format, (Iso8601, Epoch)):
+        return scout_dataexport_api.TimestampFormat(iso8601=scout_dataexport_api.Iso8601TimestampFormat())
+    elif isinstance(typed_timestamp_format, Relative):
+        return scout_dataexport_api.TimestampFormat(
+            relative=scout_dataexport_api.RelativeTimestampFormat(
+                relative_to=_SecondsNanos.from_flexible(typed_timestamp_format.start).to_api(),
+                time_unit=_time_unit_to_conjure(typed_timestamp_format.unit),
+            )
+        )
+    else:
+        raise TypeError(f"Unsupported timestamp type for data export: {type_}")
 
 
 def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
