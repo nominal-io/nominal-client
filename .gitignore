@@ -170,3 +170,5 @@ playground/
 # Backup files
 *~
 \#*
+test_gpu_video_conversion.py
+simple_gpu_test.py
