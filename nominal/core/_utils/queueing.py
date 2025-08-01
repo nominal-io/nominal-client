@@ -43,9 +43,9 @@ def _timed_batch(q: ReadQueue[BatchItem], max_batch_size: int, max_batch_duratio
     batch: list[BatchItem] = []
     oldest_timestamp: IntegralNanosecondsUTC = MAX_INT64
     newest_timestamp: IntegralNanosecondsUTC = 0
-    next_batch_time = time.time() + max_batch_duration.total_seconds()
+    next_batch_time = time.monotonic() + max_batch_duration.total_seconds()
     while True:
-        now = time.time()
+        now = time.monotonic()
         try:
             item = q.get(timeout=max(0, next_batch_time - now))
             if isinstance(item, QueueShutdown):
