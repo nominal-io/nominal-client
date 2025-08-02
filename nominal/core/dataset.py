@@ -20,6 +20,7 @@ from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint, _write_logs
+from nominal.core.stream import LogStream, WriteStream, process_log_batch
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _AnyTimestampType,
@@ -440,6 +441,32 @@ class Dataset(DataSource):
             files = filter(lambda f: f.ingest_status.type == "success", files)
         for file in files:
             yield DatasetFile._from_conjure(self._clients, file)
+
+    def get_log_stream(
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+    ) -> LogStream:
+        """Stream to asynchronously write log data to a dataset.
+
+        Args:
+            batch_size: Number of records to upload at a time to Nominal.
+                NOTE: Raising this may improve performance in high latency scenarios
+            max_wait: Maximum number of seconds to allow data to be locally buffered
+                before streaming to Nominal.
+
+        Returns:
+            Write stream object configured to send logs to nominal. This may be used as a context manager
+            (so that resources are automatically released upon exiting the context), or if not used as a context
+            manager, should be explicitly `close()`-ed once no longer needed.
+        """
+        return WriteStream.create(
+            batch_size=batch_size,
+            max_wait=max_wait,
+            process_batch=lambda batch: process_log_batch(
+                batch, self.rid, auth_header=self._clients.auth_header, storage_writer=self._clients.storage_writer
+            ),
+        )
 
     def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
         r"""Stream logs to the datasource.
