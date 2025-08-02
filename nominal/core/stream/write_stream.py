@@ -7,21 +7,21 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Callable, Mapping, Sequence, Type
+from typing import Callable, Generic, Mapping, Sequence, Type
 
-from typing_extensions import Self
+from typing_extensions import Self, TypeAlias
 
-from nominal.core.stream.write_stream_base import WriteStreamBase
+from nominal.core.stream.write_stream_base import StreamType, WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class BatchItem:
+class BatchItem(Generic[StreamType]):
     channel_name: str
     timestamp: IntegralNanosecondsUTC
-    value: float | int | str
+    value: StreamType
     tags: Mapping[str, str] | None = None
 
     def _to_api_batch_key(self) -> tuple[str, Sequence[tuple[str, str]], str]:
@@ -32,13 +32,26 @@ class BatchItem:
         return item._to_api_batch_key()
 
 
+DataStream: TypeAlias = WriteStreamBase[str | float]
+"""Stream type for asynchronously sending timeseries data to the Nominal backend."""
+
+DataItem: TypeAlias = BatchItem[str | float]
+"""Individual item of timeseries data to stream to Nominal."""
+
+LogStream: TypeAlias = WriteStreamBase[str]
+"""Stream type for asynchronously sending log data to the Nominal backend."""
+
+LogItem: TypeAlias = BatchItem[str]
+"""Individual item of log data to stream to Nominal."""
+
+
 @dataclass(frozen=True)
-class WriteStream(WriteStreamBase):
+class WriteStream(WriteStreamBase[StreamType]):
     batch_size: int
     max_wait: timedelta
-    _process_batch: Callable[[Sequence[BatchItem]], None]
+    _process_batch: Callable[[Sequence[BatchItem[StreamType]]], None]
     _executor: concurrent.futures.ThreadPoolExecutor
-    _thread_safe_batch: ThreadSafeBatch
+    _thread_safe_batch: ThreadSafeBatch[StreamType]
     _stop: threading.Event
     _pending_jobs: threading.BoundedSemaphore
 
@@ -47,7 +60,7 @@ class WriteStream(WriteStreamBase):
         cls,
         batch_size: int,
         max_wait: timedelta,
-        process_batch: Callable[[Sequence[BatchItem]], None],
+        process_batch: Callable[[Sequence[BatchItem[StreamType]]], None],
     ) -> Self:
         """Create the stream."""
         executor = concurrent.futures.ThreadPoolExecutor()
@@ -66,7 +79,7 @@ class WriteStream(WriteStreamBase):
 
         return instance
 
-    def __enter__(self) -> WriteStream:
+    def __enter__(self) -> Self:
         """Create the stream as a context manager."""
         return self
 
@@ -80,7 +93,7 @@ class WriteStream(WriteStreamBase):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: float | str,
+        value: StreamType,
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Add a message to the queue after normalizing the timestamp to IntegralNanosecondsUTC.
@@ -164,14 +177,14 @@ class WriteStream(WriteStreamBase):
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
 
 
-class ThreadSafeBatch:
+class ThreadSafeBatch(Generic[StreamType]):
     def __init__(self) -> None:
         """Thread-safe access to batch and last swap time."""
-        self._batch: list[BatchItem] = []
+        self._batch: list[BatchItem[StreamType]] = []
         self._last_time = time.time()
         self._lock = threading.Lock()
 
-    def swap(self, condition: Callable[[int], bool] | None = None) -> list[BatchItem] | None:
+    def swap(self, condition: Callable[[int], bool] | None = None) -> list[BatchItem[StreamType]] | None:
         """Swap the current batch with an empty one and return the old batch.
 
         If condition is provided, the swap will only occur if the condition is met, otherwise None is returned.
@@ -184,7 +197,7 @@ class ThreadSafeBatch:
             self._last_time = time.time()
         return batch
 
-    def add(self, items: Sequence[BatchItem]) -> None:
+    def add(self, items: Sequence[BatchItem[StreamType]]) -> None:
         with self._lock:
             self._batch.extend(items)
 

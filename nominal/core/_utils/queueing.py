@@ -5,9 +5,9 @@ import time
 from dataclasses import dataclass
 from datetime import timedelta
 from queue import Empty, Queue
-from typing import Iterable, List, Protocol, TypeVar
+from typing import Generic, Iterable, List, Protocol, TypeVar
 
-from nominal.core.stream import BatchItem
+from nominal.core.stream.write_stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC
 
 _T = TypeVar("_T")
@@ -19,8 +19,8 @@ MAX_INT64 = 2**63 - 1
 
 
 @dataclass(frozen=True)
-class Batch:
-    items: List[BatchItem]
+class Batch(Generic[_T]):
+    items: List[BatchItem[_T]]
     oldest_timestamp: IntegralNanosecondsUTC
     newest_timestamp: IntegralNanosecondsUTC
 
@@ -35,12 +35,14 @@ class WriteQueue(Protocol[_T_contra]):
     def shutdown(self, immediate: bool = False) -> None: ...
 
 
-def _timed_batch(q: ReadQueue[BatchItem], max_batch_size: int, max_batch_duration: timedelta) -> Iterable[Batch]:
+def _timed_batch(
+    q: ReadQueue[BatchItem[_T]], max_batch_size: int, max_batch_duration: timedelta
+) -> Iterable[Batch[_T]]:
     """Yield batches of items from a queue, either when the batch size is reached or the batch window expires.
 
     Will not yield empty batches.
     """
-    batch: list[BatchItem] = []
+    batch: list[BatchItem[_T]] = []
     oldest_timestamp: IntegralNanosecondsUTC = MAX_INT64
     newest_timestamp: IntegralNanosecondsUTC = 0
     next_batch_time = time.monotonic() + max_batch_duration.total_seconds()
@@ -70,8 +72,8 @@ def _timed_batch(q: ReadQueue[BatchItem], max_batch_size: int, max_batch_duratio
 
 
 def _enqueue_timed_batches(
-    items: ReadQueue[BatchItem],
-    batches: WriteQueue[Batch | QueueShutdown],
+    items: ReadQueue[BatchItem[_T]],
+    batches: WriteQueue[Batch[_T] | QueueShutdown],
     max_batch_size: int,
     max_batch_duration: timedelta,
 ) -> None:
@@ -82,13 +84,13 @@ def _enqueue_timed_batches(
 
 
 def spawn_batching_thread(
-    items: ReadQueue[_T | QueueShutdown],
+    items: ReadQueue[BatchItem[_T] | QueueShutdown],
     max_batch_size: int,
     max_batch_duration: timedelta,
     max_queue_size: int = 0,
-) -> tuple[threading.Thread, ReadQueue[Batch]]:
+) -> tuple[threading.Thread, ReadQueue[Batch[_T]]]:
     """Enqueue items from a queue into batches in a separate thread."""
-    batches: Queue[Batch] = Queue(maxsize=max_queue_size)
+    batches: Queue[Batch[_T]] = Queue(maxsize=max_queue_size)
     batching_thread = threading.Thread(
         target=_enqueue_timed_batches, args=(items, batches, max_batch_size, max_batch_duration), daemon=True
     )
