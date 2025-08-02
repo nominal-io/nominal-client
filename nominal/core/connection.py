@@ -7,7 +7,7 @@ from typing import Literal, Sequence
 from nominal_api import scout_datasource_connection_api
 
 from nominal.core.datasource import DataSource, _get_write_stream
-from nominal.core.stream.write_stream_base import WriteStreamBase
+from nominal.core.stream import DataStream
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,7 @@ class StreamingConnection(Connection):
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf", "experimental"] = "json",
-    ) -> WriteStreamBase:
+    ) -> DataStream:
         """Stream to write non-blocking messages to a datasource.
 
         Args:
