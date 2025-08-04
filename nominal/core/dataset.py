@@ -13,7 +13,8 @@ from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self, TypeAlias
 
 from nominal._utils import update_dataclass
-from nominal.core._stream import LogStream, WriteStream, process_log_batch
+from nominal.core._stream.batch_processor import process_log_batch
+from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._utils import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractors import ContainerizedExtractor

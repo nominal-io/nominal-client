@@ -24,7 +24,8 @@ from nominal_api import (
 
 from nominal._utils import batched
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
-from nominal.core._stream import DataStream, WriteStream, process_batch_legacy
+from nominal.core._stream.batch_processor import process_batch_legacy
+from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel, ChannelDataType, _create_timestamp_format
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
