@@ -7,7 +7,7 @@ from datetime import timedelta
 from queue import Empty, Queue
 from typing import Generic, Iterable, List, Protocol, TypeVar
 
-from nominal.core.stream.write_stream import BatchItem
+from nominal.core._stream.write_stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC
 
 _T = TypeVar("_T")

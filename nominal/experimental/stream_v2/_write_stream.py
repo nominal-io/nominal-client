@@ -15,9 +15,9 @@ from typing import Callable, Mapping, Protocol, Type
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService, RequestMetrics
+from nominal.core._stream import BatchItem, DataItem, DataStream
+from nominal.core._stream.batch_processor_proto import SerializedBatch
 from nominal.core._utils import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
-from nominal.core.stream import BatchItem, DataItem, DataStream
-from nominal.core.stream.batch_processor_proto import SerializedBatch
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 

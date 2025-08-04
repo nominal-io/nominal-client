@@ -13,6 +13,7 @@ from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self, TypeAlias
 
 from nominal._utils import update_dataclass
+from nominal.core._stream import LogStream, WriteStream, process_log_batch
 from nominal.core._utils import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractors import ContainerizedExtractor
@@ -20,7 +21,6 @@ from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint, _write_logs
-from nominal.core.stream import LogStream, WriteStream, process_log_batch
 from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _AnyTimestampType,
