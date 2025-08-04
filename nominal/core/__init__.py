@@ -1,4 +1,4 @@
-from nominal.core._stream import WriteStream
+from nominal.core._stream.write_stream import WriteStream
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.channel import Channel
