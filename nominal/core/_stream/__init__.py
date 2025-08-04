@@ -1,5 +1,5 @@
-from nominal.core.stream.batch_processor import make_points, process_batch_legacy, process_log_batch
-from nominal.core.stream.write_stream import (
+from nominal.core._stream.batch_processor import make_points, process_batch_legacy, process_log_batch
+from nominal.core._stream.write_stream import (
     BatchItem,
     DataItem,
     DataStream,
@@ -8,7 +8,7 @@ from nominal.core.stream.write_stream import (
     ThreadSafeBatch,
     WriteStream,
 )
-from nominal.core.stream.write_stream_base import StreamType, WriteStreamBase
+from nominal.core._stream.write_stream_base import StreamType, WriteStreamBase
 
 __all__ = [
     "BatchItem",

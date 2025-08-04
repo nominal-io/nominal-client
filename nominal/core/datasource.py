@@ -24,9 +24,9 @@ from nominal_api import (
 
 from nominal._utils import batched
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
+from nominal.core._stream import DataStream, WriteStream, process_batch_legacy
 from nominal.core._utils import HasRid
 from nominal.core.channel import Channel, ChannelDataType, _create_timestamp_format
-from nominal.core.stream import DataStream, WriteStream, process_batch_legacy
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
 
@@ -307,7 +307,7 @@ def _get_write_stream(
         )
     elif data_format == "protobuf":
         try:
-            from nominal.core.stream.batch_processor_proto import process_batch
+            from nominal.core._stream.batch_processor_proto import process_batch
         except ImportError as ex:
             raise ImportError(
                 "nominal-api-protos is required to use get_write_stream with data_format='protobuf'"
