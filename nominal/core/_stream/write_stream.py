@@ -7,11 +7,11 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import TracebackType
-from typing import Callable, Generic, Mapping, Sequence, Type
+from typing import Callable, Generic, Mapping, Sequence, Type, Union
 
 from typing_extensions import Self, TypeAlias
 
-from nominal.core.stream.write_stream_base import StreamType, WriteStreamBase
+from nominal.core._stream.write_stream_base import StreamType, WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)
@@ -32,10 +32,10 @@ class BatchItem(Generic[StreamType]):
         return item._to_api_batch_key()
 
 
-DataStream: TypeAlias = WriteStreamBase[str | float]
+DataStream: TypeAlias = WriteStreamBase[Union[str, float]]
 """Stream type for asynchronously sending timeseries data to the Nominal backend."""
 
-DataItem: TypeAlias = BatchItem[str | float]
+DataItem: TypeAlias = BatchItem[Union[str, float]]
 """Individual item of timeseries data to stream to Nominal."""
 
 LogStream: TypeAlias = WriteStreamBase[str]

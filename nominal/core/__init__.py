@@ -1,3 +1,4 @@
+from nominal.core._stream import WriteStream
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.channel import Channel
@@ -19,7 +20,6 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint
 from nominal.core.run import Run
 from nominal.core.secret import Secret
-from nominal.core.stream import WriteStream
 from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
