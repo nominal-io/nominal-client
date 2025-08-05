@@ -29,28 +29,17 @@ def process_mis_csv(mis_path: Path) -> dict[str, Tuple[str, str]]:
     return processed_data
 
 
-class Channel_Updater:
-    """Updates channel metadata in Nominal datasets."""
+def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, profile: str) -> None:
+    """Update channels using dictionary lookup instead of nested loops."""
+    client = NominalClient.from_profile(profile)
+    dataset = client.get_dataset(dataset_rid)
+    channel_list = dataset.get_channels()
+    channel_map = {channel.name: channel for channel in channel_list}
 
-    def __init__(self, dataset_rid: str, profile: str):
-        """Initialize the Channel_Updater with dataset and client information.
-
-        Args:
-            dataset_rid: The RID of the dataset to update
-            profile: The Nominal profile to use for authentication
-        """
-        self.dataset_rid = dataset_rid
-        self.client = NominalClient.from_profile(profile)
-        self.dataset = self.client.get_dataset(dataset_rid)
-        self.channel_list = self.dataset.get_channels()
-        self.channel_map = {channel.name: channel for channel in self.channel_list}
-
-    def update_channels(self, mis_data: dict[str, Tuple[str, str]]) -> None:
-        """Update channels using dictionary lookup instead of nested loops."""
-        for channel_name, (description, unit) in mis_data.items():
-            channel = self.channel_map.get(channel_name)
-            if channel:
-                channel.update(description=description, unit=unit)
+    for channel_name, (description, unit) in mis_data.items():
+        channel = channel_map.get(channel_name)
+        if channel:
+            channel.update(description=description, unit=unit)
 
 
 @click.group(
@@ -83,8 +72,7 @@ def mis_cmd() -> None:
 def process(mis_path: Path, dataset_rid: str, profile: str) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     mis_data = process_mis_csv(mis_path)
-    channel_updater = Channel_Updater(dataset_rid, profile)
-    channel_updater.update_channels(mis_data)
+    update_channels(mis_data, dataset_rid, profile)
 
 
 @mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
