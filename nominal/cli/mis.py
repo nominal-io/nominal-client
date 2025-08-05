@@ -2,9 +2,9 @@ import csv
 import logging
 from pathlib import Path
 from typing import Tuple, Union
-import tabulate
 
 import click
+import tabulate
 
 from nominal.core import NominalClient
 
