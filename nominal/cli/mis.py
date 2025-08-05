@@ -1,10 +1,14 @@
 import csv
+import logging
 from pathlib import Path
 from typing import Tuple, Union
+import tabulate
 
 import click
 
 from nominal.core import NominalClient
+
+logger = logging.getLogger(__name__)
 
 
 def process_mis_csv(mis_path: Path) -> dict[str, Tuple[str, str]]:
@@ -40,24 +44,20 @@ def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, prof
         channel = channel_map.get(channel_name)
         if channel:
             channel.update(description=description, unit=unit)
+        else:
+            logger.warning(f"Channel {channel_name} not found in dataset {dataset_rid}")
 
 
 @click.group(
     help="""\
 This CLI processes an MIS and turns it into unit assignments and channel descriptions on a dataset.
-
-MIS must be in the format of a CSV with the following columns:
-
-\b
-- Channel Name
-- Channel Description
-- UCUM Unit
+MIS must be a CSV with the following columns: Channel Name, Channel Description, UCUM Unit
 
 Example:
 
-Channel Name,Channel Description,UCUM Unit
-RPM, Engine RPM, rpm
-ECT1, Engine Coolant Temperature Main, Cel
+Channel Name,Channel Description,UCUM Unit \n
+RPM, Engine RPM, rpm \n
+ECT1, Engine Coolant Temperature Main, Cel \n
 """
 )
 def mis_cmd() -> None:
@@ -65,7 +65,9 @@ def mis_cmd() -> None:
     pass
 
 
-@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
+@mis_cmd.command(
+    name="process", help="Processes an MIS file and updates channel descriptions and units."
+)
 @click.argument("mis_path", type=click.Path(exists=True))
 @click.option("--dataset-rid", type=str, required=True)
 @click.option("--profile", type=str, required=True)
@@ -75,10 +77,12 @@ def process(mis_path: Path, dataset_rid: str, profile: str) -> None:
     update_channels(mis_data, dataset_rid, profile)
 
 
-@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
+@mis_cmd.command(
+    name="validate", help="Validate units in an MIS file against available units in Nominal."
+)
 @click.argument("mis_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
-def check_units(mis_path: str, profile: str) -> None:
+def check_units(mis_path: str, profile: str, ctx: click.Context) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     click.echo(f"Validating MIS file: {mis_path}")
 
@@ -91,9 +95,11 @@ def check_units(mis_path: str, profile: str) -> None:
     try:
         nominal_units_list = client.get_all_units()
         nominal_units = {unit.symbol for unit in nominal_units_list}
-        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{profile}'.")
+        click.echo(
+            f"Found {len(nominal_units)} available units in Nominal for profile '{profile}'."
+        )
     except Exception as e:
-        click.echo(click.style(f"Error fetching units from Nominal: {e}", fg="red"), err=True)
+        click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
         return
 
     # Find invalid units
@@ -101,20 +107,18 @@ def check_units(mis_path: str, profile: str) -> None:
 
     # Report results
     if not invalid_units:
-        click.echo(click.style("✓ All units in the MIS file are valid.", fg="green"))
+        click.secho("✓ All units in the MIS file are valid.", fg="green")
     else:
-        click.echo(click.style(f"\nFound {len(invalid_units)} invalid units in the MIS file:", fg="yellow"))
+        logger.warning(f"Found {len(invalid_units)} invalid units in the MIS file:")
         for unit in sorted(list(invalid_units)):
             click.echo(f"  - {unit}")
-        click.echo(
-            click.style(
+        click.secho(
                 "The listed units will still show in Nominal but will not work with the "
                 "'Unit Conversion' transform. You can use the 'list-units' command to see all available units.",
                 fg="red",
             )
-        )
         # Exit with a non-zero code to indicate failure, useful for scripting
-        raise click.exceptions.Exit(1)
+        ctx.exit(1)
 
 
 @mis_cmd.command(name="list-units", help="List all available units in Nominal.")
@@ -139,7 +143,4 @@ def list_units(profile: str, csv_path: Union[str, None]) -> None:
                 writer.writerow([unit.symbol, unit.name])
         click.echo(f"Unit list successfully written to {csv_path}")
     else:
-        click.echo(f"{'Symbol':<20} {'Name'}")
-        click.echo("-" * 40)
-        for unit in sorted_units:
-            click.echo(f"{unit.symbol:<20} {unit.name}")
+        click.echo(tabulate.tabulate(sorted_units, headers=["Symbol", "Name"], tablefmt="grid"))
