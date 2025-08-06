@@ -5,6 +5,7 @@ from typing import Tuple, Union
 
 import click
 import tabulate
+import pandas as pd
 
 from nominal.core import NominalClient
 
@@ -13,24 +14,13 @@ logger = logging.getLogger(__name__)
 
 def process_mis_csv(mis_path: Path) -> dict[str, Tuple[str, str]]:
     """Read the MIS CSV and return a dictionary of channel names and their descriptions and units."""
-    processed_data = {}
-    with open(mis_path, "r", newline="") as f:
-        reader = csv.reader(f)
-        try:
-            next(reader)  # Skip header
-        except StopIteration:
-            return {}  # Handle empty file
+    df = pd.read_csv(mis_path)
+    return df.to_dict(orient="records")
 
-        for row in reader:
-            # Ensure row has enough columns before processing
-            if len(row) >= 3:
-                # Strip whitespace from all fields to prevent validation issues and handle empty lines
-                channel_name = row[0].strip()
-                description = row[1].strip()
-                unit = row[2].strip()
-                if channel_name:
-                    processed_data[channel_name] = (description, unit)
-    return processed_data
+def process_mis_excel(mis_path: Path, sheet: str) -> dict[str, Tuple[str, str]]:
+    """Read the MIS Excel file and return a dictionary of channel names and their descriptions and units."""
+    df = pd.read_excel(mis_path, sheet_name=sheet)
+    return df.to_dict(orient="records")
 
 
 def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, profile: str) -> None:
@@ -82,12 +72,21 @@ def process(mis_path: Path, dataset_rid: str, profile: str) -> None:
 )
 @click.argument("mis_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
-def check_units(mis_path: str, profile: str, ctx: click.Context) -> None:
+@click.option("--sheet", type=str, required=False, help="The sheet to use in the Excel file if parsing direct from Excel.")
+@click.pass_context
+def check_units(ctx: click.Context, mis_path: str, profile: str, sheet: str) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     click.echo(f"Validating MIS file: {mis_path}")
 
+    is_excel = mis_path.endswith((".xlsx", ".xls"))
+    if is_excel and not sheet:
+        raise click.UsageError("You must provide --sheet when using an Excel file.")
+
     # Read unique units from the MIS file
-    mis_data = process_mis_csv(Path(mis_path))
+    if is_excel:
+        mis_data = process_mis_excel(Path(mis_path), sheet)
+    else:
+        mis_data = process_mis_csv(Path(mis_path))
     mis_units = {unit for _, (_, unit) in mis_data.items() if unit}
 
     # Get available units from Nominal
@@ -136,11 +135,7 @@ def list_units(profile: str, csv_path: Union[str, None]) -> None:
     sorted_units = sorted(units, key=lambda u: u.symbol)
 
     if csv_path:
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Symbol", "Name"])
-            for unit in sorted_units:
-                writer.writerow([unit.symbol, unit.name])
+        pd.DataFrame(sorted_units, columns=["Symbol", "Name"]).to_csv(csv_path, index=False)
         click.echo(f"Unit list successfully written to {csv_path}")
     else:
         click.echo(tabulate.tabulate(sorted_units, headers=["Symbol", "Name"], tablefmt="grid"))
