@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, Union
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, Union, cast
 
 from nominal_api import (
     scout_asset_api,
@@ -149,7 +149,11 @@ class Asset(HasRid):
 
     def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
         asset = self._get_asset()
-        return {scope.data_scope_name: stype for scope in asset.data_scopes if scope.data_source.type.lower() == stype}
+        return {
+            scope.data_scope_name: cast(str, getattr(scope.data_source, stype))
+            for scope in asset.data_scopes
+            if scope.data_source.type.lower() == stype
+        }
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
