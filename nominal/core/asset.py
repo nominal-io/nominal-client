@@ -149,7 +149,7 @@ class Asset(HasRid):
 
     def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
         asset = self._get_asset()
-        return {scope.data_scope_name: stype for scope in asset.data_scopes if scope.data_source.type.lower() == stype}
+        return {scope.data_scope_name: getattr(scope.data_source, stype) for scope in asset.data_scopes if scope.data_source.type.lower() == stype}
 
     def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
         """List the datasets associated with this asset.
