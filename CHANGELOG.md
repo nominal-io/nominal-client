@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.71.1](https://github.com/nominal-io/nominal-client/compare/v1.71.0...v1.71.1) (2025-08-08)
+
+
+### Bug Fixes
+
+* properly format data scope rid ([#431](https://github.com/nominal-io/nominal-client/issues/431)) ([b1b06ae](https://github.com/nominal-io/nominal-client/commit/b1b06aef22efaa8383842d7c7a36bd570421dc0c))
+
 ## [1.71.0](https://github.com/nominal-io/nominal-client/compare/v1.70.0...v1.71.0) (2025-07-31)
 
 
