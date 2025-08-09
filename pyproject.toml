@@ -37,6 +37,7 @@ dependencies = [
     "nominal-api==0.778.1",
     "cachetools>=6.1.0",
     "types-cachetools>=6.0.0.20250525",
+    "openpyxl>=0.0.0",
 ]
 
 
