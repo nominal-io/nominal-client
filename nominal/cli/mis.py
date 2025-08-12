@@ -1,25 +1,24 @@
-import csv
 import logging
 import sys
 from pathlib import Path
 from typing import Tuple, Union
 
 import click
-import tabulate
 import pandas as pd
 
+from nominal.cli.util.global_decorators import client_options
 from nominal.core import NominalClient
 
 logger = logging.getLogger(__name__)
 
 
-def read_mis_csv(mis_path: Path) -> dict[str, Tuple[str, str]]:
+def read_mis_csv(mis_path: Path) -> pd.DataFrame:
     """Read the MIS CSV and return a dictionary of channel names and their descriptions and units."""
     df = pd.read_csv(mis_path)
     return df
 
 
-def read_mis_excel(mis_path: Path, sheet: str) -> dict[str, Tuple[str, str]]:
+def read_mis_excel(mis_path: Path, sheet: str) -> pd.DataFrame:
     """Read the MIS Excel file and return a dictionary of channel names and their descriptions and units."""
     try:
         df = pd.read_excel(mis_path, sheet_name=sheet)
@@ -28,9 +27,8 @@ def read_mis_excel(mis_path: Path, sheet: str) -> dict[str, Tuple[str, str]]:
     return df
 
 
-def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, profile: str) -> None:
+def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, client: NominalClient) -> None:
     """Update channels using dictionary lookup instead of nested loops."""
-    client = NominalClient.from_profile(profile)
     dataset = client.get_dataset(dataset_rid)
     channel_list = dataset.get_channels()
     channel_map = {channel.name: channel for channel in channel_list}
@@ -44,7 +42,7 @@ def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, prof
 
 
 @click.group(
-    help="""\
+    help="""
 This CLI processes an MIS and turns it into unit assignments and channel descriptions on a dataset.
 MIS must be a CSV with the following columns: Channel, Description, UCUM Unit
 
@@ -59,37 +57,46 @@ def mis_cmd() -> None:
     """MIS processing and validation commands."""
     pass
 
-
-@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
-@click.argument("mis_path", type=click.Path(exists=True))
+@mis_cmd.command(
+    name="process", help="Processes an MIS file and updates channel descriptions and units."
+)
+@click.argument(
+    "mis_path",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
+)
 @click.option("--dataset-rid", type=str, required=True)
-@click.option("--profile", type=str, required=True)
 @click.option(
     "--sheet",
     type=str,
     required=False,
     help="The sheet to use in the Excel file if parsing direct from Excel.",
 )
-def process(mis_path: Path, dataset_rid: str, profile: str, sheet: str) -> None:
+@client_options
+def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     click.echo(f"Validating MIS file: {mis_path}")
 
-    is_excel = mis_path.endswith((".xlsx", ".xls"))
+    is_excel = str(mis_path).endswith((".xlsx", ".xls"))
     if is_excel and not sheet:
         raise click.UsageError("You must provide --sheet when using an Excel file.")
 
     # Read unique units from the MIS file
     if is_excel:
-        mis_data = read_mis_excel(Path(mis_path), sheet)
+        mis_data = read_mis_excel(mis_path, sheet)
     else:
-        mis_data = read_mis_csv(Path(mis_path))
-    formatted_mis_data = {row["Channel"]: (row["Description"], row["UCUM Unit"]) for _, row in mis_data.iterrows()}
-    update_channels(formatted_mis_data, dataset_rid, profile)
+        mis_data = read_mis_csv(mis_path)
+    formatted_mis_data = {
+        row["Channel"]: (row["Description"], row["UCUM Unit"]) for _, row in mis_data.iterrows()
+    }
+    update_channels(formatted_mis_data, dataset_rid, client)
 
-
-@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
-@click.argument("mis_path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
+@mis_cmd.command(
+    name="validate", help="Validate units in an MIS file against available units in Nominal."
+)
+@click.argument(
+    "mis_path",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
+)
 @click.option(
     "--sheet",
     type=str,
@@ -97,28 +104,30 @@ def process(mis_path: Path, dataset_rid: str, profile: str, sheet: str) -> None:
     help="The sheet to use in the Excel file if parsing direct from Excel.",
 )
 @click.pass_context
-def check_units(ctx: click.Context, mis_path: str, profile: str, sheet: str) -> None:
+@client_options
+def check_units(ctx: click.Context, mis_path: Path, sheet: str, client: NominalClient) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     click.echo(f"Validating MIS file: {mis_path}")
 
-    is_excel = mis_path.endswith((".xlsx", ".xls"))
+    is_excel = str(mis_path).endswith((".xlsx", ".xls"))
     if is_excel and not sheet:
         raise click.UsageError("You must provide --sheet when using an Excel file.")
 
     # Read unique units from the MIS file
     if is_excel:
-        mis_data = read_mis_excel(Path(mis_path), sheet)
+        mis_data = read_mis_excel(mis_path, sheet)
     else:
-        mis_data = read_mis_csv(Path(mis_path))
+        mis_data = read_mis_csv(mis_path)
 
     mis_units = set(mis_data.iloc[:, 2].unique())
 
     # Get available units from Nominal
-    client = NominalClient.from_profile(profile)
     try:
         nominal_units_list = client.get_all_units()
         nominal_units = {unit.symbol for unit in nominal_units_list}
-        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{profile}'.")
+        click.echo(
+            f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'."
+        )
     except Exception as e:
         click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
         return
@@ -143,7 +152,6 @@ def check_units(ctx: click.Context, mis_path: str, profile: str, sheet: str) -> 
 
 
 @mis_cmd.command(name="list-units", help="List all available units in Nominal.")
-@click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
 @click.option(
     "--csv-name",
     type=click.File("w"),
@@ -155,9 +163,9 @@ def check_units(ctx: click.Context, mis_path: str, profile: str, sheet: str) -> 
     type=click.Path(dir_okay=False, writable=True),
     help="Output Excel file path.",
 )
-def list_units(profile: str, csv_name: click.File, excel_name: Union[str, None]) -> None:
+@client_options
+def list_units(csv_name: click.File, excel_name: Union[str, None], client: NominalClient) -> None:
     """List all available units in Nominal."""
-    client = NominalClient.from_profile(profile)
     units = client.get_all_units()
     sorted_units = sorted(units, key=lambda u: u.symbol)
 
