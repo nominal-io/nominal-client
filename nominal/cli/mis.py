@@ -6,7 +6,7 @@ from typing import Tuple, Union
 import click
 import pandas as pd
 
-from nominal.cli.util.global_decorators import client_options
+from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import NominalClient
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,7 @@ def mis_cmd() -> None:
     help="The sheet to use in the Excel file if parsing direct from Excel.",
 )
 @client_options
+@global_options
 def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     click.echo(f"Validating MIS file: {mis_path}")
@@ -105,6 +106,7 @@ def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient)
 )
 @click.pass_context
 @client_options
+@global_options
 def check_units(ctx: click.Context, mis_path: Path, sheet: str, client: NominalClient) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     click.echo(f"Validating MIS file: {mis_path}")
@@ -164,6 +166,7 @@ def check_units(ctx: click.Context, mis_path: Path, sheet: str, client: NominalC
     help="Output Excel file path.",
 )
 @client_options
+@global_options
 def list_units(csv_name: click.File, excel_name: Union[str, None], client: NominalClient) -> None:
     """List all available units in Nominal."""
     units = client.get_all_units()
