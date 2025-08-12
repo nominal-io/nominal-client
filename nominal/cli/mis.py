@@ -1,5 +1,6 @@
 import csv
 import logging
+import sys
 from pathlib import Path
 from typing import Tuple, Union
 
@@ -59,9 +60,7 @@ def mis_cmd() -> None:
     pass
 
 
-@mis_cmd.command(
-    name="process", help="Processes an MIS file and updates channel descriptions and units."
-)
+@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
 @click.argument("mis_path", type=click.Path(exists=True))
 @click.option("--dataset-rid", type=str, required=True)
 @click.option("--profile", type=str, required=True)
@@ -84,15 +83,11 @@ def process(mis_path: Path, dataset_rid: str, profile: str, sheet: str) -> None:
         mis_data = read_mis_excel(Path(mis_path), sheet)
     else:
         mis_data = read_mis_csv(Path(mis_path))
-    formatted_mis_data = {
-        row["Channel"]: (row["Description"], row["UCUM Unit"]) for _, row in mis_data.iterrows()
-    }
+    formatted_mis_data = {row["Channel"]: (row["Description"], row["UCUM Unit"]) for _, row in mis_data.iterrows()}
     update_channels(formatted_mis_data, dataset_rid, profile)
 
 
-@mis_cmd.command(
-    name="validate", help="Validate units in an MIS file against available units in Nominal."
-)
+@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
 @click.argument("mis_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
 @click.option(
@@ -123,9 +118,7 @@ def check_units(ctx: click.Context, mis_path: str, profile: str, sheet: str) -> 
     try:
         nominal_units_list = client.get_all_units()
         nominal_units = {unit.symbol for unit in nominal_units_list}
-        click.echo(
-            f"Found {len(nominal_units)} available units in Nominal for profile '{profile}'."
-        )
+        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{profile}'.")
     except Exception as e:
         click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
         return
@@ -152,33 +145,30 @@ def check_units(ctx: click.Context, mis_path: str, profile: str, sheet: str) -> 
 @mis_cmd.command(name="list-units", help="List all available units in Nominal.")
 @click.option("--profile", type=str, required=True, help="The profile to use for authentication.")
 @click.option(
-    "--csv",
-    "csv_path",
-    type=click.Path(dir_okay=False, writable=True),
-    help="Path to write the units to as a CSV file.",
+    "--csv-name",
+    type=click.File("w"),
+    default=sys.stdout,
+    help="Output CSV file path (defaults to stdout).",
 )
 @click.option(
-    "--excel",
-    "excel_path",
-    type=str,
-    required=False,
-    help="Path to write the units to as an Excel file.",
+    "--excel-name",
+    type=click.Path(dir_okay=False, writable=True),
+    help="Output Excel file path.",
 )
-def list_units(profile: str, csv_path: Union[str, None], excel_path: Union[str, None]) -> None:
+def list_units(profile: str, csv_name: click.File, excel_name: Union[str, None]) -> None:
     """List all available units in Nominal."""
     client = NominalClient.from_profile(profile)
     units = client.get_all_units()
     sorted_units = sorted(units, key=lambda u: u.symbol)
 
+    # Convert Unit objects to DataFrame
     units_data = [{"UCUM": unit.symbol, "Unit Name": unit.name} for unit in sorted_units]
-    df = pd.DataFrame(units_data, columns=["UCUM", "Unit Name"])
+    df = pd.DataFrame(units_data)
 
-    if csv_path:
-        # Convert Unit objects to DataFrame
-        df.to_csv(csv_path, index=False)
-        click.echo(f"Unit list successfully written to {csv_path}")
-    elif excel_path:
-        df.to_excel(excel_path, index=False)
-        click.echo(f"Unit list successfully written to {excel_path}")
-    else:
-        click.echo(tabulate.tabulate(sorted_units, headers=["UCUM", "Unit Name"], tablefmt="grid"))
+    if excel_name:
+        df.to_excel(excel_name, index=False)
+        click.echo(f"Unit list successfully written to {excel_name}")
+    if csv_name:
+        # Output as CSV (to file or stdout)
+        df.to_csv(csv_name, index=False)
+        click.echo(f"Unit list successfully written to {csv_name.name}")
