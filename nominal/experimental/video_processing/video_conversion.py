@@ -91,11 +91,12 @@ def normalize_video(
     if resolution is not None:
         output_kwargs["vf"] = scale_factor_from_resolution(resolution)
 
+    input_kwargs = {}
     if num_threads is not None:
-        output_kwargs["-threads:v"] = str(num_threads)
+        input_kwargs["threads"] = str(num_threads)
 
     # Run ffmpeg in subprocess
-    video_in = ffmpeg.input(str(input_path))
+    video_in = ffmpeg.input(str(input_path), **input_kwargs)
     video_out = video_in.output(str(output_path), **output_kwargs)
     logger.info(f"Running command: '{shlex.join(video_out.compile())}'")
     video_out.run()
