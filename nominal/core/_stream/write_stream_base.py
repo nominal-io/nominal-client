@@ -3,14 +3,16 @@ from __future__ import annotations
 import abc
 from datetime import datetime
 from types import TracebackType
-from typing import Mapping, Sequence, Type
+from typing import Generic, Mapping, Sequence, Type, TypeVar
 
 from typing_extensions import Self
 
 from nominal.ts import IntegralNanosecondsUTC
 
+StreamType = TypeVar("StreamType")
 
-class WriteStreamBase(abc.ABC):
+
+class WriteStreamBase(abc.ABC, Generic[StreamType]):
     @abc.abstractmethod
     def __enter__(self) -> Self:
         """Create the stream as a context manager."""
@@ -26,7 +28,7 @@ class WriteStreamBase(abc.ABC):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: float | str,
+        value: StreamType,
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write a single value to the stream
@@ -43,7 +45,7 @@ class WriteStreamBase(abc.ABC):
         self,
         channel_name: str,
         timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
-        values: Sequence[float | str],
+        values: Sequence[StreamType],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Add a sequence of messages to the queue to upload to Nominal.
@@ -70,7 +72,7 @@ class WriteStreamBase(abc.ABC):
     def enqueue_from_dict(
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        channel_values: Mapping[str, float | str],
+        channel_values: Mapping[str, StreamType],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write multiple channel values at a given timestamp using a flattened dictionary.

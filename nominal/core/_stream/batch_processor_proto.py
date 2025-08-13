@@ -24,8 +24,8 @@ except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
+from nominal.core._stream.write_stream import BatchItem, DataItem
 from nominal.core._utils import Batch
-from nominal.core.stream.write_stream import BatchItem
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -38,7 +38,7 @@ class SerializedBatch:
     newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
 
 
-def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
+def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
     # Check first value to determine type
     sample_value = api_batch[0].value
     if isinstance(sample_value, str):
@@ -69,7 +69,7 @@ def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
         raise ValueError("only float and string are supported types for value")
 
 
-def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
+def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:
     """Create a WriteRequestNominal from batches of items."""
     api_batched = groupby(sorted(batch, key=BatchItem.sort_key), key=BatchItem.sort_key)
     api_batches = [list(api_batch) for _, api_batch in api_batched]
@@ -86,7 +86,7 @@ def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
 
 
 def process_batch(
-    batch: Sequence[BatchItem],
+    batch: Sequence[DataItem],
     nominal_data_source_rid: str | None,
     auth_header: str,
     proto_write: ProtoWriteService,
@@ -104,7 +104,7 @@ def process_batch(
     )
 
 
-def serialize_batch(batch: Batch) -> SerializedBatch:
+def serialize_batch(batch: Batch[str | float]) -> SerializedBatch:
     """Process a batch of items and return serialized request."""
     request = create_write_request(batch.items)
     return SerializedBatch(
