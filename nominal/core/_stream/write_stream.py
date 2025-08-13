@@ -32,10 +32,10 @@ class BatchItem(Generic[StreamType]):
         return item._to_api_batch_key()
 
 
-DataStream: TypeAlias = WriteStreamBase[Union[str, float]]
+DataStream: TypeAlias = WriteStreamBase[Union[str, float, int]]
 """Stream type for asynchronously sending timeseries data to the Nominal backend."""
 
-DataItem: TypeAlias = BatchItem[Union[str, float]]
+DataItem: TypeAlias = BatchItem[Union[str, float, int]]
 """Individual item of timeseries data to stream to Nominal."""
 
 LogStream: TypeAlias = WriteStreamBase[str]
