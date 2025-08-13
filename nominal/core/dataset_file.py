@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Mapping, Protocol, Sequence
 
 from cachetools.func import ttl_cache
-from nominal_api import api, scout_catalog
+from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
 from nominal._utils.download_tools import download_presigned_uri, filename_from_uri
@@ -35,6 +35,8 @@ class DatasetFile:
     class _Clients(HasScoutParams, Protocol):
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
+        @property
+        def ingest(self) -> ingest_api.IngestService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
@@ -54,6 +56,13 @@ class DatasetFile:
             ingest_status=IngestStatus._from_conjure(dataset_file.ingest_status),
             _clients=clients,
         )
+
+    def delete(self) -> None:
+        """Deletes the dataset file, removing its data permanently from Nominal.
+
+        NOTE: this cannot be undone outside of fully re-ingesting the file into Nominal.
+        """
+        self._clients.ingest.delete_file(self._clients.auth_header, self.dataset_rid, self.id)
 
     def download(
         self,
