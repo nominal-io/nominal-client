@@ -7,7 +7,7 @@ from nominal_api import api, scout_compute_api, scout_run_api
 Nanoseconds = int
 NanosecondsUTC = int
 DoubleConstant = float
-TimeUnitLiteral: typing.TypeAlias = typing.Literal["ns", "us", "ms", "s", "m", "h", "d"]
+TimeUnitLiteral = typing.Literal["ns", "us", "ms", "s", "m", "h", "d"]
 ThresholdOperatorLiteral = typing.Literal[">", ">=", "<", "<=", "==", "!="]
 RollingOperationLiteral = typing.Literal["mean", "sum", "min", "max", "count", "std"]
 
