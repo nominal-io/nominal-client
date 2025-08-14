@@ -1,6 +1,7 @@
 import pytest
 from nominal_api import scout_compute_api
-from nominal.experimental.compute.dsl import RangeNode, NumericNode
+
+from nominal.experimental.compute.dsl import NumericNode, RangeNode
 
 
 @pytest.fixture
