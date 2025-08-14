@@ -21,7 +21,7 @@ def range1(ch1: NumericNode) -> RangeNode:
 
 @pytest.fixture
 def range2(ch2: NumericNode) -> RangeNode:
-    return ch2.threshold(0, "==")
+    return ch2.threshold(1, "==")
 
 
 def test_operator_overloads(ch1: NumericNode, ch2: NumericNode):
