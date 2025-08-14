@@ -17,14 +17,14 @@ From there, you can rely on IDE hints to compose operations:
 ```
 node.⇥
     ┌─────────────────────────────┬───────────────────────────────────────────────┐
-    │ abs                         │ def derivative(time_unit: TimeUnitLiteral)  x │
-    │ acos                        │ ──────────────────────────────────────────    │
-    │ asin                        │ Calculates the rate of change between         │
-    │ atan2                       │ subsequent points.                            │
-    │ channel                     │                                               │
-    │ cos                         │                                               │
-    │ cumulative_sum              │                                               │
-    │ derivative                ▶ │                                               │
+    │◇ abs                        │ def derivative(time_unit: TimeUnitLiteral)  x │
+    │◇ acos                       │ ──────────────────────────────────────────    │
+    │◇ asin                       │ Calculates the rate of change between         │
+    │◇ atan2                      │ subsequent points.                            │
+    │◇ channel                    │                                               │
+    │◇ cos                        │                                               │
+    │◇ cumulative_sum             │                                               │
+    │◇ derivative               ▶ │                                               │
     ├─────────────────────────────┴───────────────────────────────────────────────┤
     │ Tab to accept • ↑/↓ to navigate • Esc to dismiss                            │
     └─────────────────────────────────────────────────────────────────────────────┘
