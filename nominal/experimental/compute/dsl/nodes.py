@@ -149,5 +149,5 @@ class RangeNode(Node):
         return _node_impls.UnionRangesNode(_ranges=[self, *ranges])
 
 
-#  imported at the end to prevent circular references
+# imported at the end to prevent circular references
 from nominal.experimental.compute.dsl import _node_impls  # noqa: E402
