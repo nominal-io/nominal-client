@@ -1,9 +1,11 @@
 from __future__ import annotations
+
 import typing
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from nominal_api import scout_compute_api
+
 from nominal.experimental.compute.dsl import params
 
 
@@ -147,4 +149,5 @@ class RangeNode(Node):
         return _node_impls.UnionRangesNode(_ranges=[self, *ranges])
 
 
-from nominal.experimental.compute.dsl import _node_impls  # imported at the end to prevent circular references
+#  imported at the end to prevent circular references
+from nominal.experimental.compute.dsl import _node_impls  # noqa: E402

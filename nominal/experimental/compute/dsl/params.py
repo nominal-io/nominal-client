@@ -1,7 +1,8 @@
 from __future__ import annotations
-import typing
-from nominal_api import api, scout_compute_api, scout_run_api
 
+import typing
+
+from nominal_api import api, scout_compute_api, scout_run_api
 
 Nanoseconds = int
 NanosecondsUTC = int

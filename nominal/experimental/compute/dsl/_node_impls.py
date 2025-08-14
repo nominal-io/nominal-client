@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import typing
 from dataclasses import dataclass
+
 from nominal_api import scout_compute_api
 
 from nominal.experimental.compute.dsl import nodes, params

@@ -1,11 +1,11 @@
 from nominal.experimental.compute.dsl.nodes import Node, NumericNode, RangeNode
 from nominal.experimental.compute.dsl.params import (
+    DoubleConstant,
     Nanoseconds,
     NanosecondsUTC,
-    DoubleConstant,
-    TimeUnitLiteral,
-    ThresholdOperatorLiteral,
     RollingOperationLiteral,
+    ThresholdOperatorLiteral,
+    TimeUnitLiteral,
 )
 
 __all__ = [
