@@ -1,12 +1,14 @@
 from __future__ import annotations
-from typing import Iterable, NamedTuple
+from dataclasses import dataclass
+from typing import Iterable
 
 from nominal_api import api, scout_compute_api
 from nominal.core import NominalClient
 from nominal.experimental.compute.dsl import nodes, params
 
 
-class Bucket(NamedTuple):
+@dataclass(frozen=True)
+class Bucket:
     timestamp: params.NanosecondsUTC
     min: float
     max: float
