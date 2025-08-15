@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.72.0](https://github.com/nominal-io/nominal-client/compare/v1.71.1...v1.72.0) (2025-08-12)
+
+
+### Features
+
+* allow users to select the number of threads used by ffmpeg in normalize_video ([#433](https://github.com/nominal-io/nominal-client/issues/433)) ([56b9c7a](https://github.com/nominal-io/nominal-client/commit/56b9c7a058fac9130a6c93290fb6fe4d9d60c9ea))
+
+
+### Bug Fixes
+
+* update uv version in github actions ([#434](https://github.com/nominal-io/nominal-client/issues/434)) ([ae365e6](https://github.com/nominal-io/nominal-client/commit/ae365e61fce4faae2fb0b205c00ad71de28d6d4f))
+
 ## [1.71.1](https://github.com/nominal-io/nominal-client/compare/v1.71.0...v1.71.1) (2025-08-08)
 
 

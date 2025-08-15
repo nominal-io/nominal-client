@@ -25,6 +25,7 @@ def normalize_video(
     key_frame_interval: int | None = DEFAULT_KEY_FRAME_INTERVAL_SEC,
     force: bool = True,
     resolution: AnyResolutionType | None = None,
+    num_threads: int | None = None,
 ) -> None:
     """Convert video file to an h264 encoded video file using ffmpeg.
 
@@ -52,6 +53,9 @@ def normalize_video(
                   "best of both worlds" as a reasonable default value.
         force: If true, forcibly delete existing output path if already exists.
         resolution: If provided, re-scale the video to the provided resolution
+        num_threads: If provided, the number of CPU cores to tell ffmpeg to use.
+            NOTE: If not provided, ffmpeg will choose. Typically, this amounts to the number of cores present
+                  on the machine
 
     NOTE: this requires that you have installed ffmpeg on your system with support for H264.
     """
@@ -87,8 +91,12 @@ def normalize_video(
     if resolution is not None:
         output_kwargs["vf"] = scale_factor_from_resolution(resolution)
 
+    input_kwargs = {}
+    if num_threads is not None:
+        input_kwargs["threads"] = str(num_threads)
+
     # Run ffmpeg in subprocess
-    video_in = ffmpeg.input(str(input_path))
+    video_in = ffmpeg.input(str(input_path), **input_kwargs)
     video_out = video_in.output(str(output_path), **output_kwargs)
     logger.info(f"Running command: '{shlex.join(video_out.compile())}'")
     video_out.run()
