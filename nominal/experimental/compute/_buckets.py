@@ -27,7 +27,7 @@ class Bucket:
 
 def compute_buckets(
     client: NominalClient,
-    node: exprs.NumericExpr,
+    expr: exprs.NumericExpr,
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
@@ -37,7 +37,7 @@ def compute_buckets(
     for ts, bucket in _compute_buckets(
         client._clients.compute,
         client._clients.auth_header,
-        node._to_conjure(),
+        expr._to_conjure(),
         {k: v._to_conjure() for k, v in context.items()},
         _timestamp_to_conjure(start),
         _timestamp_to_conjure(end),

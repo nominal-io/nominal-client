@@ -42,7 +42,7 @@ After you have a compute query defined, you will want to test your compute logic
 
 ```py
 from nominal import NominalClient
-from nominal.experimental.compute.dsl import nodes
+from nominal.experimental.compute.dsl import exprs
 from nominal.experimental.compute import compute_buckets
 
 client = NominalClient.from_profile("staging")
@@ -54,7 +54,7 @@ asset = client.get_asset(asset_rid)
 scope = asset.get_dataset(scope_name)
 assert scope.bounds is not None
 
-channel = nodes.NumericExpr.channel(asset_rid, scope_name, channel_name)
+channel = exprs.NumericExpr.channel(asset_rid, scope_name, channel_name)
 
 deriv = channel.derivative(time_unit="s")
 integ = channel.integral(start_timestamp=scope.bounds.start, time_unit="s")
