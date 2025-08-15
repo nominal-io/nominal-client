@@ -1,4 +1,8 @@
-from nominal.experimental.compute.dsl.nodes import Node, NumericNode, RangeNode
+from nominal.experimental.compute.dsl.exprs import (
+    Expr,
+    NumericExpr,
+    RangeExpr,
+)
 from nominal.experimental.compute.dsl.params import (
     DoubleConstant,
     Nanoseconds,
@@ -9,9 +13,9 @@ from nominal.experimental.compute.dsl.params import (
 )
 
 __all__ = [
-    "Node",
-    "NumericNode",
-    "RangeNode",
+    "Expr",
+    "NumericExpr",
+    "RangeExpr",
     "Nanoseconds",
     "NanosecondsUTC",
     "DoubleConstant",

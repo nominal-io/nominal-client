@@ -1,21 +1,21 @@
 # Nominal Compute DSL
 
-This library hosts an experimental Python-internal DSL for expressing a Nominal compute graph, and functions to execute the compute graph and retrieve results.
+This library hosts an experimental Python-internal DSL for expressing Nominal compute queries, with functions to execute and retrieve results.
 
 ## Python-internal DSL
 
-The DSL is primarily backed by a method-chaining API which allows for clear composition and good LSP support inside your IDE.
+The DSL is primarily backed by a method-chaining API which allows for clear composition and good language support inside your IDE.
 
-The entrypoint into node operations is to select a channel using the `.channel()` class method on the desired node type.
+The entrypoint into expression operations is to select a channel using the `.channel()` class methods.
 
 ```py
-node = NumericNode.channel(asset_rid, data_scope_name, channel_name)
+expr = NumericExpr.channel(asset_rid, data_scope_name, channel_name)
 ```
 
 From there, you can rely on IDE hints to compose operations:
 
 ```
-node.⇥
+expr.⇥
     ┌─────────────────────────────┬───────────────────────────────────────────────┐
     │◇ abs                        │ def derivative(time_unit: TimeUnitLiteral)  x │
     │◇ acos                       │ ──────────────────────────────────────────    │
@@ -33,12 +33,12 @@ node.⇥
 The DSL exposes operator overloads where appropriate, and also includes explicit methods for the same operations:
 
 ```py
-assert (node + node) == node.plus(node)
+assert (expr + expr) == expr.plus(expr)
 ```
 
 ## Compute library
 
-After you have a compute tree defined, you will want to test your compute logic. We expose a function to retrieve bucketed compute results, and will be expanding this library in the future with additional ways to retrieve compute results. For a full example:
+After you have a compute query defined, you will want to test your compute logic. We expose a function to retrieve bucketed compute results, and will be expanding this library in the future with additional ways to retrieve compute results. For a full example:
 
 ```py
 from nominal import NominalClient
@@ -54,11 +54,11 @@ asset = client.get_asset(asset_rid)
 scope = asset.get_dataset(scope_name)
 assert scope.bounds is not None
 
-channel = nodes.NumericNode.channel(asset_rid, scope_name, channel_name)
+channel = nodes.NumericExpr.channel(asset_rid, scope_name, channel_name)
 
 deriv = channel.derivative(time_unit="s")
 integ = channel.integral(start_timestamp=scope.bounds.start, time_unit="s")
-node = (deriv + integ) / channel.abs()
-for bucket in compute_buckets(client, node, scope.bounds.start, scope.bounds.end):
+expr = (deriv + integ) / channel.abs()
+for bucket in compute_buckets(client, expr, scope.bounds.start, scope.bounds.end):
     print(f"Timestamp: {bucket.timestamp}, Mean: {bucket.mean}")
 ```

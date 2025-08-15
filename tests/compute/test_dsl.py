@@ -1,30 +1,30 @@
 import pytest
 from nominal_api import scout_compute_api
 
-from nominal.experimental.compute.dsl import NumericNode, RangeNode
+from nominal.experimental.compute.dsl import NumericExpr, RangeExpr
 
 
 @pytest.fixture
-def ch1() -> NumericNode:
-    return NumericNode.channel("asset1", "scope1", "channel1")
+def ch1() -> NumericExpr:
+    return NumericExpr.channel("asset1", "scope1", "channel1")
 
 
 @pytest.fixture
-def ch2() -> NumericNode:
-    return NumericNode.channel("asset2", "scope2", "channel2")
+def ch2() -> NumericExpr:
+    return NumericExpr.channel("asset2", "scope2", "channel2")
 
 
 @pytest.fixture
-def range1(ch1: NumericNode) -> RangeNode:
+def range1(ch1: NumericExpr) -> RangeExpr:
     return ch1.threshold(0, "==")
 
 
 @pytest.fixture
-def range2(ch2: NumericNode) -> RangeNode:
+def range2(ch2: NumericExpr) -> RangeExpr:
     return ch2.threshold(1, "==")
 
 
-def test_operator_overloads(ch1: NumericNode, ch2: NumericNode):
+def test_operator_overloads(ch1: NumericExpr, ch2: NumericExpr):
     assert ch1 + ch2 == ch1.plus(ch2)
     assert ch1 - ch2 == ch1.minus(ch2)
     assert ch1 * ch2 == ch1.multiply(ch2)
@@ -35,7 +35,7 @@ def test_operator_overloads(ch1: NumericNode, ch2: NumericNode):
     assert abs(ch1) == ch1.abs()
 
 
-def test_numeric_nary_operations(ch1: NumericNode, ch2: NumericNode):
+def test_numeric_nary_operations(ch1: NumericExpr, ch2: NumericExpr):
     conjure = ch1.sum([ch2])._to_conjure()
     assert conjure.type == "sum"
     assert conjure.sum is not None
@@ -62,7 +62,7 @@ def test_numeric_nary_operations(ch1: NumericNode, ch2: NumericNode):
     assert len(conjure.mean.inputs) == 2
 
 
-def test_range_nary_operations(range1: RangeNode, range2: RangeNode):
+def test_range_nary_operations(range1: RangeExpr, range2: RangeExpr):
     conjure = range1.union([range2])._to_conjure()
     assert conjure.type == "unionRange"
     assert conjure.union_range is not None
@@ -74,7 +74,7 @@ def test_range_nary_operations(range1: RangeNode, range2: RangeNode):
     assert len(conjure.intersect_range.inputs) == 2
 
 
-def test_numeric_serialization(ch1: NumericNode, ch2: NumericNode, range1: RangeNode):
+def test_numeric_serialization(ch1: NumericExpr, ch2: NumericExpr, range1: RangeExpr):
     # Test all numeric channel methods serialize successfully
     assert isinstance(ch1.abs()._to_conjure(), scout_compute_api.NumericSeries)
     assert isinstance(ch1.acos()._to_conjure(), scout_compute_api.NumericSeries)
@@ -107,11 +107,11 @@ def test_numeric_serialization(ch1: NumericNode, ch2: NumericNode, range1: Range
     assert isinstance(ch1.floor_divide(ch2)._to_conjure(), scout_compute_api.NumericSeries)
     assert isinstance(ch1.filter(range1)._to_conjure(), scout_compute_api.NumericSeries)
 
-    # Test operations that return RangeNode
+    # Test operations that return RangeExpr
     assert isinstance(ch1.threshold(0, "==")._to_conjure(), scout_compute_api.RangeSeries)
 
 
-def test_range_serialization(range1: RangeNode, range2: RangeNode):
-    assert isinstance(range1.not_()._to_conjure(), scout_compute_api.RangeSeries)
+def test_range_serialization(range1: RangeExpr, range2: RangeExpr):
+    assert isinstance(range1.invert()._to_conjure(), scout_compute_api.RangeSeries)
     assert isinstance(range1.union([range2])._to_conjure(), scout_compute_api.RangeSeries)
     assert isinstance(range1.intersect([range2])._to_conjure(), scout_compute_api.RangeSeries)

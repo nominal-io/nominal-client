@@ -5,12 +5,12 @@ from dataclasses import dataclass
 
 from nominal_api import scout_compute_api
 
-from nominal.experimental.compute.dsl import nodes, params
+from nominal.experimental.compute.dsl import exprs, params
 
 
 @dataclass(frozen=True)
-class AbsNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class AbsExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -22,8 +22,8 @@ class AbsNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class AcosNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class AcosExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -35,8 +35,8 @@ class AcosNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class AsinNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class AsinExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -48,9 +48,9 @@ class AsinNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class Atan2Node(nodes.NumericNode):
-    _y_node: nodes.NumericNode
-    _x_node: nodes.NumericNode
+class Atan2Expr(exprs.NumericExpr):
+    _y_node: exprs.NumericExpr
+    _x_node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -65,8 +65,8 @@ class Atan2Node(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class CosNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class CosExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -78,8 +78,8 @@ class CosNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class CumulativeSumNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class CumulativeSumExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
     _start_timestamp: params.NanosecondsUTC
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
@@ -92,8 +92,8 @@ class CumulativeSumNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class DerivativeNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class DerivativeExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
     _time_unit: params.TimeUnitLiteral
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
@@ -106,9 +106,9 @@ class DerivativeNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class DivideNode(nodes.NumericNode):
-    _left_node: nodes.NumericNode
-    _right_node: nodes.NumericNode
+class DivideExpr(exprs.NumericExpr):
+    _left_node: exprs.NumericExpr
+    _right_node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -123,9 +123,9 @@ class DivideNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class FilterNode(nodes.NumericNode):
-    _node: nodes.NumericNode
-    _ranges: nodes.RangeNode
+class FilterExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
+    _ranges: exprs.RangeExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -137,9 +137,9 @@ class FilterNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class FloorDivideNode(nodes.NumericNode):
-    _left_node: nodes.NumericNode
-    _right_node: nodes.NumericNode
+class FloorDivideExpr(exprs.NumericExpr):
+    _left_node: exprs.NumericExpr
+    _right_node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -154,8 +154,8 @@ class FloorDivideNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class IntegralNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class IntegralExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
     _start_timestamp: params.NanosecondsUTC
     _time_unit: params.TimeUnitLiteral
 
@@ -170,8 +170,8 @@ class IntegralNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class LnNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class LnExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -183,8 +183,8 @@ class LnNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class LogarithmNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class LogarithmExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -196,45 +196,45 @@ class LogarithmNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class MaxNode(nodes.NumericNode):
-    _inputs: typing.Sequence[nodes.NumericNode]
+class MaxExpr(exprs.NumericExpr):
+    _nodes: typing.Sequence[exprs.NumericExpr]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             max=scout_compute_api.MaxSeries(
-                inputs=[node._to_conjure() for node in self._inputs],
+                inputs=[node._to_conjure() for node in self._nodes],
             )
         )
 
 
 @dataclass(frozen=True)
-class MeanNode(nodes.NumericNode):
-    _inputs: typing.Sequence[nodes.NumericNode]
+class MeanExpr(exprs.NumericExpr):
+    _nodes: typing.Sequence[exprs.NumericExpr]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             mean=scout_compute_api.MeanSeries(
-                inputs=[node._to_conjure() for node in self._inputs],
+                inputs=[node._to_conjure() for node in self._nodes],
             )
         )
 
 
 @dataclass(frozen=True)
-class MinNode(nodes.NumericNode):
-    _inputs: typing.Sequence[nodes.NumericNode]
+class MinExpr(exprs.NumericExpr):
+    _nodes: typing.Sequence[exprs.NumericExpr]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             min=scout_compute_api.MinSeries(
-                inputs=[node._to_conjure() for node in self._inputs],
+                inputs=[node._to_conjure() for node in self._nodes],
             )
         )
 
 
 @dataclass(frozen=True)
-class MinusNode(nodes.NumericNode):
-    _left_node: nodes.NumericNode
-    _right_node: nodes.NumericNode
+class MinusExpr(exprs.NumericExpr):
+    _left_node: exprs.NumericExpr
+    _right_node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -249,9 +249,9 @@ class MinusNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class ModuloNode(nodes.NumericNode):
-    _left_node: nodes.NumericNode
-    _right_node: nodes.NumericNode
+class ModuloExpr(exprs.NumericExpr):
+    _left_node: exprs.NumericExpr
+    _right_node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -266,9 +266,9 @@ class ModuloNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class MultiplyNode(nodes.NumericNode):
-    _left_node: nodes.NumericNode
-    _right_node: nodes.NumericNode
+class MultiplyExpr(exprs.NumericExpr):
+    _left_node: exprs.NumericExpr
+    _right_node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -283,7 +283,7 @@ class MultiplyNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class NumericChannel(nodes.NumericNode):
+class NumericChannelExpr(exprs.NumericExpr):
     _asset_rid: str
     _data_scope_name: str
     _channel_name: str
@@ -305,8 +305,8 @@ class NumericChannel(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class OffsetNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class OffsetExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
     _offset: float
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
@@ -319,9 +319,9 @@ class OffsetNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class PlusNode(nodes.NumericNode):
-    _left_node: nodes.NumericNode
-    _right_node: nodes.NumericNode
+class PlusExpr(exprs.NumericExpr):
+    _left_node: exprs.NumericExpr
+    _right_node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -336,9 +336,9 @@ class PlusNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class PowerNode(nodes.NumericNode):
-    _base_node: nodes.NumericNode
-    _exponent_node: nodes.NumericNode
+class PowerExpr(exprs.NumericExpr):
+    _base_node: exprs.NumericExpr
+    _exponent_node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -353,8 +353,8 @@ class PowerNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class ProductNode(nodes.NumericNode):
-    _inputs: typing.Sequence[nodes.NumericNode]
+class ProductExpr(exprs.NumericExpr):
+    _inputs: typing.Sequence[exprs.NumericExpr]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -365,8 +365,8 @@ class ProductNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class RollingNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class RollingExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
     _window: params.Nanoseconds
     _operator: params.RollingOperationLiteral
 
@@ -381,8 +381,8 @@ class RollingNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class ScaleNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class ScaleExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
     _scalar: float
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
@@ -395,8 +395,8 @@ class ScaleNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class SinNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class SinExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -408,8 +408,8 @@ class SinNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class SqrtNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class SqrtExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -421,8 +421,8 @@ class SqrtNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class SumNode(nodes.NumericNode):
-    _nodes: typing.Sequence[nodes.NumericNode]
+class SumExpr(exprs.NumericExpr):
+    _nodes: typing.Sequence[exprs.NumericExpr]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -433,8 +433,8 @@ class SumNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class TanNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class TanExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -446,8 +446,8 @@ class TanNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class ThresholdNode(nodes.RangeNode):
-    _node: nodes.NumericNode
+class ThresholdExpr(exprs.RangeExpr):
+    _node: exprs.NumericExpr
     _threshold: float
     _operator: params.ThresholdOperatorLiteral
 
@@ -462,38 +462,38 @@ class ThresholdNode(nodes.RangeNode):
 
 
 @dataclass(frozen=True)
-class IntersectRangesNode(nodes.RangeNode):
-    _ranges: typing.Sequence[nodes.RangeNode]
+class IntersectRangesExpr(exprs.RangeExpr):
+    _nodes: typing.Sequence[exprs.RangeExpr]
 
     def _to_conjure(self) -> scout_compute_api.RangeSeries:
         return scout_compute_api.RangeSeries(
             intersect_range=scout_compute_api.IntersectRanges(
-                inputs=[range_node._to_conjure() for range_node in self._ranges]
+                inputs=[range_node._to_conjure() for range_node in self._nodes]
             )
         )
 
 
 @dataclass(frozen=True)
-class NotRangesNode(nodes.RangeNode):
-    _ranges: nodes.RangeNode
+class InvertRangesExpr(exprs.RangeExpr):
+    _nodes: exprs.RangeExpr
 
     def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(not_=scout_compute_api.NotRanges(input=self._ranges._to_conjure()))
+        return scout_compute_api.RangeSeries(not_=scout_compute_api.NotRanges(input=self._nodes._to_conjure()))
 
 
 @dataclass(frozen=True)
-class UnionRangesNode(nodes.RangeNode):
-    _ranges: typing.Sequence[nodes.RangeNode]
+class UnionRangesExpr(exprs.RangeExpr):
+    _nodes: typing.Sequence[exprs.RangeExpr]
 
     def _to_conjure(self) -> scout_compute_api.RangeSeries:
         return scout_compute_api.RangeSeries(
-            union_range=scout_compute_api.UnionRanges(inputs=[range_node._to_conjure() for range_node in self._ranges])
+            union_range=scout_compute_api.UnionRanges(inputs=[range_node._to_conjure() for range_node in self._nodes])
         )
 
 
 @dataclass(frozen=True)
-class TimeDifferenceNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class TimeDifferenceExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
     _time_unit: params.TimeUnitLiteral | None = None
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
@@ -508,8 +508,8 @@ class TimeDifferenceNode(nodes.NumericNode):
 
 
 @dataclass(frozen=True)
-class ValueDifferenceNode(nodes.NumericNode):
-    _node: nodes.NumericNode
+class ValueDifferenceExpr(exprs.NumericExpr):
+    _node: exprs.NumericExpr
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(

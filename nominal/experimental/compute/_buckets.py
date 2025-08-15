@@ -6,7 +6,7 @@ from typing import Iterable
 from nominal_api import api, scout_compute_api
 
 from nominal.core import NominalClient
-from nominal.experimental.compute.dsl import nodes, params
+from nominal.experimental.compute.dsl import exprs, params
 
 
 @dataclass(frozen=True)
@@ -27,13 +27,13 @@ class Bucket:
 
 def compute_buckets(
     client: NominalClient,
-    node: nodes.NumericNode,
+    node: exprs.NumericExpr,
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
 ) -> Iterable[Bucket]:
     # TODO: expose context parameterization
-    context: dict[str, nodes.NumericNode] = {}
+    context: dict[str, exprs.NumericExpr] = {}
     for ts, bucket in _compute_buckets(
         client._clients.compute,
         client._clients.auth_header,
