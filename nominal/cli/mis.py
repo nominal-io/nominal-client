@@ -26,9 +26,7 @@ def read_mis_excel(mis_path: Path, sheet: str) -> pd.DataFrame:
     return df
 
 
-def update_channels(
-    mis_data: dict[str, Tuple[str, str]], dataset_rid: str, client: NominalClient
-) -> None:
+def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, client: NominalClient) -> None:
     """Update channels using dictionary lookup instead of nested loops."""
     dataset = client.get_dataset(dataset_rid)
     channel_list = dataset.get_channels()
@@ -59,9 +57,7 @@ def mis_cmd() -> None:
     pass
 
 
-@mis_cmd.command(
-    name="process", help="Processes an MIS file and updates channel descriptions and units."
-)
+@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -88,15 +84,11 @@ def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient)
         mis_data = read_mis_excel(mis_path, sheet)
     else:
         mis_data = read_mis_csv(mis_path)
-    formatted_mis_data = {
-        row["Channel"]: (row["Description"], row["UCUM Unit"]) for _, row in mis_data.iterrows()
-    }
+    formatted_mis_data = {row["Channel"]: (row["Description"], row["UCUM Unit"]) for _, row in mis_data.iterrows()}
     update_channels(formatted_mis_data, dataset_rid, client)
 
 
-@mis_cmd.command(
-    name="validate", help="Validate units in an MIS file against available units in Nominal."
-)
+@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -130,9 +122,7 @@ def check_units(ctx: click.Context, mis_path: Path, sheet: str, client: NominalC
     try:
         nominal_units_list = client.get_all_units()
         nominal_units = {unit.symbol for unit in nominal_units_list}
-        click.echo(
-            f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'."
-        )
+        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'.")
     except Exception as e:
         click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
         return
