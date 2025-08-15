@@ -9,13 +9,13 @@ The DSL is primarily backed by a method-chaining API which allows for clear comp
 The entrypoint into expression operations is to select a channel using the `.channel()` class methods.
 
 ```py
-expr = NumericExpr.channel(asset_rid, data_scope_name, channel_name)
+chan = NumericExpr.channel(asset_rid, data_scope_name, channel_name)
 ```
 
 From there, you can rely on IDE hints to compose operations:
 
 ```
-expr.⇥
+chan.⇥
     ┌─────────────────────────────┬───────────────────────────────────────────────┐
     │◇ abs                        │ def derivative(time_unit: TimeUnitLiteral)  x │
     │◇ acos                       │ ──────────────────────────────────────────    │
@@ -33,7 +33,7 @@ expr.⇥
 The DSL exposes operator overloads where appropriate, and also includes explicit methods for the same operations:
 
 ```py
-assert (expr + expr) == expr.plus(expr)
+assert (chan + chan) == chan.plus(chan)
 ```
 
 ## Compute library
