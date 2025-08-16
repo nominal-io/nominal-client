@@ -62,7 +62,7 @@ class NumericExpr(Expr):
     def ln(self, /) -> NumericExpr:
         return _expr_impls.LnExpr(_node=self)
 
-    def logarithm(self, /) -> NumericExpr:
+    def log(self, /) -> NumericExpr:
         return _expr_impls.LogarithmExpr(_node=self)
 
     def max(self, nodes: typing.Sequence[NumericExpr], /) -> NumericExpr:
