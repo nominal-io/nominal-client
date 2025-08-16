@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.73.0](https://github.com/nominal-io/nominal-client/compare/v1.72.0...v1.73.0) (2025-08-16)
+
+
+### Features
+
+* add experimental compute impl ([#439](https://github.com/nominal-io/nominal-client/issues/439)) ([e265dc9](https://github.com/nominal-io/nominal-client/commit/e265dc9660cce71036884ed64875b56a1daf2b88))
+* allow deleting dataset files ([#437](https://github.com/nominal-io/nominal-client/issues/437)) ([7b1a7ea](https://github.com/nominal-io/nominal-client/commit/7b1a7eaf6f2f449146f9b2a39bf49be7bf878746))
+
 ## [1.72.0](https://github.com/nominal-io/nominal-client/compare/v1.71.1...v1.72.0) (2025-08-12)
 
 
