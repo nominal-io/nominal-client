@@ -86,7 +86,7 @@ def test_numeric_serialization(ch1: NumericExpr, ch2: NumericExpr, range1: Range
     assert isinstance(ch1.derivative("s")._to_conjure(), scout_compute_api.NumericSeries)
     assert isinstance(ch1.integral(100000000, "s")._to_conjure(), scout_compute_api.NumericSeries)
     assert isinstance(ch1.ln()._to_conjure(), scout_compute_api.NumericSeries)
-    assert isinstance(ch1.logarithm()._to_conjure(), scout_compute_api.NumericSeries)
+    assert isinstance(ch1.log()._to_conjure(), scout_compute_api.NumericSeries)
     assert isinstance(ch1.offset(5.0)._to_conjure(), scout_compute_api.NumericSeries)
     assert isinstance(ch1.rolling(1000000000, "mean")._to_conjure(), scout_compute_api.NumericSeries)  # 1 second window
     assert isinstance(ch1.scale(2.0)._to_conjure(), scout_compute_api.NumericSeries)
