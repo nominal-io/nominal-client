@@ -47,12 +47,12 @@ class LogTiming(contextlib.ContextDecorator):
 
     def __enter__(self) -> Self:
         """Track start time of the context manager."""
-        self._start_time = time.time()
+        self._start_time = time.monotonic()
         return self
 
     def __exit__(
         self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
     ) -> None:
         """Track end time of the context manager and print a log message with timing details."""
-        self._end_time = time.time()
+        self._end_time = time.monotonic()
         logging.log(self._log_level, "%s (%f seconds)", self._message, self._end_time - self._start_time)

@@ -152,7 +152,7 @@ class WriteStream(WriteStreamBase[StreamType]):
 
     def _process_timeout_batches(self) -> None:
         while not self._stop.is_set():
-            now = time.time()
+            now = time.monotonic()
 
             last_batch_time = self._thread_safe_batch.last_time
             timeout = max(self.max_wait.seconds - (now - last_batch_time), 0)
@@ -181,7 +181,7 @@ class ThreadSafeBatch(Generic[StreamType]):
     def __init__(self) -> None:
         """Thread-safe access to batch and last swap time."""
         self._batch: list[BatchItem[StreamType]] = []
-        self._last_time = time.time()
+        self._last_time = time.monotonic()
         self._lock = threading.Lock()
 
     def swap(self, condition: Callable[[int], bool] | None = None) -> list[BatchItem[StreamType]] | None:
@@ -194,7 +194,7 @@ class ThreadSafeBatch(Generic[StreamType]):
                 return None
             batch = self._batch
             self._batch = []
-            self._last_time = time.time()
+            self._last_time = time.monotonic()
         return batch
 
     def add(self, items: Sequence[BatchItem[StreamType]]) -> None:

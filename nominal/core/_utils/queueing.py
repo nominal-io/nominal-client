@@ -62,7 +62,7 @@ def _timed_batch(
             q.task_done()
         except Empty:  # timeout
             pass
-        if len(batch) >= max_batch_size or time.time() >= next_batch_time:
+        if len(batch) >= max_batch_size or time.monotonic() >= next_batch_time:
             if batch:
                 yield Batch(batch, oldest_timestamp, newest_timestamp)
                 oldest_timestamp = MAX_INT64
