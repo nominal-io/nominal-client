@@ -33,6 +33,7 @@ class Run(HasRid):
     end: IntegralNanosecondsUTC | None
     run_number: int
     assets: Sequence[str]
+    created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
 
@@ -336,5 +337,6 @@ class Run(HasRid):
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             run_number=run.run_number,
             assets=tuple(run.assets),
+            created_at=_SecondsNanos.from_flexible(run.created_at).to_nanoseconds(),
             _clients=clients,
         )

@@ -28,6 +28,7 @@ class DatasetFile:
     bounds: Bounds | None
     uploaded_at: IntegralNanosecondsUTC
     ingested_at: IntegralNanosecondsUTC | None
+    deleted_at: IntegralNanosecondsUTC | None
     ingest_status: IngestStatus
 
     _clients: _Clients = field(repr=False)
@@ -46,6 +47,11 @@ class DatasetFile:
             if dataset_file.ingested_at is None
             else _SecondsNanos.from_flexible(dataset_file.ingested_at).to_nanoseconds()
         )
+        delete_time = (
+            None
+            if dataset_file.deleted_at is None
+            else _SecondsNanos.from_flexible(dataset_file.deleted_at).to_nanoseconds()
+        )
         return cls(
             id=dataset_file.id,
             dataset_rid=dataset_file.dataset_rid,
@@ -53,6 +59,7 @@ class DatasetFile:
             bounds=None if dataset_file.bounds is None else Bounds._from_conjure(dataset_file.bounds),
             uploaded_at=upload_time,
             ingested_at=ingest_time,
+            deleted_at=delete_time,
             ingest_status=IngestStatus._from_conjure(dataset_file.ingest_status),
             _clients=clients,
         )

@@ -12,6 +12,7 @@ from typing_extensions import Self
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,8 @@ class Attachment(HasRid):
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
+    created_at: IntegralNanosecondsUTC
+
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
@@ -94,6 +97,7 @@ class Attachment(HasRid):
             description=attachment.description,
             properties=MappingProxyType(attachment.properties),
             labels=tuple(attachment.labels),
+            created_at=_SecondsNanos.from_flexible(attachment.created_at).to_nanoseconds(),
             _clients=clients,
         )
 

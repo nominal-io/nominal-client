@@ -9,6 +9,7 @@ from typing_extensions import Self
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils import HasRid
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class Secret(HasRid):
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
+    created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
 
     def update(
@@ -74,5 +76,6 @@ class Secret(HasRid):
             description=raw_secret.description,
             properties=raw_secret.properties,
             labels=raw_secret.labels,
+            created_at=_SecondsNanos.from_flexible(raw_secret.created_at).to_nanoseconds(),
             _clients=clients,
         )

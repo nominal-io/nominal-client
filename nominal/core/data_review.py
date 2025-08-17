@@ -31,6 +31,7 @@ class DataReview(HasRid):
     checklist_rid: str
     checklist_commit: str
     completed: bool
+    created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
 
@@ -58,6 +59,7 @@ class DataReview(HasRid):
             checklist_rid=data_review.checklist_ref.rid,
             checklist_commit=data_review.checklist_ref.commit,
             completed=completed,
+            created_at=_SecondsNanos.from_flexible(data_review.created_at).to_nanoseconds(),
             _clients=clients,
         )
 
