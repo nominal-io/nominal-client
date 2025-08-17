@@ -25,7 +25,7 @@ except ModuleNotFoundError:
 
 from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._stream.write_stream import BatchItem, DataItem
-from nominal.core._utils import Batch
+from nominal.core._utils.queueing import Batch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 

@@ -13,7 +13,7 @@ from typing_extensions import Self, TypeAlias
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid, Link, create_links, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, Link, create_links, rid_from_instance_or_string
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets

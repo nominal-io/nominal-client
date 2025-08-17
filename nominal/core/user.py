@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from nominal_api import authentication_api
 from typing_extensions import Self
 
-from nominal.core._utils import HasRid
+from nominal.core._utils.api_tools import HasRid
 
 
 @dataclass(frozen=True)

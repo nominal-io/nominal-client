@@ -15,7 +15,8 @@ from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid, path_upload_name, upload_multipart_io
+from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
