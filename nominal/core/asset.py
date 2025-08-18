@@ -31,7 +31,6 @@ class Asset(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
-
     created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
