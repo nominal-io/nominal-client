@@ -31,6 +31,7 @@ class Video(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
+    created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
@@ -316,6 +317,7 @@ class Video(HasRid):
             description=video.description,
             properties=MappingProxyType(video.properties),
             labels=tuple(video.labels),
+            created_at=_SecondsNanos.from_flexible(video.created_at).to_nanoseconds(),
             _clients=clients,
         )
 
