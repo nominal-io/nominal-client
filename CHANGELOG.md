@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.74.0](https://github.com/nominal-io/nominal-client/compare/v1.73.0...v1.74.0) (2025-08-18)
+
+
+### Features
+
+* add docs for all methods/attributes ([#444](https://github.com/nominal-io/nominal-client/issues/444)) ([6eab012](https://github.com/nominal-io/nominal-client/commit/6eab012e1fbd21897e8b4526075739c0a1291c59))
+* allow searching by more fields across client ([#441](https://github.com/nominal-io/nominal-client/issues/441)) ([1375a7d](https://github.com/nominal-io/nominal-client/commit/1375a7d7ef59cc73996076de5e7dc31ccc4ac225))
+* expose object creation times across client ([#440](https://github.com/nominal-io/nominal-client/issues/440)) ([8604d7d](https://github.com/nominal-io/nominal-client/commit/8604d7d477934d03f5473cb9060160f5dc6dcfac))
+
 ## [1.73.0](https://github.com/nominal-io/nominal-client/compare/v1.72.0...v1.73.0) (2025-08-17)
 
 
