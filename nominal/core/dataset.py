@@ -15,7 +15,7 @@ from typing_extensions import Self, TypeAlias
 from nominal._utils import update_dataclass
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
-from nominal.core._utils import path_upload_name, upload_multipart_file, upload_multipart_io
+from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractors import ContainerizedExtractor
 from nominal.core.dataset_file import DatasetFile

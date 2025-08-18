@@ -9,7 +9,7 @@ from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid
+from nominal.core._utils.api_tools import HasRid
 from nominal.ts import _ConjureTimestampType
 
 

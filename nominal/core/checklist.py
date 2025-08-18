@@ -14,7 +14,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
 from nominal.core.run import Run

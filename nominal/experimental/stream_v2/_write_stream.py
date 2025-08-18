@@ -21,7 +21,7 @@ from nominal.core._stream.write_stream import (
     DataItem,
     DataStream,
 )
-from nominal.core._utils import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
+from nominal.core._utils.queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
