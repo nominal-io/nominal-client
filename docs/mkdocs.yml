@@ -100,6 +100,7 @@ markdown_extensions:
       custom_checkbox: true
   - pymdownx.tilde
   - toc:
+      toc_depth: 3
       permalink: "¤"
   - attr_list
   - mkdocs-click
@@ -118,6 +119,7 @@ plugins:
             filters: ["!^_"]
             heading_level: 1
             inherited_members: true
+            show_if_no_docstring: true
             merge_init_into_class: true
             parameter_headings: true
             separate_signature: true
