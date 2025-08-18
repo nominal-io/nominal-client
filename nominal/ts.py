@@ -200,10 +200,10 @@ import abc
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
-from typing import Literal, Mapping, NamedTuple, Union, get_args
+from typing import Literal, Mapping, NamedTuple, Union, cast, get_args
 
 import dateutil.parser
-from nominal_api import api, ingest_api, scout_run_api
+from nominal_api import api, ingest_api, scout_catalog, scout_run_api
 from typing_extensions import Self, TypeAlias
 
 __all__ = [
@@ -272,6 +272,13 @@ class _ConjureTimestampType(abc.ABC):
             raise ValueError(f"Unknown timestamp type: {conjure_type.type}")
 
 
+def _api_time_unit_to_literal_time_unit(time_unit: api.TimeUnit) -> _LiteralTimeUnit:
+    if time_unit.value.lower() in get_args(_LiteralTimeUnit):
+        return cast(_LiteralTimeUnit, time_unit.value.lower())
+    else:
+        raise ValueError(f"Unknown api time unit: {time_unit}")
+
+
 @dataclass(frozen=True)
 class Iso8601(_ConjureTimestampType):
     """ISO 8601 timestamp format, e.g. '2021-01-31T19:00:00Z' or '2021-01-31T19:00:00.123+00:00'.
@@ -296,10 +303,7 @@ class Epoch(_ConjureTimestampType):
 
     @classmethod
     def _from_time_unit(cls, time_unit: api.TimeUnit) -> Self:
-        if time_unit.value.lower() in get_args(_LiteralTimeUnit):
-            return cls(time_unit.value.lower())
-        else:
-            raise ValueError(f"Unknown absolute time unit: {time_unit}")
+        return cls(_api_time_unit_to_literal_time_unit(time_unit))
 
 
 @dataclass(frozen=True)
@@ -399,6 +403,34 @@ def _to_typed_timestamp_type(type_: _AnyTimestampType) -> TypedTimestampType:
     if type_ not in _str_to_type:
         raise ValueError(f"string timestamp types must be one of: {_str_to_type.keys()}")
     return _str_to_type[type_]
+
+
+def _catalog_timestamp_type_to_typed_timestamp_type(type_: scout_catalog.TimestampType) -> TypedTimestampType:
+    if type_.absolute is not None:
+        if type_.absolute.iso8601 is not None:
+            return Iso8601()
+        elif type_.absolute.epoch_of_time_unit is not None:
+            return Epoch(_api_time_unit_to_literal_time_unit(type_.absolute.epoch_of_time_unit.time_unit))
+        elif type_.absolute.custom_format is not None:
+            return Custom(
+                format=type_.absolute.custom_format.format,
+                default_year=type_.absolute.custom_format.default_year,
+                default_day_of_year=type_.absolute.custom_format.default_day_of_year,
+            )
+        else:
+            raise ValueError(f"Unknown absolute catalog timestamp type: {type_.absolute.type}")
+    elif type_.relative is not None:
+        api_unit = type_.relative.time_unit
+        api_offset = type_.relative.offset
+        if api_offset is None:
+            raise ValueError("Catalog relative timestamp type missing offset")
+
+        return Relative(
+            unit=_api_time_unit_to_literal_time_unit(api_unit),
+            start=_SecondsNanos.from_flexible(api_offset).to_nanoseconds(),
+        )
+    else:
+        raise ValueError(f"Catalog timestamp has unknown type: {type_.type}")
 
 
 def _time_unit_to_conjure(unit: _LiteralTimeUnit) -> api.TimeUnit:
