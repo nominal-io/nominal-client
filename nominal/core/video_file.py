@@ -11,7 +11,7 @@ from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid
+from nominal.core._utils.api_tools import HasRid
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -23,6 +23,7 @@ class VideoFile(HasRid):
     rid: str
     name: str
     description: str | None
+    created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
@@ -134,5 +135,6 @@ class VideoFile(HasRid):
             rid=video_file.rid,
             name=video_file.title,
             description=video_file.description,
+            created_at=_SecondsNanos.from_flexible(video_file.created_at).to_nanoseconds(),
             _clients=clients,
         )

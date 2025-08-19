@@ -13,12 +13,13 @@ from typing_extensions import Self, TypeAlias
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid, Link, create_links, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, Link, create_links, rid_from_instance_or_string
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.video import Video, _get_video
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Union[Connection, Dataset, Video]
 
@@ -30,6 +31,7 @@ class Asset(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
+    created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
 
@@ -376,5 +378,6 @@ class Asset(HasRid):
             description=asset.description,
             properties=MappingProxyType(asset.properties),
             labels=tuple(asset.labels),
+            created_at=_SecondsNanos.from_flexible(asset.created_at).to_nanoseconds(),
             _clients=clients,
         )

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.74.0](https://github.com/nominal-io/nominal-client/compare/v1.73.0...v1.74.0) (2025-08-18)
+
+
+### Features
+
+* add docs for all methods/attributes ([#444](https://github.com/nominal-io/nominal-client/issues/444)) ([6eab012](https://github.com/nominal-io/nominal-client/commit/6eab012e1fbd21897e8b4526075739c0a1291c59))
+* allow searching by more fields across client ([#441](https://github.com/nominal-io/nominal-client/issues/441)) ([1375a7d](https://github.com/nominal-io/nominal-client/commit/1375a7d7ef59cc73996076de5e7dc31ccc4ac225))
+* expose object creation times across client ([#440](https://github.com/nominal-io/nominal-client/issues/440)) ([8604d7d](https://github.com/nominal-io/nominal-client/commit/8604d7d477934d03f5473cb9060160f5dc6dcfac))
+
+## [1.73.0](https://github.com/nominal-io/nominal-client/compare/v1.72.0...v1.73.0) (2025-08-17)
+
+
+### Features
+
+* add asynchronous log writing stream to datasets ([#427](https://github.com/nominal-io/nominal-client/issues/427)) ([f174c14](https://github.com/nominal-io/nominal-client/commit/f174c14ae8bda8d7c4cf9017d4cc9608990c988d))
+* add experimental compute impl ([#439](https://github.com/nominal-io/nominal-client/issues/439)) ([e265dc9](https://github.com/nominal-io/nominal-client/commit/e265dc9660cce71036884ed64875b56a1daf2b88))
+* allow deleting dataset files ([#437](https://github.com/nominal-io/nominal-client/issues/437)) ([7b1a7ea](https://github.com/nominal-io/nominal-client/commit/7b1a7eaf6f2f449146f9b2a39bf49be7bf878746))
+
 ## [1.72.0](https://github.com/nominal-io/nominal-client/compare/v1.71.1...v1.72.0) (2025-08-12)
 
 

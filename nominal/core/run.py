@@ -13,7 +13,7 @@ from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import HasRid, Link, create_links, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, Link, create_links, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
@@ -33,6 +33,7 @@ class Run(HasRid):
     end: IntegralNanosecondsUTC | None
     run_number: int
     assets: Sequence[str]
+    created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
 
@@ -336,5 +337,6 @@ class Run(HasRid):
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             run_number=run.run_number,
             assets=tuple(run.assets),
+            created_at=_SecondsNanos.from_flexible(run.created_at).to_nanoseconds(),
             _clients=clients,
         )

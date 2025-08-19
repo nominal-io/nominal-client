@@ -33,33 +33,38 @@ from nominal import _config, ts
 from nominal.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
-from nominal.core._utils import (
+from nominal.core._utils.api_tools import (
     construct_user_agent_string,
-    create_search_assets_query,
-    create_search_checklists_query,
-    create_search_datasets_query,
-    create_search_events_query,
-    create_search_runs_query,
-    create_search_secrets_query,
-    create_search_users_query,
+    rid_from_instance_or_string,
+)
+from nominal.core._utils.multipart import (
+    path_upload_name,
+    upload_multipart_io,
+)
+from nominal.core._utils.pagination_tools import (
     list_streaming_checklists_for_asset_paginated,
     list_streaming_checklists_paginated,
-    path_upload_name,
-    rid_from_instance_or_string,
     search_assets_paginated,
     search_checklists_paginated,
     search_data_reviews_paginated,
     search_datasets_paginated,
     search_events_paginated,
+    search_runs_by_asset_paginated,
     search_runs_paginated,
     search_secrets_paginated,
     search_users_paginated,
     search_workbook_templates_paginated,
     search_workbooks_paginated,
-    upload_multipart_io,
 )
 from nominal.core._utils.query_tools import (
+    create_search_assets_query,
+    create_search_checklists_query,
     create_search_containerized_extractors_query,
+    create_search_datasets_query,
+    create_search_events_query,
+    create_search_runs_query,
+    create_search_secrets_query,
+    create_search_users_query,
     create_search_workbook_templates_query,
     create_search_workbooks_query,
 )
@@ -238,7 +243,7 @@ class NominalClient:
         Returns:
             All users which match all of the provided conditions
         """
-        query = create_search_users_query(exact_match, search_text)
+        query = create_search_users_query(exact_match=exact_match, search_text=search_text)
         return list(self._iter_search_users(query))
 
     def _iter_search_datasets(self, query: scout_catalog.SearchDatasetsQuery) -> Iterable[Dataset]:
@@ -255,6 +260,7 @@ class NominalClient:
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace_rid: str | None = None,
+        archived: bool | None = None,
     ) -> Sequence[Dataset]:
         """Search for datasets the specified filters.
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
@@ -267,11 +273,21 @@ class NominalClient:
             before: Searches for datasets created before some time (inclusive).
             after: Searches for datasets created before after time (inclusive).
             workspace_rid: Filters search to given workspace. If None, searches within default workspace
+            archived: Filters results to either archived or unarchived datasets.
 
         Returns:
             All datasets which match all of the provided conditions
         """
-        query = create_search_datasets_query(exact_match, search_text, labels, properties, before, after, workspace_rid)
+        query = create_search_datasets_query(
+            exact_match=exact_match,
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            ingested_before_inclusive=before,
+            ingested_after_inclusive=after,
+            workspace=workspace_rid,
+            archived=archived,
+        )
         return list(self._iter_search_datasets(query))
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
@@ -349,6 +365,7 @@ class NominalClient:
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        workspace: Workspace | str | None = None,
     ) -> Sequence[Secret]:
         """Search for secrets meeting the specified filters.
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
@@ -357,11 +374,17 @@ class NominalClient:
             search_text: Searches for a (case-insensitive) substring across all text fields.
             labels: A sequence of labels that must ALL be present on a secret to be included.
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
+            workspace: Workspace to filter search within
 
         Returns:
             All secrets which match all of the provided conditions
         """
-        query = create_search_secrets_query(search_text, labels, properties)
+        query = create_search_secrets_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            workspace=rid_from_instance_or_string(workspace) if workspace else None,
+        )
         return list(self._iter_search_secrets(query))
 
     def create_run(
@@ -406,8 +429,20 @@ class NominalClient:
         name_substring: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        workspace: Workspace | str | None = None,
     ) -> Iterable[Run]:
-        query = create_search_runs_query(start, end, name_substring, labels, properties)
+        query = create_search_runs_query(
+            start=start,
+            end=end,
+            name_substring=name_substring,
+            labels=labels,
+            properties=properties,
+            exact_match=exact_match,
+            search_text=search_text,
+            workspace=rid_from_instance_or_string(workspace) if workspace else None,
+        )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
             yield Run._from_conjure(self._clients, run)
 
@@ -419,6 +454,9 @@ class NominalClient:
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        workspace: Workspace | str | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
@@ -429,11 +467,41 @@ class NominalClient:
             name_substring: Searches for a (case-insensitive) substring in the name.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
+            exact_match: A case-insensitive substring that must be matched exactly.
+            search_text: A case-insensitive substring to perform fuzzy-search on all fields with
+            workspace: Workspace to filter results within
 
         Returns:
             All runs which match all of the provided conditions
         """
-        return list(self._iter_search_runs(start, end, name_substring, labels, properties))
+        return list(
+            self._iter_search_runs(
+                start=start,
+                end=end,
+                name_substring=name_substring,
+                labels=labels,
+                properties=properties,
+                exact_match=exact_match,
+                search_text=search_text,
+                workspace=workspace,
+            )
+        )
+
+    def search_runs_by_asset(self, asset: Asset | str) -> Sequence[Run]:
+        """Search for all runs associated with a given asset:
+
+        Args:
+            asset: Asset to search for runs from
+
+        Returns:
+            All runs associated with the given asset
+        """
+        return [
+            Run._from_conjure(self._clients, run)
+            for run in search_runs_by_asset_paginated(
+                self._clients.run, self._clients.auth_header, rid_from_instance_or_string(asset)
+            )
+        ]
 
     def create_dataset(
         self,
@@ -541,6 +609,9 @@ class NominalClient:
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        author: User | str | None = None,
+        assignee: User | str | None = None,
+        workspace: Workspace | str | None = None,
     ) -> Sequence[Checklist]:
         """Search for checklists meeting the specified filters.
         Filters are ANDed together, e.g. `(checklist.label == label) AND (checklist.search_text =~ field)`
@@ -549,11 +620,21 @@ class NominalClient:
             search_text: case-insensitive search for any of the keywords in all string fields
             labels: A sequence of labels that must ALL be present on a checklist to be included.
             properties: A mapping of key-value pairs that must ALL be present on a checklist to be included.
+            author: Author of checklists to search for
+            assignee: Assignee of checklists to search for
+            workspace: Workspace to filter results within
 
         Returns:
             All checklists which match all of the provided conditions
         """
-        query = create_search_checklists_query(search_text, labels, properties)
+        query = create_search_checklists_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            author=rid_from_instance_or_string(author) if author else None,
+            assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            workspace=rid_from_instance_or_string(workspace) if workspace else None,
+        )
         return list(self._iter_search_checklists(query))
 
     def create_attachment(
@@ -834,6 +915,8 @@ class NominalClient:
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        exact_substring: str | None = None,
+        workspace: Workspace | str | None = None,
     ) -> Sequence[Asset]:
         """Search for assets meeting the specified filters.
         Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
@@ -842,11 +925,19 @@ class NominalClient:
             search_text: case-insensitive search for any of the keywords in all string fields
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
+            exact_substring: case-insensitive search for exact string match in all string fields
+            workspace: Workspace to filter search results within
 
         Returns:
             All assets which match all of the provided conditions
         """
-        query = create_search_assets_query(search_text, labels, properties)
+        query = create_search_assets_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            exact_substring=exact_substring,
+            workspace=rid_from_instance_or_string(workspace) if workspace else None,
+        )
         return list(self._iter_search_assets(query))
 
     def _iter_list_streaming_checklists(self, asset: str | None) -> Iterable[str]:
@@ -945,6 +1036,11 @@ class NominalClient:
         labels: Iterable[str] | None = None,
         properties: Mapping[str, str] | None = None,
         created_by: User | str | None = None,
+        workbook: Workbook | str | None = None,
+        data_review: DataReview | str | None = None,
+        assignee: User | str | None = None,
+        event_type: EventType | None = None,
+        workspace: Workspace | str | None = None,
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
         Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
@@ -956,6 +1052,11 @@ class NominalClient:
             labels: A list of labels that must ALL be present on an event to be included.
             properties: A mapping of key-value pairs that must ALL be present on an event to be included.
             created_by: A User (or rid) of the author that must be present on an event to be included.
+            workbook: Workbook to search for events on
+            data_review: Search for events from the given data review
+            assignee: Search for events with the given assignee
+            event_type: Search for events based on level
+            workspace: Search for events within the given workspace
 
         Returns:
             All events which match all of the provided conditions
@@ -967,7 +1068,12 @@ class NominalClient:
             assets=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
             labels=labels,
             properties=properties,
-            created_by=None if created_by is None else rid_from_instance_or_string(created_by),
+            created_by=rid_from_instance_or_string(created_by) if created_by else None,
+            workbook=rid_from_instance_or_string(workbook) if workbook else None,
+            data_review=rid_from_instance_or_string(data_review) if data_review else None,
+            assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            event_type=event_type,
+            workspace=rid_from_instance_or_string(workspace) if workspace else None,
         )
         return list(self._iter_search_events(query))
 
@@ -1023,7 +1129,7 @@ class NominalClient:
             search_text=search_text,
             labels=labels,
             properties=properties,
-            workspace=workspace,
+            workspace=rid_from_instance_or_string(workspace) if workspace else None,
         )
         resp = self._clients.containerized_extractors.search_containerized_extractors(
             self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
@@ -1060,6 +1166,8 @@ class NominalClient:
         exact_assets: Sequence[Asset | str] | None = None,
         created_by: User | str | None = None,
         run: Run | str | None = None,
+        workspace: Workspace | str | None = None,
+        archived: bool | None = None,
     ) -> Sequence[Workbook]:
         """Search for workbooks meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
@@ -1074,6 +1182,8 @@ class NominalClient:
             exact_assets: Searches for workbooks that have the exact given assets
             created_by: Searches for workbooks with the given author
             run: Searches for workbooks with the given run
+            workspace: Workspace to filter results within
+            archived: Return workbooks that are either archived or not
 
         Returns:
             All workbooks which match all of the provided conditions
@@ -1089,6 +1199,8 @@ class NominalClient:
             else [rid_from_instance_or_string(asset) for asset in exact_assets],
             author_rid=None if created_by is None else rid_from_instance_or_string(created_by),
             run_rid=None if run is None else rid_from_instance_or_string(run),
+            workspace=rid_from_instance_or_string(workspace) if workspace else None,
+            archived=archived,
         )
         return list(self._iter_search_workbooks(query, include_archived))
 
@@ -1113,6 +1225,8 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         created_by: User | str | None = None,
+        archived: bool | None = None,
+        published: bool | None = None,
     ) -> Sequence[WorkbookTemplate]:
         """Search for workbook templates meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
@@ -1123,6 +1237,8 @@ class NominalClient:
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
             created_by: Searches for workbook templates with the given creator's rid
+            archived: Searches for workbook templates that are archived if true
+            published: Searches f8or workbook templates that have been published if true
 
         Returns:
             All workbook templates which match all of the provided conditions
@@ -1133,6 +1249,8 @@ class NominalClient:
             labels=labels,
             properties=properties,
             created_by=None if created_by is None else rid_from_instance_or_string(created_by),
+            archived=archived,
+            published=published,
         )
         return list(self._iter_search_workbook_templates(query))
 
