@@ -15,7 +15,12 @@ from typing_extensions import Self
 from nominal._utils.download_tools import download_presigned_uri, filename_from_uri
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core.bounds import Bounds
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import (
+    IntegralNanosecondsUTC,
+    TypedTimestampType,
+    _catalog_timestamp_type_to_typed_timestamp_type,
+    _SecondsNanos,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +35,11 @@ class DatasetFile:
     ingested_at: IntegralNanosecondsUTC | None
     deleted_at: IntegralNanosecondsUTC | None
     ingest_status: IngestStatus
+
+    timestamp_channel: str | None
+    timestamp_type: TypedTimestampType | None
+    file_tags: Mapping[str, str] | None
+    tag_columns: Mapping[str, str] | None
 
     _clients: _Clients = field(repr=False)
 
@@ -52,6 +62,21 @@ class DatasetFile:
             if dataset_file.deleted_at is None
             else _SecondsNanos.from_flexible(dataset_file.deleted_at).to_nanoseconds()
         )
+
+        file_tags = None
+        tag_columns = None
+        if dataset_file.ingest_tag_metadata is not None:
+            file_tags = dataset_file.ingest_tag_metadata.additional_file_tags
+            tag_columns = dataset_file.ingest_tag_metadata.tag_columns
+
+        timestamp_column = None
+        timestamp_type = None
+        if dataset_file.timestamp_metadata is not None:
+            timestamp_column = dataset_file.timestamp_metadata.series_name
+            timestamp_type = _catalog_timestamp_type_to_typed_timestamp_type(
+                dataset_file.timestamp_metadata.timestamp_type
+            )
+
         return cls(
             id=dataset_file.id,
             dataset_rid=dataset_file.dataset_rid,
@@ -61,6 +86,10 @@ class DatasetFile:
             ingested_at=ingest_time,
             deleted_at=delete_time,
             ingest_status=IngestStatus._from_conjure(dataset_file.ingest_status),
+            timestamp_channel=timestamp_column,
+            timestamp_type=timestamp_type,
+            file_tags=file_tags,
+            tag_columns=tag_columns,
             _clients=clients,
         )
 
