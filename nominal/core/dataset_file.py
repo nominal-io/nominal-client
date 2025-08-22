@@ -55,10 +55,13 @@ class DatasetFile:
     def _get_latest_api(self) -> scout_catalog.DatasetFile:
         return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
 
-    def refresh(self, dataset_file: scout_catalog.DatasetFile | None = None) -> Self:
-        updated_file = self.__class__._from_conjure(self._clients, dataset_file or self._get_latest_api())
+    def _refresh_from_api(self, dataset_file: scout_catalog.DatasetFile) -> Self:
+        updated_file = self.__class__._from_conjure(self._clients, dataset_file)
         update_dataclass(self, updated_file, fields=self.__dataclass_fields__)
         return self
+
+    def refresh(self) -> Self:
+        return self._refresh_from_api(self._get_latest_api())
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
