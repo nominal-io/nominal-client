@@ -1,12 +1,10 @@
-from datetime import timedelta
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
-from nominal.exceptions import NominalIngestError, NominalIngestFailed
 
 UNITS = [
     Unit(name="coulomb", symbol="C"),

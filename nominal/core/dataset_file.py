@@ -291,7 +291,7 @@ class DatasetFile:
             logger.debug("Sleeping for %f seconds before polling for ingest status", interval.total_seconds())
             time.sleep(interval.total_seconds())
 
-        return self.refresh()
+        return self
 
 
 class IngestStatus(Enum):
