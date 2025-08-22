@@ -263,7 +263,7 @@ class DatasetFile:
         """
         while True:
             api_file = self._get_latest_api()
-            self.refresh(api_file)
+            self._refresh_from_api(api_file)
             if self.ingest_status is IngestStatus.SUCCESS:
                 break
             elif self.ingest_status is IngestStatus.IN_PROGRESS:
