@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from nominal_api import api, ingest_api, scout_catalog
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self, TypeAlias, deprecated
 
 from nominal._utils import update_dataclass
 from nominal.core._stream.batch_processor import process_log_batch
@@ -46,6 +46,11 @@ class Dataset(DataSource):
         """Returns a URL to the page in the nominal app containing this dataset"""
         return f"{self._clients.app_base_url}/data-sources/{self.rid}"
 
+    @deprecated(
+        "Calling `poll_until_ingestion_completed()` on a `nominal.Dataset` is deprecated and will be removed in "
+        "a future release. Poll for ingestion completion instead on individual `nominal.DatasetFile`s, which are "
+        "obtained when ingesting files or by calling `dataset.list_files()`."
+    )
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
         """Block until dataset file ingestion has completed.
         This method polls Nominal for ingest status after uploading a file to a dataset on an interval.

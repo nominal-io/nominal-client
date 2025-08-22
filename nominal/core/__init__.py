@@ -15,6 +15,7 @@ from nominal.core.containerized_extractors import (
 )
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
+from nominal.core.dataset_file import DatasetFile
 from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint
@@ -36,6 +37,7 @@ __all__ = [
     "DataReview",
     "DataReviewBuilder",
     "Dataset",
+    "DatasetFile",
     "DockerImageSource",
     "FileExtractionInput",
     "FileType",

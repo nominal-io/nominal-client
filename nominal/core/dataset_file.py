@@ -52,10 +52,11 @@ class DatasetFile:
         @property
         def ingest(self) -> ingest_api.IngestService: ...
 
-    def refresh(self) -> Self:
-        updated_file = self.__class__._from_conjure(
-            self._clients, self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
-        )
+    def _get_latest_api(self) -> scout_catalog.DatasetFile:
+        return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
+
+    def refresh(self, dataset_file: scout_catalog.DatasetFile | None = None) -> Self:
+        updated_file = self.__class__._from_conjure(self._clients, dataset_file or self._get_latest_api())
         update_dataclass(self, updated_file, fields=self.__dataclass_fields__)
         return self
 
@@ -258,15 +259,15 @@ class DatasetFile:
 
         """
         while True:
-            self.refresh()
+            api_file = self._get_latest_api()
+            self.refresh(api_file)
             if self.ingest_status is IngestStatus.SUCCESS:
                 break
             elif self.ingest_status is IngestStatus.IN_PROGRESS:
                 pass
             elif self.ingest_status is IngestStatus.FAILED:
                 # Get error message to display to user
-                raw_file = self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
-                file_error = raw_file.ingest_status.error
+                file_error = api_file.ingest_status.error
                 if file_error is None:
                     raise NominalIngestError(
                         f"Ingest status marked as 'error' but with no details for file={self.id!r} and "
