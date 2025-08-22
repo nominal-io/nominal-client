@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.75.0](https://github.com/nominal-io/nominal-client/compare/v1.74.0...v1.75.0) (2025-08-22)
+
+
+### Features
+
+* expose dataset file tags, tag columns, timestamp column, and timestamp type ([#442](https://github.com/nominal-io/nominal-client/issues/442)) ([39d0599](https://github.com/nominal-io/nominal-client/commit/39d05995beb87bec4b5a1f64db08fa2965fb2e5d))
+* return datasetfile when adding data to a dataset, allow polling on a per file basis ([#447](https://github.com/nominal-io/nominal-client/issues/447)) ([b4bb4f8](https://github.com/nominal-io/nominal-client/commit/b4bb4f8c81626b4343ae28599e591c26e99303bd))
+
+
+### Bug Fixes
+
+* make nominal_url for data_review accurate again ([#445](https://github.com/nominal-io/nominal-client/issues/445)) ([c371edb](https://github.com/nominal-io/nominal-client/commit/c371edb4c561cab873c12cb3e9727cc2228b32ba))
+
 ## [1.74.0](https://github.com/nominal-io/nominal-client/compare/v1.73.0...v1.74.0) (2025-08-18)
 
 
