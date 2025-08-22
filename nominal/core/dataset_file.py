@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import datetime
 import logging
 import pathlib
 import time
@@ -12,9 +13,11 @@ from cachetools.func import ttl_cache
 from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
+from nominal._utils.dataclass_tools import update_dataclass
 from nominal._utils.download_tools import download_presigned_uri, filename_from_uri
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core.bounds import Bounds
+from nominal.exceptions import NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
     TypedTimestampType,
@@ -48,6 +51,13 @@ class DatasetFile:
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+
+    def refresh(self) -> Self:
+        updated_file = self.__class__._from_conjure(
+            self._clients, self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
+        )
+        update_dataclass(self, updated_file, fields=self.__dataclass_fields__)
+        return self
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
@@ -241,6 +251,44 @@ class DatasetFile:
                 results.append(destination)
             return results
 
+    def poll_until_ingestion_completed(self, interval: datetime.timedelta = datetime.timedelta(seconds=1)) -> Self:
+        """Block until dataset file ingestion has completed
+
+        This method polls Nominal for ingest status after uploading a file to a dataset on an interval.
+
+        """
+        while True:
+            self.refresh()
+            if self.ingest_status is IngestStatus.SUCCESS:
+                break
+            elif self.ingest_status is IngestStatus.IN_PROGRESS:
+                pass
+            elif self.ingest_status is IngestStatus.FAILED:
+                # Get error message to display to user
+                raw_file = self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
+                file_error = raw_file.ingest_status.error
+                if file_error is None:
+                    raise NominalIngestError(
+                        f"Ingest status marked as 'error' but with no details for file={self.id!r} and "
+                        f"dataset_rid={self.dataset_rid!r}"
+                    )
+                else:
+                    raise NominalIngestError(
+                        f"Ingest failed for file={self.id!r} and dataset_rid={self.dataset_rid!r}: "
+                        f"{file_error.message} ({file_error.error_type})"
+                    )
+            else:
+                raise NominalIngestError(
+                    f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
+                    f"dataset_rid={self.dataset_rid!r}"
+                )
+
+            # Sleep for specified interval
+            logger.debug("Sleeping for %f seconds before polling for ingest status", interval.total_seconds())
+            time.sleep(interval.total_seconds())
+
+        return self.refresh()
+
 
 class IngestStatus(Enum):
     SUCCESS = "SUCCESS"
@@ -249,10 +297,10 @@ class IngestStatus(Enum):
 
     @classmethod
     def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
-        if status.type == "success":
+        if status.success is not None:
             return cls.SUCCESS
-        elif status.type == "in_progress":
+        elif status.in_progress is not None:
             return cls.IN_PROGRESS
-        elif status.type == "failed":
+        elif status.error is not None:
             return cls.FAILED
         raise ValueError(f"Unknown ingest status: {status.type}")
