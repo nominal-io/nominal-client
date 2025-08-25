@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.76.0](https://github.com/nominal-io/nominal-client/compare/v1.75.0...v1.76.0) (2025-08-25)
+
+
+### Features
+
+* add missing core classes in nominal/core/__init__.py ([#448](https://github.com/nominal-io/nominal-client/issues/448)) ([1a80a5d](https://github.com/nominal-io/nominal-client/commit/1a80a5df5af9ff9061062ea326891a8e26fb6c26))
+
 ## [1.75.0](https://github.com/nominal-io/nominal-client/compare/v1.74.0...v1.75.0) (2025-08-22)
 
 
