@@ -81,7 +81,6 @@ __all__ = [
     "get_data_review",
     "list_streaming_checklists",
     "search_assets",
-    # classes: when adding a new class, also add a filter to "hide" it in docs/reference/toplevel.md
     "Asset",
     "Attachment",
     "Channel",
