@@ -25,7 +25,8 @@ from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, UnitLike
 from nominal.core.user import User
-from nominal.core.video import Video, VideoFile
+from nominal.core.video import Video
+from nominal.core.video_file import VideoFile
 from nominal.core.workbook import Workbook, WorkbookType
 from nominal.core.workspace import Workspace
 
