@@ -481,7 +481,9 @@ class Dataset(DataSource):
             raw_file = self._clients.catalog.get_dataset_file(self._clients.auth_header, self.rid, dataset_file_id)
             return DatasetFile._from_conjure(self._clients, raw_file)
         except Exception as ex:
-            raise FileNotFoundError(f"Failed to retrieve dataset file {dataset_file_id} from dataset {self.rid}: {ex}")
+            raise FileNotFoundError(
+                f"Failed to retrieve dataset file {dataset_file_id} from dataset {self.rid}"
+            ) from ex
 
     def get_log_stream(
         self,
