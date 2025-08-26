@@ -465,6 +465,26 @@ class Dataset(DataSource):
         for file in files:
             yield DatasetFile._from_conjure(self._clients, file)
 
+    def get_dataset_file(self, dataset_file_id: str) -> DatasetFile:
+        """Retrieve the given dataset file by ID
+
+        Args:
+            dataset_file_id: ID of the file to retrieve from the dataset
+
+        Returns:
+            Metadata for the requested dataset file
+
+        Raises:
+            FileNotFoundError: Details about the requested file could not be found
+        """
+        try:
+            raw_file = self._clients.catalog.get_dataset_file(self._clients.auth_header, self.rid, dataset_file_id)
+            return DatasetFile._from_conjure(self._clients, raw_file)
+        except Exception as ex:
+            raise FileNotFoundError(
+                f"Failed to retrieve dataset file {dataset_file_id} from dataset {self.rid}"
+            ) from ex
+
     def get_log_stream(
         self,
         batch_size: int = 50_000,
