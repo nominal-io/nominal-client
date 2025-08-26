@@ -284,7 +284,7 @@ class MultiplyExpr(exprs.NumericExpr):
 
 @dataclass(frozen=True)
 class NumericChannelExpr(exprs.NumericExpr):
-    _asset_rid: str
+    _asset_rid: str | params.StringVariable
     _data_scope_name: str
     _channel_name: str
 
@@ -293,7 +293,7 @@ class NumericChannelExpr(exprs.NumericExpr):
             channel=scout_compute_api.ChannelSeries(
                 asset=scout_compute_api.AssetChannel(
                     additional_tags={},
-                    asset_rid=scout_compute_api.StringConstant(literal=self._asset_rid),
+                    asset_rid=params._str_to_conjure(self._asset_rid),
                     channel=scout_compute_api.StringConstant(literal=self._channel_name),
                     data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
                     group_by_tags=[],

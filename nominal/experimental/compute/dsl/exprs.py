@@ -21,7 +21,7 @@ class NumericExpr(Expr):
         raise NotImplementedError()
 
     @classmethod
-    def channel(cls, asset_rid: str, data_scope_name: str, channel_name: str) -> NumericExpr:
+    def channel(cls, asset_rid: str | params.StringVariable, data_scope_name: str, channel_name: str) -> NumericExpr:
         return _expr_impls.NumericChannelExpr(
             _asset_rid=asset_rid, _data_scope_name=data_scope_name, _channel_name=channel_name
         )
