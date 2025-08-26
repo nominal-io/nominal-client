@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence
 
 from nominal_api import api, ingest_api, scout_catalog
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self, TypeAlias, deprecated
 
 from nominal._utils import update_dataclass
 from nominal.core._stream.batch_processor import process_log_batch
@@ -46,6 +46,11 @@ class Dataset(DataSource):
         """Returns a URL to the page in the nominal app containing this dataset"""
         return f"{self._clients.app_base_url}/data-sources/{self.rid}"
 
+    @deprecated(
+        "Calling `poll_until_ingestion_completed()` on a `nominal.Dataset` is deprecated and will be removed in "
+        "a future release. Poll for ingestion completion instead on individual `nominal.DatasetFile`s, which are "
+        "obtained when ingesting files or by calling `dataset.list_files()`."
+    )
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
         """Block until dataset file ingestion has completed.
         This method polls Nominal for ingest status after uploading a file to a dataset on an interval.
@@ -119,6 +124,19 @@ class Dataset(DataSource):
 
         return self.refresh()
 
+    def _handle_ingest_response(self, response: ingest_api.IngestResponse) -> DatasetFile:
+        if response.details.dataset is None:
+            raise ValueError(f"Expected response to provide dataset details, received: {response.details.type}")
+
+        return DatasetFile._from_conjure(
+            self._clients,
+            self._clients.catalog.get_dataset_file(
+                self._clients.auth_header,
+                response.details.dataset.dataset_rid,
+                response.details.dataset.dataset_file_id,
+            ),
+        )
+
     def add_tabular_data(
         self,
         path: Path | str,
@@ -126,7 +144,7 @@ class Dataset(DataSource):
         timestamp_type: _AnyTimestampType,
         tag_columns: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
-    ) -> None:
+    ) -> DatasetFile:
         """Append to a dataset from tabular data on-disk.
 
         Currently, the supported filetypes are:
@@ -146,7 +164,7 @@ class Dataset(DataSource):
         path = Path(path)
         file_type = FileType.from_tabular(path)
         with open(path, "rb") as data_file:
-            self.add_from_io(
+            return self.add_from_io(
                 data_file,
                 timestamp_column,
                 timestamp_type,
@@ -168,7 +186,7 @@ class Dataset(DataSource):
         file_name: str | None = None,
         tag_columns: Mapping[str, str] | None = None,
         tags: Mapping[str, str] | None = None,
-    ) -> None:
+    ) -> DatasetFile:
         """Append to a dataset from a file-like object.
 
         Args:
@@ -207,7 +225,8 @@ class Dataset(DataSource):
                 tags=tags,
             )
         )
-        self._clients.ingest.ingest(self._clients.auth_header, request)
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        return self._handle_ingest_response(resp)
 
     # Backward compatibility
     add_to_dataset_from_io = add_from_io
@@ -215,7 +234,7 @@ class Dataset(DataSource):
     def add_journal_json(
         self,
         path: Path | str,
-    ) -> None:
+    ) -> DatasetFile:
         """Add a journald jsonl file to an existing dataset."""
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
@@ -229,7 +248,7 @@ class Dataset(DataSource):
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
-        self._clients.ingest.ingest(
+        resp = self._clients.ingest.ingest(
             self._clients.auth_header,
             ingest_api.IngestRequest(
                 options=ingest_api.IngestOptions(
@@ -239,6 +258,7 @@ class Dataset(DataSource):
                 )
             ),
         )
+        return self._handle_ingest_response(resp)
 
     # Backward compatibility
     add_journal_json_to_dataset = add_journal_json
@@ -248,7 +268,7 @@ class Dataset(DataSource):
         path: Path | str,
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
-    ) -> None:
+    ) -> DatasetFile:
         """Add an MCAP file to an existing dataset.
 
         Args:
@@ -260,7 +280,7 @@ class Dataset(DataSource):
         """
         path = Path(path)
         with path.open("rb") as data_file:
-            self.add_mcap_from_io(
+            return self.add_mcap_from_io(
                 data_file,
                 include_topics=include_topics,
                 exclude_topics=exclude_topics,
@@ -276,7 +296,7 @@ class Dataset(DataSource):
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
         file_name: str | None = None,
-    ) -> None:
+    ) -> DatasetFile:
         """Add data to this dataset from an MCAP file-like object.
 
         The mcap must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
@@ -312,8 +332,7 @@ class Dataset(DataSource):
 
         request = _create_mcap_ingest_request(s3_path, channels, target)
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if resp.details.dataset is None or resp.details.dataset.dataset_rid is None:
-            raise NominalIngestError("error ingesting mcap: no dataset created or updated")
+        return self._handle_ingest_response(resp)
 
     # Backward compatibility
     add_mcap_to_dataset_from_io = add_mcap_from_io
@@ -321,7 +340,7 @@ class Dataset(DataSource):
     def add_ardupilot_dataflash(
         self,
         path: Path | str,
-    ) -> None:
+    ) -> DatasetFile:
         """Add a Dataflash file to an existing dataset."""
         dataflash_path = Path(path)
         s3_path = upload_multipart_file(
@@ -335,20 +354,24 @@ class Dataset(DataSource):
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
         request = _create_dataflash_ingest_request(s3_path, target)
-        self._clients.ingest.ingest(self._clients.auth_header, request)
+        resp = self._clients.ingest.ingest(self._clients.auth_header, request)
+        return self._handle_ingest_response(resp)
+
+    # Backward compatibility
+    add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
 
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, Path | str],
         tag: str | None = None,
-    ) -> None:
+    ) -> DatasetFile:
         """Add data from proprietary data formats using a pre-registered custom extractor.
 
         Args:
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
             sources: Mapping of environment variables to source files to use with the extractor.
-             NOTE: these must match the registered inputs of the containerized extractor exactly
+                NOTE: these must match the registered inputs of the containerized extractor exactly
             tag: Tag of the Docker container which hosts the extractor.
                 NOTE: if not provided, the default registered docker tag will be used.
         """
@@ -379,7 +402,7 @@ class Dataset(DataSource):
             logger.info("Uploaded %s -> %s", source_path, s3_path)
             s3_inputs[source] = s3_path
         logger.info("Triggering custom extractor %s (tag=%s) with %s", extractor.name, tag, s3_inputs)
-        self._clients.ingest.ingest(
+        resp = self._clients.ingest.ingest(
             self._clients.auth_header,
             trigger_ingest=ingest_api.IngestRequest(
                 options=ingest_api.IngestOptions(
@@ -398,8 +421,7 @@ class Dataset(DataSource):
             ),
         )
 
-    # Backward compatibility
-    add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
+        return self._handle_ingest_response(resp)
 
     def archive(self) -> None:
         """Archive this dataset.
