@@ -606,6 +606,7 @@ def _create_dataset(
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=workspace_rid,
+        marking_rids=[],
     )
     return client.create_dataset(auth_header, request)
 
@@ -681,6 +682,7 @@ def _construct_new_ingest_options(
             dataset_description=description,
             dataset_name=name,
             workspace=workspace_rid,
+            marking_rids=[],
         )
     )
     timestamp_metadata = ingest_api.TimestampMetadata(
