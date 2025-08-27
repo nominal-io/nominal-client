@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.77.0](https://github.com/nominal-io/nominal-client/compare/v1.76.0...v1.77.0) (2025-08-27)
+
+
+### Features
+
+* update nominal_url for checklists and datareviews ([#451](https://github.com/nominal-io/nominal-client/issues/451)) ([1d69730](https://github.com/nominal-io/nominal-client/commit/1d6973062096571390bcf9ccd372ff1721260e3d))
+
 ## [1.76.0](https://github.com/nominal-io/nominal-client/compare/v1.75.0...v1.76.0) (2025-08-26)
 
 
