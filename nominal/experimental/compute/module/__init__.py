@@ -1,15 +1,17 @@
 from __future__ import annotations
-from typing import Any, Type, TypeVar
-from nominal.experimental.compute.dsl import params
 
+from typing import Any, Type, TypeVar
+
+from nominal.experimental.compute.dsl import params
+from nominal.experimental.compute.module._functions import apply, register
 from nominal.experimental.compute.module._types import (
+    Module,
+    ModuleApplication,
     _ExportedFunction,
     _ExportedFunctionProtocol,
     _ModuleDefnProtocol,
     _ModuleMetadata,
 )
-from nominal.experimental.compute.module._types import Module, ModuleApplication
-from nominal.experimental.compute.module._functions import apply, register
 
 __all__ = [
     "Module",

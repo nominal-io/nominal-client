@@ -8,7 +8,6 @@ from typing_extensions import ParamSpec
 
 from nominal.experimental.compute.dsl import exprs, params
 
-
 _Params = ParamSpec("_Params")
 _RT_co = TypeVar("_RT_co", covariant=True)
 
