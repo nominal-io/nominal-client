@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 from nominal_api import scout_compute_api
 
-from nominal.experimental.compute.dsl import params
+from nominal.core.channel import Channel
+from nominal.experimental.compute.dsl import _identifiers, params
 
 
 @dataclass(frozen=True)
@@ -21,9 +22,43 @@ class NumericExpr(Expr):
         raise NotImplementedError()
 
     @classmethod
-    def channel(cls, asset_rid: str, data_scope_name: str, channel_name: str) -> NumericExpr:
+    def channel(cls, channel: Channel, tags: typing.Mapping[str, str] | None = None) -> NumericExpr:
+        return cls.datasource_channel(channel.data_source, channel.name, tags)
+
+    @classmethod
+    def datasource_channel(
+        cls, datasource_rid: str, channel_name: str, tags: typing.Mapping[str, str] | None = None
+    ) -> NumericExpr:
         return _expr_impls.NumericChannelExpr(
-            _asset_rid=asset_rid, _data_scope_name=data_scope_name, _channel_name=channel_name
+            _channel_identifier=_identifiers.DataSourceChannelIdentifier(datasource_rid, channel_name, tags=tags or {})
+        )
+
+    @classmethod
+    def asset_channel(
+        cls,
+        asset_rid: str,
+        data_scope_name: str,
+        channel_name: str,
+        additional_tags: typing.Mapping[str, str] | None = None,
+    ) -> NumericExpr:
+        return _expr_impls.NumericChannelExpr(
+            _channel_identifier=_identifiers.AssetChannelIdentifier(
+                asset_rid, data_scope_name, channel_name, additional_tags=additional_tags or {}
+            )
+        )
+
+    @classmethod
+    def run_channel(
+        cls,
+        run_rid: str,
+        data_scope_name: str,
+        channel_name: str,
+        additional_tags: typing.Mapping[str, str] | None = None,
+    ) -> NumericExpr:
+        return _expr_impls.NumericChannelExpr(
+            _channel_identifier=_identifiers.RunChannelIdentifier(
+                run_rid, data_scope_name, channel_name, additional_tags=additional_tags or {}
+            )
         )
 
     def abs(self, /) -> NumericExpr:

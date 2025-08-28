@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from nominal_api import scout_compute_api
 
-from nominal.experimental.compute.dsl import exprs, params
+from nominal.experimental.compute.dsl import _identifiers, exprs, params
 
 
 @dataclass(frozen=True)
@@ -284,24 +284,10 @@ class MultiplyExpr(exprs.NumericExpr):
 
 @dataclass(frozen=True)
 class NumericChannelExpr(exprs.NumericExpr):
-    _asset_rid: str
-    _data_scope_name: str
-    _channel_name: str
+    _channel_identifier: _identifiers.ChannelIdentifier
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
-        return scout_compute_api.NumericSeries(
-            channel=scout_compute_api.ChannelSeries(
-                asset=scout_compute_api.AssetChannel(
-                    additional_tags={},
-                    asset_rid=scout_compute_api.StringConstant(literal=self._asset_rid),
-                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
-                    data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
-                    group_by_tags=[],
-                    tags_to_group_by=[],
-                    additional_tag_filters=None,
-                )
-            )
-        )
+        return scout_compute_api.NumericSeries(channel=self._channel_identifier.to_compute_channel_series())
 
 
 @dataclass(frozen=True)
