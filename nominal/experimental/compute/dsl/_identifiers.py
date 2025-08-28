@@ -8,6 +8,13 @@ from nominal_api import scout_compute_api
 from nominal_api._impl import scout_compute_api_ChannelSeries as ChannelSeries
 
 
+def _to_api_tags(raw_tags: typing.Mapping[str, str] | None) -> dict[str, scout_compute_api.StringConstant]:
+    if raw_tags is None:
+        return {}
+
+    return {key: scout_compute_api.StringConstant(literal=value) for key, value in raw_tags.items()}
+
+
 class ChannelIdentifier(ABC):
     @abstractmethod
     def to_compute_channel_series(self) -> scout_compute_api.ChannelSeries: ...
@@ -23,9 +30,7 @@ class AssetChannelIdentifier(ChannelIdentifier):
     def to_compute_channel_series(self) -> scout_compute_api.ChannelSeries:
         return scout_compute_api.ChannelSeries(
             asset=scout_compute_api.AssetChannel(
-                additional_tags={
-                    k: scout_compute_api.StringConstant(literal=v) for k, v in self.additional_tags.items()
-                },
+                additional_tags=_to_api_tags(self.additional_tags),
                 asset_rid=scout_compute_api.StringConstant(literal=self.asset_rid),
                 data_scope_name=scout_compute_api.StringConstant(literal=self.data_scope_name),
                 channel=scout_compute_api.StringConstant(literal=self.channel_name),
@@ -47,7 +52,7 @@ class DataSourceChannelIdentifier(ChannelIdentifier):
             data_source=scout_compute_api.DataSourceChannel(
                 channel=scout_compute_api.StringConstant(literal=self.channel_name),
                 data_source_rid=scout_compute_api.StringConstant(literal=self.datasource_rid),
-                tags={k: scout_compute_api.StringConstant(literal=v) for k, v in self.tags.items()},
+                tags=_to_api_tags(self.tags),
                 group_by_tags=[],
                 tags_to_group_by=[],
                 tag_filters=None,
@@ -65,9 +70,7 @@ class RunChannelIdentifier(ChannelIdentifier):
     def to_compute_channel_series(self) -> scout_compute_api.ChannelSeries:
         return scout_compute_api.ChannelSeries(
             run=scout_compute_api.RunChannel(
-                additional_tags={
-                    k: scout_compute_api.StringConstant(literal=v) for k, v in self.additional_tags.items()
-                },
+                additional_tags=_to_api_tags(self.additional_tags),
                 run_rid=scout_compute_api.StringConstant(literal=self.run_rid),
                 data_scope_name=scout_compute_api.StringConstant(literal=self.data_scope_name),
                 channel=scout_compute_api.StringConstant(literal=self.channel_name),
