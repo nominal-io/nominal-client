@@ -62,3 +62,24 @@ expr = (deriv + integ) / channel.abs()
 for bucket in compute_buckets(client, expr, scope.bounds.start, scope.bounds.end):
     print(f"Timestamp: {bucket.timestamp}, Mean: {bucket.mean}")
 ```
+
+## Modules
+
+```py
+from nominal.experimental.compute import module
+
+@module.defn
+class MyModule:
+    """My module description"""
+
+    asset: Asset = params.StringVariable("ASSET_RID")
+
+    @module.export
+    def my_function(self) -> NumericExpr:
+        """my function docstring"""
+        c1 = NumericExpr.channel(self.asset, "scope", "channel1")
+        c2 = NumericExpr.channel(self.asset, "scope", "channel2")
+        return c1 + c2
+
+module.register(client, MyModule)
+```
