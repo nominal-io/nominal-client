@@ -6,7 +6,7 @@ from nominal_api import module as module_api
 
 from nominal.core.client import NominalClient
 from nominal.experimental.compute.dsl.exprs import NumericExpr, RangeExpr
-from nominal.experimental.compute.module._types import Module, ModuleApplication, UserModuleDefnT
+from nominal.experimental.compute.module._types import Module, ModuleApplication, _ModuleDefnProtocol
 
 
 def _expr_to_func_node(expr: NumericExpr | RangeExpr) -> module_api.FunctionNode:
@@ -15,7 +15,7 @@ def _expr_to_func_node(expr: NumericExpr | RangeExpr) -> module_api.FunctionNode
     return module_api.FunctionNode(ranges=expr._to_conjure())
 
 
-def register(client: NominalClient, module_cls: Type[UserModuleDefnT]) -> Module:
+def register(client: NominalClient, module_cls: Type[_ModuleDefnProtocol]) -> Module:
     meta = module_cls.__module_metadata__
     instance = module_cls()
     functions = []

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, Protocol, TypeVar, runtime_checkable
+from typing import Any, Callable, Generic, ParamSpec, Protocol, TypeVar, runtime_checkable
 
 from nominal_api import module as module_api
 from typing_extensions import ParamSpec
@@ -9,25 +9,19 @@ from typing_extensions import ParamSpec
 from nominal.experimental.compute.dsl import exprs, params
 
 
+_Params = ParamSpec("_Params")
+_RT_co = TypeVar("_RT_co", covariant=True)
+
+
 @runtime_checkable
 class _ModuleDefnProtocol(Protocol):
     __module_metadata__: _ModuleMetadata
-
-
-UserModuleDefnT = TypeVar("UserModuleDefnT", bound=_ModuleDefnProtocol)
-
-
-_Params = ParamSpec("_Params")
-_RT_co = TypeVar("_RT_co", covariant=True)
 
 
 class _ExportedFunctionProtocol(Protocol, Generic[_Params, _RT_co]):
     __module_export__: bool
 
     def __call__(self, *args: _Params.args, **kwargs: _Params.kwargs) -> _RT_co: ...
-
-
-_ExportedFunctionT = TypeVar("_ExportedFunctionT", bound=_ExportedFunctionProtocol[Any, Any])
 
 
 @dataclass(frozen=True)

@@ -1,17 +1,15 @@
 from __future__ import annotations
-
-from typing import Any, Type
-
+from typing import Any, Type, TypeVar
 from nominal.experimental.compute.dsl import params
-from nominal.experimental.compute.module._functions import apply, register
+
 from nominal.experimental.compute.module._types import (
-    Module,
-    ModuleApplication,
     _ExportedFunction,
-    _ExportedFunctionT,
+    _ExportedFunctionProtocol,
     _ModuleDefnProtocol,
     _ModuleMetadata,
 )
+from nominal.experimental.compute.module._types import Module, ModuleApplication
+from nominal.experimental.compute.module._functions import apply, register
 
 __all__ = [
     "Module",
@@ -21,6 +19,9 @@ __all__ = [
     "export",
     "register",
 ]
+
+
+_ExportedFunctionT = TypeVar("_ExportedFunctionT", bound=_ExportedFunctionProtocol[Any, Any])
 
 
 def defn(cls: Type[Any]) -> Type[_ModuleDefnProtocol]:
@@ -46,9 +47,13 @@ def defn(cls: Type[Any]) -> Type[_ModuleDefnProtocol]:
         exports=exports,
     )
     setattr(cls, "__module_metadata__", meta)
+    # Alternative implementation: subclass from the passed in class, and add __module_metadata__ classvar.
+    # However, I couldn't get the types to work nicely. Ideally you want to return an intersection type
+    # like T & _ModuleDefnProtocol which isn't supported with Python types.
     return cls
 
 
 def export(fn: _ExportedFunctionT) -> _ExportedFunctionT:
     fn.__module_export__ = True
+    # Alternative implementation: create a class, set __call__ to fn, and add __module_export__ classvar.
     return fn
