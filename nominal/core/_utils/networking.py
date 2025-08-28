@@ -5,11 +5,11 @@ import os
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
-from conjure_python_client import ServiceConfiguration
+from conjure_python_client import Service, ServiceConfiguration
 from conjure_python_client._http.requests_client import RetryWithJitter, TransportAdapter
 from requests.adapters import CaseInsensitiveDict
 
-T = TypeVar("T")
+ServiceT = TypeVar("ServiceT", bound=Service)
 
 GZIP_COMPRESSION_LEVEL = 1
 
@@ -70,11 +70,11 @@ class GzipRequestsAdapter(TransportAdapter):
 
 
 def create_gzip_service_client(
-    service_class: Type[T],
+    service_class: Type[ServiceT],
     user_agent: str,
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
-) -> T:
+) -> ServiceT:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
 
@@ -114,12 +114,12 @@ def create_gzip_service_client(
         verify = None
     for uri in service_config.uris:
         session.mount(uri, transport_adapter)
-    return service_class(  # type: ignore
+    return service_class(
         session,
         service_config.uris,
         service_config.connect_timeout,
         service_config.read_timeout,
-        verify,
+        verify,  # type: ignore
         return_none_for_unknown_union_types,
     )
 
@@ -128,13 +128,13 @@ def create_conjure_client_factory(
     user_agent: str,
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
-) -> Callable[[Type[T]], T]:
+) -> Callable[[Type[ServiceT]], ServiceT]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
     See `create_gzip_service_client` for documentation on parameters.
     """
 
-    def factory(service_class: Type[T]) -> T:
+    def factory(service_class: Type[ServiceT]) -> ServiceT:
         return create_gzip_service_client(
             service_class,
             user_agent=user_agent,
