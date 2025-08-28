@@ -54,7 +54,8 @@ asset = client.get_asset(asset_rid)
 scope = asset.get_dataset(scope_name)
 assert scope.bounds is not None
 
-channel = exprs.NumericExpr.channel(asset_rid, scope_name, channel_name)
+# Get channel by asset, data scope name, and channel name
+channel = exprs.NumericExpr.asset_channel(asset_rid, scope_name, channel_name)
 
 deriv = channel.derivative(time_unit="s")
 integ = channel.integral(start_timestamp=scope.bounds.start, time_unit="s")
@@ -62,3 +63,30 @@ expr = (deriv + integ) / channel.abs()
 for bucket in compute_buckets(client, expr, scope.bounds.start, scope.bounds.end):
     print(f"Timestamp: {bucket.timestamp}, Mean: {bucket.mean}")
 ```
+
+When retrieving channels using the expressions library, you alternatively can retrieve channels in a few ways:
+
+* By datasource:
+  
+  ```python
+  dataset_rid = "ri.catalog.gov-staging.dataset.b373ff5a-cd2b-4969-bf5b-772688a11249"
+  tags = {"platform": "electric-glider-mk1"}
+  channel = exprs.NumericExpr.datasource_channel(dataset_rid, channel_name, tags=tags)
+  ```
+
+* By run:
+  
+  ```python
+  run_rid = "ri.catalog.gov-staging.dataset.b373ff5a-cd2b-4969-bf5b-772688a11249"
+  tags = {"color": "green"}
+  channel = exprs.NumericExpr.run_channel(run_rid, channel_name, additional_tags=tags)
+  ```
+
+* Direct `nominal.core.Channel` reference:
+  
+  ```python
+  dataset = client.get_dataset(dataset_rid)
+  channels = dataset.search_channels(exact_match=["apple_sizes"])
+  tags = {"color": "red"}
+  channel = exprs.NumericExpr.channel(channels[0], tags=tags)
+  ```
