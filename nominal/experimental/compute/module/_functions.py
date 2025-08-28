@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 from typing import Type
+
+from nominal_api import module as module_api
+
 from nominal.core.client import NominalClient
 from nominal.experimental.compute.dsl.exprs import NumericExpr, RangeExpr
 from nominal.experimental.compute.module._types import Module, ModuleApplication, UserModuleDefnT
-from nominal_api import module as module_api
 
 
 def _expr_to_func_node(expr: NumericExpr | RangeExpr) -> module_api.FunctionNode:

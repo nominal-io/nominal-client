@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
-from typing import Callable, Protocol, Type, TypeVar
+from typing import Protocol, Type, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import typing
+from dataclasses import dataclass
 
 from nominal_api import api, scout_compute_api, scout_run_api
 
