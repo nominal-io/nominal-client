@@ -441,8 +441,16 @@ def _catalog_timestamp_type_to_typed_timestamp_type(type_: scout_catalog.Timesta
 
 def _to_export_timestamp_format(type_: _AnyNativeTimestampType) -> scout_dataexport_api.TimestampFormat:
     typed_timestamp_format = _to_typed_timestamp_type(type_)
-    if isinstance(typed_timestamp_format, (Iso8601, Epoch)):
+    if isinstance(typed_timestamp_format, Iso8601):
         return scout_dataexport_api.TimestampFormat(iso8601=scout_dataexport_api.Iso8601TimestampFormat())
+    elif isinstance(typed_timestamp_format, Epoch):
+        # Returning epoch based timestamps is the same as returning relative timestamps to unix epoch
+        return scout_dataexport_api.TimestampFormat(
+            relative=scout_dataexport_api.RelativeTimestampFormat(
+                relative_to=_SecondsNanos.from_nanoseconds(0).to_api(),
+                time_unit=_time_unit_to_conjure(typed_timestamp_format.unit),
+            )
+        )
     elif isinstance(typed_timestamp_format, Relative):
         return scout_dataexport_api.TimestampFormat(
             relative=scout_dataexport_api.RelativeTimestampFormat(

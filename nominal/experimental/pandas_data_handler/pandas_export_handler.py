@@ -15,6 +15,8 @@ from typing_extensions import Self
 
 from nominal._utils import LogTiming
 from nominal.core.channel import Channel, ChannelDataType
+from nominal.experimental.compute._buckets import _create_compute_request_buckets
+from nominal.experimental.compute.dsl import exprs
 from nominal.experimental.pandas_data_handler._utils import group_channels_by_datatype, to_pandas_unit
 from nominal.ts import (
     Epoch,
@@ -24,7 +26,6 @@ from nominal.ts import (
     Relative,
     _AnyNativeTimestampType,
     _SecondsNanos,
-    _to_api_duration,
     _to_export_timestamp_format,
     _to_typed_timestamp_type,
 )
@@ -53,7 +54,7 @@ def _batch_channel_points_per_second(
     start: str | datetime.datetime | IntegralNanosecondsUTC,
     end: str | datetime.datetime | IntegralNanosecondsUTC,
     tags: Mapping[str, str] | None = None,
-    window: datetime.timedelta = datetime.timedelta(seconds=0.1),
+    window: datetime.timedelta = datetime.timedelta(seconds=1),
 ) -> Mapping[str, float]:
     """For each provided channel, determine the maximum number of points per second in the given range.
 
@@ -73,6 +74,7 @@ def _batch_channel_points_per_second(
     elif len(channels) > 300:
         raise ValueError(f"Can only compute points per second on batches up to 300, provided: {len(channels)}")
 
+    requests = []
     for channel in channels:
         if channel.data_type is not ChannelDataType.DOUBLE:
             raise ValueError(
@@ -80,52 +82,20 @@ def _batch_channel_points_per_second(
                 f"but {channel.name} has type: {channel.data_type}"
             )
 
-    series_tags = {k: scout_compute_api.StringConstant(v) for k, v in tags.items()} if tags else {}
-    channel_sources = [
-        scout_compute_api.DataSourceChannel(
-            channel=scout_compute_api.StringConstant(literal=channel.name),
-            data_source_rid=scout_compute_api.StringConstant(literal=channel.data_source),
-            tags=series_tags,
-            tags_to_group_by=[],
-            group_by_tags=[],
+        raw_channel = exprs.NumericExpr.channel(channel, tags=tags)
+        computed_channel = raw_channel.rolling(window=int(window.total_seconds() * 1e9), operator="count")
+        request = _create_compute_request_buckets(
+            computed_channel._to_conjure(),
+            context={},
+            start=_SecondsNanos.from_flexible(start).to_api(),
+            end=_SecondsNanos.from_flexible(end).to_api(),
+            buckets=1,
         )
-        for channel in channels
-    ]
+        requests.append(request)
+
     batch_resp = channels[0]._clients.compute.batch_compute_with_units(
         auth_header=channels[0]._clients.auth_header,
-        request=scout_compute_api.BatchComputeWithUnitsRequest(
-            requests=[
-                scout_compute_api.ComputeNodeRequest(
-                    context=scout_compute_api.Context(
-                        function_variables={},
-                        variables={},
-                    ),
-                    start=_SecondsNanos.from_flexible(start).to_api(),
-                    end=_SecondsNanos.from_flexible(end).to_api(),
-                    node=scout_compute_api.ComputableNode(
-                        series=scout_compute_api.SummarizeSeries(
-                            input=scout_compute_api.Series(
-                                numeric=scout_compute_api.NumericSeries(
-                                    rolling_operation=scout_compute_api.RollingOperationSeries(
-                                        input=scout_compute_api.NumericSeries(
-                                            channel=scout_compute_api.ChannelSeries(data_source=channel_source),
-                                        ),
-                                        operator=scout_compute_api.RollingOperator(count=scout_compute_api.Count()),
-                                        window=scout_compute_api.Window(
-                                            duration=scout_compute_api.DurationConstant(
-                                                literal=_to_api_duration(window),
-                                            )
-                                        ),
-                                    )
-                                )
-                            ),
-                            buckets=1,
-                        )
-                    ),
-                )
-                for channel_source in channel_sources
-            ]
-        ),
+        request=scout_compute_api.BatchComputeWithUnitsRequest(requests=requests),
     )
 
     results = {}
@@ -133,7 +103,10 @@ def _batch_channel_points_per_second(
         channel_resp = resp.compute_result
         if channel_resp.success:
             if channel_resp.success.bucketed_numeric:
-                results[channel.name] = channel_resp.success.bucketed_numeric.buckets[0].max / window.total_seconds()
+                print(channel.name, channel_resp.success.bucketed_numeric.buckets)
+                max_points = max([bucket.max for bucket in channel_resp.success.bucketed_numeric.buckets])
+                # print(channel, max_points)
+                results[channel.name] = max_points / window.total_seconds()
             else:
                 logger.warning("No points found in range for channel '%s'", channel.name)
                 results[channel.name] = 0
@@ -152,7 +125,7 @@ def channel_points_per_second(
     start: str | datetime.datetime | IntegralNanosecondsUTC,
     end: str | datetime.datetime | IntegralNanosecondsUTC,
     tags: Mapping[str, str] | None = None,
-    window: datetime.timedelta = datetime.timedelta(seconds=0.1),
+    window: datetime.timedelta = datetime.timedelta(seconds=1),
     batch_size: int = 25,
     num_workers: int = DEFAULT_NUM_WORKERS,
 ) -> Mapping[str, float]:
@@ -332,19 +305,13 @@ def _build_channel_groups(
 
 def _format_time_col(time_column: pd.Series[Any], job: ExportJob) -> pd.Series[pd.Timestamp] | pd.Series[float]:
     typed_timestamp_type = _to_typed_timestamp_type(job.timestamp_type)
-    time_col = pd.to_datetime(time_column, format="ISO8601", utc=True)
 
-    if isinstance(typed_timestamp_type, Relative):
-        pd_unit = to_pandas_unit(typed_timestamp_type.unit)
-        offset_time_col = time_col - pd.to_datetime(typed_timestamp_type.start, utc=True)
-        return offset_time_col / pd.Timedelta(f"1{pd_unit}")
-    elif isinstance(typed_timestamp_type, Epoch):
-        pd_unit = to_pandas_unit(typed_timestamp_type.unit)
-        offset_time_col = time_col - pd.to_datetime(0, utc=True)
-        return offset_time_col / pd.Timedelta(f"1{pd_unit}")
+    if isinstance(typed_timestamp_type, (Relative, Epoch)):
+        # If the timestamp type is relative, formatting is already handled by the export service
+        return time_column
     elif isinstance(typed_timestamp_type, Iso8601):
-        # do nothing-- already in iso format
-        return time_col
+        # Do nothing-- already in iso format
+        return pd.to_datetime(time_column, format="ISO8601", utc=True)
     else:
         raise ValueError("Expected timestamp type to be a typed timestamp type")
 
@@ -372,12 +339,12 @@ def _export_job(job_proxy: ValueProxy[ExportJob]) -> pd.DataFrame:
 
     dataexport = job.channels[0]._clients.dataexport
     auth_header = job.channels[0]._clients.auth_header
-    resp = dataexport.export_channel_data(auth_header, job.export_request())
-
-    channel_names = [ch.name for ch in job.channels]
 
     # Warn user about renamed channels, handle data with channel names of "timestamp"
+    channel_names = [ch.name for ch in job.channels]
     time_col = _get_exported_timestamp_channel(channel_names)
+
+    resp = dataexport.export_channel_data(auth_header, job.export_request())
     batch_df = pd.read_csv(resp, compression="gzip")
     if batch_df.empty:
         logger.warning("No data found for export for channels %s", channel_names)
@@ -477,6 +444,7 @@ class PandasExportHandler:
             end=time_range.end_time,
             tags=tags,
             num_workers=self._num_workers,
+            window=datetime.timedelta(seconds=1),
         )
 
         # If the user has not given us a specific batch duration (expected), compute the duration
@@ -491,10 +459,19 @@ class PandasExportHandler:
 
             # Compute the theoretical max data rate in an second within the export time range
             total_point_rate = sum(points_per_second.values())
+            print("total point rate", total_point_rate, "points per dataframe", self._points_per_dataframe)
             computed_duration = datetime.timedelta(seconds=self._points_per_dataframe / total_point_rate)
 
             # If the computed max batch duration is greater than the requested export duration, truncate
             batch_duration = min(computed_duration, time_range.duration())
+            print(
+                "Computed batch duration:",
+                batch_duration.total_seconds(),
+                "from computed:",
+                computed_duration.total_seconds(),
+                "and given:",
+                time_range.duration().total_seconds(),
+            )
 
         channel_groups, large_channels = _build_channel_groups(
             points_per_second,
@@ -572,7 +549,7 @@ class PandasExportHandler:
         # Kick off downloads
         with (
             LogTiming(f"Downloaded {len(export_jobs)} batches"),
-            concurrent.futures.ProcessPoolExecutor(max_workers=self._num_workers) as pool,
+            concurrent.futures.ThreadPoolExecutor(max_workers=self._num_workers) as pool,
             multiprocessing.Manager() as manager,
         ):
             futures: list[concurrent.futures.Future[pd.DataFrame]] = []
