@@ -565,6 +565,7 @@ class NominalClient:
             properties={} if properties is None else {**properties},
             description=description,
             workspace=self._clients.workspace_rid,
+            marking_rids=[],
         )
         raw_video = self._clients.video.create(self._clients.auth_header, request)
         return Video._from_conjure(self._clients, raw_video)
@@ -816,6 +817,7 @@ class NominalClient:
                             properties={} if properties is None else dict(properties),
                             labels=list(labels),
                             workspace=self._clients.workspace_rid,
+                            marking_rids=[],
                         )
                     ),
                     timestamp_manifest=scout_video_api.VideoFileTimestampManifest(
@@ -867,6 +869,7 @@ class NominalClient:
                 available_tag_values={},
                 should_scrape=True,
                 workspace=self._clients.workspace_rid,
+                marking_rids=[],
             ),
         )
         conn = Connection._from_conjure(self._clients, connection_response)
