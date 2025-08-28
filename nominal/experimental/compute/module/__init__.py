@@ -1,8 +1,13 @@
 from __future__ import annotations
-from typing import Any, Callable, Type
+from typing import Any, Type
 from nominal.experimental.compute.dsl import params
 
-from nominal.experimental.compute.module._types import _ExportedFunction, _ModuleDefnProtocol, _ModuleMetadata
+from nominal.experimental.compute.module._types import (
+    _ExportedFunction,
+    _ExportedFunctionT,
+    _ModuleDefnProtocol,
+    _ModuleMetadata,
+)
 from nominal.experimental.compute.module._types import Module, ModuleApplication
 from nominal.experimental.compute.module._functions import apply, register
 
@@ -42,6 +47,6 @@ def defn(cls: Type[Any]) -> Type[_ModuleDefnProtocol]:
     return cls
 
 
-def export(fn: Callable) -> Callable:
+def export(fn: _ExportedFunctionT) -> _ExportedFunctionT:
     fn.__module_export__ = True
     return fn

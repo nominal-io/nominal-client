@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Protocol, TypeVar, runtime_checkable
+from typing import Any, Callable, Generic, ParamSpec, Protocol, TypeVar, runtime_checkable
 
 from nominal_api import module as module_api
 
@@ -13,6 +13,19 @@ class _ModuleDefnProtocol(Protocol):
 
 
 UserModuleDefnT = TypeVar("UserModuleDefnT", bound=_ModuleDefnProtocol)
+
+
+_Params = ParamSpec("_Params")
+_RT = TypeVar("_RT", covariant=True)
+
+
+class _ExportedFunctionProtocol(Protocol, Generic[_Params, _RT]):
+    __module_export__: bool
+
+    def __call__(self, *args: _Params.args, **kwargs: _Params.kwargs) -> _RT: ...
+
+
+_ExportedFunctionT = TypeVar("_ExportedFunctionT", bound=_ExportedFunctionProtocol[Any, Any])
 
 
 @dataclass(frozen=True)
