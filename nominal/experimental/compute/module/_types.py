@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, ParamSpec, Protocol, TypeVar, runtime_checkable
+from typing import Callable, Generic, Protocol, TypeVar, runtime_checkable
 
 from nominal_api import module as module_api
 from typing_extensions import ParamSpec
