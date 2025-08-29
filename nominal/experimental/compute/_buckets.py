@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from nominal_api import api, scout_compute_api
 
@@ -25,6 +25,48 @@ class Bucket:
         )
 
 
+def batch_compute_buckets(
+    client: NominalClient,
+    expr: exprs.BatchNumericExpr,
+    start: params.NanosecondsUTC,
+    end: params.NanosecondsUTC,
+    buckets: int = 1000,
+) -> Mapping[str, Iterable[Bucket] | Exception]:
+    context: dict[str, exprs.NumericExpr] = {}
+
+    # Create request
+    api_start = _timestamp_to_conjure(start)
+    api_end = _timestamp_to_conjure(end)
+    api_context = {k: v._to_conjure() for k, v in context.items()}
+    request = scout_compute_api.BatchComputeWithUnitsRequest(
+        requests=[
+            _create_compute_request_buckets(node._to_conjure(), api_context, api_start, api_end, buckets)
+            for node in expr._numeric_exprs.values()
+        ]
+    )
+
+    # Make request
+    resp = client._clients.compute.batch_compute_with_units(
+        auth_header=client._clients.auth_header,
+        request=request,
+    )
+
+    # Parse response
+    results: dict[str, Iterable[Bucket] | Exception] = {}
+    for name, result in zip(expr._numeric_exprs, resp.results):
+        compute_result = result.compute_result
+        assert compute_result is not None
+
+        compute_error = compute_result.error
+        compute_response = compute_result.success
+        if compute_error is not None:
+            results[name] = RuntimeError(f"Failed to compute: {compute_error.error_type} ({compute_error.code})")
+        elif compute_response is not None:
+            results[name] = _buckets_from_compute_response(compute_response)
+
+    return results
+
+
 def compute_buckets(
     client: NominalClient,
     expr: exprs.NumericExpr,
@@ -34,7 +76,7 @@ def compute_buckets(
 ) -> Iterable[Bucket]:
     # TODO: expose context parameterization
     context: dict[str, exprs.NumericExpr] = {}
-    for ts, bucket in _compute_buckets(
+    yield from _compute_buckets(
         client._clients.compute,
         client._clients.auth_header,
         expr._to_conjure(),
@@ -42,8 +84,7 @@ def compute_buckets(
         _timestamp_to_conjure(start),
         _timestamp_to_conjure(end),
         buckets,
-    ):
-        yield Bucket._from_conjure(ts, bucket)
+    )
 
 
 def _compute_buckets(
@@ -54,12 +95,17 @@ def _compute_buckets(
     start: api.Timestamp,
     end: api.Timestamp,
     buckets: int,
-) -> Iterable[tuple[api.Timestamp, scout_compute_api.NumericBucket]]:
+) -> Iterable[Bucket]:
     request = _create_compute_request_buckets(node, context, start, end, buckets)
     response = client.compute(auth_token, request)
+    yield from _buckets_from_compute_response(response)
+
+
+def _buckets_from_compute_response(response: scout_compute_api.ComputeNodeResponse) -> Iterable[Bucket]:
     assert response.type == "bucketedNumeric"
     assert response.bucketed_numeric is not None
-    yield from zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)
+    for timestamp, bucket in zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets):
+        yield Bucket._from_conjure(timestamp, bucket)
 
 
 def _timestamp_from_conjure(timestamp: api.Timestamp) -> params.NanosecondsUTC:
