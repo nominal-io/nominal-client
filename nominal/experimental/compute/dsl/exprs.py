@@ -21,6 +21,10 @@ class NumericExpr(Expr):
         raise NotImplementedError()
 
     @classmethod
+    def reference_channel(cls, reference_name: str) -> NumericExpr:
+        return _expr_impls.NumericChannelReferenceExpr(reference_name)
+
+    @classmethod
     def datasource_channel(
         cls, datasource_rid: str, channel_name: str, tags: typing.Mapping[str, str] | None = None
     ) -> NumericExpr:
