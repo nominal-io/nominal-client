@@ -283,19 +283,70 @@ class MultiplyExpr(exprs.NumericExpr):
 
 
 @dataclass(frozen=True)
-class NumericChannelExpr(exprs.NumericExpr):
+class NumericAssetChannelExpr(exprs.NumericExpr):
     _asset_rid: str
     _data_scope_name: str
     _channel_name: str
+    _additional_tags: dict[str, str]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             channel=scout_compute_api.ChannelSeries(
                 asset=scout_compute_api.AssetChannel(
-                    additional_tags={},
+                    additional_tags={
+                        key: scout_compute_api.StringConstant(literal=value)
+                        for key, value in self._additional_tags.items()
+                    },
                     asset_rid=scout_compute_api.StringConstant(literal=self._asset_rid),
-                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
                     data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
+                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
+                    group_by_tags=[],
+                    tags_to_group_by=[],
+                    additional_tag_filters=None,
+                )
+            )
+        )
+
+
+@dataclass(frozen=True)
+class NumericDatasourceChannelExpr(exprs.NumericExpr):
+    _datasource_rid: str
+    _channel_name: str
+    _tags: dict[str, str]
+
+    def _to_conjure(self) -> scout_compute_api.NumericSeries:
+        return scout_compute_api.NumericSeries(
+            channel=scout_compute_api.ChannelSeries(
+                data_source=scout_compute_api.DataSourceChannel(
+                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
+                    data_source_rid=scout_compute_api.StringConstant(literal=self._datasource_rid),
+                    tags={key: scout_compute_api.StringConstant(literal=value) for key, value in self._tags.items()},
+                    group_by_tags=[],
+                    tags_to_group_by=[],
+                    tag_filters=None,
+                )
+            )
+        )
+
+
+@dataclass(frozen=True)
+class NumericRunChannelExpr(exprs.NumericExpr):
+    _run_rid: str
+    _data_scope_name: str
+    _channel_name: str
+    _additional_tags: dict[str, str]
+
+    def _to_conjure(self) -> scout_compute_api.NumericSeries:
+        return scout_compute_api.NumericSeries(
+            channel=scout_compute_api.ChannelSeries(
+                run=scout_compute_api.RunChannel(
+                    additional_tags={
+                        key: scout_compute_api.StringConstant(literal=value)
+                        for key, value in self._additional_tags.items()
+                    },
+                    run_rid=scout_compute_api.StringConstant(literal=self._run_rid),
+                    data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
+                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
                     group_by_tags=[],
                     tags_to_group_by=[],
                     additional_tag_filters=None,
