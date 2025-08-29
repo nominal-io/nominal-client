@@ -281,6 +281,14 @@ class MultiplyExpr(exprs.NumericExpr):
             )
         )
 
+@dataclass(frozen=True)
+class NumericChannelReferenceExpr(exprs.NumericExpr):
+    _reference_name: str
+
+    def _to_conjure(self) -> scout_compute_api.NumericSeries:
+        return scout_compute_api.NumericSeries(
+            raw=scout_compute_api.Reference(self._reference_name)
+        )
 
 @dataclass(frozen=True)
 class NumericAssetChannelExpr(exprs.NumericExpr):

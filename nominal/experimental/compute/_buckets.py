@@ -67,6 +67,53 @@ def batch_compute_buckets(
     return results
 
 
+def compute_parameterized_buckets(
+    client: NominalClient,
+    expr: exprs.NumericExpr,
+    start: params.NanosecondsUTC,
+    end: params.NanosecondsUTC,
+    parameter_inputs: list[dict[str, exprs.NumericExpr]],
+    buckets: int = 1000,
+) -> list[Iterable[Bucket] | Exception]:
+    parameter_context = scout_compute_api.ParameterizedContext(
+        parameter_inputs=[
+            scout_compute_api.ParameterInput(
+                variables={
+                    key: scout_compute_api.VariableValue(
+                        compute_node=scout_compute_api.ComputeNodeWithContext(
+                            series_node=scout_compute_api.ComputeNode(numeric=value._to_conjure()),
+                            context=scout_compute_api.Context({}, {}),
+                        )
+                    )
+                    for key, value in parameter_input.items()
+                }
+            )
+            for parameter_input in parameter_inputs
+        ]
+    )
+    api_start = _timestamp_to_conjure(start)
+    api_end = _timestamp_to_conjure(end)
+    unparameterized = _create_compute_request_buckets(expr._to_conjure(), {}, api_start, api_end, buckets)
+    parameterized_req = scout_compute_api.ParameterizedComputeNodeRequest(
+        node=unparameterized.node,
+        start=unparameterized.start,
+        end=unparameterized.end,
+        context=unparameterized.context,
+        parameterized_context=parameter_context,
+    )
+    resp = client._clients.compute.parameterized_compute(client._clients.auth_header, parameterized_req)
+
+    # Parse response
+    results: list[Iterable[Bucket] | Exception] = []
+    for result in resp.results:
+        if result.error is not None:
+            results.append(RuntimeError(f"Failed to compute: {result.error.error_type} ({result.error.code})"))
+        elif result.success is not None:
+            results.append(_buckets_from_compute_response(result.success))
+
+    return results
+
+
 def compute_buckets(
     client: NominalClient,
     expr: exprs.NumericExpr,
