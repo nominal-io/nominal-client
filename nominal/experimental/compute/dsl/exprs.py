@@ -24,7 +24,7 @@ class NumericExpr(Expr):
     def datasource_channel(
         cls, datasource_rid: str, channel_name: str, tags: typing.Mapping[str, str] | None = None
     ) -> NumericExpr:
-        return _expr_impls.NumericDatasourceChannelExpr(datasource_rid, channel_name, tags or {})
+        return _expr_impls.NumericDatasourceChannelExpr(datasource_rid, channel_name, {**tags} if tags else {})
 
     @classmethod
     def asset_channel(
@@ -34,7 +34,9 @@ class NumericExpr(Expr):
         channel_name: str,
         additional_tags: typing.Mapping[str, str] | None = None,
     ) -> NumericExpr:
-        return _expr_impls.NumericAssetChannelExpr(asset_rid, data_scope_name, channel_name, additional_tags or {})
+        return _expr_impls.NumericAssetChannelExpr(
+            asset_rid, data_scope_name, channel_name, {**additional_tags} if additional_tags else {}
+        )
 
     @classmethod
     def run_channel(
@@ -44,7 +46,9 @@ class NumericExpr(Expr):
         channel_name: str,
         additional_tags: typing.Mapping[str, str] | None = None,
     ) -> NumericExpr:
-        return _expr_impls.NumericRunChannelExpr(run_rid, data_scope_name, channel_name, additional_tags or {})
+        return _expr_impls.NumericRunChannelExpr(
+            run_rid, data_scope_name, channel_name, {**additional_tags} if additional_tags else {}
+        )
 
     def abs(self, /) -> NumericExpr:
         return _expr_impls.AbsExpr(_node=self)

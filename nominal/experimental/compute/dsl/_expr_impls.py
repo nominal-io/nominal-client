@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from nominal_api import scout_compute_api
 
@@ -294,13 +294,16 @@ class NumericAssetChannelExpr(exprs.NumericExpr):
     _asset_rid: str
     _data_scope_name: str
     _channel_name: str
-    _additional_tags: typing.Mapping[str, str] = field(default_factory=dict)
+    _additional_tags: dict[str, str]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             channel=scout_compute_api.ChannelSeries(
                 asset=scout_compute_api.AssetChannel(
-                    additional_tags=_to_api_tags(self._additional_tags),
+                    additional_tags={
+                        key: scout_compute_api.StringConstant(literal=value)
+                        for key, value in self._additional_tags.items()
+                    },
                     asset_rid=scout_compute_api.StringConstant(literal=self._asset_rid),
                     data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
                     channel=scout_compute_api.StringConstant(literal=self._channel_name),
@@ -316,7 +319,7 @@ class NumericAssetChannelExpr(exprs.NumericExpr):
 class NumericDatasourceChannelExpr(exprs.NumericExpr):
     _datasource_rid: str
     _channel_name: str
-    _tags: typing.Mapping[str, str] = field(default_factory=dict)
+    _tags: dict[str, str]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
@@ -324,7 +327,7 @@ class NumericDatasourceChannelExpr(exprs.NumericExpr):
                 data_source=scout_compute_api.DataSourceChannel(
                     channel=scout_compute_api.StringConstant(literal=self._channel_name),
                     data_source_rid=scout_compute_api.StringConstant(literal=self._datasource_rid),
-                    tags=_to_api_tags(self._tags),
+                    tags={key: scout_compute_api.StringConstant(literal=value) for key, value in self._tags.items()},
                     group_by_tags=[],
                     tags_to_group_by=[],
                     tag_filters=None,
@@ -338,13 +341,16 @@ class NumericRunChannelExpr(exprs.NumericExpr):
     _run_rid: str
     _data_scope_name: str
     _channel_name: str
-    _additional_tags: typing.Mapping[str, str] = field(default_factory=dict)
+    _additional_tags: dict[str, str]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             channel=scout_compute_api.ChannelSeries(
                 run=scout_compute_api.RunChannel(
-                    additional_tags=_to_api_tags(self._additional_tags),
+                    additional_tags={
+                        key: scout_compute_api.StringConstant(literal=value)
+                        for key, value in self._additional_tags.items()
+                    },
                     run_rid=scout_compute_api.StringConstant(literal=self._run_rid),
                     data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
                     channel=scout_compute_api.StringConstant(literal=self._channel_name),
