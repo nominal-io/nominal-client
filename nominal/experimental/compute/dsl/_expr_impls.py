@@ -282,13 +282,6 @@ class MultiplyExpr(exprs.NumericExpr):
         )
 
 
-def _to_api_tags(raw_tags: typing.Mapping[str, str] | None) -> dict[str, scout_compute_api.StringConstant]:
-    if raw_tags is None:
-        return {}
-
-    return {key: scout_compute_api.StringConstant(literal=value) for key, value in raw_tags.items()}
-
-
 @dataclass(frozen=True)
 class NumericAssetChannelExpr(exprs.NumericExpr):
     _asset_rid: str
