@@ -6,8 +6,7 @@ from dataclasses import dataclass
 
 from nominal_api import scout_compute_api
 
-from nominal.core.channel import Channel
-from nominal.experimental.compute.dsl import _identifiers, params
+from nominal.experimental.compute.dsl import params
 
 
 @dataclass(frozen=True)
@@ -22,16 +21,10 @@ class NumericExpr(Expr):
         raise NotImplementedError()
 
     @classmethod
-    def channel(cls, channel: Channel, tags: typing.Mapping[str, str] | None = None) -> NumericExpr:
-        return cls.datasource_channel(channel.data_source, channel.name, tags)
-
-    @classmethod
     def datasource_channel(
         cls, datasource_rid: str, channel_name: str, tags: typing.Mapping[str, str] | None = None
     ) -> NumericExpr:
-        return _expr_impls.NumericChannelExpr(
-            _channel_identifier=_identifiers.DataSourceChannelIdentifier(datasource_rid, channel_name, tags=tags or {})
-        )
+        return _expr_impls.NumericDatasourceChannelExpr(datasource_rid, channel_name, tags or {})
 
     @classmethod
     def asset_channel(
@@ -41,11 +34,7 @@ class NumericExpr(Expr):
         channel_name: str,
         additional_tags: typing.Mapping[str, str] | None = None,
     ) -> NumericExpr:
-        return _expr_impls.NumericChannelExpr(
-            _channel_identifier=_identifiers.AssetChannelIdentifier(
-                asset_rid, data_scope_name, channel_name, additional_tags=additional_tags or {}
-            )
-        )
+        return _expr_impls.NumericAssetChannelExpr(asset_rid, data_scope_name, channel_name, additional_tags or {})
 
     @classmethod
     def run_channel(
@@ -55,11 +44,7 @@ class NumericExpr(Expr):
         channel_name: str,
         additional_tags: typing.Mapping[str, str] | None = None,
     ) -> NumericExpr:
-        return _expr_impls.NumericChannelExpr(
-            _channel_identifier=_identifiers.RunChannelIdentifier(
-                run_rid, data_scope_name, channel_name, additional_tags=additional_tags or {}
-            )
-        )
+        return _expr_impls.NumericRunChannelExpr(run_rid, data_scope_name, channel_name, additional_tags or {})
 
     def abs(self, /) -> NumericExpr:
         return _expr_impls.AbsExpr(_node=self)
