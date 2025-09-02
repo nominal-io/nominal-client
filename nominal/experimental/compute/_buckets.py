@@ -9,6 +9,15 @@ from nominal.core import NominalClient
 from nominal.experimental.compute.dsl import exprs, params
 
 
+class ExceptionGroup(Exception):
+    def __init__(self, message: str, exceptions: Sequence[Exception]):
+        exc_str = "\n".join([str(ex) for ex in exceptions])
+        super().__init__(f"{message}:\n{exc_str}")
+
+        self.message = message
+        self.exceptions = exceptions
+
+
 @dataclass(frozen=True)
 class Bucket:
     timestamp: params.NanosecondsUTC
@@ -65,6 +74,9 @@ def batch_compute_buckets(
         elif compute_response is not None:
             results.append(_bucket_iterator_for_parts(_buckets_from_compute_response(compute_response)))
 
+    if errors:
+        raise ExceptionGroup("Failed to compute batches", errors)
+
     return results
 
 
@@ -107,8 +119,9 @@ def _compute_buckets(
 def _buckets_from_compute_response(
     response: scout_compute_api.ComputeNodeResponse,
 ) -> Iterable[tuple[api.Timestamp, scout_compute_api.NumericBucket]]:
-    assert response.type == "bucketedNumeric"
-    assert response.bucketed_numeric is not None
+    if response.type != "bucketedNumeric" or response.bucketed_numeric is None:
+        return []
+
     yield from zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)
 
 
