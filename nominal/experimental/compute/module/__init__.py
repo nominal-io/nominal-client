@@ -14,6 +14,7 @@ __all__ = [
 
 
 def defn(f: Callable[[], ModuleVariables] | Callable[[params.StringVariable], ModuleVariables]) -> Module:
+    # TODO: assert types
     sig = inspect.signature(f)
     variables = {}
     parameters = {}

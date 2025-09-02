@@ -109,6 +109,7 @@ class Module:
         )
 
 
+# TODO: should these go in the DSL?
 @dataclass(frozen=True)
 class NumericFunctionCallExpr(NumericExpr):
     """Call a function from the module."""
