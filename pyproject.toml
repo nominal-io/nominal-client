@@ -37,6 +37,7 @@ dependencies = [
     "nominal-api==0.861.0",
     "cachetools>=6.1.0",
     "types-cachetools>=6.0.0.20250525",
+    "matplotlib>=3.9.4",
 ]
 
 

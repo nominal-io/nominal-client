@@ -7,7 +7,7 @@ import datetime
 import logging
 from typing import Any, Iterator, Mapping, Sequence
 
-import pandas as pd
+import polars as pl
 from nominal_api import api, datasource_api, scout_compute_api, scout_dataexport_api, scout_run_api
 from typing_extensions import Self
 
@@ -43,6 +43,7 @@ DEFAULT_POINTS_PER_DATAFRAME = 100_000_000
 DEFAULT_CHANNELS_PER_REQUEST = 25
 
 DEFAULT_EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
+_INTERNAL_TS_COL = "__nmnl_ts__"  # internal join key, chosen to avoid collision with channel names
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +75,22 @@ def _has_data_with_tags(
                 data_source_rid=channel.data_source,
                 tag_filters=tags,
             ),
-            start_time=scout_run_api.UtcTimestamp(int(start_ns / 1e9), int(start_ns % 1e9)),
-            end_time=scout_run_api.UtcTimestamp(int(end_ns / 1e9), int(end_ns % 1e9)),
+            start_time=_SecondsNanos.from_nanoseconds(start_ns).to_scout_run_api(),
+            end_time=_SecondsNanos.from_nanoseconds(end_ns).to_scout_run_api(),
         ),
     )
-    return len(resp.available_tags.available_tags) > 0
+
+    # No data matches the given tags
+    if not resp.available_tags.available_tags:
+        return False
+
+    bad_tag_items = {name: values for name, values in resp.available_tags.available_tags.items() if len(values) > 1}
+    if bad_tag_items:
+        logger.warning(
+            "Channel %s has underconstrained tags-- results may have duplicate rows: %s", channel.name, bad_tag_items
+        )
+
+    return True
 
 
 def _batch_channel_points_per_second(
@@ -138,30 +150,35 @@ def _batch_channel_points_per_second(
     # For each channel, compute the number of points across the desired number of buckets.
     # Compute the approximate average points/second in each bucket, and use the largest
     # across all buckets as the points per second for that channel.
-    for channel, buckets in zip(
-        channels_in_expressions,
-        batch_compute_buckets(
-            client,
-            expressions,
-            start_ns,
-            end_ns,
-            buckets=num_buckets,
-        ),
-    ):
-        if len(buckets) == 0:
-            logger.warning("No points found in range for channel '%s'", channel.name)
-            results[channel.name] = 0
-        elif len(buckets) == 1:
-            results[channel.name] = buckets[0].count / ((end_ns - start_ns) / 1e9)
-        else:
-            max_points_per_second = 0.0
-            for idx in range(1, len(buckets)):
-                bucket = buckets[idx]
-                last_bucket = buckets[idx - 1]
-                bucket_duration = (bucket.timestamp - last_bucket.timestamp) / 1e9
-                points_per_second = bucket.count / bucket_duration
-                max_points_per_second = max(max_points_per_second, points_per_second)
-            results[channel.name] = max_points_per_second
+    try:
+        for channel, buckets in zip(
+            channels_in_expressions,
+            batch_compute_buckets(
+                client,
+                expressions,
+                start_ns,
+                end_ns,
+                buckets=num_buckets,
+            ),
+        ):
+            if len(buckets) == 0:
+                logger.warning("No points found in range for channel '%s'", channel.name)
+                results[channel.name] = 0
+            elif len(buckets) == 1:
+                results[channel.name] = buckets[0].count / ((end_ns - start_ns) / 1e9)
+            else:
+                max_points_per_second = 0.0
+                for idx in range(1, len(buckets)):
+                    bucket = buckets[idx]
+                    last_bucket = buckets[idx - 1]
+                    bucket_duration = (bucket.timestamp - last_bucket.timestamp) / 1e9
+                    points_per_second = bucket.count / bucket_duration
+                    max_points_per_second = max(max_points_per_second, points_per_second)
+                results[channel.name] = max_points_per_second
+    except Exception:
+        logger.exception("Failed to compute buckets for channels: %s", channels_in_expressions)
+        for channel in channels_in_expressions:
+            results[channel.name] = None
 
     return results
 
@@ -357,15 +374,15 @@ def _build_channel_groups(
     return channel_groups, large_channels
 
 
-def _format_time_col(time_column: pd.Series[Any], job: ExportJob) -> pd.Series[pd.Timestamp] | pd.Series[float]:
+def _format_time_col(df: pl.DataFrame, time_col: str, job: ExportJob) -> pl.DataFrame:
     typed_timestamp_type = _to_typed_timestamp_type(job.timestamp_type)
 
     if isinstance(typed_timestamp_type, (Relative, Epoch)):
-        # If the timestamp type is relative, formatting is already handled by the export service
-        return time_column
+        # Already numeric/relative per export service; no transform.
+        return df
     elif isinstance(typed_timestamp_type, Iso8601):
-        # Do nothing-- already in iso format
-        return pd.to_datetime(time_column, format="ISO8601", utc=True)
+        # Parse ISO8601 into timezone-aware datetime
+        return df.with_columns(pl.col(time_col).str.strptime(pl.Datetime, strict=False, exact=False).alias(time_col))
     else:
         raise ValueError("Expected timestamp type to be a typed timestamp type")
 
@@ -386,65 +403,90 @@ def _get_exported_timestamp_channel(channel_names: list[str]) -> str:
     return renamed_timestamp_col
 
 
-def _export_job(job: ExportJob, auth_header: str, base_url: str, workspace_rid: str | None) -> pd.DataFrame:
+def _export_job(job: ExportJob, auth_header: str, base_url: str, workspace_rid: str | None) -> pl.DataFrame:
     client = NominalClient.from_token(token=auth_header, base_url=base_url, workspace_rid=workspace_rid)
     if not job.channel_names:
         raise ValueError("No channels to extract")
 
     # Warn user about renamed channels, handle data with channel names of "timestamp"
-    # channel_names = [ch.name for ch in job.channels]
     time_col = _get_exported_timestamp_channel(job.channel_names)
 
     req = job.export_request(client)
     resp = client._clients.dataexport.export_channel_data(auth_header, req)
-    batch_df = pd.read_csv(resp, compression="gzip")
-    if batch_df.empty:
+
+    # Read CSV via Polars
+    df = pl.read_csv(resp)
+
+    if len(df[time_col].unique()) != len(df[time_col]):
+        logger.error("Dataframe has duplicate timestamps! %s", df.head())
+
+    if df.is_empty():
         logger.warning("No data found for export for channels %s", job.channel_names)
-        batch_df = pd.DataFrame({col: [] for col in [*job.channel_names, time_col]})
+        return pl.DataFrame({col: [] for col in [*job.channel_names, time_col]})
     else:
-        batch_df[time_col] = _format_time_col(batch_df[time_col], job)
+        df = _format_time_col(df, time_col, job)
 
-    return batch_df.set_index(time_col)
+    # Create internal timestamp column for consistent joins; keep original time_col out of the way
+    df = df.rename({time_col: _INTERNAL_TS_COL}).with_columns(pl.col(_INTERNAL_TS_COL).cast(pl.Float64))
+
+    # Place __ts__ first, then the channel columns
+    ordered_cols = [_INTERNAL_TS_COL] + [c for c in df.columns if c not in (_INTERNAL_TS_COL, time_col)]
+
+    # Drop the export-visible time col to avoid collisions with channel names in other batches
+    df = df.select(ordered_cols).sort(by=pl.col(_INTERNAL_TS_COL))
+
+    return df
 
 
-def _merge_dfs(dfs: Sequence[pd.DataFrame]) -> pd.DataFrame:
+def _merge_dfs(dfs: Sequence[pl.DataFrame]) -> pl.DataFrame:
     if not dfs:
-        return pd.DataFrame()
+        return pl.DataFrame()
 
-    # First, vertically concatenate exports that have the same set of columns
+    # Vertically concat frames that have the exact same non-ts set of columns
     df_idx_by_channel_set: Mapping[frozenset[str], set[int]] = collections.defaultdict(set)
     for idx, df in enumerate(dfs):
-        df_idx_by_channel_set[frozenset(df.columns)].add(idx)
+        channel_cols = frozenset([c for c in df.columns if c != _INTERNAL_TS_COL])
+        df_idx_by_channel_set[channel_cols].add(idx)
 
-    # List of dataframes containing a full copy of each of their columns (no shared columns)
-    full_dfs = []
-    for idxs in df_idx_by_channel_set.values():
-        if len(idxs) == 1:
-            # If the set of channels has only been shown once, then it must contain
-            # full channels
-            full_dfs.append(dfs[list(idxs)[0]])
-        else:
-            # Vertically combine all dataframes with matching columns
-            full_dfs.append(pd.concat([dfs[idx] for idx in idxs], sort=True))
+    logger.info("Concatenating vertical columns")
+    full_dfs: list[pl.LazyFrame] = []
+    for channels, idxs in df_idx_by_channel_set.items():
+        group_dfs = [dfs[i] for i in idxs if not dfs[i].is_empty()]
+        if not group_dfs:
+            logger.warning("Skipping empty dataframes for columns: %s", channels)
+            continue
 
-    if len(full_dfs) == 1:
-        return full_dfs[0]
+        sorted_dfs = sorted(group_dfs, key=lambda df: df[_INTERNAL_TS_COL].min() or 0)
+        combined = pl.concat([df.lazy() for df in sorted_dfs], how="vertical", rechunk=True).sort(
+            by=pl.col(_INTERNAL_TS_COL)
+        )
+        full_dfs.append(combined)
 
-    # Finally, horizontally concatenate dataframes and join using the index (which should be timestamps)
-    return full_dfs[0].join(list(full_dfs[1:]), how="outer", sort=True)
+    if len(full_dfs) == 0:
+        return pl.DataFrame()
+    elif len(full_dfs) == 1:
+        return full_dfs[0].sort(_INTERNAL_TS_COL).collect()
+
+    logger.info("Merging dataframes")
+
+    # Outer-join all groups on internal ts
+    merged = full_dfs[0]
+    for next_df in full_dfs[1:]:
+        merged = merged.join(next_df, on=_INTERNAL_TS_COL, how="outer", coalesce=True)
+
+    return merged.sort(_INTERNAL_TS_COL).collect()
 
 
-class PandasExportHandler:
-    """Manages streaming data out of Nominal using pandas dataframes.
+class PolarsExportHandler:
+    """Manages streaming data out of Nominal using DataFrames.
 
-    Happens in a few steps:
-    * If the user has not provided us with a bucket duration, compute the max allowable duration for
-      any channel given other parameters and use that
-    * Compute read schedule-- which channels will be read in which groups and for which durations
+    Steps:
+    * If no bucket duration is provided, compute a max duration that fits the configured batch size.
+    * Compute read schedule, channel groupings, and time slices.
     * For each time slice:
         * in parallel, fetch each channel group
-        * join channel groups back together with a combination of horizontal and vertical stitching
-    * Yield joined dataframe batches
+        * stitch vertically within groups and then outer-join across groups on timestamp column
+    * Yield merged DataFrame batches
     """
 
     def __init__(
@@ -580,8 +622,9 @@ class PandasExportHandler:
         timestamp_type: _AnyNativeTimestampType = "epoch_seconds",
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
-    ) -> Iterator[pd.DataFrame]:
-        """Yield dataframe slices"""
+        join_batches: bool = True,
+    ) -> Iterator[pl.DataFrame]:
+        """Yield DataFrame slices"""
         # Ensure user has selected channels to export
         if not channels:
             logger.warning("No channels requested for export-- returning")
@@ -596,14 +639,15 @@ class PandasExportHandler:
             channels, TimeRange(start, end), timestamp_type, dict(tags or {}), buckets, resolution, batch_duration
         )
 
+        export_time_col = _get_exported_timestamp_channel([ch.name for ch in channels])
+
         # Kick off downloads
         with (
             LogTiming(f"Downloaded {len(export_jobs)} batches"),
             concurrent.futures.ThreadPoolExecutor(max_workers=self._num_workers) as pool,
         ):
-            futures: list[concurrent.futures.Future[pd.DataFrame]] = []
+            futures: list[concurrent.futures.Future[pl.DataFrame]] = []
 
-            # For each dataframe batch, concurrently fetch all constituent dataframes
             time_slices = sorted(export_jobs.keys())
             for idx, time_slice in enumerate(time_slices):
                 logger.info(
@@ -612,7 +656,8 @@ class PandasExportHandler:
                     idx + 1,
                     len(time_slices),
                 )
-                with LogTiming(f"Downloaded data for slice {slice} ({idx + 1} / {len(time_slices)})"):
+                with LogTiming(f"Downloaded data for slice {time_slice} ({idx + 1} / {len(time_slices)})"):
+                    # Start by downloading if this is the first batch
                     if not futures:
                         futures = [
                             pool.submit(
@@ -625,7 +670,7 @@ class PandasExportHandler:
                             for task in export_jobs[time_slice]
                         ]
 
-                    results = []
+                    results: list[pl.DataFrame] = []
                     for future_idx, future in enumerate(concurrent.futures.as_completed(futures)):
                         ex = future.exception()
                         if ex is not None:
@@ -634,7 +679,12 @@ class PandasExportHandler:
 
                         res = future.result()
                         logger.info("Finished extracting batch %d/%d", future_idx + 1, len(futures))
-                        results.append(res)
+                        if join_batches:
+                            results.append(res)
+                        elif res.is_empty():
+                            continue
+                        else:
+                            yield res.rename({_INTERNAL_TS_COL: export_time_col})
 
                     # Schedule next batch of downloads before starting merge
                     if idx < len(time_slices) - 1:
@@ -649,5 +699,8 @@ class PandasExportHandler:
                             for task in export_jobs[time_slices[idx + 1]]
                         ]
 
-                with LogTiming(f"Merged {len(results)} exports"):
-                    yield _merge_dfs(results)
+                if join_batches:
+                    with LogTiming(f"Merged {len(results)} exports"):
+                        logger.info("Merging dataframes")
+                        merged_df = _merge_dfs(results)
+                        yield merged_df.rename({_INTERNAL_TS_COL: export_time_col})
