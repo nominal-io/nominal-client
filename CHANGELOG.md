@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.78.1](https://github.com/nominal-io/nominal-client/compare/v1.78.0...v1.78.1) (2025-09-03)
+
+
+### Bug Fixes
+
+* tdms/pandas upload methods to operate on dataset files ([#459](https://github.com/nominal-io/nominal-client/issues/459)) ([d0b55f2](https://github.com/nominal-io/nominal-client/commit/d0b55f219ba7e6f9c5aceab0345240a8071b126d))
+
 ## [1.78.0](https://github.com/nominal-io/nominal-client/compare/v1.77.0...v1.78.0) (2025-09-03)
 
 
