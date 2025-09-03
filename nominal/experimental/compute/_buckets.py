@@ -152,7 +152,7 @@ def _buckets_from_compute_response(
     response: scout_compute_api.ComputeNodeResponse,
 ) -> Iterable[tuple[api.Timestamp, scout_compute_api.NumericBucket]]:
     if response.type != "bucketedNumeric" or response.bucketed_numeric is None:
-        return []
+        return
 
     yield from zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)
 
