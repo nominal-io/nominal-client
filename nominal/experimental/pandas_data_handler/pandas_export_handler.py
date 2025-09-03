@@ -15,6 +15,7 @@ from typing_extensions import Self
 
 from nominal._utils import LogTiming
 from nominal.core.channel import Channel, ChannelDataType
+from nominal.experimental.compute import batch_compute_buckets
 from nominal.experimental.compute._buckets import _create_compute_request_buckets
 from nominal.experimental.compute.dsl import exprs
 from nominal.experimental.pandas_data_handler._utils import group_channels_by_datatype, to_pandas_unit
@@ -75,23 +76,45 @@ def _batch_channel_points_per_second(
         raise ValueError(f"Can only compute points per second on batches up to 300, provided: {len(channels)}")
 
     requests = []
+    expressions = []
+
     for channel in channels:
         if channel.data_type is not ChannelDataType.DOUBLE:
             raise ValueError(
                 f"Can only compute points per second on float channels, "
                 f"but {channel.name} has type: {channel.data_type}"
             )
-
-        raw_channel = exprs.NumericExpr.channel(channel, tags=tags)
-        computed_channel = raw_channel.rolling(window=int(window.total_seconds() * 1e9), operator="count")
-        request = _create_compute_request_buckets(
-            computed_channel._to_conjure(),
-            context={},
-            start=_SecondsNanos.from_flexible(start).to_api(),
-            end=_SecondsNanos.from_flexible(end).to_api(),
-            buckets=1,
+        expressions.append(
+            exprs.NumericExpr.datasource_channel(channel.data_source, channel.name, tags).rolling(
+                window=int(1e9), operator="count"
+            )
         )
-        requests.append(request)
+
+    from nominal import NominalClient
+
+    client = NominalClient.from_profile("staging")
+    for channel, buckets in zip(
+        channels,
+        batch_compute_buckets(
+            client,
+            expressions,
+            _SecondsNanos.from_flexible(start).to_nanoseconds(),
+            _SecondsNanos.from_flexible(end).to_nanoseconds(),
+            1,
+        ),
+    ):
+        pass
+
+        # raw_channel = exprs.NumericExpr.channel(channel, tags=tags)
+        # computed_channel = raw_channel.rolling(window=int(window.total_seconds() * 1e9), operator="count")
+        # request = _create_compute_request_buckets(
+        #     computed_channel._to_conjure(),
+        #     context={},
+        #     start=_SecondsNanos.from_flexible(start).to_api(),
+        #     end=_SecondsNanos.from_flexible(end).to_api(),
+        #     buckets=1,
+        # )
+        # requests.append(request)
 
     batch_resp = channels[0]._clients.compute.batch_compute_with_units(
         auth_header=channels[0]._clients.auth_header,
