@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.78.0](https://github.com/nominal-io/nominal-client/compare/v1.77.0...v1.78.0) (2025-09-03)
+
+
+### Features
+
+* add batch compute to expressions framework ([#457](https://github.com/nominal-io/nominal-client/issues/457)) ([23375fe](https://github.com/nominal-io/nominal-client/commit/23375fece6c7d468a09745531b4a60a57d2cc213))
+* allow creating compute expressions with tags, datasources, and runs ([#455](https://github.com/nominal-io/nominal-client/issues/455)) ([ae7bb3d](https://github.com/nominal-io/nominal-client/commit/ae7bb3dfe89418c194f6a0f7e61551452b2e75c4))
+
 ## [1.77.0](https://github.com/nominal-io/nominal-client/compare/v1.76.0...v1.77.0) (2025-08-27)
 
 
