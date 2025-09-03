@@ -11,7 +11,8 @@ from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 
 from nominal import ts
 from nominal.core.client import NominalClient
-from nominal.core.dataset import Dataset, DatasetFile
+from nominal.core.dataset import Dataset
+from nominal.core.dataset_file import DatasetFile
 from nominal.thirdparty.pandas import upload_dataframe, upload_dataframe_to_dataset
 
 logger = logging.getLogger(__name__)
