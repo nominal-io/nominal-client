@@ -40,7 +40,22 @@ def batch_compute_buckets(
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
-) -> Sequence[Iterable[Bucket]]:
+) -> Sequence[Sequence[Bucket]]:
+    """Computed bucketed summaries for a batch of expressions
+
+    Args:
+        client: Nominal client to make requests with
+        numeric_exprs: Expressions to compute buckets for
+        start: Starting timestamp to summarize data from
+        end: Ending timestamp to summarize data until
+        buckets: Number of buckets to return per expression
+
+    Returns:
+        A Sequence of sequences of buckets. The top level sequence corresponds to the input expressions, whereas the
+        inner sequences correspond to the individual buckets for each input expression. The order of buckets returned
+        matches the order of expressions provided.
+        NOTE: it is not a safe guarantee that the number of buckets returned is the same as the number requested
+    """
     context: dict[str, exprs.NumericExpr] = {}
 
     # Create request
@@ -61,7 +76,7 @@ def batch_compute_buckets(
     )
 
     # Parse response
-    results: list[Iterable[Bucket]] = []
+    results: list[list[Bucket]] = []
     errors: list[Exception] = []
     for result in resp.results:
         compute_result = result.compute_result
@@ -72,7 +87,9 @@ def batch_compute_buckets(
         if compute_error is not None:
             errors.append(RuntimeError(f"Failed to compute: {compute_error.error_type} ({compute_error.code})"))
         elif compute_response is not None:
-            results.append(_bucket_iterator_for_parts(_buckets_from_compute_response(compute_response)))
+            results.append(
+                [Bucket._from_conjure(ts, bucket) for ts, bucket in _buckets_from_compute_response(compute_response)]
+            )
 
     if errors:
         raise ExceptionGroup("Failed to compute batches", errors)
@@ -86,11 +103,26 @@ def compute_buckets(
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
-) -> Iterable[Bucket]:
+) -> Sequence[Bucket]:
+    """Compute a bucketed summary of the requested expression.
+
+    Args:
+        client: Nominal client to make requests with
+        expr: Expression to compute buckets for
+        start: Starting timestamp to summarize data from
+        end: Ending timestamp to summarize data until
+        buckets: Number of buckets to return
+
+    Returns:
+        Decimated data representing the provided numerical expression computed over the provided time range
+        NOTE: it is not a safe guarantee that the number of buckets returned is the same as the number requested
+
+    """
     # TODO: expose context parameterization
     context: dict[str, exprs.NumericExpr] = {}
-    yield from _bucket_iterator_for_parts(
-        _compute_buckets(
+    return [
+        Bucket._from_conjure(ts, bucket)
+        for ts, bucket in _compute_buckets(
             client._clients.compute,
             client._clients.auth_header,
             expr._to_conjure(),
@@ -99,7 +131,7 @@ def compute_buckets(
             _timestamp_to_conjure(end),
             buckets,
         )
-    )
+    ]
 
 
 def _compute_buckets(
@@ -123,13 +155,6 @@ def _buckets_from_compute_response(
         return []
 
     yield from zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)
-
-
-def _bucket_iterator_for_parts(
-    parts_iterator: Iterable[tuple[api.Timestamp, scout_compute_api.NumericBucket]],
-) -> Iterable[Bucket]:
-    for ts, bucket in parts_iterator:
-        yield Bucket._from_conjure(ts, bucket)
 
 
 def _timestamp_from_conjure(timestamp: api.Timestamp) -> params.NanosecondsUTC:
