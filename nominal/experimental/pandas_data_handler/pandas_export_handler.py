@@ -613,13 +613,12 @@ class PandasExportHandler:
                     len(time_slices),
                 )
                 with LogTiming(f"Downloaded data for slice {slice} ({idx + 1} / {len(time_slices)})"):
-                    # job: ExportJob, auth_header: str, base_url: str, workspace_rid: str
                     if not futures:
                         futures = [
                             pool.submit(
                                 _export_job,
                                 task,
-                                self._client._clients.auth_header,
+                                self._client._clients.auth_header.split()[-1],
                                 self._client._clients.dataexport._uri,
                                 self._client._clients.workspace_rid,
                             )
@@ -643,7 +642,7 @@ class PandasExportHandler:
                             pool.submit(
                                 _export_job,
                                 task,
-                                self._client._clients.auth_header,
+                                self._client._clients.auth_header.split()[-1],
                                 self._client._clients.dataexport._uri,
                                 self._client._clients.workspace_rid,
                             )
