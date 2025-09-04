@@ -16,6 +16,18 @@ def _series_to_parameter_value(
     return _empty_context_wrap(scout_compute_api.ComputeNode(ranges=series))
 
 
+def _series_to_variable_value(
+    series: scout_compute_api.NumericSeries | scout_compute_api.RangeSeries,
+) -> scout_compute_api.VariableValue:
+    if isinstance(series, scout_compute_api.NumericSeries):
+        return scout_compute_api.VariableValue(
+            compute_node=_empty_context_wrap(scout_compute_api.ComputeNode(numeric=series))
+        )
+    return scout_compute_api.VariableValue(
+        compute_node=_empty_context_wrap(scout_compute_api.ComputeNode(ranges=series))
+    )
+
+
 def _empty_context_wrap(node: scout_compute_api.ComputeNode) -> scout_compute_api.ComputeNodeWithContext:
     return scout_compute_api.ComputeNodeWithContext(context=scout_compute_api.Context(variables={}), series_node=node)
 

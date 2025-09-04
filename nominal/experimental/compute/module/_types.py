@@ -11,6 +11,7 @@ from nominal.experimental.compute.module._functions import (
     _validate_signature,
     _create_function_parameters,
     _series_to_parameter_value,
+    _series_to_variable_value,
 )
 import nominal_api.module as module_api
 
@@ -96,7 +97,12 @@ class Module:
     def _to_conjure_create_module_request(self) -> module_api.CreateModuleRequest:
         return module_api.CreateModuleRequest(
             definition=module_api.ModuleVersionDefinition(
-                default_variables=[],
+                default_variables=[
+                    module_api.ModuleVariable(
+                        name=key, type=_expr_to_value_type(expr), value=_series_to_variable_value(expr._to_conjure())
+                    )
+                    for key, expr in self.variables.items()
+                ],
                 parameters=[
                     module_api.ModuleParameter(name=key, type=module_api.ValueType.ASSET_RID)
                     for key in self.parameters.keys()
@@ -158,3 +164,11 @@ class RangeFunctionCallExpr(RangeExpr):
                 ),
             )
         )
+
+
+def _expr_to_value_type(expr: Expr) -> module_api.ValueType:
+    if isinstance(expr, NumericExpr):
+        return module_api.ValueType.NUMERIC_SERIES
+    elif isinstance(expr, RangeExpr):
+        return module_api.ValueType.RANGES_SERIES
+    raise ValueError(f"Expression {expr} is not a NumericExpr or RangeExpr")
