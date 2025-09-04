@@ -54,7 +54,8 @@ asset = client.get_asset(asset_rid)
 scope = asset.get_dataset(scope_name)
 assert scope.bounds is not None
 
-channel = exprs.NumericExpr.channel(asset_rid, scope_name, channel_name)
+# Get channel by asset, data scope name, and channel name
+channel = exprs.NumericExpr.asset_channel(asset_rid, scope_name, channel_name)
 
 deriv = channel.derivative(time_unit="s")
 integ = channel.integral(start_timestamp=scope.bounds.start, time_unit="s")
@@ -63,23 +64,23 @@ for bucket in compute_buckets(client, expr, scope.bounds.start, scope.bounds.end
     print(f"Timestamp: {bucket.timestamp}, Mean: {bucket.mean}")
 ```
 
-## Modules
+When retrieving channels using the expressions library, you may also reference channels directly on datasources or runs:
 
-```py
-from nominal.experimental.compute import module
+```python
+# Reference a channel present on a run by data scope name
+run_rid = "ri.catalog.gov-staging.dataset.b373ff5a-cd2b-4969-bf5b-772688a11249"
+run_channel = exprs.NumericExpr.run_channel(run_rid, scope_name, channel_name)
 
-@module.defn
-class MyModule:
-    """My module description"""
+# Reference a channel present in a dataset
+dataset_rid = "ri.catalog.gov-staging.dataset.b373ff5a-cd2b-4969-bf5b-772688a11249"
+datasource_channel = exprs.NumericExpr.datasource_channel(dataset_rid, scope_name, channel_name)
+```
 
-    asset: Asset = params.StringVariable("ASSET_RID")
+When retrieving channels on an asset or a run, the default tag filters for a given data scope are applied to underlying expressions.
+However, it may still be useful to further filter data on tags that aren't specified by the data scope definition-- this is done using the `additional_tags` args (or just `tags` for datasource channels):
 
-    @module.export
-    def my_function(self) -> NumericExpr:
-        """my function docstring"""
-        c1 = NumericExpr.channel(self.asset, "scope", "channel1")
-        c2 = NumericExpr.channel(self.asset, "scope", "channel2")
-        return c1 + c2
-
-module.register(client, MyModule)
+```python
+channel = exprs.NumericExpr.asset_channel(asset_rid, scope_name, channel_name, additional_tags={"color": "green"})
+run_channel = exprs.NumericExpr.run_channel(run_rid, scope_name, channel_name, additional_tags={"color": "green"})
+datasource_channel = exprs.NumericExpr.datasource_channel(dataset_rid, scope_name, channel_name, tags={"platform": "electric-glider-mk1"})
 ```

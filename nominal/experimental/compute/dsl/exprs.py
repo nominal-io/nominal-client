@@ -21,9 +21,33 @@ class NumericExpr(Expr):
         raise NotImplementedError()
 
     @classmethod
-    def channel(cls, asset_rid: str | params.StringVariable, data_scope_name: str, channel_name: str) -> NumericExpr:
-        return _expr_impls.NumericChannelExpr(
-            _asset_rid=asset_rid, _data_scope_name=data_scope_name, _channel_name=channel_name
+    def datasource_channel(
+        cls, datasource_rid: str, channel_name: str, tags: typing.Mapping[str, str] | None = None
+    ) -> NumericExpr:
+        return _expr_impls.NumericDatasourceChannelExpr(datasource_rid, channel_name, {**tags} if tags else {})
+
+    @classmethod
+    def asset_channel(
+        cls,
+        asset_rid: str,
+        data_scope_name: str,
+        channel_name: str,
+        additional_tags: typing.Mapping[str, str] | None = None,
+    ) -> NumericExpr:
+        return _expr_impls.NumericAssetChannelExpr(
+            asset_rid, data_scope_name, channel_name, {**additional_tags} if additional_tags else {}
+        )
+
+    @classmethod
+    def run_channel(
+        cls,
+        run_rid: str,
+        data_scope_name: str,
+        channel_name: str,
+        additional_tags: typing.Mapping[str, str] | None = None,
+    ) -> NumericExpr:
+        return _expr_impls.NumericRunChannelExpr(
+            run_rid, data_scope_name, channel_name, {**additional_tags} if additional_tags else {}
         )
 
     def abs(self, /) -> NumericExpr:

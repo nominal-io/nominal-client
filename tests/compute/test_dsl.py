@@ -6,12 +6,12 @@ from nominal.experimental.compute.dsl import NumericExpr, RangeExpr
 
 @pytest.fixture
 def ch1() -> NumericExpr:
-    return NumericExpr.channel("asset1", "scope1", "channel1")
+    return NumericExpr.asset_channel("asset1", "scope1", "channel1")
 
 
 @pytest.fixture
 def ch2() -> NumericExpr:
-    return NumericExpr.channel("asset2", "scope2", "channel2")
+    return NumericExpr.asset_channel("asset2", "scope2", "channel2")
 
 
 @pytest.fixture
