@@ -29,7 +29,7 @@ class NumericExpr(Expr):
     @classmethod
     def asset_channel(
         cls,
-        asset_rid: str,
+        asset_rid: str | params.StringVariable,
         data_scope_name: str,
         channel_name: str,
         additional_tags: typing.Mapping[str, str] | None = None,

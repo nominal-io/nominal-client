@@ -288,7 +288,7 @@ class MultiplyExpr(exprs.NumericExpr):
 
 @dataclass(frozen=True)
 class NumericAssetChannelExpr(exprs.NumericExpr):
-    _asset_rid: str
+    _asset_rid: str | params.StringVariable
     _data_scope_name: str
     _channel_name: str
     _additional_tags: dict[str, str]
@@ -301,7 +301,7 @@ class NumericAssetChannelExpr(exprs.NumericExpr):
                         key: scout_compute_api.StringConstant(literal=value)
                         for key, value in self._additional_tags.items()
                     },
-                    asset_rid=scout_compute_api.StringConstant(literal=self._asset_rid),
+                    asset_rid=params._str_to_conjure(self._asset_rid),
                     data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
                     channel=scout_compute_api.StringConstant(literal=self._channel_name),
                     group_by_tags=[],
