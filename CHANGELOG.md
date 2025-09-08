@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.79.0](https://github.com/nominal-io/nominal-client/compare/v1.78.1...v1.79.0) (2025-09-08)
+
+
+### Features
+
+* allow data review builder to specify tags for sending alerts ([fcb473a](https://github.com/nominal-io/nominal-client/commit/fcb473a714314b5689f7afb061cfb1d250955494))
+* include integration tags as option for datareviewbuilder ([#462](https://github.com/nominal-io/nominal-client/issues/462)) ([fcb473a](https://github.com/nominal-io/nominal-client/commit/fcb473a714314b5689f7afb061cfb1d250955494))
+
+
+### Bug Fixes
+
+* disable typechecking from pylance ([#464](https://github.com/nominal-io/nominal-client/issues/464)) ([282ed12](https://github.com/nominal-io/nominal-client/commit/282ed12b0d4ec2b22177dda25e013c71cc7c59ab))
+
 ## [1.78.1](https://github.com/nominal-io/nominal-client/compare/v1.78.0...v1.78.1) (2025-09-03)
 
 
