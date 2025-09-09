@@ -3,8 +3,9 @@ from __future__ import annotations
 import inspect
 from typing import Any, Iterable
 
-from nominal_api import scout_compute_api
 import nominal_api.module as module_api
+from nominal_api import scout_compute_api
+
 from nominal.experimental.compute.dsl.exprs import Expr, NumericExpr, RangeExpr
 
 

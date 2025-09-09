@@ -1,20 +1,21 @@
 from __future__ import annotations
-from functools import wraps
+
 import inspect
 from dataclasses import dataclass, field
-from typing import Callable, Mapping, Protocol, TypeAlias, ParamSpec, TypeVar, cast, get_type_hints
+from functools import wraps
+from typing import Callable, Mapping, ParamSpec, Protocol, TypeAlias, TypeVar, cast, get_type_hints
 
-from nominal_api import scout_compute_api
 from nominal_api import module as module_api
+from nominal_api import scout_compute_api
+
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.experimental.compute.dsl import params
 from nominal.experimental.compute.dsl.exprs import Expr, NumericExpr, RangeExpr
 from nominal.experimental.compute.module._utils import (
-    _validate_signature,
     _create_function_parameters,
     _series_to_parameter_value,
-    _series_to_variable_value,
+    _validate_signature,
 )
 
 THIS_MODULE_NAME_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_NAME")

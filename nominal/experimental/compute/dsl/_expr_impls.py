@@ -7,7 +7,6 @@ from nominal_api import scout_compute_api
 
 from nominal.experimental.compute.dsl import exprs, params
 
-
 THIS_MODULE_NAME_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_NAME")
 THIS_MODULE_VERSION_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_VERSION")
 

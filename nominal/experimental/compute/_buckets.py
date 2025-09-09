@@ -40,7 +40,6 @@ def batch_compute_buckets(
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
-    context: dict[str, exprs.NumericExpr] = {},
 ) -> Sequence[Sequence[Bucket]]:
     """Computed bucketed summaries for a batch of expressions
 
@@ -57,9 +56,8 @@ def batch_compute_buckets(
         matches the order of expressions provided.
         NOTE: it is not a safe guarantee that the number of buckets returned is the same as the number requested
     """
-    context = context
+    context: dict[str, exprs.NumericExpr] = {}
 
-    # Create request
     api_start = _timestamp_to_conjure(start)
     api_end = _timestamp_to_conjure(end)
     api_context = {k: v._to_conjure() for k, v in context.items()}
@@ -69,15 +67,12 @@ def batch_compute_buckets(
             for node in numeric_exprs
         ]
     )
-    print(request)
 
-    # Make request
     resp = client._clients.compute.batch_compute_with_units(
         auth_header=client._clients.auth_header,
         request=request,
     )
 
-    # Parse response
     results: list[list[Bucket]] = []
     errors: list[Exception] = []
     for result in resp.results:
@@ -105,7 +100,6 @@ def compute_buckets(
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
-    context: dict[str, exprs.NumericExpr] = {},
 ) -> Sequence[Bucket]:
     """Compute a bucketed summary of the requested expression.
 
@@ -122,7 +116,7 @@ def compute_buckets(
 
     """
     # TODO: expose context parameterization
-    # context: dict[str, exprs.NumericExpr] = {}
+    context: dict[str, exprs.NumericExpr] = {}
     return [
         Bucket._from_conjure(ts, bucket)
         for ts, bucket in _compute_buckets(

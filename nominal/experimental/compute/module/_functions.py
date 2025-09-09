@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Iterable, Sequence
 
-from nominal.core.client import NominalClient
 import nominal_api.module as module_api
-from nominal.core._utils.pagination_tools import paginate_rpc
 
+from nominal.core._utils.pagination_tools import paginate_rpc
+from nominal.core.client import NominalClient
 from nominal.experimental.compute.module._types import Module
 
 
