@@ -16,7 +16,7 @@ def get_module(client: NominalClient, rid: str) -> Module:
         raise ValueError(f"Module with RID {rid} not found")
     if len(modules) > 1:
         raise ValueError(f"Multiple modules found with RID {rid}")
-    return Module._from_conjure(client._clients, modules[0])
+    return Module._from_conjure(client._clients, modules[0].metadata)
 
 
 def _iter_list_modules(client: NominalClient) -> Iterable[Module]:
@@ -30,8 +30,8 @@ def _iter_list_modules(client: NominalClient) -> Iterable[Module]:
     for response in paginate_rpc(
         client._clients.module.search_modules, client._clients.auth_header, request_factory=request_factory
     ):
-        for module in response.results:
-            yield Module._from_conjure(client._clients, module)
+        for summary in response.results:
+            yield Module._from_conjure(client._clients, summary.metadata)
 
 
 def list_modules(client: NominalClient) -> Sequence[Module]:

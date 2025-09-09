@@ -9,14 +9,6 @@ from nominal_api import scout_compute_api
 from nominal.experimental.compute.dsl.exprs import Expr, NumericExpr, RangeExpr
 
 
-def _series_to_parameter_value(
-    series: scout_compute_api.NumericSeries | scout_compute_api.RangeSeries,
-) -> scout_compute_api.FunctionParameterValue:
-    if isinstance(series, scout_compute_api.NumericSeries):
-        return _empty_context_wrap(scout_compute_api.ComputeNode(numeric=series))
-    return _empty_context_wrap(scout_compute_api.ComputeNode(ranges=series))
-
-
 def _series_to_variable_value(
     series: scout_compute_api.NumericSeries | scout_compute_api.RangeSeries,
 ) -> scout_compute_api.VariableValue:
@@ -27,6 +19,14 @@ def _series_to_variable_value(
     return scout_compute_api.VariableValue(
         compute_node=_empty_context_wrap(scout_compute_api.ComputeNode(ranges=series))
     )
+
+
+def _to_compute_node_with_context(
+    series: scout_compute_api.NumericSeries | scout_compute_api.RangeSeries,
+) -> scout_compute_api.ComputeNodeWithContext:
+    if isinstance(series, scout_compute_api.NumericSeries):
+        return _empty_context_wrap(scout_compute_api.ComputeNode(numeric=series))
+    return _empty_context_wrap(scout_compute_api.ComputeNode(ranges=series))
 
 
 def _empty_context_wrap(node: scout_compute_api.ComputeNode) -> scout_compute_api.ComputeNodeWithContext:
