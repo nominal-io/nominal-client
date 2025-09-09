@@ -2,18 +2,20 @@ from __future__ import annotations
 from functools import wraps
 import inspect
 from dataclasses import dataclass, field
-from typing import Callable, Mapping, TypeAlias, ParamSpec, TypeVar, cast, get_type_hints
+from typing import Callable, Mapping, Protocol, TypeAlias, ParamSpec, TypeVar, cast, get_type_hints
 
 from nominal_api import scout_compute_api
+from nominal_api import module as module_api
+from nominal.core import NominalClient
+from nominal.core._clientsbunch import HasScoutParams
 from nominal.experimental.compute.dsl import params
 from nominal.experimental.compute.dsl.exprs import Expr, NumericExpr, RangeExpr
-from nominal.experimental.compute.module._functions import (
+from nominal.experimental.compute.module._utils import (
     _validate_signature,
     _create_function_parameters,
     _series_to_parameter_value,
     _series_to_variable_value,
 )
-import nominal_api.module as module_api
 
 THIS_MODULE_NAME_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_NAME")
 THIS_MODULE_VERSION_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_VERSION")
@@ -52,7 +54,7 @@ class Function:
 
 
 @dataclass(frozen=True)
-class Module:
+class ModuleDefinition:
     name: str
     description: str
     parameters: dict[str, params.StringVariable]
@@ -65,7 +67,8 @@ class Module:
         _validate_signature(sig, hints)
 
         # bind module variables to the function to get a parameterized compute expression
-        kwargs = {param.name: self.variables[param.name] for param in sig.parameters.values()}
+        # TODO: remove numeric expr hardcoding
+        kwargs = {param.name: NumericExpr.reference(param.name) for param in sig.parameters.values()}
         expr = f(**kwargs)  # type: ignore
 
         self.functions[f.__name__] = Function(
@@ -94,24 +97,97 @@ class Module:
 
         return wrapper
 
-    def _to_conjure_create_module_request(self) -> module_api.CreateModuleRequest:
-        return module_api.CreateModuleRequest(
-            definition=module_api.ModuleVersionDefinition(
-                default_variables=[
-                    module_api.ModuleVariable(
-                        name=key, type=_expr_to_value_type(expr), value=_series_to_variable_value(expr._to_conjure())
-                    )
-                    for key, expr in self.variables.items()
-                ],
-                parameters=[
-                    module_api.ModuleParameter(name=key, type=module_api.ValueType.ASSET_RID)
-                    for key in self.parameters.keys()
-                ],
-                functions=[func._to_conjure() for func in self.functions.values()],
-            ),
+    def register(self, client: NominalClient) -> Module:
+        if client._clients.workspace_rid is None:
+            raise ValueError("Workspace RID must be set on the client")
+        request = _create_module_request(self, client._clients.workspace_rid)
+        service = client._clients.client_factory(module_api.ModuleService)
+        module = service.create_module(client._clients.auth_header, request)
+        return Module._from_conjure(client._clients, module)
+
+
+def _create_module_request(defn: ModuleDefinition, workspace_rid: str) -> module_api.CreateModuleRequest:
+    return module_api.CreateModuleRequest(
+        definition=_create_module_version_definition(defn),
+        description=defn.description,
+        name=defn.name,
+        title=defn.name,
+        workspace=workspace_rid,
+    )
+
+
+def _create_module_version_definition(defn: ModuleDefinition) -> module_api.ModuleVersionDefinition:
+    return module_api.ModuleVersionDefinition(
+        default_variables=[
+            module_api.ModuleVariable(
+                name=key,
+                type=_expr_to_value_type(expr),
+                value=scout_compute_api.VariableValue(channel=expr._to_conjure().channel),
+            )
+            for key, expr in defn.variables.items()
+        ],
+        parameters=[  # TODO: handle other parameter names
+            module_api.ModuleParameter(name="asset_rid", type=module_api.ValueType.ASSET_RID)
+            for _ in defn.parameters.keys()
+        ],
+        functions=[func._to_conjure() for func in defn.functions.values()],
+    )
+
+
+@dataclass(frozen=True)
+class Module:
+    rid: str
+    name: str
+    title: str
+    description: str
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def module(self) -> module_api.ModuleService: ...
+
+    @classmethod
+    def _from_conjure(cls, clients: _Clients, module: module_api.Module) -> Module:
+        return Module(
+            rid=module.metadata.rid,
+            name=module.metadata.name,
+            title=module.metadata.title,
+            description=module.metadata.description,
+            _clients=clients,
+        )
+
+    def apply(self, *, asset: str) -> ModuleApplication:
+        request = module_api.CreateModuleApplicationRequest(
+            module_rid=self.rid,
+            asset_rid=asset,
+        )
+        resp = self._clients.module.create_module_application(self._clients.auth_header, request)
+        return ModuleApplication._from_conjure(resp.result)
+
+    def update(self, defn: ModuleDefinition) -> Module:
+        if self._clients.workspace_rid is None:
+            raise ValueError("Workspace RID must be set on the client")
+        request = module_api.UpdateModuleRequest(
+            definition=_create_module_version_definition(defn),
             description=self.description,
-            name=self.name,
             title=self.name,
+        )
+        module = self._clients.module.update_module(self._clients.auth_header, self.rid, request)
+        return Module._from_conjure(self._clients, module)
+
+
+@dataclass(frozen=True)
+class ModuleApplication:
+    rid: str
+    module_rid: str
+    asset_rid: str
+
+    @classmethod
+    def _from_conjure(cls, module_application: module_api.ModuleApplication) -> ModuleApplication:
+        return ModuleApplication(
+            rid=module_application.rid,
+            module_rid=module_application.module.rid,
+            asset_rid=module_application.asset_rid,
         )
 
 

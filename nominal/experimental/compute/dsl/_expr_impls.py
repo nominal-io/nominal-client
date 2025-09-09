@@ -59,10 +59,10 @@ class Atan2Expr(exprs.NumericExpr):
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="atan2(y, x)",
+                expression="atan2(left, right)",
                 inputs={
-                    "y": self._y_node._to_conjure(),
-                    "x": self._x_node._to_conjure(),
+                    "left": self._y_node._to_conjure(),
+                    "right": self._x_node._to_conjure(),
                 },
             )
         )
@@ -331,6 +331,14 @@ class NumericDatasourceChannelExpr(exprs.NumericExpr):
                 )
             )
         )
+
+
+@dataclass(frozen=True)
+class NumericReferenceExpr(exprs.NumericExpr):
+    _name: str
+
+    def _to_conjure(self) -> scout_compute_api.NumericSeries:
+        return scout_compute_api.NumericSeries(raw=scout_compute_api.Reference(name=self._name))
 
 
 @dataclass(frozen=True)

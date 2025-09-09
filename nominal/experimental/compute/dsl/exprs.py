@@ -50,6 +50,10 @@ class NumericExpr(Expr):
             run_rid, data_scope_name, channel_name, {**additional_tags} if additional_tags else {}
         )
 
+    @classmethod
+    def reference(cls, name: str) -> NumericExpr:
+        return _expr_impls.NumericReferenceExpr(name)
+
     def abs(self, /) -> NumericExpr:
         return _expr_impls.AbsExpr(_node=self)
 

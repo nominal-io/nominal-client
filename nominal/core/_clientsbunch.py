@@ -11,6 +11,7 @@ from nominal_api import (
     authentication_api,
     event,
     ingest_api,
+    module,
     scout,
     scout_assets,
     scout_catalog,
@@ -147,6 +148,7 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
+    module: module.ModuleService
 
     def client_factory(self, service_cls: Type[ServiceT]) -> ServiceT:
         factory = create_conjure_client_factory(user_agent=self.user_agent, service_config=self.service_config)
@@ -193,6 +195,7 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
+            module=client_factory(module.ModuleService),
         )
 
 
