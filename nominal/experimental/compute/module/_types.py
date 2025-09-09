@@ -3,10 +3,11 @@ from __future__ import annotations
 import inspect
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Callable, Mapping, ParamSpec, Protocol, TypeAlias, TypeVar, cast, get_type_hints
+from typing import Callable, Mapping, Protocol, TypeVar, cast, get_type_hints
 
 from nominal_api import module as module_api
 from nominal_api import scout_compute_api
+from typing_extensions import ParamSpec, TypeAlias
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import HasScoutParams
@@ -23,7 +24,7 @@ THIS_MODULE_NAME_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_NAME"
 THIS_MODULE_VERSION_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_VERSION")
 
 
-ModuleVariables: TypeAlias = dict[str, NumericExpr | RangeExpr]
+ModuleVariables: TypeAlias = "dict[str, NumericExpr | RangeExpr]"
 P = ParamSpec("P")
 RetExpr = TypeVar("RetExpr", NumericExpr, RangeExpr)
 
