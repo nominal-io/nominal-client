@@ -25,7 +25,7 @@ def create_search_secrets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
-    workspace: str | None = None,
+    workspace_rid: str | None = None,
 ) -> secrets_api.SearchSecretsQuery:
     queries = []
     if search_text is not None:
@@ -36,8 +36,8 @@ def create_search_secrets_query(
     if properties is not None:
         for name, value in properties.items():
             queries.append(secrets_api.SearchSecretsQuery(property=api.Property(name=name, value=value)))
-    if workspace is not None:
-        queries.append(secrets_api.SearchSecretsQuery(workspace=workspace))
+    if workspace_rid is not None:
+        queries.append(secrets_api.SearchSecretsQuery(workspace=workspace_rid))
     return secrets_api.SearchSecretsQuery(and_=queries)
 
 
@@ -58,14 +58,14 @@ def create_search_containerized_extractors_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
-    workspace: str | None = None,
+    workspace_rid: str | None = None,
 ) -> ingest_api.SearchContainerizedExtractorsQuery:
     queries = []
     if search_text is not None:
         queries.append(ingest_api.SearchContainerizedExtractorsQuery(search_text=search_text))
 
-    if workspace is not None:
-        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=workspace))
+    if workspace_rid is not None:
+        queries.append(ingest_api.SearchContainerizedExtractorsQuery(workspace=workspace_rid))
 
     if labels is not None:
         for label in labels:
@@ -83,7 +83,7 @@ def create_search_assets_query(
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     exact_substring: str | None = None,
-    workspace: str | None = None,
+    workspace_rid: str | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
     queries = []
     if search_text is not None:
@@ -96,8 +96,8 @@ def create_search_assets_query(
     if properties:
         for name, value in properties.items():
             queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
-    if workspace is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace))
+    if workspace_rid is not None:
+        queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
 
@@ -108,7 +108,7 @@ def create_search_checklists_query(
     properties: Mapping[str, str] | None = None,
     author: str | None = None,
     assignee: str | None = None,
-    workspace: str | None = None,
+    workspace_rid: str | None = None,
 ) -> scout_checks_api.ChecklistSearchQuery:
     queries = []
     if search_text is not None:
@@ -123,8 +123,8 @@ def create_search_checklists_query(
         queries.append(scout_checks_api.ChecklistSearchQuery(author_rid=author))
     if assignee is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(assignee_rid=assignee))
-    if workspace is not None:
-        queries.append(scout_checks_api.ChecklistSearchQuery(workspace=workspace))
+    if workspace_rid is not None:
+        queries.append(scout_checks_api.ChecklistSearchQuery(workspace=workspace_rid))
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
 
@@ -135,7 +135,7 @@ def create_search_datasets_query(
     properties: Mapping[str, str] | None = None,
     ingested_before_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     ingested_after_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
-    workspace: str | None = None,
+    workspace_rid: str | None = None,
     archived: bool | None = None,
 ) -> scout_catalog.SearchDatasetsQuery:
     queries = []
@@ -167,8 +167,8 @@ def create_search_datasets_query(
             )
         )
 
-    if workspace is not None:
-        queries.append(scout_catalog.SearchDatasetsQuery(workspace=workspace))
+    if workspace_rid is not None:
+        queries.append(scout_catalog.SearchDatasetsQuery(workspace=workspace_rid))
 
     if archived is not None:
         queries.append(scout_catalog.SearchDatasetsQuery(archive_status=archived))
@@ -188,7 +188,7 @@ def create_search_events_query(  # noqa: PLR0912
     data_review: str | None = None,
     assignee: str | None = None,
     event_type: EventType | None = None,
-    workspace: str | None = None,
+    workspace_rid: str | None = None,
 ) -> event.SearchQuery:
     queries = []
     if search_text is not None:
@@ -216,8 +216,8 @@ def create_search_events_query(  # noqa: PLR0912
         queries.append(event.SearchQuery(assignee=assignee))
     if event_type is not None:
         queries.append(event.SearchQuery(event_type=event_type._to_api_event_type()))
-    if workspace is not None:
-        queries.append(event.SearchQuery(workspace=workspace))
+    if workspace_rid is not None:
+        queries.append(event.SearchQuery(workspace=workspace_rid))
 
     return event.SearchQuery(and_=queries)
 
@@ -230,7 +230,7 @@ def create_search_runs_query(
     properties: Mapping[str, str] | None = None,
     exact_match: str | None = None,
     search_text: str | None = None,
-    workspace: str | None = None,
+    workspace_rid: str | None = None,
 ) -> scout_run_api.SearchQuery:
     queries = []
     if start is not None:
@@ -251,8 +251,8 @@ def create_search_runs_query(
         queries.append(scout_run_api.SearchQuery(exact_match=exact_match))
     if search_text is not None:
         queries.append(scout_run_api.SearchQuery(search_text=search_text))
-    if workspace is not None:
-        queries.append(scout_run_api.SearchQuery(workspace=workspace))
+    if workspace_rid is not None:
+        queries.append(scout_run_api.SearchQuery(workspace=workspace_rid))
     return scout_run_api.SearchQuery(and_=queries)
 
 
@@ -265,7 +265,7 @@ def create_search_workbooks_query(
     exact_asset_rids: Sequence[str] | None = None,
     author_rid: str | None = None,
     run_rid: str | None = None,
-    workspace: str | None = None,
+    workspace_rid: str | None = None,
     archived: bool | None = None,
 ) -> scout_notebook_api.SearchNotebooksQuery:
     queries = []
@@ -296,8 +296,8 @@ def create_search_workbooks_query(
         for key, value in properties.items():
             queries.append(scout_notebook_api.SearchNotebooksQuery(property=api.Property(key, value)))
 
-    if workspace is not None:
-        queries.append(scout_notebook_api.SearchNotebooksQuery(workspace=workspace))
+    if workspace_rid is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(workspace=workspace_rid))
 
     if archived is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(archived=archived))
