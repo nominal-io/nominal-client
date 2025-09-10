@@ -8,7 +8,8 @@ from nominal_api import api, scout_compute_api
 from typing_extensions import TypeAlias
 
 from nominal.core import NominalClient
-from nominal.experimental.compute.dsl import exprs, params
+from nominal.experimental.compute.dsl import exprs as _exprs
+from nominal.experimental.compute.dsl import params
 from nominal.ts import _SecondsNanos
 
 
@@ -100,7 +101,7 @@ class EnumBucket:
 
 def compute_buckets(
     client: NominalClient,
-    expr: exprs.NumericExpr,
+    expr: _exprs.NumericExpr,
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
@@ -120,7 +121,7 @@ def compute_buckets(
 
     """
     # TODO: expose context parameterization
-    context: dict[str, exprs.NumericExpr] = {}
+    context: dict[str, _exprs.NumericExpr] = {}
     return [
         Bucket._from_conjure(ts, bucket)
         for ts, bucket in _compute_buckets(
@@ -137,7 +138,7 @@ def compute_buckets(
 
 def compute_enum_buckets(
     client: NominalClient,
-    expr: exprs.EnumExpr,
+    expr: _exprs.EnumExpr,
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
@@ -183,7 +184,7 @@ def _enum_buckets_from_compute_response(response: scout_compute_api.ComputeNodeR
 
 def batch_compute_enum_buckets(
     client: NominalClient,
-    expressions: Iterable[exprs.EnumExpr],
+    exprs: Iterable[_exprs.EnumExpr],
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
@@ -192,7 +193,7 @@ def batch_compute_enum_buckets(
 
     Args:
         client: Nominal client to make requests with
-        expressions: Expressions to compute buckets for
+        exprs: Expressions to compute buckets for
         start: Starting timestamp to summarize data from
         end: Ending timestamp to summarize data until
         buckets: Number of buckets to return per expression
@@ -208,7 +209,7 @@ def batch_compute_enum_buckets(
     api_end = _timestamp_to_conjure(end)
     request = scout_compute_api.BatchComputeWithUnitsRequest(
         requests=[
-            _create_compute_request_buckets(node._to_conjure(), {}, api_start, api_end, buckets) for node in expressions
+            _create_compute_request_buckets(node._to_conjure(), {}, api_start, api_end, buckets) for node in exprs
         ]
     )
 
@@ -240,7 +241,7 @@ def batch_compute_enum_buckets(
 
 def batch_compute_buckets(
     client: NominalClient,
-    expressions: Iterable[exprs.NumericExpr],
+    exprs: Iterable[_exprs.NumericExpr],
     start: params.NanosecondsUTC,
     end: params.NanosecondsUTC,
     buckets: int = 1000,
@@ -249,7 +250,7 @@ def batch_compute_buckets(
 
     Args:
         client: Nominal client to make requests with
-        expressions: Expressions to compute buckets for
+        exprs: Expressions to compute buckets for
         start: Starting timestamp to summarize data from
         end: Ending timestamp to summarize data until
         buckets: Number of buckets to return per expression
@@ -265,7 +266,7 @@ def batch_compute_buckets(
     api_end = _timestamp_to_conjure(end)
     request = scout_compute_api.BatchComputeWithUnitsRequest(
         requests=[
-            _create_compute_request_buckets(node._to_conjure(), {}, api_start, api_end, buckets) for node in expressions
+            _create_compute_request_buckets(node._to_conjure(), {}, api_start, api_end, buckets) for node in exprs
         ]
     )
 
