@@ -4,7 +4,7 @@ from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
-from nominal.core.client import ALL_WORKSPACES, DEFAULT_WORKSPACE, NominalClient
+from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.connection import Connection
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
@@ -31,7 +31,6 @@ from nominal.core.workbook import Workbook, WorkbookType
 from nominal.core.workspace import Workspace
 
 __all__ = [
-    "ALL_WORKSPACES",
     "Asset",
     "Attachment",
     "Bounds",
@@ -45,7 +44,6 @@ __all__ = [
     "Dataset",
     "DatasetFile",
     "DataSource",
-    "DEFAULT_WORKSPACE",
     "DockerImageSource",
     "Event",
     "EventType",
@@ -68,5 +66,6 @@ __all__ = [
     "Workbook",
     "WorkbookType",
     "Workspace",
+    "WorkspaceSearchType",
     "WriteStream",
 ]

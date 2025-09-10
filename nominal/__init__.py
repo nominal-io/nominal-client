@@ -2,8 +2,6 @@ import importlib.metadata
 
 from nominal import ts
 from nominal.core import (
-    ALL_WORKSPACES,
-    DEFAULT_WORKSPACE,
     Asset,
     Attachment,
     Channel,
@@ -20,6 +18,7 @@ from nominal.core import (
     Video,
     Workbook,
     Workspace,
+    WorkspaceSearchType,
     WriteStream,
 )
 from nominal.nominal import (
@@ -55,7 +54,6 @@ from nominal.nominal import (
 
 __all__ = [
     "__version__",
-    "ALL_WORKSPACES",
     "Asset",
     "Attachment",
     "Channel",
@@ -72,7 +70,6 @@ __all__ = [
     "DataReviewBuilder",
     "Dataset",
     "DatasetFile",
-    "DEFAULT_WORKSPACE",
     "download_attachment",
     "get_asset",
     "get_attachment",
@@ -102,6 +99,7 @@ __all__ = [
     "Video",
     "Workbook",
     "Workspace",
+    "WorkspaceSearchType",
     "WriteStream",
 ]
 
