@@ -237,7 +237,7 @@ class NominalClient:
             search_rid = workspace.rid
         elif isinstance(workspace, str):
             search_rid = workspace
-        elif workspace == WorkspaceSearchType.ALL:
+        elif workspace is WorkspaceSearchType.ALL:
             return None
         elif workspace is WorkspaceSearchType.DEFAULT:
             search_rid = None
@@ -252,8 +252,8 @@ class NominalClient:
             # re-raising with a more specific exception message
             raise NominalConfigError(
                 "WorkspaceSearchType.DEFAULT provided for workspace rid, but no default configured. "
-                "Specify a workspace_rid within your config profile (see `nom config profile --help`), "
-                "specify a workspace_rid manually, or contact your Nominal representative to set a default "
+                "Specify a workspace RID within your config profile (see `nom config profile --help`), "
+                "specify a workspace RID manually, or contact your Nominal representative to set a default "
                 "workspace for your tenant."
             )
 
