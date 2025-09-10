@@ -1,0 +1,19 @@
+name: auto-merge-release-please
+
+on:
+  schedule:
+    - cron: "0 * * * *" # 24 hours https://crontab.cronhub.io/
+
+concurrency:
+  group: auto-merge-release-please
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-admin-merge:
+    uses: nominal-io/git-automations/.github/workflows/auto-merge-release.yml@main
+    secrets:
+      github-token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
