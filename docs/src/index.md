@@ -9,6 +9,6 @@ The main components of the SDK are:
 
 Use the navigation bar above to see examples and reference documentation.
 
-If you are new to Nominal and the Python client, we recommend that you read our [Quickstart guide](https://docs.nominal.io/python/quickstart).
+If you are new to Nominal and the Python client, we recommend that you read our [Quickstart guide](https://docs.nominal.io/core/sdk/python-client/quickstart).
 
 Thereafter, navigate to the [API reference manual](./reference/toplevel.md).
