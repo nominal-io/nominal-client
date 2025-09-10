@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import typing
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping, Sequence, Union
 
 from nominal_api import api, scout_compute_api
+from typing_extensions import TypeAlias
 
 from nominal.core import NominalClient
 from nominal.experimental.compute.dsl import exprs, params
@@ -76,14 +77,14 @@ class EnumBucket:
     timestamp: params.NanosecondsUTC
     """Last timestamp of data within the bucket"""
 
-    frequencies: dict[str, int]
+    frequencies: Mapping[str, int]
     """Unique enum values and their occurrence count within the bucket"""
 
     first_point: EnumPoint
     """First data point decimated into this bucket"""
 
     last_point: EnumPoint | None
-    """Last data point decimated into this bucket, """
+    """Last data point decimated into this bucket"""
 
     @classmethod
     def _from_conjure(
@@ -334,7 +335,7 @@ def _timestamp_to_conjure(nanoseconds: params.NanosecondsUTC) -> api.Timestamp:
     return api.Timestamp(seconds=int(seconds), nanos=int(nanos))
 
 
-TypedSeriesT = scout_compute_api.NumericSeries | scout_compute_api.EnumSeries
+TypedSeriesT: TypeAlias = Union[scout_compute_api.NumericSeries, scout_compute_api.EnumSeries]
 
 
 def _to_generic_series(typed_series: TypedSeriesT) -> scout_compute_api.Series:
