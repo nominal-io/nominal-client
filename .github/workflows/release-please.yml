@@ -1,32 +1,19 @@
-name: release-please
-
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
-  # push:
-  #   branches:
-  #     - main
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
   pull-requests: write
-  issues: read
 
-concurrency:
-  group: release-please-${{ github.ref }}
-  cancel-in-progress: false
+name: release-please
 
 jobs:
   release-please:
-    if: ${{ github.event.pull_request.merged == true }}
-    uses: nominal-io/git-automations/.github/workflows/release-please-wrapper.yml@main
-    secrets:
-      bot-token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
-      github-token: ${{ secrets.GITHUB_TOKEN }}
-    with:
-      manifest-file: .github/.release-please-manifest.json
-      config-file: .github/release-please-config.json
-      should-expedite-release: ${{ contains( github.event.pull_request.labels.*.name, vars.PRODUCTION_RELEASE_LABEL) }}
-      expedite-pr-number: ${{ github.event.pull_request.number }}
-
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
+          release-type: python
