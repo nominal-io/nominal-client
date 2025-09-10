@@ -68,3 +68,11 @@ def _create_function_parameters(
             )
         else:
             raise ValueError(f"Parameter '{param.name}' must be a NumericExpr or RangeExpr")
+
+
+def _expr_to_value_type(expr: Expr) -> module_api.ValueType:
+    if isinstance(expr, NumericExpr):
+        return module_api.ValueType.NUMERIC_SERIES
+    elif isinstance(expr, RangeExpr):
+        return module_api.ValueType.RANGES_SERIES
+    raise ValueError(f"Expression {expr} is not a NumericExpr or RangeExpr")

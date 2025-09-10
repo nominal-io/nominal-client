@@ -15,6 +15,7 @@ from nominal.experimental.compute.dsl import params
 from nominal.experimental.compute.dsl.exprs import Expr, NumericExpr, RangeExpr
 from nominal.experimental.compute.module._utils import (
     _create_function_parameters,
+    _expr_to_value_type,
     _series_to_variable_value,
     _to_compute_node_with_context,
     _validate_signature,
@@ -173,8 +174,10 @@ class Module:
         request = module_api.UpdateModuleRequest(
             definition=_create_module_version_definition(defn),
             description=self.description,
-            title=self.name,
+            title=self.title,
         )
+        print(request)
+        raise Exception("stop")
         module = self._clients.module.update_module(self._clients.auth_header, self.rid, request)
         return Module._from_conjure(self._clients, module.metadata)
 
@@ -247,11 +250,3 @@ class RangeFunctionCallExpr(RangeExpr):
                 ),
             )
         )
-
-
-def _expr_to_value_type(expr: Expr) -> module_api.ValueType:
-    if isinstance(expr, NumericExpr):
-        return module_api.ValueType.NUMERIC_SERIES
-    elif isinstance(expr, RangeExpr):
-        return module_api.ValueType.RANGES_SERIES
-    raise ValueError(f"Expression {expr} is not a NumericExpr or RangeExpr")
