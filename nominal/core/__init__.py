@@ -4,7 +4,7 @@ from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
 from nominal.core.channel import Channel
 from nominal.core.checklist import Checklist
-from nominal.core.client import NominalClient
+from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.connection import Connection
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
@@ -35,8 +35,8 @@ __all__ = [
     "Attachment",
     "Bounds",
     "Channel",
-    "CheckViolation",
     "Checklist",
+    "CheckViolation",
     "Connection",
     "ContainerizedExtractor",
     "DataReview",
@@ -52,6 +52,7 @@ __all__ = [
     "FileTypes",
     "LogPoint",
     "NominalClient",
+    "poll_until_ingestion_completed",
     "Run",
     "Secret",
     "TagDetails",
@@ -65,6 +66,6 @@ __all__ = [
     "Workbook",
     "WorkbookType",
     "Workspace",
+    "WorkspaceSearchType",
     "WriteStream",
-    "poll_until_ingestion_completed",
 ]

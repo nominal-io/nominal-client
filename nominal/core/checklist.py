@@ -147,6 +147,16 @@ class Checklist(HasRid):
             self._clients.auth_header, scout_checks_api.UnarchiveChecklistsRequest(rids=[self.rid])
         )
 
+    @property
+    def nominal_url(self) -> str:
+        """Returns a link to the page for this checklist in the Nominal app"""
+        return f"{self._clients.app_base_url}/checklists/{self.rid}"
+
+    def preview_for_run_url(self, run: Run | str) -> str:
+        """Returns a link to the page for previewing this checklist on a given run in the Nominal app"""
+        run_rid = rid_from_instance_or_string(run)
+        return f"{self.nominal_url}?previewRunRid={run_rid}"
+
 
 Priority = Literal[0, 1, 2, 3, 4]
 

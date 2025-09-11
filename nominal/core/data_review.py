@@ -116,7 +116,7 @@ class DataReview(HasRid):
     def nominal_url(self) -> str:
         """Returns a link to the page for this Data Review in the Nominal app"""
         run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
-        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=checklist-executions&openChecklistDetails={self.rid}&openCheckExecutionErrorReview=&checklistExecution={self.rid}"  # noqa: E501
+        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=checklist-executions&checklist_execution={self.rid}&openCheckExecutionErrorReview="  # noqa: E501
 
 
 @dataclass(frozen=True)
@@ -146,6 +146,7 @@ class CheckViolation:
 class DataReviewBuilder:
     _integration_rids: list[str]
     _requests: list[scout_datareview_api.CreateDataReviewRequest]
+    _tags: list[str]
     _clients: DataReview._Clients = field(repr=False)
 
     def add_integration(self, integration_rid: str) -> DataReviewBuilder:
@@ -154,6 +155,10 @@ class DataReviewBuilder:
 
     def add_request(self, run_rid: str, checklist_rid: str, commit: str) -> DataReviewBuilder:
         self._requests.append(scout_datareview_api.CreateDataReviewRequest(checklist_rid, run_rid, commit))
+        return self
+
+    def add_tags(self, tags: list[str]) -> DataReviewBuilder:
+        self._tags.extend(tags)
         return self
 
     def initiate(self, wait_for_completion: bool = True) -> Sequence[DataReview]:
@@ -165,7 +170,7 @@ class DataReviewBuilder:
         """
         request = scout_datareview_api.BatchInitiateDataReviewRequest(
             notification_configurations=[
-                scout_integrations_api.NotificationConfiguration(c, tags=[]) for c in self._integration_rids
+                scout_integrations_api.NotificationConfiguration(c, tags=self._tags) for c in self._integration_rids
             ],
             requests=self._requests,
         )

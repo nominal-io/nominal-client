@@ -34,7 +34,7 @@ nav:
         - Video Processing: reference/experimental/video_processing.md
   - Development:
       - Contributing: contributing.md
-  - Documentation: https://docs.nominal.io/python/quickstart
+  - Documentation: https://docs.nominal.io/core/sdk/python-client/quickstart
   - Nominal: https://nominal.io
 
 theme:

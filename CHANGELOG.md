@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.80.0](https://github.com/nominal-io/nominal-client/compare/v1.79.0...v1.80.0) (2025-09-10)
+
+
+### Features
+
+* add enum expressions to compute expressions dsl ([#463](https://github.com/nominal-io/nominal-client/issues/463)) ([70ccf59](https://github.com/nominal-io/nominal-client/commit/70ccf59a86f335d69aa2a6fbeab9306c419a0c34))
+* improve default workspace handling in search methods ([#461](https://github.com/nominal-io/nominal-client/issues/461)) ([3583a47](https://github.com/nominal-io/nominal-client/commit/3583a4778c3e370834f9a29eb5d2df146b63fc95))
+* update release-please configuration ([1655c36](https://github.com/nominal-io/nominal-client/commit/1655c3686c072859fb3343e7760866e9807d5f5d))
+
+
+### Bug Fixes
+
+* broken links to python quickstart ([#470](https://github.com/nominal-io/nominal-client/issues/470)) ([9d702ea](https://github.com/nominal-io/nominal-client/commit/9d702eacc95c9d6785dc5e1c4475fa65749a16ba))
+* revert update release-please configuration ([#469](https://github.com/nominal-io/nominal-client/issues/469)) ([76a6968](https://github.com/nominal-io/nominal-client/commit/76a6968736d9f06dddf95a3f0386b0d8c3cea366))
+
+## [1.79.0](https://github.com/nominal-io/nominal-client/compare/v1.78.1...v1.79.0) (2025-09-08)
+
+
+### Features
+
+* allow data review builder to specify tags for sending alerts ([#462](https://github.com/nominal-io/nominal-client/issues/462)) ([fcb473a](https://github.com/nominal-io/nominal-client/commit/fcb473a714314b5689f7afb061cfb1d250955494))
+
+
+### Bug Fixes
+
+* disable typechecking from pylance ([#464](https://github.com/nominal-io/nominal-client/issues/464)) ([282ed12](https://github.com/nominal-io/nominal-client/commit/282ed12b0d4ec2b22177dda25e013c71cc7c59ab))
+
+## [1.78.1](https://github.com/nominal-io/nominal-client/compare/v1.78.0...v1.78.1) (2025-09-03)
+
+
+### Bug Fixes
+
+* tdms/pandas upload methods to operate on dataset files ([#459](https://github.com/nominal-io/nominal-client/issues/459)) ([d0b55f2](https://github.com/nominal-io/nominal-client/commit/d0b55f219ba7e6f9c5aceab0345240a8071b126d))
+
+## [1.78.0](https://github.com/nominal-io/nominal-client/compare/v1.77.0...v1.78.0) (2025-09-03)
+
+
+### Features
+
+* add batch compute to expressions framework ([#457](https://github.com/nominal-io/nominal-client/issues/457)) ([23375fe](https://github.com/nominal-io/nominal-client/commit/23375fece6c7d468a09745531b4a60a57d2cc213))
+* allow creating compute expressions with tags, datasources, and runs ([#455](https://github.com/nominal-io/nominal-client/issues/455)) ([ae7bb3d](https://github.com/nominal-io/nominal-client/commit/ae7bb3dfe89418c194f6a0f7e61551452b2e75c4))
+
+## [1.77.0](https://github.com/nominal-io/nominal-client/compare/v1.76.0...v1.77.0) (2025-08-27)
+
+
+### Features
+
+* update nominal_url for checklists and datareviews ([#451](https://github.com/nominal-io/nominal-client/issues/451)) ([1d69730](https://github.com/nominal-io/nominal-client/commit/1d6973062096571390bcf9ccd372ff1721260e3d))
+
+## [1.76.0](https://github.com/nominal-io/nominal-client/compare/v1.75.0...v1.76.0) (2025-08-26)
+
+
+### Features
+
+* add missing core classes in nominal/core/__init__.py ([#448](https://github.com/nominal-io/nominal-client/issues/448)) ([1a80a5d](https://github.com/nominal-io/nominal-client/commit/1a80a5df5af9ff9061062ea326891a8e26fb6c26))
+* allow directly retrieving a given dataset file by id ([#450](https://github.com/nominal-io/nominal-client/issues/450)) ([d051e0e](https://github.com/nominal-io/nominal-client/commit/d051e0e3d3a67d0b69eccf77270d1125490a7c6c))
+
 ## [1.75.0](https://github.com/nominal-io/nominal-client/compare/v1.74.0...v1.75.0) (2025-08-22)
 
 

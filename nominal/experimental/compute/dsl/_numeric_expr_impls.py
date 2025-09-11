@@ -283,19 +283,70 @@ class MultiplyExpr(exprs.NumericExpr):
 
 
 @dataclass(frozen=True)
-class NumericChannelExpr(exprs.NumericExpr):
+class NumericAssetChannelExpr(exprs.NumericExpr):
     _asset_rid: str
     _data_scope_name: str
     _channel_name: str
+    _additional_tags: dict[str, str]
 
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             channel=scout_compute_api.ChannelSeries(
                 asset=scout_compute_api.AssetChannel(
-                    additional_tags={},
+                    additional_tags={
+                        key: scout_compute_api.StringConstant(literal=value)
+                        for key, value in self._additional_tags.items()
+                    },
                     asset_rid=scout_compute_api.StringConstant(literal=self._asset_rid),
-                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
                     data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
+                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
+                    group_by_tags=[],
+                    tags_to_group_by=[],
+                    additional_tag_filters=None,
+                )
+            )
+        )
+
+
+@dataclass(frozen=True)
+class NumericDatasourceChannelExpr(exprs.NumericExpr):
+    _datasource_rid: str
+    _channel_name: str
+    _tags: dict[str, str]
+
+    def _to_conjure(self) -> scout_compute_api.NumericSeries:
+        return scout_compute_api.NumericSeries(
+            channel=scout_compute_api.ChannelSeries(
+                data_source=scout_compute_api.DataSourceChannel(
+                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
+                    data_source_rid=scout_compute_api.StringConstant(literal=self._datasource_rid),
+                    tags={key: scout_compute_api.StringConstant(literal=value) for key, value in self._tags.items()},
+                    group_by_tags=[],
+                    tags_to_group_by=[],
+                    tag_filters=None,
+                )
+            )
+        )
+
+
+@dataclass(frozen=True)
+class NumericRunChannelExpr(exprs.NumericExpr):
+    _run_rid: str
+    _data_scope_name: str
+    _channel_name: str
+    _additional_tags: dict[str, str]
+
+    def _to_conjure(self) -> scout_compute_api.NumericSeries:
+        return scout_compute_api.NumericSeries(
+            channel=scout_compute_api.ChannelSeries(
+                run=scout_compute_api.RunChannel(
+                    additional_tags={
+                        key: scout_compute_api.StringConstant(literal=value)
+                        for key, value in self._additional_tags.items()
+                    },
+                    run_rid=scout_compute_api.StringConstant(literal=self._run_rid),
+                    data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
+                    channel=scout_compute_api.StringConstant(literal=self._channel_name),
                     group_by_tags=[],
                     tags_to_group_by=[],
                     additional_tag_filters=None,
@@ -442,52 +493,6 @@ class TanExpr(exprs.NumericExpr):
                 expression="tan(input)",
                 inputs={"input": self._node._to_conjure()},
             )
-        )
-
-
-@dataclass(frozen=True)
-class ThresholdExpr(exprs.RangeExpr):
-    _node: exprs.NumericExpr
-    _threshold: float
-    _operator: params.ThresholdOperatorLiteral
-
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(
-            threshold=scout_compute_api.ThresholdingRanges(
-                input=self._node._to_conjure(),
-                threshold=params._float_to_conjure(self._threshold),
-                operator=params._threshold_operator_to_conjure(self._operator),
-            )
-        )
-
-
-@dataclass(frozen=True)
-class IntersectRangesExpr(exprs.RangeExpr):
-    _nodes: typing.Sequence[exprs.RangeExpr]
-
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(
-            intersect_range=scout_compute_api.IntersectRanges(
-                inputs=[range_node._to_conjure() for range_node in self._nodes]
-            )
-        )
-
-
-@dataclass(frozen=True)
-class InvertRangesExpr(exprs.RangeExpr):
-    _nodes: exprs.RangeExpr
-
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(not_=scout_compute_api.NotRanges(input=self._nodes._to_conjure()))
-
-
-@dataclass(frozen=True)
-class UnionRangesExpr(exprs.RangeExpr):
-    _nodes: typing.Sequence[exprs.RangeExpr]
-
-    def _to_conjure(self) -> scout_compute_api.RangeSeries:
-        return scout_compute_api.RangeSeries(
-            union_range=scout_compute_api.UnionRanges(inputs=[range_node._to_conjure() for range_node in self._nodes])
         )
 
 

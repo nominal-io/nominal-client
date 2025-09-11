@@ -1521,7 +1521,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.74.0"
+version = "1.79.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1579,7 +1579,7 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=2.8.0,<4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.778.1" },
+    { name = "nominal-api", specifier = "==0.861.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.708.0" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "openpyxl", specifier = ">=0.0.0" },
@@ -1620,15 +1620,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.778.1"
+version = "0.861.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/f3/d335265302e18afc3fda280004c609349bd46ec15ea79333df30662826f6/nominal_api-0.778.1.tar.gz", hash = "sha256:962b900c4b22db8d379cc8bb77c6531eda423edabd92d4b165a7c651fd455a02", size = 382953, upload-time = "2025-07-22T20:13:57.296Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/54/51ead5a7ae5e067108dc27b1e04772c2a3639cb86c2e554a0942e3cfdd8a/nominal_api-0.861.0.tar.gz", hash = "sha256:e07a69f867aca0b2dab7dd6f79ce02494dc7bc9e08b8ec508f2cf4998860e015", size = 412772, upload-time = "2025-08-27T17:14:12.063Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/9a/f16881f8491473c1393ddb8d005c73fdc2fbbe26d0532803b51ae5e766a1/nominal_api-0.778.1-py3-none-any.whl", hash = "sha256:4b24d5e9785ff7edbdfdbff96741eb080227541ccf5c96dea060d5ed447b3725", size = 406702, upload-time = "2025-07-22T20:13:55.678Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/75/50783db3d01a7d8a64eb23af31717c5e4e37df808ed9c3f5326651bc1e44/nominal_api-0.861.0-py3-none-any.whl", hash = "sha256:94b14d9242674a04e83494921f5651ae79b02edd79fc6db430e548361174041e", size = 437376, upload-time = "2025-08-27T17:14:10.202Z" },
 ]
 
 [[package]]

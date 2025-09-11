@@ -74,7 +74,7 @@ def search_assets_paginated(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
             sort=scout_asset_api.AssetSortOptions(
-                field=scout_asset_api.SortField.CREATED_AT,
+                field=scout_asset_api.AssetSortField.CREATED_AT,
                 is_descending=True,
             ),
             next_page_token=page_token,
