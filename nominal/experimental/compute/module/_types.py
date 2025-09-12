@@ -120,13 +120,20 @@ def _create_module_request(defn: ModuleDefinition, workspace_rid: str) -> module
     )
 
 
+def _create_channel_variable(expr: RangeExpr | NumericExpr) -> scout_compute_api.ChannelSeries:
+    assert isinstance(expr, NumericExpr), "Only numeric channels are currently supported for module variables"
+    conjure_expr = expr._to_conjure()
+    assert conjure_expr.channel is not None, "Only channel expressions are currently supported for module variables"
+    return conjure_expr.channel
+
+
 def _create_module_version_definition(defn: ModuleDefinition) -> module_api.ModuleVersionDefinition:
     return module_api.ModuleVersionDefinition(
         default_variables=[
             module_api.ModuleVariable(
                 name=key,
                 type=_expr_to_value_type(expr),
-                value=scout_compute_api.VariableValue(compute_node=_to_compute_node_with_context(expr._to_conjure())),
+                value=scout_compute_api.VariableValue(channel=_create_channel_variable(expr)),
             )
             for key, expr in defn.variables.items()
         ],
