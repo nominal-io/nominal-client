@@ -176,8 +176,6 @@ class Module:
             description=self.description,
             title=self.title,
         )
-        print(request)
-        raise Exception("stop")
         module = self._clients.module.update_module(self._clients.auth_header, self.rid, request)
         return Module._from_conjure(self._clients, module.metadata)
 

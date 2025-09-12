@@ -66,7 +66,7 @@ for bucket in compute_buckets(client, expr, scope.bounds.start, scope.bounds.end
 
 When retrieving channels using the expressions library, you may also reference channels directly on datasources or runs:
 
-```python
+```py
 # Reference a channel present on a run by data scope name
 run_rid = "ri.catalog.gov-staging.dataset.b373ff5a-cd2b-4969-bf5b-772688a11249"
 run_channel = exprs.NumericExpr.run_channel(run_rid, scope_name, channel_name)
@@ -77,7 +77,7 @@ datasource_channel = exprs.NumericExpr.datasource_channel(dataset_rid, scope_nam
 ```
 
 When retrieving channels on an asset or a run, the default tag filters for a given data scope are applied to underlying expressions.
-However, it may still be useful to further filter data on tags that aren't specified by the data scope definition-- this is done using the `additional_tags` args (or just `tags` for datasource channels):
+However, it may still be useful to further filter data on tags that aren't specified by the data scope definition---this is done using the `additional_tags` args (or just `tags` for datasource channels):
 
 ```py
 channel = exprs.NumericExpr.asset_channel(asset_rid, scope_name, channel_name, additional_tags={"color": "green"})
