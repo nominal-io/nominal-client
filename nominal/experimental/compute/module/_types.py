@@ -17,7 +17,6 @@ from nominal.experimental.compute.module._utils import (
     _create_function_parameters,
     _expr_to_value_type,
     _series_to_variable_value,
-    _to_compute_node_with_context,
     _validate_signature,
 )
 
