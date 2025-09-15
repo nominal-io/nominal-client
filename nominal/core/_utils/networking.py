@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import gzip
 import os
+import ssl
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
+import truststore
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import RetryWithJitter, TransportAdapter
 from requests.adapters import CaseInsensitiveDict
@@ -23,6 +25,10 @@ class GzipRequestsAdapter(TransportAdapter):
     ACCEPT_ENCODING = "Accept-Encoding"
     CONTENT_ENCODING = "Content-Encoding"
     CONTENT_LENGTH = "Content-Length"
+
+    def init_poolmanager(self, connections, maxsize, block=False, **kwargs):  # type: ignore[no-untyped-def]
+        ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        return super().init_poolmanager(connections, maxsize, block, ssl_context=ctx, **kwargs)  # type: ignore[no-untyped-call]
 
     def add_headers(self, request: requests.PreparedRequest, **kwargs: Any) -> None:
         """Tell the server that we support compression."""
