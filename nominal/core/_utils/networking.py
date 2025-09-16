@@ -8,7 +8,7 @@ from typing import Any, Callable, Mapping, Type, TypeVar
 import requests
 
 try:
-    import truststore
+    import truststore  # type: ignore[import-not-found]
 
     has_truststore = True
 except ImportError:

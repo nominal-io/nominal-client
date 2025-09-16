@@ -159,6 +159,11 @@ ignore_missing_imports = true
 module = "tests.*"
 disable_error_code = ["no-untyped-def"]
 
+[[tool.mypy.overrides]]
+# This can be removed once we drop Python 3.9 support
+module = "nominal.core._utils.networking"
+disable_error_code = ["unused-ignore"]
+
 [tool.pytest.ini_options]
 filterwarnings = [
     "error", # transform all warnings into errors, except ignore: ones.
