@@ -11,8 +11,6 @@ from nominal.core import NominalClient
 logger = logging.getLogger(__name__)
 
 
-
-
 def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     """Read the MIS file and return a dictionary of channel names and their descriptions and units."""
     try:
@@ -31,7 +29,9 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
 
     # standardize and valide column names
     df.columns = df.columns.str.lower()
-    if not all(col in df.columns for col in ["channel", "description", "ucum_unit"]):
+    try:
+        df = df[["channel", "description", "ucum unit"]]
+    except KeyError:
         logger.error("MIS file must have columns: Channel, Description, UCUM Unit")
         raise ValueError("MIS file must have columns: Channel, Description, UCUM Unit")
 
@@ -44,7 +44,7 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
     channel_list = dataset.get_channels()
     channel_map = {channel.name: channel for channel in channel_list}
 
-    for channel_name, description, unit in mis_data.iterrows():
+    for _, channel_name, description, unit in mis_data.itertuples():
         channel = channel_map.get(channel_name)
         if channel:
             channel.update(description=description, unit=unit)
@@ -53,13 +53,15 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
 
 
 def validate_units(df: pd.DataFrame, client: NominalClient) -> None:
-    mis_units = set(df.loc[:, "ucum_unit"].unique())
+    mis_units = set(df.loc[:, "ucum unit"].unique())
 
     # Get available units from Nominal
     try:
         nominal_units_list = client.get_all_units()
         nominal_units = {unit.symbol for unit in nominal_units_list}
-        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'.")
+        click.echo(
+            f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'."
+        )
     except Exception as e:
         click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
         return
@@ -87,7 +89,9 @@ def mis_cmd() -> None:
     pass
 
 
-@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
+@mis_cmd.command(
+    name="process", help="Processes an MIS file and updates channel descriptions and units."
+)
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -103,13 +107,16 @@ def mis_cmd() -> None:
 @global_options
 def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
-    click.echo(f"Validating MIS file: {mis_path}")
+    logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
-    formatted_mis_data = {row["Channel"]: (row["Description"], row["UCUM Unit"]) for _, row in mis_data.iterrows()}
-    update_channels(formatted_mis_data, dataset_rid, client)
+    logger.info("Updating channels: %s", mis_data)
+    update_channels(mis_data, dataset_rid, client)
+    logger.info("Channels updated.")
 
 
-@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
+@mis_cmd.command(
+    name="validate", help="Validate units in an MIS file against available units in Nominal."
+)
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -122,7 +129,7 @@ def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient)
 )
 @client_options
 @global_options
-def check_units(ctx: click.Context, mis_path: Path, sheet: str, client: NominalClient) -> None:
+def check_units(mis_path: Path, sheet: str, client: NominalClient) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
@@ -139,8 +146,6 @@ def check_units(ctx: click.Context, mis_path: Path, sheet: str, client: NominalC
             "The listed units will still show in Nominal but will not work with the "
             "'Unit Conversion' transform. You can use the 'list-units' command to see all available units.",
         )
-        # Exit with a non-zero code to indicate failure, useful for scripting
-
 
 
 @mis_cmd.command(name="list-units", help="List all available units in Nominal.")
