@@ -20,29 +20,54 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
             if not sheet:
                 logger.error("Sheet name is required for Excel files.")
                 raise ValueError("Sheet name is required for Excel files.")
-            return pd.read_excel(mis_path, sheet_name=sheet)
+            df = pd.read_excel(mis_path, sheet_name=sheet)
         else:
-            return pd.read_csv(mis_path)
+            df = pd.read_csv(mis_path)
     except ValueError:
         raise
     except Exception as e:
         logger.error("Error parsing MIS file: %s. Only accepts CSV and Excel files.", mis_path)
         raise ValueError(f"Error parsing MIS file: {mis_path}") from e
 
+    # standardize and valide column names
+    df.columns = df.columns.str.lower()
+    if not all(col in df.columns for col in ["channel", "description", "ucum_unit"]):
+        logger.error("MIS file must have columns: Channel, Description, UCUM Unit")
+        raise ValueError("MIS file must have columns: Channel, Description, UCUM Unit")
+
+    return df
 
 
-def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, client: NominalClient) -> None:
+def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalClient) -> None:
     """Update channels using dictionary lookup instead of nested loops."""
     dataset = client.get_dataset(dataset_rid)
     channel_list = dataset.get_channels()
     channel_map = {channel.name: channel for channel in channel_list}
 
-    for channel_name, (description, unit) in mis_data.items():
+    for channel_name, description, unit in mis_data.iterrows():
         channel = channel_map.get(channel_name)
         if channel:
             channel.update(description=description, unit=unit)
         else:
             logger.warning(f"Channel {channel_name} not found in dataset {dataset_rid}")
+
+
+def validate_units(df: pd.DataFrame, client: NominalClient) -> None:
+    mis_units = set(df.loc[:, "ucum_unit"].unique())
+
+    # Get available units from Nominal
+    try:
+        nominal_units_list = client.get_all_units()
+        nominal_units = {unit.symbol for unit in nominal_units_list}
+        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'.")
+    except Exception as e:
+        click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
+        return
+
+    # Find invalid units
+    invalid_units = mis_units - nominal_units
+
+    return invalid_units
 
 
 @click.group(
@@ -95,42 +120,27 @@ def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient)
     required=False,
     help="The sheet to use in the Excel file if parsing direct from Excel.",
 )
-@click.pass_context
 @client_options
 @global_options
 def check_units(ctx: click.Context, mis_path: Path, sheet: str, client: NominalClient) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
-    click.echo(f"Validating MIS file: {mis_path}")
+    logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
-
-    mis_units = set(mis_data.iloc[:, 2].unique())
-
-    # Get available units from Nominal
-    try:
-        nominal_units_list = client.get_all_units()
-        nominal_units = {unit.symbol for unit in nominal_units_list}
-        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'.")
-    except Exception as e:
-        click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
-        return
-
-    # Find invalid units
-    invalid_units = mis_units - nominal_units
+    invalid_units = validate_units(mis_data, client)
 
     # Report results
     if not invalid_units:
-        click.secho("✓ All units in the MIS file are valid.", fg="green")
+        logger.info("All units in the MIS file are valid.")
     else:
-        logger.warning(f"Found {len(invalid_units)} invalid units in the MIS file:")
+        logger.warning("Found %s invalid units in the MIS file:", len(invalid_units))
         for unit in sorted(list(invalid_units)):
-            click.echo(f"  - {unit}")
-        click.secho(
+            logger.warning("  - %s", unit)
+        logger.warning(
             "The listed units will still show in Nominal but will not work with the "
             "'Unit Conversion' transform. You can use the 'list-units' command to see all available units.",
-            fg="red",
         )
         # Exit with a non-zero code to indicate failure, useful for scripting
-        ctx.exit(1)
+
 
 
 @mis_cmd.command(name="list-units", help="List all available units in Nominal.")
