@@ -17,12 +17,17 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     """Read the MIS file and return a dictionary of channel names and their descriptions and units."""
     try:
         if str.lower(mis_path.suffix) in (".xlsx", ".xls"):
+            if not sheet:
+                logger.error("Sheet name is required for Excel files.")
+                raise ValueError("Sheet name is required for Excel files.")
             return pd.read_excel(mis_path, sheet_name=sheet)
         else:
             return pd.read_csv(mis_path)
+    except ValueError:
+        raise
     except Exception as e:
         logger.error("Error parsing MIS file: %s. Only accepts CSV and Excel files.", mis_path)
-        raise ValueError(f"MIS file not found: {mis_path}") from e
+        raise ValueError(f"Error parsing MIS file: {mis_path}") from e
 
 
 
