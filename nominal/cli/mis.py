@@ -11,19 +11,19 @@ from nominal.core import NominalClient
 logger = logging.getLogger(__name__)
 
 
-def read_mis_csv(mis_path: Path) -> pd.DataFrame:
-    """Read the MIS CSV and return a dictionary of channel names and their descriptions and units."""
-    df = pd.read_csv(mis_path)
-    return df
 
 
-def read_mis_excel(mis_path: Path, sheet: str) -> pd.DataFrame:
-    """Read the MIS Excel file and return a dictionary of channel names and their descriptions and units."""
+def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
+    """Read the MIS file and return a dictionary of channel names and their descriptions and units."""
     try:
-        df = pd.read_excel(mis_path, sheet_name=sheet)
-    except ValueError as e:
-        raise click.UsageError(f"Error reading Excel file: {e}")
-    return df
+        if str.lower(mis_path.suffix) in (".xlsx", ".xls"):
+            return pd.read_excel(mis_path, sheet_name=sheet)
+        else:
+            return pd.read_csv(mis_path)
+    except Exception as e:
+        logger.error("Error parsing MIS file: %s. Only accepts CSV and Excel files.", mis_path)
+        raise ValueError(f"MIS file not found: {mis_path}") from e
+
 
 
 def update_channels(mis_data: dict[str, Tuple[str, str]], dataset_rid: str, client: NominalClient) -> None:
@@ -74,16 +74,7 @@ def mis_cmd() -> None:
 def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     click.echo(f"Validating MIS file: {mis_path}")
-
-    is_excel = str(mis_path).endswith((".xlsx", ".xls"))
-    if is_excel and not sheet:
-        raise click.UsageError("You must provide --sheet when using an Excel file.")
-
-    # Read unique units from the MIS file
-    if is_excel:
-        mis_data = read_mis_excel(mis_path, sheet)
-    else:
-        mis_data = read_mis_csv(mis_path)
+    mis_data = read_mis(mis_path, sheet)
     formatted_mis_data = {row["Channel"]: (row["Description"], row["UCUM Unit"]) for _, row in mis_data.iterrows()}
     update_channels(formatted_mis_data, dataset_rid, client)
 
@@ -105,16 +96,7 @@ def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient)
 def check_units(ctx: click.Context, mis_path: Path, sheet: str, client: NominalClient) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     click.echo(f"Validating MIS file: {mis_path}")
-
-    is_excel = str(mis_path).endswith((".xlsx", ".xls"))
-    if is_excel and not sheet:
-        raise click.UsageError("You must provide --sheet when using an Excel file.")
-
-    # Read unique units from the MIS file
-    if is_excel:
-        mis_data = read_mis_excel(mis_path, sheet)
-    else:
-        mis_data = read_mis_csv(mis_path)
+    mis_data = read_mis(mis_path, sheet)
 
     mis_units = set(mis_data.iloc[:, 2].unique())
 
