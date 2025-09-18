@@ -1,9 +1,9 @@
 import logging
 from pathlib import Path
-from typing import Tuple, Union
 
 import click
 import pandas as pd
+import tabulate
 
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import NominalClient
@@ -52,7 +52,8 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
             logger.warning(f"Channel {channel_name} not found in dataset {dataset_rid}")
 
 
-def validate_units(df: pd.DataFrame, client: NominalClient) -> None:
+def validate_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
+    """Validate units in an MIS file against available units in Nominal."""
     mis_units = set(df.loc[:, "ucum unit"].unique())
 
     # Get available units from Nominal
@@ -64,7 +65,7 @@ def validate_units(df: pd.DataFrame, client: NominalClient) -> None:
         )
     except Exception as e:
         click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
-        return
+        return None
 
     # Find invalid units
     invalid_units = mis_units - nominal_units
@@ -96,16 +97,15 @@ def mis_cmd() -> None:
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
 )
-@click.option("--dataset-rid", type=str, required=True)
+@click.option("--dataset-rid", required=True, help="The RID of the dataset to update.")
 @click.option(
     "--sheet",
-    type=str,
     required=False,
     help="The sheet to use in the Excel file if parsing direct from Excel.",
 )
 @client_options
 @global_options
-def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient) -> None:
+def process(mis_path: Path, dataset_rid: str, sheet: str | None, client: NominalClient) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
@@ -123,13 +123,12 @@ def process(mis_path: Path, dataset_rid: str, sheet: str, client: NominalClient)
 )
 @click.option(
     "--sheet",
-    type=str,
     required=False,
     help="The sheet to use in the Excel file if parsing direct from Excel.",
 )
 @client_options
 @global_options
-def check_units(mis_path: Path, sheet: str, client: NominalClient) -> None:
+def check_units(mis_path: Path, sheet: str | None, client: NominalClient) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
@@ -150,18 +149,22 @@ def check_units(mis_path: Path, sheet: str, client: NominalClient) -> None:
 
 @mis_cmd.command(name="list-units", help="List all available units in Nominal.")
 @click.option(
-    "--csv-name",
-    type=click.Path(dir_okay=False, writable=True),
-    help="Output CSV file path (defaults to stdout).",
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, resolve_path=True, path_type=Path),
+    help="If provided, write the output to a file.",
 )
 @click.option(
-    "--excel-name",
-    type=click.Path(dir_okay=False, writable=True),
-    help="Output Excel file path.",
+    "-f",
+    "--format",
+    type=click.Choice(["table", "csv", "excel"], case_sensitive=True),
+    default="table",
+    show_default=True,
+    help="The format to represent the data as",
 )
 @client_options
 @global_options
-def list_units(csv_name: str, excel_name: Union[str, None], client: NominalClient) -> None:
+def list_units(output: Path | None, format: str, client: NominalClient) -> None:
     """List all available units in Nominal."""
     units = client.get_all_units()
     sorted_units = sorted(units, key=lambda u: u.symbol)
@@ -170,13 +173,20 @@ def list_units(csv_name: str, excel_name: Union[str, None], client: NominalClien
     units_data = [{"UCUM": unit.symbol, "Unit Name": unit.name} for unit in sorted_units]
     df = pd.DataFrame(units_data)
 
-    if csv_name:
-        # Convert Unit objects to DataFrame
-        df.to_csv(csv_name, index=False)
-        click.echo(f"Unit list successfully written to {csv_name}")
-    elif excel_name:
-        df.to_excel(excel_name, index=False)
-        click.echo(f"Unit list successfully written to {excel_name}")
+    output_str = _data_to_string(df, format)
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(output_str)
+        click.secho(f"Unit list successfully written to {output}", fg="cyan")
     else:
-        # print to stdout for piping and grep
-        click.echo(df.to_csv(index=False))
+        click.echo(output_str)
+
+
+def _data_to_string(data: pd.DataFrame, format: str) -> str:
+    if format == "csv":
+        return data.to_csv(index=False)
+    elif format == "table":
+        return tabulate.tabulate(data.values.tolist(), headers=data.columns.tolist())
+    else:
+        raise ValueError(f"Expected format to be one of csv, table, received {format}")
