@@ -53,7 +53,7 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
             logger.warning(f"Channel {channel_name} not found in dataset {dataset_rid}")
 
 
-def validate_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
+def validate_units(df: pd.DataFrame, client: NominalClient) -> Union[set[str], None]:
     """Validate units in an MIS file against available units in Nominal."""
     mis_units = set(df.loc[:, "ucum unit"].unique())
 
