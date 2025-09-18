@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Tuple, Union
+from typing import Union
 
 import click
 import pandas as pd
