@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.81.0](https://github.com/nominal-io/nominal-client/compare/v1.80.0...v1.81.0) (2025-09-18)
+
+
+### Features
+
+* allow default_args in nominal log handler ([#473](https://github.com/nominal-io/nominal-client/issues/473)) ([cb4537a](https://github.com/nominal-io/nominal-client/commit/cb4537a4273dbb15ba00d48b1211a9cf904f0182))
+
 ## [1.80.0](https://github.com/nominal-io/nominal-client/compare/v1.79.0...v1.80.0) (2025-09-10)
 
 
