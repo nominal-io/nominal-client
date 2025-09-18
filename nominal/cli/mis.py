@@ -60,9 +60,7 @@ def validate_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
     try:
         nominal_units_list = client.get_all_units()
         nominal_units = {unit.symbol for unit in nominal_units_list}
-        click.echo(
-            f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'."
-        )
+        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'.")
     except Exception as e:
         click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
         return None
@@ -90,9 +88,7 @@ def mis_cmd() -> None:
     pass
 
 
-@mis_cmd.command(
-    name="process", help="Processes an MIS file and updates channel descriptions and units."
-)
+@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -114,9 +110,7 @@ def process(mis_path: Path, dataset_rid: str, sheet: str | None, client: Nominal
     logger.info("Channels updated.")
 
 
-@mis_cmd.command(
-    name="validate", help="Validate units in an MIS file against available units in Nominal."
-)
+@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -157,7 +151,13 @@ def check_units(mis_path: Path, sheet: str | None, client: NominalClient) -> Non
 @click.option(
     "-f",
     "--format",
-    type=click.Choice(["table", "csv", "excel"], case_sensitive=True),
+    type=click.Choice(
+        [
+            "table",
+            "csv",
+        ],
+        case_sensitive=True,
+    ),
     default="table",
     show_default=True,
     help="The format to represent the data as",
