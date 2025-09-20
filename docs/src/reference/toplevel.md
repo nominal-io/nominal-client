@@ -1,4 +1,4 @@
-Also see the [Python Quickstart guide](https://docs.nominal.io/python/quickstart).
+Also see the [Python Quickstart guide](https://docs.nominal.io/core/sdk/python-client/quickstart).
 
 [`nominal.core`](./core.md) — platform client<br/>
 [`nominal.ts`](./ts.md) — timestamp utilities<br/>

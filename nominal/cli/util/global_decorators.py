@@ -163,7 +163,7 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
 
         logger.warning(
             "Creating a Nominal Client without using '--profile' is deprecated! "
-            "See 'https://docs.nominal.io/python/profile-migration' for details..."
+            "See 'https://docs.nominal.io/core/sdk/python-client/authentication' for details..."
         )
 
         if token is None:
