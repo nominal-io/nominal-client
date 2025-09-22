@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from typing import Callable, cast
 
-from nominal.experimental.compute.dsl import _expr_impls, params
+from nominal.experimental.compute.dsl import _numeric_expr_impls, params
 from nominal.experimental.compute.module._functions import get_module, list_modules
 from nominal.experimental.compute.module._types import Module, ModuleApplication, ModuleDefinition, ModuleVariables
 
@@ -36,9 +36,9 @@ def defn(f: Callable[[], ModuleVariables] | Callable[[params.StringVariable], Mo
         if not isinstance(
             var,
             (
-                _expr_impls.NumericAssetChannelExpr,
-                _expr_impls.NumericDatasourceChannelExpr,
-                _expr_impls.NumericRunChannelExpr,
+                _numeric_expr_impls.NumericAssetChannelExpr,
+                _numeric_expr_impls.NumericDatasourceChannelExpr,
+                _numeric_expr_impls.NumericRunChannelExpr,
             ),
         ):
             raise ValueError(f"Module variable {var_name} are currently limited to channel expressions")

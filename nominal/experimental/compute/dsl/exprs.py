@@ -142,7 +142,7 @@ class NumericExpr(ChannelExpr[scout_compute_api.NumericSeries]):
 
     @classmethod
     def reference(cls, name: str) -> NumericExpr:
-        return _expr_impls.NumericReferenceExpr(name)
+        return _numeric_expr_impls.NumericReferenceExpr(name)
 
     def abs(self, /) -> NumericExpr:
         return _numeric_expr_impls.AbsExpr(_node=self)
