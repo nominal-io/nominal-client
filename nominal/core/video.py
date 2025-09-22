@@ -15,8 +15,8 @@ from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._multipart import path_upload_name, upload_multipart_io
-from nominal.core._utils import HasRid
+from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
 from nominal.exceptions import NominalIngestError, NominalIngestFailed
@@ -32,6 +32,7 @@ class Video(HasRid):
     description: str | None
     properties: Mapping[str, str]
     labels: Sequence[str]
+    created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
@@ -317,6 +318,7 @@ class Video(HasRid):
             description=video.description,
             properties=MappingProxyType(video.properties),
             labels=tuple(video.labels),
+            created_at=_SecondsNanos.from_flexible(video.created_at).to_nanoseconds(),
             _clients=clients,
         )
 

@@ -23,13 +23,12 @@ from nominal_api import (
 )
 
 from nominal._utils import batched
-from nominal.core._batch_processor import process_batch_legacy
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
-from nominal.core._utils import HasRid
+from nominal.core._stream.batch_processor import process_batch_legacy
+from nominal.core._stream.write_stream import DataStream, WriteStream
+from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType, _create_timestamp_format
-from nominal.core.stream import WriteStream
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
-from nominal.core.write_stream_base import WriteStreamBase
 from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
 
 logger = logging.getLogger(__name__)
@@ -63,6 +62,8 @@ class DataSource(HasRid):
         def proto_write(self) -> ProtoWriteService: ...
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
+        @property
+        def containerized_extractors(self) -> ingest_api.ContainerizedExtractorService: ...
 
     def get_channel(self, name: str) -> Channel:
         for channel in self.get_channels(names=[name]):
@@ -112,10 +113,10 @@ class DataSource(HasRid):
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf", "experimental"] = "json",
-    ) -> WriteStreamBase:
-        """Stream to write messages to a datasource.
+    ) -> DataStream:
+        """Stream to write timeseries data to a datasource.
 
-        Messages are written asynchronously.
+        Data is written asynchronously.
 
         Args:
         ----
@@ -293,7 +294,7 @@ def _get_write_stream(
     data_format: Literal["json", "protobuf", "experimental"],
     write_rid: str,
     clients: DataSource._Clients,
-) -> WriteStreamBase:
+) -> DataStream:
     if data_format == "json":
         return WriteStream.create(
             batch_size=batch_size,
@@ -307,7 +308,7 @@ def _get_write_stream(
         )
     elif data_format == "protobuf":
         try:
-            from nominal.core._batch_processor_proto import process_batch
+            from nominal.core._stream.batch_processor_proto import process_batch
         except ImportError as ex:
             raise ImportError(
                 "nominal-api-protos is required to use get_write_stream with data_format='protobuf'"

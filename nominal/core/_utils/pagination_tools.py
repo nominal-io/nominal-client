@@ -74,7 +74,7 @@ def search_assets_paginated(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
             sort=scout_asset_api.AssetSortOptions(
-                field=scout_asset_api.SortField.CREATED_AT,
+                field=scout_asset_api.AssetSortField.CREATED_AT,
                 is_descending=True,
             ),
             next_page_token=page_token,
@@ -168,6 +168,18 @@ def search_runs_paginated(
         )
 
     for response in paginate_rpc(run.search_runs, auth_header, request_factory=factory):
+        yield from response.results
+
+
+def search_runs_by_asset_paginated(
+    run: scout.RunService,
+    auth_header: str,
+    asset_rid: str,
+) -> Iterable[scout_run_api.Run]:
+    def factory(page_token: str | None) -> scout_run_api.GetRunsByAssetRequest:
+        return scout_run_api.GetRunsByAssetRequest(asset=asset_rid, next_page_token=page_token)
+
+    for response in paginate_rpc(run.get_runs_by_asset, auth_header, request_factory=factory):
         yield from response.results
 
 

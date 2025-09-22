@@ -12,6 +12,7 @@ from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 from nominal import ts
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
+from nominal.core.dataset_file import DatasetFile
 from nominal.thirdparty.pandas import upload_dataframe, upload_dataframe_to_dataset
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ def upload_tdms_to_dataset(
     file_name: str | None = None,
     tag_columns: Mapping[str, str] | None = None,
     tags: Mapping[str, str] | None = None,
-) -> None:
+) -> DatasetFile:
     """Process and upload a tdms file to an existing dataset as if it were a gzipped-CSV file
 
     Args:

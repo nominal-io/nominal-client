@@ -1,18 +1,12 @@
 from __future__ import annotations
 
-import atexit
 import datetime
 import logging
-import queue
-import threading
-import time
+from types import TracebackType
+from typing import Mapping, Type
 
 from nominal.core.dataset import Dataset
 from nominal.core.log import LogPoint
-
-DEFAULT_LOG_CHANNEL = "logs"
-DEFAULT_LOG_BATCH_SIZE = 1000
-DEFAULT_LOG_FLUSH_INTERVAL = datetime.timedelta(seconds=1)
 
 
 class NominalLogHandler(logging.Handler):
@@ -27,34 +21,27 @@ class NominalLogHandler(logging.Handler):
     def __init__(
         self,
         dataset: Dataset,
-        log_channel: str = DEFAULT_LOG_CHANNEL,
-        max_batch_size: int = DEFAULT_LOG_BATCH_SIZE,
-        flush_interval: datetime.timedelta = DEFAULT_LOG_FLUSH_INTERVAL,
-        max_queue_size: int = 0,
+        log_channel: str = "logs",
+        max_batch_size: int = 50_000,
+        flush_interval: datetime.timedelta = datetime.timedelta(seconds=1),
+        default_args: Mapping[str, str] | None = None,
     ):
         """Initializes the handler.
 
         Args:
-        dataset: The dataset object with a `write_logs` method.
-        log_channel: The channel within the dataset to send logs to
-        max_batch_size: The maximum number of records to hold in the queue before flushing.
-        flush_interval: The maximum time to wait before flushing the queue.
-        max_queue_size: Maximum size of the internal log message queue. Set to 0 for unbounded size.
+            dataset: The dataset object with a `write_logs` method.
+            log_channel: The channel within the dataset to send logs to
+            max_batch_size: The maximum number of records to hold in the queue before flushing.
+            flush_interval: The maximum time to wait before flushing the queue.
+            default_args: Default key-value pairs to use as arg in all log messages
         """
         super().__init__()
-        self.dataset = dataset
-        self.log_channel = log_channel
-        self.max_batch_size = max_batch_size
-        self.flush_interval = flush_interval
-
-        self.queue: queue.Queue[LogPoint] = queue.Queue(maxsize=max_queue_size)
-
-        self._worker_thread: threading.Thread | None = None
-        self._last_flush_time = 0.0
-
-        # Coordinate notifications to worker thread
-        self._condition = threading.Condition()
-        self._should_shutdown = False
+        self._log_stream = dataset.get_log_stream(
+            batch_size=max_batch_size,
+            max_wait=flush_interval,
+        )
+        self._log_channel = log_channel
+        self._default_args = default_args or {}
 
     def emit(self, record: logging.LogRecord) -> None:
         """Puts a log record into the queue"""
@@ -67,122 +54,25 @@ class NominalLogHandler(logging.Handler):
             "filename": record.filename,
             "function": record.funcName,
             "line": str(record.lineno),
+            **self._default_args,
             **{str(k): str(v) for k, v in extra_data.items()},
         }
         log_entry = LogPoint(int(record.created * 1e9), message=self.format(record), args=args)
 
         try:
-            self.queue.put(log_entry, block=False)
-
-            # Notify worker that a new log point is available
-            with self._condition:
-                self._condition.notify()
-        except queue.Full:
-            # Handle the case where the queue is full by logging a warning on the root logger
-            logging.warning("Nominal Log queue is full, dropping new log messages.")
+            self._log_stream.enqueue(self._log_channel, log_entry.timestamp, log_entry.message, log_entry.args)
         except Exception:
             self.handleError(record)
 
-    def _get_batch(self) -> list[LogPoint]:
-        """Retrieves a batch of log records from the queue."""
-        batch: list[LogPoint] = []
-        while not self.queue.empty() and len(batch) < self.max_batch_size:
-            try:
-                batch.append(self.queue.get_nowait())
-            except queue.Empty:
-                break
-        return batch
+    def close(self) -> None:
+        """Shutoff log handler from sending logs to Nominal"""
+        self._log_stream.close()
 
-    def _flush_batch(self, batch: list[LogPoint]) -> None:
-        """Flush a batch of logs to Nominal."""
-        if batch:
-            try:
-                self.dataset.write_logs(batch, channel_name=self.log_channel, batch_size=self.max_batch_size)
-                self._last_flush_time = time.monotonic()
-            except Exception:
-                logging.exception("Error writing logs to Nominal")
-
-    def _time_until_flush_due(self) -> float:
-        """Time in seconds until the next flush should happen
-
-        NOTE: may be negative if we have not flushed since longer than the configured interval
-        """
-        time_since_last_flush = time.monotonic() - self._last_flush_time
-        return self.flush_interval.total_seconds() - time_since_last_flush
-
-    def _should_flush(self) -> bool:
-        """Whether or not we should flush immediately based on time or batch size."""
-        flush_due = self._time_until_flush_due() <= 0
-        batch_full = self.queue.qsize() >= self.max_batch_size
-        return batch_full or (flush_due and not self.queue.empty())
-
-    def _worker(self) -> None:
-        """The background thread that processes the log queue."""
-        while not self._should_shutdown:
-            batch = None
-            with self._condition:
-                # If the queue is empty and we aren't shutting down, await new logs
-                if self.queue.empty() and not self._should_shutdown:
-                    self._condition.wait()
-
-                # If a shutdown is requested, exit
-                if self._should_shutdown:
-                    break
-
-                # If we have logs, but not a full batch worth, we wait up until the
-                # flush interval for more logs, or until a new log has been enqueued
-                if not self._should_flush():
-                    self._condition.wait(self._time_until_flush_due())
-
-                # If our flushing conditions have been satisfied, extract a batch to push to nominal
-                if self._should_flush():
-                    batch = self._get_batch()
-
-            # If a batch was extracted, flush the batch now that the condition lock has been released
-            if batch:
-                self._flush_batch(batch)
-                batch = None
-
-        # On shutdown, flush any remaining items in the queue
-        batch = self._get_batch()
-        while batch:
-            self._flush_batch(batch)
-            batch = self._get_batch()
-
-    def start(self) -> None:
-        """Start background workers for uploading logs to Nominal."""
-        # Already started
-        if self._worker_thread is not None:
-            return
-
-        self._last_flush_time = time.monotonic()
-        self._should_shutdown = False
-
-        self._worker_thread = threading.Thread(target=self._worker, daemon=True)
-        self._worker_thread.start()
-
-        # Shut down this logger before exiting
-        atexit.register(self.shutdown)
-
-    def shutdown(self) -> None:
-        """Flushes any remaining logs in the queue before the application exits."""
-        # Not started
-        if self._worker_thread is None:
-            return
-
-        # Signal worker to shutdown, wake it up in case it was awaiting logs
-        with self._condition:
-            self._should_shutdown = True
-            self._condition.notify_all()
-
-        # Await worker to finish processing
-        self._worker_thread.join()
-        self._worker_thread = None
-
-        try:
-            atexit.unregister(self.shutdown)
-        except Exception:
-            pass
+    def __exit__(
+        self, exc_type: Type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
+    ) -> None:
+        """Exit the stream and close out any used system resources."""
+        self.close()
 
 
 class ModuleFilter(logging.Filter):
@@ -212,7 +102,12 @@ class ModuleFilter(logging.Filter):
 
 
 def install_nominal_log_handler(
-    dataset: Dataset, *, log_channel: str = "logs", level: int = logging.INFO, logger: logging.Logger | None = None
+    dataset: Dataset,
+    *,
+    log_channel: str = "logs",
+    level: int = logging.INFO,
+    logger: logging.Logger | None = None,
+    default_args: Mapping[str, str] | None = None,
 ) -> NominalLogHandler:
     """Install and configure a NominalLogHandler on the provided logger instance.
 
@@ -221,6 +116,7 @@ def install_nominal_log_handler(
         log_channel: Nominal channel to send logs to within the provided dataset
         level: Minimum log level to send to Nominal
         logger: Logger instance to attach the log handler to. Attaches to the root logger by default
+        default_args: Key-value arguments to apply to all log messages by default
 
     Returns:
         Attached NominalLogHandler
@@ -228,13 +124,12 @@ def install_nominal_log_handler(
     if logger is None:
         logger = logging.getLogger()
 
-    handler = NominalLogHandler(dataset, log_channel=log_channel)
+    handler = NominalLogHandler(dataset, log_channel=log_channel, default_args=default_args)
     handler.setLevel(level)
     # Logs from urllib3 while uploading logs result in an infinite loop of producing logs
     # while uploading logs to Nominal. They are typically pretty spammy logs anyways, so
     # not particularly relevant to see in a log panel within Nominal.
     handler.addFilter(ModuleFilter(set(["urllib3.connectionpool"])))
-    handler.start()
 
     logger.addHandler(handler)
     return handler

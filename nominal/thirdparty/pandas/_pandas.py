@@ -14,6 +14,7 @@ from nominal._utils import batched, reader_writer
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
+from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
 
@@ -30,7 +31,7 @@ def upload_dataframe_to_dataset(
     file_name: str | None = None,
     tag_columns: Mapping[str, str] | None = None,
     tags: Mapping[str, str] | None = None,
-) -> None:
+) -> DatasetFile:
     """Upload a pandas dataframe to an existing dataset as if it were a gzipped-CSV file
 
     Args:
@@ -55,7 +56,7 @@ def upload_dataframe_to_dataset(
         t = Thread(target=write_and_close, args=(df, writer))
         t.start()
 
-        dataset.add_from_io(
+        dataset_file = dataset.add_from_io(
             reader,
             timestamp_column=timestamp_column,
             timestamp_type=timestamp_type,
@@ -69,7 +70,9 @@ def upload_dataframe_to_dataset(
         t.join()
 
         if wait_until_complete:
-            dataset.poll_until_ingestion_completed()
+            dataset_file.poll_until_ingestion_completed()
+
+        return dataset_file
 
 
 def upload_dataframe(

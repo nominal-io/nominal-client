@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.69.0"
+version = "1.81.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -34,7 +34,7 @@ dependencies = [
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
-    "nominal-api==0.778.1",
+    "nominal-api==0.861.0",
     "cachetools>=6.1.0",
     "types-cachetools>=6.0.0.20250525",
 ]
@@ -82,6 +82,7 @@ tdms = ["nptdms>=1.9.0,<2"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
+nominal = 'nominal.cli:nom'
 
 [build-system]
 requires = ["hatchling"]
@@ -173,3 +174,6 @@ addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"
 
 [tool.coverage.run]
 omit = ["tests/*", "*__init__*", "nominal/__main__.py"]
+
+[tool.pyright]
+typeCheckingMode = "off"

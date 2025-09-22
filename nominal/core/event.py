@@ -11,7 +11,7 @@ from typing_extensions import Self, deprecated
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils import rid_from_instance_or_string
+from nominal.core._utils.api_tools import rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
@@ -115,7 +115,7 @@ class Event:
             name=event.name,
             description=event.description,
             start=_SecondsNanos.from_api(event.timestamp).to_nanoseconds(),
-            duration=event.duration.seconds * 1_000_000_000 + event.timestamp.nanos,
+            duration=event.duration.seconds * 1_000_000_000 + event.duration.nanos,
             type=EventType.from_api_event_type(event.type),
             properties=event.properties,
             labels=event.labels,

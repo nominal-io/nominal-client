@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import enum
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence, Union
 
 import certifi
 import conjure_python_client
@@ -14,7 +15,6 @@ from nominal_api import (
     api,
     attachments_api,
     authentication_api,
-    datasource_logset_api,
     event,
     ingest_api,
     scout_asset_api,
@@ -30,39 +30,56 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal import _config
+from nominal import _config, ts
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.config import NominalConfig
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
-from nominal.core._multipart import path_upload_name, upload_multipart_io
-from nominal.core._utils import (
+from nominal.core._utils.api_tools import (
     construct_user_agent_string,
-    create_search_assets_query,
-    create_search_checklists_query,
-    create_search_datasets_query,
-    create_search_events_query,
-    create_search_runs_query,
-    create_search_secrets_query,
-    create_search_users_query,
+    rid_from_instance_or_string,
+)
+from nominal.core._utils.multipart import (
+    path_upload_name,
+    upload_multipart_io,
+)
+from nominal.core._utils.pagination_tools import (
     list_streaming_checklists_for_asset_paginated,
     list_streaming_checklists_paginated,
-    rid_from_instance_or_string,
     search_assets_paginated,
     search_checklists_paginated,
     search_data_reviews_paginated,
     search_datasets_paginated,
     search_events_paginated,
+    search_runs_by_asset_paginated,
     search_runs_paginated,
     search_secrets_paginated,
     search_users_paginated,
     search_workbook_templates_paginated,
     search_workbooks_paginated,
 )
-from nominal.core._utils.query_tools import create_search_workbook_templates_query, create_search_workbooks_query
+from nominal.core._utils.query_tools import (
+    create_search_assets_query,
+    create_search_checklists_query,
+    create_search_containerized_extractors_query,
+    create_search_datasets_query,
+    create_search_events_query,
+    create_search_runs_query,
+    create_search_secrets_query,
+    create_search_users_query,
+    create_search_workbook_templates_query,
+    create_search_workbooks_query,
+)
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.containerized_extractors import (
+    ContainerizedExtractor,
+    DockerImageSource,
+    FileExtractionInput,
+    FileOutputFormat,
+)
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
@@ -72,7 +89,6 @@ from nominal.core.dataset import (
 )
 from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.log import Log, LogSet, _get_log_set, _log_timestamp_type_to_conjure, _logs_to_conjure
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, _available_units
@@ -81,18 +97,26 @@ from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
-from nominal.exceptions import NominalError, NominalIngestError
+from nominal.exceptions import NominalConfigError, NominalError, NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
-    LogTimestampType,
     _SecondsNanos,
     _to_api_duration,
+    _to_typed_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONNECT_TIMEOUT = timedelta(seconds=30)
+
+
+class WorkspaceSearchType(enum.Enum):
+    ALL = "ALL"
+    DEFAULT = "DEFAULT"
+
+
+WorkspaceSearchT = Union[WorkspaceSearchType, Workspace, str]
 
 
 @dataclass(frozen=True)
@@ -198,6 +222,77 @@ class NominalClient:
         out += ">"
         return out
 
+    def _workspace_rid_for_search(self, workspace: WorkspaceSearchT) -> str | None:
+        """Provide the correct workspace rid to use when searching (potentially using a provided workspace)
+
+        Args:
+            workspace: Workspace (or None) that user wants to search with
+
+        Returns:
+            If no workspace is provided, then return the default workspace (or none if none is configured).
+            If a workspace is provided, then return it if authenticated, otherwise, return None.
+        """
+        search_rid = None
+        if isinstance(workspace, Workspace):
+            search_rid = workspace.rid
+        elif isinstance(workspace, str):
+            search_rid = workspace
+        elif workspace is WorkspaceSearchType.ALL:
+            return None
+        elif workspace is WorkspaceSearchType.DEFAULT:
+            search_rid = None
+        else:
+            raise ValueError(f"Unexpected workspace: {workspace}")
+
+        try:
+            # NOTE: raises a conjure exception if the given rid is not visible to the user (or doesn't exist period)
+            resolved_workspace = self.get_workspace(search_rid)
+            return resolved_workspace.rid
+        except NominalConfigError:
+            # re-raising with a more specific exception message
+            raise NominalConfigError(
+                "WorkspaceSearchType.DEFAULT provided for workspace rid, but no default configured. "
+                "Specify a workspace RID within your config profile (see `nom config profile --help`), "
+                "specify a workspace RID manually, or contact your Nominal representative to set a default "
+                "workspace for your tenant."
+            )
+
+    def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
+        """Get workspace via given RID, or the default workspace if no RID is provided.
+
+        Args:
+            workspace_rid: If provided, the RID of the workspace to retrieve. If None, retrieves the
+                default workspace (deferring first to any workspace rid stored in the Nominal config, and attempting
+                to fall back to the tenant-wide default workspace).
+
+        Returns:
+            Returns details about the requested workspace.
+
+        Raises:
+            NominalConfigError: Raises a NominalConfigError if no workspace provided and there is no configured
+                default workspace for the user.
+            conjure_python_client.ConjureHTTPError: Requested workspace is unavailable to the user.
+        """
+        if workspace_rid is None:
+            raw_workspace = self._clients.workspace.get_default_workspace(self._clients.auth_header)
+            if raw_workspace is None:
+                raise NominalConfigError(
+                    "Could not retrieve default workspace! "
+                    "Either the user is not authorized to access or there is no default workspace."
+                )
+
+            return Workspace._from_conjure(raw_workspace)
+        else:
+            raw_workspace = self._clients.workspace.get_workspace(self._clients.auth_header, workspace_rid)
+            return Workspace._from_conjure(raw_workspace)
+
+    def list_workspaces(self) -> Sequence[Workspace]:
+        """Return all workspaces visible to the current user"""
+        return [
+            Workspace._from_conjure(raw_workspace)
+            for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
+        ]
+
     def get_user(self, user_rid: str | None = None) -> User:
         """Retrieve the specified user.
 
@@ -229,13 +324,17 @@ class NominalClient:
         Returns:
             All users which match all of the provided conditions
         """
-        query = create_search_users_query(exact_match, search_text)
+        query = create_search_users_query(exact_match=exact_match, search_text=search_text)
         return list(self._iter_search_users(query))
 
     def _iter_search_datasets(self, query: scout_catalog.SearchDatasetsQuery) -> Iterable[Dataset]:
         for raw_dataset in search_datasets_paginated(self._clients.catalog, self._clients.auth_header, query):
             yield Dataset._from_conjure(self._clients, raw_dataset)
 
+    @warn_on_deprecated_argument(
+        "workspace_rid",
+        "`workspace_rid` has been deprecated and will be removed in a future version. Use `workspace` instead.",
+    )
     def search_datasets(
         self,
         *,
@@ -245,7 +344,9 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
-        workspace_rid: str | None = None,
+        workspace_rid: Workspace | str | None = None,
+        workspace: WorkspaceSearchT = WorkspaceSearchType.ALL,
+        archived: bool | None = None,
     ) -> Sequence[Dataset]:
         """Search for datasets the specified filters.
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
@@ -257,46 +358,35 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
             before: Searches for datasets created before some time (inclusive).
             after: Searches for datasets created before after time (inclusive).
-            workspace_rid: Filters search to given workspace. If None, searches within default workspace
+            workspace_rid: deprecated. use `workspace` instead.
+            workspace: Filters search to given workspace.
+            archived: Filters results to either archived or unarchived datasets.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
 
         Returns:
             All datasets which match all of the provided conditions
         """
-        query = create_search_datasets_query(exact_match, search_text, labels, properties, before, after, workspace_rid)
+        if workspace is not None and workspace_rid is not None:
+            raise ValueError("Both `workspace` and `workspace_rid` provided-- must use one or the other.")
+
+        if workspace_rid is not None:
+            workspace = workspace_rid
+
+        query = create_search_datasets_query(
+            exact_match=exact_match,
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            ingested_before_inclusive=before,
+            ingested_after_inclusive=after,
+            archived=archived,
+            workspace_rid=self._workspace_rid_for_search(workspace),
+        )
         return list(self._iter_search_datasets(query))
-
-    def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
-        """Get workspace via given RID, or the default workspace if no RID is provided.
-
-        Args:
-            workspace_rid: If provided, the RID of the workspace to retrieve. If None, retrieves the default workspace.
-
-        Returns:
-            Returns details about the requested workspace.
-
-        Raises:
-            RuntimeError: Raises a RuntimeError if a workspace is not provided, but there is no configured default
-                workspace for the current user.
-        """
-        if workspace_rid is None:
-            raw_workspace = self._clients.workspace.get_default_workspace(self._clients.auth_header)
-            if raw_workspace is None:
-                raise RuntimeError(
-                    "Could not retrieve default workspace! "
-                    "Either the user is not authorized to access or there is no default workspace."
-                )
-
-            return Workspace._from_conjure(raw_workspace)
-        else:
-            raw_workspace = self._clients.workspace.get_workspace(self._clients.auth_header, workspace_rid)
-            return Workspace._from_conjure(raw_workspace)
-
-    def list_workspaces(self) -> Sequence[Workspace]:
-        """Return all workspaces visible to the current user"""
-        return [
-            Workspace._from_conjure(raw_workspace)
-            for raw_workspace in self._clients.workspace.get_workspaces(self._clients.auth_header)
-        ]
 
     def create_secret(
         self,
@@ -340,6 +430,7 @@ class NominalClient:
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
     ) -> Sequence[Secret]:
         """Search for secrets meeting the specified filters.
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
@@ -348,11 +439,23 @@ class NominalClient:
             search_text: Searches for a (case-insensitive) substring across all text fields.
             labels: A sequence of labels that must ALL be present on a secret to be included.
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
+
 
         Returns:
             All secrets which match all of the provided conditions
         """
-        query = create_search_secrets_query(search_text, labels, properties)
+        query = create_search_secrets_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        )
         return list(self._iter_search_secrets(query))
 
     def create_run(
@@ -397,8 +500,20 @@ class NominalClient:
         name_substring: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        workspace_rid: str | None = None,
     ) -> Iterable[Run]:
-        query = create_search_runs_query(start, end, name_substring, labels, properties)
+        query = create_search_runs_query(
+            start=start,
+            end=end,
+            name_substring=name_substring,
+            labels=labels,
+            properties=properties,
+            exact_match=exact_match,
+            search_text=search_text,
+            workspace_rid=workspace_rid,
+        )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
             yield Run._from_conjure(self._clients, run)
 
@@ -410,6 +525,9 @@ class NominalClient:
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
@@ -420,11 +538,47 @@ class NominalClient:
             name_substring: Searches for a (case-insensitive) substring in the name.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
+            exact_match: A case-insensitive substring that must be matched exactly.
+            search_text: A case-insensitive substring to perform fuzzy-search on all fields with
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
+
 
         Returns:
             All runs which match all of the provided conditions
         """
-        return list(self._iter_search_runs(start, end, name_substring, labels, properties))
+        return list(
+            self._iter_search_runs(
+                start=start,
+                end=end,
+                name_substring=name_substring,
+                labels=labels,
+                properties=properties,
+                exact_match=exact_match,
+                search_text=search_text,
+                workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            )
+        )
+
+    def search_runs_by_asset(self, asset: Asset | str) -> Sequence[Run]:
+        """Search for all runs associated with a given asset:
+
+        Args:
+            asset: Asset to search for runs from
+
+        Returns:
+            All runs associated with the given asset
+        """
+        return [
+            Run._from_conjure(self._clients, run)
+            for run in search_runs_by_asset_paginated(
+                self._clients.run, self._clients.auth_header, rid_from_instance_or_string(asset)
+            )
+        ]
 
     def create_dataset(
         self,
@@ -488,42 +642,10 @@ class NominalClient:
             properties={} if properties is None else {**properties},
             description=description,
             workspace=self._clients.workspace_rid,
+            marking_rids=[],
         )
         raw_video = self._clients.video.create(self._clients.auth_header, request)
         return Video._from_conjure(self._clients, raw_video)
-
-    @deprecated(
-        "LogSets are deprecated and will be removed in a future version. "
-        "Add logs to an existing dataset with dataset.write_logs instead."
-    )
-    def create_log_set(
-        self,
-        name: str,
-        logs: Iterable[Log] | Iterable[tuple[datetime | IntegralNanosecondsUTC, str]],
-        timestamp_type: LogTimestampType = "absolute",
-        description: str | None = None,
-    ) -> LogSet:
-        """Create an immutable log set with the given logs.
-
-        The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
-        or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
-        """
-        request = datasource_logset_api.CreateLogSetRequest(
-            name=name,
-            description=description,
-            origin_metadata={},
-            timestamp_type=_log_timestamp_type_to_conjure(timestamp_type),
-            workspace=self._clients.workspace_rid,
-        )
-        response = self._clients.logset.create(self._clients.auth_header, request)
-        return self._attach_logs_and_finalize(response.rid, _logs_to_conjure(logs))
-
-    def _attach_logs_and_finalize(self, rid: str, logs: Iterable[datasource_logset_api.Log]) -> LogSet:
-        request = datasource_logset_api.AttachLogsAndFinalizeRequest(logs=list(logs))
-        response = self._clients.logset.attach_logs_and_finalize(
-            auth_header=self._clients.auth_header, log_set_rid=rid, request=request
-        )
-        return LogSet._from_conjure(self._clients, response)
 
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""
@@ -543,12 +665,6 @@ class NominalClient:
         """Retrieve a dataset by its RID."""
         response = _get_dataset(self._clients.auth_header, self._clients.catalog, rid)
         return Dataset._from_conjure(self._clients, response)
-
-    @deprecated("LogSets are deprecated and will be removed in a future version.")
-    def get_log_set(self, log_set_rid: str) -> LogSet:
-        """Retrieve a log set along with its metadata given its RID."""
-        response = _get_log_set(self._clients, log_set_rid)
-        return LogSet._from_conjure(self._clients, response)
 
     def _iter_get_datasets(self, rids: Iterable[str]) -> Iterable[Dataset]:
         for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, rids):
@@ -571,6 +687,9 @@ class NominalClient:
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        author: User | str | None = None,
+        assignee: User | str | None = None,
+        workspace: WorkspaceSearchT | None = None,
     ) -> Sequence[Checklist]:
         """Search for checklists meeting the specified filters.
         Filters are ANDed together, e.g. `(checklist.label == label) AND (checklist.search_text =~ field)`
@@ -579,11 +698,27 @@ class NominalClient:
             search_text: case-insensitive search for any of the keywords in all string fields
             labels: A sequence of labels that must ALL be present on a checklist to be included.
             properties: A mapping of key-value pairs that must ALL be present on a checklist to be included.
+            author: Author of checklists to search for
+            assignee: Assignee of checklists to search for
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
+
 
         Returns:
             All checklists which match all of the provided conditions
         """
-        query = create_search_checklists_query(search_text, labels, properties)
+        query = create_search_checklists_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            author=rid_from_instance_or_string(author) if author else None,
+            assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        )
         return list(self._iter_search_checklists(query))
 
     def create_attachment(
@@ -765,6 +900,7 @@ class NominalClient:
                             properties={} if properties is None else dict(properties),
                             labels=list(labels),
                             workspace=self._clients.workspace_rid,
+                            marking_rids=[],
                         )
                     ),
                     timestamp_manifest=scout_video_api.VideoFileTimestampManifest(
@@ -816,6 +952,7 @@ class NominalClient:
                 available_tag_values={},
                 should_scrape=True,
                 workspace=self._clients.workspace_rid,
+                marking_rids=[],
             ),
         )
         conn = Connection._from_conjure(self._clients, connection_response)
@@ -864,6 +1001,8 @@ class NominalClient:
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        exact_substring: str | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
     ) -> Sequence[Asset]:
         """Search for assets meeting the specified filters.
         Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
@@ -872,11 +1011,25 @@ class NominalClient:
             search_text: case-insensitive search for any of the keywords in all string fields
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
+            exact_substring: case-insensitive search for exact string match in all string fields
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
+
 
         Returns:
             All assets which match all of the provided conditions
         """
-        query = create_search_assets_query(search_text, labels, properties)
+        query = create_search_assets_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            exact_substring=exact_substring,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        )
         return list(self._iter_search_assets(query))
 
     def _iter_list_streaming_checklists(self, asset: str | None) -> Iterable[str]:
@@ -896,7 +1049,7 @@ class NominalClient:
         return list(self._iter_list_streaming_checklists(asset))
 
     def data_review_builder(self) -> DataReviewBuilder:
-        return DataReviewBuilder([], [], self._clients)
+        return DataReviewBuilder([], [], [], _clients=self._clients)
 
     def get_data_review(self, rid: str) -> DataReview:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
@@ -975,6 +1128,11 @@ class NominalClient:
         labels: Iterable[str] | None = None,
         properties: Mapping[str, str] | None = None,
         created_by: User | str | None = None,
+        workbook: Workbook | str | None = None,
+        data_review: DataReview | str | None = None,
+        assignee: User | str | None = None,
+        event_type: EventType | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
         Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
@@ -987,6 +1145,17 @@ class NominalClient:
             labels: A list of labels that must ALL be present on an event to be included.
             properties: A mapping of key-value pairs that must ALL be present on an event to be included.
             created_by: A User (or rid) of the author that must be present on an event to be included.
+            workbook: Workbook to search for events on
+            data_review: Search for events from the given data review
+            assignee: Search for events with the given assignee
+            event_type: Search for events based on level
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
+
 
         Returns:
             All events which match all of the provided conditions
@@ -998,9 +1167,91 @@ class NominalClient:
             assets=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
             labels=labels,
             properties=properties,
-            created_by=None if created_by is None else rid_from_instance_or_string(created_by),
+            created_by=rid_from_instance_or_string(created_by) if created_by else None,
+            workbook=rid_from_instance_or_string(workbook) if workbook else None,
+            data_review=rid_from_instance_or_string(data_review) if data_review else None,
+            assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            event_type=event_type,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
         return list(self._iter_search_events(query))
+
+    def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
+        return ContainerizedExtractor._from_conjure(
+            self._clients,
+            self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
+        )
+
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        docker_image: DockerImageSource,
+        timestamp_column: str,
+        timestamp_type: ts._AnyTimestampType,
+        inputs: Sequence[FileExtractionInput] = (),
+        file_output_format: FileOutputFormat | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        description: str | None = None,
+    ) -> ContainerizedExtractor:
+        workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:  # TODO: Remove this once workspace_rid is required on the client
+            workspace_rid = self.get_workspace().rid
+
+        req = ingest_api.RegisterContainerizedExtractorRequest(
+            image=docker_image._to_conjure(),
+            inputs=[file_input._to_conjure() for file_input in inputs],
+            labels=list(labels),
+            name=name,
+            properties={} if properties is None else {**properties},
+            timestamp_metadata=ingest_api.TimestampMetadata(
+                series_name=timestamp_column,
+                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+            ),
+            workspace=workspace_rid,
+            description=description,
+            output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
+        )
+        resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
+        return self.get_containerized_extractor(resp.extractor_rid)
+
+    def search_containerized_extractors(
+        self,
+        *,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+    ) -> Sequence[ContainerizedExtractor]:
+        """Search for containerized extractors meeting the specified filters.
+        Filters are ANDed together, e.g., `(extractor.label == label) AND (extractor.workspace == workspace)`
+
+        Args:
+            search_text: Fuzzy-searches for a string in the extractor's metadata.
+            labels: A list of labels that must ALL be present on an extractor to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an extractor te be included.
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
+
+
+        Returns:
+            All extractors which match all of the provided coditions
+        """
+        query = create_search_containerized_extractors_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        )
+        resp = self._clients.containerized_extractors.search_containerized_extractors(
+            self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
+        )
+        return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""
@@ -1032,6 +1283,8 @@ class NominalClient:
         exact_assets: Sequence[Asset | str] | None = None,
         created_by: User | str | None = None,
         run: Run | str | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        archived: bool | None = None,
     ) -> Sequence[Workbook]:
         """Search for workbooks meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
@@ -1046,6 +1299,14 @@ class NominalClient:
             exact_assets: Searches for workbooks that have the exact given assets
             created_by: Searches for workbooks with the given author
             run: Searches for workbooks with the given run
+            workspace: Filters search to given workspace.
+            archived: Return workbooks that are either archived or not
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
+
 
         Returns:
             All workbooks which match all of the provided conditions
@@ -1061,6 +1322,8 @@ class NominalClient:
             else [rid_from_instance_or_string(asset) for asset in exact_assets],
             author_rid=None if created_by is None else rid_from_instance_or_string(created_by),
             run_rid=None if run is None else rid_from_instance_or_string(run),
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            archived=archived,
         )
         return list(self._iter_search_workbooks(query, include_archived))
 
@@ -1085,6 +1348,8 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         created_by: User | str | None = None,
+        archived: bool | None = None,
+        published: bool | None = None,
     ) -> Sequence[WorkbookTemplate]:
         """Search for workbook templates meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
@@ -1095,6 +1360,8 @@ class NominalClient:
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
             created_by: Searches for workbook templates with the given creator's rid
+            archived: Searches for workbook templates that are archived if true
+            published: Searches f8or workbook templates that have been published if true
 
         Returns:
             All workbook templates which match all of the provided conditions
@@ -1105,6 +1372,8 @@ class NominalClient:
             labels=labels,
             properties=properties,
             created_by=None if created_by is None else rid_from_instance_or_string(created_by),
+            archived=archived,
+            published=published,
         )
         return list(self._iter_search_workbook_templates(query))
 

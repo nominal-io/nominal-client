@@ -14,8 +14,6 @@ from nominal.core import (
     Checklist,
     Dataset,
     FileType,
-    Log,
-    LogSet,
     NominalClient,
     Run,
     User,
@@ -401,16 +399,6 @@ def get_attachment(rid: str) -> Attachment:
 
 
 @typing_extensions.deprecated(
-    "LogSets are deprecated and will be removed in a future version. "
-    "Add logs to an existing dataset with dataset.write_logs instead."
-)
-def get_log_set(rid: str) -> LogSet:
-    """Retrieve a log set from the Nominal platform by its RID."""
-    client = _get_default_client()
-    return client.get_log_set(rid)
-
-
-@typing_extensions.deprecated(
     "nominal.download_attachment is deprecated and will be removed in a future version. "
     "Use `nominal.NominalClient.get_attachment` and `nominal.core.Attachment.write` instead, "
     f"see {AUTHENTICATION_DOCS_LINK}"
@@ -630,25 +618,6 @@ def create_workbook_from_template(
     """
     client = _get_default_client()
     return client.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
-
-
-@typing_extensions.deprecated(
-    "LogSets are deprecated and will be removed in a future version. "
-    "Add logs to an existing dataset with dataset.write_logs instead."
-)
-def create_log_set(
-    name: str,
-    logs: Iterable[Log] | Iterable[tuple[datetime | ts.IntegralNanosecondsUTC, str]],
-    timestamp_type: ts.LogTimestampType = "absolute",
-    description: str | None = None,
-) -> LogSet:
-    """Create an immutable log set with the given logs.
-
-    The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
-    or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
-    """
-    client = _get_default_client()
-    return client.create_log_set(name, logs, timestamp_type, description)
 
 
 @typing_extensions.deprecated(

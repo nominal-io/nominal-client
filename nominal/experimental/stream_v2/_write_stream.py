@@ -14,11 +14,14 @@ from typing import Callable, Mapping, Protocol, Type
 
 from typing_extensions import Self
 
-from nominal.core._batch_processor_proto import SerializedBatch
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService, RequestMetrics
-from nominal.core._queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
-from nominal.core.stream import BatchItem
-from nominal.core.write_stream_base import WriteStreamBase
+from nominal.core._stream.batch_processor_proto import SerializedBatch
+from nominal.core._stream.write_stream import (
+    BatchItem,
+    DataItem,
+    DataStream,
+)
+from nominal.core._utils.queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.experimental.stream_v2._serializer import BatchSerializer
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -26,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class WriteStreamV2(WriteStreamBase):
-    _item_queue: Queue[BatchItem | QueueShutdown]
+class WriteStreamV2(DataStream):
+    _item_queue: Queue[DataItem | QueueShutdown]
     _batch_thread: threading.Thread
     _write_pool: ThreadPoolExecutor
     _batch_serialize_thread: threading.Thread
@@ -56,7 +59,7 @@ class WriteStreamV2(WriteStreamBase):
         item_maxsize = max_queue_size if max_queue_size > 0 else 0
         batch_queue_maxsize = (max_queue_size // max_batch_size) if max_queue_size > 0 else 0
 
-        item_queue: Queue[BatchItem | QueueShutdown] = Queue(maxsize=item_maxsize)
+        item_queue: Queue[DataItem | QueueShutdown] = Queue(maxsize=item_maxsize)
         batch_thread, batch_queue = spawn_batching_thread(
             item_queue,
             max_batch_size,
@@ -165,7 +168,7 @@ def _write_serialized_batch(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     nominal_data_source_rid: str,
-    item_queue: Queue[BatchItem | QueueShutdown],
+    item_queue: Queue[DataItem | QueueShutdown],
     write_callback: Callable[[concurrent.futures.Future[RequestMetrics]], None],
     future: concurrent.futures.Future[SerializedBatch],
 ) -> None:
@@ -189,7 +192,7 @@ def _write_serialized_batch(
 
 
 def _on_write_complete_with_metrics(
-    item_queue: Queue[BatchItem | QueueShutdown],
+    item_queue: Queue[DataItem | QueueShutdown],
     f: concurrent.futures.Future[RequestMetrics],
 ) -> None:
     try:
@@ -245,8 +248,8 @@ def serialize_and_write_batches(
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
-    item_queue: Queue[BatchItem | QueueShutdown],
-    batch_queue: ReadQueue[Batch],
+    item_queue: Queue[DataItem | QueueShutdown],
+    batch_queue: ReadQueue[Batch[str | float]],
     track_metrics: bool,
 ) -> None:
     """Worker that processes batches."""
@@ -262,8 +265,8 @@ def spawn_batch_serialize_thread(
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
-    batch_queue: ReadQueue[Batch],
-    item_queue: Queue[BatchItem | QueueShutdown],
+    batch_queue: ReadQueue[Batch[str | float]],
+    item_queue: Queue[DataItem | QueueShutdown],
     track_metrics: bool,
 ) -> threading.Thread:
     thread = threading.Thread(
