@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.81.0](https://github.com/nominal-io/nominal-client/compare/v1.80.0...v1.81.0) (2025-09-18)
+
+
+### Features
+
+* allow default_args in nominal log handler ([#473](https://github.com/nominal-io/nominal-client/issues/473)) ([cb4537a](https://github.com/nominal-io/nominal-client/commit/cb4537a4273dbb15ba00d48b1211a9cf904f0182))
+
+## [1.80.0](https://github.com/nominal-io/nominal-client/compare/v1.79.0...v1.80.0) (2025-09-10)
+
+
+### Features
+
+* add enum expressions to compute expressions dsl ([#463](https://github.com/nominal-io/nominal-client/issues/463)) ([70ccf59](https://github.com/nominal-io/nominal-client/commit/70ccf59a86f335d69aa2a6fbeab9306c419a0c34))
+* improve default workspace handling in search methods ([#461](https://github.com/nominal-io/nominal-client/issues/461)) ([3583a47](https://github.com/nominal-io/nominal-client/commit/3583a4778c3e370834f9a29eb5d2df146b63fc95))
+* update release-please configuration ([1655c36](https://github.com/nominal-io/nominal-client/commit/1655c3686c072859fb3343e7760866e9807d5f5d))
+
+
+### Bug Fixes
+
+* broken links to python quickstart ([#470](https://github.com/nominal-io/nominal-client/issues/470)) ([9d702ea](https://github.com/nominal-io/nominal-client/commit/9d702eacc95c9d6785dc5e1c4475fa65749a16ba))
+* revert update release-please configuration ([#469](https://github.com/nominal-io/nominal-client/issues/469)) ([76a6968](https://github.com/nominal-io/nominal-client/commit/76a6968736d9f06dddf95a3f0386b0d8c3cea366))
+
+## [1.79.0](https://github.com/nominal-io/nominal-client/compare/v1.78.1...v1.79.0) (2025-09-08)
+
+
+### Features
+
+* allow data review builder to specify tags for sending alerts ([#462](https://github.com/nominal-io/nominal-client/issues/462)) ([fcb473a](https://github.com/nominal-io/nominal-client/commit/fcb473a714314b5689f7afb061cfb1d250955494))
+
+
+### Bug Fixes
+
+* disable typechecking from pylance ([#464](https://github.com/nominal-io/nominal-client/issues/464)) ([282ed12](https://github.com/nominal-io/nominal-client/commit/282ed12b0d4ec2b22177dda25e013c71cc7c59ab))
+
 ## [1.78.1](https://github.com/nominal-io/nominal-client/compare/v1.78.0...v1.78.1) (2025-09-03)
 
 

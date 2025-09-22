@@ -11,6 +11,7 @@ DoubleConstant = float
 TimeUnitLiteral = typing.Literal["ns", "us", "ms", "s", "m", "h", "d"]
 ThresholdOperatorLiteral = typing.Literal[">", ">=", "<", "<=", "==", "!="]
 RollingOperationLiteral = typing.Literal["mean", "sum", "min", "max", "count", "std"]
+EnumUnionOperationLiteral = typing.Literal["min", "max", "throw"]
 
 
 @dataclass(frozen=True)
@@ -30,9 +31,12 @@ def _float_to_conjure(value: DoubleConstant) -> scout_compute_api.DoubleConstant
 
 def _window_to_conjure(window: Nanoseconds) -> scout_compute_api.Window:
     seconds, nanos = divmod(window, 1_000_000_000)
-    return scout_compute_api.Window(
-        duration=scout_compute_api.DurationConstant(literal=scout_run_api.Duration(seconds=seconds, nanos=nanos))
-    )
+    return scout_compute_api.Window(duration=_duration_ns_to_conjure(window))
+
+
+def _duration_ns_to_conjure(duration: Nanoseconds) -> scout_compute_api.DurationConstant:
+    seconds, nanos = divmod(duration, 1_000_000_000)
+    return scout_compute_api.DurationConstant(literal=scout_run_api.Duration(seconds=seconds, nanos=nanos))
 
 
 def _timestamp_to_conjure(timestamp: NanosecondsUTC) -> scout_compute_api.TimestampConstant:
@@ -73,5 +77,14 @@ def _rolling_operation_to_conjure(operator: RollingOperationLiteral) -> scout_co
         "max": scout_compute_api.RollingOperator(max=scout_compute_api.Maximum()),
         "count": scout_compute_api.RollingOperator(count=scout_compute_api.Count()),
         "std": scout_compute_api.RollingOperator(standard_deviation=scout_compute_api.StandardDeviation()),
+    }
+    return mapping[operator]
+
+
+def _enum_union_operation_to_conjure(operator: EnumUnionOperationLiteral) -> scout_compute_api.EnumUnionOperation:
+    mapping = {
+        "throw": scout_compute_api.EnumUnionOperation.THROW,
+        "min": scout_compute_api.EnumUnionOperation.MIN,
+        "max": scout_compute_api.EnumUnionOperation.MAX,
     }
     return mapping[operator]

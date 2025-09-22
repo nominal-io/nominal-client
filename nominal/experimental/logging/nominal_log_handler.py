@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 from types import TracebackType
-from typing import Type
+from typing import Mapping, Type
 
 from nominal.core.dataset import Dataset
 from nominal.core.log import LogPoint
@@ -24,6 +24,7 @@ class NominalLogHandler(logging.Handler):
         log_channel: str = "logs",
         max_batch_size: int = 50_000,
         flush_interval: datetime.timedelta = datetime.timedelta(seconds=1),
+        default_args: Mapping[str, str] | None = None,
     ):
         """Initializes the handler.
 
@@ -32,6 +33,7 @@ class NominalLogHandler(logging.Handler):
             log_channel: The channel within the dataset to send logs to
             max_batch_size: The maximum number of records to hold in the queue before flushing.
             flush_interval: The maximum time to wait before flushing the queue.
+            default_args: Default key-value pairs to use as arg in all log messages
         """
         super().__init__()
         self._log_stream = dataset.get_log_stream(
@@ -39,6 +41,7 @@ class NominalLogHandler(logging.Handler):
             max_wait=flush_interval,
         )
         self._log_channel = log_channel
+        self._default_args = default_args or {}
 
     def emit(self, record: logging.LogRecord) -> None:
         """Puts a log record into the queue"""
@@ -51,6 +54,7 @@ class NominalLogHandler(logging.Handler):
             "filename": record.filename,
             "function": record.funcName,
             "line": str(record.lineno),
+            **self._default_args,
             **{str(k): str(v) for k, v in extra_data.items()},
         }
         log_entry = LogPoint(int(record.created * 1e9), message=self.format(record), args=args)
@@ -98,7 +102,12 @@ class ModuleFilter(logging.Filter):
 
 
 def install_nominal_log_handler(
-    dataset: Dataset, *, log_channel: str = "logs", level: int = logging.INFO, logger: logging.Logger | None = None
+    dataset: Dataset,
+    *,
+    log_channel: str = "logs",
+    level: int = logging.INFO,
+    logger: logging.Logger | None = None,
+    default_args: Mapping[str, str] | None = None,
 ) -> NominalLogHandler:
     """Install and configure a NominalLogHandler on the provided logger instance.
 
@@ -107,6 +116,7 @@ def install_nominal_log_handler(
         log_channel: Nominal channel to send logs to within the provided dataset
         level: Minimum log level to send to Nominal
         logger: Logger instance to attach the log handler to. Attaches to the root logger by default
+        default_args: Key-value arguments to apply to all log messages by default
 
     Returns:
         Attached NominalLogHandler
@@ -114,7 +124,7 @@ def install_nominal_log_handler(
     if logger is None:
         logger = logging.getLogger()
 
-    handler = NominalLogHandler(dataset, log_channel=log_channel)
+    handler = NominalLogHandler(dataset, log_channel=log_channel, default_args=default_args)
     handler.setLevel(level)
     # Logs from urllib3 while uploading logs result in an infinite loop of producing logs
     # while uploading logs to Nominal. They are typically pretty spammy logs anyways, so
