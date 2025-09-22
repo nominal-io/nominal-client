@@ -10,7 +10,16 @@ from nominal.experimental.compute.module._types import Module
 
 
 def get_module(client: NominalClient, rid: str) -> Module:
-    request = module_api.BatchGetModulesRequest(requests=[module_api.GetModuleRequest(module_rid=rid)])
+    request = module_api.BatchGetModulesRequest(
+        requests=[
+            module_api.RequestModuleRef(
+                rid=module_api.RequestModuleRidRef(
+                    rid=rid,
+                    version_strategy=module_api.VersionStrategy(latest=module_api.LatestVersionStrategy()),
+                )
+            )
+        ]
+    )
     modules = client._clients.module.batch_get_modules(client._clients.auth_header, request)
     if len(modules) == 0:
         raise ValueError(f"Module with RID {rid} not found")

@@ -113,7 +113,7 @@ def _create_module_request(defn: ModuleDefinition, workspace_rid: str) -> module
     return module_api.CreateModuleRequest(
         definition=_create_module_version_definition(defn),
         description=defn.description,
-        name=defn.name,
+        api_name=defn.name,
         title=defn.name,
         workspace=workspace_rid,
     )
@@ -160,7 +160,7 @@ class Module:
     def _from_conjure(cls, clients: _Clients, metadata: module_api.ModuleMetadata) -> Module:
         return Module(
             rid=metadata.rid,
-            name=metadata.name,
+            name=metadata.api_name,
             title=metadata.title,
             description=metadata.description,
             _clients=clients,
@@ -168,7 +168,12 @@ class Module:
 
     def apply(self, *, asset: str) -> ModuleApplication:
         request = module_api.CreateModuleApplicationRequest(
-            module_rid=self.rid,
+            module_ref=module_api.RequestModuleRef(
+                rid=module_api.RequestModuleRidRef(
+                    rid=self.rid,
+                    version_strategy=module_api.VersionStrategy(latest=module_api.LatestVersionStrategy()),
+                )
+            ),
             asset_rid=asset,
         )
         resp = self._clients.module.create_module_application(self._clients.auth_header, request)
