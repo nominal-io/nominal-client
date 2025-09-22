@@ -36,6 +36,7 @@ _global_base_url = DEFAULT_API_BASE_URL
 # Link to docs
 AUTHENTICATION_DOCS_LINK = "https://docs.nominal.io/core/sdk/python-client/authentication"
 
+
 @cache
 def _get_or_create_connection(base_url: str, token: str) -> NominalClient:
     return NominalClient.create(base_url, token)
