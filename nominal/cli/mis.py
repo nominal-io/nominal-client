@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import typing
 from pathlib import Path
 
 import click
@@ -15,29 +16,28 @@ logger = logging.getLogger(__name__)
 
 def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     """Read the MIS file and return a dictionary of channel names and their descriptions and units."""
+    is_excel = str.lower(mis_path.suffix) in (".xlsx", ".xls")
+    if is_excel and sheet is None:
+        raise ValueError("Sheet name is required for Excel files.")
+
     try:
-        if str.lower(mis_path.suffix) in (".xlsx", ".xls"):
-            if not sheet:
-                logger.error("Sheet name is required for Excel files.")
-                raise ValueError("Sheet name is required for Excel files.")
+        if is_excel:
             df = pd.read_excel(mis_path, sheet_name=sheet)
         else:
             df = pd.read_csv(mis_path)
-    except ValueError:
-        raise
     except Exception as e:
-        logger.error("Error parsing MIS file: %s. Only accepts CSV and Excel files.", mis_path)
+        logger.error(
+            "Error parsing MIS file: %s. Only accepts CSV and Excel files.", mis_path, exc_info=e
+        )
         raise ValueError(f"Error parsing MIS file: {mis_path}") from e
 
-    # standardize and valide column names
+    # standardize and validate column names
     df.columns = df.columns.str.lower()
-    try:
-        df = df[["channel", "description", "ucum unit"]]
-    except KeyError:
-        logger.error("MIS file must have columns: Channel, Description, UCUM Unit")
+    selected_columns = ["channel", "description", "ucum unit"]
+    if not all(col in df.columns for col in selected_columns):
         raise ValueError("MIS file must have columns: Channel, Description, UCUM Unit")
 
-    return df
+    return df[selected_columns]
 
 
 def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalClient) -> None:
@@ -59,18 +59,13 @@ def validate_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
     mis_units = set(df.loc[:, "ucum unit"].unique())
 
     # Get available units from Nominal
-    try:
-        nominal_units_list = client.get_all_units()
-        nominal_units = {unit.symbol for unit in nominal_units_list}
-        click.echo(f"Found {len(nominal_units)} available units in Nominal for profile '{client.get_user()}'.")
-    except Exception as e:
-        click.secho(f"Error fetching units from Nominal: {e}", fg="red", err=True)
-        return None
+    nominal_units_list = client.get_all_units()
+    nominal_units = {unit.symbol for unit in nominal_units_list}
 
-    # Find invalid units
-    invalid_units = mis_units - nominal_units
+    # Find display only units
+    display_only_units = mis_units - nominal_units
 
-    return invalid_units
+    return display_only_units
 
 
 @click.group(
@@ -90,7 +85,9 @@ def mis_cmd() -> None:
     pass
 
 
-@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
+@mis_cmd.command(
+    name="process", help="Processes an MIS file and updates channel descriptions and units."
+)
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -112,7 +109,9 @@ def process(mis_path: Path, dataset_rid: str, sheet: str | None, client: Nominal
     logger.info("Channels updated.")
 
 
-@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
+@mis_cmd.command(
+    name="validate", help="Validate units in an MIS file against available units in Nominal."
+)
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -128,14 +127,14 @@ def check_units(mis_path: Path, sheet: str | None, client: NominalClient) -> Non
     """Validates the units in an MIS file against the available units in Nominal."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
-    invalid_units = validate_units(mis_data, client)
+    display_only_units = validate_units(mis_data, client)
 
     # Report results
-    if not invalid_units:
+    if not display_only_units:
         logger.info("All units in the MIS file are valid.")
     else:
-        logger.warning("Found %s invalid units in the MIS file:", len(invalid_units))
-        for unit in sorted(list(invalid_units)):
+        logger.warning("Found %s display only units in the MIS file:", len(display_only_units))
+        for unit in sorted(list(display_only_units)):
             logger.warning("  - %s", unit)
         logger.warning(
             "The listed units will still show in Nominal but will not work with the "
@@ -153,7 +152,7 @@ def check_units(mis_path: Path, sheet: str | None, client: NominalClient) -> Non
 @click.option(
     "-f",
     "--format",
-    type=click.Choice(
+    type=typing.Literal(
         [
             "table",
             "csv",
