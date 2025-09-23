@@ -309,7 +309,6 @@ def _compute_buckets(
     buckets: int,
 ) -> Iterable[tuple[api.Timestamp, scout_compute_api.NumericBucket]]:
     request = _create_compute_request_buckets(node, context, start, end, buckets)
-    print(request)
     response = client.compute(auth_token, request)
     yield from _numeric_buckets_from_compute_response(response)
 
