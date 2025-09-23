@@ -8,7 +8,7 @@ from nominal.core.client import NominalClient
 
 def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> None:
     """Ensure the user sets a valid configuration before letting them import the client."""
-    docs_link = "https://docs.nominal.io/python/api-tokens"
+    docs_link = "https://docs.nominal.io/core/sdk/python-client/authentication"
     status_code = 200
     err_msg = ""
     client = NominalClient.create(base_url, token)
