@@ -83,6 +83,7 @@ tdms = ["nptdms>=1.9.0,<2"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
+nominal = 'nominal.cli:nom'
 
 [build-system]
 requires = ["hatchling"]
