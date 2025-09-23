@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Union
 
 import click
 import pandas as pd
@@ -12,7 +13,7 @@ from nominal.core import NominalClient
 logger = logging.getLogger(__name__)
 
 
-def read_mis(mis_path: Path, sheet: Union[str, None]) -> pd.DataFrame:
+def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     """Read the MIS file and return a dictionary of channel names and their descriptions and units."""
     try:
         if str.lower(mis_path.suffix) in (".xlsx", ".xls"):
@@ -53,7 +54,7 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
             logger.warning(f"Channel {channel_name} not found in dataset {dataset_rid}")
 
 
-def validate_units(df: pd.DataFrame, client: NominalClient) -> Union[set[str], None]:
+def validate_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
     """Validate units in an MIS file against available units in Nominal."""
     mis_units = set(df.loc[:, "ucum unit"].unique())
 
@@ -102,7 +103,7 @@ def mis_cmd() -> None:
 )
 @client_options
 @global_options
-def process(mis_path: Path, dataset_rid: str, sheet: Union[str, None], client: NominalClient) -> None:
+def process(mis_path: Path, dataset_rid: str, sheet: str | None, client: NominalClient) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
@@ -123,7 +124,7 @@ def process(mis_path: Path, dataset_rid: str, sheet: Union[str, None], client: N
 )
 @client_options
 @global_options
-def check_units(mis_path: Path, sheet: Union[str, None], client: NominalClient) -> None:
+def check_units(mis_path: Path, sheet: str | None, client: NominalClient) -> None:
     """Validates the units in an MIS file against the available units in Nominal."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
@@ -165,7 +166,7 @@ def check_units(mis_path: Path, sheet: Union[str, None], client: NominalClient) 
 )
 @client_options
 @global_options
-def list_units(output: Union[Path, None], format: str, client: NominalClient) -> None:
+def list_units(output: Path | None, format: str, client: NominalClient) -> None:
     """List all available units in Nominal."""
     units = client.get_all_units()
     sorted_units = sorted(units, key=lambda u: u.symbol)
