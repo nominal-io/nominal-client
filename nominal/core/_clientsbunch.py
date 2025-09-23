@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, Type, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -11,6 +11,7 @@ from nominal_api import (
     authentication_api,
     event,
     ingest_api,
+    module,
     scout,
     scout_assets,
     scout_catalog,
@@ -108,11 +109,16 @@ class ProtoWriteService(Service):
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
 
+ServiceT = TypeVar("ServiceT", bound=Service)
+
+
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
     workspace_rid: str | None
     app_base_url: str
+    user_agent: str
+    service_config: ServiceConfiguration
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
@@ -142,6 +148,11 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
+    module: module.ModuleService
+
+    def client_factory(self, service_cls: Type[ServiceT]) -> ServiceT:
+        factory = create_conjure_client_factory(user_agent=self.user_agent, service_config=self.service_config)
+        return factory(service_cls)
 
     @classmethod
     def from_config(
@@ -154,6 +165,8 @@ class ClientsBunch:
             auth_header=f"Bearer {token}",
             workspace_rid=workspace_rid,
             app_base_url=app_base_url,
+            user_agent=agent,
+            service_config=cfg,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
@@ -182,6 +195,7 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
+            module=client_factory(module.ModuleService),
         )
 
 

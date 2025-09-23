@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+from dataclasses import dataclass
 
 from nominal_api import api, scout_compute_api, scout_run_api
 
@@ -11,6 +12,17 @@ TimeUnitLiteral = typing.Literal["ns", "us", "ms", "s", "m", "h", "d"]
 ThresholdOperatorLiteral = typing.Literal[">", ">=", "<", "<=", "==", "!="]
 RollingOperationLiteral = typing.Literal["mean", "sum", "min", "max", "count", "std"]
 EnumUnionOperationLiteral = typing.Literal["min", "max", "throw"]
+
+
+@dataclass(frozen=True)
+class StringVariable:
+    name: str
+
+
+def _str_to_conjure(value: str | StringVariable) -> scout_compute_api.StringConstant:
+    if isinstance(value, StringVariable):
+        return scout_compute_api.StringConstant(variable=value.name)
+    return scout_compute_api.StringConstant(literal=value)
 
 
 def _float_to_conjure(value: DoubleConstant) -> scout_compute_api.DoubleConstant:

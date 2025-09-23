@@ -270,13 +270,11 @@ def batch_compute_buckets(
         ]
     )
 
-    # Make request
     resp = client._clients.compute.batch_compute_with_units(
         auth_header=client._clients.auth_header,
         request=request,
     )
 
-    # Parse response
     results: list[list[Bucket]] = []
     errors: list[Exception] = []
     for result in resp.results:

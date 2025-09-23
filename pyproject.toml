@@ -34,7 +34,7 @@ dependencies = [
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
     "ffmpeg-python>=0.2.0",
-    "nominal-api==0.861.0",
+    "nominal-api==0.916.3",
     "cachetools>=6.1.0",
     "types-cachetools>=6.0.0.20250525",
 ]
@@ -131,7 +131,7 @@ ignore = [
     "D401",    # imperative mood
     "D415",    # doc line ends in punctuation
     "FIX002",  # Ignore TODOs
-    "PLC0415", # import should be at top-level of a file  
+    "PLC0415", # import should be at top-level of a file
     "PLR0913", # too many arguments
     "PLR2004", # magic values
     "PLW0603", # globals

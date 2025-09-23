@@ -119,7 +119,7 @@ class NumericExpr(ChannelExpr[scout_compute_api.NumericSeries]):
     @classmethod
     def asset_channel(
         cls,
-        asset_rid: str,
+        asset_rid: str | params.StringVariable,
         data_scope_name: str,
         channel_name: str,
         additional_tags: typing.Mapping[str, str] | None = None,
@@ -139,6 +139,10 @@ class NumericExpr(ChannelExpr[scout_compute_api.NumericSeries]):
         return _numeric_expr_impls.NumericRunChannelExpr(
             run_rid, data_scope_name, channel_name, {**additional_tags} if additional_tags else {}
         )
+
+    @classmethod
+    def reference(cls, name: str) -> NumericExpr:
+        return _numeric_expr_impls.NumericReferenceExpr(name)
 
     def abs(self, /) -> NumericExpr:
         return _numeric_expr_impls.AbsExpr(_node=self)

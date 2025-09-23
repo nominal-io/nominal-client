@@ -7,6 +7,9 @@ from nominal_api import scout_compute_api
 
 from nominal.experimental.compute.dsl import exprs, params
 
+THIS_MODULE_NAME_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_NAME")
+THIS_MODULE_VERSION_CONSTANT = scout_compute_api.StringConstant("$THIS.MODULE_VERSION")
+
 
 @dataclass(frozen=True)
 class AbsExpr(exprs.NumericExpr):
@@ -55,10 +58,10 @@ class Atan2Expr(exprs.NumericExpr):
     def _to_conjure(self) -> scout_compute_api.NumericSeries:
         return scout_compute_api.NumericSeries(
             arithmetic=scout_compute_api.ArithmeticSeries(
-                expression="atan2(y, x)",
+                expression="atan2(left, right)",
                 inputs={
-                    "y": self._y_node._to_conjure(),
-                    "x": self._x_node._to_conjure(),
+                    "left": self._y_node._to_conjure(),
+                    "right": self._x_node._to_conjure(),
                 },
             )
         )
@@ -284,7 +287,7 @@ class MultiplyExpr(exprs.NumericExpr):
 
 @dataclass(frozen=True)
 class NumericAssetChannelExpr(exprs.NumericExpr):
-    _asset_rid: str
+    _asset_rid: str | params.StringVariable
     _data_scope_name: str
     _channel_name: str
     _additional_tags: dict[str, str]
@@ -297,7 +300,7 @@ class NumericAssetChannelExpr(exprs.NumericExpr):
                         key: scout_compute_api.StringConstant(literal=value)
                         for key, value in self._additional_tags.items()
                     },
-                    asset_rid=scout_compute_api.StringConstant(literal=self._asset_rid),
+                    asset_rid=params._str_to_conjure(self._asset_rid),
                     data_scope_name=scout_compute_api.StringConstant(literal=self._data_scope_name),
                     channel=scout_compute_api.StringConstant(literal=self._channel_name),
                     group_by_tags=[],
@@ -327,6 +330,14 @@ class NumericDatasourceChannelExpr(exprs.NumericExpr):
                 )
             )
         )
+
+
+@dataclass(frozen=True)
+class NumericReferenceExpr(exprs.NumericExpr):
+    _name: str
+
+    def _to_conjure(self) -> scout_compute_api.NumericSeries:
+        return scout_compute_api.NumericSeries(raw=scout_compute_api.Reference(name=self._name))
 
 
 @dataclass(frozen=True)
