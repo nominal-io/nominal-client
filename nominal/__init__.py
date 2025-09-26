@@ -1,4 +1,3 @@
-import importlib.metadata
 import warnings
 from typing import Any
 
@@ -65,11 +64,18 @@ def __getattr__(name: str) -> Any:
             stacklevel=2,
         )
         return getattr(nominal.core, name)
+
+    if name == "__version__":
+        warnings.warn(
+            "nominal.__version__ is deprecated and will be removed in a future version. "
+            "Use importlib.metadata.version('nominal') instead.",
+            UserWarning,
+            stacklevel=2,
+        )
+        import importlib.metadata
+        try:
+            return importlib.metadata.version("nominal")
+        except importlib.metadata.PackageNotFoundError:
+            return "unknown"
+
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-
-try:
-    __version__ = importlib.metadata.version("nominal")
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "unknown"
-del importlib
