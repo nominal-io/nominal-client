@@ -30,9 +30,9 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal import _config, ts
+from nominal import ts
 from nominal._utils.deprecation_tools import warn_on_deprecated_argument
-from nominal.config import NominalConfig
+from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._utils.api_tools import (

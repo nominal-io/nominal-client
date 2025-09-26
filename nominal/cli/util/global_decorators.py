@@ -9,7 +9,7 @@ import typing
 import click
 import typing_extensions
 
-from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
+from nominal.config._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
 from nominal.core.client import NominalClient
 from nominal.experimental.logging import install_click_log_handler
 
