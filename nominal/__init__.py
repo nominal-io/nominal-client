@@ -61,7 +61,7 @@ def __getattr__(name: str) -> Any:
         warnings.warn(
             f"Importing {name} from 'nominal' is deprecated. "
             f"Please import from 'nominal.core' instead: 'from nominal.core import {name}'",
-            DeprecationWarning,
+            UserWarning,
             stacklevel=2,
         )
         return getattr(nominal.core, name)

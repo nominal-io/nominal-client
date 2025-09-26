@@ -6,7 +6,7 @@ if __name__ == "__main__":
     warnings.warn(
         "`python -m nominal` is deprecated and will be removed in a future version. "
         "Use `python -m nominal.cli` instead.",
-        DeprecationWarning,
+        UserWarning,
         stacklevel=1,
     )
     nom()
