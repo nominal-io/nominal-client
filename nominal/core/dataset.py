@@ -20,9 +20,9 @@ from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractors import ContainerizedExtractor
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
+from nominal.core.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint, _write_logs
-from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _AnyTimestampType,
     _to_typed_timestamp_type,

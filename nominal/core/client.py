@@ -88,6 +88,7 @@ from nominal.core.dataset import (
     _get_datasets,
 )
 from nominal.core.event import Event, EventType
+from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
 from nominal.core.secret import Secret
@@ -97,7 +98,6 @@ from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
-from nominal.exceptions import NominalConfigError, NominalError, NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,

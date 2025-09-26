@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 from typing_extensions import Self  # typing.Self in 3.11+
 
-from nominal.exceptions import NominalConfigError
+from nominal.core.exceptions import NominalConfigError
 
 _DEFAULT_NOMINAL_CONFIG_PATH = Path("~/.nominal.yml").expanduser().resolve()
 
