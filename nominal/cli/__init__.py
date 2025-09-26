@@ -1,5 +1,6 @@
-import click
 import importlib.metadata
+
+import click
 
 from nominal.cli import attachment, auth, config, dataset, run
 

@@ -73,6 +73,7 @@ def __getattr__(name: str) -> Any:
             stacklevel=2,
         )
         import importlib.metadata
+
         try:
             return importlib.metadata.version("nominal")
         except importlib.metadata.PackageNotFoundError:
