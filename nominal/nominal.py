@@ -7,12 +7,13 @@ from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
 import typing_extensions
 
-from nominal import Connection, ts
+from nominal import ts
 from nominal.config import _config
 from nominal.core import (
     Asset,
     Attachment,
     Checklist,
+    Connection,
     Dataset,
     FileType,
     NominalClient,

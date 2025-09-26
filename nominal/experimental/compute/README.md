@@ -41,7 +41,7 @@ assert (chan + chan) == chan.plus(chan)
 After you have a compute query defined, you will want to test your compute logic. We expose a function to retrieve bucketed compute results, and will be expanding this library in the future with additional ways to retrieve compute results. For a full example:
 
 ```py
-from nominal import NominalClient
+from nominal.core import NominalClient
 from nominal.experimental.compute.dsl import exprs
 from nominal.experimental.compute import compute_buckets
 
