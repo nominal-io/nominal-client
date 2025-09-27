@@ -103,9 +103,9 @@ class ResampleExpr(exprs.EnumExpr):
         return scout_compute_api.EnumSeries(
             resample=scout_compute_api.EnumResampleSeries(
                 input=self._node._to_conjure(),
-                resample_configuration=scout_compute_api.ResampleConfiguration(
+                resample_configuration=scout_compute_api.EnumResampleConfiguration(
                     interval=params._duration_ns_to_conjure(self._interval_ns),
-                    interpolation=scout_compute_api.ResampleInterpolationConfiguration(
+                    interpolation=scout_compute_api.EnumResampleInterpolationConfiguration(
                         forward_fill_resample_interpolation_configuration=scout_compute_api.ForwardFillResampleInterpolationConfiguration()
                     ),
                 ),
