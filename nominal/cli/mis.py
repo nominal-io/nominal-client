@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     """Read the MIS file (CSV or Excel) and return a dataframe containing its contents
+
     Args:
         mis_path: Path to the '.xlsx', '.xls', or '.csv' file to read
         sheet: Name of the excel sheet to read containing the MIS data
@@ -50,6 +51,7 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
 
 def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalClient) -> None:
     """The main function for updating channels in a dataset.
+
     Args:
         mis_data: The dataframe containing the MIS data
         dataset_rid: The RID of the dataset to update
@@ -69,6 +71,7 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
 
 def validate_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
     """Validate units in an MIS file against available units in Nominal.
+
     Args:
         df: The dataframe containing the MIS data
         client: The Nominal client
