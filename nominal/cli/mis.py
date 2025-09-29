@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import typing
 from pathlib import Path
 
 import click
@@ -17,27 +16,24 @@ logger = logging.getLogger(__name__)
 def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     """Read the MIS file and return a dictionary of channel names and their descriptions and units."""
     is_excel = str.lower(mis_path.suffix) in (".xlsx", ".xls")
-
-    # For Excel files, automatically use the single sheet if only one exists
-    if is_excel and sheet is None:
+    is_csv = str.lower(mis_path.suffix) in (".csv")
+    if is_excel:
         excel_file = pd.ExcelFile(mis_path)
-        sheet_names = excel_file.sheet_names
-        if len(sheet_names) > 1:
-            raise ValueError(
-                f"Excel file has multiple sheets ({', '.join(sheet_names)}). "
-                "Please specify which sheet to use with the --sheet option."
-            )
-        sheet = sheet_names[0]
-        logger.info(f"Using sheet: {sheet}")
-
-    try:
-        if is_excel:
-            df = pd.read_excel(mis_path, sheet_name=sheet)
-        else:
-            df = pd.read_csv(mis_path)
-    except Exception as e:
-        logger.error("Error parsing MIS file: %s. Only accepts CSV and Excel files.", mis_path, exc_info=e)
-        raise ValueError(f"Error parsing MIS file: {mis_path}") from e
+        if sheet is None:
+            if len(excel_file.sheet_names) > 1:
+                sheet_names_str = [str(name) for name in excel_file.sheet_names]
+                raise ValueError(
+                    f"Excel file has multiple sheets ({', '.join(sheet_names_str)}). "
+                    "Please specify which sheet to use with the --sheet option."
+                )
+            sheet = str(excel_file.sheet_names[0])
+            logger.info("Using sheet: %s", sheet)
+        df = excel_file.parse(sheet)
+    elif is_csv:
+        df = pd.read_csv(mis_path)
+    else:
+        raise ValueError(f"Error parsing MIS file: {mis_path}, only accepts CSV and Excel files.")
+    logger.info("Read MIS file: %s", mis_path)
 
     # standardize and validate column names
     df.columns = df.columns.str.lower()
@@ -102,7 +98,7 @@ def mis_cmd() -> None:
 @click.option(
     "--sheet",
     required=False,
-    help="The sheet to use in the Excel file if parsing direct from Excel.",
+    help="The sheet to use in the Excel file if parsing direct from Excel. Only needed if there are multiple sheets.",
 )
 @client_options
 @global_options
@@ -123,7 +119,7 @@ def process(mis_path: Path, dataset_rid: str, sheet: str | None, client: Nominal
 @click.option(
     "--sheet",
     required=False,
-    help="The sheet to use in the Excel file if parsing direct from Excel.",
+    help="The sheet to use in the Excel file if parsing direct from Excel. Only needed if there are multiple sheets.",
 )
 @client_options
 @global_options
@@ -156,7 +152,7 @@ def check_units(mis_path: Path, sheet: str | None, client: NominalClient) -> Non
 @click.option(
     "-f",
     "--format",
-    type=typing.Literal(
+    type=click.Choice(
         [
             "table",
             "csv",
