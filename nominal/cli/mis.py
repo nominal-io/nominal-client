@@ -14,7 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
-    """Read the MIS file and return a dictionary of channel names and their descriptions and units."""
+    """Read the MIS file (CSV or Excel) and return a dataframe containing its contents
+    Args:
+        mis_path: Path to the '.xlsx', '.xls', or '.csv' file to read
+        sheet: Name of the excel sheet to read containing the MIS data
+    """
     is_excel = str.lower(mis_path.suffix) in (".xlsx", ".xls")
     is_csv = str.lower(mis_path.suffix) in (".csv")
     if is_excel:
@@ -45,7 +49,12 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
 
 
 def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalClient) -> None:
-    """Update channels using dictionary lookup instead of nested loops."""
+    """The main function for updating channels in a dataset.
+    Args:
+        mis_data: The dataframe containing the MIS data
+        dataset_rid: The RID of the dataset to update
+        client: The Nominal client
+    """
     dataset = client.get_dataset(dataset_rid)
     channel_list = dataset.get_channels()
     channel_map = {channel.name: channel for channel in channel_list}
@@ -55,11 +64,17 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
         if channel:
             channel.update(description=description, unit=unit)
         else:
-            logger.warning(f"Channel {channel_name} not found in dataset {dataset_rid}")
+            logger.warning("Channel %s not found in dataset %s", channel_name, dataset_rid)
 
 
 def validate_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
-    """Validate units in an MIS file against available units in Nominal."""
+    """Validate units in an MIS file against available units in Nominal.
+    Args:
+        df: The dataframe containing the MIS data
+        client: The Nominal client
+    Returns:
+        A set of units that are not valid
+    """
     mis_units = set(df.loc[:, "ucum unit"].unique())
 
     # Get available units from Nominal
