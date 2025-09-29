@@ -17,8 +17,18 @@ logger = logging.getLogger(__name__)
 def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     """Read the MIS file and return a dictionary of channel names and their descriptions and units."""
     is_excel = str.lower(mis_path.suffix) in (".xlsx", ".xls")
+
+    # For Excel files, automatically use the single sheet if only one exists
     if is_excel and sheet is None:
-        raise ValueError("Sheet name is required for Excel files.")
+        excel_file = pd.ExcelFile(mis_path)
+        sheet_names = excel_file.sheet_names
+        if len(sheet_names) > 1:
+            raise ValueError(
+                f"Excel file has multiple sheets ({', '.join(sheet_names)}). "
+                "Please specify which sheet to use with the --sheet option."
+            )
+        sheet = sheet_names[0]
+        logger.info(f"Using sheet: {sheet}")
 
     try:
         if is_excel:
@@ -26,9 +36,7 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
         else:
             df = pd.read_csv(mis_path)
     except Exception as e:
-        logger.error(
-            "Error parsing MIS file: %s. Only accepts CSV and Excel files.", mis_path, exc_info=e
-        )
+        logger.error("Error parsing MIS file: %s. Only accepts CSV and Excel files.", mis_path, exc_info=e)
         raise ValueError(f"Error parsing MIS file: {mis_path}") from e
 
     # standardize and validate column names
@@ -85,9 +93,7 @@ def mis_cmd() -> None:
     pass
 
 
-@mis_cmd.command(
-    name="process", help="Processes an MIS file and updates channel descriptions and units."
-)
+@mis_cmd.command(name="process", help="Processes an MIS file and updates channel descriptions and units.")
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
@@ -109,9 +115,7 @@ def process(mis_path: Path, dataset_rid: str, sheet: str | None, client: Nominal
     logger.info("Channels updated.")
 
 
-@mis_cmd.command(
-    name="validate", help="Validate units in an MIS file against available units in Nominal."
-)
+@mis_cmd.command(name="validate", help="Validate units in an MIS file against available units in Nominal.")
 @click.argument(
     "mis_path",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
