@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.83.0](https://github.com/nominal-io/nominal-client/compare/v1.82.0...v1.83.0) (2025-09-30)
+
+
+### Features
+
+* drop support for EOL python 3.9, add support for python 3.14 ([#480](https://github.com/nominal-io/nominal-client/issues/480)) ([e20117a](https://github.com/nominal-io/nominal-client/commit/e20117a6bc5821a20f23e966b2288fad3cd1ddf7))
+
 ## [1.82.0](https://github.com/nominal-io/nominal-client/compare/v1.81.0...v1.82.0) (2025-09-30)
 
 
