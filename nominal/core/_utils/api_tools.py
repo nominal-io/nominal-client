@@ -4,10 +4,9 @@ import importlib.metadata
 import logging
 import platform
 import sys
-from typing import Mapping, Protocol, Sequence, TypeVar, runtime_checkable
+from typing import Mapping, Protocol, Sequence, TypeAlias, TypeVar, runtime_checkable
 
 from nominal_api import scout_compute_api, scout_run_api
-from typing_extensions import TypeAlias
 
 logger = logging.getLogger(__name__)
 

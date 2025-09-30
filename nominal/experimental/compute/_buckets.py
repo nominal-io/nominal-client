@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import typing
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence, Union
+from typing import Iterable, Mapping, Sequence, TypeAlias
 
 from nominal_api import api, scout_compute_api
-from typing_extensions import TypeAlias
 
 from nominal.core import NominalClient
 from nominal.experimental.compute.dsl import exprs as _exprs
@@ -336,7 +335,7 @@ def _timestamp_to_conjure(nanoseconds: params.NanosecondsUTC) -> api.Timestamp:
     return api.Timestamp(seconds=int(seconds), nanos=int(nanos))
 
 
-TypedSeriesT: TypeAlias = Union[scout_compute_api.NumericSeries, scout_compute_api.EnumSeries]
+TypedSeriesT: TypeAlias = scout_compute_api.NumericSeries | scout_compute_api.EnumSeries
 
 
 def _to_generic_series(typed_series: TypedSeriesT) -> scout_compute_api.Series:

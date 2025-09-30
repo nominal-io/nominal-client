@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, Union
+from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
 import conjure_python_client
@@ -116,7 +116,7 @@ class WorkspaceSearchType(enum.Enum):
     DEFAULT = "DEFAULT"
 
 
-WorkspaceSearchT = Union[WorkspaceSearchType, Workspace, str]
+WorkspaceSearchT = WorkspaceSearchType | Workspace | str
 
 
 @dataclass(frozen=True)

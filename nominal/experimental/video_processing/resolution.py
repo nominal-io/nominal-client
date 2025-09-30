@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Literal, Union
-
-from typing_extensions import TypeAlias
+from typing import Literal, TypeAlias
 
 
 @dataclasses.dataclass(frozen=True)
@@ -76,7 +74,7 @@ ResolutionSpecifier: TypeAlias = Literal[
     "2160p",
 ]
 
-AnyResolutionType: TypeAlias = Union[ResolutionSpecifier, VideoResolution]
+AnyResolutionType: TypeAlias = ResolutionSpecifier | VideoResolution
 
 
 def _resolution_from_specifier(specifier: ResolutionSpecifier) -> VideoResolution:
