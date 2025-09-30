@@ -15,14 +15,14 @@ readme = "README.md"
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
-requires-python = ">=3.9,<4"
+requires-python = ">=3.10,<4"
 dependencies = [
     "click>=8,<9",
     "conjure-python-client>=2.8.0,<4",
@@ -51,8 +51,6 @@ default-groups = ["dev"]
 [dependency-groups]
 dev = [
     "black>=24.8.0,<25",
-    "jupyter>=1.1.1,<2",
-    "jupyterlab>=4.2.5,<5",
     "mkdocs-material>=9.5.34,<10",
     "mkdocs>=1.6.1,<2",
     "mkdocstrings-python>=1.16.10,<2",
@@ -71,6 +69,7 @@ dev = [
     "types-tabulate>=0.9.0.20241207,<0.10",
     "nominal-api-protos>=0.708.0",
     "coverage[toml]>=7.0.0",
+    "ipykernel>=6.30.0",
 ]
 
 [tool.uv.sources]
