@@ -30,11 +30,11 @@ check-types:
 
 # check static typing across all supported python versions
 check-types-all:
+    uv run mypy --python-version 3.14
     uv run mypy --python-version 3.13
     uv run mypy --python-version 3.12
     uv run mypy --python-version 3.11
     uv run mypy --python-version 3.10
-    uv run mypy --python-version 3.9
 
 # check code formatting | fix with `just fix-format`
 check-format:
