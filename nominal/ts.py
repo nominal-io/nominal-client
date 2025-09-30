@@ -200,11 +200,11 @@ import abc
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
-from typing import Literal, Mapping, NamedTuple, Union, cast, get_args
+from typing import Literal, Mapping, NamedTuple, TypeAlias, cast, get_args
 
 import dateutil.parser
 from nominal_api import api, ingest_api, scout_catalog, scout_run_api
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self
 
 __all__ = [
     "Iso8601",
@@ -388,10 +388,10 @@ _LiteralAbsolute: TypeAlias = Literal[
     "epoch_days",
 ]
 
-TypedTimestampType: TypeAlias = Union[Iso8601, Epoch, Relative, Custom]
+TypedTimestampType: TypeAlias = Iso8601 | Epoch | Relative | Custom
 """Type alias for all of the strongly typed timestamp types."""
 
-_AnyTimestampType: TypeAlias = Union[TypedTimestampType, _LiteralAbsolute]
+_AnyTimestampType: TypeAlias = TypedTimestampType | _LiteralAbsolute
 """Type alias for all of the allowable timestamp types, including string representations."""
 
 
@@ -451,7 +451,7 @@ _str_to_type: Mapping[_LiteralAbsolute, Iso8601 | Epoch | Relative] = MappingPro
     }
 )
 
-_InferrableTimestampType: TypeAlias = Union[str, datetime, IntegralNanosecondsUTC]
+_InferrableTimestampType: TypeAlias = str | datetime | IntegralNanosecondsUTC
 """Timestamp types that can be converted to a _SecondsNanos using flexible deduction"""
 
 

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, Union, cast
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
 
 from nominal_api import (
     scout_asset_api,
     scout_assets,
     scout_run_api,
 )
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
@@ -21,7 +21,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
-ScopeType: TypeAlias = Union[Connection, Dataset, Video]
+ScopeType: TypeAlias = Connection | Dataset | Video
 
 
 @dataclass(frozen=True)

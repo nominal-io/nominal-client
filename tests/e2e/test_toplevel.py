@@ -230,10 +230,12 @@ def test_download_attachment(csv_data):
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_title, at_desc)
 
-    with reader_writer() as (r, w):
-        with mock.patch("builtins.open", return_value=w):
-            nm.download_attachment(at.rid, "fake_path.csv")
-            assert r.read() == csv_data
+    with (
+        reader_writer() as (r, w),
+        mock.patch("builtins.open", return_value=w),
+    ):
+        nm.download_attachment(at.rid, "fake_path.csv")
+        assert r.read() == csv_data
 
 
 def test_upload_video(mp4_data):
