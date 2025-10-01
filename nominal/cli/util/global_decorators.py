@@ -7,7 +7,6 @@ import pdb  # noqa: T100
 import typing
 
 import click
-import typing_extensions
 
 from nominal.config._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
 from nominal.core.client import NominalClient
@@ -15,7 +14,7 @@ from nominal.experimental.logging import install_click_log_handler
 
 logger = logging.getLogger(__name__)
 
-Param = typing_extensions.ParamSpec("Param")
+Param = typing.ParamSpec("Param")
 T = typing.TypeVar("T")
 
 

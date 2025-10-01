@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.83.0](https://github.com/nominal-io/nominal-client/compare/v1.82.0...v1.83.0) (2025-09-30)
+
+
+### Features
+
+* drop support for EOL python 3.9, add support for python 3.14 ([#480](https://github.com/nominal-io/nominal-client/issues/480)) ([e20117a](https://github.com/nominal-io/nominal-client/commit/e20117a6bc5821a20f23e966b2288fad3cd1ddf7))
+
+## [1.82.0](https://github.com/nominal-io/nominal-client/compare/v1.81.0...v1.82.0) (2025-09-30)
+
+
+### Features
+
+* expose channel tags present, bump api version ([#479](https://github.com/nominal-io/nominal-client/issues/479)) ([2721c1e](https://github.com/nominal-io/nominal-client/commit/2721c1e283337571432b5f2a1a5fecf042f3476e))
+
+
+### Bug Fixes
+
+* **cli:** add `nominal` entrypoint to deconflict with `nix-output-monitor` ([#475](https://github.com/nominal-io/nominal-client/issues/475)) ([6da324a](https://github.com/nominal-io/nominal-client/commit/6da324aedb979b86f0ee8a1d4e96308e8446ab89))
+* update outdated docs links ([#476](https://github.com/nominal-io/nominal-client/issues/476)) ([ad9f2fc](https://github.com/nominal-io/nominal-client/commit/ad9f2fcb5b9d196b3f4678da6e4c4b50d0b51b37))
+
 ## [1.81.0](https://github.com/nominal-io/nominal-client/compare/v1.80.0...v1.81.0) (2025-09-18)
 
 

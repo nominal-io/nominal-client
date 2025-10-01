@@ -34,12 +34,14 @@ def download_presigned_uri(
             raise FileExistsError(f"Cannot download {uri} => {destination}-- already exists and force=False")
 
     try:
-        with destination.open("wb") as wf:
-            with requests.get(uri, stream=True, timeout=staleness_timeout) as response:
-                response.raise_for_status()
-                shutil.copyfileobj(response.raw, wf)
+        with (
+            destination.open(mode="wb") as wf,
+            requests.get(url=uri, stream=True, timeout=staleness_timeout) as response,
+        ):
+            response.raise_for_status()
+            shutil.copyfileobj(response.raw, wf)
 
-                # Successfully downloaded file
-                return
+            # Successfully downloaded file
+            return
     except RequestException as ex:
         raise RuntimeError(f"Failed downloading {uri} => {destination}") from ex

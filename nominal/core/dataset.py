@@ -7,10 +7,10 @@ from datetime import timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias
 
 from nominal_api import api, ingest_api, scout_catalog
-from typing_extensions import Self, TypeAlias, deprecated
+from typing_extensions import Self, deprecated
 
 from nominal._utils import update_dataclass
 from nominal.core._stream.batch_processor import process_log_batch

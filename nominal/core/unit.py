@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Mapping, Sequence, Union
+from typing import Mapping, Sequence, TypeAlias
 
 from nominal_api import (
     api,
@@ -11,7 +11,7 @@ from nominal_api import (
     scout_units_api,
     timeseries_logicalseries_api,
 )
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class Unit:
         return cls(name=name, symbol=api_unit.symbol)
 
 
-UnitLike: TypeAlias = Union[Unit, str, None]
+UnitLike: TypeAlias = Unit | str | None
 UnitMapping: TypeAlias = Mapping[str, UnitLike]
 
 
