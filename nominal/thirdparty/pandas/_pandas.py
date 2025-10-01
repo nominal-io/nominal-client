@@ -254,8 +254,8 @@ def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
 
 def datasource_to_dataframe(
     datasource: DataSource,
-    channel_exact_match: Sequence[str] = (),
-    channel_fuzzy_search_text: str = "",
+    channel_exact_match: Sequence[str] | None = None,
+    channel_fuzzy_search_text: str | None = None,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     tags: Mapping[str, str] | None = None,
@@ -319,8 +319,8 @@ def datasource_to_dataframe(
     if channels is None:
         channels = list(
             datasource.search_channels(
-                exact_match=channel_exact_match,
-                fuzzy_search_text=channel_fuzzy_search_text,
+                exact_match=channel_exact_match or (),
+                fuzzy_search_text=channel_fuzzy_search_text or "",
             )
         )
     elif channel_exact_match is not None or channel_fuzzy_search_text is not None:
