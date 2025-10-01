@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.84.0](https://github.com/nominal-io/nominal-client/compare/v1.83.0...v1.84.0) (2025-10-01)
+
+
+### Features
+
+* allow users to download channel data as a .mat file ([#485](https://github.com/nominal-io/nominal-client/issues/485)) ([2de0887](https://github.com/nominal-io/nominal-client/commit/2de08876f577cf9541ecbc2150f5f25b58b07c0a))
+* use py 3.10 features and remove 3.9 workarounds ([#482](https://github.com/nominal-io/nominal-client/issues/482)) ([8a96068](https://github.com/nominal-io/nominal-client/commit/8a9606850ed19866c8ad3770e15f8a395638d4f8))
+
+
+### Bug Fixes
+
+* incorrect warning in datasource to dataframe when specifying channels ([#484](https://github.com/nominal-io/nominal-client/issues/484)) ([114efa9](https://github.com/nominal-io/nominal-client/commit/114efa956fd9ce498195e4447a38acd3b894ec3c))
+
 ## [1.83.0](https://github.com/nominal-io/nominal-client/compare/v1.82.0...v1.83.0) (2025-09-30)
 
 
