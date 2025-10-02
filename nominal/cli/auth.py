@@ -4,9 +4,9 @@ import warnings
 
 import click
 
-from nominal import _config as _deprecated_config
 from nominal.cli.util.global_decorators import global_options
 from nominal.cli.util.verify_connection import validate_token_url
+from nominal.config import _config as _deprecated_config
 
 
 @click.group(name="auth")

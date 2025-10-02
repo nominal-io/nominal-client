@@ -12,7 +12,7 @@ from typing_extensions import Self
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid
-from nominal.exceptions import NominalIngestError, NominalIngestFailed
+from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 logger = logging.getLogger(__name__)

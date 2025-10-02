@@ -11,8 +11,8 @@ from typing import BinaryIO, Iterable
 import requests
 from nominal_api import ingest_api, upload_api
 
+from nominal.core.exceptions import NominalMultipartUploadFailed
 from nominal.core.filetype import FileType
-from nominal.exceptions import NominalMultipartUploadFailed
 
 logger = logging.getLogger(__name__)
 
