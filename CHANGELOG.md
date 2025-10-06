@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.86.0](https://github.com/nominal-io/nominal-client/compare/v1.85.0...v1.86.0) (2025-10-06)
+
+
+### Features
+
+* update nominal_url, add event_url for data reviews ([#488](https://github.com/nominal-io/nominal-client/issues/488)) ([5dda1c2](https://github.com/nominal-io/nominal-client/commit/5dda1c2eaba52e7795532cd62751ccda28ea17c3))
+
 ## [1.85.0](https://github.com/nominal-io/nominal-client/compare/v1.84.0...v1.85.0) (2025-10-02)
 
 
