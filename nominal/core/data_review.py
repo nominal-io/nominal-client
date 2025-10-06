@@ -124,6 +124,7 @@ class DataReview(HasRid):
         run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
         return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=events&checklistExecution={self.rid}"
 
+
 @dataclass(frozen=True)
 class CheckViolation:
     rid: str
