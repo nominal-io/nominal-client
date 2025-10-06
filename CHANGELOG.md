@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.85.0](https://github.com/nominal-io/nominal-client/compare/v1.84.0...v1.85.0) (2025-10-02)
+
+
+### Features
+
+* prep for namespace packaging ([#478](https://github.com/nominal-io/nominal-client/issues/478)) ([3fdd914](https://github.com/nominal-io/nominal-client/commit/3fdd914efd73631547d3271f2cb87abb60e77675))
+
 ## [1.84.0](https://github.com/nominal-io/nominal-client/compare/v1.83.0...v1.84.0) (2025-10-01)
 
 
