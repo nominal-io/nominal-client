@@ -124,11 +124,11 @@ class Workbook(HasRid):
         title: str | None = None,
         description: str | None = None,
     ) -> Self:
-        """Create a new workbook copy from this workbook and return a reference to the cloned version.
+        r"""Create a new workbook copy from this workbook and return a reference to the cloned version.
 
         Args:
             title: New title for the cloned workbook.
-                Defaults to "Workbook clone from '<title>'" for the current workbook title.
+                Defaults to "Workbook clone from '[title]'" for the current workbook title.
             description: New description for the cloned workbook. Defaults to the current description.
 
         Returns:
