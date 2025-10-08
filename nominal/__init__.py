@@ -1,7 +1,7 @@
 import warnings
 from typing import Any
 
-import nominal.core
+import nominal.core  # noqa: F401
 from nominal.nominal import (  # noqa: F401
     create_asset,
     create_run,
@@ -63,6 +63,8 @@ def __getattr__(name: str) -> Any:
             UserWarning,
             stacklevel=2,
         )
+        import nominal.core  # this is re-imported because nominal.nominal overwrites the 'nominal' name
+
         return getattr(nominal.core, name)
 
     if name == "__version__":
