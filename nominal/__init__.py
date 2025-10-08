@@ -63,6 +63,8 @@ def __getattr__(name: str) -> Any:
             UserWarning,
             stacklevel=2,
         )
+        import nominal.core  # this is re-imported because nominal.nominal overwrites the 'nominal' name
+
         return getattr(nominal.core, name)
 
     if name == "__version__":
