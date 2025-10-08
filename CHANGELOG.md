@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.86.1](https://github.com/nominal-io/nominal-client/compare/v1.86.0...v1.86.1) (2025-10-08)
+
+
+### Bug Fixes
+
+* remove brackets in docstring that broke docs site ([#491](https://github.com/nominal-io/nominal-client/issues/491)) ([aa35662](https://github.com/nominal-io/nominal-client/commit/aa35662d236ed625c847a7a8c750401e7d30776c))
+
 ## [1.86.0](https://github.com/nominal-io/nominal-client/compare/v1.85.0...v1.86.0) (2025-10-06)
 
 
