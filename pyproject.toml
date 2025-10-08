@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.86.1"
+version = "1.86.2"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },

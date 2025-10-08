@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.86.2](https://github.com/nominal-io/nominal-client/compare/v1.86.1...v1.86.2) (2025-10-08)
+
+
+### Bug Fixes
+
+* allow deprecated import of NominalClient ([#495](https://github.com/nominal-io/nominal-client/issues/495)) ([61bb375](https://github.com/nominal-io/nominal-client/commit/61bb37518f6dd6e9eaa5fa03409294e7c8d82cfa))
+
 ## [1.86.1](https://github.com/nominal-io/nominal-client/compare/v1.86.0...v1.86.1) (2025-10-08)
 
 
