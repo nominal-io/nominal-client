@@ -1,7 +1,7 @@
 import warnings
 from typing import Any
 
-import nominal.core
+import nominal.core  # noqa: F401
 from nominal.nominal import (  # noqa: F401
     create_asset,
     create_run,
