@@ -42,6 +42,7 @@ theme:
   palette:
     scheme: default
   logo: logo.svg
+  favicon: favicon.ico
   features:
     - content.action.edit
     - content.action.view
