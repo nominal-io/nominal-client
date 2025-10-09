@@ -203,7 +203,7 @@ from types import MappingProxyType
 from typing import Literal, Mapping, NamedTuple, TypeAlias, cast, get_args
 
 import dateutil.parser
-from nominal_api import api, ingest_api, scout_catalog, scout_run_api
+from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
 from typing_extensions import Self
 
 __all__ = [
@@ -388,8 +388,14 @@ _LiteralAbsolute: TypeAlias = Literal[
     "epoch_days",
 ]
 
-TypedTimestampType: TypeAlias = Iso8601 | Epoch | Relative | Custom
+_ExportableTypedTimestampType: TypeAlias = Iso8601 | Epoch | Relative
+"""Type alias for all of the strongly typed timestamp types that can be converted to a native python datetime"""
+
+TypedTimestampType: TypeAlias = _ExportableTypedTimestampType | Custom
 """Type alias for all of the strongly typed timestamp types."""
+
+_AnyExportableTimestampType: TypeAlias = _ExportableTypedTimestampType | _LiteralAbsolute
+"""Type alias for all of the allowable timestamp types that can be converted to a native python datetime"""
 
 _AnyTimestampType: TypeAlias = TypedTimestampType | _LiteralAbsolute
 """Type alias for all of the allowable timestamp types, including string representations."""
@@ -537,3 +543,36 @@ def _to_api_duration(duration: timedelta | IntegralNanosecondsDuration) -> scout
     else:
         seconds, nanos = divmod(duration, 1_000_000_000)
         return scout_run_api.Duration(seconds=seconds, nanos=nanos)
+
+
+def _to_export_timestamp_format(type_: _AnyExportableTimestampType) -> scout_dataexport_api.TimestampFormat:
+    typed_timestamp_format = _to_typed_timestamp_type(type_)
+    if isinstance(typed_timestamp_format, Iso8601):
+        return scout_dataexport_api.TimestampFormat(iso8601=scout_dataexport_api.Iso8601TimestampFormat())
+    elif isinstance(typed_timestamp_format, Epoch):
+        # Returning epoch based timestamps is the same as returning relative timestamps to unix epoch
+        return scout_dataexport_api.TimestampFormat(
+            relative=scout_dataexport_api.RelativeTimestampFormat(
+                relative_to=_SecondsNanos.from_nanoseconds(0).to_api(),
+                time_unit=_time_unit_to_conjure(typed_timestamp_format.unit),
+            )
+        )
+    elif isinstance(typed_timestamp_format, Relative):
+        return scout_dataexport_api.TimestampFormat(
+            relative=scout_dataexport_api.RelativeTimestampFormat(
+                relative_to=_SecondsNanos.from_flexible(typed_timestamp_format.start).to_api(),
+                time_unit=_time_unit_to_conjure(typed_timestamp_format.unit),
+            )
+        )
+    else:
+        raise TypeError(f"Unsupported timestamp type for data export: {type_}")
+
+
+def _to_export_timestamp_type(
+    relative_to: datetime | IntegralNanosecondsUTC | None = None,
+    relative_resolution: _LiteralTimeUnit = "nanoseconds",
+) -> _AnyExportableTimestampType:
+    if relative_to is None:
+        return "iso_8601"
+    else:
+        return Relative(unit=relative_resolution, start=_SecondsNanos.from_flexible(relative_to).to_nanoseconds())

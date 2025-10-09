@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import gzip
 import logging
 import pathlib
@@ -9,17 +8,17 @@ from typing import BinaryIO, Mapping, Sequence, cast, overload
 
 from nominal_api import scout_compute_api, scout_dataexport_api
 
-from nominal.core.channel import Channel, _create_timestamp_format
+from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.ts import (
     _MAX_TIMESTAMP,
     _MIN_TIMESTAMP,
     IntegralNanosecondsDuration,
-    IntegralNanosecondsUTC,
+    _AnyExportableTimestampType,
     _InferrableTimestampType,
-    _LiteralTimeUnit,
     _SecondsNanos,
     _to_api_duration,
+    _to_export_timestamp_format,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,8 +35,7 @@ def export_channels_to_matlab(
     start_time: _InferrableTimestampType | None = None,
     end_time: _InferrableTimestampType | None = None,
     resolution: IntegralNanosecondsDuration,
-    relative_to: datetime.datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
+    export_timestamp_type: _AnyExportableTimestampType = "iso_8601",
     forward_fill_lookback: IntegralNanosecondsDuration | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> None: ...
@@ -52,8 +50,7 @@ def export_channels_to_matlab(
     start_time: _InferrableTimestampType | None = None,
     end_time: _InferrableTimestampType | None = None,
     num_buckets: int,
-    relative_to: datetime.datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
+    export_timestamp_type: _AnyExportableTimestampType = "iso_8601",
     forward_fill_lookback: IntegralNanosecondsDuration | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> None: ...
@@ -67,8 +64,7 @@ def export_channels_to_matlab(
     *,
     start_time: _InferrableTimestampType | None = None,
     end_time: _InferrableTimestampType | None = None,
-    relative_to: datetime.datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
+    export_timestamp_type: _AnyExportableTimestampType = "iso_8601",
     forward_fill_lookback: IntegralNanosecondsDuration | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> None: ...
@@ -84,8 +80,7 @@ def export_channels_to_matlab(
     end_time: _InferrableTimestampType | None = None,
     resolution: IntegralNanosecondsDuration | None = None,
     num_buckets: int | None = None,
-    relative_to: datetime.datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
+    export_timestamp_type: _AnyExportableTimestampType = "iso_8601",
     forward_fill_lookback: IntegralNanosecondsDuration | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> None:
@@ -112,9 +107,7 @@ def export_channels_to_matlab(
             NOTE: Mutually exclusive with `num_buckets`.
         num_buckets: Number of buckets to aggregate the selected time window into.
             NOTE: Mutually exclusive with `resolution`.
-        relative_to: If provided, output timestamps will be relative to this epoch time.
-            Otherwise, absolute timestamps will be used.
-        relative_resolution: If exporting relative timestamps, the time unit to use.
+        export_timestamp_type: Format of exported timestamps. Defaults to string-based iso8601 timestamps.
         forward_fill_lookback: If provided, enables forward-filling of values at timestamps
             where data is missing, up to the given lookback duration. If not provided,
             missing values are left empty.
@@ -236,7 +229,7 @@ def export_channels_to_matlab(
         time_domain=scout_dataexport_api.ExportTimeDomainChannels(
             channels=[c._to_time_domain_channel(tags) for c in channels],
             merge_timestamp_strategy=merge_strategy,
-            output_timestamp_format=_create_timestamp_format(relative_to, relative_resolution),
+            output_timestamp_format=_to_export_timestamp_format(export_timestamp_type),
         )
     )
 

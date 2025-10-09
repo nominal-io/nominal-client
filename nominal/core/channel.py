@@ -31,7 +31,8 @@ from nominal.ts import (
     _InferrableTimestampType,
     _LiteralTimeUnit,
     _SecondsNanos,
-    _time_unit_to_conjure,
+    _to_export_timestamp_format,
+    _to_export_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -386,7 +387,9 @@ class Channel:
                         # only one series will be returned, so no need to merge
                         none=scout_dataexport_api.NoneStrategy(),
                     ),
-                    output_timestamp_format=_create_timestamp_format(relative_to, relative_resolution),
+                    output_timestamp_format=_to_export_timestamp_format(
+                        _to_export_timestamp_type(relative_to, relative_resolution)
+                    ),
                 )
             ),
             start_time=start,
@@ -430,18 +433,3 @@ def _create_series_from_channel(
         return scout_compute_api.Series(log=scout_compute_api.LogSeries(channel=channel_series))
     else:
         raise ValueError(f"Unsupported channel data type: {data_type}")
-
-
-def _create_timestamp_format(
-    relative_to: datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
-) -> scout_dataexport_api.TimestampFormat:
-    if relative_to is None:
-        return scout_dataexport_api.TimestampFormat(iso8601=scout_dataexport_api.Iso8601TimestampFormat())
-    else:
-        return scout_dataexport_api.TimestampFormat(
-            relative=scout_dataexport_api.RelativeTimestampFormat(
-                relative_to=_SecondsNanos.from_flexible(relative_to).to_api(),
-                time_unit=_time_unit_to_conjure(relative_resolution),
-            )
-        )
