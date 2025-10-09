@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, Union
+from typing import BinaryIO, Iterable, Mapping, Sequence
 
 import certifi
 import conjure_python_client
@@ -30,9 +30,9 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal import _config, ts
+from nominal import ts
 from nominal._utils.deprecation_tools import warn_on_deprecated_argument
-from nominal.config import NominalConfig
+from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._utils.api_tools import (
@@ -88,6 +88,7 @@ from nominal.core.dataset import (
     _get_datasets,
 )
 from nominal.core.event import Event, EventType
+from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
 from nominal.core.secret import Secret
@@ -97,7 +98,6 @@ from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
-from nominal.exceptions import NominalConfigError, NominalError, NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -116,7 +116,7 @@ class WorkspaceSearchType(enum.Enum):
     DEFAULT = "DEFAULT"
 
 
-WorkspaceSearchT = Union[WorkspaceSearchType, Workspace, str]
+WorkspaceSearchT = WorkspaceSearchType | Workspace | str
 
 
 @dataclass(frozen=True)

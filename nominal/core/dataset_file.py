@@ -17,7 +17,7 @@ from nominal._utils.dataclass_tools import update_dataclass
 from nominal._utils.download_tools import download_presigned_uri, filename_from_uri
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core.bounds import Bounds
-from nominal.exceptions import NominalIngestError
+from nominal.core.exceptions import NominalIngestError
 from nominal.ts import (
     IntegralNanosecondsUTC,
     TypedTimestampType,

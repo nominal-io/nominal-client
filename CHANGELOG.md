@@ -1,5 +1,80 @@
 # Changelog
 
+## [1.88.0](https://github.com/nominal-io/nominal-client/compare/v1.87.0...v1.88.0) (2025-10-09)
+
+
+### Features
+
+* add CLI for downloading data for matlab users ([#499](https://github.com/nominal-io/nominal-client/issues/499)) ([fff03f5](https://github.com/nominal-io/nominal-client/commit/fff03f51b2027ccf6d328c737ad1939d31245c00))
+
+## [1.87.0](https://github.com/nominal-io/nominal-client/compare/v1.86.2...v1.87.0) (2025-10-09)
+
+
+### Features
+
+* add support for streaming ints ([#497](https://github.com/nominal-io/nominal-client/issues/497)) ([03320b5](https://github.com/nominal-io/nominal-client/commit/03320b58925b9b913ef698f64d71c5d7fe712f53))
+
+## [1.86.2](https://github.com/nominal-io/nominal-client/compare/v1.86.1...v1.86.2) (2025-10-08)
+
+
+### Bug Fixes
+
+* allow deprecated import of NominalClient ([#495](https://github.com/nominal-io/nominal-client/issues/495)) ([61bb375](https://github.com/nominal-io/nominal-client/commit/61bb37518f6dd6e9eaa5fa03409294e7c8d82cfa))
+
+## [1.86.1](https://github.com/nominal-io/nominal-client/compare/v1.86.0...v1.86.1) (2025-10-08)
+
+
+### Bug Fixes
+
+* remove brackets in docstring that broke docs site ([#491](https://github.com/nominal-io/nominal-client/issues/491)) ([aa35662](https://github.com/nominal-io/nominal-client/commit/aa35662d236ed625c847a7a8c750401e7d30776c))
+
+## [1.86.0](https://github.com/nominal-io/nominal-client/compare/v1.85.0...v1.86.0) (2025-10-06)
+
+
+### Features
+
+* update nominal_url, add event_url for data reviews ([#488](https://github.com/nominal-io/nominal-client/issues/488)) ([5dda1c2](https://github.com/nominal-io/nominal-client/commit/5dda1c2eaba52e7795532cd62751ccda28ea17c3))
+
+## [1.85.0](https://github.com/nominal-io/nominal-client/compare/v1.84.0...v1.85.0) (2025-10-02)
+
+
+### Features
+
+* prep for namespace packaging ([#478](https://github.com/nominal-io/nominal-client/issues/478)) ([3fdd914](https://github.com/nominal-io/nominal-client/commit/3fdd914efd73631547d3271f2cb87abb60e77675))
+
+## [1.84.0](https://github.com/nominal-io/nominal-client/compare/v1.83.0...v1.84.0) (2025-10-01)
+
+
+### Features
+
+* allow users to download channel data as a .mat file ([#485](https://github.com/nominal-io/nominal-client/issues/485)) ([2de0887](https://github.com/nominal-io/nominal-client/commit/2de08876f577cf9541ecbc2150f5f25b58b07c0a))
+* use py 3.10 features and remove 3.9 workarounds ([#482](https://github.com/nominal-io/nominal-client/issues/482)) ([8a96068](https://github.com/nominal-io/nominal-client/commit/8a9606850ed19866c8ad3770e15f8a395638d4f8))
+
+
+### Bug Fixes
+
+* incorrect warning in datasource to dataframe when specifying channels ([#484](https://github.com/nominal-io/nominal-client/issues/484)) ([114efa9](https://github.com/nominal-io/nominal-client/commit/114efa956fd9ce498195e4447a38acd3b894ec3c))
+
+## [1.83.0](https://github.com/nominal-io/nominal-client/compare/v1.82.0...v1.83.0) (2025-09-30)
+
+
+### Features
+
+* drop support for EOL python 3.9, add support for python 3.14 ([#480](https://github.com/nominal-io/nominal-client/issues/480)) ([e20117a](https://github.com/nominal-io/nominal-client/commit/e20117a6bc5821a20f23e966b2288fad3cd1ddf7))
+
+## [1.82.0](https://github.com/nominal-io/nominal-client/compare/v1.81.0...v1.82.0) (2025-09-30)
+
+
+### Features
+
+* expose channel tags present, bump api version ([#479](https://github.com/nominal-io/nominal-client/issues/479)) ([2721c1e](https://github.com/nominal-io/nominal-client/commit/2721c1e283337571432b5f2a1a5fecf042f3476e))
+
+
+### Bug Fixes
+
+* **cli:** add `nominal` entrypoint to deconflict with `nix-output-monitor` ([#475](https://github.com/nominal-io/nominal-client/issues/475)) ([6da324a](https://github.com/nominal-io/nominal-client/commit/6da324aedb979b86f0ee8a1d4e96308e8446ab89))
+* update outdated docs links ([#476](https://github.com/nominal-io/nominal-client/issues/476)) ([ad9f2fc](https://github.com/nominal-io/nominal-client/commit/ad9f2fcb5b9d196b3f4678da6e4c4b50d0b51b37))
+
 ## [1.81.0](https://github.com/nominal-io/nominal-client/compare/v1.80.0...v1.81.0) (2025-09-18)
 
 

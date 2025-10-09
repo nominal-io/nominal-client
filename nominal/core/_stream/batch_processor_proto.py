@@ -14,6 +14,8 @@ try:
     from nominal_api_protos.nominal_write_pb2 import (
         DoublePoint,
         DoublePoints,
+        IntegerPoint,
+        IntegerPoints,
         Points,
         Series,
         StringPoint,
@@ -65,8 +67,20 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
                 ]
             )
         )
+    elif isinstance(sample_value, int):
+        return Points(
+            integer_points=IntegerPoints(
+                points=[
+                    IntegerPoint(
+                        timestamp=_make_timestamp(item.timestamp),
+                        value=cast(int, item.value),
+                    )
+                    for item in api_batch
+                ]
+            )
+        )
     else:
-        raise ValueError("only float and string are supported types for value")
+        raise ValueError("only float, int, and string are supported types for value")
 
 
 def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:

@@ -11,6 +11,7 @@ from nominal_api import (
     datasource_api,
     scout_compute_api,
     scout_dataexport_api,
+    scout_datasource,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
     timeseries_logicalseries_api,
@@ -30,7 +31,8 @@ from nominal.ts import (
     _InferrableTimestampType,
     _LiteralTimeUnit,
     _SecondsNanos,
-    _time_unit_to_conjure,
+    _to_export_timestamp_format,
+    _to_export_timestamp_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,8 @@ class Channel:
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
+        @property
+        def datasource(self) -> scout_datasource.DataSourceService: ...
         @property
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
@@ -208,6 +212,60 @@ class Channel:
             else:
                 raise RuntimeError(f"Expected response type to be `paged_log`, received: `{resp.type}`")
 
+    def get_available_tags(
+        self,
+        start_time: _InferrableTimestampType | None = None,
+        end_time: _InferrableTimestampType | None = None,
+        initial_tags: Mapping[str, str] | None = None,
+    ) -> Mapping[str, set[str]]:
+        """Return available tag key-values for the channel over the given time period
+
+        Args:
+            start_time: Start time to start scanning for tags from (defaults to the beginning of time)
+            end_time: End time to stop scanning for tags until (defaults to the end of time)
+            initial_tags: Initial tags to filter results by
+
+        Returns:
+            Mapping of all tag names to all tag values present
+
+        Example:
+            Given data with the following tags per-point within the specified time range:
+                {"tag_a": "123", "tag_b": "xyz"}
+                {"tag_a": "123", "tag_b": "abc"}
+                {"tag_a": "234", "tag_b": "qqq"}
+
+            We an initial filter of {"tag_a": "123"}, we would return:
+                {"tag_a": set(["123"]), "tag_b": set(["abc", "xyz"])}
+
+            Because we filtered data to only include data where "tag_a" is "123"
+
+        NOTE: it is not accurate to say that the cartesian product of all returned tag key-value pairs
+              is present in the data, only that for each unique key-value pair present, that specific tag key/value
+              pair is present on _at least_ one point in the data.
+
+        NOTE: this may be used to determine if the given set of initial tags _fully constrains_ data in a channel over
+              a given timespan by checking to see if the length of all of the tag-value sets is 1.
+        """
+        if start_time is None:
+            start_time = _MIN_TIMESTAMP.to_nanoseconds()
+        api_start = _SecondsNanos.from_flexible(start_time).to_scout_run_api()
+
+        if end_time is None:
+            end_time = _MAX_TIMESTAMP.to_nanoseconds()
+        api_end = _SecondsNanos.from_flexible(end_time).to_scout_run_api()
+
+        request = datasource_api.GetAvailableTagsForChannelRequest(
+            channel_with_tag_filters=datasource_api.ChannelWithTagFilters(
+                channel=self.name,
+                data_source_rid=self.data_source,
+                tag_filters={**(initial_tags or {})},
+            ),
+            start_time=api_start,
+            end_time=api_end,
+        )
+        resp = self._clients.datasource.get_available_tags_for_channel(self._clients.auth_header, request)
+        return {tag_name: set(tag_values) for tag_name, tag_values in resp.available_tags.available_tags.items()}
+
     @classmethod
     def _from_conjure_datasource_api(cls, clients: _Clients, channel: datasource_api.ChannelMetadata) -> Self:
         # NOTE: intentionally ignoring archetype RID as it does not correspond to a Channel in the same way that a
@@ -329,7 +387,9 @@ class Channel:
                         # only one series will be returned, so no need to merge
                         none=scout_dataexport_api.NoneStrategy(),
                     ),
-                    output_timestamp_format=_create_timestamp_format(relative_to, relative_resolution),
+                    output_timestamp_format=_to_export_timestamp_format(
+                        _to_export_timestamp_type(relative_to, relative_resolution)
+                    ),
                 )
             ),
             start_time=start,
@@ -373,18 +433,3 @@ def _create_series_from_channel(
         return scout_compute_api.Series(log=scout_compute_api.LogSeries(channel=channel_series))
     else:
         raise ValueError(f"Unsupported channel data type: {data_type}")
-
-
-def _create_timestamp_format(
-    relative_to: datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
-) -> scout_dataexport_api.TimestampFormat:
-    if relative_to is None:
-        return scout_dataexport_api.TimestampFormat(iso8601=scout_dataexport_api.Iso8601TimestampFormat())
-    else:
-        return scout_dataexport_api.TimestampFormat(
-            relative=scout_dataexport_api.RelativeTimestampFormat(
-                relative_to=_SecondsNanos.from_flexible(relative_to).to_api(),
-                time_unit=_time_unit_to_conjure(relative_resolution),
-            )
-        )

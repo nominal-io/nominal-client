@@ -116,7 +116,13 @@ class DataReview(HasRid):
     def nominal_url(self) -> str:
         """Returns a link to the page for this Data Review in the Nominal app"""
         run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
-        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=checklist-executions&checklist_execution={self.rid}&openCheckExecutionErrorReview="  # noqa: E501
+        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=checklist-executions&checklistExecution={self.rid}&openCheckExecutionErrorReview="  # noqa: E501
+
+    @property
+    def events_url(self) -> str:
+        """Returns a link to the page for events for this Data Review in the Nominal app"""
+        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
+        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=events&checklistExecution={self.rid}"
 
 
 @dataclass(frozen=True)

@@ -7,15 +7,14 @@ import pdb  # noqa: T100
 import typing
 
 import click
-import typing_extensions
 
-from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
+from nominal.config._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
 from nominal.core.client import NominalClient
 from nominal.experimental.logging import install_click_log_handler
 
 logger = logging.getLogger(__name__)
 
-Param = typing_extensions.ParamSpec("Param")
+Param = typing.ParamSpec("Param")
 T = typing.TypeVar("T")
 
 
@@ -52,6 +51,14 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
             log_level = logging.INFO
         elif verbose >= 2:
             log_level = logging.DEBUG
+
+        # Store parameters for later use
+        ctx = click.get_current_context()
+        if ctx.obj is None:
+            ctx.obj = {}
+
+        ctx.obj["log_level"] = log_level
+        ctx.obj["no_color"] = no_color
 
         install_click_log_handler(level=log_level, no_color=no_color)
         return func(*args, **kwargs)

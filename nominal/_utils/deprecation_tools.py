@@ -4,9 +4,7 @@ import inspect
 import logging
 import warnings
 from functools import wraps
-from typing import Callable, TypeVar
-
-from typing_extensions import ParamSpec
+from typing import Callable, ParamSpec, TypeVar
 
 logger = logging.getLogger(__name__)
 

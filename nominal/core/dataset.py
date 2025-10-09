@@ -7,10 +7,10 @@ from datetime import timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias
 
 from nominal_api import api, ingest_api, scout_catalog
-from typing_extensions import Self, TypeAlias, deprecated
+from typing_extensions import Self, deprecated
 
 from nominal._utils import update_dataclass
 from nominal.core._stream.batch_processor import process_log_batch
@@ -20,9 +20,9 @@ from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractors import ContainerizedExtractor
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
+from nominal.core.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint, _write_logs
-from nominal.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
 from nominal.ts import (
     _AnyTimestampType,
     _to_typed_timestamp_type,

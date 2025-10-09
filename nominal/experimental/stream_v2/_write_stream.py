@@ -111,7 +111,7 @@ class WriteStreamV2(DataStream):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: float | str,
+        value: float | str | int,
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write a single value."""
@@ -123,7 +123,7 @@ class WriteStreamV2(DataStream):
     def enqueue_from_dict(
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        channel_values: Mapping[str, float | str],
+        channel_values: Mapping[str, float | str | int],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write multiple channel values at a single timestamp using a flattened dictionary.
