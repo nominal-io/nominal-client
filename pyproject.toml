@@ -77,7 +77,7 @@ dev = [
 nominal = { workspace = true }
 
 [project.optional-dependencies]
-protos = ["nominal-api-protos>=0.708.0"]
+protos = ["nominal-api-protos>=0.949.2"]
 tdms = ["nptdms>=1.9.0,<2"]
 
 [project.scripts]
