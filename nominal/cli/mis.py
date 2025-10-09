@@ -21,7 +21,7 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
         sheet: Name of the excel sheet to read containing the MIS data
     """
     is_excel = str.lower(mis_path.suffix) in (".xlsx", ".xls")
-    is_csv = str.lower(mis_path.suffix) in (".csv")
+    is_csv = str.lower(mis_path.suffix) == ".csv"
     if is_excel:
         excel_file = pd.ExcelFile(mis_path)
         if sheet is None:
