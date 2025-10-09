@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.88.0](https://github.com/nominal-io/nominal-client/compare/v1.87.0...v1.88.0) (2025-10-09)
+
+
+### Features
+
+* add CLI for downloading data for matlab users ([#499](https://github.com/nominal-io/nominal-client/issues/499)) ([fff03f5](https://github.com/nominal-io/nominal-client/commit/fff03f51b2027ccf6d328c737ad1939d31245c00))
+
 ## [1.87.0](https://github.com/nominal-io/nominal-client/compare/v1.86.2...v1.87.0) (2025-10-09)
 
 
