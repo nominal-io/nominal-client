@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.87.0](https://github.com/nominal-io/nominal-client/compare/v1.86.2...v1.87.0) (2025-10-09)
+
+
+### Features
+
+* add support for streaming ints ([#497](https://github.com/nominal-io/nominal-client/issues/497)) ([03320b5](https://github.com/nominal-io/nominal-client/commit/03320b58925b9b913ef698f64d71c5d7fe712f53))
+
 ## [1.86.2](https://github.com/nominal-io/nominal-client/compare/v1.86.1...v1.86.2) (2025-10-08)
 
 
