@@ -208,7 +208,7 @@ def test_process_batch_invalid_type(mock_connection):
     ]
 
     # Verify it raises the correct error
-    with pytest.raises(ValueError, match="only float and string are supported types for value"):
+    with pytest.raises(ValueError, match="only float, int, and string are supported types for value"):
         process_batch(
             batch=batch,
             nominal_data_source_rid=mock_connection.nominal_data_source_rid,
@@ -217,15 +217,12 @@ def test_process_batch_invalid_type(mock_connection):
         )
 
 
-def test_process_batch_multiple_channels(mock_connection):
+def test_process_batch_int_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("channel1", dt_to_nano(timestamp), 42.0),
-        BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
-        BatchItem("channel2", dt_to_nano(timestamp), "value1"),
-        BatchItem("channel2", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
-        BatchItem("channel3", dt_to_nano(timestamp), 100.0, {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp), 42),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43),
     ]
 
     # Process the batch
@@ -248,8 +245,57 @@ def test_process_batch_multiple_channels(mock_connection):
 
     actual_request = WriteRequestNominal.FromString(actual_request)
 
-    # Verify we have three series
-    assert len(actual_request.series) == 3
+    # Verify series structure
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert series.channel.name == "test_channel"
+
+    # Verify int points
+    assert series.points.HasField("integer_points")
+    assert not series.points.HasField("double_points")
+    assert not series.points.HasField("string_points")
+
+    int_points = series.points.integer_points.points
+    assert len(int_points) == 2
+    assert int_points[0].value == 42
+    assert int_points[1].value == 43
+
+
+def test_process_batch_multiple_channels(mock_connection):
+    # Create test data with fixed timestamp
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        BatchItem("channel1", dt_to_nano(timestamp), 42.0),
+        BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
+        BatchItem("channel2", dt_to_nano(timestamp), "value1"),
+        BatchItem("channel2", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
+        BatchItem("channel3", dt_to_nano(timestamp), 100.0, {"tag1": "value1"}),
+        BatchItem("channel4", dt_to_nano(timestamp), 10),
+        BatchItem("channel4", dt_to_nano(timestamp + timedelta(seconds=1)), 20),
+    ]
+
+    # Process the batch
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    # Get the actual request that was sent
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
+    mock_write.assert_called_once()
+
+    # Check the basic arguments
+    kwargs = mock_write.call_args.kwargs
+    assert kwargs["auth_header"] == "test-auth-header"
+    assert kwargs["data_source_rid"] == "test-datasource-rid"
+    actual_request = kwargs["request"]
+
+    actual_request = WriteRequestNominal.FromString(actual_request)
+
+    # Verify we have four series
+    assert len(actual_request.series) == 4
 
     # Check channel1 (double points)
     series1 = [s for s in actual_request.series if s.channel.name == "channel1"][0]
@@ -274,6 +320,14 @@ def test_process_batch_multiple_channels(mock_connection):
     double_points = series3.points.double_points.points
     assert len(double_points) == 1
     assert double_points[0].value == 100.0
+
+    # Check channel4 (int points)
+    series4 = [s for s in actual_request.series if s.channel.name == "channel4"][0]
+    assert series4.points.HasField("integer_points")
+    int_points = series4.points.integer_points.points
+    assert len(int_points) == 2
+    assert int_points[0].value == 10
+    assert int_points[1].value == 20
 
 
 def test_multiple_write_streams(mock_connection):
@@ -477,7 +531,7 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
     ]
 
     # Verify it raises the correct error
-    with pytest.raises(ValueError, match="only float and string are supported types for value"):
+    with pytest.raises(ValueError, match="only float, int, and string are supported types for value"):
         process_batch(
             batch=batch,
             nominal_data_source_rid=mock_dataset.rid,
@@ -486,15 +540,12 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
         )
 
 
-def test_process_batch_multiple_channels_dataset(mock_dataset):
+def test_process_batch_int_points_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        BatchItem("channel1", dt_to_nano(timestamp), 42.0),
-        BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
-        BatchItem("channel2", dt_to_nano(timestamp), "value1"),
-        BatchItem("channel2", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
-        BatchItem("channel3", dt_to_nano(timestamp), 100.0, {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp), 42),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43),
     ]
 
     # Process the batch
@@ -517,8 +568,57 @@ def test_process_batch_multiple_channels_dataset(mock_dataset):
 
     actual_request = WriteRequestNominal.FromString(actual_request)
 
-    # Verify we have three series
-    assert len(actual_request.series) == 3
+    # Verify series structure
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert series.channel.name == "test_channel"
+
+    # Verify int points
+    assert series.points.HasField("integer_points")
+    assert not series.points.HasField("double_points")
+    assert not series.points.HasField("string_points")
+
+    int_points = series.points.integer_points.points
+    assert len(int_points) == 2
+    assert int_points[0].value == 42
+    assert int_points[1].value == 43
+
+
+def test_process_batch_multiple_channels_dataset(mock_dataset):
+    # Create test data with fixed timestamp
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        BatchItem("channel1", dt_to_nano(timestamp), 42.0),
+        BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
+        BatchItem("channel2", dt_to_nano(timestamp), "value1"),
+        BatchItem("channel2", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
+        BatchItem("channel3", dt_to_nano(timestamp), 100.0, {"tag1": "value1"}),
+        BatchItem("channel4", dt_to_nano(timestamp), 10),
+        BatchItem("channel4", dt_to_nano(timestamp + timedelta(seconds=1)), 20),
+    ]
+
+    # Process the batch
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_dataset.rid,
+        auth_header=mock_dataset._clients.auth_header,
+        proto_write=mock_dataset._clients.proto_write,
+    )
+
+    # Get the actual request that was sent
+    mock_write = mock_dataset._clients.proto_write.write_nominal_batches
+    mock_write.assert_called_once()
+
+    # Check the basic arguments
+    kwargs = mock_write.call_args.kwargs
+    assert kwargs["auth_header"] == "test-auth-header"
+    assert kwargs["data_source_rid"] == "test-dataset-rid"
+    actual_request = kwargs["request"]
+
+    actual_request = WriteRequestNominal.FromString(actual_request)
+
+    # Verify we have four series
+    assert len(actual_request.series) == 4
 
     # Check channel1 (double points)
     series1 = [s for s in actual_request.series if s.channel.name == "channel1"][0]
@@ -543,6 +643,14 @@ def test_process_batch_multiple_channels_dataset(mock_dataset):
     double_points = series3.points.double_points.points
     assert len(double_points) == 1
     assert double_points[0].value == 100.0
+
+    # Check channel4 (int points)
+    series4 = [s for s in actual_request.series if s.channel.name == "channel4"][0]
+    assert series4.points.HasField("integer_points")
+    int_points = series4.points.integer_points.points
+    assert len(int_points) == 2
+    assert int_points[0].value == 10
+    assert int_points[1].value == 20
 
 
 def test_multiple_write_streams_dataset(mock_dataset):
