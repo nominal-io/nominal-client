@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Iterable, Literal, Mapping, Protocol, Sequence
 
 from nominal_api import (
@@ -27,9 +27,12 @@ from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._utils.api_tools import HasRid
-from nominal.core.channel import Channel, ChannelDataType, _create_timestamp_format
+from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
-from nominal.ts import IntegralNanosecondsUTC, _LiteralTimeUnit
+from nominal.ts import (
+    _AnyExportableTimestampType,
+    _to_export_timestamp_format,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -258,8 +261,7 @@ def _construct_export_request(
     end: api.Timestamp,
     tags: Mapping[str, str] | None,
     enable_gzip: bool,
-    relative_to: datetime | IntegralNanosecondsUTC | None = None,
-    relative_resolution: _LiteralTimeUnit = "nanoseconds",
+    timestamp_type: _AnyExportableTimestampType = "iso_8601",
 ) -> scout_dataexport_api.ExportDataRequest:
     export_channels = [channel._to_time_domain_channel(tags=tags) for channel in channels]
     request = scout_dataexport_api.ExportDataRequest(
@@ -270,7 +272,7 @@ def _construct_export_request(
                     # only one series will be returned, so no need to merge
                     none=scout_dataexport_api.NoneStrategy(),
                 ),
-                output_timestamp_format=_create_timestamp_format(relative_to, relative_resolution),
+                output_timestamp_format=_to_export_timestamp_format(timestamp_type),
             )
         ),
         start_time=start,

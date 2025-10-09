@@ -52,6 +52,14 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
         elif verbose >= 2:
             log_level = logging.DEBUG
 
+        # Store parameters for later use
+        ctx = click.get_current_context()
+        if ctx.obj is None:
+            ctx.obj = {}
+
+        ctx.obj["log_level"] = log_level
+        ctx.obj["no_color"] = no_color
+
         install_click_log_handler(level=log_level, no_color=no_color)
         return func(*args, **kwargs)
 

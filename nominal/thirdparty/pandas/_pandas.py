@@ -343,8 +343,7 @@ def datasource_to_dataframe(
             end_time,
             tags=tags,
             enable_gzip=enable_gzip,
-            relative_to=relative_to,
-            relative_resolution=relative_resolution,
+            timestamp_type=ts._to_export_timestamp_type(relative_to, relative_resolution),
         )
         export_response = cast(
             BinaryIO,
