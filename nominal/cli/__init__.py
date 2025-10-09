@@ -2,7 +2,6 @@ import importlib.metadata
 
 import click
 
-import nominal
 from nominal.cli import attachment, auth, config, dataset, download, mis, run
 
 

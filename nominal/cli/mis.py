@@ -44,7 +44,7 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     df.columns = df.columns.str.lower()
     selected_columns = ["channel", "description", "ucum unit"]
     if not all(col in df.columns for col in selected_columns):
-        raise ValueError("MIS file must have columns: Channel, Description, UCUM Unit")
+        raise ValueError("MIS file must have columns: channel, description, ucum unit")
 
     return df[selected_columns]
 
@@ -69,7 +69,7 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
             logger.warning("Channel %s not found in dataset %s", channel_name, dataset_rid)
 
 
-def validate_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
+def get_display_only_units(df: pd.DataFrame, client: NominalClient) -> set[str] | None:
     """Validate units in an MIS file against available units in Nominal.
 
     Args:
@@ -145,7 +145,7 @@ def check_units(mis_path: Path, sheet: str | None, client: NominalClient) -> Non
     """Validates the units in an MIS file against the available units in Nominal."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
-    display_only_units = validate_units(mis_data, client)
+    display_only_units = get_display_only_units(mis_data, client)
 
     # Report results
     if not display_only_units:
