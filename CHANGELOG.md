@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.89.0](https://github.com/nominal-io/nominal-client/compare/v1.88.0...v1.89.0) (2025-10-10)
+
+
+### Features
+
+* add a a cli for processing an instrumentation spreadsheet ([#422](https://github.com/nominal-io/nominal-client/issues/422)) ([b3ff054](https://github.com/nominal-io/nominal-client/commit/b3ff054f4c37dc38b916c48686bea1fe4be8719d))
+
 ## [1.88.0](https://github.com/nominal-io/nominal-client/compare/v1.87.0...v1.88.0) (2025-10-09)
 
 
