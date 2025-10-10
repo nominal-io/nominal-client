@@ -39,6 +39,7 @@ dependencies = [
     "python-dateutil>=0.0.0",
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
+    "openpyxl>=0.0.0",
 ]
 
 
