@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10, <4"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -1049,9 +1049,9 @@ dev = [
 requires-dist = [
     { name = "cachetools", specifier = ">=6.1.0" },
     { name = "click", specifier = ">=8,<9" },
-    { name = "conjure-python-client", specifier = ">=2.8.0,<4" },
+    { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.931.0" },
+    { name = "nominal-api", specifier = "==0.959.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.949.2" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "openpyxl", specifier = ">=0.0.0" },
@@ -1093,15 +1093,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.931.0"
+version = "0.959.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/49/8d/f699099ad065c362f5c86c46009602c5fdd4accf41a66a3c536ee5ba2d55/nominal_api-0.931.0.tar.gz", hash = "sha256:d5fcb33143143412cca1787a7a1a94e06324dd7c97848f9a9e07e814c8e0dc19", size = 421752, upload-time = "2025-09-29T17:29:26.78Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/51/3896bfcff661f59476901abb3bd522d096fbc0dbf671acd2907390339f1e/nominal_api-0.959.0.tar.gz", hash = "sha256:ae1399f728d7beb1dff9e18e51cd823422a516b010459dc6e6cf8479207a3b1a", size = 430274, upload-time = "2025-10-15T18:04:21.012Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/92/04/ed3299f5c73352c34c5894811b21e4d4ad0c12fd37ba6783737f69d922f7/nominal_api-0.931.0-py3-none-any.whl", hash = "sha256:85f23c8b6c286c61cf8a80fc6455701f4d1a7bd303456612b11fe89f1dbab66f", size = 446895, upload-time = "2025-09-29T17:29:24.537Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/3a/69a6c7eb276147847778933d52a341910f4533d7c4391cdb0b6dc55ddf40/nominal_api-0.959.0-py3-none-any.whl", hash = "sha256:b57d51f6c522fc71f59dfb6e58a2ab92151ea69df40c2326265c58ecff7d6d6b", size = 455705, upload-time = "2025-10-15T18:04:19.087Z" },
 ]
 
 [[package]]
