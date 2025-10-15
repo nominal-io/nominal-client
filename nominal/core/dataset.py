@@ -407,6 +407,7 @@ class Dataset(DataSource):
             trigger_ingest=ingest_api.IngestRequest(
                 options=ingest_api.IngestOptions(
                     containerized=ingest_api.ContainerizedOpts(
+                        arguments={},
                         extractor_rid=extractor.rid,
                         sources={
                             source: ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))

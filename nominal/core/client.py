@@ -1204,6 +1204,7 @@ class NominalClient:
             inputs=[file_input._to_conjure() for file_input in inputs],
             labels=list(labels),
             name=name,
+            parameters=[],
             properties={} if properties is None else {**properties},
             timestamp_metadata=ingest_api.TimestampMetadata(
                 series_name=timestamp_column,
