@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import abc
-from datetime import datetime
 from types import TracebackType
 from typing import Generic, Mapping, Sequence, Type, TypeVar
 
 from typing_extensions import Self
 
-from nominal.ts import IntegralNanosecondsUTC
-
 StreamType = TypeVar("StreamType")
+TimestampType = TypeVar("TimestampType")
 
 
-class WriteStreamBase(abc.ABC, Generic[StreamType]):
+class WriteStreamBase(abc.ABC, Generic[StreamType, TimestampType]):
     @abc.abstractmethod
     def __enter__(self) -> Self:
         """Create the stream as a context manager."""
@@ -27,7 +25,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
     def enqueue(
         self,
         channel_name: str,
-        timestamp: str | datetime | IntegralNanosecondsUTC,
+        timestamp: TimestampType,
         value: StreamType,
         tags: Mapping[str, str] | None = None,
     ) -> None:
@@ -44,7 +42,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
     def enqueue_batch(
         self,
         channel_name: str,
-        timestamps: Sequence[str | datetime | IntegralNanosecondsUTC],
+        timestamps: Sequence[TimestampType],
         values: Sequence[StreamType],
         tags: Mapping[str, str] | None = None,
     ) -> None:
@@ -71,7 +69,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
 
     def enqueue_from_dict(
         self,
-        timestamp: str | datetime | IntegralNanosecondsUTC,
+        timestamp: TimestampType,
         channel_values: Mapping[str, StreamType],
         tags: Mapping[str, str] | None = None,
     ) -> None:
