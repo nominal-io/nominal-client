@@ -87,6 +87,7 @@ from nominal.core.dataset import (
     _get_dataset,
     _get_datasets,
 )
+from nominal.core.datasource import DataSource
 from nominal.core.event import Event, EventType
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
@@ -660,6 +661,19 @@ class NominalClient:
     def get_videos(self, rids: Iterable[str]) -> Sequence[Video]:
         """Retrieve videos by their RID."""
         return list(self._iter_get_videos(rids))
+
+    def get_datasource(self, rid: str) -> DataSource:
+        """Retrieve a datasource (connection or dataset) by its RID.
+
+        NOTE: if specific methods / properties of a dataset / connection are desired,
+              it is preferable to use `get_dataset` or `get_connection`.
+        """
+        if ".dataset." in rid:
+            return self.get_dataset(rid)
+        elif ".connection." in rid:
+            return self.get_connection(rid)
+        else:
+            raise ValueError(f"Could not determine datasource type from RID: {rid}")
 
     def get_dataset(self, rid: str) -> Dataset:
         """Retrieve a dataset by its RID."""
