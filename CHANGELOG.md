@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.89.0](https://github.com/nominal-io/nominal-client/compare/v1.88.0...v1.89.0) (2025-10-22)
+
+
+### Features
+
+* add a a cli for processing an instrumentation spreadsheet ([#422](https://github.com/nominal-io/nominal-client/issues/422)) ([b3ff054](https://github.com/nominal-io/nominal-client/commit/b3ff054f4c37dc38b916c48686bea1fe4be8719d))
+* bump nominal-api version to 0.959.0 ([#502](https://github.com/nominal-io/nominal-client/issues/502)) ([2d97753](https://github.com/nominal-io/nominal-client/commit/2d9775306c2c8041b655af4bd902f51e08def9f2))
+* support datasources within polars export handler ([#505](https://github.com/nominal-io/nominal-client/issues/505)) ([e29f8b0](https://github.com/nominal-io/nominal-client/commit/e29f8b0c8078797adc503dfc50c05cbf615acebc))
+
 ## [1.88.0](https://github.com/nominal-io/nominal-client/compare/v1.87.0...v1.88.0) (2025-10-09)
 
 
