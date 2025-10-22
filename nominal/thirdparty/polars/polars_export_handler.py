@@ -12,6 +12,7 @@ from typing_extensions import Self
 from nominal._utils import LogTiming
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.client import NominalClient
+from nominal.core.datasource import DataSource
 from nominal.experimental.compute import batch_compute_buckets
 from nominal.experimental.compute.dsl import exprs
 from nominal.ts import (
@@ -322,7 +323,7 @@ class _TimeRange:
 class _ExportJob:
     """Represents an individual export task suitable for giving to subprocesses."""
 
-    dataset_rid: str
+    datasource_rid: str
     channel_names: list[str]
     channel_types: dict[str, ChannelDataType | None]
 
@@ -348,9 +349,9 @@ class _ExportJob:
         else:
             return scout_dataexport_api.ResolutionOption(nanoseconds=self.resolution, buckets=self.buckets)
 
-    def export_channels(self, client: NominalClient) -> scout_dataexport_api.ExportChannels:
+    def export_channels(self, datasource: DataSource) -> scout_dataexport_api.ExportChannels:
         """Construct data export channels for the configured channels and export options."""
-        channels = client.get_dataset(self.dataset_rid).get_channels(names=self.channel_names)
+        channels = datasource.get_channels(names=self.channel_names)
         return scout_dataexport_api.ExportChannels(
             time_domain=scout_dataexport_api.ExportTimeDomainChannels(
                 channels=[channel._to_time_domain_channel(tags=self.tags) for channel in channels],
@@ -361,10 +362,10 @@ class _ExportJob:
             )
         )
 
-    def export_request(self, client: NominalClient) -> scout_dataexport_api.ExportDataRequest:
+    def export_request(self, datasource: DataSource) -> scout_dataexport_api.ExportDataRequest:
         """Construct conjure export request given the provided configuration options."""
         return scout_dataexport_api.ExportDataRequest(
-            channels=self.export_channels(client=client),
+            channels=self.export_channels(datasource),
             context=scout_compute_api.Context(function_variables={}, variables={}),
             end_time=self.time_slice.end_api,
             start_time=self.time_slice.start_api,
@@ -412,7 +413,8 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
     # Warn user about renamed channels, handle data with channel names of "timestamp"
     time_col = _get_exported_timestamp_channel(job.channel_names)
 
-    req = job.export_request(client)
+    datasource = client.get_datasource(job.datasource_rid)
+    req = job.export_request(datasource)
     resp = client._clients.dataexport.export_channel_data(client._clients.auth_header, req)
 
     # force schema for export based on known channel types (helps if columns are all nan for a given part to prevent
@@ -605,15 +607,15 @@ class PolarsExportHandler:
         points_per_second = self._compute_channel_points_per_second(numeric_channels, time_range, tags)
         batch_duration_ns = self._compute_batch_duration(batch_duration, enum_channels, time_range, points_per_second)
 
-        # group channels by dataset
-        channel_names_by_dataset = collections.defaultdict(set)
+        # group channels by datasource
+        channel_names_by_datasource = collections.defaultdict(set)
         for channel_group in (numeric_channels, enum_channels):
             for channel in channel_group:
-                channel_names_by_dataset[channel.data_source].add(channel.name)
+                channel_names_by_datasource[channel.data_source].add(channel.name)
 
         jobs = collections.defaultdict(list)
         time_slices = time_range.subdivide_ns(batch_duration_ns)
-        for dataset_rid, channel_names in channel_names_by_dataset.items():
+        for datasource_rid, channel_names in channel_names_by_datasource.items():
             channel_groups, large_channels = _build_channel_groups(
                 {k: v for k, v in points_per_second.items() if k in channel_names},
                 {k: v for k, v in channels_by_name.items() if k in channel_names},
@@ -627,7 +629,7 @@ class PolarsExportHandler:
                 for channel_group in channel_groups:
                     jobs[slice].append(
                         _ExportJob(
-                            dataset_rid=dataset_rid,
+                            datasource_rid=datasource_rid,
                             channel_names=[ch.name for ch in channel_group],
                             channel_types={ch.name: ch.data_type for ch in channel_group},
                             time_slice=slice,
@@ -646,7 +648,7 @@ class PolarsExportHandler:
                     for sub_slice in slice.subdivide(sub_offset):
                         jobs[slice].append(
                             _ExportJob(
-                                dataset_rid=dataset_rid,
+                                datasource_rid=datasource_rid,
                                 channel_names=[channel.name],
                                 channel_types={ch.name: ch.data_type for ch in channel_group},
                                 time_slice=sub_slice,
@@ -737,12 +739,7 @@ class PolarsExportHandler:
                     # Schedule next batch of downloads before starting merge
                     if idx < len(time_slices) - 1:
                         futures = [
-                            pool.submit(
-                                _export_job,
-                                task,
-                                self._client,
-                            )
-                            for task in export_jobs[time_slices[idx + 1]]
+                            pool.submit(_export_job, task, self._client) for task in export_jobs[time_slices[idx + 1]]
                         ]
 
                 if join_batches:
