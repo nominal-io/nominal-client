@@ -4,7 +4,7 @@ import logging
 import pathlib
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Iterable, Literal, Mapping, Protocol, Sequence
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     api,
@@ -112,11 +112,28 @@ class DataSource(HasRid):
             )
             yield from (Channel._from_channel_metadata_api(self._clients, channel) for channel in response.responses)
 
+    @overload
     def get_write_stream(
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] = "json",
+        data_format: Literal["json", "protobuf", "experimental"] | None = None,
+    ) -> DataStream: ...
+    @overload
+    def get_write_stream(
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+        data_format: Literal["rust_experimental"] | None = None,
+        file_fallback: pathlib.Path | None = None,
+        log_level: str | None = None,
+        num_workers: int | None = None,
+    ) -> DataStream: ...
+    def get_write_stream(
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+        data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None = None,
         file_fallback: pathlib.Path | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
@@ -309,13 +326,16 @@ def _construct_export_request(
 def _get_write_stream(
     batch_size: int,
     max_wait: timedelta,
-    data_format: Literal["json", "protobuf", "experimental", "rust_experimental"],
+    data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None,
     file_fallback: pathlib.Path | None,
     log_level: str | None,
     num_workers: int | None,
     write_rid: str,
     clients: DataSource._Clients,
 ) -> DataStream:
+    if data_format is None:
+        data_format = "json"
+
     if data_format != "rust_experimental":
         new_kwargs = {
             "file_fallback": file_fallback,
@@ -375,12 +395,8 @@ def _get_write_stream(
             max_workers=None,
         )
     elif data_format == "rust_experimental":
-        try:
-            from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
-        except ImportError as ex:
-            raise ImportError(
-                "nominal-streaming is required to use get_write_stream with data_format='rust_experimental'"
-            ) from ex
+        # Delayed import intentionally in case of any issues with experimental and pre-compiled binaries
+        from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
 
         return RustWriteStream._from_datasource(
             write_rid,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Literal, Sequence
+from typing import Literal, Sequence, overload
 
 from nominal_api import scout_datasource_connection_api
 
@@ -58,11 +58,28 @@ class StreamingConnection(Connection):
 
     nominal_data_source_rid: str
 
+    @overload
     def get_write_stream(
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] = "json",
+        data_format: Literal["json", "protobuf", "experimental"] | None = None,
+    ) -> DataStream: ...
+    @overload
+    def get_write_stream(
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+        data_format: Literal["rust_experimental"] | None = None,
+        file_fallback: pathlib.Path | None = None,
+        log_level: str | None = None,
+        num_workers: int | None = None,
+    ) -> DataStream: ...
+    def get_write_stream(
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+        data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None = None,
         file_fallback: pathlib.Path | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
