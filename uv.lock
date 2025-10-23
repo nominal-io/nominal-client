@@ -994,7 +994,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.88.0"
+version = "1.89.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1002,6 +1002,7 @@ dependencies = [
     { name = "conjure-python-client" },
     { name = "ffmpeg-python" },
     { name = "nominal-api" },
+    { name = "nominal-streaming" },
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "polars" },
@@ -1053,6 +1054,7 @@ requires-dist = [
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "nominal-api", specifier = "==0.959.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.949.2" },
+    { name = "nominal-streaming", specifier = "==0.5.8" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "openpyxl", specifier = ">=0.0.0" },
     { name = "pandas", specifier = ">=0.0.0" },
@@ -1114,6 +1116,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/86/6e/cc064036b40d98909006ae86c54e0ec85a5e675314020060906615a0e6e3/nominal_api_protos-0.951.0.tar.gz", hash = "sha256:b9b7e3edf34b5a13c2880666e9ae0e356130487f7b4cae691bf87038f46583ff", size = 121517, upload-time = "2025-10-09T21:06:02.388Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/cb/f1e41fe9d48c45e7729c4af684b47fff8c2530d0cfe0a2ce7fd6a2d7751f/nominal_api_protos-0.951.0-py3-none-any.whl", hash = "sha256:ab8261abb5afae4acb93de472999c8f8ce83beb43e7a0df5a7403fc1cd808278", size = 170518, upload-time = "2025-10-09T21:06:00.408Z" },
+]
+
+[[package]]
+name = "nominal-streaming"
+version = "0.5.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "typing-extensions" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/47/d2/5ae27b2c0caeef6da98b896a6364669cb0d29c4f30119571326d4878dc9f/nominal_streaming-0.5.8-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:3ecc5fe6beda872df9ffefb2ee053d3eb28847fdea7a845a130de66b5a9d8659", size = 3163984, upload-time = "2025-10-23T19:39:25.044Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/9c/b132a593661d6af6b9795132c628c81644a7495767664d2dbac2fdea1f18/nominal_streaming-0.5.8-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:cefa65f067153774d13db9b78d128a3f87b43d956fc9dd377295ad7919b51f0a", size = 3100034, upload-time = "2025-10-23T19:40:42.863Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/1e/b902c914b281256c94ac572374e523e8c8f34916d5fd519cb8a2a56bd0eb/nominal_streaming-0.5.8-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dedfc6989e1e3388764305310ec2b1a3c0069e78c0107c41b31b871ed7989a3f", size = 3603079, upload-time = "2025-10-23T19:40:40.964Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/d2/6cb798094cc3e887336d8c201043f4e9336661e353b8fbc01643deacdd29/nominal_streaming-0.5.8-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:0a268f02c6ae4c8a4d26f39b9d831f22f4e43be9fb757e0c57cb43199b756345", size = 3540616, upload-time = "2025-10-23T19:40:22.503Z" },
+    { url = "https://files.pythonhosted.org/packages/09/f5/d526ea78898dc9a3c409e7089d17152bec1269bfd19d9f2e47041e655ef5/nominal_streaming-0.5.8-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:9d1eabc6ed1bfc0d185e48da5d8bba591a378ffe21f45df18b57f842649283a0", size = 3313038, upload-time = "2025-10-23T19:40:24.149Z" },
+    { url = "https://files.pythonhosted.org/packages/de/f0/dd81f920ec57c8ec8273f184c355bc037e681cc79fd93e0f41efa33c0eb8/nominal_streaming-0.5.8-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a8e114f40367b7578aff58bbae9419956e319d6db29883e7bc349ca06b5a49b5", size = 3729378, upload-time = "2025-10-23T19:40:14.7Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/d1/7c91bc5b0d4f0c889af6371d0aeb0986fba88f48e74d36a0c6735bb1750c/nominal_streaming-0.5.8-cp310-abi3-win_amd64.whl", hash = "sha256:88530a72c3feba22a2ccaa8cd8f3ebc18dfd52b6c80420c0bdc6369c1cb4fe86", size = 3327656, upload-time = "2025-10-23T19:47:31.763Z" },
 ]
 
 [[package]]
