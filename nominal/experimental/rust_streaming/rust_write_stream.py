@@ -33,8 +33,9 @@ class RustWriteStream(NominalDatasetStream, DataStream):
             kwargs["num_upload_workers"] = num_workers
             kwargs["num_runtime_workers"] = num_workers
 
+        api_key = datasource_clients.auth_header.removeprefix("Bearer ")
         stream = cls.create(
-            datasource_clients.auth_header.split()[-1],
+            api_key,
             datasource_clients.storage_writer._uri,
             max_points_per_batch=batch_size,
             max_request_delay_secs=max_wait.total_seconds(),
