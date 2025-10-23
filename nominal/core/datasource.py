@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Iterable, Literal, Mapping, Protocol, Sequence
@@ -115,7 +116,10 @@ class DataSource(HasRid):
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf", "experimental"] = "json",
+        data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] = "json",
+        file_fallback: pathlib.Path | None = None,
+        log_level: str | None = None,
+        num_workers: int | None = None,
     ) -> DataStream:
         """Stream to write timeseries data to a datasource.
 
@@ -128,6 +132,15 @@ class DataSource(HasRid):
             data_format: Serialized data format to use during upload.
                 NOTE: selecting 'protobuf' or 'experimental' requires that `nominal` was installed
                       with `protos` extras.
+            file_fallback: Filepath to write failed batches to during streaming
+                NOTE: expects a .avro filename
+                NOTE: only works with `data_format='rust_experimental'`
+            log_level: Log level to use in underlying rust streaming code.
+                NOTE: Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
+                NOTE: only works with `data_format='rust_experimental'`
+            num_workers: Number of worker threads to use in underlying rust streaming code.
+                NOTE: use with care-- this may have large impacts on streaming performance.
+                NOTE: only works with `data_format='rust_experimental'`
 
         Returns:
         --------
@@ -139,6 +152,9 @@ class DataSource(HasRid):
             batch_size=batch_size,
             max_wait=max_wait,
             data_format=data_format,
+            file_fallback=file_fallback,
+            log_level=log_level,
+            num_workers=num_workers,
             write_rid=self.rid,
             clients=self._clients,
         )
@@ -293,10 +309,23 @@ def _construct_export_request(
 def _get_write_stream(
     batch_size: int,
     max_wait: timedelta,
-    data_format: Literal["json", "protobuf", "experimental"],
+    data_format: Literal["json", "protobuf", "experimental", "rust_experimental"],
+    file_fallback: pathlib.Path | None,
+    log_level: str | None,
+    num_workers: int | None,
     write_rid: str,
     clients: DataSource._Clients,
 ) -> DataStream:
+    if data_format != "rust_experimental":
+        new_kwargs = {
+            "file_fallback": file_fallback,
+            "log_level": log_level,
+            "num_workers": num_workers,
+        }
+        for key, value in new_kwargs.items():
+            if value is not None:
+                logger.warning("Argument %s has no effect unless `data_format='rust_experimental'`", key)
+
     if data_format == "json":
         return WriteStream.create(
             batch_size=batch_size,
@@ -344,6 +373,23 @@ def _get_write_stream(
             max_queue_size=0,
             track_metrics=True,
             max_workers=None,
+        )
+    elif data_format == "rust_experimental":
+        try:
+            from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
+        except ImportError as ex:
+            raise ImportError(
+                "nominal-streaming is required to use get_write_stream with data_format='rust_experimental'"
+            ) from ex
+
+        return RustWriteStream._from_datasource(
+            write_rid,
+            clients,
+            batch_size=batch_size,
+            max_wait=max_wait,
+            file_fallback=file_fallback,
+            log_level=log_level,
+            num_workers=num_workers,
         )
     else:
         raise ValueError(
