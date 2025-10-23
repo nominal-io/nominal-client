@@ -162,8 +162,8 @@ class DataReviewBuilder:
         self._integration_rids.append(integration_rid)
         return self
 
-    def add_request(self, run_rid: str, checklist_rid: str, commit: str) -> DataReviewBuilder:
-        self._requests.append(scout_datareview_api.CreateDataReviewRequest(checklist_rid, run_rid, commit))
+    def add_request(self, run_rid: str, checklist_rid: str, asset_rid: str, commit: str) -> DataReviewBuilder:
+        self._requests.append(scout_datareview_api.CreateDataReviewRequest(checklist_rid, run_rid, asset_rid, commit))
         return self
 
     def add_tags(self, tags: list[str]) -> DataReviewBuilder:
