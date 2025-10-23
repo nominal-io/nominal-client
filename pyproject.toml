@@ -40,7 +40,7 @@ dependencies = [
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
     "openpyxl>=0.0.0",
-    "nominal-streaming>=0.5.7",
+    "nominal-streaming==0.5.8",
 ]
 
 
