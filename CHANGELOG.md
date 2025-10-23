@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.90.0](https://github.com/nominal-io/nominal-client/compare/v1.89.0...v1.90.0) (2025-10-23)
+
+
+### Features
+
+* add rust-based streaming to public client ([#506](https://github.com/nominal-io/nominal-client/issues/506)) ([4dfc41f](https://github.com/nominal-io/nominal-client/commit/4dfc41f1c181689dde95288e12d5820456651d67))
+
 ## [1.89.0](https://github.com/nominal-io/nominal-client/compare/v1.88.0...v1.89.0) (2025-10-22)
 
 
