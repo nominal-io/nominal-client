@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import concurrent.futures
 import datetime
 import logging
 import pathlib
@@ -8,13 +7,17 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Mapping, Protocol, Sequence
+from urllib.parse import unquote, urlparse
 
-from cachetools.func import ttl_cache
 from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import update_dataclass
-from nominal._utils.download_tools import download_presigned_uri, filename_from_uri
+from nominal._utils.multipart_downloader import (
+    DownloadItem,
+    MultipartFileDownloader,
+    PresignedURLProvider,
+)
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core.bounds import Bounds
 from nominal.core.exceptions import NominalIngestError
@@ -26,6 +29,10 @@ from nominal.ts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def filename_from_uri(uri: str) -> str:
+    return unquote(pathlib.Path(urlparse(uri).path).name).replace(":", "_")
 
 
 @dataclass(frozen=True)
@@ -62,6 +69,163 @@ class DatasetFile:
 
     def refresh(self) -> Self:
         return self._refresh_from_api(self._get_latest_api())
+
+    def delete(self) -> None:
+        """Deletes the dataset file, removing its data permanently from Nominal.
+
+        NOTE: this cannot be undone outside of fully re-ingesting the file into Nominal.
+        """
+        self._clients.ingest.delete_file(self._clients.auth_header, self.dataset_rid, self.id)
+
+    def poll_until_ingestion_completed(self, interval: datetime.timedelta = datetime.timedelta(seconds=1)) -> Self:
+        """Block until dataset file ingestion has completed
+
+        This method polls Nominal for ingest status after uploading a file to a dataset on an interval.
+
+        """
+        while True:
+            api_file = self._get_latest_api()
+            self._refresh_from_api(api_file)
+            if self.ingest_status is IngestStatus.SUCCESS:
+                break
+            elif self.ingest_status is IngestStatus.IN_PROGRESS:
+                pass
+            elif self.ingest_status is IngestStatus.FAILED:
+                # Get error message to display to user
+                file_error = api_file.ingest_status.error
+                if file_error is None:
+                    raise NominalIngestError(
+                        f"Ingest status marked as 'error' but with no details for file={self.id!r} and "
+                        f"dataset_rid={self.dataset_rid!r}"
+                    )
+                else:
+                    raise NominalIngestError(
+                        f"Ingest failed for file={self.id!r} and dataset_rid={self.dataset_rid!r}: "
+                        f"{file_error.message} ({file_error.error_type})"
+                    )
+            else:
+                raise NominalIngestError(
+                    f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
+                    f"dataset_rid={self.dataset_rid!r}"
+                )
+
+            # Sleep for specified interval
+            logger.debug("Sleeping for %f seconds before polling for ingest status", interval.total_seconds())
+            time.sleep(interval.total_seconds())
+
+        return self
+
+    def _presigned_url_provider(self, ttl: float = 60.0, skew: float = 15.0) -> PresignedURLProvider:
+        def fetch() -> str:
+            return self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
+
+        return PresignedURLProvider(fetch_fn=fetch, ttl=ttl, skew=skew)
+
+    def _origin_presigned_url_provider(
+        self, origin_path: str, ttl: float = 60.0, skew: float = 15.0
+    ) -> PresignedURLProvider:
+        def fetch() -> str:
+            for uri in self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id):
+                if uri.path == origin_path:
+                    return uri.uri
+
+            raise ValueError(f"No such origin path: {origin_path}")
+
+        return PresignedURLProvider(fetch_fn=fetch, ttl=ttl, skew=skew)
+
+    def download(
+        self,
+        output_directory: pathlib.Path,
+        *,
+        force: bool = False,
+        part_size: int = 64 * 1024 * 1024,
+        num_retries: int = 3,
+    ) -> pathlib.Path:
+        """Download the dataset file to a destination on local disk.
+
+        Args:
+            output_directory: Download file to the given directory
+            force: If true, delete any files that exist / create parent directories if nonexistent
+            part_size: Size (in bytes) of chunks to use when downloading file.
+            num_retries: Number of retries to perform per part download if any exception occurs
+
+        Returns:
+            Path that the file was downloaded to
+
+        Raises:
+            FileNotFoundError: Output directory doesn't exist and force=False
+            FileExistsError: File already exists at destination
+            NotADirectoryError: Output directory exists and is not a directory
+            RuntimeError: Error downloading file
+        """
+        if output_directory.exists() and not output_directory.is_dir():
+            raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
+
+        logger.info("Getting initial presigned ")
+        file_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
+        destination = output_directory / filename_from_uri(file_uri)
+        item = DownloadItem(
+            provider=self._presigned_url_provider(), destination=destination, part_size=part_size, force=force
+        )
+        with MultipartFileDownloader(max_part_retries=num_retries) as dl:
+            return dl.download_file(item)
+
+    def download_original_files(
+        self,
+        output_directory: pathlib.Path,
+        *,
+        force: bool = True,
+        part_size: int = 64 * 1024 * 1024,
+        num_retries: int = 3,
+    ) -> Sequence[pathlib.Path]:
+        """Download the input file(s) for a containerized extractor to a destination on local disk.
+
+        Args:
+            output_directory: Download file(s) to the given directory
+            force: If true, delete any files that exist / create parent directories if nonexistent
+            part_size: Size (in bytes) of chunks to use when downloading files.
+            num_retries: Number of retries to perform per part download if any exception occurs
+
+        Returns:
+            Path(s) that the file(s) were downloaded to
+
+        Raises:
+            NotADirectoryError: Output directory is not a directory
+
+        NOTE: any file that fails to download will result in an error log and will not be returned
+        """
+        if output_directory.exists() and not output_directory.is_dir():
+            raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
+
+        origin_uris = self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
+        items = []
+        for uri in origin_uris:
+            dest = output_directory / filename_from_uri(uri.uri)
+            items.append(
+                DownloadItem(
+                    provider=self._origin_presigned_url_provider(uri.path),
+                    destination=dest,
+                    part_size=part_size,
+                    force=force,
+                )
+            )
+
+        if not items:
+            logger.warning(
+                "Dataset file %s (id=%s) has no origin files... was this from a containerized extractor?",
+                self.name,
+                self.id,
+            )
+            return []
+
+        with MultipartFileDownloader(max_part_retries=num_retries) as dl:
+            results = dl.download_files(items)
+
+        for failed_path, ex in results.failed.items():
+            logger.error("Failed to download %s", failed_path, exc_info=ex)
+
+        logger.info("Successfully downloaded %d/%d files", len(results.succeeded), len(items))
+        return results.succeeded
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
@@ -106,192 +270,6 @@ class DatasetFile:
             tag_columns=tag_columns,
             _clients=clients,
         )
-
-    def delete(self) -> None:
-        """Deletes the dataset file, removing its data permanently from Nominal.
-
-        NOTE: this cannot be undone outside of fully re-ingesting the file into Nominal.
-        """
-        self._clients.ingest.delete_file(self._clients.auth_header, self.dataset_rid, self.id)
-
-    def download(
-        self,
-        output_directory: pathlib.Path,
-        force: bool = False,
-    ) -> pathlib.Path:
-        """Download the dataset file to a destination on local disk.
-
-        Args:
-            output_directory: Download file to the given directory
-            force: If true, delete any files that exist / create parent directories if nonexistent
-
-        Returns:
-            Path that the file was downloaded to
-
-        Raises:
-            FileNotFoundError: Output directory doesn't exist and force=False
-            FileExistsError: File already exists at destination
-            NotADirectoryError: Output directory exists and is not a directory
-            RuntimeError: Error downloading file
-        """
-        if output_directory.exists() and not output_directory.is_dir():
-            raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
-
-        api_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id)
-        destination = output_directory / filename_from_uri(api_uri.uri)
-
-        logger.info("Downloading %s (%s) => %s", self.name, api_uri.uri, destination)
-        download_presigned_uri(api_uri.uri, destination, force=force)
-        return destination
-
-    @ttl_cache(ttl=30.0)
-    def _presigned_origin_files(self) -> Mapping[str, str]:
-        """Returns a mapping of s3 paths to presigned s3 uris for all origin files"""
-        return {
-            uri.path: uri.uri
-            for uri in self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
-        }
-
-    def _download_origin_file(self, origin_path: str, destination: pathlib.Path, force: bool, num_retries: int) -> None:
-        """Download the origin file with the given origin path to the given destination.
-
-        Args:
-            origin_path: Path to the file to download
-            destination: Path to the location to download the file to
-            force: If true, create any parent directories and delete any existing files in the destination
-            num_retries: Number of retries to use when downloading the file in case of transient networking errors.
-
-        Raises:
-            RuntimeError: Unable to download the origin file
-        """
-        last_exception = None
-        for attempt in range(num_retries):
-            origin_uri = self._presigned_origin_files().get(origin_path)
-            if origin_uri is None:
-                raise RuntimeError(f"No such origin path: {origin_path}")
-
-            logger.info("Downloading %s => %s (%d / %d)", origin_path, destination, attempt + 1, num_retries)
-            try:
-                download_presigned_uri(origin_uri, destination, force=force)
-
-                # Success-- return
-                return
-            except Exception as ex:
-                last_exception = ex
-                logger.error(
-                    "Failed to download %s => %s (%d / %d)",
-                    origin_path,
-                    destination,
-                    attempt + 1,
-                    num_retries,
-                    exc_info=ex,
-                )
-
-            # Delete any partially downloaded response
-            destination.unlink(missing_ok=True)
-
-            # Sleep to allow backend to catch up
-            time.sleep(3)
-
-        # All attempts failed, raise exception
-        raise RuntimeError(
-            f"Failed to download {origin_path} => {destination} in {num_retries} tries"
-        ) from last_exception
-
-    def download_original_files(
-        self, output_directory: pathlib.Path, force: bool = True, parallel_downloads: int = 8, num_retries: int = 3
-    ) -> Sequence[pathlib.Path]:
-        """Download the input file(s) for a containerized extractor to a destination on local disk.
-
-        Args:
-            output_directory: Download file(s) to the given directory
-            force: If true, delete any files that exist / create parent directories if nonexistent
-            parallel_downloads: Number of files to download concurrently
-            num_retries: Number of retries to perform per file download if any exception occurs
-
-        Returns:
-            Path(s) that the file(s) were downloaded to
-
-        Raises:
-            NotADirectoryError: Output directory is not a directory
-
-        NOTE: any file that fails to download will result in an error log and will not be returned
-        """
-        if output_directory.exists() and not output_directory.is_dir():
-            raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
-
-        origin_uris = self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id)
-        if not origin_uris:
-            logger.warning(
-                "Dataset file %s (id=%s) has no origin files... was this from a containerized extractor?",
-                self.name,
-                self.id,
-            )
-            return []
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=parallel_downloads) as pool:
-            futures = {}
-            for uri in origin_uris:
-                destination = output_directory / filename_from_uri(uri.uri)
-
-                future = pool.submit(
-                    self._download_origin_file,
-                    uri.path,
-                    destination,
-                    force,
-                    num_retries,
-                )
-                futures[future] = (uri, destination)
-
-            results = []
-            for idx, future in enumerate(concurrent.futures.as_completed(futures)):
-                uri, destination = futures[future]
-                ex = future.exception()
-                if ex is not None:
-                    logger.error("Failed to download %s => %s", uri.path, destination, exc_info=ex)
-                    continue
-
-                logger.info("Successfully downloaded %s => %s (%d / %d)", uri.path, destination, idx + 1, len(futures))
-                results.append(destination)
-            return results
-
-    def poll_until_ingestion_completed(self, interval: datetime.timedelta = datetime.timedelta(seconds=1)) -> Self:
-        """Block until dataset file ingestion has completed
-
-        This method polls Nominal for ingest status after uploading a file to a dataset on an interval.
-
-        """
-        while True:
-            api_file = self._get_latest_api()
-            self._refresh_from_api(api_file)
-            if self.ingest_status is IngestStatus.SUCCESS:
-                break
-            elif self.ingest_status is IngestStatus.IN_PROGRESS:
-                pass
-            elif self.ingest_status is IngestStatus.FAILED:
-                # Get error message to display to user
-                file_error = api_file.ingest_status.error
-                if file_error is None:
-                    raise NominalIngestError(
-                        f"Ingest status marked as 'error' but with no details for file={self.id!r} and "
-                        f"dataset_rid={self.dataset_rid!r}"
-                    )
-                else:
-                    raise NominalIngestError(
-                        f"Ingest failed for file={self.id!r} and dataset_rid={self.dataset_rid!r}: "
-                        f"{file_error.message} ({file_error.error_type})"
-                    )
-            else:
-                raise NominalIngestError(
-                    f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
-                    f"dataset_rid={self.dataset_rid!r}"
-                )
-
-            # Sleep for specified interval
-            logger.debug("Sleeping for %f seconds before polling for ingest status", interval.total_seconds())
-            time.sleep(interval.total_seconds())
-
-        return self
 
 
 class IngestStatus(Enum):
