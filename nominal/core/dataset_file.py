@@ -13,12 +13,13 @@ from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import update_dataclass
-from nominal._utils.multipart_downloader import (
+from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
+from nominal.core._utils.multipart_downloader import (
     DownloadItem,
     MultipartFileDownloader,
     PresignedURLProvider,
 )
-from nominal.core._clientsbunch import HasScoutParams
 from nominal.core.bounds import Bounds
 from nominal.core.exceptions import NominalIngestError
 from nominal.ts import (
@@ -115,14 +116,14 @@ class DatasetFile:
 
         return self
 
-    def _presigned_url_provider(self, ttl: float = 60.0, skew: float = 15.0) -> PresignedURLProvider:
+    def _presigned_url_provider(self, ttl_secs: float = 60.0, skew_secs: float = 15.0) -> PresignedURLProvider:
         def fetch() -> str:
             return self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
 
-        return PresignedURLProvider(fetch_fn=fetch, ttl=ttl, skew=skew)
+        return PresignedURLProvider(fetch_fn=fetch, ttl_secs=ttl_secs, skew_secs=skew_secs)
 
     def _origin_presigned_url_provider(
-        self, origin_path: str, ttl: float = 60.0, skew: float = 15.0
+        self, origin_path: str, ttl_secs: float = 60.0, skew_secs: float = 15.0
     ) -> PresignedURLProvider:
         def fetch() -> str:
             for uri in self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id):
@@ -131,14 +132,14 @@ class DatasetFile:
 
             raise ValueError(f"No such origin path: {origin_path}")
 
-        return PresignedURLProvider(fetch_fn=fetch, ttl=ttl, skew=skew)
+        return PresignedURLProvider(fetch_fn=fetch, ttl_secs=ttl_secs, skew_secs=skew_secs)
 
     def download(
         self,
         output_directory: pathlib.Path,
         *,
         force: bool = False,
-        part_size: int = 64 * 1024 * 1024,
+        part_size: int = DEFAULT_CHUNK_SIZE,
         num_retries: int = 3,
     ) -> pathlib.Path:
         """Download the dataset file to a destination on local disk.
@@ -175,7 +176,7 @@ class DatasetFile:
         output_directory: pathlib.Path,
         *,
         force: bool = True,
-        part_size: int = 64 * 1024 * 1024,
+        part_size: int = DEFAULT_CHUNK_SIZE,
         num_retries: int = 3,
     ) -> Sequence[pathlib.Path]:
         """Download the input file(s) for a containerized extractor to a destination on local disk.

@@ -1,6 +1,7 @@
 # multipart_downloader.py
 from __future__ import annotations
 
+import dataclasses
 import logging
 import math
 import multiprocessing
@@ -10,45 +11,54 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Callable, Iterable, Sequence, Tuple, Type
+from typing import Callable, Iterable, Sequence, Type
 
 import requests
 from requests.adapters import HTTPAdapter
 from typing_extensions import Self
 from urllib3.util.retry import Retry
 
+from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
+
 logger = logging.getLogger(__name__)
 
 
+@dataclasses.dataclass
 class PresignedURLProvider:
-    """Thread-safe presigned URL cache that refreshes on schedule or when invalidated.
+    """Thread-safe presigned URL cache that refreshes on schedule or when invalidated."""
 
-    fetch_fn: callable to provide a fresh presigned URL
-    ttl: seconds to reuse the cached URL
-    skew: refresh earlier than TTL by this many seconds
-    """
+    fetch_fn: Callable[[], str]
+    """Function used to fetch a fresh presigned URL when the current one expires"""
+    ttl_secs: float
+    """Time-to-Live for the presigned URLs"""
+    skew_secs: float
+    """Buffer around TTL to ensure that URLs are still fresh by the time they are used"""
 
-    def __init__(self, fetch_fn: Callable[[], str], ttl: float = 60.0, skew: float = 5.0) -> None:
-        self._fetch_fn = fetch_fn
-        self._ttl = ttl
-        self._skew = skew
-        self._url: str | None = None
-        self._deadline: float = 0.0
-        self._lock = threading.Lock()
+    # monotonic clock time that
+    _stamped_url: tuple[str | None, float] = dataclasses.field(default=(None, 0.0), repr=False)
+    _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock, repr=False)
 
-    def get(self, *, force: bool = False) -> str:
+    def get_url(self, *, force: bool = False) -> str:
         now = time.monotonic()
         with self._lock:
-            if force or self._url is None or now >= self._deadline:
-                self._url = self._fetch_fn()
-                self._deadline = now + max(0.0, self._ttl - self._skew)
-                logger.debug("Refreshed presigned url with %s second deadline ('%s')", self._deadline, self._url)
-            return self._url
+            url, deadline = self._stamped_url
+            if force or url is None or now >= deadline:
+                url = self.fetch_fn()
+                deadline = now + max(0.0, self.ttl_secs - self.skew_secs)
+                self._stamped_url = (url, deadline)
+                logger.debug("Refreshed presigned url with deadline of %f ('%s')", deadline, url)
+
+            return url
 
     def invalidate(self) -> None:
         with self._lock:
-            logger.info("Invalidated presigned URL ('%s')", self._url)
-            self._deadline = 0.0
+            logger.info("Invalidating presigned URL")
+
+            # Set expiry time to _right now_
+            self._deadline = time.monotonic()
+
+            # Clear presigned URL
+            self._url = None
 
 
 @dataclass(frozen=True)
@@ -57,7 +67,7 @@ class DownloadItem:
 
     provider: PresignedURLProvider
     destination: pathlib.Path
-    part_size: int = 64 * 1024 * 1024  # 64 MiB
+    part_size: int = DEFAULT_CHUNK_SIZE
     force: bool = False
 
 
@@ -67,6 +77,23 @@ class DownloadResults:
 
     succeeded: list[pathlib.Path]
     failed: dict[pathlib.Path, Exception]
+
+
+@dataclass(frozen=True)
+class _PlannedDownload:
+    """Internal dataclass for representing the state of a file to download"""
+
+    item: DownloadItem
+    total_size: int
+    etag: str | None
+
+    @property
+    def ranges(self) -> Iterable[tuple[int, int, int]]:
+        parts = max(1, math.ceil(self.total_size / self.item.part_size))
+        for i in range(parts):
+            start = i * self.item.part_size
+            end = min(self.total_size - 1, start + self.item.part_size - 1)
+            yield (i, start, end)
 
 
 class MultipartFileDownloader:
@@ -103,10 +130,23 @@ class MultipartFileDownloader:
 
     # ---- lifecycle ----
 
+    def _make_session(self, pool_size: int) -> requests.Session:
+        retries = Retry(
+            total=5,
+            backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset(["GET", "HEAD"]),
+        )
+        s = requests.Session()
+        adapter = HTTPAdapter(max_retries=retries, pool_maxsize=pool_size)
+        s.mount("https://", adapter)
+        s.mount("http://", adapter)
+        return s
+
     def close(self) -> None:
         if not self._closed:
             try:
-                self._pool.shutdown(wait=True, cancel_futures=True)
+                self._pool.shutdown(wait=True)
             finally:
                 self._session.close()
                 self._closed = True
@@ -123,24 +163,26 @@ class MultipartFileDownloader:
 
     def download_file(self, item: DownloadItem) -> pathlib.Path:
         """Download a single file using a presigned URL provider."""
+        # Ensure destination directory exists
         self._prepare_destination(item.destination, force=item.force)
-        total_size, etag = self._head_or_probe(item.provider)
-        self._preallocate(item.destination, total_size)
 
-        ranges = list(self._iter_ranges(total_size, item.part_size))
+        # Plan the download by discovering the size & etag
+        plan = self._plan_item(item)
 
-        logger.info("Starting download for file %s", item.destination)
-        writer_lock = threading.Lock()
-        fut_map = self._submit_parts(item.provider, ranges, etag)
-        self._consume_and_write(item.destination, fut_map, writer_lock)
+        # Pre-allocate the file to allow for parallelism in downloads
+        self._preallocate(item.destination, plan.total_size)
+
+        # Execute plan
+        logger.info("Starting download for file %s (%.2f MB)", item.destination, plan.total_size / 1e6)
+        self._run_downloads([plan], collect_errors=False)
         return item.destination
 
     def download_files(self, items: Sequence[DownloadItem]) -> DownloadResults:
         """Download many files using a shared thread pool."""
         failed: dict[pathlib.Path, Exception] = {}
-        plans: dict[pathlib.Path, Tuple[int, str | None, int]] = {}
 
-        # Prepare destinations
+        # Ensure destination directories exist
+        logger.info("Preparing destinations for download")
         for it in items:
             try:
                 self._prepare_destination(it.destination, force=it.force)
@@ -148,69 +190,88 @@ class MultipartFileDownloader:
                 failed[it.destination] = ex
                 logger.error("Destination prep failed for %s: %s", it.destination, ex, exc_info=ex)
 
-        # Probe & preallocate
+        # Probe & preallocate files to generate a plan
+        plans: list[_PlannedDownload] = []
         for it in items:
             if it.destination in failed:
                 continue
+
             try:
-                total, etag = self._head_or_probe(it.provider)
-                self._preallocate(it.destination, total)
-                plans[it.destination] = (total, etag, it.part_size)
+                plan = self._plan_item(it)
+                self._preallocate(it.destination, plan.total_size)
+                plans.append(plan)
             except Exception as ex:
                 failed[it.destination] = ex
                 logger.error("Planning failed for %s: %s", it.destination, ex, exc_info=ex)
 
-        # Submit all parts for all planned files
-        writer_locks: dict[pathlib.Path, threading.Lock] = {d: threading.Lock() for d in plans}
-        fut_map: dict[Future[bytes], Tuple[pathlib.Path, int]] = {}
+        if failed:
+            logger.warning("Failed to plan downloads for %d files!", len(failed))
 
-        for it in items:
-            plan = plans.get(it.destination)
-            if not plan:
-                continue
+        # Execute plans with error collection
+        logger.info("Starting downloads for %d files", len(plans))
+        exec_failed = self._run_downloads(plans, collect_errors=True)
+        succeeded = [p.item.destination for p in plans if p.item.destination not in failed]
+        logger.info(
+            "Successfully downloaded %d files (%d total, %d failed to plan, %d failed)",
+            len(succeeded),
+            len(items),
+            len(failed),
+            len(exec_failed),
+        )
 
-            logger.info("Scheduling download for file %s", it.destination)
-            total, etag, part_size = plan
-            for _, start, end in self._iter_ranges(total, part_size):
-                fut = self._pool.submit(self._fetch_range_bytes, it.provider, start, end, etag)
-                fut_map[fut] = (it.destination, start)
+        failed.update(exec_failed)
+        return DownloadResults(succeeded, failed)
 
-        # Consume completions
-        succeeded: set[pathlib.Path] = set()
+    def _run_downloads(
+        self, plans: Sequence[_PlannedDownload], *, collect_errors: bool
+    ) -> dict[pathlib.Path, Exception]:
+        """Submit all parts for all plans, consume completions, and write to disk.
+
+
+        If `collect_errors` is False, any failure is raised immediately.
+        If True, errors are captured and returned in a map of destination->Exception.
+        """
+        # Per-file locks
+        writer_locks: dict[pathlib.Path, threading.Lock] = {p.item.destination: threading.Lock() for p in plans}
+
+        # Build a map of futures to (destination, start)
+        fut_map: dict[Future[bytes], tuple[pathlib.Path, int]] = {}
+        for plan in plans:
+            for _idx, start, end in plan.ranges:
+                fut = self._pool.submit(self._fetch_range_bytes, plan.item.provider, start, end, plan.etag)
+                fut_map[fut] = (plan.item.destination, start)
+
+        failed: dict[pathlib.Path, Exception] = {}
         for fut in as_completed(list(fut_map.keys())):
             dest, start = fut_map[fut]
             try:
                 data = fut.result()
                 self._write_part(dest, start, data, writer_locks[dest])
-                succeeded.add(dest)
             except Exception as ex:
-                # First error wins for that file; additional part errors will overwrite but same effect
-                failed[dest] = ex
                 logger.error("Failed part for %s @%d: %s", dest, start, ex, exc_info=ex)
+                if collect_errors:
+                    failed[dest] = ex
+                else:
+                    # Cancel remaining futures for this destination to avoid wasted work
+                    for f, (d, _) in fut_map.items():
+                        if d == dest:
+                            f.cancel()
+                    raise ex
 
-        # Only count as success if it planned and never failed
-        ok = [d for d in plans.keys() if d in succeeded and d not in failed]
-        return DownloadResults(succeeded=ok, failed=failed)
+        return failed
 
     # ---- planning helpers ----
 
-    def _make_session(self, pool_size: int) -> requests.Session:
-        retries = Retry(
-            total=5,
-            backoff_factor=0.5,
-            status_forcelist=(429, 500, 502, 503, 504),
-            allowed_methods=frozenset(["GET", "HEAD"]),
-        )
-        s = requests.Session()
-        adapter = HTTPAdapter(max_retries=retries, pool_maxsize=pool_size)
-        s.mount("https://", adapter)
-        s.mount("http://", adapter)
-        return s
+    def _head_or_probe(self, provider: PresignedURLProvider) -> tuple[int, str | None]:
+        """Discover (total_size, etag). Refresh once if the current URL is stale.
 
-    def _head_or_probe(self, provider: PresignedURLProvider) -> Tuple[int, str | None]:
-        """Discover (total_size, etag). Refresh once if the current URL is stale."""
-        for attempt in range(2):
-            url = provider.get(force=(attempt > 0))
+        Within platforms that support ETag (notably, AWS), this will typically be some hash or metadata
+        that can be used as a trivial check that the file being downloaded has not changed substantially.
+        This ETag may not be present on all platforms, in which case, None will be provided and any subsequent
+        checks will assume the file is not changing during downloads.
+        """
+        for attempt in range(3):
+            url = provider.get_url(force=(attempt > 0))
 
             r = self._session.head(url, timeout=self.timeout)
             if r.ok and "Content-Length" in r.headers:
@@ -233,13 +294,13 @@ class MultipartFileDownloader:
 
         raise RuntimeError("Could not determine object size/ETag (presigned URL kept failing)")
 
-    def _iter_ranges(self, total_size: int, part_size: int) -> Iterable[Tuple[int, int, int]]:
-        """Yield (index, start, end) inclusive ranges."""
-        parts = max(1, math.ceil(total_size / part_size))
-        for i in range(parts):
-            start = i * part_size
-            end = min(total_size - 1, start + part_size - 1)
-            yield (i, start, end)
+    def _plan_item(self, item: DownloadItem) -> _PlannedDownload:
+        total_size, etag = self._head_or_probe(item.provider)
+        return _PlannedDownload(
+            item=item,
+            total_size=total_size,
+            etag=etag,
+        )
 
     # ---- IO helpers ----
 
@@ -255,21 +316,22 @@ class MultipartFileDownloader:
 
         if path.exists():
             if path.is_dir():
-                raise ValueError(f"Destination exists as a directory: {path}")
-            if force:
-                path.unlink()
-            else:
+                raise IsADirectoryError(f"Destination exists as a directory: {path}")
+            if not force:
                 raise FileExistsError(f"Destination exists and force=False: {path}")
 
-    def _preallocate(self, path: pathlib.Path, total_size: int) -> None:
-        logger.info("Preallocating %s to %f MB", path, total_size / 1e6)
+    def _preallocate(self, path: pathlib.Path, total_size_bytes: int) -> None:
+        logger.info("Preallocating %s to %f MB", path, total_size_bytes / 1e6)
+        # Create file and open in read + write binary mode
         with path.open("wb") as f:
-            f.truncate(total_size)
+            f.truncate(total_size_bytes)
 
     def _write_part(self, path: pathlib.Path, start: int, data: bytes, lock: threading.Lock | None) -> None:
         if lock:
             lock.acquire()
         try:
+            # Open existing file in read + write binary mode
+            # Not creating the file with `wb` as it is already pre-allocated before downloads begin
             with path.open("r+b") as f:
                 f.seek(start)
                 f.write(data)
@@ -295,7 +357,7 @@ class MultipartFileDownloader:
         last_ex: Exception | None = None
 
         for _ in range(self.max_part_retries):
-            url = provider.get()
+            url = provider.get_url()
             try:
                 r = self._session.get(url, headers=headers, stream=True, timeout=self.timeout)
                 if self._is_expired_status(r):
@@ -314,29 +376,3 @@ class MultipartFileDownloader:
                     break
 
         raise last_ex if last_ex else RuntimeError("Unknown error downloading range")
-
-    # ---- scheduling ----
-
-    def _submit_parts(
-        self,
-        provider: PresignedURLProvider,
-        ranges: Sequence[Tuple[int, int, int]],
-        etag: str | None,
-    ) -> dict[Future[bytes], Tuple[int, int]]:
-        """Submit range fetches to the pool. Returns a map for completion handling."""
-        fut_map: dict[Future[bytes], Tuple[int, int]] = {}
-        for _idx, start, end in ranges:
-            fut = self._pool.submit(self._fetch_range_bytes, provider, start, end, etag)
-            fut_map[fut] = (start, end)
-        return fut_map
-
-    def _consume_and_write(
-        self,
-        destination: pathlib.Path,
-        fut_map: dict[Future[bytes], Tuple[int, int]],
-        writer_lock: threading.Lock,
-    ) -> None:
-        for fut in as_completed(list(fut_map.keys())):
-            start, _ = fut_map[fut]
-            data = fut.result()
-            self._write_part(destination, start, data, writer_lock)
