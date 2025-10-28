@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import math
-import os
+import multiprocessing
 import pathlib
 import threading
 import time
@@ -91,13 +91,8 @@ class MultipartFileDownloader:
             max_part_retries: Maximum amount of retries to perform per part download
         """
         if max_workers is None:
-            core_count = os.cpu_count()
-            if core_count is None:
-                max_workers = 8
-                logger.warning("Cannot infer number of CPU cores... using %d workers", max_workers)
-            else:
-                logger.info("Inferring core count as %d", core_count)
-                max_workers = core_count
+            max_workers = multiprocessing.cpu_count()
+            logger.info("Inferring core count as %d", max_workers)
 
         self.max_workers = max_workers
         self.timeout = timeout
