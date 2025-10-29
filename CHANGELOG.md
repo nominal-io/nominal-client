@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.91.0](https://github.com/nominal-io/nominal-client/compare/v1.90.0...v1.91.0) (2025-10-29)
+
+
+### Features
+
+* implement multi-part downloader for dataset files ([#509](https://github.com/nominal-io/nominal-client/issues/509)) ([1ba97f0](https://github.com/nominal-io/nominal-client/commit/1ba97f010bbc17cf756b8730a8ccc95fe872628d))
+
 ## [1.90.0](https://github.com/nominal-io/nominal-client/compare/v1.89.0...v1.90.0) (2025-10-23)
 
 
