@@ -257,13 +257,15 @@ class MultipartFileDownloader:
                 _ = fut.result()
             except Exception as ex:
                 logger.error("Failed part for %s @%d: %s", dest, start, ex, exc_info=ex)
+
+                # Cancel remaining futures for this destination to avoid wasted work
+                for f, (d, _) in fut_map.items():
+                    if d == dest:
+                        f.cancel()
+
                 if collect_errors:
                     failed[dest] = ex
                 else:
-                    # Cancel remaining futures for this destination to avoid wasted work
-                    for f, (d, _) in fut_map.items():
-                        if d == dest:
-                            f.cancel()
                     raise ex
 
         return failed
@@ -371,6 +373,7 @@ class MultipartFileDownloader:
                     start,
                     b"".join(chunk for chunk in r.iter_content(1024 * 1024) if chunk),
                 )
+                return
 
             except Exception as ex:
                 last_ex = ex
