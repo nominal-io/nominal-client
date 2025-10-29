@@ -210,8 +210,16 @@ class MultipartFileDownloader:
             len(failed),
             len(exec_failed),
         )
-
         failed.update(exec_failed)
+
+        # Delete any failed file downloads
+        if failed:
+            logger.warning("Clearing out artifacts from %d failed file downloads", len(failed))
+            for file in failed:
+                if file.exists():
+                    logger.info("Removing failed artifact %s", file)
+                    file.unlink()
+
         return DownloadResults(succeeded, failed)
 
     def _run_downloads(
@@ -223,23 +231,26 @@ class MultipartFileDownloader:
         If `collect_errors` is False, any failure is raised immediately.
         If True, errors are captured and returned in a map of destination->Exception.
         """
-        # Per-file locks
-        writer_locks: dict[pathlib.Path, threading.Lock] = {p.item.destination: threading.Lock() for p in plans}
-
         # Build a map of futures to (destination, start)
-        fut_map: dict[Future[bytes], tuple[pathlib.Path, int]] = {}
+        fut_map: dict[Future[None], tuple[pathlib.Path, int]] = {}
         for plan in plans:
             logger.info("Starting download for file %s (%.2f MB)", plan.item.destination, plan.total_size / 1e6)
-            for _idx, start, end in plan.ranges():
-                fut = self._pool.submit(self._fetch_range_bytes, plan.item.provider, start, end, plan.etag)
+            for _, start, end in plan.ranges():
+                fut = self._pool.submit(
+                    self._fetch_range_bytes,
+                    plan.item.provider,
+                    start,
+                    end,
+                    plan.etag,
+                    plan.item.destination,
+                )
                 fut_map[fut] = (plan.item.destination, start)
 
         failed: dict[pathlib.Path, Exception] = {}
         for fut in as_completed(list(fut_map.keys())):
             dest, start = fut_map[fut]
             try:
-                data = fut.result()
-                self._write_part(dest, start, data, writer_locks[dest])
+                _ = fut.result()
             except Exception as ex:
                 logger.error("Failed part for %s @%d: %s", dest, start, ex, exc_info=ex)
                 if collect_errors:
@@ -313,18 +324,13 @@ class MultipartFileDownloader:
         with path.open("wb") as f:
             f.truncate(total_size_bytes)
 
-    def _write_part(self, path: pathlib.Path, start: int, data: bytes, lock: threading.Lock | None) -> None:
-        if lock:
-            lock.acquire()
-        try:
-            # Open existing file in read + write binary mode
-            # Not creating the file with `wb` as it is already pre-allocated before downloads begin
-            with path.open("r+b") as f:
-                f.seek(start)
-                f.write(data)
-        finally:
-            if lock:
-                lock.release()
+    @staticmethod
+    def _write_part(path: pathlib.Path, start: int, data: bytes) -> None:
+        # Open existing file in read + write binary mode
+        # Not creating the file with `wb` as it is already pre-allocated before downloads begin
+        with path.open("r+b") as f:
+            f.seek(start)
+            f.write(data)
 
     # ---- HTTP helpers ----
 
@@ -338,7 +344,8 @@ class MultipartFileDownloader:
         start: int,
         end: int,
         expected_etag: str | None,
-    ) -> bytes:
+        destination: pathlib.Path,
+    ) -> None:
         """Fetch a single range [start, end] inclusive with automatic re-sign on expiry-ish responses."""
         headers = {"Range": f"bytes={start}-{end}"}
         last_ex: Exception | None = None
@@ -355,7 +362,11 @@ class MultipartFileDownloader:
                 if expected_etag and r.headers.get("ETag") and r.headers["ETag"] != expected_etag:
                     raise RuntimeError("ETag mismatch across parts (object changed during download)")
 
-                return b"".join(chunk for chunk in r.iter_content(1024 * 1024) if chunk)
+                self._write_part(
+                    destination,
+                    start,
+                    b"".join(chunk for chunk in r.iter_content(1024 * 1024) if chunk),
+                )
 
             except Exception as ex:
                 last_ex = ex
