@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.91.1](https://github.com/nominal-io/nominal-client/compare/v1.91.0...v1.91.1) (2025-10-29)
+
+
+### Bug Fixes
+
+* stop search_checklists from returning undeserializable unpublished checklists ([#511](https://github.com/nominal-io/nominal-client/issues/511)) ([724270e](https://github.com/nominal-io/nominal-client/commit/724270e9a8acf95ae2b9959f37abbd03e497d653))
+
 ## [1.91.0](https://github.com/nominal-io/nominal-client/compare/v1.90.0...v1.91.0) (2025-10-29)
 
 
