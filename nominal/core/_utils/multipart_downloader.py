@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import collections
 import dataclasses
 import logging
 import math
@@ -72,7 +71,13 @@ class DownloadResults:
     failed: Mapping[pathlib.Path, Exception]
 
 
-_DataChunkBounds = collections.namedtuple("_DataChunkBounds", ["index", "start", "end"])
+@dataclass(frozen=True)
+class _DataChunkBounds:
+    """Internal dataclass for representing the byte boundaries of a chunk of data."""
+
+    index: int
+    start_bytes: int
+    end_bytes: int
 
 
 @dataclass(frozen=True)
@@ -88,7 +93,7 @@ class _PlannedDownload:
         for i in range(parts):
             start = i * self.item.part_size
             end = min(self.total_size - 1, start + self.item.part_size - 1)
-            yield _DataChunkBounds(index=i, start=start, end=end)
+            yield _DataChunkBounds(index=i, start_bytes=start, end_bytes=end)
 
 
 @dataclass
@@ -141,7 +146,6 @@ class MultipartFileDownloader:
         s = requests.Session()
         adapter = HTTPAdapter(max_retries=retries, pool_maxsize=pool_size)
         s.mount("https://", adapter)
-        s.mount("http://", adapter)
         return s
 
     def close(self) -> None:
@@ -235,16 +239,16 @@ class MultipartFileDownloader:
         fut_map: dict[Future[None], tuple[pathlib.Path, int]] = {}
         for plan in plans:
             logger.info("Starting download for file %s (%.2f MB)", plan.item.destination, plan.total_size / 1e6)
-            for _, start, end in plan.ranges():
+            for data_chunk in plan.ranges():
                 fut = self._pool.submit(
                     self._fetch_range_bytes,
                     plan.item.provider,
-                    start,
-                    end,
+                    data_chunk.start_bytes,
+                    data_chunk.end_bytes,
                     plan.etag,
                     plan.item.destination,
                 )
-                fut_map[fut] = (plan.item.destination, start)
+                fut_map[fut] = (plan.item.destination, data_chunk.start_bytes)
 
         failed: dict[pathlib.Path, Exception] = {}
         for fut in as_completed(list(fut_map.keys())):
