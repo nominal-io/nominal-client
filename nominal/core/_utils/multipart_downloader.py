@@ -1,6 +1,6 @@
-# multipart_downloader.py
 from __future__ import annotations
 
+import collections
 import dataclasses
 import logging
 import math
@@ -9,9 +9,9 @@ import pathlib
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Callable, Iterable, Sequence, Type
+from typing import Callable, Iterable, Mapping, Sequence, Type
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -34,31 +34,25 @@ class PresignedURLProvider:
     skew_secs: float
     """Buffer around TTL to ensure that URLs are still fresh by the time they are used"""
 
-    # monotonic clock time that
-    _stamped_url: tuple[str | None, float] = dataclasses.field(default=(None, 0.0), repr=False)
+    # Pair of url + deadline, where the deadline is the latest monotonic clock time we consider the URL valid for
+    _stamped_url: tuple[str, float] | None = dataclasses.field(default=None, repr=False)
     _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock, repr=False)
 
     def get_url(self, *, force: bool = False) -> str:
         now = time.monotonic()
         with self._lock:
-            url, deadline = self._stamped_url
-            if force or url is None or now >= deadline:
+            if force or self._stamped_url is None or now >= self._stamped_url[1]:
                 url = self.fetch_fn()
                 deadline = now + max(0.0, self.ttl_secs - self.skew_secs)
                 self._stamped_url = (url, deadline)
                 logger.debug("Refreshed presigned url with deadline of %f ('%s')", deadline, url)
 
-            return url
+            return self._stamped_url[0]
 
     def invalidate(self) -> None:
         with self._lock:
             logger.info("Invalidating presigned URL")
-
-            # Set expiry time to _right now_
-            self._deadline = time.monotonic()
-
-            # Clear presigned URL
-            self._url = None
+            self._stamped_url = None
 
 
 @dataclass(frozen=True)
@@ -68,15 +62,17 @@ class DownloadItem:
     provider: PresignedURLProvider
     destination: pathlib.Path
     part_size: int = DEFAULT_CHUNK_SIZE
-    force: bool = False
 
 
 @dataclass
 class DownloadResults:
     """Outcome for multi-file downloads."""
 
-    succeeded: list[pathlib.Path]
-    failed: dict[pathlib.Path, Exception]
+    succeeded: Sequence[pathlib.Path]
+    failed: Mapping[pathlib.Path, Exception]
+
+
+_DataChunkBounds = collections.namedtuple("_DataChunkBounds", ["index", "start", "end"])
 
 
 @dataclass(frozen=True)
@@ -87,50 +83,55 @@ class _PlannedDownload:
     total_size: int
     etag: str | None
 
-    @property
-    def ranges(self) -> Iterable[tuple[int, int, int]]:
+    def ranges(self) -> Iterable[_DataChunkBounds]:
         parts = max(1, math.ceil(self.total_size / self.item.part_size))
         for i in range(parts):
             start = i * self.item.part_size
             end = min(self.total_size - 1, start + self.item.part_size - 1)
-            yield (i, start, end)
+            yield _DataChunkBounds(index=i, start=start, end=end)
 
 
+@dataclass
 class MultipartFileDownloader:
     """High-performance downloader for presigned S3 URLs using parallel ranged GETs.
     - Re-signs on demand when the URL expires.
     - Reuses a single HTTP session & thread pool.
     """
 
-    def __init__(
-        self,
-        *,
-        max_workers: int | None = None,
-        timeout: float = 30.0,
-        max_part_retries: int = 3,
-    ) -> None:
-        """Initializer for MultipartFileDownloader
+    max_workers: int
+    timeout: float
+    max_part_retries: int
+
+    _session: requests.Session = field(repr=False)
+    _pool: ThreadPoolExecutor = field(repr=False)
+    _closed: bool = field(default=False, repr=False)
+
+    @classmethod
+    def create(cls, *, max_workers: int | None = None, timeout: float = 30.0, max_part_retries: int = 3) -> Self:
+        """Factor for MultipartFileDownloader
 
         Args:
             max_workers: Maxmimum number of parallel threads to use.
                 NOTE: defaults to the number of CPU cores
             timeout: Maximum amount of time before considering a connection dead
-            max_part_retries: Maximum amount of retries to perform per part download
+            max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
+                4xx error, and source file changing mid download are all things that may cause a retry)
+
+        Returns:
+            Constructed MultipartFileDownloader prepared to begin downloading.
         """
         if max_workers is None:
             max_workers = multiprocessing.cpu_count()
             logger.info("Inferring core count as %d", max_workers)
 
-        self.max_workers = max_workers
-        self.timeout = timeout
-        self.max_part_retries = max_part_retries
-        self._session = self._make_session(max_workers)
-        self._pool = ThreadPoolExecutor(max_workers=max_workers)
-        self._closed = False
+        session = cls._make_session(max_workers)
+        pool = ThreadPoolExecutor(max_workers=max_workers)
+        return cls(max_workers, timeout, max_part_retries, _session=session, _pool=pool, _closed=False)
 
     # ---- lifecycle ----
 
-    def _make_session(self, pool_size: int) -> requests.Session:
+    @staticmethod
+    def _make_session(pool_size: int) -> requests.Session:
         retries = Retry(
             total=5,
             backoff_factor=0.5,
@@ -163,32 +164,23 @@ class MultipartFileDownloader:
 
     def download_file(self, item: DownloadItem) -> pathlib.Path:
         """Download a single file using a presigned URL provider."""
-        # Ensure destination directory exists
-        self._prepare_destination(item.destination, force=item.force)
-
-        # Plan the download by discovering the size & etag
-        plan = self._plan_item(item)
-
-        # Pre-allocate the file to allow for parallelism in downloads
-        self._preallocate(item.destination, plan.total_size)
-
-        # Execute plan
-        logger.info("Starting download for file %s (%.2f MB)", item.destination, plan.total_size / 1e6)
-        self._run_downloads([plan], collect_errors=False)
-        return item.destination
+        res = self.download_files([item])
+        if item.destination in res.succeeded:
+            return item.destination
+        elif item.destination in res.failed:
+            raise res.failed[item.destination]
+        else:
+            # Should technically be impossible...
+            raise RuntimeError(f"Unknown error downloading to {item.destination}")
 
     def download_files(self, items: Sequence[DownloadItem]) -> DownloadResults:
         """Download many files using a shared thread pool."""
         failed: dict[pathlib.Path, Exception] = {}
 
         # Ensure destination directories exist
-        logger.info("Preparing destinations for download")
+        logger.info("Validating destinations for download")
         for it in items:
-            try:
-                self._prepare_destination(it.destination, force=it.force)
-            except Exception as ex:
-                failed[it.destination] = ex
-                logger.error("Destination prep failed for %s: %s", it.destination, ex, exc_info=ex)
+            self._check_destination(it.destination)
 
         # Probe & preallocate files to generate a plan
         plans: list[_PlannedDownload] = []
@@ -237,7 +229,8 @@ class MultipartFileDownloader:
         # Build a map of futures to (destination, start)
         fut_map: dict[Future[bytes], tuple[pathlib.Path, int]] = {}
         for plan in plans:
-            for _idx, start, end in plan.ranges:
+            logger.info("Starting download for file %s (%.2f MB)", plan.item.destination, plan.total_size / 1e6)
+            for _idx, start, end in plan.ranges():
                 fut = self._pool.submit(self._fetch_range_bytes, plan.item.provider, start, end, plan.etag)
                 fut_map[fut] = (plan.item.destination, start)
 
@@ -304,21 +297,15 @@ class MultipartFileDownloader:
 
     # ---- IO helpers ----
 
-    def _prepare_destination(self, path: pathlib.Path, *, force: bool) -> None:
-        logger.info("Preparing file destination %s (force=%s)", path, force)
+    def _check_destination(self, path: pathlib.Path) -> None:
+        logger.info("Preparing file destination %s", path)
 
         parent = path.parent
         if not parent.exists():
-            if force:
-                parent.mkdir(parents=True, exist_ok=True)
-            else:
-                raise FileNotFoundError(f"Output directory does not exist and force=False: {parent}")
+            raise FileNotFoundError(f"Output directory does not exist: {parent}")
 
         if path.exists():
-            if path.is_dir():
-                raise IsADirectoryError(f"Destination exists as a directory: {path}")
-            if not force:
-                raise FileExistsError(f"Destination exists and force=False: {path}")
+            raise FileExistsError(f"Destination already exists: {path}")
 
     def _preallocate(self, path: pathlib.Path, total_size_bytes: int) -> None:
         logger.info("Preallocating %s to %f MB", path, total_size_bytes / 1e6)

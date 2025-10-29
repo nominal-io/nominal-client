@@ -138,7 +138,6 @@ class DatasetFile:
         self,
         output_directory: pathlib.Path,
         *,
-        force: bool = False,
         part_size: int = DEFAULT_CHUNK_SIZE,
         num_retries: int = 3,
     ) -> pathlib.Path:
@@ -146,7 +145,6 @@ class DatasetFile:
 
         Args:
             output_directory: Download file to the given directory
-            force: If true, delete any files that exist / create parent directories if nonexistent
             part_size: Size (in bytes) of chunks to use when downloading file.
             num_retries: Number of retries to perform per part download if any exception occurs
 
@@ -154,9 +152,8 @@ class DatasetFile:
             Path that the file was downloaded to
 
         Raises:
-            FileNotFoundError: Output directory doesn't exist and force=False
+            FileNotFoundError: Output directory doesn't exist
             FileExistsError: File already exists at destination
-            NotADirectoryError: Output directory exists and is not a directory
             RuntimeError: Error downloading file
         """
         if output_directory.exists() and not output_directory.is_dir():
@@ -165,17 +162,14 @@ class DatasetFile:
         logger.info("Getting initial presigned ")
         file_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
         destination = output_directory / filename_from_uri(file_uri)
-        item = DownloadItem(
-            provider=self._presigned_url_provider(), destination=destination, part_size=part_size, force=force
-        )
-        with MultipartFileDownloader(max_part_retries=num_retries) as dl:
+        item = DownloadItem(provider=self._presigned_url_provider(), destination=destination, part_size=part_size)
+        with MultipartFileDownloader.create(max_part_retries=num_retries) as dl:
             return dl.download_file(item)
 
     def download_original_files(
         self,
         output_directory: pathlib.Path,
         *,
-        force: bool = True,
         part_size: int = DEFAULT_CHUNK_SIZE,
         num_retries: int = 3,
     ) -> Sequence[pathlib.Path]:
@@ -183,7 +177,6 @@ class DatasetFile:
 
         Args:
             output_directory: Download file(s) to the given directory
-            force: If true, delete any files that exist / create parent directories if nonexistent
             part_size: Size (in bytes) of chunks to use when downloading files.
             num_retries: Number of retries to perform per part download if any exception occurs
 
@@ -191,9 +184,13 @@ class DatasetFile:
             Path(s) that the file(s) were downloaded to
 
         Raises:
-            NotADirectoryError: Output directory is not a directory
+            NotADirectoryError: Output directory exists, but is not a directory
+            FileNotFoundError: Output directory doesn't exist
+            FileExistsError: File already exists at destination
+            RuntimeError: Failed to determine metadata about files to download
 
         NOTE: any file that fails to download will result in an error log and will not be returned
+              as an output path
         """
         if output_directory.exists() and not output_directory.is_dir():
             raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
@@ -207,7 +204,6 @@ class DatasetFile:
                     provider=self._origin_presigned_url_provider(uri.path),
                     destination=dest,
                     part_size=part_size,
-                    force=force,
                 )
             )
 
@@ -219,7 +215,7 @@ class DatasetFile:
             )
             return []
 
-        with MultipartFileDownloader(max_part_retries=num_retries) as dl:
+        with MultipartFileDownloader.create(max_part_retries=num_retries) as dl:
             results = dl.download_files(items)
 
         for failed_path, ex in results.failed.items():
