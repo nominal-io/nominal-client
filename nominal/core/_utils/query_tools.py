@@ -110,7 +110,7 @@ def create_search_checklists_query(
     assignee: str | None = None,
     workspace_rid: str | None = None,
 ) -> scout_checks_api.ChecklistSearchQuery:
-    queries = []
+    queries = [scout_checks_api.ChecklistSearchQuery(is_published=True)]
     if search_text is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
     if labels is not None:
