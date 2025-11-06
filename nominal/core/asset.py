@@ -18,7 +18,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.video import Video, _get_video
+from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -253,6 +253,32 @@ class Asset(HasRid):
             return connection
         else:
             raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a connection")
+
+    def get_or_create_video(
+        self,
+        data_scope_name: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Retrieve a video by data scope name, or create a new one if it does not exist."""
+        try:
+            return self.get_video(data_scope_name)
+        except ValueError:
+            response = _create_video(
+                self._clients.auth_header,
+                self._clients.video,
+                name or data_scope_name,
+                description=description,
+                properties=properties,
+                labels=labels,
+                workspace_rid=self._clients.workspace_rid,
+            )
+            video = Video._from_conjure(self._clients, response)
+            self.add_video(data_scope_name, video)
+            return video
 
     def get_video(self, data_scope_name: str) -> Video:
         """Retrieve a video by data scope name, or raise ValueError if one is not found."""

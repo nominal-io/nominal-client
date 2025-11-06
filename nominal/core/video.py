@@ -373,3 +373,24 @@ def _build_video_file_timestamp_manifest(
 
 def _get_video(clients: Video._Clients, video_rid: str) -> scout_video_api.Video:
     return clients.video.get(clients.auth_header, video_rid)
+
+
+def _create_video(
+    auth_header: str,
+    client: scout_video.VideoService,
+    name: str,
+    *,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    workspace_rid: str | None = None,
+) -> scout_video_api.Video:
+    request = scout_video_api.CreateVideoRequest(
+        title=name,
+        labels=list(labels),
+        properties={} if properties is None else {**properties},
+        description=description,
+        workspace=workspace_rid,
+        marking_rids=[],
+    )
+    return client.create(auth_header, request)
