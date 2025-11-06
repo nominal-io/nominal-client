@@ -97,7 +97,7 @@ from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
-from nominal.core.video import Video
+from nominal.core.video import Video, _create_video
 from nominal.core.workbook import Workbook
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
@@ -676,16 +676,16 @@ class NominalClient:
         Returns:
             Handle to the created video
         """
-        request = scout_video_api.CreateVideoRequest(
-            title=name,
-            labels=list(labels),
-            properties={} if properties is None else {**properties},
+        response = _create_video(
+            self._clients.auth_header,
+            self._clients.video,
+            name,
             description=description,
-            workspace=self._clients.workspace_rid,
-            marking_rids=[],
+            labels=labels,
+            properties=properties,
+            workspace_rid=self._clients.workspace_rid,
         )
-        raw_video = self._clients.video.create(self._clients.auth_header, request)
-        return Video._from_conjure(self._clients, raw_video)
+        return Video._from_conjure(self._clients, response)
 
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""
