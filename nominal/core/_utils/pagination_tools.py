@@ -16,6 +16,8 @@ from nominal_api import (
     scout_notebook_api,
     scout_run_api,
     scout_template_api,
+    scout_video,
+    scout_video_api,
     secrets_api,
 )
 
@@ -196,6 +198,22 @@ def search_secrets_paginated(
         )
 
     for response in paginate_rpc(secrets.search, auth_header, request_factory=factory):
+        yield from response.results
+
+
+def search_videos_paginated(
+    videos: scout_video.VideoService, auth_header: str, query: scout_video_api.SearchVideosQuery
+) -> Iterable[scout_video_api.Video]:
+    def factory(page_token: str | None) -> scout_video_api.SearchVideosRequest:
+        return scout_video_api.SearchVideosRequest(
+            page_size=DEFAULT_PAGE_SIZE,
+            query=query,
+            sort_options=scout_video_api.SortOptions(field=scout_video_api.SortField.CREATED_AT, is_descending=True),
+            archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
+            token=page_token,
+        )
+
+    for response in paginate_rpc(videos.search, auth_header, request_factory=factory):
         yield from response.results
 
 

@@ -14,6 +14,7 @@ from nominal_api import (
     scout_notebook_api,
     scout_run_api,
     scout_template_api,
+    scout_video_api,
     secrets_api,
 )
 
@@ -39,6 +40,26 @@ def create_search_secrets_query(
     if workspace_rid is not None:
         queries.append(secrets_api.SearchSecretsQuery(workspace=workspace_rid))
     return secrets_api.SearchSecretsQuery(and_=queries)
+
+
+def create_search_videos_query(
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    workspace_rid: str | None = None,
+) -> scout_video_api.SearchVideosQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(scout_video_api.SearchVideosQuery(search_text=search_text))
+    if labels is not None:
+        for label in labels:
+            queries.append(scout_video_api.SearchVideosQuery(label=label))
+    if properties is not None:
+        for name, value in properties.items():
+            queries.append(scout_video_api.SearchVideosQuery(property=api.Property(name=name, value=value)))
+    if workspace_rid is not None:
+        queries.append(scout_video_api.SearchVideosQuery(workspace=workspace_rid))
+    return scout_video_api.SearchVideosQuery(and_=queries)
 
 
 def create_search_users_query(

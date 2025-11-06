@@ -55,6 +55,7 @@ from nominal.core._utils.pagination_tools import (
     search_runs_paginated,
     search_secrets_paginated,
     search_users_paginated,
+    search_videos_paginated,
     search_workbook_templates_paginated,
     search_workbooks_paginated,
 )
@@ -67,6 +68,7 @@ from nominal.core._utils.query_tools import (
     create_search_runs_query,
     create_search_secrets_query,
     create_search_users_query,
+    create_search_videos_query,
     create_search_workbook_templates_query,
     create_search_workbooks_query,
 )
@@ -458,6 +460,43 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
         return list(self._iter_search_secrets(query))
+
+    def _iter_search_videos(self, query: scout_video_api.SearchVideosQuery) -> Iterable[Video]:
+        for video in search_videos_paginated(self._clients.video, self._clients.auth_header, query):
+            yield Video._from_conjure(self._clients, video)
+
+    def search_videos(
+        self,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+    ) -> Sequence[Video]:
+        """Search for videos meeting the specified filters.
+        Filters are ANDed together, e.g. `(video.label == label) AND (video.property == property)`
+
+        Args:
+            search_text: Searches for a (case-insensitive) substring across all text fields.
+            labels: A sequence of labels that must ALL be present on a video to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a video to be included.
+            workspace: Filters search to given workspace.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
+
+
+        Returns:
+            All videos which match all of the provided conditions
+        """
+        query = create_search_videos_query(
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        )
+        return list(self._iter_search_videos(query))
 
     def create_run(
         self,
