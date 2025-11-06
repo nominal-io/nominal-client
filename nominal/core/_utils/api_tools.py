@@ -4,7 +4,7 @@ import importlib.metadata
 import logging
 import platform
 import sys
-from typing import Mapping, Protocol, Sequence, TypeAlias, TypeVar, runtime_checkable
+from typing import Mapping, NotRequired, Protocol, Sequence, TypeAlias, TypedDict, TypeVar, runtime_checkable
 
 from nominal_api import scout_compute_api, scout_run_api
 
@@ -47,12 +47,19 @@ def construct_user_agent_string() -> str:
 Link: TypeAlias = tuple[str, str]
 
 
-def create_links(links: Sequence[str] | Sequence[Link]) -> list[scout_run_api.Link]:
+class LinkDict(TypedDict):
+    url: str
+    title: NotRequired[str]
+
+
+def create_links(links: Sequence[str | Link | LinkDict]) -> list[scout_run_api.Link]:
     links_conjure = []
     for link in links:
         if isinstance(link, tuple):
             url, title = link
             links_conjure.append(scout_run_api.Link(url=url, title=title))
+        elif isinstance(link, dict):
+            links_conjure.append(scout_run_api.Link(url=link["url"], title=link.get("title")))
         else:
             links_conjure.append(scout_run_api.Link(url=link))
     return links_conjure

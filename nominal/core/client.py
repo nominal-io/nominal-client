@@ -36,7 +36,10 @@ from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._utils.api_tools import (
+    Link,
+    LinkDict,
     construct_user_agent_string,
+    create_links,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.multipart import (
@@ -507,17 +510,17 @@ class NominalClient:
         *,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
+        links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
         asset: Asset | str | None = None,
     ) -> Run:
         """Create a run."""
-        # TODO(alkasm): support links
         request = scout_run_api.CreateRunRequest(
             attachments=[rid_from_instance_or_string(a) for a in attachments],
             data_sources={},
             description=description or "",
             labels=list(labels),
-            links=[],
+            links=create_links(links),
             properties={} if properties is None else dict(properties),
             start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
             title=name,
