@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.92.0](https://github.com/nominal-io/nominal-client/compare/v1.91.1...v1.92.0) (2025-11-06)
+
+
+### Features
+
+* add get or create video on asset ([#514](https://github.com/nominal-io/nominal-client/issues/514)) ([e3f4152](https://github.com/nominal-io/nominal-client/commit/e3f4152d69ff0f8add80526256578f91fae25327))
+* add video search ([#513](https://github.com/nominal-io/nominal-client/issues/513)) ([d9147cd](https://github.com/nominal-io/nominal-client/commit/d9147cd6d97efedb7700971d4078ad85d3c72325))
+
 ## [1.91.1](https://github.com/nominal-io/nominal-client/compare/v1.91.0...v1.91.1) (2025-10-29)
 
 
