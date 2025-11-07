@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Mapping, Protocol, Sequence
 from urllib.parse import unquote, urlparse
 
-from nominal_api import api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api, ingest_workflow_api, scout_catalog
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import update_dataclass
@@ -36,10 +36,27 @@ def filename_from_uri(uri: str) -> str:
     return unquote(pathlib.Path(urlparse(uri).path).name).replace(":", "_")
 
 
+class IngestStatus(Enum):
+    SUCCESS = "SUCCESS"
+    IN_PROGRESS = "IN_PROGRESS"
+    FAILED = "FAILED"
+
+    @classmethod
+    def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
+        if status.success is not None:
+            return cls.SUCCESS
+        elif status.in_progress is not None:
+            return cls.IN_PROGRESS
+        elif status.error is not None:
+            return cls.FAILED
+        raise ValueError(f"Unknown ingest status: {status.type}")
+
+
 @dataclass(frozen=True)
 class DatasetFile:
     id: str
     dataset_rid: str
+    ingest_job_rid: str | None
     name: str
     bounds: Bounds | None
     uploaded_at: IntegralNanosecondsUTC
@@ -59,6 +76,8 @@ class DatasetFile:
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        @property
+        def internal_ingest(self) -> ingest_workflow_api.IngestInternalService: ...
 
     def _get_latest_api(self) -> scout_catalog.DatasetFile:
         return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
@@ -166,6 +185,14 @@ class DatasetFile:
         with MultipartFileDownloader.create(max_part_retries=num_retries) as dl:
             return dl.download_file(item)
 
+    def get_ingest_job(self) -> "IngestJob" | None:
+        if self.ingest_job_rid is None:
+            return None
+
+        return IngestJob._from_conjure(
+            self._clients, self._clients.internal_ingest.get_ingest_job(self._clients.auth_header, self.ingest_job_rid)
+        )
+
     def download_original_files(
         self,
         output_directory: pathlib.Path,
@@ -255,6 +282,7 @@ class DatasetFile:
         return cls(
             id=dataset_file.id,
             dataset_rid=dataset_file.dataset_rid,
+            ingest_job_rid=dataset_file.ingest_job_rid,
             name=dataset_file.name,
             bounds=None if dataset_file.bounds is None else Bounds._from_conjure(dataset_file.bounds),
             uploaded_at=upload_time,
@@ -269,17 +297,5 @@ class DatasetFile:
         )
 
 
-class IngestStatus(Enum):
-    SUCCESS = "SUCCESS"
-    IN_PROGRESS = "IN_PROGRESS"
-    FAILED = "FAILED"
-
-    @classmethod
-    def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
-        if status.success is not None:
-            return cls.SUCCESS
-        elif status.in_progress is not None:
-            return cls.IN_PROGRESS
-        elif status.error is not None:
-            return cls.FAILED
-        raise ValueError(f"Unknown ingest status: {status.type}")
+# Imported at the bottom to break circular dependencies
+from nominal.core.ingest_job import IngestJob  # noqa: E402

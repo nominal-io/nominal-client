@@ -11,6 +11,7 @@ from nominal_api import (
     authentication_api,
     event,
     ingest_api,
+    ingest_workflow_api,
     scout,
     scout_assets,
     scout_catalog,
@@ -123,6 +124,7 @@ class ClientsBunch:
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
+    internal_ingest: ingest_workflow_api.IngestInternalService
     logical_series: timeseries_logicalseries.LogicalSeriesService
     run: scout.RunService
     units: scout.UnitsService
@@ -163,6 +165,7 @@ class ClientsBunch:
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
+            internal_ingest=client_factory(ingest_workflow_api.IngestInternalService),
             logical_series=client_factory(timeseries_logicalseries.LogicalSeriesService),
             run=client_factory(scout.RunService),
             units=client_factory(scout.UnitsService),

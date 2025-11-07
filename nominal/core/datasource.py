@@ -10,6 +10,7 @@ from nominal_api import (
     api,
     datasource_api,
     ingest_api,
+    ingest_workflow_api,
     scout,
     scout_catalog,
     scout_compute_api,
@@ -56,6 +57,8 @@ class DataSource(HasRid):
         def units(self) -> scout.UnitsService: ...
         @property
         def ingest(self) -> ingest_api.IngestService: ...
+        @property
+        def internal_ingest(self) -> ingest_workflow_api.IngestInternalService: ...
         @property
         def upload(self) -> upload_api.UploadService: ...
         @property
