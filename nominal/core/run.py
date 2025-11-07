@@ -13,7 +13,7 @@ from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, Link, create_links, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, Link, LinkDict, create_links, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
@@ -29,6 +29,7 @@ class Run(HasRid):
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
+    links: Sequence[LinkDict]
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
     run_number: int
@@ -211,13 +212,13 @@ class Run(HasRid):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
-        links: Sequence[str] | Sequence[Link] | None = None,
+        links: Sequence[str | Link | LinkDict] | None = None,
     ) -> Self:
         """Replace run metadata.
         Updates the current instance, and returns it.
         Only the metadata passed in will be replaced, the rest will remain untouched.
 
-        Links can be URLs or tuples of (URL, name).
+        Links can be URLs, tuples of (URL, name), or dicts of {url=URL, title=name}.
 
         Note: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
         calling this method. E.g.:
@@ -333,6 +334,10 @@ class Run(HasRid):
             description=run.description,
             properties=MappingProxyType(run.properties),
             labels=tuple(run.labels),
+            links=tuple(
+                (dict(url=link.url, title=link.title) if link.title is not None else dict(url=link.url))
+                for link in run.links
+            ),
             start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             run_number=run.run_number,
