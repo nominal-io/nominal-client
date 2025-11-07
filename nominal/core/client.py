@@ -85,7 +85,6 @@ from nominal.core.containerized_extractors import (
     FileExtractionInput,
     FileOutputFormat,
 )
-from nominal.core.ingest_job import IngestJob
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
@@ -97,6 +96,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, EventType
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.ingest_job import IngestJob
 from nominal.core.run import Run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, _available_units
