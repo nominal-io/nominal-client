@@ -124,9 +124,12 @@ class Dataset(DataSource):
 
         return self.refresh()
 
-    def _handle_ingest_response(self, response: ingest_api.IngestResponse) -> DatasetFile:
+    def _extract_file_from_ingest_response(self, response: ingest_api.IngestResponse) -> DatasetFile:
         if response.details.dataset is None:
             raise ValueError(f"Expected response to provide dataset details, received: {response.details.type}")
+
+        if response.details.dataset.dataset_file_id is None:
+            raise ValueError("Expected dataset file to be returned from ingest api, but received None")
 
         return DatasetFile._from_conjure(
             self._clients,
@@ -226,7 +229,7 @@ class Dataset(DataSource):
             )
         )
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        return self._handle_ingest_response(resp)
+        return self._extract_file_from_ingest_response(resp)
 
     # Backward compatibility
     add_to_dataset_from_io = add_from_io
@@ -258,7 +261,7 @@ class Dataset(DataSource):
                 )
             ),
         )
-        return self._handle_ingest_response(resp)
+        return self._extract_file_from_ingest_response(resp)
 
     # Backward compatibility
     add_journal_json_to_dataset = add_journal_json
@@ -332,7 +335,7 @@ class Dataset(DataSource):
 
         request = _create_mcap_ingest_request(s3_path, channels, target)
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        return self._handle_ingest_response(resp)
+        return self._extract_file_from_ingest_response(resp)
 
     # Backward compatibility
     add_mcap_to_dataset_from_io = add_mcap_from_io
@@ -355,7 +358,7 @@ class Dataset(DataSource):
         )
         request = _create_dataflash_ingest_request(s3_path, target)
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
-        return self._handle_ingest_response(resp)
+        return self._extract_file_from_ingest_response(resp)
 
     # Backward compatibility
     add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
@@ -422,7 +425,7 @@ class Dataset(DataSource):
             ),
         )
 
-        return self._handle_ingest_response(resp)
+        return self._extract_file_from_ingest_response(resp)
 
     def archive(self) -> None:
         """Archive this dataset.

@@ -85,6 +85,7 @@ from nominal.core.containerized_extractors import (
     FileExtractionInput,
     FileOutputFormat,
 )
+from nominal.core.ingest_job import IngestJob
 from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import (
     Dataset,
@@ -1309,6 +1310,12 @@ class NominalClient:
             self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
         )
         return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
+
+    def get_ingest_job(self, rid: str) -> IngestJob:
+        return IngestJob._from_conjure(
+            self._clients,
+            self._clients.internal_ingest.get_ingest_job(self._clients.auth_header, rid),
+        )
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""
