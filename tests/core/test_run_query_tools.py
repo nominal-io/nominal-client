@@ -1,9 +1,6 @@
 """Unit tests for run query building with new TimeframeFilter and created_at support."""
 
 from datetime import datetime, timedelta, timezone
-from unittest import mock
-
-import pytest
 
 from nominal.core._utils.query_tools import create_search_runs_query
 from nominal.ts import _SecondsNanos
