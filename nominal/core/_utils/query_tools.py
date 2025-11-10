@@ -258,20 +258,48 @@ def create_search_runs_query(
     queries = []
     if start is not None:
         start_time = _SecondsNanos.from_flexible(start).to_scout_run_api()
-        queries.append(scout_run_api.SearchQuery(start_time=scout_run_api.TimeframeFilter(custom=scout_run_api.CustomTimeframeFilter(start_time=start_time, end_time=None))))
+        queries.append(
+            scout_run_api.SearchQuery(
+                start_time=scout_run_api.TimeframeFilter(
+                    custom=scout_run_api.CustomTimeframeFilter(start_time=start_time, end_time=None)
+                )
+            )
+        )
     if end is not None:
         end_time = _SecondsNanos.from_flexible(end).to_scout_run_api()
-        queries.append(scout_run_api.SearchQuery(end_time=scout_run_api.TimeframeFilter(custom=scout_run_api.CustomTimeframeFilter(start_time=None, end_time=end_time))))
+        queries.append(
+            scout_run_api.SearchQuery(
+                end_time=scout_run_api.TimeframeFilter(
+                    custom=scout_run_api.CustomTimeframeFilter(start_time=None, end_time=end_time)
+                )
+            )
+        )
     if created_after is not None or created_before is not None:
-        created_after_time = _SecondsNanos.from_flexible(created_after).to_scout_run_api() if created_after is not None else None
-        created_before_time = _SecondsNanos.from_flexible(created_before).to_scout_run_api() if created_before is not None else None
-        queries.append(scout_run_api.SearchQuery(created_at=scout_run_api.TimeframeFilter(custom=scout_run_api.CustomTimeframeFilter(start_time=created_after_time, end_time=created_before_time))))
+        created_after_time = (
+            _SecondsNanos.from_flexible(created_after).to_scout_run_api() if created_after is not None else None
+        )
+        created_before_time = (
+            _SecondsNanos.from_flexible(created_before).to_scout_run_api() if created_before is not None else None
+        )
+        queries.append(
+            scout_run_api.SearchQuery(
+                created_at=scout_run_api.TimeframeFilter(
+                    custom=scout_run_api.CustomTimeframeFilter(
+                        start_time=created_after_time, end_time=created_before_time
+                    )
+                )
+            )
+        )
     if name_substring is not None:
         queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
     if labels:
         queries.append(scout_run_api.SearchQuery(labels=[labels]))
     if properties:
-        queries.append(scout_run_api.SearchQuery(properties=[api.Property(name=name, value=value) for name, value in properties.items()]))
+        queries.append(
+            scout_run_api.SearchQuery(
+                properties=[api.Property(name=name, value=value) for name, value in properties.items()]
+            )
+        )
     if exact_match is not None:
         queries.append(scout_run_api.SearchQuery(exact_match=exact_match))
     if search_text is not None:
