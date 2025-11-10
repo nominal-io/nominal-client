@@ -15,6 +15,7 @@ from nominal_api import (
     scout_run_api,
     scout_template_api,
     scout_video_api,
+    scout_rids_api,
     secrets_api,
 )
 
@@ -293,13 +294,15 @@ def create_search_runs_query(
     if name_substring is not None:
         queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
     if labels:
-        queries.append(scout_run_api.SearchQuery(labels=[labels]))
+        queries.append(scout_run_api.SearchQuery(labels=scout_rids_api.LabelsFilter(labels=[labels], operator=api.SetOperator.AND)))
     if properties:
-        queries.append(
-            scout_run_api.SearchQuery(
-                properties=[api.Property(name=name, value=value) for name, value in properties.items()]
+        for name, value in properties.items():
+            # original properties is a 1:1 map, so we will never have multiple values for the same name
+            queries.append(
+                scout_run_api.SearchQuery(
+                    properties=scout_rids_api.PropertiesFilter(name=name, values=[value])
+                )
             )
-        )
     if exact_match is not None:
         queries.append(scout_run_api.SearchQuery(exact_match=exact_match))
     if search_text is not None:

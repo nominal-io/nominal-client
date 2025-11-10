@@ -138,9 +138,14 @@ def test_create_search_runs_query_with_labels():
     assert len(query.and_) == 1
     sub_query = query.and_[0]
 
-    # Should use labels filter (not individual label filters)
+    # Should use LabelsFilter with labels wrapped in a list
     assert hasattr(sub_query, "labels")
     assert sub_query.labels is not None
+    assert hasattr(sub_query.labels, "labels")
+    assert sub_query.labels.labels == [labels]  # labels is wrapped in a list
+    assert hasattr(sub_query.labels, "operator")
+    from nominal_api import api
+    assert sub_query.labels.operator == api.SetOperator.AND
 
 
 def test_create_search_runs_query_with_properties():
@@ -148,13 +153,23 @@ def test_create_search_runs_query_with_properties():
     properties = {"env": "production", "version": "1.0", "region": "us-east"}
     query = create_search_runs_query(properties=properties)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
-
-    # Should use properties filter (not individual property filters)
-    assert hasattr(sub_query, "properties")
-    assert sub_query.properties is not None
-    assert len(sub_query.properties) == 3
+    # Should create one PropertiesFilter per property (3 properties = 3 filters)
+    assert len(query.and_) == 3
+    
+    # Collect all property filters
+    prop_filters = {}
+    from nominal_api import api
+    for sub_query in query.and_:
+        assert hasattr(sub_query, "properties")
+        assert sub_query.properties is not None
+        assert hasattr(sub_query.properties, "name")
+        assert hasattr(sub_query.properties, "values")
+        # Each filter should have one value
+        assert len(sub_query.properties.values) == 1
+        prop_filters[sub_query.properties.name] = sub_query.properties.values[0]
+    
+    # Verify all properties are present
+    assert prop_filters == properties
 
 
 def test_create_search_runs_query_with_name_substring():
@@ -233,8 +248,9 @@ def test_create_search_runs_query_with_all_filters():
     )
 
     # Should have all filters:
-    # start_time, end_time, created_at, name_substring, labels, properties,
-    # exact_match, search_text, workspace
+    # start_time, end_time, created_at, name_substring, labels, 
+    # properties (1 per property = 1), exact_match, search_text, workspace
+    # Total: 9 filters
     assert len(query.and_) == 9
 
 
