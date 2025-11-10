@@ -1047,6 +1047,49 @@ class NominalClient:
             raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
         return Asset._from_conjure(self._clients, response[rid])
 
+    def get_or_create_asset(
+        self,
+        *,
+        name: str,
+        search_text: str | None = None,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+    ) -> Asset:
+        """Searches for an asset using using provided search parameters. If no assets are returned,]
+        create an asset using provided parameters. If multiple assets returned, throw error.
+
+        Args:
+            name: Name of asset. Used in creation if none exist per search parameters.
+            search_text: Search text (fulfills same purpose as in search_assets).
+            description: Description of asset. Used in creation if no assets exist in search parameters.
+            properties: Properties (fulfills same purpose as in search_assets).
+            labels: Labels (fulfills same purpose as in search_assets).
+            workspace: Workspace to limit search. Defaults to WorkspaceSearchType.ALL.
+
+        Returns:
+            Asset: The existing or newly created asset.
+        """
+        assets = self.search_assets(
+            search_text,
+            labels=labels,
+            properties=properties,
+            workspace=workspace,
+        )
+
+        if len(assets) > 1:
+            asset_names_str = "\n".join(getattr(a, "name", str(a)) for a in assets)
+            raise ValueError(f"Multiple assets returned per search parameters:\n{asset_names_str}")
+
+        if len(assets) == 1:
+            return assets[0]
+
+        if name is None:
+            raise ValueError("No assets found and no `name` provided to create one")
+
+        return self.create_asset(name=name, description=description, properties=properties, labels=labels)
+
     def _iter_search_assets(self, query: scout_asset_api.SearchAssetsQuery) -> Iterable[Asset]:
         for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query):
             yield Asset._from_conjure(self._clients, asset)
