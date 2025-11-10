@@ -1055,7 +1055,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] = (),
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
-        exact_match_on_name: bool = True
+        exact_match_on_name: bool = True,
     ) -> Asset:
         """Searches for an asset using using provided search parameters. If no assets are returned,]
         create an asset using provided parameters. If multiple assets returned, throw error.
@@ -1070,14 +1070,10 @@ class NominalClient:
         Returns:
             Asset: The existing or newly created asset.
         """
-        assets = self.search_assets(
-            name,
-            labels=labels,
-            properties=properties,
-            workspace=workspace
-        )
-        assets_filtered = [asset for asset in assets if (not exact_match_on_name)
-                           or (asset.name.lower() == name.lower())]
+        assets = self.search_assets(name, labels=labels, properties=properties, workspace=workspace)
+        assets_filtered = [
+            asset for asset in assets if (not exact_match_on_name) or (asset.name.lower() == name.lower())
+        ]
 
         if len(assets_filtered) > 1:
             asset_names_str = "\n".join(getattr(a, "name", str(a)) for a in assets_filtered)
