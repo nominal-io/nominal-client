@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.93.0](https://github.com/nominal-io/nominal-client/compare/v1.92.0...v1.93.0) (2025-11-12)
+
+
+### Features
+
+* added created_at queries for run search and updated existing search ([#519](https://github.com/nominal-io/nominal-client/issues/519)) ([a124bf9](https://github.com/nominal-io/nominal-client/commit/a124bf99f6f1da869bec0fcd8864399d52c05703))
+* **core:** enable setting links on run create ([#516](https://github.com/nominal-io/nominal-client/issues/516)) ([bab0d10](https://github.com/nominal-io/nominal-client/commit/bab0d100c74b0bbca48102e9b2df258e99f9c781))
+
 ## [1.92.0](https://github.com/nominal-io/nominal-client/compare/v1.91.1...v1.92.0) (2025-11-06)
 
 
