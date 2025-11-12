@@ -295,7 +295,9 @@ def create_search_runs_query(
         queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
     if labels:
         queries.append(
-            scout_run_api.SearchQuery(labels=scout_rids_api.LabelsFilter(labels=[labels], operator=api.SetOperator.AND))
+            scout_run_api.SearchQuery(
+                labels=scout_rids_api.LabelsFilter(labels=list(labels), operator=api.SetOperator.AND)
+            )
         )
     if properties:
         for name, value in properties.items():
