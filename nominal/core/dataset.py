@@ -128,6 +128,11 @@ class Dataset(DataSource):
         if response.details.dataset is None:
             raise ValueError(f"Expected response to provide dataset details, received: {response.details.type}")
 
+        if response.details.dataset.dataset_file_id is None:
+            raise ValueError(
+                f"Unexpected multi-file ingest response type for dataset {response.details.dataset.dataset_rid}"
+            )
+
         return DatasetFile._from_conjure(
             self._clients,
             self._clients.catalog.get_dataset_file(

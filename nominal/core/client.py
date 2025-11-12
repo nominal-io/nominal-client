@@ -545,6 +545,8 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
+        created_after: str | datetime | IntegralNanosecondsUTC | None = None,
+        created_before: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace_rid: str | None = None,
     ) -> Iterable[Run]:
         query = create_search_runs_query(
@@ -555,6 +557,8 @@ class NominalClient:
             properties=properties,
             exact_match=exact_match,
             search_text=search_text,
+            created_after=created_after,
+            created_before=created_before,
             workspace_rid=workspace_rid,
         )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
@@ -570,6 +574,8 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
+        created_after: str | datetime | IntegralNanosecondsUTC | None = None,
+        created_before: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
@@ -583,6 +589,8 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
             exact_match: A case-insensitive substring that must be matched exactly.
             search_text: A case-insensitive substring to perform fuzzy-search on all fields with
+            created_after: Filter runs created after this timestamp (exclusive).
+            created_before: Filter runs created before this timestamp (exclusive).
             workspace: Filters search to given workspace.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
@@ -603,6 +611,8 @@ class NominalClient:
                 properties=properties,
                 exact_match=exact_match,
                 search_text=search_text,
+                created_after=created_after,
+                created_before=created_before,
                 workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
             )
         )
