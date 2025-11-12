@@ -356,8 +356,6 @@ def search_runs(
     name_substring: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
-    created_after: str | datetime | ts.IntegralNanosecondsUTC | None = None,
-    created_before: str | datetime | ts.IntegralNanosecondsUTC | None = None,
 ) -> Sequence[Run]:
     """Search for runs meeting the specified filters.
     Filters are ANDed together, e.g. `(labels in run.labels) AND (run.end <= end)`
@@ -368,22 +366,12 @@ def search_runs(
         name_substring: Searches for a (case-insensitive) substring in the name
         labels: A sequence of labels that must ALL be present on a run to be included.
         properties: A mapping of key-value pairs that must ALL be present on a run to be included.
-        created_after: Filter runs created after this timestamp (exclusive).
-        created_before: Filter runs created before this timestamp (exclusive).
 
     Returns:
         All runs which match all of the provided conditions
     """
     client = _get_default_client()
-    return client.search_runs(
-        start=start,
-        end=end,
-        name_substring=name_substring,
-        labels=labels,
-        properties=properties,
-        created_after=created_after,
-        created_before=created_before,
-    )
+    return client.search_runs(start=start, end=end, name_substring=name_substring, labels=labels, properties=properties)
 
 
 @typing_extensions.deprecated(
