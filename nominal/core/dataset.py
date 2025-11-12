@@ -127,9 +127,11 @@ class Dataset(DataSource):
     def _handle_ingest_response(self, response: ingest_api.IngestResponse) -> DatasetFile:
         if response.details.dataset is None:
             raise ValueError(f"Expected response to provide dataset details, received: {response.details.type}")
-        
+
         if response.details.dataset.dataset_file_id is None:
-            raise ValueError(f"Unexpected multi-file ingest response type for dataset {response.details.dataset.dataset_rid}")
+            raise ValueError(
+                f"Unexpected multi-file ingest response type for dataset {response.details.dataset.dataset_rid}"
+            )
 
         return DatasetFile._from_conjure(
             self._clients,
