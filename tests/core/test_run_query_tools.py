@@ -2,6 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 
+from nominal_api import api
+
 from nominal.core._utils.query_tools import create_search_runs_query
 from nominal.ts import _SecondsNanos
 
@@ -142,10 +144,8 @@ def test_create_search_runs_query_with_labels():
     assert hasattr(sub_query, "labels")
     assert sub_query.labels is not None
     assert hasattr(sub_query.labels, "labels")
-    assert sub_query.labels.labels == [labels]  # labels is wrapped in a list
+    assert sub_query.labels.labels == labels  # labels is wrapped in a list
     assert hasattr(sub_query.labels, "operator")
-    from nominal_api import api
-
     assert sub_query.labels.operator == api.SetOperator.AND
 
 
