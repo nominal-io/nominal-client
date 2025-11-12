@@ -14,7 +14,7 @@ def test_create_search_runs_query_basic():
 
     # Should return an empty AND query
     assert hasattr(query, "and_")
-    assert query.and_ == []
+    assert len(query.and_) == 0
 
 
 def test_create_search_runs_query_with_start_time():
