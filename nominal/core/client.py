@@ -1057,32 +1057,37 @@ class NominalClient:
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         exact_match_on_name: bool = True,
     ) -> Asset:
-        """Searches for an asset using using provided search parameters. If no assets are returned,]
+        """Searches for an asset using using provided search parameters. If no assets are returned,
         create an asset using provided parameters. If multiple assets returned, throw error.
 
         Args:
             name: Name of asset. Used in creation if none exist per search parameters.
             description: Description of asset. Used in creation if no assets exist in search parameters.
-            properties: Properties (fulfills same purpose as in search_assets).
-            labels: Labels (fulfills same purpose as in search_assets).
+            properties: key-value properties to use when searching for and creating assets.
+            labels: a sequence of labels to use when searching for and creating assets.
             workspace: Workspace to limit search. Defaults to WorkspaceSearchType.ALL.
             exact_match_on_name: If True, only consider assets with names that exactly match
         Returns:
             Asset: The existing or newly created asset.
         """
         assets = self.search_assets(name, labels=labels, properties=properties, workspace=workspace)
+
+        logger.info("Found %d assets searching by name, labels, properties.", len(assets))
+
         assets_filtered = [
             asset for asset in assets if (not exact_match_on_name) or (asset.name.lower() == name.lower())
         ]
 
+        logger.info("%d assets remain after filtering to exact match to name %s", len(assets_filtered), name)
+
         if len(assets_filtered) > 1:
-            asset_names_str = "\n".join(getattr(a, "name", str(a)) for a in assets_filtered)
+            asset_names_str = "\n".join(a.name for a in assets_filtered[:10]) + (
+                "\n..." if len(assets_filtered) > 10 else ""
+            )
             raise ValueError(f"Multiple assets returned per search parameters:\n{asset_names_str}")
 
         if len(assets_filtered) == 1:
             return assets_filtered[0]
-        if name is None:
-            raise ValueError("No assets found and no `name` provided to create one")
 
         return self.create_asset(name=name, description=description, properties=properties, labels=labels)
 
