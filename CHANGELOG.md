@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.94.0](https://github.com/nominal-io/nominal-client/compare/v1.93.0...v1.94.0) (2025-11-13)
+
+
+### Features
+
+* add get_or_create_asset_by_properties ([7cda2d9](https://github.com/nominal-io/nominal-client/commit/7cda2d9ca975483364903eeb1448bf29a8faf5d4))
+* add get_or_create_asset_by_properties ([#520](https://github.com/nominal-io/nominal-client/issues/520)) ([7cda2d9](https://github.com/nominal-io/nominal-client/commit/7cda2d9ca975483364903eeb1448bf29a8faf5d4))
+
 ## [1.93.0](https://github.com/nominal-io/nominal-client/compare/v1.92.0...v1.93.0) (2025-11-12)
 
 
