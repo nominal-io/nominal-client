@@ -1068,7 +1068,9 @@ class NominalClient:
         logger.info("Found %d assets searching by properties.", len(assets))
 
         if len(assets) > 1:
-            asset_names_str = "\n".join(a.name for a in assets[:MAX_ASSETS_SHOWN]) + ("\n..." if len(assets) > MAX_ASSETS_SHOWN else "")
+            asset_names_str = "\n".join(a.name for a in assets[:MAX_ASSETS_SHOWN]) + (
+                "\n..." if len(assets) > MAX_ASSETS_SHOWN else ""
+            )
             raise ValueError(f"Multiple assets returned per search parameters:\n{asset_names_str}")
 
         if len(assets) == 1:
