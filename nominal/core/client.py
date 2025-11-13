@@ -115,6 +115,7 @@ from nominal.ts import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONNECT_TIMEOUT = timedelta(seconds=30)
+MAX_ASSETS_SHOWN = 10
 
 
 class WorkspaceSearchType(enum.Enum):
@@ -1056,6 +1057,36 @@ class NominalClient:
         if len(response) > 1:
             raise ValueError(f"multiple assets found with RID {rid!r}: {response!r}")
         return Asset._from_conjure(self._clients, response[rid])
+
+    def get_or_create_asset_by_properties(
+        self, properties: Mapping[str, str], *, name: str, description: str | None = None, labels: Sequence[str] = ()
+    ) -> Asset:
+        """Searches for an asset using using properties. If no assets returned, create one.
+           If multiple assets returned, throw error.
+
+        Args:
+            properties: key-value properties to use when searching for and creating assets.
+            name: Name of asset to be used if creation is necessary.
+            description: Description of asset to be used if creation is necessary.
+            labels: a sequence of labels to use when if creation is necessary.
+
+        Returns:
+            The existing or newly created asset.
+        """
+        assets = self.search_assets(properties=properties, workspace=self._clients.workspace_rid)
+
+        logger.info("Found %d assets searching by properties.", len(assets))
+
+        if len(assets) > 1:
+            asset_names_str = "\n".join(a.name for a in assets[:MAX_ASSETS_SHOWN]) + (
+                "\n..." if len(assets) > MAX_ASSETS_SHOWN else ""
+            )
+            raise ValueError(f"Multiple assets returned per search parameters:\n{asset_names_str}")
+
+        if len(assets) == 1:
+            return assets[0]
+
+        return self.create_asset(name=name, description=description, properties=properties, labels=labels)
 
     def _iter_search_assets(self, query: scout_asset_api.SearchAssetsQuery) -> Iterable[Asset]:
         for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query):
