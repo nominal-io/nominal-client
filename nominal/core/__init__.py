@@ -1,8 +1,9 @@
 from nominal.core._stream.write_stream import WriteStream
+from nominal.core._utils.api_tools import LinkDict
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
-from nominal.core.channel import Channel
+from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.connection import Connection
@@ -28,6 +29,7 @@ from nominal.core.user import User
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
 from nominal.core.workbook import Workbook, WorkbookType
+from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
 
 __all__ = [
@@ -35,6 +37,7 @@ __all__ = [
     "Attachment",
     "Bounds",
     "Channel",
+    "ChannelDataType",
     "Checklist",
     "CheckViolation",
     "Connection",
@@ -50,6 +53,7 @@ __all__ = [
     "FileExtractionInput",
     "FileType",
     "FileTypes",
+    "LinkDict",
     "LogPoint",
     "NominalClient",
     "poll_until_ingestion_completed",
@@ -64,6 +68,7 @@ __all__ = [
     "Video",
     "VideoFile",
     "Workbook",
+    "WorkbookTemplate",
     "WorkbookType",
     "Workspace",
     "WorkspaceSearchType",

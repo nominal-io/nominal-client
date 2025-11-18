@@ -269,6 +269,7 @@ class DatasetFile:
         )
 
 
+# TODO(drake): rename to something more dataset-file specific, expose in nominal.core __init__.py
 class IngestStatus(Enum):
     SUCCESS = "SUCCESS"
     IN_PROGRESS = "IN_PROGRESS"
