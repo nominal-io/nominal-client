@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import abc
 import importlib.metadata
 import logging
 import platform
 import sys
-from typing import Mapping, Protocol, Sequence, TypeAlias, TypedDict, TypeVar, runtime_checkable
+from typing import Any, Generic, Mapping, Protocol, Sequence, TypeAlias, TypedDict, TypeVar, runtime_checkable
 
 from nominal_api import scout_compute_api, scout_run_api
-from typing_extensions import NotRequired
+from typing_extensions import NotRequired, Self
+
+from nominal._utils.dataclass_tools import update_dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,26 @@ T_contra = TypeVar("T_contra", contravariant=True)
 @runtime_checkable
 class HasRid(Protocol):
     rid: str
+
+
+class RefreshableMixin(Generic[T], abc.ABC):
+    _clients: Any
+    __dataclass_fields__: dict[str, Any]
+
+    @classmethod
+    @abc.abstractmethod
+    def _from_conjure(cls, clients: Any, _: T) -> Self: ...
+
+    @abc.abstractmethod
+    def _get_latest_api(self) -> T: ...
+
+    def _refresh_from_api(self, api_obj: T) -> Self:
+        updated_obj = type(self)._from_conjure(self._clients, api_obj)
+        update_dataclass(self, updated_obj, fields=self.__dataclass_fields__)
+        return self
+
+    def refresh(self) -> Self:
+        return self._refresh_from_api(self._get_latest_api())
 
 
 def rid_from_instance_or_string(value: HasRid | str) -> str:

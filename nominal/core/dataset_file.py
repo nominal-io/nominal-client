@@ -12,8 +12,8 @@ from urllib.parse import unquote, urlparse
 from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
-from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._utils.api_tools import RefreshableMixin
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
@@ -37,7 +37,7 @@ def filename_from_uri(uri: str) -> str:
 
 
 @dataclass(frozen=True)
-class DatasetFile:
+class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
     id: str
     dataset_rid: str
     name: str
@@ -62,14 +62,6 @@ class DatasetFile:
 
     def _get_latest_api(self) -> scout_catalog.DatasetFile:
         return self._clients.catalog.get_dataset_file(self._clients.auth_header, self.dataset_rid, self.id)
-
-    def _refresh_from_api(self, dataset_file: scout_catalog.DatasetFile) -> Self:
-        updated_file = self.__class__._from_conjure(self._clients, dataset_file)
-        update_dataclass(self, updated_file, fields=self.__dataclass_fields__)
-        return self
-
-    def refresh(self) -> Self:
-        return self._refresh_from_api(self._get_latest_api())
 
     def delete(self) -> None:
         """Deletes the dataset file, removing its data permanently from Nominal.

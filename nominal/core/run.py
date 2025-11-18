@@ -11,9 +11,15 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, Link, LinkDict, create_links, rid_from_instance_or_string
+from nominal.core._utils.api_tools import (
+    HasRid,
+    Link,
+    LinkDict,
+    RefreshableMixin,
+    create_links,
+    rid_from_instance_or_string,
+)
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
@@ -23,7 +29,7 @@ from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _Sec
 
 
 @dataclass(frozen=True)
-class Run(HasRid):
+class Run(HasRid, RefreshableMixin[scout_run_api.Run]):
     rid: str
     name: str
     description: str
@@ -50,6 +56,9 @@ class Run(HasRid):
     def nominal_url(self) -> str:
         """Returns a link to the page for this Run in the Nominal app"""
         return f"{self._clients.app_base_url}/runs/{self.run_number}"
+
+    def _get_latest_api(self) -> scout_run_api.Run:
+        return self._clients.run.get_run(self._clients.auth_header, self.rid)
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None
@@ -177,7 +186,7 @@ class Run(HasRid):
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
-        run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        run = self._get_latest_api()
         for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, run.attachments):
             yield Attachment._from_conjure(self._clients, a)
 
@@ -186,7 +195,7 @@ class Run(HasRid):
         return list(self._iter_list_attachments())
 
     def _iter_list_assets(self) -> Iterable[Asset]:
-        run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        run = self._get_latest_api()
         assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
         for a in assets.values():
             yield Asset._from_conjure(self._clients, a)
@@ -238,10 +247,8 @@ class Run(HasRid):
             assets=[],
             links=None if links is None else create_links(links),
         )
-        response = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
-        run = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, run, fields=self.__dataclass_fields__)
-        return self
+        updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
+        return self._refresh_from_api(updated_run)
 
     def remove_data_sources(
         self,
@@ -256,7 +263,7 @@ class Run(HasRid):
         ref_names = ref_names or []
         data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources or []}
 
-        conjure_run = self._clients.run.get_run(self._clients.auth_header, self.rid)
+        conjure_run = self._get_latest_api()
 
         data_sources_to_keep = {
             ref_name: scout_run_api.CreateRunDataSource(
@@ -269,7 +276,7 @@ class Run(HasRid):
             and (rds.data_source.dataset or rds.data_source.connection or rds.data_source.video) not in data_source_rids
         }
 
-        response = self._clients.run.update_run(
+        updated_run = self._clients.run.update_run(
             self._clients.auth_header,
             scout_run_api.UpdateRunRequest(
                 assets=[],
@@ -277,8 +284,7 @@ class Run(HasRid):
             ),
             self.rid,
         )
-        run = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, run, fields=self.__dataclass_fields__)
+        self._refresh_from_api(updated_run)
 
     def add_connection(
         self,

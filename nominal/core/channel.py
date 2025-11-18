@@ -18,9 +18,8 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import create_api_tags
+from nominal.core._utils.api_tools import RefreshableMixin, create_api_tags
 from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _build_unit_update
@@ -55,7 +54,7 @@ class ChannelDataType(enum.Enum):
 
 
 @dataclass
-class Channel:
+class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
     """Metadata for working with channels."""
 
     name: str
@@ -78,6 +77,18 @@ class Channel:
     class _NotProvided:
         """Sentinel class for detecting when a user has or has not provided a value during updates"""
 
+    def _channel_identifier(self) -> timeseries_channelmetadata_api.ChannelIdentifier:
+        return timeseries_channelmetadata_api.ChannelIdentifier(
+            channel_name=self.name,
+            data_source_rid=self.data_source,
+        )
+
+    def _get_latest_api(self) -> timeseries_channelmetadata_api.ChannelMetadata:
+        return self._clients.channel_metadata.get_channel_metadata(
+            self._clients.auth_header,
+            timeseries_channelmetadata_api.GetChannelMetadataRequest(channel_identifier=self._channel_identifier()),
+        )
+
     def update(
         self,
         *,
@@ -96,20 +107,13 @@ class Channel:
                 NOTE: this is in contrast to other fields in other `update()` calls where `None` is treated as a
                       "no-op".
         """
-        channel_metadata = self._clients.channel_metadata.update_channel_metadata(
-            self._clients.auth_header,
-            timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
-                channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
-                    channel_name=self.name,
-                    data_source_rid=self.data_source,
-                ),
-                description=description,
-                unit_update=_build_unit_update(unit) if not isinstance(unit, self._NotProvided) else None,
-            ),
+        request = timeseries_channelmetadata_api.UpdateChannelMetadataRequest(
+            channel_identifier=self._channel_identifier(),
+            description=description,
+            unit_update=_build_unit_update(unit) if not isinstance(unit, self._NotProvided) else None,
         )
-        updated_channel = self.__class__._from_channel_metadata_api(self._clients, channel_metadata)
-        update_dataclass(self, updated_channel, fields=self.__dataclass_fields__)
-        return self
+        updated_channel = self._clients.channel_metadata.update_channel_metadata(self._clients.auth_header, request)
+        return self._refresh_from_api(updated_channel)
 
     @overload
     def search_logs(
@@ -308,6 +312,11 @@ class Channel:
             data_type=channel_data_type,
             _clients=clients,
         )
+
+    # TODO(drake): remove others once endpoints support returning a `timeseries_channelmetadata_api.ChannelMetadata`
+    @classmethod
+    def _from_conjure(cls, clients: _Clients, channel: timeseries_channelmetadata_api.ChannelMetadata) -> Self:
+        return cls._from_channel_metadata_api(clients, channel)
 
     def _to_channel_series(self, tags: Mapping[str, str] | None = None) -> scout_compute_api.ChannelSeries:
         return scout_compute_api.ChannelSeries(

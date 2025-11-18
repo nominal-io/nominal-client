@@ -12,9 +12,9 @@ from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias
 from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self, deprecated
 
-from nominal._utils import update_dataclass
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
+from nominal.core._utils.api_tools import RefreshableMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractors import ContainerizedExtractor
@@ -34,7 +34,7 @@ DatasetBounds: TypeAlias = Bounds
 
 
 @dataclass(frozen=True)
-class Dataset(DataSource):
+class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     name: str
     description: str | None
     properties: Mapping[str, str]
@@ -45,6 +45,9 @@ class Dataset(DataSource):
     def nominal_url(self) -> str:
         """Returns a URL to the page in the nominal app containing this dataset"""
         return f"{self._clients.app_base_url}/data-sources/{self.rid}"
+
+    def _get_latest_api(self) -> scout_catalog.EnrichedDataset:
+        return _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid)
 
     @deprecated(
         "Calling `poll_until_ingestion_completed()` on a `nominal.Dataset` is deprecated and will be removed in "
@@ -85,14 +88,6 @@ class Dataset(DataSource):
         # Update metadata now that data has successfully ingested
         return self.refresh()
 
-    def refresh(self) -> Self:
-        updated_dataset = self.__class__._from_conjure(
-            self._clients,
-            _get_dataset(self._clients.auth_header, self._clients.catalog, self.rid),
-        )
-        update_dataclass(self, updated_dataset, fields=self.__dataclass_fields__)
-        return self
-
     def update(
         self,
         *,
@@ -120,9 +115,8 @@ class Dataset(DataSource):
             name=name,
             properties=None if properties is None else dict(properties),
         )
-        self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
-
-        return self.refresh()
+        updated_dataset = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
+        return self._refresh_from_api(updated_dataset)
 
     def _handle_ingest_response(self, response: ingest_api.IngestResponse) -> DatasetFile:
         if response.details.dataset is None:

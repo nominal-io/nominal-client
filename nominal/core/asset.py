@@ -11,9 +11,8 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, Link, create_links, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create_links, rid_from_instance_or_string
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
@@ -25,7 +24,7 @@ ScopeType: TypeAlias = Connection | Dataset | Video
 
 
 @dataclass(frozen=True)
-class Asset(HasRid):
+class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
     rid: str
     name: str
     description: str | None
@@ -75,10 +74,16 @@ class Asset(HasRid):
             title=name,
             links=None if links is None else create_links(links),
         )
-        response = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
-        asset = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, asset, fields=self.__dataclass_fields__)
-        return self
+        api_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
+        return self._refresh_from_api(api_asset)
+
+    def _get_latest_api(self) -> scout_asset_api.Asset:
+        response = self._clients.assets.get_assets(self._clients.auth_header, [self.rid])
+        if len(response) == 0 or self.rid not in response:
+            raise ValueError(f"no asset found with RID {self.rid!r}: {response!r}")
+        if len(response) > 1:
+            raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
+        return response[self.rid]
 
     @property
     def nominal_url(self) -> str:
@@ -141,16 +146,8 @@ class Asset(HasRid):
         request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
         self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
 
-    def _get_asset(self) -> scout_asset_api.Asset:
-        response = self._clients.assets.get_assets(self._clients.auth_header, [self.rid])
-        if len(response) == 0 or self.rid not in response:
-            raise ValueError(f"no asset found with RID {self.rid!r}: {response!r}")
-        if len(response) > 1:
-            raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
-        return response[self.rid]
-
     def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
-        asset = self._get_asset()
+        asset = self._get_latest_api()
         return {
             scope.data_scope_name: cast(str, getattr(scope.data_source, stype))
             for scope in asset.data_scopes
@@ -299,7 +296,7 @@ class Asset(HasRid):
         self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
-        asset = self._get_asset()
+        asset = self._get_latest_api()
         for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, asset.attachments):
             yield Attachment._from_conjure(self._clients, a)
 
@@ -330,7 +327,7 @@ class Asset(HasRid):
 
         data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources}
 
-        conjure_asset = self._get_asset()
+        conjure_asset = self._get_latest_api()
 
         data_sources_to_keep = [
             scout_asset_api.CreateAssetDataScope(
@@ -344,15 +341,14 @@ class Asset(HasRid):
             and (ds.data_source.dataset or ds.data_source.connection or ds.data_source.video) not in data_source_rids
         ]
 
-        response = self._clients.assets.update_asset(
+        api_asset = self._clients.assets.update_asset(
             self._clients.auth_header,
             scout_asset_api.UpdateAssetRequest(
                 data_scopes=data_sources_to_keep,
             ),
             self.rid,
         )
-        asset = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, asset, fields=self.__dataclass_fields__)
+        self._refresh_from_api(api_asset)
 
     def remove_data_scopes(
         self,

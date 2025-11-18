@@ -8,9 +8,8 @@ from typing import Mapping, Protocol, Sequence
 from nominal_api import scout, scout_notebook_api
 from typing_extensions import Self, deprecated
 
-from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ class WorkbookType(Enum):
 
 
 @dataclass(frozen=True)
-class Workbook(HasRid):
+class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
     rid: str
     title: str
     description: str
@@ -79,6 +78,9 @@ class Workbook(HasRid):
         else:
             raise RuntimeError("Cannot access singular `run_rid`-- workbook has multiple run rids!")
 
+    def _get_latest_api(self) -> scout_notebook_api.Notebook:
+        return self._clients.notebook.get(self._clients.auth_header, self.rid)
+
     def update(
         self,
         *,
@@ -113,11 +115,7 @@ class Workbook(HasRid):
             ),
             self.rid,
         )
-        notebook = self.__class__._from_conjure(
-            self._clients, self._clients.notebook.get(self._clients.auth_header, self.rid)
-        )
-        update_dataclass(self, notebook, fields=self.__dataclass_fields__)
-        return self
+        return self.refresh()
 
     def clone(
         self,
@@ -134,7 +132,7 @@ class Workbook(HasRid):
         Returns:
             Reference to the cloned workbook
         """
-        raw_workbook = self._clients.notebook.get(self._clients.auth_header, self.rid)
+        raw_workbook = self._get_latest_api()
         new_workbook = self._clients.notebook.create(
             self._clients.auth_header,
             scout_notebook_api.CreateNotebookRequest(
@@ -167,11 +165,11 @@ class Workbook(HasRid):
 
     def is_locked(self) -> bool:
         """Return whether or not the workbook is currently locked."""
-        return self._clients.notebook.get(self._clients.auth_header, self.rid).metadata.lock.is_locked
+        return self._get_latest_api().metadata.lock.is_locked
 
     def is_archived(self) -> bool:
         """Return whether or not the workbook is currently archived."""
-        return self._clients.notebook.get(self._clients.auth_header, self.rid).metadata.is_archived
+        return self._get_latest_api().metadata.is_archived
 
     def lock(self) -> None:
         """Locks the workbook, preventing changes from being made to it.
