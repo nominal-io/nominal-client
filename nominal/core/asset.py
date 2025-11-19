@@ -45,6 +45,11 @@ class Asset(HasRid):
         @property
         def assets(self) -> scout_assets.AssetService: ...
 
+    @property
+    def nominal_url(self) -> str:
+        """Returns a link to the page for this Asset in the Nominal app"""
+        return f"{self._clients.app_base_url}/assets/{self.rid}"
+
     def update(
         self,
         *,
@@ -80,75 +85,6 @@ class Asset(HasRid):
         update_dataclass(self, asset, fields=self.__dataclass_fields__)
         return self
 
-    @property
-    def nominal_url(self) -> str:
-        """Returns a link to the page for this Asset in the Nominal app"""
-        return f"{self._clients.app_base_url}/assets/{self.rid}"
-
-    def add_dataset(
-        self,
-        data_scope_name: str,
-        dataset: Dataset | str,
-        *,
-        series_tags: Mapping[str, str] | None = None,
-    ) -> None:
-        """Add a dataset to this asset.
-
-        Assets map "data_scope_name" (their name within the asset) to a Dataset (or dataset rid). The same type of
-        datasets should use the same data scope name across assets, since checklists and templates use data scope names
-        to reference datasets.
-
-        Args:
-            data_scope_name: logical name for the data scope within the asset
-            dataset: dataset to add to the asset
-            series_tags: Key-value tags to pre-filter the dataset with before adding to the asset.
-        """
-        request = scout_asset_api.AddDataScopesToAssetRequest(
-            data_scopes=[
-                scout_asset_api.CreateAssetDataScope(
-                    data_scope_name=data_scope_name,
-                    data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
-                    series_tags={**series_tags} if series_tags else {},
-                )
-            ],
-        )
-        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
-
-    def add_video(self, data_scope_name: str, video: Video | str) -> None:
-        """Add a video to this asset.
-
-        Assets map "data_scope_name" (name within the asset for the data) to a Video (or a video rid). The same type of
-        videos (e.g., files from a given camera) should use the same data scope name across assets, since checklists and
-        templates use data scope names to reference videos.
-        """
-        request = scout_asset_api.AddDataScopesToAssetRequest(
-            data_scopes=[
-                scout_asset_api.CreateAssetDataScope(
-                    data_scope_name=data_scope_name,
-                    data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
-                    series_tags={},
-                ),
-            ]
-        )
-        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
-
-    def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
-        """Add attachments that have already been uploaded to this asset.
-
-        `attachments` can be `Attachment` instances, or attachment RIDs.
-        """
-        rids = [rid_from_instance_or_string(a) for a in attachments]
-        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
-        self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
-
-    def _get_asset(self) -> scout_asset_api.Asset:
-        response = self._clients.assets.get_assets(self._clients.auth_header, [self.rid])
-        if len(response) == 0 or self.rid not in response:
-            raise ValueError(f"no asset found with RID {self.rid!r}: {response!r}")
-        if len(response) > 1:
-            raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
-        return response[self.rid]
-
     def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
         asset = self._get_asset()
         return {
@@ -156,79 +92,6 @@ class Asset(HasRid):
             for scope in asset.data_scopes
             if scope.data_source.type.lower() == stype
         }
-
-    def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
-        """List the datasets associated with this asset.
-        Returns (data_scope_name, dataset) pairs for each dataset.
-        """
-        scope_rid = self._scope_rid(stype="dataset")
-        if not scope_rid:
-            return []
-
-        datasets_map = {
-            dataset.rid: dataset
-            for dataset in _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
-        }
-        return [
-            (name, Dataset._from_conjure(self._clients, datasets_map[rid]))
-            for name, rid in scope_rid.items()
-            if rid in datasets_map
-        ]
-
-    def list_connections(self) -> Sequence[tuple[str, Connection]]:
-        """List the connections associated with this asset.
-        Returns (data_scope_name, connection) pairs for each connection.
-        """
-        scope_rid = self._scope_rid(stype="connection")
-        connections_meta = _get_connections(self._clients, list(scope_rid.values()))
-        return [
-            (scope, Connection._from_conjure(self._clients, connection))
-            for (scope, connection) in zip(scope_rid.keys(), connections_meta)
-        ]
-
-    def list_videos(self) -> Sequence[tuple[str, Video]]:
-        """List the videos associated with this asset.
-        Returns (data_scope_name, dataset) pairs for each video.
-        """
-        scope_rid = self._scope_rid(stype="video")
-        return [
-            (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
-            for (scope, rid) in scope_rid.items()
-        ]
-
-    def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
-        """List scopes associated with this asset.
-
-        Returns:
-            (data_scope_name, scope) pairs, where scope can be a dataset, connection, or video.
-        """
-        return (*self.list_datasets(), *self.list_connections(), *self.list_videos())
-
-    def get_or_create_dataset(
-        self,
-        data_scope_name: str,
-        *,
-        name: str | None = None,
-        description: str | None = None,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-    ) -> Dataset:
-        """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
-        try:
-            return self.get_dataset(data_scope_name)
-        except ValueError:
-            enriched_dataset = _create_dataset(
-                self._clients.auth_header,
-                self._clients.catalog,
-                name or data_scope_name,
-                description=description,
-                properties=properties,
-                labels=labels,
-                workspace_rid=self._clients.workspace_rid,
-            )
-            dataset = Dataset._from_conjure(self._clients, enriched_dataset)
-            self.add_dataset(data_scope_name, dataset)
-            return dataset
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""
@@ -238,83 +101,13 @@ class Asset(HasRid):
 
         raise ValueError(f"No such data scope found on asset {self.rid} with data_scope_name {data_scope_name}")
 
-    def get_dataset(self, data_scope_name: str) -> Dataset:
-        """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
-        dataset = self.get_data_scope(data_scope_name)
-        if isinstance(dataset, Dataset):
-            return dataset
-        else:
-            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a dataset")
+    def list_data_scopes(self) -> Sequence[tuple[str, ScopeType]]:
+        """List scopes associated with this asset.
 
-    def get_connection(self, data_scope_name: str) -> Connection:
-        """Retrieve a connection by data scope name, or raise ValueError if one is not found."""
-        connection = self.get_data_scope(data_scope_name)
-        if isinstance(connection, Connection):
-            return connection
-        else:
-            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a connection")
-
-    def get_or_create_video(
-        self,
-        data_scope_name: str,
-        *,
-        name: str | None = None,
-        description: str | None = None,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-    ) -> Video:
-        """Retrieve a video by data scope name, or create a new one if it does not exist."""
-        try:
-            return self.get_video(data_scope_name)
-        except ValueError:
-            response = _create_video(
-                self._clients.auth_header,
-                self._clients.video,
-                name or data_scope_name,
-                description=description,
-                properties=properties,
-                labels=labels,
-                workspace_rid=self._clients.workspace_rid,
-            )
-            video = Video._from_conjure(self._clients, response)
-            self.add_video(data_scope_name, video)
-            return video
-
-    def get_video(self, data_scope_name: str) -> Video:
-        """Retrieve a video by data scope name, or raise ValueError if one is not found."""
-        video = self.get_data_scope(data_scope_name)
-        if isinstance(video, Video):
-            return video
-        else:
-            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a video")
-
-    def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
-        """Remove attachments from this asset.
-        Does not remove the attachments from Nominal.
-
-        `attachments` can be `Attachment` instances, or attachment RIDs.
+        Returns:
+            (data_scope_name, scope) pairs, where scope can be a dataset, connection, or video.
         """
-        rids = [rid_from_instance_or_string(a) for a in attachments]
-        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
-        self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
-
-    def _iter_list_attachments(self) -> Iterable[Attachment]:
-        asset = self._get_asset()
-        for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, asset.attachments):
-            yield Attachment._from_conjure(self._clients, a)
-
-    def list_attachments(self) -> Sequence[Attachment]:
-        return list(self._iter_list_attachments())
-
-    def archive(self) -> None:
-        """Archive this asset.
-        Archived assets are not deleted, but are hidden from the UI.
-        """
-        self._clients.assets.archive(self._clients.auth_header, self.rid)
-
-    def unarchive(self) -> None:
-        """Unarchive this asset, allowing it to be viewed in the UI."""
-        self._clients.assets.unarchive(self._clients.auth_header, self.rid)
+        return (*self.list_datasets(), *self.list_connections(), *self.list_videos())
 
     def _remove_data_sources(
         self,
@@ -367,6 +160,53 @@ class Asset(HasRid):
         """
         self._remove_data_sources(data_scope_names=names, data_sources=scopes)
 
+    def add_dataset(
+        self,
+        data_scope_name: str,
+        dataset: Dataset | str,
+        *,
+        series_tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Add a dataset to this asset.
+
+        Assets map "data_scope_name" (their name within the asset) to a Dataset (or dataset rid). The same type of
+        datasets should use the same data scope name across assets, since checklists and templates use data scope names
+        to reference datasets.
+
+        Args:
+            data_scope_name: logical name for the data scope within the asset
+            dataset: dataset to add to the asset
+            series_tags: Key-value tags to pre-filter the dataset with before adding to the asset.
+        """
+        request = scout_asset_api.AddDataScopesToAssetRequest(
+            data_scopes=[
+                scout_asset_api.CreateAssetDataScope(
+                    data_scope_name=data_scope_name,
+                    data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
+                    series_tags={**series_tags} if series_tags else {},
+                )
+            ],
+        )
+        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+
+    def add_video(self, data_scope_name: str, video: Video | str) -> None:
+        """Add a video to this asset.
+
+        Assets map "data_scope_name" (name within the asset for the data) to a Video (or a video rid). The same type of
+        videos (e.g., files from a given camera) should use the same data scope name across assets, since checklists and
+        templates use data scope names to reference videos.
+        """
+        request = scout_asset_api.AddDataScopesToAssetRequest(
+            data_scopes=[
+                scout_asset_api.CreateAssetDataScope(
+                    data_scope_name=data_scope_name,
+                    data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
+                    series_tags={},
+                ),
+            ]
+        )
+        self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+
     def add_connection(
         self,
         data_scope_name: str,
@@ -395,6 +235,166 @@ class Asset(HasRid):
             ]
         )
         self._clients.assets.add_data_scopes_to_asset(self.rid, self._clients.auth_header, request)
+
+    def add_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
+        """Add attachments that have already been uploaded to this asset.
+
+        `attachments` can be `Attachment` instances, or attachment RIDs.
+        """
+        rids = [rid_from_instance_or_string(a) for a in attachments]
+        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=rids, attachments_to_remove=[])
+        self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
+
+    def get_or_create_dataset(
+        self,
+        data_scope_name: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
+        try:
+            return self.get_dataset(data_scope_name)
+        except ValueError:
+            enriched_dataset = _create_dataset(
+                self._clients.auth_header,
+                self._clients.catalog,
+                name or data_scope_name,
+                description=description,
+                properties=properties,
+                labels=labels,
+                workspace_rid=self._clients.workspace_rid,
+            )
+            dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+            self.add_dataset(data_scope_name, dataset)
+            return dataset
+
+    def get_or_create_video(
+        self,
+        data_scope_name: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        """Retrieve a video by data scope name, or create a new one if it does not exist."""
+        try:
+            return self.get_video(data_scope_name)
+        except ValueError:
+            response = _create_video(
+                self._clients.auth_header,
+                self._clients.video,
+                name or data_scope_name,
+                description=description,
+                properties=properties,
+                labels=labels,
+                workspace_rid=self._clients.workspace_rid,
+            )
+            video = Video._from_conjure(self._clients, response)
+            self.add_video(data_scope_name, video)
+            return video
+
+    def get_dataset(self, data_scope_name: str) -> Dataset:
+        """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
+        dataset = self.get_data_scope(data_scope_name)
+        if isinstance(dataset, Dataset):
+            return dataset
+        else:
+            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a dataset")
+
+    def get_connection(self, data_scope_name: str) -> Connection:
+        """Retrieve a connection by data scope name, or raise ValueError if one is not found."""
+        connection = self.get_data_scope(data_scope_name)
+        if isinstance(connection, Connection):
+            return connection
+        else:
+            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a connection")
+
+    def get_video(self, data_scope_name: str) -> Video:
+        """Retrieve a video by data scope name, or raise ValueError if one is not found."""
+        video = self.get_data_scope(data_scope_name)
+        if isinstance(video, Video):
+            return video
+        else:
+            raise ValueError(f"Data scope {data_scope_name} on asset {self.rid} is not a video")
+
+    def _get_asset(self) -> scout_asset_api.Asset:
+        response = self._clients.assets.get_assets(self._clients.auth_header, [self.rid])
+        if len(response) == 0 or self.rid not in response:
+            raise ValueError(f"no asset found with RID {self.rid!r}: {response!r}")
+        if len(response) > 1:
+            raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
+        return response[self.rid]
+
+    def list_datasets(self) -> Sequence[tuple[str, Dataset]]:
+        """List the datasets associated with this asset.
+        Returns (data_scope_name, dataset) pairs for each dataset.
+        """
+        scope_rid = self._scope_rid(stype="dataset")
+        if not scope_rid:
+            return []
+
+        datasets_map = {
+            dataset.rid: dataset
+            for dataset in _get_datasets(self._clients.auth_header, self._clients.catalog, scope_rid.values())
+        }
+        return [
+            (name, Dataset._from_conjure(self._clients, datasets_map[rid]))
+            for name, rid in scope_rid.items()
+            if rid in datasets_map
+        ]
+
+    def list_connections(self) -> Sequence[tuple[str, Connection]]:
+        """List the connections associated with this asset.
+        Returns (data_scope_name, connection) pairs for each connection.
+        """
+        scope_rid = self._scope_rid(stype="connection")
+        connections_meta = _get_connections(self._clients, list(scope_rid.values()))
+        return [
+            (scope, Connection._from_conjure(self._clients, connection))
+            for (scope, connection) in zip(scope_rid.keys(), connections_meta)
+        ]
+
+    def list_videos(self) -> Sequence[tuple[str, Video]]:
+        """List the videos associated with this asset.
+        Returns (data_scope_name, dataset) pairs for each video.
+        """
+        scope_rid = self._scope_rid(stype="video")
+        return [
+            (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
+            for (scope, rid) in scope_rid.items()
+        ]
+
+    def _iter_list_attachments(self) -> Iterable[Attachment]:
+        asset = self._get_asset()
+        for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, asset.attachments):
+            yield Attachment._from_conjure(self._clients, a)
+
+    def list_attachments(self) -> Sequence[Attachment]:
+        return list(self._iter_list_attachments())
+
+    def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
+        """Remove attachments from this asset.
+        Does not remove the attachments from Nominal.
+
+        `attachments` can be `Attachment` instances, or attachment RIDs.
+        """
+        rids = [rid_from_instance_or_string(a) for a in attachments]
+        request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
+        self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
+
+    def archive(self) -> None:
+        """Archive this asset.
+        Archived assets are not deleted, but are hidden from the UI.
+        """
+        self._clients.assets.archive(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive this asset, allowing it to be viewed in the UI."""
+        self._clients.assets.unarchive(self._clients.auth_header, self.rid)
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, asset: scout_asset_api.Asset) -> Self:
