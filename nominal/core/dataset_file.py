@@ -224,6 +224,17 @@ class DatasetFile:
         logger.info("Successfully downloaded %d/%d files", len(results.succeeded), len(items))
         return results.succeeded
 
+    def get_file_size(self) -> int | None:
+        """Retrieves the size of the file in bytes, or None if it could not be determined
+
+        NOTE: This has only been extensively tested on AWS-based environments, and may fail in some
+              self-hosted environments-- a RuntimeError will be thrown in this case.
+        """
+        # TODO(drake): pull out functionality in a more re-usable way without requiring the downloader class
+        with MultipartFileDownloader.create(max_workers=1) as downloader:
+            size, _ = downloader._head_or_probe(self._presigned_url_provider())
+            return size
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, dataset_file: scout_catalog.DatasetFile) -> Self:
         upload_time = _SecondsNanos.from_flexible(dataset_file.uploaded_at).to_nanoseconds()
