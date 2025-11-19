@@ -12,7 +12,6 @@ from nominal.core import NominalClient
 
 logger = logging.getLogger(__name__)
 
-
 def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     """Read the MIS file (CSV or Excel) and return a dataframe containing its contents
 
@@ -42,19 +41,27 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
 
     # standardize and validate column names
     df.columns = df.columns.str.lower()
-    selected_columns = ["channel", "description", "ucum unit"]
-    if not all(col in df.columns for col in selected_columns):
-        raise ValueError("MIS file must have columns: channel, description, ucum unit")
+    selected_columns = [("channel", True), ("description", False), ("ucum unit", True)]
+    present_columns = [col[0] for col in selected_columns if col[0] in df.columns]
+    if not all([col[0] in present_columns for col in selected_columns if col[1]]):
+        raise ValueError("MIS file must have columns: channel, ucum unit")
 
-    return df[selected_columns]
+    if "description" not in present_columns:
+        df["description"] = None
+
+    return df[[column[0] for column in selected_columns]]
 
 
-def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalClient) -> None:
+def update_channels(mis_data: pd.DataFrame, 
+                    dataset_rid: str, 
+                    override_channel_info: bool | None, 
+                    client: NominalClient) -> None:
     """The main function for updating channels in a dataset.
 
     Args:
         mis_data: The dataframe containing the MIS data
         dataset_rid: The RID of the dataset to update
+        override_channel_info: will override if present
         client: The Nominal client
     """
     dataset = client.get_dataset(dataset_rid)
@@ -64,7 +71,27 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
     for _, channel_name, description, unit in mis_data.itertuples():
         channel = channel_map.get(channel_name)
         if channel:
-            channel.update(description=description, unit=unit)
+            if (channel.description is not None and description is not None and channel.description != description) \
+                    or (channel.unit is not None and channel.unit != unit):
+                if override_channel_info:
+                    logger.warning("Channel %s description %s and units %s will be overridden by input: %s, %s",
+                                channel.name,
+                                channel.description,
+                                channel.unit,
+                                description,
+                                unit)
+                    channel.update(description=description, unit=unit)
+                else:
+                    logger.warning("Channel %s description %s and units %s does not match input: %s, %s. Skipping update.",
+                                channel.name,
+                                channel.description,
+                                channel.unit,
+                                description,
+                                unit)
+            else:
+                # TODO: We should use the bulk API for this.
+                logger.info("Updated channel %s with description: %s and unit: %s",channel.name, description, unit)
+                channel.update(description=description, unit=unit)
         else:
             logger.warning("Channel %s not found in dataset %s", channel_name, dataset_rid)
 
@@ -118,14 +145,20 @@ def mis_cmd() -> None:
     required=False,
     help="The sheet to use in the Excel file if parsing direct from Excel. Only needed if there are multiple sheets.",
 )
+@click.option("--override-channel-info", required=False, is_flag=True,
+              help="If channel is already present and has different description/units information, overwrite.")
 @client_options
 @global_options
-def process(mis_path: Path, dataset_rid: str, sheet: str | None, client: NominalClient) -> None:
+def process(mis_path: Path, 
+            dataset_rid: str, 
+            sheet: str | None, 
+            override_channel_info: bool | None,  
+            client: NominalClient) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
     logger.info("Updating channels: %s", mis_data)
-    update_channels(mis_data, dataset_rid, client)
+    update_channels(mis_data, dataset_rid, override_channel_info, client)
     logger.info("Channels updated.")
 
 
