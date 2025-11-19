@@ -42,19 +42,21 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
 
     # standardize and validate column names
     df.columns = df.columns.str.lower()
-    selected_columns = [("channel", True), ("description", False), ("ucum unit", True)]
-    present_columns = [col[0] for col in selected_columns if col[0] in df.columns]
-    if not all([col[0] in present_columns for col in selected_columns if col[1]]):
-        raise ValueError("MIS file must have columns: channel, ucum unit")
+    required_columns = ["channel"]
+    optional_columns = ["description", "ucum unit"]
 
-    if "description" not in present_columns:
-        df["description"] = None
+    if any([col not in df.columns for col in required_columns]):
+        raise ValueError(f"MIS file must have columns: {required_columns}")
 
-    return df[[column[0] for column in selected_columns]]
+    for col in optional_columns:
+        if col not in df.columns:
+            df[col] = None
+
+    return df[[*required_columns, *optional_columns]]
 
 
 def update_channels(
-    mis_data: pd.DataFrame, dataset_rid: str, override_channel_info: bool | None, client: NominalClient
+    mis_data: pd.DataFrame, dataset_rid: str, override_channel_info: bool, client: NominalClient
 ) -> None:
     """The main function for updating channels in a dataset.
 
@@ -94,7 +96,7 @@ def update_channels(
                         unit,
                     )
             else:
-                # TODO: We should use the bulk API for this.
+                # TODO (sean): We should use the bulk API for this.
                 logger.info("Updated channel %s with description: %s and unit: %s", channel.name, description, unit)
                 channel.update(description=description, unit=unit)
         else:
@@ -152,14 +154,13 @@ def mis_cmd() -> None:
 )
 @click.option(
     "--override-channel-info",
-    required=False,
     is_flag=True,
     help="If channel is already present and has different description/units information, overwrite.",
 )
 @client_options
 @global_options
 def process(
-    mis_path: Path, dataset_rid: str, sheet: str | None, override_channel_info: bool | None, client: NominalClient
+    mis_path: Path, dataset_rid: str, sheet: str | None, override_channel_info: bool, client: NominalClient
 ) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     logger.info("Validating MIS file: %s", mis_path)
