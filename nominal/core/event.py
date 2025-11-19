@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import event
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
@@ -38,11 +38,6 @@ class Event:
     class _Clients(HasScoutParams, Protocol):
         @property
         def event(self) -> event.EventService: ...
-
-    @property
-    @deprecated("The uuid field of an event is deprecated and will be removed in a future release")
-    def uuid(self) -> str:
-        return self._uuid
 
     def update(
         self,

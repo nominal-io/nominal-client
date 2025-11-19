@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Mapping, Protocol, Sequence
 
 from nominal_api import scout, scout_notebook_api
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
@@ -64,20 +64,6 @@ class Workbook(HasRid):
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook in the Nominal app"""
         return f"{self._clients.app_base_url}/workbooks/{self.rid}"
-
-    @property
-    @deprecated(
-        "`Workbook.run_rid` is deprecated and will be removed in a future release: use Workbook.run_rids instead"
-    )
-    def run_rid(self) -> str | None:
-        if self.run_rids is None:
-            return None
-        elif len(self.run_rids) == 0:
-            return None
-        elif len(self.run_rids) == 1:
-            return self.run_rids[0]
-        else:
-            raise RuntimeError("Cannot access singular `run_rid`-- workbook has multiple run rids!")
 
     def update(
         self,

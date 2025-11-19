@@ -70,7 +70,7 @@ def upload_csv(
         description=description,
         prefix_tree_delimiter=channel_name_delimiter,
     )
-    dataset.add_tabular_data(
+    dataset_file = dataset.add_tabular_data(
         file,
         timestamp_column=timestamp_column,
         timestamp_type=timestamp_type,
@@ -78,7 +78,7 @@ def upload_csv(
 
     # block until ingestion completed, if requested
     if wait:
-        dataset.poll_until_ingestion_completed()
+        dataset_file.poll_until_ingestion_completed()
 
     click.echo(dataset)
 

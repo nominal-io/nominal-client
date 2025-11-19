@@ -16,7 +16,7 @@ from nominal_api import (
     scout_datareview_api,
     scout_integrations_api,
 )
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal.core import checklist, event
 from nominal.core._clientsbunch import HasScoutParams
@@ -68,15 +68,6 @@ class DataReview(HasRid):
             self._clients,
             self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
         )
-
-    @deprecated(
-        "CheckViolations are deprecated and will be removed in a future version. "
-        "Checklists now produce Events. Use get_events() instead."
-    )
-    def get_violations(self) -> Sequence[CheckViolation]:
-        """Retrieves the list of check violations for the data review."""
-        response = self._clients.datareview.get_check_alerts_for_data_review(self._clients.auth_header, self.rid)
-        return [CheckViolation._from_conjure(alert) for alert in response]
 
     def get_events(self) -> Sequence[event.Event]:
         """Retrieves the list of events for the data review."""
