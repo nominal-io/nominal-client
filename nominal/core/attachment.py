@@ -9,14 +9,13 @@ from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 from nominal_api import attachments_api
 from typing_extensions import Self
 
-from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
-class Attachment(HasRid):
+class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
     rid: str
     name: str
     description: str
@@ -29,6 +28,9 @@ class Attachment(HasRid):
     class _Clients(HasScoutParams, Protocol):
         @property
         def attachment(self) -> attachments_api.AttachmentService: ...
+
+    def _get_latest_api(self) -> attachments_api.Attachment:
+        return self._clients.attachment.get(self._clients.auth_header, self.rid)
 
     def update(
         self,
@@ -55,10 +57,8 @@ class Attachment(HasRid):
             properties=None if properties is None else dict(properties),
             title=name,
         )
-        response = self._clients.attachment.update(self._clients.auth_header, request, self.rid)
-        attachment = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, attachment, fields=self.__dataclass_fields__)
-        return self
+        updated_attachment = self._clients.attachment.update(self._clients.auth_header, request, self.rid)
+        return self._refresh_from_api(updated_attachment)
 
     def get_contents(self) -> BinaryIO:
         """Retrieve the contents of this attachment.

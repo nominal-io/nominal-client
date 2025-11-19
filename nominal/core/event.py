@@ -9,15 +9,14 @@ from typing import Iterable, Mapping, Protocol, Sequence
 from nominal_api import event
 from typing_extensions import Self, deprecated
 
-from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
 @dataclass(frozen=True)
-class Event:
+class Event(HasRid, RefreshableMixin[event.Event]):
     rid: str
     asset_rids: Sequence[str]
     name: str
@@ -38,6 +37,13 @@ class Event:
     class _Clients(HasScoutParams, Protocol):
         @property
         def event(self) -> event.EventService: ...
+
+    def _get_latest_api(self) -> event.Event:
+        resp = self._clients.event.batch_get_events(self._clients.auth_header, [self.rid])
+        if len(resp) != 0:
+            raise ValueError(f"Expected exactly one event with rid {self.rid}, received {len(resp)}")
+
+        return resp[0]
 
     @property
     @deprecated("The uuid field of an event is deprecated and will be removed in a future release")
@@ -83,14 +89,11 @@ class Event:
                 )
             ]
         )
-        response = self._clients.event.batch_update_event(self._clients.auth_header, request)
-        if len(response.events) != 1:
-            raise RuntimeError(f"Expected to receive exactly one updated event, but received {len(response.events)}")
+        batch_updated = self._clients.event.batch_update_event(self._clients.auth_header, request)
+        if len(batch_updated.events) != 1:
+            raise ValueError(f"Expected exactly one updated rid, received {len(batch_updated.events)}")
 
-        raw_event = response.events[0]
-        e = self.__class__._from_conjure(self._clients, raw_event)
-        update_dataclass(self, e, fields=self.__dataclass_fields__)
-        return self
+        return self._refresh_from_api(batch_updated.events[0])
 
     def archive(self) -> None:
         """Archives the event, preventing it from showing up in workbooks."""

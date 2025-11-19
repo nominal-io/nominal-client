@@ -6,16 +6,15 @@ from typing import Mapping, Protocol, Sequence, overload
 from nominal_api import scout, scout_notebook_api, scout_template_api, scout_workbookcommon_api
 from typing_extensions import Self
 
-from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
 
 
 @dataclass(frozen=True)
-class WorkbookTemplate(HasRid):
+class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
     rid: str
     title: str
     description: str
@@ -34,6 +33,9 @@ class WorkbookTemplate(HasRid):
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook Template in the Nominal app"""
         return f"{self._clients.app_base_url}/workbooks/templates/{self.rid}"
+
+    def _get_latest_api(self) -> scout_template_api.Template:
+        return self._clients.template.get(self._clients.auth_header, self.rid)
 
     def update(
         self,
@@ -68,11 +70,7 @@ class WorkbookTemplate(HasRid):
             ),
             self.rid,
         )
-        template = self.__class__._from_conjure(
-            self._clients, self._clients.template.get(self._clients.auth_header, self.rid)
-        )
-        update_dataclass(self, template, fields=self.__dataclass_fields__)
-        return self
+        return self.refresh()
 
     def get_refnames(self) -> Sequence[str]:
         """Get the list of refnames used within the workbook."""

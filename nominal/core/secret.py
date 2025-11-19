@@ -6,14 +6,13 @@ from typing import Mapping, Protocol, Sequence
 from nominal_api import secrets_api
 from typing_extensions import Self
 
-from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
-class Secret(HasRid):
+class Secret(HasRid, RefreshableMixin[secrets_api.Secret]):
     rid: str
     name: str
     description: str
@@ -21,6 +20,9 @@ class Secret(HasRid):
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
+
+    def _get_latest_api(self) -> secrets_api.Secret:
+        return self._clients.secrets.get(self._clients.auth_header, self.rid)
 
     def update(
         self,
@@ -47,10 +49,8 @@ class Secret(HasRid):
             labels=None if labels is None else list(labels),
             properties=None if properties is None else dict(**properties),
         )
-        resp = self._clients.secrets.update(self._clients.auth_header, request, self.rid)
-        converted_resp = self._from_conjure(self._clients, resp)
-        update_dataclass(self, converted_resp, fields=self.__dataclass_fields__)
-        return self
+        updated_secret = self._clients.secrets.update(self._clients.auth_header, request, self.rid)
+        return self._refresh_from_api(updated_secret)
 
     def archive(self) -> None:
         """Archive the secret, disallowing it to appear from users."""

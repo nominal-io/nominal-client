@@ -9,9 +9,8 @@ from typing import Protocol
 from nominal_api import scout_video, scout_video_api
 from typing_extensions import Self
 
-from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class VideoFile(HasRid):
+class VideoFile(HasRid, RefreshableMixin[scout_video_api.VideoFile]):
     rid: str
     name: str
     description: str | None
@@ -37,6 +36,9 @@ class VideoFile(HasRid):
     def unarchive(self) -> None:
         """Unarchive the video file, allowing it to appear when playing back the video"""
         self._clients.video_file.unarchive(self._clients.auth_header, self.rid)
+
+    def _get_latest_api(self) -> scout_video_api.VideoFile:
+        return self._clients.video_file.get(self._clients.auth_header, self.rid)
 
     def update(
         self,
@@ -92,15 +94,12 @@ class VideoFile(HasRid):
             if starting_timestamp is None
             else _SecondsNanos.from_flexible(starting_timestamp).to_api(),
         )
-
-        raw_video_file = self._clients.video_file.update(
+        updated_file = self._clients.video_file.update(
             self._clients.auth_header,
             request,
             self.rid,
         )
-        converted_video_file = self._from_conjure(self._clients, raw_video_file)
-        update_dataclass(self, converted_video_file, fields=self.__dataclass_fields__)
-        return self
+        return self._refresh_from_api(updated_file)
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.

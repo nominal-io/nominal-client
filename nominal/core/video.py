@@ -13,9 +13,8 @@ from typing import BinaryIO, Mapping, Protocol, Sequence
 from nominal_api import api, ingest_api, scout_video, scout_video_api, upload_api
 from typing_extensions import Self
 
-from nominal._utils import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.core.filetype import FileType, FileTypes
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class Video(HasRid):
+class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
     rid: str
     name: str
     description: str | None
@@ -74,6 +73,9 @@ class Video(HasRid):
                 raise NominalIngestError(f"unhandled ingest status {progress.type!r} for video {self.rid!r}")
             time.sleep(interval.total_seconds())
 
+    def _get_latest_api(self) -> scout_video_api.Video:
+        return self._clients.video.get(self._clients.auth_header, self.rid)
+
     def update(
         self,
         *,
@@ -95,19 +97,14 @@ class Video(HasRid):
                 new_labels.append(old_label)
             video = video.update(labels=new_labels)
         """
-        # TODO(alkasm): properties SHOULD be optional here, but they're not.
-        # For uniformity with other methods, will always "update" with current props on the client.
         request = scout_video_api.UpdateVideoMetadataRequest(
             description=description,
             labels=None if labels is None else list(labels),
             title=name,
             properties=dict(self.properties if properties is None else properties),
         )
-        response = self._clients.video.update_metadata(self._clients.auth_header, request, self.rid)
-
-        video = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, video, fields=self.__dataclass_fields__)
-        return self
+        updated_video = self._clients.video.update_metadata(self._clients.auth_header, request, self.rid)
+        return self._refresh_from_api(updated_video)
 
     def archive(self) -> None:
         """Archive this video.
