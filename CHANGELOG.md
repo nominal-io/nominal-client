@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.95.0](https://github.com/nominal-io/nominal-client/compare/v1.94.0...v1.95.0) (2025-11-19)
+
+
+### Features
+
+* add `RefreshableMixin` to provide a consistent refresh() experience ([#524](https://github.com/nominal-io/nominal-client/issues/524)) ([36d4f42](https://github.com/nominal-io/nominal-client/commit/36d4f42580d5eda077056a7ecd10399d800cd647))
+* Add RefreshableMixin so that everything uniformly has a refresh() method ([36d4f42](https://github.com/nominal-io/nominal-client/commit/36d4f42580d5eda077056a7ecd10399d800cd647))
+* add utility classes to nominal.core init ([#522](https://github.com/nominal-io/nominal-client/issues/522)) ([a5ec42c](https://github.com/nominal-io/nominal-client/commit/a5ec42cef3a6c4695489b46cb973a255826dc805))
+* get size of file in dataset_file ([#529](https://github.com/nominal-io/nominal-client/issues/529)) ([975bc1d](https://github.com/nominal-io/nominal-client/commit/975bc1d5b3b815efa7935ffe229f2671615b523b))
+* make description optional in mis and add option to override channels ([6fa31b0](https://github.com/nominal-io/nominal-client/commit/6fa31b0db0f3932bcdee9842e0912e90488caafe))
+* make description optional in mis and add option to override channels ([#526](https://github.com/nominal-io/nominal-client/issues/526)) ([6fa31b0](https://github.com/nominal-io/nominal-client/commit/6fa31b0db0f3932bcdee9842e0912e90488caafe))
+
 ## [1.94.0](https://github.com/nominal-io/nominal-client/compare/v1.93.0...v1.94.0) (2025-11-13)
 
 
