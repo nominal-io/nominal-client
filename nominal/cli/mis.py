@@ -42,19 +42,28 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
 
     # standardize and validate column names
     df.columns = df.columns.str.lower()
-    selected_columns = ["channel", "description", "ucum unit"]
-    if not all(col in df.columns for col in selected_columns):
-        raise ValueError("MIS file must have columns: channel, description, ucum unit")
+    required_columns = ["channel"]
+    optional_columns = ["description", "ucum unit"]
 
-    return df[selected_columns]
+    if any([col not in df.columns for col in required_columns]):
+        raise ValueError(f"MIS file must have columns: {required_columns}")
+
+    for col in optional_columns:
+        if col not in df.columns:
+            df[col] = None
+
+    return df[[*required_columns, *optional_columns]]
 
 
-def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalClient) -> None:
+def update_channels(
+    mis_data: pd.DataFrame, dataset_rid: str, override_channel_info: bool, client: NominalClient
+) -> None:
     """The main function for updating channels in a dataset.
 
     Args:
         mis_data: The dataframe containing the MIS data
         dataset_rid: The RID of the dataset to update
+        override_channel_info: will override if present
         client: The Nominal client
     """
     dataset = client.get_dataset(dataset_rid)
@@ -64,7 +73,32 @@ def update_channels(mis_data: pd.DataFrame, dataset_rid: str, client: NominalCli
     for _, channel_name, description, unit in mis_data.itertuples():
         channel = channel_map.get(channel_name)
         if channel:
-            channel.update(description=description, unit=unit)
+            if (channel.description is not None and description is not None and channel.description != description) or (
+                channel.unit is not None and channel.unit != unit
+            ):
+                if override_channel_info:
+                    logger.warning(
+                        "Channel %s description %s and units %s will be overridden by input: %s, %s",
+                        channel.name,
+                        channel.description,
+                        channel.unit,
+                        description,
+                        unit,
+                    )
+                    channel.update(description=description, unit=unit)
+                else:
+                    logger.warning(
+                        "Channel %s description %s and units %s does not match input: %s, %s. Skipping update.",
+                        channel.name,
+                        channel.description,
+                        channel.unit,
+                        description,
+                        unit,
+                    )
+            else:
+                # TODO (sean): We should use the bulk API for this.
+                logger.info("Updated channel %s with description: %s and unit: %s", channel.name, description, unit)
+                channel.update(description=description, unit=unit)
         else:
             logger.warning("Channel %s not found in dataset %s", channel_name, dataset_rid)
 
@@ -118,14 +152,21 @@ def mis_cmd() -> None:
     required=False,
     help="The sheet to use in the Excel file if parsing direct from Excel. Only needed if there are multiple sheets.",
 )
+@click.option(
+    "--override-channel-info",
+    is_flag=True,
+    help="If channel is already present and has different description/units information, overwrite.",
+)
 @client_options
 @global_options
-def process(mis_path: Path, dataset_rid: str, sheet: str | None, client: NominalClient) -> None:
+def process(
+    mis_path: Path, dataset_rid: str, sheet: str | None, override_channel_info: bool, client: NominalClient
+) -> None:
     """Processes an MIS file and updates channel descriptions and units."""
     logger.info("Validating MIS file: %s", mis_path)
     mis_data = read_mis(mis_path, sheet)
     logger.info("Updating channels: %s", mis_data)
-    update_channels(mis_data, dataset_rid, client)
+    update_channels(mis_data, dataset_rid, override_channel_info, client)
     logger.info("Channels updated.")
 
 
