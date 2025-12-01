@@ -37,3 +37,42 @@ class NominalMultipartUploadFailed(NominalError):
 
 class NominalConfigError(NominalError):
     """An error occurred reading or writing the configuration."""
+
+
+class NominalMethodRemovedError(NominalError):
+    """An error raised when a method has been deprecated and now removed.
+    Error informs users of the new method to use instead.
+    """
+
+    def __init__(self, original_method: str, instructions: str | None = None):
+        """Initialize error with the method removed and method to use instead."""
+        self._original_method = original_method
+        self._instructions = instructions
+
+    def __str__(self) -> str:
+        """String repr."""
+        base_msg = f"'{self._original_method}' was deprecated and has now been removed."
+        if self._instructions is None:
+            return base_msg
+        else:
+            return f"{base_msg} To fix: {self._instructions}"
+
+
+class NominalParameterRemovedError(NominalError):
+    """An error raised when an parameter has been deprecated and now removed."""
+
+    def __init__(self, method_name: str, parameter_name: str, instructions: str | None = None):
+        """Initialize error with the method removed and method to use instead."""
+        self._method_name = method_name
+        self._parameter_name = parameter_name
+        self._instructions = instructions
+
+    def __str__(self) -> str:
+        """String repr."""
+        base_msg = (
+            f"Parameter '{self._parameter_name}' was deprecated and has now been removed from '{self._method_name}'."
+        )
+        if self._instructions is None:
+            return base_msg
+        else:
+            return f"{base_msg} To fix: {self._instructions}"

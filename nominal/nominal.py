@@ -259,13 +259,13 @@ def _upload_csv(
         description=description,
         prefix_tree_delimiter=channel_name_delimiter,
     )
-    dataset.add_tabular_data(
+    dataset_file = dataset.add_tabular_data(
         file,
         timestamp_column=timestamp_column,
         timestamp_type=timestamp_type,
     )
     if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
+        dataset_file.poll_until_ingestion_completed()
     return dataset
 
 
@@ -620,7 +620,8 @@ def create_workbook_from_template(
     run_rid: The run to associate the workbook with.
     """
     client = _get_default_client()
-    return client.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
+    template = client.get_workbook_template(template_rid)
+    return template.create_workbook(title=title, description=description, run=run_rid)
 
 
 @typing_extensions.deprecated(

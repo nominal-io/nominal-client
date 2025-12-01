@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import event
-from typing_extensions import Self, deprecated
+from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
@@ -44,11 +44,6 @@ class Event(HasRid, RefreshableMixin[event.Event]):
             raise ValueError(f"Expected exactly one event with rid {self.rid}, received {len(resp)}")
 
         return resp[0]
-
-    @property
-    @deprecated("The uuid field of an event is deprecated and will be removed in a future release")
-    def uuid(self) -> str:
-        return self._uuid
 
     def update(
         self,

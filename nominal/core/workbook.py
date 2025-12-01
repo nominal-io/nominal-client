@@ -10,6 +10,7 @@ from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core.exceptions import NominalMethodRemovedError
 
 logger = logging.getLogger(__name__)
 
@@ -69,14 +70,10 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         "`Workbook.run_rid` is deprecated and will be removed in a future release: use Workbook.run_rids instead"
     )
     def run_rid(self) -> str | None:
-        if self.run_rids is None:
-            return None
-        elif len(self.run_rids) == 0:
-            return None
-        elif len(self.run_rids) == 1:
-            return self.run_rids[0]
-        else:
-            raise RuntimeError("Cannot access singular `run_rid`-- workbook has multiple run rids!")
+        raise NominalMethodRemovedError(
+            "nominal.core.Workbook.run_rid",
+            "use 'nominal.core.Workbook.run_rids' instead",
+        )
 
     def _get_latest_api(self) -> scout_notebook_api.Notebook:
         return self._clients.notebook.get(self._clients.auth_header, self.rid)

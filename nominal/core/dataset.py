@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 from datetime import timedelta
 from io import TextIOBase
@@ -20,7 +19,7 @@ from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractors import ContainerizedExtractor
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
-from nominal.core.exceptions import NominalIngestError, NominalIngestFailed, NominalIngestMultiError
+from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint, _write_logs
 from nominal.ts import (
@@ -55,38 +54,12 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         "obtained when ingesting files or by calling `dataset.list_files()`."
     )
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> Self:
-        """Block until dataset file ingestion has completed.
-        This method polls Nominal for ingest status after uploading a file to a dataset on an interval.
-
-        Raises:
-        ------
-            NominalIngestFailed: if the ingest failed
-            NominalIngestError: if the ingest status is not known
-
-        """
-        while True:
-            progress = self._clients.catalog.get_ingest_progress_v2(self._clients.auth_header, self.rid)
-            if progress.ingest_status.type == "success":
-                break
-            elif progress.ingest_status.type == "inProgress":  # "type" strings are camelCase
-                pass
-            elif progress.ingest_status.type == "error":
-                error = progress.ingest_status.error
-                if error is not None:
-                    raise NominalIngestFailed(
-                        f"ingest failed for dataset {self.rid!r}: {error.message} ({error.error_type})"
-                    )
-                raise NominalIngestError(
-                    f"ingest status type marked as 'error' but with no instance for dataset {self.rid!r}"
-                )
-            else:
-                raise NominalIngestError(
-                    f"unhandled ingest status {progress.ingest_status.type!r} for dataset {self.rid!r}"
-                )
-            time.sleep(interval.total_seconds())
-
-        # Update metadata now that data has successfully ingested
-        return self.refresh()
+        raise NominalMethodRemovedError(
+            "nominal.core.Dataset.poll_until_ingestion_completed",
+            "poll for ingestion completion on individual 'nominal.core.DatasetFile's, "
+            "which are obtained when ingesting files or by calling "
+            "'nominal.core.Dataset.list_files()' etc.",
+        )
 
     def update(
         self,
@@ -548,6 +521,10 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         )
 
 
+@deprecated(
+    "poll_until_ingestion_completed() is deprecated and will be removed in a future release. "
+    "Instead, call poll_until_ingestion_completed() on individual DatasetFiles."
+)
 def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timedelta = timedelta(seconds=1)) -> None:
     """Block until all dataset ingestions have completed (succeeded or failed).
 
@@ -562,7 +539,8 @@ def poll_until_ingestion_completed(datasets: Iterable[Dataset], interval: timede
     errors = {}
     for dataset in datasets:
         try:
-            dataset.poll_until_ingestion_completed(interval=interval)
+            for dataset_file in dataset.list_files():
+                dataset_file.poll_until_ingestion_completed(interval=interval)
         except NominalIngestError as e:
             errors[dataset.rid] = e
     if errors:
