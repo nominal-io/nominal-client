@@ -31,7 +31,6 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import ts
-from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
@@ -94,7 +93,7 @@ from nominal.core.dataset import (
 )
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, EventType
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError
+from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
 from nominal.core.secret import Secret
@@ -338,10 +337,6 @@ class NominalClient:
         for raw_dataset in search_datasets_paginated(self._clients.catalog, self._clients.auth_header, query):
             yield Dataset._from_conjure(self._clients, raw_dataset)
 
-    @warn_on_deprecated_argument(
-        "workspace_rid",
-        "`workspace_rid` has been deprecated and will be removed in a future version. Use `workspace` instead.",
-    )
     def search_datasets(
         self,
         *,
@@ -351,7 +346,6 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
-        workspace_rid: Workspace | str | None = None,
         workspace: WorkspaceSearchT = WorkspaceSearchType.ALL,
         archived: bool | None = None,
     ) -> Sequence[Dataset]:
@@ -365,7 +359,6 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
             before: Searches for datasets created before some time (inclusive).
             after: Searches for datasets created before after time (inclusive).
-            workspace_rid: deprecated. use `workspace` instead.
             workspace: Filters search to given workspace.
             archived: Filters results to either archived or unarchived datasets.
 
@@ -377,12 +370,6 @@ class NominalClient:
         Returns:
             All datasets which match all of the provided conditions
         """
-        if workspace is not None and workspace_rid is not None:
-            raise ValueError("Both `workspace` and `workspace_rid` provided-- must use one or the other.")
-
-        if workspace_rid is not None:
-            workspace = workspace_rid
-
         query = create_search_datasets_query(
             exact_match=exact_match,
             search_text=search_text,
@@ -1477,7 +1464,7 @@ class NominalClient:
 
     @deprecated(
         "Calling `NominalClient.create_workbook_from_template` is deprecated and will be removed "
-        "in a future release. Use `Template.create_workbook` instead"
+        "in a future release. Use `WorkbookTemplate.create_workbook` instead"
     )
     def create_workbook_from_template(
         self,
@@ -1487,13 +1474,7 @@ class NominalClient:
         description: str | None = None,
         is_draft: bool = False,
     ) -> Workbook:
-        """Creates a workbook from a workbook template.
-
-        NOTE: is_draft is intentionally unused and will be removed in a future release.
-        """
-        template = self.get_workbook_template(template_rid)
-        return template.create_workbook(
-            title=title,
-            description=description,
-            run=run_rid,
+        raise NominalMethodRemovedError(
+            "nominal.core.NominalClient.create_workbook_from_template",
+            "use 'nominal.core.WorkbookTemplate.create_workbook' instead",
         )

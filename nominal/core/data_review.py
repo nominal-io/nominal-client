@@ -21,6 +21,7 @@ from typing_extensions import Self, deprecated
 from nominal.core import checklist, event
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid
+from nominal.core.exceptions import NominalMethodRemovedError
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -75,8 +76,10 @@ class DataReview(HasRid):
     )
     def get_violations(self) -> Sequence[CheckViolation]:
         """Retrieves the list of check violations for the data review."""
-        response = self._clients.datareview.get_check_alerts_for_data_review(self._clients.auth_header, self.rid)
-        return [CheckViolation._from_conjure(alert) for alert in response]
+        raise NominalMethodRemovedError(
+            "nominal.core.DataReview.get_violations",
+            "use 'nominal.core.DataReview.get_events()' instead",
+        )
 
     def get_events(self) -> Sequence[event.Event]:
         """Retrieves the list of events for the data review."""

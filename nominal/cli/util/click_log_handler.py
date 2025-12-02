@@ -4,7 +4,7 @@ import logging
 
 from typing_extensions import deprecated
 
-from nominal.experimental.logging import ClickLogHandler, install_click_log_handler
+from nominal.core.exceptions import NominalMethodRemovedError
 
 
 @deprecated(
@@ -20,7 +20,10 @@ def install_log_handler(level: int = logging.WARNING, no_color: bool = False) ->
         no_color: If true, prevents log messages from being stylized by severity level
 
     """
-    install_click_log_handler(level=level, no_color=no_color)
+    raise NominalMethodRemovedError(
+        "nominal.cli.util.install_log_handler",
+        "use nominal.experimental.logging.install_click_log_handler instead",
+    )
 
 
-__all__ = ["ClickLogHandler", "install_log_handler"]
+__all__ = ["install_log_handler"]
