@@ -53,7 +53,7 @@ class NominalMethodRemovedError(NominalError):
         """String repr."""
         base_msg = f"'{self._original_method}' was deprecated and has now been removed."
         if self._instructions is None:
-            return base_msg
+            return f"{base_msg} Contact your Nominal Representative if you need this functionality."
         else:
             return f"{base_msg} To fix: {self._instructions}"
 
@@ -73,6 +73,6 @@ class NominalParameterRemovedError(NominalError):
             f"Parameter '{self._parameter_name}' was deprecated and has now been removed from '{self._method_name}'."
         )
         if self._instructions is None:
-            return base_msg
+            return f"{base_msg} Contact your Nominal Representative if you need this functionality."
         else:
             return f"{base_msg} To fix: {self._instructions}"
