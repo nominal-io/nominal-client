@@ -17,7 +17,7 @@ from nominal.core.containerized_extractors import (
 )
 from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
-from nominal.core.dataset_file import DatasetFile
+from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, EventType
 from nominal.core.filetype import FileType, FileTypes
@@ -33,6 +33,7 @@ from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
 
 __all__ = [
+    "as_files_ingested",
     "Asset",
     "Attachment",
     "Bounds",
@@ -53,6 +54,7 @@ __all__ = [
     "FileExtractionInput",
     "FileType",
     "FileTypes",
+    "IngestWaitType",
     "LinkDict",
     "LogPoint",
     "NominalClient",
@@ -67,6 +69,7 @@ __all__ = [
     "UserPassAuth",
     "Video",
     "VideoFile",
+    "wait_for_files_to_ingest",
     "Workbook",
     "WorkbookTemplate",
     "WorkbookType",
