@@ -994,7 +994,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.95.0"
+version = "1.96.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1052,7 +1052,7 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.982.0" },
+    { name = "nominal-api", specifier = "==0.1019.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.949.2" },
     { name = "nominal-streaming", specifier = "==0.5.8" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
@@ -1095,15 +1095,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.982.0"
+version = "0.1019.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/db/32dd4415914d806e64e52a8df7416ac40fac19f622a93819527ac10d1263/nominal_api-0.982.0.tar.gz", hash = "sha256:f382a0a0ee71cf43cd665833b01029474d8f53bc9f90b95b0afb3002584c946c", size = 436760, upload-time = "2025-11-05T02:13:42.984Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/de/554cddfb24676b066f487b2a26a820536e74e9952dbbc44ebbaed859a4e7/nominal_api-0.1019.0.tar.gz", hash = "sha256:22966f0ed9b9de3246e2fa6ae3615fdee4a26dc5a63409c9dfa6253e99f90a02", size = 454590, upload-time = "2025-12-02T21:07:10.454Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7b/75/d2d7ca9be7d753a489e9bd527b0fc65421755c70effd56a83498e0676212/nominal_api-0.982.0-py3-none-any.whl", hash = "sha256:5ec0e25b27dddfda6f40dd648305186eed07ad5751f88655099b03be186ec7f2", size = 462073, upload-time = "2025-11-05T02:13:40.896Z" },
+    { url = "https://files.pythonhosted.org/packages/04/72/619da7563746c31cdce82b441239db8b8ea5b889c8f18121d282d3547dbd/nominal_api-0.1019.0-py3-none-any.whl", hash = "sha256:f9639a79fa564e01023f3a242f045241278455d191aa7a923c5ff9a083bc83b2", size = 480166, upload-time = "2025-12-02T21:07:08.901Z" },
 ]
 
 [[package]]
