@@ -312,8 +312,14 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     def add_ardupilot_dataflash(
         self,
         path: Path | str,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
-        """Add a Dataflash file to an existing dataset."""
+        """Add a Dataflash file to an existing dataset.
+
+        Args:
+            path: Path to the Dataflash file to add to this dataset.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
+        """
         dataflash_path = Path(path)
         s3_path = upload_multipart_file(
             self._clients.auth_header,
@@ -325,7 +331,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
-        request = _create_dataflash_ingest_request(s3_path, target)
+        request = _create_dataflash_ingest_request(s3_path, target, tags)
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
         return self._handle_ingest_response(resp)
 
@@ -589,12 +595,17 @@ def _create_dataset(
     return client.create_dataset(auth_header, request)
 
 
-def _create_dataflash_ingest_request(s3_path: str, target: ingest_api.DatasetIngestTarget) -> ingest_api.IngestRequest:
+def _create_dataflash_ingest_request(
+    s3_path: str,
+    target: ingest_api.DatasetIngestTarget,
+    tags: Mapping[str, str] | None = None,
+) -> ingest_api.IngestRequest:
     return ingest_api.IngestRequest(
         ingest_api.IngestOptions(
             dataflash=ingest_api.DataflashOpts(
                 source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path)),
                 target=target,
+                additional_file_tags={**tags} if tags else None,
             )
         ),
     )
