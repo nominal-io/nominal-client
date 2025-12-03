@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -21,10 +22,12 @@ from nominal_api import (
     scout_catalog,
     scout_checks_api,
     scout_datasource_connection_api,
+    scout_layout_api,
     scout_notebook_api,
     scout_run_api,
     scout_template_api,
     scout_video_api,
+    scout_workbookcommon_api,
     secrets_api,
     storage_datasource_api,
 )
@@ -1478,3 +1481,49 @@ class NominalClient:
             "nominal.core.NominalClient.create_workbook_from_template",
             "use 'nominal.core.WorkbookTemplate.create_workbook' instead",
         )
+
+    def create_workbook_template(
+        self,
+        title: str,
+        description: str | None = None,
+        labels: list[str] | None = None,
+        properties: dict[str, str] | None = None,
+        message: str | None = None,
+        workspace: Workspace | str | None = None,
+    ) -> WorkbookTemplate:
+        """Create an empty workbook template.
+
+        Args:
+            title: Title of the workbook template
+            description: Description of the workbook template
+            labels: Labels to attach to the workbook template
+            properties: Properties to attach to the workbook template
+            isPublished: Whether the workbook template should be published
+            message: An optional message to include with the creation of the template
+            workspace: Workspace to create the workbook template in.
+        """
+        request = scout_template_api.CreateTemplateRequest(
+            title=title,
+            description=description if description is not None else "",
+            labels=labels if labels is not None else [],
+            properties=properties if properties is not None else {},
+            is_published=False,
+            layout=scout_layout_api.WorkbookLayout(
+                v1=scout_layout_api.WorkbookLayoutV1(
+                    root_panel=scout_layout_api.Panel(
+                        tabbed=scout_layout_api.TabbedPanel(
+                            v1=scout_layout_api.TabbedPanelV1(
+                                id=str(uuid.uuid4()),
+                                tabs=[],
+                            )
+                        )
+                    )
+                )
+            ),
+            content=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
+            message=message if message is not None else "",
+            workspace=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        )
+
+        template = self._clients.template.create(self._clients.auth_header, request)
+        return WorkbookTemplate._from_conjure(self._clients, template)
