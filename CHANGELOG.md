@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.96.0](https://github.com/nominal-io/nominal-client/compare/v1.95.0...v1.96.0) (2025-12-03)
+
+
+### Features
+
+* add tags to dataflash apis ([#534](https://github.com/nominal-io/nominal-client/issues/534)) ([00cd79f](https://github.com/nominal-io/nominal-client/commit/00cd79fdb84e299a4013b69ce9639cfc75644b32))
+* remove deprecated fields, methods, files ([#525](https://github.com/nominal-io/nominal-client/issues/525)) ([e11175d](https://github.com/nominal-io/nominal-client/commit/e11175de0e303d97d91efa7eaf6ee6010d6b08ef))
+* reorder methods in run and asset class ([#530](https://github.com/nominal-io/nominal-client/issues/530)) ([5813157](https://github.com/nominal-io/nominal-client/commit/58131574bd85a82d36f7e76f18279c8c7cfaf1a8))
+
 ## [1.95.0](https://github.com/nominal-io/nominal-client/compare/v1.94.0...v1.95.0) (2025-11-19)
 
 
