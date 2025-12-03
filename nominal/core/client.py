@@ -1485,10 +1485,11 @@ class NominalClient:
     def create_workbook_template(
         self,
         title: str,
+        *,
         description: str | None = None,
         labels: list[str] | None = None,
         properties: dict[str, str] | None = None,
-        message: str | None = None,
+        commit_message: str | None = None,
         workspace: Workspace | str | None = None,
     ) -> WorkbookTemplate:
         """Create an empty workbook template.
@@ -1498,9 +1499,11 @@ class NominalClient:
             description: Description of the workbook template
             labels: Labels to attach to the workbook template
             properties: Properties to attach to the workbook template
-            isPublished: Whether the workbook template should be published
-            message: An optional message to include with the creation of the template
+            commit_message: An optional message to include with the creation of the template
             workspace: Workspace to create the workbook template in.
+
+        Returns:
+            The created WorkbookTemplate
         """
         request = scout_template_api.CreateTemplateRequest(
             title=title,
@@ -1521,7 +1524,7 @@ class NominalClient:
                 )
             ),
             content=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
-            message=message if message is not None else "",
+            message=commit_message if commit_message is not None else "Initial blank workbook template",
             workspace=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
 
