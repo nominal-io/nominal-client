@@ -27,29 +27,53 @@ def _sign_and_upload_part_job(
     upload_id: str,
     q: Queue[bytes],
     part: int,
+    num_retries: int = 3,
 ) -> requests.Response:
     data = q.get()
+
     try:
-        response = upload_client.sign_part(auth_header, key, part, upload_id)
-        logger.debug(
-            "successfully signed multipart upload part",
-            extra={"key": key, "part": part, "upload_id": upload_id, "response.url": response.url},
+        last_ex: Exception | None = None
+        for attempt in range(num_retries):
+            try:
+                log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
+
+                logger.debug("Signing part %d for upload", part, extra=log_extras)
+                sign_response = upload_client.sign_part(auth_header, key, part, upload_id)
+                logger.debug(
+                    "Successfully signed part %d for upload",
+                    part,
+                    extra={"response.url": sign_response.url, **log_extras},
+                )
+
+                logger.debug("Pushing part %d for multipart upload", extra=log_extras)
+                put_response = requests.put(
+                    sign_response.url,
+                    data=data,
+                    headers=sign_response.headers,
+                    verify=upload_client._verify,
+                )
+                logger.debug(
+                    "Finished pushing part %d for multipart upload with status %d",
+                    part,
+                    put_response.status_code,
+                    extra={"response.url": put_response.url, **log_extras},
+                )
+                put_response.raise_for_status()
+                return put_response
+            except Exception as ex:
+                logger.warning(
+                    "Failed to upload part %d: %s",
+                    part,
+                    ex,
+                    extra=log_extras,
+                )
+                last_ex = ex
+
+        raise (
+            last_ex
+            if last_ex
+            else RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
         )
-        put_response = requests.put(
-            response.url,
-            data=data,
-            headers=response.headers,
-            verify=upload_client._verify,
-        )
-        logger.debug(
-            "put multipart upload part",
-            extra={"url": response.url, "size": len(data), "status_code": put_response.status_code},
-        )
-        put_response.raise_for_status()
-        return put_response
-    except Exception as e:
-        logger.exception("error uploading part", exc_info=e, extra={"key": key, "upload_id": upload_id, "part": part})
-        raise e
     finally:
         q.task_done()
 
