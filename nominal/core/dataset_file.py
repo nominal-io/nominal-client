@@ -6,7 +6,7 @@ import pathlib
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 from urllib.parse import unquote, urlparse
 
 from nominal_api import api, ingest_api, scout_catalog
@@ -287,3 +287,115 @@ class IngestStatus(Enum):
         elif status.error is not None:
             return cls.FAILED
         raise ValueError(f"Unknown ingest status: {status.type}")
+
+
+class IngestWaitType(Enum):
+    FIRST_COMPLETED = "FIRST_COMPLETED"
+    FIRST_EXCEPTION = "FIRST_EXCEPTION"
+    ALL_COMPLETED = "ALL_COMPLETED"
+
+
+def wait_for_files_to_ingest(
+    files: Sequence[DatasetFile],
+    *,
+    poll_interval: datetime.timedelta = datetime.timedelta(seconds=1),
+    timeout: datetime.timedelta | None = None,
+    return_when: IngestWaitType = IngestWaitType.ALL_COMPLETED,
+) -> tuple[Sequence[DatasetFile], Sequence[DatasetFile]]:
+    """Blocks until all of the dataset files have completed their ingestion (or other specified conditions)
+    in a similar fashion to `concurrent.futures.wait`.
+
+    Any files that are already ingested (successfully or with errors) will be returned as "done", whereas any
+    files still ingesting by the time of this function's exit will be returned as "not done".
+
+    Args:
+        files: Dataset files to monitor for ingestion completion.
+        poll_interval: Interval to sleep between polling the remaining files under watch.
+        timeout: If given, the maximum time to wait before returning
+        return_when: Condition for this function to exit. By default, this function will block until all files
+            have completed their ingestion (successfully or unsuccessfully), but this can be changed to return
+            upon the first completed or first failing ingest. This behavior mirrors that of
+            `concurrent.futures.wait`.
+
+    Returns:
+        Returns a tuple of (done, not done) dataset files.
+    """
+    start_time = datetime.datetime.now()
+    done: list[DatasetFile] = []
+    not_done: list[DatasetFile] = [*files]
+    has_failed = False
+
+    while not_done and (timeout is None or datetime.datetime.now() - start_time < timeout):
+        logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
+
+        next_not_done = []
+        for file in not_done:
+            latest_api = file._get_latest_api()
+            latest_file = file._refresh_from_api(latest_api)
+            match file.ingest_status:
+                case IngestStatus.SUCCESS:
+                    done.append(latest_file)
+                case IngestStatus.FAILED:
+                    logger.warning(
+                        "Dataset file %s from dataset %s failed to ingest! Error message: %s",
+                        latest_file.id,
+                        latest_file.dataset_rid,
+                        latest_api.ingest_status.error.message if latest_api.ingest_status.error else "",
+                    )
+                    done.append(latest_file)
+                    has_failed = True
+                case IngestStatus.IN_PROGRESS:
+                    next_not_done.append(latest_file)
+
+        not_done = next_not_done
+
+        if has_failed and return_when is IngestWaitType.FIRST_EXCEPTION:
+            break
+        elif done and return_when is IngestWaitType.FIRST_COMPLETED:
+            break
+        elif not not_done:
+            break
+
+        if timeout is not None and datetime.datetime.now() - start_time < timeout:
+            logger.info(
+                "Sleeping for %f seconds while awaiting ingestion for %d files (%d total)... ",
+                len(not_done),
+                len(files),
+                poll_interval.total_seconds(),
+            )
+            time.sleep(poll_interval.total_seconds())
+
+    return done, not_done
+
+
+def as_files_ingested(
+    files: Sequence[DatasetFile],
+    *,
+    poll_interval: datetime.timedelta = datetime.timedelta(seconds=1),
+) -> Iterable[DatasetFile]:
+    """Iterates over DatasetFiles as they complete their ingestion in a similar fashion to
+    `concurrent.futures.as_completed`.
+
+    Any files that are already ingested (successfully or with errors) will immediately be yielded.
+
+    Args:
+        files: Dataset files to monitor for ingestion completion.
+        poll_interval: Interval to sleep between polling the remaining files under watch.
+
+    Yields:
+        Yields DatasetFiles as they are ingested. Due to the polling mechanics, the files are not yielded in
+        strictly sorted order based on their ingestion completion time. Ensure to check the `ingest_status` of
+        yielded dataset files if important.
+    """
+    to_poll: Sequence[DatasetFile] = [*files]
+    while to_poll:
+        logger.info("Awaiting ingestion for %d files (%d total)", len(to_poll), len(files))
+        done, not_done = wait_for_files_to_ingest(
+            to_poll, poll_interval=poll_interval, return_when=IngestWaitType.FIRST_COMPLETED
+        )
+        for file in done:
+            yield file
+
+        to_poll = not_done
+        if to_poll:
+            time.sleep(poll_interval.total_seconds())
