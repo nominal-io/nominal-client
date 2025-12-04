@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.99.0](https://github.com/nominal-io/nominal-client/compare/v1.98.0...v1.99.0) (2025-12-04)
+
+
+### Features
+
+* allow ingesting .avro files ([#544](https://github.com/nominal-io/nominal-client/issues/544)) ([f5c4561](https://github.com/nominal-io/nominal-client/commit/f5c4561e1db6174a56d6b32b388ed7ad94679fdf))
+
 ## [1.98.0](https://github.com/nominal-io/nominal-client/compare/v1.97.0...v1.98.0) (2025-12-04)
 
 
