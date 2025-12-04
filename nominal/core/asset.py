@@ -404,7 +404,15 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             yield Attachment._from_conjure(self._clients, a)
 
     def list_attachments(self) -> Sequence[Attachment]:
-        return list(self._iter_list_attachments())
+    def list_runs(self) -> Sequence[Run]:
+        return [
+            Run._from_conjure(self._clients, run)
+            for run in search_runs_by_asset_paginated(
+                self._clients.run,
+                self._clients.auth_header,
+                self.rid,
+            )
+        ]
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this asset.

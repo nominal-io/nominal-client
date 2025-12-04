@@ -651,6 +651,10 @@ class NominalClient:
             )
         )
 
+    @deprecated(
+        "NominalClient.search_runs_by_asset is deprecated and will be removed in a future version. "
+        "Use Asset.list_runs() instead."
+    )
     def search_runs_by_asset(self, asset: Asset | str) -> Sequence[Run]:
         """Search for all runs associated with a given asset:
 
