@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence
+from typing import BinaryIO, Iterable, Mapping, Sequence, overload
 
 import certifi
 import conjure_python_client
@@ -24,7 +24,6 @@ from nominal_api import (
     scout_datasource_connection_api,
     scout_layout_api,
     scout_notebook_api,
-    scout_run_api,
     scout_template_api,
     scout_video_api,
     scout_workbookcommon_api,
@@ -41,7 +40,6 @@ from nominal.core._utils.api_tools import (
     Link,
     LinkDict,
     construct_user_agent_string,
-    create_links,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.multipart import (
@@ -98,7 +96,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, EventType
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
-from nominal.core.run import Run
+from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
@@ -492,6 +490,47 @@ class NominalClient:
         )
         return list(self._iter_search_videos(query))
 
+    @overload
+    def create_run(
+        self,
+        name: str,
+        start: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC | None,
+        description: str | None = None,
+        *,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+        links: Sequence[str | Link | LinkDict] = (),
+        attachments: Iterable[Attachment] | Iterable[str] = (),
+    ) -> Run: ...
+    @overload
+    def create_run(
+        self,
+        name: str,
+        start: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC | None,
+        description: str | None = None,
+        *,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+        links: Sequence[str | Link | LinkDict] = (),
+        attachments: Iterable[Attachment] | Iterable[str] = (),
+        asset: Asset | str,
+    ) -> Run: ...
+    @overload
+    def create_run(
+        self,
+        name: str,
+        start: datetime | IntegralNanosecondsUTC,
+        end: datetime | IntegralNanosecondsUTC | None,
+        description: str | None = None,
+        *,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+        links: Sequence[str | Link | LinkDict] = (),
+        attachments: Iterable[Attachment] | Iterable[str] = (),
+        assets: Sequence[Asset | str],
+    ) -> Run: ...
     def create_run(
         self,
         name: str,
@@ -504,23 +543,28 @@ class NominalClient:
         links: Sequence[str | Link | LinkDict] = (),
         attachments: Iterable[Attachment] | Iterable[str] = (),
         asset: Asset | str | None = None,
+        assets: Sequence[Asset | str] | None = None,
     ) -> Run:
         """Create a run."""
-        request = scout_run_api.CreateRunRequest(
-            attachments=[rid_from_instance_or_string(a) for a in attachments],
-            data_sources={},
-            description=description or "",
-            labels=list(labels),
-            links=create_links(links),
-            properties={} if properties is None else dict(properties),
-            start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
-            title=name,
-            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
-            assets=[] if asset is None else [rid_from_instance_or_string(asset)],
-            workspace=self._clients.workspace_rid,
+        if asset and assets:
+            raise ValueError("Only one of 'asset' and 'assets' may be provided")
+        elif asset:
+            assets = [asset]
+        elif assets is None:
+            assets = []
+
+        return _create_run(
+            self._clients,
+            name=name,
+            start=start,
+            end=end,
+            description=description,
+            properties=properties,
+            labels=labels,
+            links=links,
+            attachments=attachments,
+            asset_rids=[rid_from_instance_or_string(asset) for asset in assets],
         )
-        response = self._clients.run.create_run(self._clients.auth_header, request)
-        return Run._from_conjure(self._clients, response)
 
     def get_run(self, rid: str) -> Run:
         """Retrieve a run by its RID."""
