@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.97.0](https://github.com/nominal-io/nominal-client/compare/v1.96.0...v1.97.0) (2025-12-04)
+
+
+### Features
+
+* add create_workbook_template ([#535](https://github.com/nominal-io/nominal-client/issues/535)) ([9c98975](https://github.com/nominal-io/nominal-client/commit/9c989753828c39e417bafed3db2981444132aeac))
+
+
+### Bug Fixes
+
+* add per-part retries during multipart uploads ([#537](https://github.com/nominal-io/nominal-client/issues/537)) ([ffdbc4a](https://github.com/nominal-io/nominal-client/commit/ffdbc4ac6f82562fb9eff3fed4b254b784aa89bc))
+
 ## [1.96.0](https://github.com/nominal-io/nominal-client/compare/v1.95.0...v1.96.0) (2025-12-03)
 
 
