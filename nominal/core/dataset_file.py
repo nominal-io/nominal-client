@@ -326,8 +326,9 @@ def wait_for_files_to_ingest(
     has_failed = False
 
     while not_done and (timeout is None or datetime.datetime.now() - start_time < timeout):
-        next_not_done = []
+        logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
 
+        next_not_done = []
         for file in not_done:
             latest_api = file._get_latest_api()
             latest_file = file._refresh_from_api(latest_api)
@@ -357,7 +358,7 @@ def wait_for_files_to_ingest(
 
         if timeout is not None:
             logger.info(
-                "Awaiting ingestion for %d files (%d total)... sleeping for %f seconds",
+                "Sleeping for %f seconds while awaiting ingestion for %d files (%d total)... ",
                 len(not_done),
                 len(files),
                 poll_interval.total_seconds(),
