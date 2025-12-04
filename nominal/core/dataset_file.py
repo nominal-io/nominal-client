@@ -356,7 +356,7 @@ def wait_for_files_to_ingest(
         elif not not_done:
             break
 
-        if timeout is not None:
+        if timeout is not None and datetime.datetime.now() - start_time < timeout:
             logger.info(
                 "Sleeping for %f seconds while awaiting ingestion for %d files (%d total)... ",
                 len(not_done),
