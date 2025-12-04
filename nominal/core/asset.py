@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
@@ -17,8 +18,9 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
+from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _create_video, _get_video
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
 
@@ -38,6 +40,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         DataSource._Clients,
         Video._Clients,
         Attachment._Clients,
+        Event._Clients,
         HasScoutParams,
         Protocol,
     ):
@@ -300,6 +303,29 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             video = Video._from_conjure(self._clients, response)
             self.add_video(data_scope_name, video)
             return video
+
+    def create_event(
+        self,
+        name: str,
+        type: EventType,
+        start: datetime.datetime | IntegralNanosecondsUTC,
+        duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Iterable[str] = (),
+    ) -> Event:
+        return _create_event(
+            self._clients,
+            name=name,
+            type=type,
+            start=start,
+            duration=duration,
+            description=description,
+            assets=[self],
+            properties=properties,
+            labels=labels,
+        )
 
     def get_dataset(self, data_scope_name: str) -> Dataset:
         """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
