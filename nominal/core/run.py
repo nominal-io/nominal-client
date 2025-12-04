@@ -20,16 +20,17 @@ from nominal.core._utils.api_tools import (
     create_links,
     rid_from_instance_or_string,
 )
+from nominal.core.asset import _filter_scopes
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.dataset import Dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
 @dataclass(frozen=True)
-class Run(HasRid, RefreshableMixin[scout_run_api.Run]):
+class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     rid: str
     name: str
     description: str
@@ -96,6 +97,25 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run]):
         )
         updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated_run)
+
+    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
+        if len(self.assets) > 1:
+            raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
+
+        run = self._get_latest_api()
+        ds_scopes = {scope.data_scope_name: scope for scope in _filter_scopes(run.asset_data_scopes, "dataset")}
+
+        data_scope = ds_scopes.get(data_scope_name)
+        if data_scope is None:
+            raise ValueError(f"No such data scope found on asset {self.rid} with data_scope_name {data_scope_name}")
+        elif data_scope.data_source.dataset is None:
+            raise ValueError(f"Datascope {data_scope_name} on asset {self.rid} is not a dataset!")
+
+        dataset = Dataset._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
+        )
+        return dataset, data_scope.series_tags
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None
