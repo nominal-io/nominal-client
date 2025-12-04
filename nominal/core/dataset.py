@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
@@ -524,6 +525,123 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             logs=logs,
             channel_name=channel_name,
             batch_size=batch_size,
+        )
+
+
+def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, str] | None) -> Mapping[str, str]:
+    return {**datascope_tags, **(provided_tags or {})}
+
+
+class _DatasetWrapper(abc.ABC):
+    @abc.abstractmethod
+    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]: ...
+
+    ################
+    # Add Data API #
+    ################
+
+    def add_tabular_data(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+        *,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile:
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        return dataset.add_tabular_data(
+            path,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
+            tag_columns=tag_columns,
+            tags=_unify_tags(scope_tags, tags),
+        )
+
+    def add_journal_json(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+    ) -> DatasetFile:
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        if scope_tags:
+            raise RuntimeError(
+                f"Cannot add journal json files to datascope {data_scope_name}-- data would not get "
+                f"tagged with required tags: {scope_tags}"
+            )
+
+        return dataset.add_journal_json(path)
+
+    def add_mcap(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+        *,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+    ) -> DatasetFile:
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        if scope_tags:
+            raise RuntimeError(
+                f"Cannot add mcap files to datascope {data_scope_name}-- data would not get "
+                f"tagged with required tags: {scope_tags}"
+            )
+
+        return dataset.add_mcap(path, include_topics=include_topics, exclude_topics=exclude_topics)
+
+    def add_ardupilot_dataflash(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+    ) -> DatasetFile:
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        if scope_tags:
+            raise RuntimeError(
+                f"Cannot add dataflash files to datascope {data_scope_name}-- data would not get "
+                f"tagged with required tags: {scope_tags}"
+            )
+
+        return dataset.add_ardupilot_dataflash(path)
+
+    def add_containerized(
+        self,
+        data_scope_name: str,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, Path | str],
+        *,
+        tag: str | None = None,
+    ) -> DatasetFile:
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        if scope_tags:
+            raise RuntimeError(
+                f"Cannot add containerized extractor ingests to datascope {data_scope_name}-- "
+                f"data would not get tagged with required tags: {scope_tags}"
+            )
+
+        return dataset.add_containerized(extractor, sources, tag=tag)
+
+    def add_from_io(
+        self,
+        data_scope_name: str,
+        data_stream: BinaryIO,
+        file_type: tuple[str, str] | FileType,
+        *,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        file_name: str | None = None,
+        tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile:
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        return dataset.add_from_io(
+            data_stream,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
+            file_type=file_type,
+            file_name=file_name,
+            tag_columns=tag_columns,
+            tags=_unify_tags(scope_tags, tags),
         )
 
 
