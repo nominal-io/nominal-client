@@ -24,6 +24,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
@@ -46,6 +47,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run]):
 
     class _Clients(
         Asset._Clients,
+        Event._Clients,
         HasScoutParams,
         Protocol,
     ):
@@ -149,6 +151,29 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run]):
             self.rid,
         )
         self._refresh_from_api(updated_run)
+
+    def create_event(
+        self,
+        name: str,
+        type: EventType,
+        start: datetime | IntegralNanosecondsUTC,
+        duration: timedelta | IntegralNanosecondsDuration = 0,
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Iterable[str] = (),
+    ) -> Event:
+        return _create_event(
+            self._clients,
+            name=name,
+            type=type,
+            start=start,
+            duration=duration,
+            description=description,
+            assets=self.assets,
+            properties=properties,
+            labels=labels,
+        )
 
     def add_dataset(
         self,
