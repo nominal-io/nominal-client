@@ -107,7 +107,6 @@ from nominal.core.workspace import Workspace
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
-    _SecondsNanos,
     _to_typed_timestamp_type,
 )
 

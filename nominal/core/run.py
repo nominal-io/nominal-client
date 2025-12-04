@@ -3,10 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, cast
+from typing import Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import (
-    scout,
     scout_run_api,
 )
 from typing_extensions import Self
@@ -25,7 +24,9 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
 from nominal.core.event import Event, EventType, _create_event
-from nominal.core.video import Video, _get_video
+from nominal.core.video import Video, _create_video, _get_video
+from nominal.core.workbook import Workbook
+from nominal.core.workbook_template import WorkbookTemplate
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
@@ -99,6 +100,12 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated_run)
 
+    def _scope_rids(self, scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
+        if len(self.assets) > 1:
+            raise RuntimeError("Can't retrieve scope rids on multi-asset runs")
+
+        run = self._get_latest_api()
+        return _filter_scope_rids(run.asset_data_scopes, scope_type)
 
     def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
         if len(self.assets) > 1:
@@ -155,6 +162,56 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         )
         self._refresh_from_api(updated_run)
 
+    def get_or_create_dataset(
+        self,
+        data_scope_name: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Dataset:
+        try:
+            return self.get_dataset(data_scope_name)
+        except ValueError:
+            enriched_dataset = _create_dataset(
+                self._clients.auth_header,
+                self._clients.catalog,
+                name=name or data_scope_name,
+                description=description,
+                properties=properties,
+                labels=labels,
+                workspace_rid=self._clients.workspace_rid,
+            )
+            dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+            self.add_dataset(data_scope_name, dataset)
+            return dataset
+
+    def get_or_create_video(
+        self,
+        data_scope_name: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+    ) -> Video:
+        try:
+            return self.get_video(data_scope_name)
+        except ValueError:
+            raw_video = _create_video(
+                self._clients.auth_header,
+                self._clients.video,
+                name or data_scope_name,
+                description=description,
+                properties=properties,
+                labels=labels,
+                workspace_rid=self._clients.workspace_rid,
+            )
+            video = Video._from_conjure(self._clients, raw_video)
+            self.add_video(data_scope_name, video)
+            return video
+
     def create_event(
         self,
         name: str,
@@ -177,6 +234,62 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             properties=properties,
             labels=labels,
         )
+
+    def create_workbook(
+        self,
+        template: WorkbookTemplate,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+    ) -> Workbook:
+        return template.create_workbook(title=title, description=description, run=self)
+
+    def get_dataset(self, data_scope_name: str) -> Dataset:
+        """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
+        if len(self.assets) > 1:
+            raise RuntimeError(
+                f"Cannot retrieve dataset with refname {data_scope_name}-- multiple assets associated! "
+                "Retrieve the dataset from the desired asset directly."
+            )
+
+        maybe_rid = self._scope_rids("dataset").get(data_scope_name)
+        if maybe_rid is None:
+            raise ValueError(f"Data scope {data_scope_name} on run {self.rid} does not exist!")
+        else:
+            return Dataset._from_conjure(
+                self._clients, _get_dataset(self._clients.auth_header, self._clients.catalog, maybe_rid)
+            )
+
+    def get_video(self, data_scope_name: str) -> Video:
+        """Retrieve a video by data scope name, or raise ValueError if one is not found."""
+        if len(self.assets) > 1:
+            raise RuntimeError(
+                f"Cannot retrieve video with refname {data_scope_name}-- multiple assets associated! "
+                "Retrieve the video from the desired asset directly."
+            )
+
+        maybe_rid = self._scope_rids("video").get(data_scope_name)
+        if maybe_rid is None:
+            raise ValueError(f"Data scope {data_scope_name} on run {self.rid} does not exist!")
+        else:
+            return Video._from_conjure(self._clients, _get_video(self._clients, maybe_rid))
+
+    def get_connection(self, data_scope_name: str) -> Connection:
+        """Retrieve a connection by data scope name, or raise ValueError if one is not found."""
+        if len(self.assets) > 1:
+            raise RuntimeError(
+                f"Cannot retrieve connection with refname {data_scope_name}-- multiple assets associated! "
+                "retrieve the connection from the desired directly."
+            )
+
+        maybe_rid = self._scope_rids("connection").get(data_scope_name)
+        if maybe_rid is None:
+            raise ValueError(f"Data scope {data_scope_name} on run {self.rid} does not exist!")
+        else:
+            found_connections = _get_connections(self._clients, [maybe_rid])
+            if len(found_connections) != 1:
+                raise ValueError(f"Expected exactly one connection, received: {len(found_connections)}")
+            return Connection._from_conjure(self._clients, found_connections[0])
 
     def add_dataset(
         self,
@@ -216,6 +329,12 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             series_tags: Key-value tags to pre-filter the datasets with before adding to the run.
             offset: Add the datasets to the run with a pre-baked offset
         """
+        if len(self.assets) > 1:
+            raise RuntimeError(
+                f"Cannot add datasets {datasets.keys()} to run {self.rid}-- multiple assets associated! "
+                "Add the datasets to the desired asset directly."
+            )
+
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(dataset=rid_from_instance_or_string(dataset)),
@@ -246,6 +365,11 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             series_tags: Key-value tags to pre-filter the connection with before adding to the run.
             offset: Add the connection to the run with a pre-baked offset
         """
+        if len(self.assets) > 1:
+            raise RuntimeError(
+                f"Cannot add connection {ref_name} to run {self.rid}-- multiple assets associated! "
+                "Add the connection to the desired asset directly."
+            )
         data_sources = {
             ref_name: scout_run_api.CreateRunDataSource(
                 data_source=scout_run_api.DataSource(connection=rid_from_instance_or_string(connection)),
@@ -257,6 +381,12 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
 
     def add_video(self, ref_name: str, video: Video | str) -> None:
         """Add a video to a run via video object or RID."""
+        if len(self.assets) > 1:
+            raise RuntimeError(
+                f"Cannot add video {ref_name} to run {self.rid}-- multiple assets associated! "
+                "Add the video to the desired asset directly."
+            )
+
         request = scout_run_api.CreateRunDataSource(
             data_source=scout_run_api.DataSource(video=rid_from_instance_or_string(video)),
             series_tags={},
@@ -274,7 +404,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
     def _iter_list_datasets(self) -> Iterable[tuple[str, Dataset]]:
-        dataset_rids_by_ref_name = self._list_datasource_rids("dataset")
+        dataset_rids_by_ref_name = self._scope_rids("dataset")
         datasets_by_rids = {
             ds.rid: Dataset._from_conjure(self._clients, ds)
             for ds in _get_datasets(self._clients.auth_header, self._clients.catalog, dataset_rids_by_ref_name.values())
@@ -289,39 +419,31 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         """
         return list(self._iter_list_datasets())
 
-    def _iter_list_connections(self) -> Iterable[tuple[str, Connection]]:
-        conn_rids_by_ref_name = self._list_datasource_rids("connection")
-        connections_by_rids = {
-            conn.rid: Connection._from_conjure(self._clients, conn)
-            for conn in _get_connections(self._clients, list(conn_rids_by_ref_name.values()))
-        }
+    def _iter_list_videos(self) -> Iterable[tuple[str, Video]]:
+        video_rids_by_ref_name = self._scope_rids("video")
+        for ref_name, rid in video_rids_by_ref_name.items():
+            yield ref_name, Video._from_conjure(self._clients, _get_video(self._clients, rid))
 
+    def list_videos(self) -> Sequence[tuple[str, Video]]:
+        """List a sequence of refname, Video tuples associated with this Run."""
+        return list(self._iter_list_videos())
+
+    def _iter_list_connections(self) -> Iterable[tuple[str, Connection]]:
+        conn_rids_by_ref_name = self._scope_rids("connection")
         for ref_name, rid in conn_rids_by_ref_name.items():
-            connection = connections_by_rids[rid]
-            yield (ref_name, connection)
+            found_connections = _get_connections(self._clients, [rid])
+            if len(found_connections) != 1:
+                raise RuntimeError(
+                    f"Expected to find exactly one connection with rid {rid}, found {len(found_connections)}"
+                )
+
+            yield ref_name, Connection._from_conjure(self._clients, found_connections[0])
 
     def list_connections(self) -> Sequence[tuple[str, Connection]]:
         """List the connections associated with this run.
         Returns (ref_name, connection) pairs for each connection
         """
         return list(self._iter_list_connections())
-
-    def _iter_list_videos(self) -> Iterable[tuple[str, Video]]:
-        video_rids_by_ref_name = self._list_datasource_rids("video")
-        videos_by_rids = {
-            rid: Video._from_conjure(
-                self._clients,
-                _get_video(self._clients, rid),
-            )
-            for rid in video_rids_by_ref_name.values()
-        }
-        for ref_name, rid in video_rids_by_ref_name.items():
-            video = videos_by_rids[rid]
-            yield (ref_name, video)
-
-    def list_videos(self) -> Sequence[tuple[str, Video]]:
-        """List a sequence of refname, Video tuples associated with this Run."""
-        return list(self._iter_list_videos())
 
     def _iter_list_attachments(self) -> Iterable[Attachment]:
         run = self._get_latest_api()
@@ -331,16 +453,6 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def list_attachments(self) -> Sequence[Attachment]:
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
-
-    def _iter_list_assets(self) -> Iterable[Asset]:
-        run = self._get_latest_api()
-        assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
-        for a in assets.values():
-            yield Asset._from_conjure(self._clients, a)
-
-    def list_assets(self) -> Sequence[Asset]:
-        """List assets associated with this run."""
-        return list(self._iter_list_assets())
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this run.
@@ -352,13 +464,33 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
+    def add_asset(self, asset: Asset | str) -> None:
+        asset_rids = set(self.refresh().assets)
+        asset_rids.add(rid_from_instance_or_string(asset))
+
+        request = scout_run_api.UpdateRunRequest(assets=list(asset_rids))
+        updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
+        self._refresh_from_api(updated_run)
+
+    def _iter_list_assets(self) -> Iterable[Asset]:
+        run = self._get_latest_api()
+        assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
+        for a in assets.values():
+            yield Asset._from_conjure(self._clients, a)
+
+    def list_assets(self) -> Sequence[Asset]:
+        """List assets associated with this run."""
+        return list(self._iter_list_assets())
+
     def archive(self) -> None:
         """Archive this run.
         Archived runs are not deleted, but are hidden from the UI.
-
-        NOTE: currently, it is not possible (yet) to unarchive a run once archived.
         """
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
+
+    def unarchive(self) -> None:
+        """Unarchive this run, allowing it to appear on the UI."""
+        self._clients.run.unarchive_run(self._clients.auth_header, self.rid)
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, run: scout_run_api.Run) -> Self:
@@ -375,7 +507,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             start=_SecondsNanos.from_scout_run_api(run.start_time).to_nanoseconds(),
             end=(_SecondsNanos.from_scout_run_api(run.end_time).to_nanoseconds() if run.end_time else None),
             run_number=run.run_number,
-            assets=tuple(run.assets),
+            assets=[rid for rid in run.asset_data_scopes_map],
             created_at=_SecondsNanos.from_flexible(run.created_at).to_nanoseconds(),
             _clients=clients,
         )
