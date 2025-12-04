@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.98.0](https://github.com/nominal-io/nominal-client/compare/v1.97.0...v1.98.0) (2025-12-04)
+
+
+### Features
+
+* as_files_ingested iterator for dataset files ([#533](https://github.com/nominal-io/nominal-client/issues/533)) ([7afc0f6](https://github.com/nominal-io/nominal-client/commit/7afc0f61d24f930d37d55c8e0840ebd18b8711b6))
+
 ## [1.97.0](https://github.com/nominal-io/nominal-client/compare/v1.96.0...v1.97.0) (2025-12-04)
 
 
