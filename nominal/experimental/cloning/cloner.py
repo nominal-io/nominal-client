@@ -183,16 +183,16 @@ def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[Conju
 
     old_ids = _search_for_uuids(json_objs)
     mapping: dict[str, str] = _generate_new_uuid_mapping(old_ids)
-    logger.info("Generated id mapping: ")
+    logger.debug("Generated id mapping: ")
     for old_id, new_id in mapping.items():
-        logger.info("%s -> %s", old_id, new_id)
+        logger.debug("%s -> %s", old_id, new_id)
 
     new_json_objs: list[Any] = [_replace_uuids_in_obj(json_obj, mapping) for json_obj in json_objs]
 
-    logger.info("old vs new jsons:")
+    logger.debug("old vs new jsons:")
     for old_json, new_json in zip(json_objs, new_json_objs):
-        logger.info("OLD: %s", old_json)
-        logger.info("NEW: %s", new_json)
+        logger.debug("OLD: %s", old_json)
+        logger.debug("NEW: %s", new_json)
 
     return [cast(ConjureType, new_json_obj) for new_json_obj in new_json_objs]
 
