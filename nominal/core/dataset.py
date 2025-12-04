@@ -257,7 +257,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             self._clients.workspace_rid,
             avro_path,
             self._clients.upload,
-            file_type=FileTypes.AVRO,
+            file_type=FileTypes.AVRO_STREAM,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
