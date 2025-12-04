@@ -93,7 +93,15 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         api_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(api_asset)
 
-    def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
+    def promote(self) -> Self:
+        if self._get_latest_api().is_staged:
+            request = scout_asset_api.UpdateAssetRequest(is_staged=False)
+            updated_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
+            self._refresh_from_api(updated_asset)
+        else:
+            logger.warning("Not promoting asset %s-- already promoted!", self.rid)
+
+        return self
         asset = self._get_latest_api()
         return {
             scope.data_scope_name: cast(str, getattr(scope.data_source, stype))
