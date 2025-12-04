@@ -203,6 +203,78 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     # Backward compatibility
     add_to_dataset_from_io = add_from_io
 
+    def add_avro_stream(
+        self,
+        path: Path | str,
+    ) -> DatasetFile:
+        """Upload an avro stream file with a specific schema, described below.
+
+        This is a "stream-like" file format to support
+        use cases where a columnar/tabular format does not make sense. This closely matches Nominal's streaming
+        API, making it useful for use cases where network connection drops during streaming and a backup file needs
+        to be created.
+
+        If this schema is not used, will result in a failed ingestion.
+        {
+            "type": "record",
+            "name": "AvroStream",
+            "namespace": "io.nominal.ingest",
+            "fields": [
+                {
+                    "name": "channel",
+                    "type": "string",
+                    "doc": "Channel/series name (e.g., 'vehicle_id', 'col_1', 'temperature')",
+                },
+                {
+                    "name": "timestamps",
+                    "type": {"type": "array", "items": "long"},
+                    "doc": "Array of Unix timestamps in nanoseconds",
+                },
+                {
+                    "name": "values",
+                    "type": {"type": "array", "items": ["double", "string"]},
+                    "doc": "Array of values. Can either be doubles or strings",
+                },
+                {
+                    "name": "tags",
+                    "type": {"type": "map", "values": "string"},
+                    "default": {},
+                    "doc": "Key-value metadata tags",
+                },
+            ],
+        }
+
+        Args:
+            path: Path to the .avro file to upload
+
+        Returns:
+            Reference to the ingesting DatasetFile
+
+        """
+        avro_path = Path(path)
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            self._clients.workspace_rid,
+            avro_path,
+            self._clients.upload,
+            file_type=FileTypes.AVRO_STREAM,
+        )
+        target = ingest_api.DatasetIngestTarget(
+            existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
+        )
+        resp = self._clients.ingest.ingest(
+            self._clients.auth_header,
+            ingest_api.IngestRequest(
+                options=ingest_api.IngestOptions(
+                    avro_stream=ingest_api.AvroStreamOpts(
+                        source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                        target=target,
+                    )
+                )
+            ),
+        )
+        return self._handle_ingest_response(resp)
+
     def add_journal_json(
         self,
         path: Path | str,

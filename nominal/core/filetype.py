@@ -111,6 +111,7 @@ class FileType(NamedTuple):
 
 
 class FileTypes:
+    AVRO_STREAM: FileType = FileType(".avro", "application/avro")
     BINARY: FileType = FileType("", "application/octet-stream")
     CSV: FileType = FileType(".csv", "text/csv")
     CSV_GZ: FileType = FileType(".csv.gz", "text/csv")
