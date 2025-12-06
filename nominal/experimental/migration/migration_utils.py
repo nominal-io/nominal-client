@@ -256,10 +256,6 @@ def clone_asset(
 ) -> Asset:
     """Clone an asset from the source to the target client.
 
-    Retrieves the source asset, clones its properties.  For safety, we replace
-    all unique identifiers with new UUIDs. We then creates a new asset in the target client.
-    The cloned asset maintains all metadata (name, properties).
-
     Args:
         source_asset: The source Asset to clone.
         target_client: The NominalClient to create the cloned asset in.
