@@ -8,7 +8,7 @@ from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnion
 from conjure_python_client._serde.encoder import ConjureEncoder
 from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
 
-from nominal.core import NominalClient, WorkbookTemplate
+from nominal.core import Asset, NominalClient, WorkbookTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -246,4 +246,31 @@ def clone_workbook_template(
         content=new_workbook_content,
         commit_message="Cloned from template",
         workspace_rid=workspace_rid,
+    )
+
+
+def clone_asset(
+    source_asset: Asset,
+    target_client: NominalClient,
+    new_asset_name: str | None = None,
+) -> Asset:
+    """Clone an asset from the source to the target client.
+
+    Retrieves the source asset, clones its properties.  For safety, we replace
+    all unique identifiers with new UUIDs. We then creates a new asset in the target client.
+    The cloned asset maintains all metadata (name, properties).
+
+    Args:
+        source_asset: The source Asset to clone.
+        target_client: The NominalClient to create the cloned asset in.
+        new_asset_name: Optional new name for the cloned asset. If not provided, the original name is used.
+
+    Returns:
+        The newly created Asset in the target client.
+    """
+    return target_client.create_asset(
+        name=new_asset_name if new_asset_name is not None else source_asset.name,
+        properties=source_asset.properties,
+        labels=source_asset.labels,
+        description=source_asset.description,
     )
