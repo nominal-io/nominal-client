@@ -45,7 +45,7 @@ def _sign_and_upload_part_job(
                     extra={"response.url": sign_response.url, **log_extras},
                 )
 
-                logger.debug("Pushing part %d for multipart upload", extra=log_extras)
+                logger.debug("Pushing part %d for multipart upload", part, extra=log_extras)
                 put_response = requests.put(
                     sign_response.url,
                     data=data,
