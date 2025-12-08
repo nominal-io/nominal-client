@@ -377,6 +377,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         return list(self._iter_list_attachments())
 
     def list_runs(self) -> Sequence[Run]:
+        """List all runs associated with this Asset."""
         return [
             Run._from_conjure(self._clients, run)
             for run in search_runs_by_asset_paginated(
