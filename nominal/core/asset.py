@@ -5,6 +5,7 @@ from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
 
 from nominal_api import (
+    scout,
     scout_asset_api,
     scout_assets,
     scout_run_api,
@@ -13,6 +14,7 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create_links, rid_from_instance_or_string
+from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
@@ -43,6 +45,8 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
     ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
+        @property
+        def run(self) -> scout.RunService: ...
 
     @property
     def nominal_url(self) -> str:
@@ -372,6 +376,17 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def list_attachments(self) -> Sequence[Attachment]:
         return list(self._iter_list_attachments())
 
+    def list_runs(self) -> Sequence[Run]:
+        """List all runs associated with this Asset."""
+        return [
+            Run._from_conjure(self._clients, run)
+            for run in search_runs_by_asset_paginated(
+                self._clients.run,
+                self._clients.auth_header,
+                self.rid,
+            )
+        ]
+
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this asset.
         Does not remove the attachments from Nominal.
@@ -403,3 +418,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             created_at=_SecondsNanos.from_flexible(asset.created_at).to_nanoseconds(),
             _clients=clients,
         )
+
+
+# Moving to bottom to deal with circular dependencies
+from nominal.core.run import Run  # noqa: E402
