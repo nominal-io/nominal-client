@@ -2,7 +2,7 @@ import json
 import logging
 import re
 import uuid
-from typing import Any, Union, cast
+from typing import Any, Mapping, Sequence, Union, cast
 
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
 from conjure_python_client._serde.encoder import ConjureEncoder
@@ -46,6 +46,7 @@ def _check_and_add_uuid_to_mapping(input_str: str, mapping: dict[str, str]) -> N
     match = UUID_PATTERN.search(input_str)
     if match and input_str not in mapping:
         mapping[input_str] = f"{match.group(1)}{str(uuid.uuid4())}"
+        logger.debug("Found UUID and added to mapping: %s -> %s", input_str, mapping[input_str])
 
 
 def _extract_uuids_from_obj(obj: Any, mapping: dict[str, str]) -> None:
@@ -60,6 +61,7 @@ def _extract_uuids_from_obj(obj: Any, mapping: dict[str, str]) -> None:
         obj: The object to search (dict, list, or primitive).
         mapping: Dictionary to populate with found UUIDs as keys.
     """
+    # TODO (Sean): Refactor to remove expensive recursion strategy.
     if isinstance(obj, dict):
         for key, value in obj.items():
             if key in UUID_KEYS and isinstance(value, str):
@@ -96,8 +98,8 @@ def create_workbook_template_with_content_and_layout(
     workspace_rid: str,
     *,
     description: str | None = None,
-    labels: list[str] | None = None,
-    properties: dict[str, str] | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
     commit_message: str | None = None,
 ) -> WorkbookTemplate:
     """Create a workbook template with specified content and layout.
@@ -124,8 +126,8 @@ def create_workbook_template_with_content_and_layout(
     request: scout_template_api.CreateTemplateRequest = scout_template_api.CreateTemplateRequest(
         title=title,
         description=description if description is not None else "",
-        labels=labels if labels is not None else [],
-        properties=properties if properties is not None else {},
+        labels=list(labels) if labels is not None else [],
+        properties=dict(properties) if properties is not None else {},
         is_published=False,
         layout=layout,
         content=content,
@@ -158,10 +160,8 @@ def _replace_uuids_in_obj(obj: Any, mapping: dict[str, str]) -> Any:
         for key, value in obj.items():
             if isinstance(key, str) and re.search(UUID_PATTERN, key) and key in mapping:
                 new_key = mapping[key]
-                logger.debug("Replacing key %s with %s", key, new_key)
                 new_obj[new_key] = _replace_uuids_in_obj(value, mapping)
             elif isinstance(value, str) and value in mapping:
-                logger.debug("Replacing value %s with %s", value, mapping[value])
                 new_obj[key] = mapping[value]
             elif isinstance(value, str):
                 parsed_value, was_json = _convert_if_json(value)
@@ -198,9 +198,6 @@ def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[Conju
     json_objs: list[Any] = [ConjureEncoder.do_encode(obj) for obj in objs]
 
     mapping = _generate_uuid_mapping(json_objs)
-    logger.debug("Generated id mapping: ")
-    for old_id, new_id in mapping.items():
-        logger.debug("%s -> %s", old_id, new_id)
 
     new_json_objs = [_replace_uuids_in_obj(json_obj, mapping) for json_obj in json_objs]
 
