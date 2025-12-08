@@ -105,9 +105,8 @@ def create_workbook_template_with_content_and_layout(
     """Create a workbook template with specified content and layout.
 
     This is a helper method that constructs and creates a workbook template
-    request with the provided parameters, including layout and content.  We are keeping this
-    in the experimental folder for now because the layout and content properties should stay under
-    tight control. The template is created in the target workspace and is not published by default.
+    request with the provided parameters, including layout and content.  Method is considered experimental and may
+    change in future releases. The template is created in the target workspace and is not discoverable by default.
 
     Args:
         client: The NominalClient to use for creating the template.
