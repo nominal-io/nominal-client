@@ -106,6 +106,12 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         }
 
     def promote(self) -> Self:
+        """Promote this asset to be a standard, searchable, and displayable asset.
+
+        This method is only useful for assets that were created implicitly from creating a run directly on a dataset.
+        Nothing will happen from calling this method (aside from a logged warning) if called on a non-staged
+        asset (e.g. an asset created by create_asset, or an asset that's already been promoted).
+        """
         if self._get_latest_api().is_staged:
             request = scout_asset_api.UpdateAssetRequest(is_staged=False)
             updated_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
