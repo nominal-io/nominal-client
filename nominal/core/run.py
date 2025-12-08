@@ -397,23 +397,23 @@ def _create_run(
     end: datetime | IntegralNanosecondsUTC | None,
     description: str | None,
     properties: Mapping[str, str] | None,
-    labels: Sequence[str],
-    links: Sequence[str | Link | LinkDict],
-    attachments: Iterable[Attachment] | Iterable[str],
-    asset_rids: Sequence[str],
+    labels: Sequence[str] | None,
+    links: Sequence[str | Link | LinkDict] | None,
+    attachments: Iterable[Attachment] | Iterable[str] | None,
+    asset_rids: Sequence[str] | None,
 ) -> Run:
     """Create a run."""
     request = scout_run_api.CreateRunRequest(
-        attachments=[rid_from_instance_or_string(a) for a in attachments],
+        attachments=[rid_from_instance_or_string(a) for a in attachments or ()],
         data_sources={},
         description=description or "",
-        labels=list(labels),
-        links=create_links(links),
+        labels=[] if labels is None else list(labels),
+        links=[] if links is None else create_links(links),
         properties={} if properties is None else dict(properties),
         start_time=_SecondsNanos.from_flexible(start).to_scout_run_api(),
         title=name,
         end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
-        assets=list(asset_rids),
+        assets=[] if asset_rids is None else list(asset_rids),
         workspace=clients.workspace_rid,
     )
     response = clients.run.create_run(clients.auth_header, request)

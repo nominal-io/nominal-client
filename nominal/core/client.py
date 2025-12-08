@@ -33,6 +33,7 @@ from nominal_api import (
 from typing_extensions import Self, deprecated
 
 from nominal import ts
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
@@ -107,7 +108,6 @@ from nominal.core.workspace import Workspace
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
-    _SecondsNanos,
     _to_typed_timestamp_type,
 )
 
@@ -530,6 +530,9 @@ class NominalClient:
         attachments: Iterable[Attachment] | Iterable[str] = (),
         assets: Sequence[Asset | str],
     ) -> Run: ...
+    @warn_on_deprecated_argument(
+        "asset", "The 'asset' parameter is deprecated and will be removed in a future release. Use 'assets' instead."
+    )
     def create_run(
         self,
         name: str,
@@ -538,9 +541,9 @@ class NominalClient:
         description: str | None = None,
         *,
         properties: Mapping[str, str] | None = None,
-        labels: Sequence[str] = (),
-        links: Sequence[str | Link | LinkDict] = (),
-        attachments: Iterable[Attachment] | Iterable[str] = (),
+        labels: Sequence[str] | None = None,
+        links: Sequence[str | Link | LinkDict] | None = None,
+        attachments: Iterable[Attachment] | Iterable[str] | None = None,
         asset: Asset | str | None = None,
         assets: Sequence[Asset | str] | None = None,
     ) -> Run:
@@ -557,6 +560,7 @@ class NominalClient:
             attachments: Attachments to associate with the created run
             asset: Singular asset to associate with the run
                 NOTE: mutually exclusive with `assets`
+                NOTE: deprecated-- use `assets` instead.
             assets: Sequence of assets to associate with the run
                 NOTE: mutually exclusive with `asset`
 
