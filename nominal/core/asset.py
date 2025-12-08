@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
@@ -23,6 +24,8 @@ from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -101,6 +104,22 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             for scope in asset.data_scopes
             if scope.data_source.type.lower() == stype
         }
+
+    def promote(self) -> Self:
+        """Promote this asset to be a standard, searchable, and displayable asset.
+
+        This method is only useful for assets that were created implicitly from creating a run directly on a dataset.
+        Nothing will happen from calling this method (aside from a logged warning) if called on a non-staged
+        asset (e.g. an asset created by create_asset, or an asset that's already been promoted).
+        """
+        if self._get_latest_api().is_staged:
+            request = scout_asset_api.UpdateAssetRequest(is_staged=False)
+            updated_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
+            self._refresh_from_api(updated_asset)
+        else:
+            logger.warning("Not promoting asset %s-- already promoted!", self.rid)
+
+        return self
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""
