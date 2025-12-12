@@ -2,13 +2,17 @@ import json
 import logging
 import re
 import uuid
+from contextlib import closing
+from io import BytesIO
+from pathlib import Path
 from typing import Any, Mapping, Sequence, Union, cast
 
+import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
 from conjure_python_client._serde.encoder import ConjureEncoder
 from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
 
-from nominal.core import Asset, NominalClient, WorkbookTemplate
+from nominal.core import Asset, Dataset, DatasetFile, FileType, NominalClient, Workbook, WorkbookTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -203,11 +207,35 @@ def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[Conju
     return [cast(ConjureType, new_json_obj) for new_json_obj in new_json_objs]
 
 
+# TODO (Sean): Once we move this out of experimental, make clone/copy_resource_from abstract methods in the HasRid class
 def clone_workbook_template(
     source_template: WorkbookTemplate,
-    target_client: NominalClient,
-    workspace_rid: str,
-    new_template_name: str | None = None,
+    destination_client: NominalClient,
+) -> WorkbookTemplate:
+    """Clones a workbook template, maintaining all properties and content.
+
+    Args:
+        source_template (WorkbookTemplate): The template to copy
+        destination_client (NominalClient): The client to copy to
+    Returns:
+        The cloned template.
+    """
+    return copy_workbook_template_from(
+        source_template=source_template,
+        destination_client=destination_client,
+        include_content_and_layout=True,
+    )
+
+
+def copy_workbook_template_from(
+    source_template: WorkbookTemplate,
+    destination_client: NominalClient,
+    *,
+    new_template_title: str | None = None,
+    new_template_description: str | None = None,
+    new_template_labels: Sequence[str] | None = None,
+    new_template_properties: Mapping[str, str] | None = None,
+    include_content_and_layout: bool = False,
 ) -> WorkbookTemplate:
     """Clone a workbook template from the source to the target workspace.
 
@@ -217,56 +245,295 @@ def clone_workbook_template(
 
     Args:
         source_template: The source WorkbookTemplate to clone.
-        target_client: The NominalClient to create the cloned template in.
-        workspace_rid: The resource ID of the target workspace.
-        new_template_name: Optional new name for the cloned template. If not provided, the original name is used.
+        destination_client: The NominalClient to create the cloned template in.
+        new_template_title: Optional new name for the cloned template. If not provided, the original is used.
+        new_template_description: Optional new name for the cloned template. If not provided, the original is used.
+        new_template_labels: Optional new labels for the cloned template. If not provided, the original is used.
+        new_template_properties: Optional new properties for the cloned template. If not provided, the original is used.
+        include_content_and_layout: If True, copy layout and content from template. Otherwise, use blank content.
 
     Returns:
         The newly created WorkbookTemplate in the target workspace.
     """
+    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    logger.debug(
+        "Cloning workbook template: %s (rid: %s)", source_template.title, source_template.rid, extra=log_extras
+    )
     raw_source_template: scout_template_api.Template = source_template._clients.template.get(
         source_template._clients.auth_header, source_template.rid
     )
 
-    template_layout: scout_layout_api.WorkbookLayout = raw_source_template.layout
-    template_content: scout_workbookcommon_api.WorkbookContent = raw_source_template.content
-    [new_template_layout_generic, new_workbook_content_generic] = _clone_conjure_objects_with_new_uuids(
-        [template_layout, template_content]
-    )
-    new_template_layout = cast(scout_layout_api.WorkbookLayout, new_template_layout_generic)
-    new_workbook_content = cast(scout_workbookcommon_api.WorkbookContent, new_workbook_content_generic)
-
-    return create_workbook_template_with_content_and_layout(
-        client=target_client,
-        title=new_template_name if new_template_name is not None else raw_source_template.metadata.title,
-        description=raw_source_template.metadata.description,
-        labels=raw_source_template.metadata.labels,
-        properties=raw_source_template.metadata.properties,
+    if include_content_and_layout:
+        template_layout: scout_layout_api.WorkbookLayout = raw_source_template.layout
+        template_content: scout_workbookcommon_api.WorkbookContent = raw_source_template.content
+        [new_template_layout_generic, new_workbook_content_generic] = _clone_conjure_objects_with_new_uuids(
+            [template_layout, template_content]
+        )
+        new_template_layout = cast(scout_layout_api.WorkbookLayout, new_template_layout_generic)
+        new_workbook_content = cast(scout_workbookcommon_api.WorkbookContent, new_workbook_content_generic)
+    else:
+        new_template_layout = scout_layout_api.WorkbookLayout(
+            v1=scout_layout_api.WorkbookLayoutV1(
+                root_panel=scout_layout_api.Panel(
+                    tabbed=scout_layout_api.TabbedPanel(
+                        v1=scout_layout_api.TabbedPanelV1(
+                            id=str(uuid.uuid4()),
+                            tabs=[],
+                        )
+                    )
+                )
+            )
+        )
+        new_workbook_content = scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={})
+    new_workbook_template: WorkbookTemplate = create_workbook_template_with_content_and_layout(
+        client=destination_client,
+        title=new_template_title or raw_source_template.metadata.title,
+        description=new_template_description or raw_source_template.metadata.description,
+        labels=new_template_labels or raw_source_template.metadata.labels,
+        properties=new_template_properties or raw_source_template.metadata.properties,
         layout=new_template_layout,
         content=new_workbook_content,
         commit_message="Cloned from template",
-        workspace_rid=workspace_rid,
+        workspace_rid=destination_client.get_workspace().rid,
     )
+    logger.debug(
+        "New workbook template created %s from %s (rid: %s)",
+        new_workbook_template.title,
+        source_template.title,
+        source_template.rid,
+        extra=log_extras,
+    )
+    return new_workbook_template
+
+
+def copy_file_to_dataset(
+    source_file: DatasetFile,
+    destination_dataset: Dataset,
+) -> DatasetFile:
+    """Copy a dataset file from the source to the destination dataset.
+
+    Args:
+        source_file: The source DatasetFile to copy.
+        destination_dataset: The Dataset to create the copied file in.
+
+    Returns:
+        The dataset file in the new dataset.
+    """
+    log_extras = {"destination_client_workspace": destination_dataset._clients.workspace_rid}
+    logger.debug("Copying dataset file: %s", source_file.name, extra=log_extras)
+    source_api_file = source_file._get_latest_api()
+    if (
+        source_api_file.handle.s3 is not None
+        and source_file.timestamp_channel is not None
+        and source_file.timestamp_type is not None
+    ):
+        old_file_uri: str = source_file._clients.catalog.get_dataset_file_uri(
+            source_file._clients.auth_header, source_file.dataset_rid, source_file.id
+        ).uri
+
+        response = requests.get(old_file_uri, stream=True)
+        response.raise_for_status()
+
+        with closing(BytesIO()) as file_obj:
+            # TODO (Sean): Stream files so we don't have to load objects fully into memory
+            for chunk in response.iter_content(chunk_size=8192):
+                file_obj.write(chunk)
+            file_obj.seek(0)
+
+            file_name: str = source_api_file.handle.s3.key.split("/")[-1]
+            file_type: FileType = FileType.from_path(file_name)
+            file_stem: str = Path(file_name).stem
+
+            new_file: DatasetFile = destination_dataset.add_from_io(
+                dataset=file_obj,
+                timestamp_column=source_file.timestamp_channel,
+                timestamp_type=source_file.timestamp_type,
+                file_type=file_type,
+                file_name=file_stem,
+                tag_columns=source_file.tag_columns,
+                tags=source_file.file_tags,
+            )
+        logger.debug(
+            "New file created %s in dataset: %s (rid: %s)",
+            new_file.name,
+            destination_dataset.name,
+            destination_dataset.rid,
+        )
+        return new_file
+    else:  # Because these fields are optional, need to check for None. We shouldn't ever run into this.
+        raise ValueError("Unsupported file handle type or missing timestamp information.")
+
+
+def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) -> Dataset:
+    """Clones a dataset, maintaining all properties and files.
+
+    Args:
+        source_dataset (Dataset): The dataset to copy from.
+        destination_client (NominalClient): The destination client.
+
+    Returns:
+        The cloned dataset.
+    """
+    return copy_dataset_from(source_dataset=source_dataset, destination_client=destination_client, include_files=True)
+
+
+def copy_dataset_from(
+    source_dataset: Dataset,
+    destination_client: NominalClient,
+    *,
+    new_dataset_name: str | None = None,
+    new_dataset_description: str | None = None,
+    new_dataset_properties: dict[str, Any] | None = None,
+    new_dataset_labels: Sequence[str] | None = None,
+    include_files: bool = False,
+) -> Dataset:
+    """Copy a dataset from the source to the destination client.
+
+    Args:
+        source_dataset: The source Dataset to copy.
+        destination_client: The NominalClient to create the copied dataset in.
+        new_dataset_name: Optional new name for the copied dataset. If not provided, the original name is used.
+        new_dataset_description: Optional new description for the copied dataset.
+            If not provided, the original description is used.
+        new_dataset_properties: Optional new properties for the copied dataset. If not provided, the original
+            properties are used.
+        new_dataset_labels: Optional new labels for the copied dataset. If not provided, the original labels are used.
+        include_files: Whether to include files in the copied dataset.
+
+    Returns:
+        The newly created Dataset in the destination client.
+    """
+    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    logger.debug(
+        "Copying dataset %s (rid: %s)",
+        source_dataset.name,
+        source_dataset.rid,
+        extra=log_extras,
+    )
+    new_dataset = destination_client.create_dataset(
+        name=new_dataset_name if new_dataset_name is not None else source_dataset.name,
+        description=new_dataset_description if new_dataset_description is not None else source_dataset.description,
+        properties=new_dataset_properties if new_dataset_properties is not None else source_dataset.properties,
+        labels=new_dataset_labels if new_dataset_labels is not None else source_dataset.labels,
+    )
+    if include_files:
+        for source_file in source_dataset.list_files():
+            copy_file_to_dataset(source_file, new_dataset)
+    logger.debug("New dataset created: %s (rid: %s)", new_dataset.name, new_dataset.rid, extra=log_extras)
+    return new_dataset
 
 
 def clone_asset(
     source_asset: Asset,
-    target_client: NominalClient,
-    new_asset_name: str | None = None,
+    destination_client: NominalClient,
 ) -> Asset:
     """Clone an asset from the source to the target client.
 
     Args:
         source_asset: The source Asset to clone.
-        target_client: The NominalClient to create the cloned asset in.
-        new_asset_name: Optional new name for the cloned asset. If not provided, the original name is used.
+        destination_client: The NominalClient to create the cloned asset in.
 
     Returns:
         The newly created Asset in the target client.
     """
-    return target_client.create_asset(
+    return copy_asset_from(source_asset=source_asset, destination_client=destination_client, include_data=True)
+
+
+def copy_asset_from(
+    source_asset: Asset,
+    destination_client: NominalClient,
+    *,
+    new_asset_name: str | None = None,
+    new_asset_description: str | None = None,
+    new_asset_properties: dict[str, Any] | None = None,
+    new_asset_labels: Sequence[str] | None = None,
+    include_data: bool = False,
+) -> Asset:
+    """Copy an asset from the source to the destination client.
+
+    Args:
+        source_asset: The source Asset to copy.
+        destination_client: The NominalClient to create the copied asset in.
+        new_asset_name: Optional new name for the copied asset. If not provided, the original name is used.
+        new_asset_description: Optional new description for the copied asset. If not provided, original description used
+        new_asset_properties: Optional new properties for the copied asset. If not provided, original properties used.
+        new_asset_labels: Optional new labels for the copied asset. If not provided, the original labels are used.
+        include_data: Whether to include data in the copied asset.
+
+    Returns:
+        The new asset created.
+    """
+    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    logger.debug("Copying asset %s (rid: %s)", source_asset.name, source_asset.rid, extra=log_extras)
+    new_asset: Asset = destination_client.create_asset(
         name=new_asset_name if new_asset_name is not None else source_asset.name,
-        properties=source_asset.properties,
-        labels=source_asset.labels,
-        description=source_asset.description,
+        description=new_asset_description if new_asset_description is not None else source_asset.description,
+        properties=new_asset_properties if new_asset_properties is not None else source_asset.properties,
+        labels=new_asset_labels if new_asset_labels is not None else source_asset.labels,
     )
+    if include_data:
+        source_datasets: Sequence[tuple[str, Dataset]] = source_asset.list_datasets()
+        new_datasets: list[Dataset] = []
+        for dataset_tuple in source_datasets:
+            data_scope: str = dataset_tuple[0]
+            source_dataset: Dataset = dataset_tuple[1]
+            new_dataset = clone_dataset(
+                source_dataset=source_dataset,
+                destination_client=destination_client,
+            )
+            new_datasets.append(new_dataset)
+            new_asset.add_dataset(data_scope, new_dataset)
+    logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
+    return new_asset
+
+
+def copy_resources_to_destination_client(
+    destination_client: NominalClient,
+    source_assets: Sequence[Asset],
+    source_workbook_templates: Sequence[WorkbookTemplate],
+) -> tuple[Sequence[tuple[str, Dataset]], Sequence[Asset], Sequence[WorkbookTemplate], Sequence[Workbook]]:
+    """Based on a list of assets and workbook templates, copy resources to destination client, creating
+       new datasets, datafiles, and workbooks along the way.
+
+    Args:
+        destination_client (NominalClient): client of the tenant/workspace to copy resources to.
+        source_assets (Sequence[Asset]): a list of assets to copy (with data)
+        source_workbook_templates (Sequence[WorkbookTemplate]): a list of workbook templates to clone
+        and create workbooks from.
+
+    Returns:
+        All of the created resources.
+    """
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace().rid,
+    }
+
+    if len(source_assets) != 1:
+        raise ValueError("Currently, only single asset can be used to create workbook from template")
+
+    new_assets: list[Asset] = []
+    new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
+    for source_asset in source_assets:
+        new_asset: Asset = clone_asset(source_asset, destination_client)
+        new_assets.append(new_asset)
+        new_data_scopes_and_datasets.extend(new_asset.list_datasets())
+    new_templates: list[WorkbookTemplate] = []
+    new_workbooks: list[Workbook] = []
+
+    for source_workbook_template in source_workbook_templates:
+        new_template: WorkbookTemplate = clone_workbook_template(source_workbook_template, destination_client)
+        new_templates.append(new_template)
+        new_workbook = new_template.create_workbook(
+            title=new_template.title, description=new_template.description, asset=new_assets[0]
+        )
+        logger.debug(
+            "Created new workbook %s (rid: %s) from template %s (rid: %s)",
+            new_workbook.title,
+            new_workbook.rid,
+            new_template.title,
+            new_template.rid,
+            extra=log_extras,
+        )
+        new_workbooks.append(new_workbook)
+
+    return (new_data_scopes_and_datasets, new_assets, new_templates, new_workbooks)
