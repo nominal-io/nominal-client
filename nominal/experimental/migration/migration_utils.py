@@ -2,13 +2,12 @@ import json
 import logging
 import re
 import uuid
-from contextlib import closing
-from io import BytesIO
 from pathlib import Path
-from typing import Any, Mapping, Sequence, Union, cast
+from typing import Any, BinaryIO, Mapping, Sequence, TypeVar, Union, cast, overload
 
 import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
+from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
 from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
 
@@ -181,7 +180,23 @@ def _replace_uuids_in_obj(obj: Any, mapping: dict[str, str]) -> Any:
         return obj
 
 
-def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[ConjureType]:
+T1 = TypeVar("T1", bound=ConjureType)
+T2 = TypeVar("T2", bound=ConjureType)
+
+
+@overload
+def _clone_conjure_objects_with_new_uuids(
+    objs: tuple[T1, T2],
+) -> tuple[T1, T2]: ...
+
+
+@overload
+def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[ConjureType]: ...
+
+
+def _clone_conjure_objects_with_new_uuids(
+    objs: tuple[ConjureType, ...] | list[ConjureType],
+) -> tuple[ConjureType, ...] | list[ConjureType]:
     """Clone Conjure objects by replacing all UUIDs with new ones.
 
     This function:
@@ -198,13 +213,21 @@ def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[Conju
         List of cloned Conjure objects with new UUIDs. The structure and content
         are identical to the originals, but all UUIDs have been replaced.
     """
+    original_types = [type(obj) for obj in objs]
+
     json_objs: list[Any] = [ConjureEncoder.do_encode(obj) for obj in objs]
 
     mapping = _generate_uuid_mapping(json_objs)
 
     new_json_objs = [_replace_uuids_in_obj(json_obj, mapping) for json_obj in json_objs]
 
-    return [cast(ConjureType, new_json_obj) for new_json_obj in new_json_objs]
+    # Deserialize each dict back to its original type
+    decoder = ConjureDecoder()
+    result = [
+        decoder.do_decode(new_json_obj, obj_type) for new_json_obj, obj_type in zip(new_json_objs, original_types)
+    ]
+
+    return tuple(result) if isinstance(objs, tuple) else result
 
 
 # TODO (Sean): Once we move this out of experimental, make clone/copy_resource_from abstract methods in the HasRid class
@@ -266,11 +289,9 @@ def copy_workbook_template_from(
     if include_content_and_layout:
         template_layout: scout_layout_api.WorkbookLayout = raw_source_template.layout
         template_content: scout_workbookcommon_api.WorkbookContent = raw_source_template.content
-        [new_template_layout_generic, new_workbook_content_generic] = _clone_conjure_objects_with_new_uuids(
-            [template_layout, template_content]
+        (new_template_layout, new_workbook_content) = _clone_conjure_objects_with_new_uuids(
+            (template_layout, template_content)
         )
-        new_template_layout = cast(scout_layout_api.WorkbookLayout, new_template_layout_generic)
-        new_workbook_content = cast(scout_workbookcommon_api.WorkbookContent, new_workbook_content_generic)
     else:
         new_template_layout = scout_layout_api.WorkbookLayout(
             v1=scout_layout_api.WorkbookLayoutV1(
@@ -334,25 +355,19 @@ def copy_file_to_dataset(
         response = requests.get(old_file_uri, stream=True)
         response.raise_for_status()
 
-        with closing(BytesIO()) as file_obj:
-            # TODO (Sean): Stream files so we don't have to load objects fully into memory
-            for chunk in response.iter_content(chunk_size=8192):
-                file_obj.write(chunk)
-            file_obj.seek(0)
+        file_name: str = source_api_file.handle.s3.key.split("/")[-1]
+        file_type: FileType = FileType.from_path(file_name)
+        file_stem: str = Path(file_name).stem
 
-            file_name: str = source_api_file.handle.s3.key.split("/")[-1]
-            file_type: FileType = FileType.from_path(file_name)
-            file_stem: str = Path(file_name).stem
-
-            new_file: DatasetFile = destination_dataset.add_from_io(
-                dataset=file_obj,
-                timestamp_column=source_file.timestamp_channel,
-                timestamp_type=source_file.timestamp_type,
-                file_type=file_type,
-                file_name=file_stem,
-                tag_columns=source_file.tag_columns,
-                tags=source_file.file_tags,
-            )
+        new_file: DatasetFile = destination_dataset.add_from_io(
+            dataset=cast(BinaryIO, response.raw),
+            timestamp_column=source_file.timestamp_channel,
+            timestamp_type=source_file.timestamp_type,
+            file_type=file_type,
+            file_name=file_stem,
+            tag_columns=source_file.tag_columns,
+            tags=source_file.file_tags,
+        )
         logger.debug(
             "New file created %s in dataset: %s (rid: %s)",
             new_file.name,
