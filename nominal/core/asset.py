@@ -297,7 +297,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             )
             dataset = Dataset._from_conjure(self._clients, enriched_dataset)
 
-            if prefix_tree_delimiter:
+            if prefix_tree_delimiter is not None:
                 dataset.set_channel_prefix_tree(prefix_tree_delimiter)
 
             self.add_dataset(data_scope_name, dataset)
