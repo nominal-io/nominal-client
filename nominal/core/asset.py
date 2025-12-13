@@ -280,6 +280,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         description: str | None = None,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
+        prefix_tree_delimiter: str | None = None,
     ) -> Dataset:
         """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
         try:
@@ -295,6 +296,10 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
                 workspace_rid=self._clients.workspace_rid,
             )
             dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+
+            if prefix_tree_delimiter:
+                dataset.set_channel_prefix_tree(prefix_tree_delimiter)
+
             self.add_dataset(data_scope_name, dataset)
             return dataset
 
