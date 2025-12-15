@@ -489,9 +489,7 @@ def copy_asset_from(
     if include_data:
         source_datasets = source_asset.list_datasets()
         new_datasets = []
-        for dataset_tuple in source_datasets:
-            data_scope = dataset_tuple[0]
-            source_dataset = dataset_tuple[1]
+        for data_scope, source_dataset in source_datasets:
             new_dataset = clone_dataset(
                 source_dataset=source_dataset,
                 destination_client=destination_client,
