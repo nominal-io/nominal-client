@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Mapping, Protocol, Sequence
 
 from nominal_api import ingest_api
-from typing_extensions import Self
+from typing_extensions import Self, deprecated
 
 from nominal._utils.dataclass_tools import update_dataclass
 from nominal.core._clientsbunch import HasScoutParams
@@ -203,8 +203,21 @@ class ContainerizedExtractor(HasRid):
     inputs: Sequence[FileExtractionInput]
     properties: Mapping[str, str]
     labels: Sequence[str]
-    timestamp_metadata: TimestampMetadata
+    default_timestamp_metadata: TimestampMetadata | None
     _clients: _Clients = field(repr=False)
+
+    @property
+    @deprecated(
+        "The `timestamp_metadata` field of a ContainerizedExtractor is deprecated and will be removed in a future "
+        "release. Use the `default_timestamp_metadata` field instead."
+    )
+    def timestamp_metadata(self) -> TimestampMetadata:
+        if self.default_timestamp_metadata is None:
+            raise ValueError(
+                f"Containerized extractor {self.name} ({self.rid}) has no default configured timestamp metadata"
+            )
+
+        return self.default_timestamp_metadata
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -251,6 +264,12 @@ class ContainerizedExtractor(HasRid):
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, raw_extractor: ingest_api.ContainerizedExtractor) -> Self:
+        timestamp_metadata = (
+            None
+            if raw_extractor.timestamp_metadata is None
+            else TimestampMetadata._from_conjure(raw_extractor.timestamp_metadata)
+        )
+
         return cls(
             rid=raw_extractor.rid,
             name=raw_extractor.name,
@@ -259,6 +278,6 @@ class ContainerizedExtractor(HasRid):
             inputs=[FileExtractionInput._from_conjure(raw_input) for raw_input in raw_extractor.inputs],
             properties=raw_extractor.properties,
             labels=raw_extractor.labels,
-            timestamp_metadata=TimestampMetadata._from_conjure(raw_extractor.timestamp_metadata),
+            default_timestamp_metadata=timestamp_metadata,
             _clients=clients,
         )
