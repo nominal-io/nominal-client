@@ -6,7 +6,7 @@ from datetime import timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias
+from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
 from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self, deprecated
@@ -410,11 +410,38 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     # Backward compatibility
     add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
 
+    @overload
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, Path | str],
         tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile: ...
+    @overload
+    def add_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, Path | str],
+        tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> DatasetFile: ...
+    def add_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, Path | str],
+        tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyTimestampType | None = None,
     ) -> DatasetFile:
         """Add data from proprietary data formats using a pre-registered custom extractor.
 
@@ -424,7 +451,24 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 NOTE: these must match the registered inputs of the containerized extractor exactly
             tag: Tag of the Docker container which hosts the extractor.
                 NOTE: if not provided, the default registered docker tag will be used.
+            arguments: Mapping of key-value pairs of input arguments to the extractor.
+            tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
+            timestamp_column: the column in the dataset that contains the timestamp data.
+                NOTE: this is applied uniformly to all output files
+                NOTE: must be provided with a `timestamp_type` or a ValueError will be raised
+            timestamp_type: the type of timestamp data in the dataset.
+                NOTE: this is applied uniformly to all output files
+                NOTE: must be provided with a `timestamp_column` or a ValueError will be raised
         """
+        timestamp_metadata = None
+        if timestamp_column is not None and timestamp_type is not None:
+            timestamp_metadata = ingest_api.TimestampMetadata(
+                series_name=timestamp_column,
+                timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
+            )
+        elif None in (timestamp_column, timestamp_type):
+            raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
+
         if isinstance(extractor, str):
             extractor = ContainerizedExtractor._from_conjure(
                 self._clients,
@@ -451,13 +495,14 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             )
             logger.info("Uploaded %s -> %s", source_path, s3_path)
             s3_inputs[source] = s3_path
+
         logger.info("Triggering custom extractor %s (tag=%s) with %s", extractor.name, tag, s3_inputs)
         resp = self._clients.ingest.ingest(
             self._clients.auth_header,
             trigger_ingest=ingest_api.IngestRequest(
                 options=ingest_api.IngestOptions(
                     containerized=ingest_api.ContainerizedOpts(
-                        arguments={},
+                        arguments={**(arguments or {})},
                         extractor_rid=extractor.rid,
                         sources={
                             source: ingest_api.IngestSource(s3=ingest_api.S3IngestSource(path=s3_path))
@@ -467,6 +512,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                             existing=ingest_api.ExistingDatasetIngestDestination(self.rid)
                         ),
                         tag=tag,
+                        additional_file_tags={**(tags or {})},
+                        timestamp_metadata=timestamp_metadata,
                     )
                 )
             ),

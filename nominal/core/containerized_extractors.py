@@ -251,6 +251,9 @@ class ContainerizedExtractor(HasRid):
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, raw_extractor: ingest_api.ContainerizedExtractor) -> Self:
+        if raw_extractor.timestamp_metadata is None:
+            raise ValueError("Expected timestamp metadata to be present from conjure representation")
+
         return cls(
             rid=raw_extractor.rid,
             name=raw_extractor.name,
