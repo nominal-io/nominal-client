@@ -13,11 +13,10 @@ from types import TracebackType
 from typing import Callable, Iterable, Mapping, Sequence, Type
 
 import requests
-from requests.adapters import HTTPAdapter
 from typing_extensions import Self
-from urllib3.util.retry import Retry
 
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
+from nominal.core._utils.networking import create_multipart_request_session
 
 logger = logging.getLogger(__name__)
 
@@ -129,24 +128,11 @@ class MultipartFileDownloader:
             max_workers = multiprocessing.cpu_count()
             logger.info("Inferring core count as %d", max_workers)
 
-        session = cls._make_session(max_workers)
+        session = create_multipart_request_session(pool_size=max_workers)
         pool = ThreadPoolExecutor(max_workers=max_workers)
         return cls(max_workers, timeout, max_part_retries, _session=session, _pool=pool, _closed=False)
 
     # ---- lifecycle ----
-
-    @staticmethod
-    def _make_session(pool_size: int) -> requests.Session:
-        retries = Retry(
-            total=5,
-            backoff_factor=0.5,
-            status_forcelist=(429, 500, 502, 503, 504),
-            allowed_methods=frozenset(["GET", "HEAD"]),
-        )
-        s = requests.Session()
-        adapter = HTTPAdapter(max_retries=retries, pool_maxsize=pool_size)
-        s.mount("https://", adapter)
-        return s
 
     def close(self) -> None:
         if not self._closed:

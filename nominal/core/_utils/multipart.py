@@ -11,6 +11,7 @@ from typing import BinaryIO, Iterable
 import requests
 from nominal_api import ingest_api, upload_api
 
+from nominal.core._utils.networking import create_multipart_request_session
 from nominal.core.exceptions import NominalMultipartUploadFailed
 from nominal.core.filetype import FileType
 
@@ -22,6 +23,7 @@ DEFAULT_NUM_WORKERS = 8
 
 def _sign_and_upload_part_job(
     upload_client: upload_api.UploadService,
+    multipart_session: requests.Session,
     auth_header: str,
     key: str,
     upload_id: str,
@@ -46,7 +48,7 @@ def _sign_and_upload_part_job(
                 )
 
                 logger.debug("Pushing part %d for multipart upload", part, extra=log_extras)
-                put_response = requests.put(
+                put_response = multipart_session.put(
                     sign_response.url,
                     data=data,
                     headers=sign_response.headers,
@@ -141,7 +143,10 @@ def put_multipart_upload(
     )
     initiate_response = upload_client.initiate_multipart_upload(auth_header, initiate_request)
     key, upload_id = initiate_response.key, initiate_response.upload_id
-    _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, auth_header, key, upload_id, q)
+    multipart_session = create_multipart_request_session(pool_size=max_workers)
+    _sign_and_upload_part = partial(
+        _sign_and_upload_part_job, upload_client, multipart_session, auth_header, key, upload_id, q
+    )
 
     jobs: list[concurrent.futures.Future[requests.Response]] = []
 
