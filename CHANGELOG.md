@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.100.0](https://github.com/nominal-io/nominal-client/compare/v1.99.0...v1.100.0) (2025-12-19)
+
+
+### Features
+
+* add args and timestamp types for containerized ingest ([#551](https://github.com/nominal-io/nominal-client/issues/551)) ([1dd259a](https://github.com/nominal-io/nominal-client/commit/1dd259a299d83c55b482f443542f7feb63896795))
+* add clone/copy_from methods for assets, datasets, templates ([#548](https://github.com/nominal-io/nominal-client/issues/548)) ([f04c468](https://github.com/nominal-io/nominal-client/commit/f04c46800569da0ad6fb9440a336a7d8cac3542a))
+* added prefix_tree_delimiter parameter to get_or_create_dataset method ([#550](https://github.com/nominal-io/nominal-client/issues/550)) ([c204d94](https://github.com/nominal-io/nominal-client/commit/c204d9450d33a9742c0ae6b6a2d78e8baa796d2c))
+* allow listing runs on asset, deprecate search run by asset in client ([#541](https://github.com/nominal-io/nominal-client/issues/541)) ([35464e5](https://github.com/nominal-io/nominal-client/commit/35464e56ebc81577094b4ce0862d830e7d7bc92e))
+* allow promoting assets ([#542](https://github.com/nominal-io/nominal-client/issues/542)) ([1ce1082](https://github.com/nominal-io/nominal-client/commit/1ce1082dd025371bed4920c0e10d5ec93ac37687))
+* allow using truststore for ssl bypass ([#472](https://github.com/nominal-io/nominal-client/issues/472)) ([55a43c2](https://github.com/nominal-io/nominal-client/commit/55a43c23cb5a32b6cf90b2d50c5f0e79eeafaca7))
+* create new clone workbook and associated helpers in experimental ([#546](https://github.com/nominal-io/nominal-client/issues/546)) ([aeffb44](https://github.com/nominal-io/nominal-client/commit/aeffb44827b46e90101404d4a9a18d036aac49ab))
+* expose truststore.SSLContext across requests usage to permit usage in corporate networks ([55a43c2](https://github.com/nominal-io/nominal-client/commit/55a43c23cb5a32b6cf90b2d50c5f0e79eeafaca7))
+
+
+### Bug Fixes
+
+* fix log message missing argument ([#547](https://github.com/nominal-io/nominal-client/issues/547)) ([c684caa](https://github.com/nominal-io/nominal-client/commit/c684caa559544f7c5c2f13e6d94fd8f2e718827c))
+
 ## [1.99.0](https://github.com/nominal-io/nominal-client/compare/v1.98.0...v1.99.0) (2025-12-04)
 
 
