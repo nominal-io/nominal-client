@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
 
@@ -460,8 +459,8 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         self,
         *,
         search_text: str | None = None,
-        after: str | datetime | IntegralNanosecondsUTC | None = None,
-        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        after: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
+        before: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
         labels: Iterable[str] | None = None,
         properties: Mapping[str, str] | None = None,
         created_by: str | None = None,
@@ -545,5 +544,5 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
 
 # Moving to bottom to deal with circular dependencies
-from nominal.core.event import Event, EventType  # noqa: E402
+from nominal.core.event import Event  # noqa: E402
 from nominal.core.run import Run  # noqa: E402
