@@ -9,9 +9,9 @@ from typing import Iterable, Mapping, Protocol, Sequence
 from nominal_api import event
 from typing_extensions import Self
 
+import nominal.core.asset as core_asset
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
-from nominal.core.asset import Asset
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
@@ -50,7 +50,7 @@ class Event(HasRid, RefreshableMixin[event.Event]):
         *,
         name: str | None = None,
         description: str | None = None,
-        assets: Iterable[Asset | str] | None = None,
+        assets: Iterable[core_asset.Asset | str] | None = None,
         start: datetime | IntegralNanosecondsUTC | None = None,
         duration: timedelta | IntegralNanosecondsDuration | None = None,
         properties: Mapping[str, str] | None = None,
@@ -154,3 +154,30 @@ class EventType(Enum):
             return event.EventType.SUCCESS
         else:
             return event.EventType.UNKNOWN
+
+
+def _create_event(
+    clients: Event._Clients,
+    *,
+    name: str,
+    type: EventType,
+    start: datetime | IntegralNanosecondsUTC,
+    duration: timedelta | IntegralNanosecondsDuration,
+    assets: Iterable[core_asset.Asset | str] | None,
+    description: str | None,
+    properties: Mapping[str, str] | None,
+    labels: Iterable[str] | None,
+) -> Event:
+    request = event.CreateEvent(
+        name=name,
+        description=description,
+        asset_rids=[rid_from_instance_or_string(asset) for asset in (assets or [])],
+        timestamp=_SecondsNanos.from_flexible(start).to_api(),
+        duration=_to_api_duration(duration),
+        origins=[],
+        properties=dict(properties or {}),
+        labels=list(labels or []),
+        type=type._to_api_event_type(),
+    )
+    response = clients.event.create_event(clients.auth_header, request)
+    return Event._from_conjure(clients, response)
