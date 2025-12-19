@@ -1,20 +1,69 @@
 from __future__ import annotations
 
 import gzip
+import logging
 import os
+import ssl
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
+import truststore
 from conjure_python_client import ServiceConfiguration
-from conjure_python_client._http.requests_client import RetryWithJitter, TransportAdapter
-from requests.adapters import CaseInsensitiveDict
+from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
+from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
+from urllib3.connection import HTTPConnection
+from urllib3.util.retry import Retry
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
 GZIP_COMPRESSION_LEVEL = 1
 
 
-class GzipRequestsAdapter(TransportAdapter):
+class SslBypassRequestsAdapter(HTTPAdapter):
+    """Transport adapter that allows customizing SSL options and forwarding host truststore.
+
+    NOTE: based on a combination of injecting `truststore.SSLContext` into
+        `conjure_python_client._http.requests_client.TransportAdapter`.
+    """
+
+    ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
+    __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
+
+    def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
+        self._enable_keep_alive = enable_keep_alive
+        super().__init__(*args, **kwargs)
+
+    def init_poolmanager(
+        self,
+        connections: int,
+        maxsize: int,
+        block: bool = False,
+        **pool_kwargs: Mapping[str, Any],
+    ) -> None:
+        """Wrapper around the standard init_poolmanager from HTTPAdapter with modifications
+        to support keep-alive settings and injecting SSL context.
+        """
+        if self._enable_keep_alive:
+            keep_alive_kwargs: dict[str, Any] = {
+                "socket_options": [
+                    *HTTPConnection.default_socket_options,
+                    *KEEP_ALIVE_SOCKET_OPTIONS,
+                ]
+            }
+            pool_kwargs = {**pool_kwargs, **keep_alive_kwargs}
+
+        pool_kwargs["ssl_context"] = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        super().init_poolmanager(connections, maxsize, block, **pool_kwargs)  # type: ignore[no-untyped-call]
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        state[self.ENABLE_KEEP_ALIVE_ATTR] = state.get(self.ENABLE_KEEP_ALIVE_ATTR, False)
+        super().__setstate__(state)  # type: ignore[misc]
+
+
+class NominalRequestsAdapter(SslBypassRequestsAdapter):
     """Adapter used with `requests` library for sending gzip-compressed data.
 
     Based on: https://github.com/psf/requests/issues/1753#issuecomment-417806737
@@ -69,7 +118,7 @@ class GzipRequestsAdapter(TransportAdapter):
         return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
 
 
-def create_gzip_service_client(
+def create_conjure_service_client(
     service_class: Type[T],
     user_agent: str,
     service_config: ServiceConfiguration,
@@ -104,7 +153,7 @@ def create_gzip_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    transport_adapter = GzipRequestsAdapter(max_retries=retry)
+    transport_adapter = NominalRequestsAdapter(max_retries=retry)
     # create a session, for shared connection polling, user agent, etc
     session = requests.Session()
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
@@ -131,11 +180,11 @@ def create_conjure_client_factory(
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
-    See `create_gzip_service_client` for documentation on parameters.
+    See `create_conjure_service_client` for documentation on parameters.
     """
 
     def factory(service_class: Type[T]) -> T:
-        return create_gzip_service_client(
+        return create_conjure_service_client(
             service_class,
             user_agent=user_agent,
             service_config=service_config,
@@ -143,3 +192,19 @@ def create_conjure_client_factory(
         )
 
     return factory
+
+
+def create_multipart_request_session(
+    *,
+    pool_size: int = DEFAULT_POOLSIZE,
+    num_retries: int = 5,
+) -> requests.Session:
+    retries = Retry(
+        total=num_retries,
+        backoff_factor=0.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+    )
+    session = requests.Session()
+    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size)
+    session.mount("https://", adapter)
+    return session
