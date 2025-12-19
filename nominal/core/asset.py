@@ -19,7 +19,7 @@ from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _create_video, _get_video
@@ -83,6 +83,17 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
         return response[self.rid]
 
+    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+        return _filter_scopes(self._get_latest_api().data_scopes, "dataset")
+
+    def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
+        asset = self._get_latest_api()
+        return {
+            scope.data_scope_name: cast(str, getattr(scope.data_source, stype))
+            for scope in asset.data_scopes
+            if scope.data_source.type.lower() == stype
+        }
+
     def update(
         self,
         *,
@@ -116,14 +127,6 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         api_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(api_asset)
 
-    def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
-        asset = self._get_latest_api()
-        return {
-            scope.data_scope_name: cast(str, getattr(scope.data_source, stype))
-            for scope in asset.data_scopes
-            if scope.data_source.type.lower() == stype
-        }
-
     def promote(self) -> Self:
         """Promote this asset to be a standard, searchable, and displayable asset.
 
@@ -139,22 +142,6 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             logger.warning("Not promoting asset %s-- already promoted!", self.rid)
 
         return self
-
-    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
-        asset = self._get_latest_api()
-        ds_scopes = {scope.data_scope_name: scope for scope in _filter_scopes(asset.data_scopes, "dataset")}
-
-        data_scope = ds_scopes.get(data_scope_name)
-        if data_scope is None:
-            raise ValueError(f"No such data scope found on asset {self.rid} with data_scope_name {data_scope_name}")
-        elif data_scope.data_source.dataset is None:
-            raise ValueError(f"Datascope {data_scope_name} on asset {self.rid} is not a dataset!")
-
-        dataset = Dataset._from_conjure(
-            self._clients,
-            _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
-        )
-        return dataset, data_scope.series_tags
 
     def get_data_scope(self, data_scope_name: str) -> ScopeType:
         """Retrieve a datascope by data scope name, or raise ValueError if one is not found."""

@@ -9,7 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
-from nominal_api import api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
 from typing_extensions import Self, deprecated
 
 from nominal.core._stream.batch_processor import process_log_batch
@@ -652,8 +652,25 @@ def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, s
 
 
 class _DatasetWrapper(abc.ABC):
+    # static typing for required field
+    _clients: Dataset._Clients
+
     @abc.abstractmethod
-    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]: ...
+    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]: ...
+
+    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
+        dataset_scopes = {scope.data_scope_name: scope for scope in self._list_dataset_scopes()}
+        data_scope = dataset_scopes.get(data_scope_name)
+        if data_scope is None:
+            raise ValueError(f"No such data scope found with data_scope_name {data_scope_name}")
+        elif data_scope.data_source.dataset is None:
+            raise ValueError(f"Datascope {data_scope_name} is not a dataset!")
+
+        dataset = Dataset._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
+        )
+        return dataset, data_scope.series_tags
 
     ################
     # Add Data API #
@@ -687,7 +704,7 @@ class _DatasetWrapper(abc.ABC):
         if scope_tags:
             raise RuntimeError(
                 f"Cannot add journal json files to datascope {data_scope_name}-- data would not get "
-                f"tagged with required tags: {scope_tags}"
+                f"tagged with required arguments: {scope_tags}"
             )
 
         return dataset.add_journal_json(path)
@@ -713,15 +730,10 @@ class _DatasetWrapper(abc.ABC):
         self,
         data_scope_name: str,
         path: Path | str,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
-        if scope_tags:
-            raise RuntimeError(
-                f"Cannot add dataflash files to datascope {data_scope_name}-- data would not get "
-                f"tagged with required tags: {scope_tags}"
-            )
-
-        return dataset.add_ardupilot_dataflash(path)
+        return dataset.add_ardupilot_dataflash(path, tags=_unify_tags(scope_tags, tags))
 
     def add_containerized(
         self,
@@ -730,15 +742,10 @@ class _DatasetWrapper(abc.ABC):
         sources: Mapping[str, Path | str],
         *,
         tag: str | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
-        if scope_tags:
-            raise RuntimeError(
-                f"Cannot add containerized extractor ingests to datascope {data_scope_name}-- "
-                f"data would not get tagged with required tags: {scope_tags}"
-            )
-
-        return dataset.add_containerized(extractor, sources, tag=tag)
+        return dataset.add_containerized(extractor, sources, tag=tag, tags=_unify_tags(scope_tags, tags))
 
     def add_from_io(
         self,
