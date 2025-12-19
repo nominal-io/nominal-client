@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -20,8 +21,9 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
+from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _create_video, _get_video
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
 
@@ -43,6 +45,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         DataSource._Clients,
         Video._Clients,
         Attachment._Clients,
+        Event._Clients,
         HasScoutParams,
         Protocol,
     ):
@@ -328,6 +331,43 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             video = Video._from_conjure(self._clients, response)
             self.add_video(data_scope_name, video)
             return video
+
+    def create_event(
+        self,
+        name: str,
+        type: EventType,
+        start: datetime.datetime | IntegralNanosecondsUTC,
+        duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] | None = None,
+    ) -> Event:
+        """Create an event associated with this Asset at a given point in time.
+
+        Args:
+            name: Name of the event
+            type: Verbosity level of the event.
+            start: Starting timestamp of the event
+            duration: Duration of the event, or 0 for an event without duration.
+            description: Optionally, a human readable description of the event to create
+            properties: Key-value pairs to use as properties on the created event
+            labels: Sequence of labels to use on the created event.
+
+        Returns:
+            The created event that is associated with the asset.
+        """
+        return _create_event(
+            self._clients,
+            name=name,
+            type=type,
+            start=start,
+            duration=duration,
+            description=description,
+            assets=[self],
+            properties=properties,
+            labels=labels,
+        )
 
     def get_dataset(self, data_scope_name: str) -> Dataset:
         """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""

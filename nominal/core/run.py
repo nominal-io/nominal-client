@@ -23,6 +23,7 @@ from nominal.core._utils.api_tools import (
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
@@ -147,6 +148,43 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run]):
             self.rid,
         )
         self._refresh_from_api(updated_run)
+
+    def create_event(
+        self,
+        name: str,
+        type: EventType,
+        start: datetime | IntegralNanosecondsUTC,
+        duration: timedelta | IntegralNanosecondsDuration = 0,
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Iterable[str] = (),
+    ) -> Event:
+        """Create an event associated with all associated assets of this run at a given point in time.
+
+        Args:
+            name: Name of the event
+            type: Verbosity level of the event.
+            start: Starting timestamp of the event
+            duration: Duration of the event, or 0 for an event without duration.
+            description: Optionally, a human readable description of the event to create
+            properties: Key-value pairs to use as properties on the created event
+            labels: Sequence of labels to use on the created event.
+
+        Returns:
+            The created event that is associated with all of the assets associated with this run..
+        """
+        return _create_event(
+            self._clients,
+            name=name,
+            type=type,
+            start=start,
+            duration=duration,
+            description=description,
+            assets=self.assets,
+            properties=properties,
+            labels=labels,
+        )
 
     def add_dataset(
         self,

@@ -95,7 +95,7 @@ from nominal.core.dataset import (
     _get_datasets,
 )
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType
+from nominal.core.event import Event, EventType, _create_event
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run
@@ -110,7 +110,6 @@ from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
     _SecondsNanos,
-    _to_api_duration,
     _to_typed_timestamp_type,
 )
 
@@ -1158,19 +1157,17 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         labels: Iterable[str] = (),
     ) -> Event:
-        request = event.CreateEvent(
+        return _create_event(
+            clients=self._clients,
             name=name,
+            type=type,
+            start=start,
+            duration=duration,
             description=description,
-            asset_rids=[rid_from_instance_or_string(asset) for asset in assets],
-            timestamp=_SecondsNanos.from_flexible(start).to_api(),
-            duration=_to_api_duration(duration),
-            origins=[],
-            properties=dict(properties) if properties else {},
-            labels=list(labels),
-            type=type._to_api_event_type(),
+            assets=assets,
+            properties=properties,
+            labels=labels,
         )
-        response = self._clients.event.create_event(self._clients.auth_header, request)
-        return Event._from_conjure(self._clients, response)
 
     def get_event(self, rid: str) -> Event:
         events = self.get_events([rid])
