@@ -6,6 +6,7 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
+    scout_asset_api,
     scout_run_api,
 )
 from typing_extensions import Self
@@ -20,16 +21,17 @@ from nominal.core._utils.api_tools import (
     create_links,
     rid_from_instance_or_string,
 )
+from nominal.core.asset import _filter_scopes
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _get_datasets
+from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
 from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
 @dataclass(frozen=True)
-class Run(HasRid, RefreshableMixin[scout_run_api.Run]):
+class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     rid: str
     name: str
     description: str
@@ -96,6 +98,13 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run]):
         )
         updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated_run)
+
+    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+        api_run = self._get_latest_api()
+        if len(api_run.assets) > 1:
+            raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
+
+        return _filter_scopes(api_run.asset_data_scopes, "dataset")
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None

@@ -19,19 +19,26 @@ from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
+from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
+ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video"]
 
 logger = logging.getLogger(__name__)
 
 
+def _filter_scopes(
+    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
+) -> Sequence[scout_asset_api.DataScope]:
+    return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
+
+
 @dataclass(frozen=True)
-class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
+class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     rid: str
     name: str
     description: str | None
@@ -67,6 +74,17 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             raise ValueError(f"multiple assets found with RID {self.rid!r}: {response!r}")
         return response[self.rid]
 
+    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+        return _filter_scopes(self._get_latest_api().data_scopes, "dataset")
+
+    def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
+        asset = self._get_latest_api()
+        return {
+            scope.data_scope_name: cast(str, getattr(scope.data_source, stype))
+            for scope in asset.data_scopes
+            if scope.data_source.type.lower() == stype
+        }
+
     def update(
         self,
         *,
@@ -99,14 +117,6 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         )
         api_asset = self._clients.assets.update_asset(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(api_asset)
-
-    def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
-        asset = self._get_latest_api()
-        return {
-            scope.data_scope_name: cast(str, getattr(scope.data_source, stype))
-            for scope in asset.data_scopes
-            if scope.data_source.type.lower() == stype
-        }
 
     def promote(self) -> Self:
         """Promote this asset to be a standard, searchable, and displayable asset.

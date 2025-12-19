@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
@@ -8,7 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 
-from nominal_api import api, ingest_api, scout_catalog
+from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
 from typing_extensions import Self, deprecated
 
 from nominal.core._stream.batch_processor import process_log_batch
@@ -643,6 +644,288 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             logs=logs,
             channel_name=channel_name,
             batch_size=batch_size,
+        )
+
+
+def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, str] | None) -> Mapping[str, str]:
+    return {**datascope_tags, **(provided_tags or {})}
+
+
+class _DatasetWrapper(abc.ABC):
+    """A lightweight façade over `nominal.core.Dataset` that routes ingest calls through a *data scope*.
+
+    `_DatasetWrapper` resolves `data_scope_name` to a backing `nominal.core.Dataset` and then delegates to the
+    corresponding `Dataset` method.
+
+    How this differs from `Dataset`
+    -------------------------------
+    - All "add data" methods take an extra first argument, `data_scope_name`, which selects the target dataset.
+    - For methods that accept `tags`, this wrapper merges the scope's required tags into the provided tags.
+      User-provided tags take precedence on key collisions.
+    - Some formats cannot be safely tagged with scope tags; those wrapper methods raise `RuntimeError` when the selected
+      scope requires tags.
+
+    Subclasses must implement `_list_dataset_scopes`, which is used to resolve scopes.
+    """
+
+    # static typing for required field
+    _clients: Dataset._Clients
+
+    @abc.abstractmethod
+    def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
+        """Return the data scopes available to this wrapper.
+
+        Subclasses provide the authoritative list of `scout_asset_api.DataScope` objects used to
+        resolve `data_scope_name` in wrapper methods.
+        """
+
+    def _get_dataset_scope(self, data_scope_name: str) -> tuple[Dataset, Mapping[str, str]]:
+        """Resolve a data scope name to its backing dataset and required series tags.
+
+        Returns:
+            A tuple of the resolved `Dataset` and the scope's required `series_tags`.
+
+        Raises:
+            ValueError: If no scope exists with the given `data_scope_name`, or if the scope is not backed by a dataset.
+        """
+        dataset_scopes = {scope.data_scope_name: scope for scope in self._list_dataset_scopes()}
+        data_scope = dataset_scopes.get(data_scope_name)
+        if data_scope is None:
+            raise ValueError(f"No such data scope found with data_scope_name {data_scope_name}")
+        elif data_scope.data_source.dataset is None:
+            raise ValueError(f"Datascope {data_scope_name} is not a dataset!")
+
+        dataset = Dataset._from_conjure(
+            self._clients,
+            _get_dataset(self._clients.auth_header, self._clients.catalog, data_scope.data_source.dataset),
+        )
+        return dataset, data_scope.series_tags
+
+    ################
+    # Add Data API #
+    ################
+
+    def add_tabular_data(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+        *,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile:
+        """Append tabular data on-disk to the dataset selected by `data_scope_name`.
+
+        This method behaves like `nominal.core.Dataset.add_tabular_data`, except that the data scope's required
+        tags are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
+
+        For supported file types, argument semantics, and return value details, see
+        `nominal.core.Dataset.add_tabular_data`.
+        """
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        return dataset.add_tabular_data(
+            path,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
+            tag_columns=tag_columns,
+            tags=_unify_tags(scope_tags, tags),
+        )
+
+    def add_avro_stream(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+    ) -> DatasetFile:
+        """Upload an avro stream file to the dataset selected by `data_scope_name`.
+
+        This method behaves like `nominal.core.Dataset.add_avro_stream`, with one important difference:
+        avro stream ingestion does not support applying scope tags. If the selected scope requires tags, this method
+        raises `RuntimeError` rather than ingesting (potentially) untagged data. This file may still be ingested
+        directly on the dataset itself if it is known to contain the correct set of tags.
+
+        For schema requirements and return value details, see
+        `nominal.core.Dataset.add_avro_stream`.
+        """
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+
+        # TODO(drake): remove once avro stream supports ingest with tags
+        if scope_tags:
+            raise RuntimeError(
+                f"Cannot add avro files to datascope {data_scope_name}-- data would not get "
+                f"tagged with required tags: {scope_tags}"
+            )
+
+        return dataset.add_avro_stream(path)
+
+    def add_journal_json(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+    ) -> DatasetFile:
+        """Add a journald json file to the dataset selected by `data_scope_name`.
+
+        This method behaves like `nominal.core.Dataset.add_journal_json`, with one important difference:
+        journal json ingestion does not support applying scope tags as args. If the selected scope requires tags,
+        this method raises `RuntimeError` rather than potentially ingesting untagged data. This file may still be
+        ingested directly on the dataset itself if it is known to contain the correct set of args.
+
+        For file expectations and return value details, see
+        `nominal.core.Dataset.add_journal_json`.
+        """
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+
+        # TODO(drake): remove once journal json supports ingest with tags
+        if scope_tags:
+            raise RuntimeError(
+                f"Cannot add journal json files to datascope {data_scope_name}-- data would not get "
+                f"tagged with required arguments: {scope_tags}"
+            )
+
+        return dataset.add_journal_json(path)
+
+    def add_mcap(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+        *,
+        include_topics: Iterable[str] | None = None,
+        exclude_topics: Iterable[str] | None = None,
+    ) -> DatasetFile:
+        """Add an MCAP file to the dataset selected by `data_scope_name`.
+
+        This method behaves like `nominal.core.Dataset.add_mcap`, with one important difference:
+        MCAP ingestion does not support applying scope tags. If the selected scope requires tags, this method raises
+        `RuntimeError` rather than ingesting untagged data.
+
+        For topic-filtering semantics and return value details, see
+        `nominal.core.Dataset.add_mcap`.
+        """
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+
+        # TODO(drake): remove once MCAP supports ingest with tags
+        if scope_tags:
+            raise RuntimeError(
+                f"Cannot add mcap files to datascope {data_scope_name}-- data would not get "
+                f"tagged with required tags: {scope_tags}"
+            )
+
+        return dataset.add_mcap(path, include_topics=include_topics, exclude_topics=exclude_topics)
+
+    def add_ardupilot_dataflash(
+        self,
+        data_scope_name: str,
+        path: Path | str,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile:
+        """Add a Dataflash file to the dataset selected by `data_scope_name`.
+
+        This method behaves like `nominal.core.Dataset.add_ardupilot_dataflash`, except that the data scope's
+        required tags are merged into `tags` before ingest (with user-provided tags taking precedence on key
+        collisions).
+
+        For file expectations and return value details, see
+        `nominal.core.Dataset.add_ardupilot_dataflash`.
+        """
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        return dataset.add_ardupilot_dataflash(path, tags=_unify_tags(scope_tags, tags))
+
+    @overload
+    def add_containerized(
+        self,
+        data_scope_name: str,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, Path | str],
+        *,
+        tag: str | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile: ...
+    @overload
+    def add_containerized(
+        self,
+        data_scope_name: str,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, Path | str],
+        *,
+        tag: str | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> DatasetFile: ...
+    def add_containerized(
+        self,
+        data_scope_name: str,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, Path | str],
+        *,
+        tag: str | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyTimestampType | None = None,
+    ) -> DatasetFile:
+        """Add data from proprietary formats using a pre-registered custom extractor.
+
+        This method behaves like `nominal.core.Dataset.add_containerized`, except that the data scope's required
+        tags are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
+
+        This wrapper also enforces that `timestamp_column` and `timestamp_type` are provided together (or omitted
+        together) before delegating.
+
+        For extractor inputs, tagging semantics, timestamp metadata behavior, and return value details, see
+        `nominal.core.Dataset.add_containerized`.
+        """
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        if timestamp_column is None and timestamp_type is None:
+            return dataset.add_containerized(
+                extractor,
+                sources,
+                tag=tag,
+                tags=_unify_tags(scope_tags, tags),
+            )
+        elif timestamp_column is not None and timestamp_type is not None:
+            return dataset.add_containerized(
+                extractor,
+                sources,
+                tag=tag,
+                tags=_unify_tags(scope_tags, tags),
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+            )
+        else:
+            raise ValueError(
+                "Only one of `timestamp_column` and `timestamp_type` were provided to `add_containerized`, "
+                "either both must or neither must be provided."
+            )
+
+    def add_from_io(
+        self,
+        data_scope_name: str,
+        data_stream: BinaryIO,
+        file_type: tuple[str, str] | FileType,
+        *,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+        file_name: str | None = None,
+        tag_columns: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile:
+        """Append to the dataset selected by `data_scope_name` from a file-like object.
+
+        This method behaves like `nominal.core.Dataset.add_from_io`, except that the data scope's required tags
+        are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
+
+        For stream requirements, supported file types, argument semantics, and return value details, see
+        `nominal.core.Dataset.add_from_io`.
+        """
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        return dataset.add_from_io(
+            data_stream,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
+            file_type=file_type,
+            file_name=file_name,
+            tag_columns=tag_columns,
+            tags=_unify_tags(scope_tags, tags),
         )
 
 
