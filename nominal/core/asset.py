@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
 
@@ -455,10 +456,50 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             )
         ]
 
-    def list_events(self) -> Sequence[Event]:
-        """List all events associated with this Asset."""
+    def search_events(
+        self,
+        *,
+        search_text: str | None = None,
+        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        created_by: str | None = None,
+        workbook: str | None = None,
+        data_review: str | None = None,
+        assignee: str | None = None,
+        event_type: EventType | None = None,
+    ) -> Sequence[Event]:
+        """Searches for events on this asset.
+        Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
+
+        Args:
+            search_text: Searches for a string in the event's metadata.
+            after: Filters to end times after this time, exclusive.
+            before: Filters to start times before this time, exclusive.
+            labels: A list of labels that must ALL be present on an event to be included.
+            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
+            created_by: A User (or rid) of the author that must be present on an event to be included.
+            workbook: Workbook to search for events on
+            data_review: Search for events from the given data review
+            assignee: Search for events with the given assignee
+            event_type: Search for events based on level
+
+        Returns:
+            List of events matching the criteria
+        """
         query = create_search_events_query(
             assets=[self.rid],
+            search_text=search_text,
+            after=after,
+            before=before,
+            labels=labels,
+            properties=properties,
+            created_by=rid_from_instance_or_string(created_by) if created_by else None,
+            workbook=rid_from_instance_or_string(workbook) if workbook else None,
+            data_review=rid_from_instance_or_string(data_review) if data_review else None,
+            assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            event_type=event_type,
         )
 
         return [
@@ -504,5 +545,5 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
 
 # Moving to bottom to deal with circular dependencies
-from nominal.core.event import Event  # noqa: E402
+from nominal.core.event import Event, EventType  # noqa: E402
 from nominal.core.run import Run  # noqa: E402
