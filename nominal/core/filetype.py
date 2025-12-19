@@ -111,6 +111,7 @@ class FileType(NamedTuple):
 
 
 class FileTypes:
+    AVI: FileType = FileType(".avi", "video/x-msvideo")
     AVRO_STREAM: FileType = FileType(".avro", "application/avro")
     BINARY: FileType = FileType("", "application/octet-stream")
     CSV: FileType = FileType(".csv", "text/csv")
@@ -134,4 +135,4 @@ class FileTypes:
     _PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)
     _PARQUET_ARCHIVE_TYPES = (PARQUET_TAR_GZ, PARQUET_TAR, PARQUET_ZIP)
     _JOURNAL_TYPES = (JOURNAL_JSONL, JOURNAL_JSONL_GZ)
-    _VIDEO_TYPES = (MKV, MP4, TS)
+    _VIDEO_TYPES = (AVI, MKV, MP4, TS)
