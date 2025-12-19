@@ -28,22 +28,13 @@ from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _Sec
 ScopeType: TypeAlias = Connection | Dataset | Video
 ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video"]
 
+logger = logging.getLogger(__name__)
+
 
 def _filter_scopes(
     scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
 ) -> Sequence[scout_asset_api.DataScope]:
     return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
-
-
-def _filter_scope_rids(
-    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
-) -> Mapping[str, str]:
-    return {
-        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in _filter_scopes(scopes, scope_type)
-    }
-
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
