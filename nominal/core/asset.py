@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
 
 from nominal_api import (
+    event,
     scout,
     scout_asset_api,
     scout_assets,
@@ -16,7 +17,8 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create_links, rid_from_instance_or_string
-from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
+from nominal.core._utils.pagination_tools import search_events_paginated, search_runs_by_asset_paginated
+from nominal.core._utils.query_tools import create_search_events_query
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
@@ -53,6 +55,8 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         def assets(self) -> scout_assets.AssetService: ...
         @property
         def run(self) -> scout.RunService: ...
+        @property
+        def event(self) -> event.EventService: ...
 
     @property
     def nominal_url(self) -> str:
@@ -451,6 +455,21 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             )
         ]
 
+    def list_events(self) -> Sequence[Event]:
+        """List all events associated with this Asset."""
+        query = create_search_events_query(
+            assets=[self.rid],
+        )
+
+        return [
+            Event._from_conjure(self._clients, event)
+            for event in search_events_paginated(
+                self._clients.event,
+                self._clients.auth_header,
+                query,
+            )
+        ]
+
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this asset.
         Does not remove the attachments from Nominal.
@@ -485,4 +504,5 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
 
 # Moving to bottom to deal with circular dependencies
+from nominal.core.event import Event  # noqa: E402
 from nominal.core.run import Run  # noqa: E402
