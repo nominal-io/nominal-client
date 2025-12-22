@@ -16,7 +16,6 @@ from nominal_api import (
     api,
     attachments_api,
     authentication_api,
-    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -54,7 +53,6 @@ from nominal.core._utils.pagination_tools import (
     search_checklists_paginated,
     search_data_reviews_paginated,
     search_datasets_paginated,
-    search_events_paginated,
     search_runs_by_asset_paginated,
     search_runs_paginated,
     search_secrets_paginated,
@@ -1272,10 +1270,6 @@ class NominalClient:
         # TODO (drake-nominal): Expose checklist_refs to users
         return list(self._iter_search_data_reviews(assets, runs))
 
-    def _iter_search_events(self, query: event.SearchQuery) -> Iterable[Event]:
-        for e in search_events_paginated(self._clients.event, self._clients.auth_header, query):
-            yield Event._from_conjure(self._clients, e)
-
     def search_events(
         self,
         *,
@@ -1323,13 +1317,13 @@ class NominalClient:
             search_text=search_text,
             after=after,
             before=before,
-            assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
+            asset_rids=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
             labels=labels,
             properties=properties,
-            created_by=rid_from_instance_or_string(created_by) if created_by else None,
-            workbook=rid_from_instance_or_string(workbook) if workbook else None,
-            data_review=rid_from_instance_or_string(data_review) if data_review else None,
-            assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            created_by_rid=rid_from_instance_or_string(created_by) if created_by else None,
+            workbook_rid=rid_from_instance_or_string(workbook) if workbook else None,
+            data_review_rid=rid_from_instance_or_string(data_review) if data_review else None,
+            assignee_rid=rid_from_instance_or_string(assignee) if assignee else None,
             event_type=event_type,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )

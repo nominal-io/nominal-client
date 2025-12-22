@@ -195,27 +195,27 @@ def _search_events(
     search_text: str | None = None,
     after: str | datetime | IntegralNanosecondsUTC | None = None,
     before: str | datetime | IntegralNanosecondsUTC | None = None,
-    assets: Iterable[str] | None = None,
+    asset_rids: Iterable[str] | None = None,
     labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
-    created_by: str | None = None,
-    workbook: str | None = None,
-    data_review: str | None = None,
-    assignee: str | None = None,
+    created_by_rid: str | None = None,
+    workbook_rid: str | None = None,
+    data_review_rid: str | None = None,
+    assignee_rid: str | None = None,
     event_type: EventType | None = None,
     workspace_rid: str | None = None,
 ) -> Sequence[Event]:
     query = _create_search_events_query(
-        assets=assets,
+        asset_rids=asset_rids,
         search_text=search_text,
         after=after,
         before=before,
         labels=labels,
         properties=properties,
-        created_by=created_by,
-        workbook=workbook,
-        data_review=data_review,
-        assignee=assignee,
+        created_by_rid=created_by_rid,
+        workbook_rid=workbook_rid,
+        data_review_rid=data_review_rid,
+        assignee_rid=assignee_rid,
         event_type=event_type,
         workspace_rid=workspace_rid,
     )
@@ -226,13 +226,13 @@ def _create_search_events_query(  # noqa: PLR0912
     search_text: str | None = None,
     after: str | datetime | IntegralNanosecondsUTC | None = None,
     before: str | datetime | IntegralNanosecondsUTC | None = None,
-    assets: Iterable[str] | None = None,
+    asset_rids: Iterable[str] | None = None,
     labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
-    created_by: str | None = None,
-    workbook: str | None = None,
-    data_review: str | None = None,
-    assignee: str | None = None,
+    created_by_rid: str | None = None,
+    workbook_rid: str | None = None,
+    data_review_rid: str | None = None,
+    assignee_rid: str | None = None,
     event_type: EventType | None = None,
     workspace_rid: str | None = None,
 ) -> event.SearchQuery:
@@ -243,8 +243,8 @@ def _create_search_events_query(  # noqa: PLR0912
         queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
     if before is not None:
         queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
-    if assets:
-        for asset in assets:
+    if asset_rids:
+        for asset in asset_rids:
             queries.append(event.SearchQuery(asset=asset))
     if labels:
         for label in labels:
@@ -252,14 +252,14 @@ def _create_search_events_query(  # noqa: PLR0912
     if properties:
         for name, value in properties.items():
             queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
-    if created_by:
-        queries.append(event.SearchQuery(created_by=created_by))
-    if workbook is not None:
-        queries.append(event.SearchQuery(workbook=workbook))
-    if data_review is not None:
-        queries.append(event.SearchQuery(data_review=data_review))
-    if assignee is not None:
-        queries.append(event.SearchQuery(assignee=assignee))
+    if created_by_rid:
+        queries.append(event.SearchQuery(created_by=created_by_rid))
+    if workbook_rid is not None:
+        queries.append(event.SearchQuery(workbook=workbook_rid))
+    if data_review_rid is not None:
+        queries.append(event.SearchQuery(data_review=data_review_rid))
+    if assignee_rid is not None:
+        queries.append(event.SearchQuery(assignee=assignee_rid))
     if event_type is not None:
         queries.append(event.SearchQuery(event_type=event_type._to_api_event_type()))
     if workspace_rid is not None:

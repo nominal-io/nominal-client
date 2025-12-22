@@ -462,10 +462,10 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         before: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
         labels: Iterable[str] | None = None,
         properties: Mapping[str, str] | None = None,
-        created_by: str | None = None,
-        workbook: str | None = None,
-        data_review: str | None = None,
-        assignee: str | None = None,
+        created_by_rid: str | None = None,
+        workbook_rid: str | None = None,
+        data_review_rid: str | None = None,
+        assignee_rid: str | None = None,
         event_type: EventType | None = None,
     ) -> Sequence[Event]:
         """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
@@ -474,13 +474,13 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
             search_text=search_text,
             after=after,
             before=before,
-            assets=[self.rid],
+            asset_rids=[self.rid],
             labels=labels,
             properties=properties,
-            created_by=created_by,
-            workbook=workbook,
-            data_review=data_review,
-            assignee=assignee,
+            created_by_rid=created_by_rid,
+            workbook_rid=workbook_rid,
+            data_review_rid=data_review_rid,
+            assignee_rid=assignee_rid,
             event_type=event_type,
         )
 
