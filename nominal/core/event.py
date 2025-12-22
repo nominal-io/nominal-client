@@ -4,15 +4,18 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Iterable, Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import event
 from typing_extensions import Self
 
-import nominal.core.asset as core_asset
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
+from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
+
+if TYPE_CHECKING:
+    import nominal.core.asset as core_asset
 
 
 @dataclass(frozen=True)
@@ -181,3 +184,87 @@ def _create_event(
     )
     response = clients.event.create_event(clients.auth_header, request)
     return Event._from_conjure(clients, response)
+
+
+def _iter_search_events(clients: Event._Clients, query: event.SearchQuery) -> Iterable[Event]:
+    for e in search_events_paginated(clients.event, clients.auth_header, query):
+        yield Event._from_conjure(clients, e)
+
+
+def _search_events(
+    clients: Event._Clients,
+    *,
+    search_text: str | None = None,
+    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    before: str | datetime | IntegralNanosecondsUTC | None = None,
+    assets: Iterable[str] | None = None,
+    labels: Iterable[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    created_by: str | None = None,
+    workbook: str | None = None,
+    data_review: str | None = None,
+    assignee: str | None = None,
+    event_type: EventType | None = None,
+    workspace_rid: str | None = None,
+) -> Sequence[Event]:
+    query = _create_search_events_query(
+        assets=assets,
+        search_text=search_text,
+        after=after,
+        before=before,
+        labels=labels,
+        properties=properties,
+        created_by=rid_from_instance_or_string(created_by) if created_by else None,
+        workbook=rid_from_instance_or_string(workbook) if workbook else None,
+        data_review=rid_from_instance_or_string(data_review) if data_review else None,
+        assignee=rid_from_instance_or_string(assignee) if assignee else None,
+        event_type=event_type,
+        workspace_rid=workspace_rid,
+    )
+    return list(_iter_search_events(clients, query))
+
+
+def _create_search_events_query(  # noqa: PLR0912
+    search_text: str | None = None,
+    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    before: str | datetime | IntegralNanosecondsUTC | None = None,
+    assets: Iterable[str] | None = None,
+    labels: Iterable[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    created_by: str | None = None,
+    workbook: str | None = None,
+    data_review: str | None = None,
+    assignee: str | None = None,
+    event_type: EventType | None = None,
+    workspace_rid: str | None = None,
+) -> event.SearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(event.SearchQuery(search_text=search_text))
+    if after is not None:
+        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
+    if before is not None:
+        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+    if assets:
+        for asset in assets:
+            queries.append(event.SearchQuery(asset=asset))
+    if labels:
+        for label in labels:
+            queries.append(event.SearchQuery(label=label))
+    if properties:
+        for name, value in properties.items():
+            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
+    if created_by:
+        queries.append(event.SearchQuery(created_by=created_by))
+    if workbook is not None:
+        queries.append(event.SearchQuery(workbook=workbook))
+    if data_review is not None:
+        queries.append(event.SearchQuery(data_review=data_review))
+    if assignee is not None:
+        queries.append(event.SearchQuery(assignee=assignee))
+    if event_type is not None:
+        queries.append(event.SearchQuery(event_type=event_type._to_api_event_type()))
+    if workspace_rid is not None:
+        queries.append(event.SearchQuery(workspace=workspace_rid))
+
+    return event.SearchQuery(and_=queries)

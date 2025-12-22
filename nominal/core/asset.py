@@ -15,15 +15,14 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+import nominal.core.event as core_event
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create_links, rid_from_instance_or_string
-from nominal.core._utils.pagination_tools import search_events_paginated, search_runs_by_asset_paginated
-from nominal.core._utils.query_tools import create_search_events_query
+from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType, _create_event
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
@@ -47,7 +46,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         DataSource._Clients,
         Video._Clients,
         Attachment._Clients,
-        Event._Clients,
+        # core_event.Event._Clients,
         HasScoutParams,
         Protocol,
     ):
@@ -339,14 +338,14 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def create_event(
         self,
         name: str,
-        type: EventType,
+        type: core_event.EventType,
         start: datetime.datetime | IntegralNanosecondsUTC,
         duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
-    ) -> Event:
+    ) -> core_event.Event:
         """Create an event associated with this Asset at a given point in time.
 
         Args:
@@ -361,7 +360,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         Returns:
             The created event that is associated with the asset.
         """
-        return _create_event(
+        return core_event._create_event(
             self._clients,
             name=name,
             type=type,
@@ -467,48 +466,23 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         workbook: str | None = None,
         data_review: str | None = None,
         assignee: str | None = None,
-        event_type: EventType | None = None,
-    ) -> Sequence[Event]:
-        """Searches for events on this asset.
-        Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
-
-        Args:
-            search_text: Searches for a string in the event's metadata.
-            after: Filters to end times after this time, exclusive.
-            before: Filters to start times before this time, exclusive.
-            labels: A list of labels that must ALL be present on an event to be included.
-            properties: A mapping of key-value pairs that must ALL be present on an event to be included.
-            created_by: A User (or rid) of the author that must be present on an event to be included.
-            workbook: Workbook to search for events on
-            data_review: Search for events from the given data review
-            assignee: Search for events with the given assignee
-            event_type: Search for events based on level
-
-        Returns:
-            List of events matching the criteria
-        """
-        query = create_search_events_query(
-            assets=[self.rid],
+        event_type: core_event.EventType | None = None,
+    ) -> Sequence[core_event.Event]:
+        """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
+        return core_event._search_events(
+            self._clients,
             search_text=search_text,
             after=after,
             before=before,
+            assets=[self.rid],
             labels=labels,
             properties=properties,
-            created_by=rid_from_instance_or_string(created_by) if created_by else None,
-            workbook=rid_from_instance_or_string(workbook) if workbook else None,
-            data_review=rid_from_instance_or_string(data_review) if data_review else None,
-            assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            created_by=created_by,
+            workbook=workbook,
+            data_review=data_review,
+            assignee=assignee,
             event_type=event_type,
         )
-
-        return [
-            Event._from_conjure(self._clients, event)
-            for event in search_events_paginated(
-                self._clients.event,
-                self._clients.auth_header,
-                query,
-            )
-        ]
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this asset.
@@ -544,5 +518,4 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
 
 # Moving to bottom to deal with circular dependencies
-from nominal.core.event import Event  # noqa: E402
 from nominal.core.run import Run  # noqa: E402

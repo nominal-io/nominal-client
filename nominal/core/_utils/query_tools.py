@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable, Mapping, Sequence
+from typing import Mapping, Sequence
 
 from nominal_api import (
     api,
     authentication_api,
-    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -19,7 +18,6 @@ from nominal_api import (
     secrets_api,
 )
 
-from nominal.core.event import EventType
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -196,52 +194,6 @@ def create_search_datasets_query(
         queries.append(scout_catalog.SearchDatasetsQuery(archive_status=archived))
 
     return scout_catalog.SearchDatasetsQuery(and_=queries)
-
-
-def create_search_events_query(  # noqa: PLR0912
-    search_text: str | None = None,
-    after: str | datetime | IntegralNanosecondsUTC | None = None,
-    before: str | datetime | IntegralNanosecondsUTC | None = None,
-    assets: Iterable[str] | None = None,
-    labels: Iterable[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    created_by: str | None = None,
-    workbook: str | None = None,
-    data_review: str | None = None,
-    assignee: str | None = None,
-    event_type: EventType | None = None,
-    workspace_rid: str | None = None,
-) -> event.SearchQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(event.SearchQuery(search_text=search_text))
-    if after is not None:
-        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
-    if before is not None:
-        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
-    if assets:
-        for asset in assets:
-            queries.append(event.SearchQuery(asset=asset))
-    if labels:
-        for label in labels:
-            queries.append(event.SearchQuery(label=label))
-    if properties:
-        for name, value in properties.items():
-            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
-    if created_by:
-        queries.append(event.SearchQuery(created_by=created_by))
-    if workbook is not None:
-        queries.append(event.SearchQuery(workbook=workbook))
-    if data_review is not None:
-        queries.append(event.SearchQuery(data_review=data_review))
-    if assignee is not None:
-        queries.append(event.SearchQuery(assignee=assignee))
-    if event_type is not None:
-        queries.append(event.SearchQuery(event_type=event_type._to_api_event_type()))
-    if workspace_rid is not None:
-        queries.append(event.SearchQuery(workspace=workspace_rid))
-
-    return event.SearchQuery(and_=queries)
 
 
 def create_search_runs_query(

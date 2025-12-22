@@ -68,7 +68,6 @@ from nominal.core._utils.query_tools import (
     create_search_checklists_query,
     create_search_containerized_extractors_query,
     create_search_datasets_query,
-    create_search_events_query,
     create_search_runs_query,
     create_search_secrets_query,
     create_search_users_query,
@@ -94,7 +93,7 @@ from nominal.core.dataset import (
     _get_datasets,
 )
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType, _create_event
+from nominal.core.event import Event, EventType, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
@@ -1319,11 +1318,12 @@ class NominalClient:
         Returns:
             All events which match all of the provided conditions
         """
-        query = create_search_events_query(
+        return _search_events(
+            clients=self._clients,
             search_text=search_text,
             after=after,
             before=before,
-            assets=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
+            assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
             labels=labels,
             properties=properties,
             created_by=rid_from_instance_or_string(created_by) if created_by else None,
@@ -1333,7 +1333,6 @@ class NominalClient:
             event_type=event_type,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return list(self._iter_search_events(query))
 
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
         return ContainerizedExtractor._from_conjure(
