@@ -6,12 +6,13 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
 
-from nominal_api import event
+from nominal_api import api, event
 from typing_extensions import Self
 
-import nominal.core.asset as core_asset
+from nominal.core import asset as core_asset
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
+from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
@@ -181,3 +182,87 @@ def _create_event(
     )
     response = clients.event.create_event(clients.auth_header, request)
     return Event._from_conjure(clients, response)
+
+
+def _iter_search_events(clients: Event._Clients, query: event.SearchQuery) -> Iterable[Event]:
+    for e in search_events_paginated(clients.event, clients.auth_header, query):
+        yield Event._from_conjure(clients, e)
+
+
+def _search_events(
+    clients: Event._Clients,
+    *,
+    search_text: str | None = None,
+    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    before: str | datetime | IntegralNanosecondsUTC | None = None,
+    asset_rids: Iterable[str] | None = None,
+    labels: Iterable[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    created_by_rid: str | None = None,
+    workbook_rid: str | None = None,
+    data_review_rid: str | None = None,
+    assignee_rid: str | None = None,
+    event_type: EventType | None = None,
+    workspace_rid: str | None = None,
+) -> Sequence[Event]:
+    query = _create_search_events_query(
+        asset_rids=asset_rids,
+        search_text=search_text,
+        after=after,
+        before=before,
+        labels=labels,
+        properties=properties,
+        created_by_rid=created_by_rid,
+        workbook_rid=workbook_rid,
+        data_review_rid=data_review_rid,
+        assignee_rid=assignee_rid,
+        event_type=event_type,
+        workspace_rid=workspace_rid,
+    )
+    return list(_iter_search_events(clients, query))
+
+
+def _create_search_events_query(  # noqa: PLR0912
+    search_text: str | None = None,
+    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    before: str | datetime | IntegralNanosecondsUTC | None = None,
+    asset_rids: Iterable[str] | None = None,
+    labels: Iterable[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    created_by_rid: str | None = None,
+    workbook_rid: str | None = None,
+    data_review_rid: str | None = None,
+    assignee_rid: str | None = None,
+    event_type: EventType | None = None,
+    workspace_rid: str | None = None,
+) -> event.SearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(event.SearchQuery(search_text=search_text))
+    if after is not None:
+        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
+    if before is not None:
+        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+    if asset_rids:
+        for asset in asset_rids:
+            queries.append(event.SearchQuery(asset=asset))
+    if labels:
+        for label in labels:
+            queries.append(event.SearchQuery(label=label))
+    if properties:
+        for name, value in properties.items():
+            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
+    if created_by_rid:
+        queries.append(event.SearchQuery(created_by=created_by_rid))
+    if workbook_rid is not None:
+        queries.append(event.SearchQuery(workbook=workbook_rid))
+    if data_review_rid is not None:
+        queries.append(event.SearchQuery(data_review=data_review_rid))
+    if assignee_rid is not None:
+        queries.append(event.SearchQuery(assignee=assignee_rid))
+    if event_type is not None:
+        queries.append(event.SearchQuery(event_type=event_type._to_api_event_type()))
+    if workspace_rid is not None:
+        queries.append(event.SearchQuery(workspace=workspace_rid))
+
+    return event.SearchQuery(and_=queries)

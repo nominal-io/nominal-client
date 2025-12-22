@@ -16,7 +16,6 @@ from nominal_api import (
     api,
     attachments_api,
     authentication_api,
-    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -54,7 +53,6 @@ from nominal.core._utils.pagination_tools import (
     search_checklists_paginated,
     search_data_reviews_paginated,
     search_datasets_paginated,
-    search_events_paginated,
     search_runs_by_asset_paginated,
     search_runs_paginated,
     search_secrets_paginated,
@@ -68,7 +66,6 @@ from nominal.core._utils.query_tools import (
     create_search_checklists_query,
     create_search_containerized_extractors_query,
     create_search_datasets_query,
-    create_search_events_query,
     create_search_runs_query,
     create_search_secrets_query,
     create_search_users_query,
@@ -94,7 +91,7 @@ from nominal.core.dataset import (
     _get_datasets,
 )
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType, _create_event
+from nominal.core.event import Event, EventType, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
@@ -1273,10 +1270,6 @@ class NominalClient:
         # TODO (drake-nominal): Expose checklist_refs to users
         return list(self._iter_search_data_reviews(assets, runs))
 
-    def _iter_search_events(self, query: event.SearchQuery) -> Iterable[Event]:
-        for e in search_events_paginated(self._clients.event, self._clients.auth_header, query):
-            yield Event._from_conjure(self._clients, e)
-
     def search_events(
         self,
         *,
@@ -1319,21 +1312,21 @@ class NominalClient:
         Returns:
             All events which match all of the provided conditions
         """
-        query = create_search_events_query(
+        return _search_events(
+            clients=self._clients,
             search_text=search_text,
             after=after,
             before=before,
-            assets=None if assets is None else [rid_from_instance_or_string(asset) for asset in assets],
+            asset_rids=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
             labels=labels,
             properties=properties,
-            created_by=rid_from_instance_or_string(created_by) if created_by else None,
-            workbook=rid_from_instance_or_string(workbook) if workbook else None,
-            data_review=rid_from_instance_or_string(data_review) if data_review else None,
-            assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            created_by_rid=rid_from_instance_or_string(created_by) if created_by else None,
+            workbook_rid=rid_from_instance_or_string(workbook) if workbook else None,
+            data_review_rid=rid_from_instance_or_string(data_review) if data_review else None,
+            assignee_rid=rid_from_instance_or_string(assignee) if assignee else None,
             event_type=event_type,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return list(self._iter_search_events(query))
 
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
         return ContainerizedExtractor._from_conjure(

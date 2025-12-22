@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
 
 from nominal_api import (
+    event,
     scout,
     scout_asset_api,
     scout_assets,
@@ -21,7 +22,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType, _create_event
+from nominal.core.event import Event, EventType, _create_event, _search_events
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
@@ -60,6 +61,8 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         def assets(self) -> scout_assets.AssetService: ...
         @property
         def run(self) -> scout.RunService: ...
+        @property
+        def event(self) -> event.EventService: ...
 
     @property
     def nominal_url(self) -> str:
@@ -460,6 +463,36 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
                 self.rid,
             )
         ]
+
+    def search_events(
+        self,
+        *,
+        search_text: str | None = None,
+        after: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
+        before: str | datetime.datetime | IntegralNanosecondsUTC | None = None,
+        labels: Iterable[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        created_by_rid: str | None = None,
+        workbook_rid: str | None = None,
+        data_review_rid: str | None = None,
+        assignee_rid: str | None = None,
+        event_type: EventType | None = None,
+    ) -> Sequence[Event]:
+        """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
+        return _search_events(
+            self._clients,
+            search_text=search_text,
+            after=after,
+            before=before,
+            asset_rids=[self.rid],
+            labels=labels,
+            properties=properties,
+            created_by_rid=created_by_rid,
+            workbook_rid=workbook_rid,
+            data_review_rid=data_review_rid,
+            assignee_rid=assignee_rid,
+            event_type=event_type,
+        )
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this asset.
