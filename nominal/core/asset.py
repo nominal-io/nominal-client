@@ -15,7 +15,6 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-import nominal.core.event as core_event
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create_links, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
@@ -23,6 +22,7 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _get_datasets
 from nominal.core.datasource import DataSource
+from nominal.core.event import Event, EventType, _create_event, _search_events
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
@@ -46,7 +46,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         DataSource._Clients,
         Video._Clients,
         Attachment._Clients,
-        # core_event.Event._Clients,
+        Event._Clients,
         HasScoutParams,
         Protocol,
     ):
@@ -338,14 +338,14 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def create_event(
         self,
         name: str,
-        type: core_event.EventType,
+        type: EventType,
         start: datetime.datetime | IntegralNanosecondsUTC,
         duration: datetime.timedelta | IntegralNanosecondsDuration = 0,
         *,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
-    ) -> core_event.Event:
+    ) -> Event:
         """Create an event associated with this Asset at a given point in time.
 
         Args:
@@ -360,7 +360,7 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         Returns:
             The created event that is associated with the asset.
         """
-        return core_event._create_event(
+        return _create_event(
             self._clients,
             name=name,
             type=type,
@@ -466,10 +466,10 @@ class Asset(HasRid, RefreshableMixin[scout_asset_api.Asset]):
         workbook: str | None = None,
         data_review: str | None = None,
         assignee: str | None = None,
-        event_type: core_event.EventType | None = None,
-    ) -> Sequence[core_event.Event]:
+        event_type: EventType | None = None,
+    ) -> Sequence[Event]:
         """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
-        return core_event._search_events(
+        return _search_events(
             self._clients,
             search_text=search_text,
             after=after,

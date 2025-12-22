@@ -4,18 +4,16 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
+from typing import Iterable, Mapping, Protocol, Sequence
 
-from nominal_api import event
+from nominal_api import api, event
 from typing_extensions import Self
 
+from nominal.core import asset as core_asset
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
-
-if TYPE_CHECKING:
-    import nominal.core.asset as core_asset
 
 
 @dataclass(frozen=True)
