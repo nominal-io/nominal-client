@@ -3,16 +3,18 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
 
-from nominal_api import api, event
+from nominal_api import event
 from typing_extensions import Self
 
 from nominal.core import asset as core_asset
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
+from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_events_paginated
+from nominal.core._utils.query_tools import _create_search_events_query
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
@@ -124,39 +126,6 @@ class Event(HasRid, RefreshableMixin[event.Event]):
         )
 
 
-class EventType(Enum):
-    INFO = "INFO"
-    FLAG = "FLAG"
-    ERROR = "ERROR"
-    SUCCESS = "SUCCESS"
-    UNKNOWN = "UNKNOWN"
-
-    @classmethod
-    def from_api_event_type(cls, event: event.EventType) -> EventType:
-        if event.name == "INFO":
-            return cls.INFO
-        elif event.name == "FLAG":
-            return cls.FLAG
-        elif event.name == "ERROR":
-            return cls.ERROR
-        elif event.name == "SUCCESS":
-            return cls.SUCCESS
-        else:
-            return cls.UNKNOWN
-
-    def _to_api_event_type(self) -> event.EventType:
-        if self.name == "INFO":
-            return event.EventType.INFO
-        elif self.name == "FLAG":
-            return event.EventType.FLAG
-        elif self.name == "ERROR":
-            return event.EventType.ERROR
-        elif self.name == "SUCCESS":
-            return event.EventType.SUCCESS
-        else:
-            return event.EventType.UNKNOWN
-
-
 def _create_event(
     clients: Event._Clients,
     *,
@@ -203,6 +172,7 @@ def _search_events(
     data_review_rid: str | None = None,
     assignee_rid: str | None = None,
     event_type: EventType | None = None,
+    origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
 ) -> Sequence[Event]:
     query = _create_search_events_query(
@@ -216,53 +186,10 @@ def _search_events(
         workbook_rid=workbook_rid,
         data_review_rid=data_review_rid,
         assignee_rid=assignee_rid,
-        event_type=event_type,
+        event_type=event_type._to_api_event_type() if event_type else None,
+        origin_types=[origin_type._to_api_search_event_origin_type() for origin_type in origin_types]
+        if origin_types
+        else None,
         workspace_rid=workspace_rid,
     )
     return list(_iter_search_events(clients, query))
-
-
-def _create_search_events_query(  # noqa: PLR0912
-    search_text: str | None = None,
-    after: str | datetime | IntegralNanosecondsUTC | None = None,
-    before: str | datetime | IntegralNanosecondsUTC | None = None,
-    asset_rids: Iterable[str] | None = None,
-    labels: Iterable[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    created_by_rid: str | None = None,
-    workbook_rid: str | None = None,
-    data_review_rid: str | None = None,
-    assignee_rid: str | None = None,
-    event_type: EventType | None = None,
-    workspace_rid: str | None = None,
-) -> event.SearchQuery:
-    queries = []
-    if search_text is not None:
-        queries.append(event.SearchQuery(search_text=search_text))
-    if after is not None:
-        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
-    if before is not None:
-        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
-    if asset_rids:
-        for asset in asset_rids:
-            queries.append(event.SearchQuery(asset=asset))
-    if labels:
-        for label in labels:
-            queries.append(event.SearchQuery(label=label))
-    if properties:
-        for name, value in properties.items():
-            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
-    if created_by_rid:
-        queries.append(event.SearchQuery(created_by=created_by_rid))
-    if workbook_rid is not None:
-        queries.append(event.SearchQuery(workbook=workbook_rid))
-    if data_review_rid is not None:
-        queries.append(event.SearchQuery(data_review=data_review_rid))
-    if assignee_rid is not None:
-        queries.append(event.SearchQuery(assignee=assignee_rid))
-    if event_type is not None:
-        queries.append(event.SearchQuery(event_type=event_type._to_api_event_type()))
-    if workspace_rid is not None:
-        queries.append(event.SearchQuery(workspace=workspace_rid))
-
-    return event.SearchQuery(and_=queries)

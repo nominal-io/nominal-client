@@ -36,6 +36,7 @@ from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
+from nominal.core._event_types import EventType
 from nominal.core._utils.api_tools import (
     Link,
     LinkDict,
@@ -91,7 +92,7 @@ from nominal.core.dataset import (
     _get_datasets,
 )
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType, _create_event, _search_events
+from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run

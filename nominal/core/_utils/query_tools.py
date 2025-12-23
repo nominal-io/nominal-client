@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from nominal_api import (
     api,
     authentication_api,
+    event,
     ingest_api,
     scout_asset_api,
     scout_catalog,
@@ -350,3 +351,53 @@ def create_search_workbook_templates_query(
         queries.append(scout_template_api.SearchTemplatesQuery(is_published=published))
 
     return scout_template_api.SearchTemplatesQuery(and_=queries)
+
+
+def _create_search_events_query(  # noqa: PLR0912
+    search_text: str | None = None,
+    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    before: str | datetime | IntegralNanosecondsUTC | None = None,
+    asset_rids: Iterable[str] | None = None,
+    labels: Iterable[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    created_by_rid: str | None = None,
+    workbook_rid: str | None = None,
+    data_review_rid: str | None = None,
+    assignee_rid: str | None = None,
+    event_type: event.EventType | None = None,
+    origin_types: Iterable[event.SearchEventOriginType] | None = None,
+    workspace_rid: str | None = None,
+) -> event.SearchQuery:
+    queries = []
+    if search_text is not None:
+        queries.append(event.SearchQuery(search_text=search_text))
+    if after is not None:
+        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
+    if before is not None:
+        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+    if asset_rids:
+        for asset in asset_rids:
+            queries.append(event.SearchQuery(asset=asset))
+    if labels:
+        for label in labels:
+            queries.append(event.SearchQuery(label=label))
+    if properties:
+        for name, value in properties.items():
+            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
+    if created_by_rid:
+        queries.append(event.SearchQuery(created_by=created_by_rid))
+    if workbook_rid is not None:
+        queries.append(event.SearchQuery(workbook=workbook_rid))
+    if data_review_rid is not None:
+        queries.append(event.SearchQuery(data_review=data_review_rid))
+    if assignee_rid is not None:
+        queries.append(event.SearchQuery(assignee=assignee_rid))
+    if event_type is not None:
+        queries.append(event.SearchQuery(event_type=event_type))
+    if origin_types is not None:
+        origin_type_filter = event.OriginTypesFilter(api.SetOperator.OR, list(origin_types))
+        queries.append(event.SearchQuery(origin_types=origin_type_filter))
+    if workspace_rid is not None:
+        queries.append(event.SearchQuery(workspace=workspace_rid))
+
+    return event.SearchQuery(and_=queries)

@@ -1,3 +1,4 @@
+from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import WriteStream
 from nominal.core._utils.api_tools import LinkDict
 from nominal.core.asset import Asset
@@ -19,7 +20,7 @@ from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuild
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType
+from nominal.core.event import Event
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint
 from nominal.core.run import Run
@@ -60,6 +61,7 @@ __all__ = [
     "NominalClient",
     "poll_until_ingestion_completed",
     "Run",
+    "SearchEventOriginType",
     "Secret",
     "TagDetails",
     "TimestampMetadata",
