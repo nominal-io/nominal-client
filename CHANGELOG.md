@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.101.0](https://github.com/nominal-io/nominal-client/compare/v1.100.0...v1.101.0) (2025-12-23)
+
+
+### Features
+
+* add search_events to asset ([#553](https://github.com/nominal-io/nominal-client/issues/553)) ([3d291b7](https://github.com/nominal-io/nominal-client/commit/3d291b7e4b851676de882ac88d7695e49e9da0d3))
+* added avi video file type ([#552](https://github.com/nominal-io/nominal-client/issues/552)) ([84bd35f](https://github.com/nominal-io/nominal-client/commit/84bd35ff83aa87cf8f7a718b5d71c1ca1445e9e9))
+* allow adding data directly to runs, assets ([#543](https://github.com/nominal-io/nominal-client/issues/543)) ([6630717](https://github.com/nominal-io/nominal-client/commit/6630717827a35d50ee6008ede14b9c8e355f239c))
+* allow creating events on runs, assets, _create_event helper method ([#540](https://github.com/nominal-io/nominal-client/issues/540)) ([dc84028](https://github.com/nominal-io/nominal-client/commit/dc84028d78df256f50ba58879416bb3b5f8752ed))
+* allow creating events on runs, assets, use helper method ([dc84028](https://github.com/nominal-io/nominal-client/commit/dc84028d78df256f50ba58879416bb3b5f8752ed))
+* reusable helper method for creating runs, create multi-asset runs in client ([#539](https://github.com/nominal-io/nominal-client/issues/539)) ([3118b43](https://github.com/nominal-io/nominal-client/commit/3118b43be4df552eb7418ffed08ed0afafbe88f4))
+
+
+### Bug Fixes
+
+* make rust streaming optional unless supported architecture ([#556](https://github.com/nominal-io/nominal-client/issues/556)) ([24a2b98](https://github.com/nominal-io/nominal-client/commit/24a2b98218d025affb171411a72ad80b2dd2dd87))
+
 ## [1.100.0](https://github.com/nominal-io/nominal-client/compare/v1.99.0...v1.100.0) (2025-12-19)
 
 
