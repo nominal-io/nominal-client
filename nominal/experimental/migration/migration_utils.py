@@ -2,8 +2,9 @@ import json
 import logging
 import re
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, BinaryIO, Mapping, Sequence, TypeVar, Union, cast, overload
+from typing import Any, BinaryIO, Iterable, Mapping, Sequence, TypeVar, Union, cast, overload
 
 import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
@@ -11,7 +12,21 @@ from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
 from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
 
-from nominal.core import Asset, Dataset, DatasetFile, FileType, NominalClient, Workbook, WorkbookTemplate
+from nominal.core import (
+    Asset,
+    Dataset,
+    DatasetFile,
+    Event,
+    FileType,
+    NominalClient,
+    Workbook,
+    WorkbookTemplate,
+)
+from nominal.core.event_types import EventType, SearchEventOriginType
+from nominal.ts import (
+    IntegralNanosecondsDuration,
+    IntegralNanosecondsUTC,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -438,6 +453,70 @@ def copy_dataset_from(
     return new_dataset
 
 
+def clone_event(source_event: Event, destination_client: NominalClient) -> Event:
+    """Clones an event, maintaining all properties and linked assets.
+
+    Args:
+        source_event (Event): The event to copy from.
+        destination_client (NominalClient): The destination client.
+
+    Returns:
+        The cloned event.
+    """
+    return copy_event_from(source_event=source_event, destination_client=destination_client)
+
+
+def copy_event_from(
+    source_event: Event,
+    destination_client: NominalClient,
+    *,
+    new_name: str | None = None,
+    new_type: EventType | None = None,
+    new_start: datetime | IntegralNanosecondsUTC | None = None,
+    new_duration: timedelta | IntegralNanosecondsDuration = timedelta(),
+    new_description: str | None = None,
+    new_assets: Iterable[Asset | str] = (),
+    new_properties: Mapping[str, str] | None = None,
+    new_labels: Iterable[str] = (),
+) -> Event:
+    """Copy an event from the source to the destination client.
+
+    Args:
+        source_event: The source Event to copy.
+        destination_client: The NominalClient to create the copied event in.
+        new_name: Optional new name for the copied event. If not provided, the original name is used.
+        new_type: Optional new type for the copied event. If not provided, the original type is used.
+        new_start: Optional new start time for the copied event. If not provided, the original start time is used.
+        new_duration: Optional new duration for the copied event. If not provided, the original duration is used.
+        new_description: Optional new description for the copied event. If not provided, the original description is used.
+        new_assets: Optional new assets for the copied event. If not provided, the original assets are used.
+        new_properties: Optional new properties for the copied event. If not provided, the original properties are used.
+        new_labels: Optional new labels for the copied event. If not provided, the original labels are used.
+
+    Returns:
+        The newly created Event in the destination client.
+    """
+    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    logger.debug(
+        "Copying event %s (rid: %s)",
+        source_event.name,
+        source_event.rid,
+        extra=log_extras,
+    )
+    new_event = destination_client.create_event(
+        name=new_name or source_event.name,
+        type=new_type or source_event.type,
+        start=new_start or source_event.start,
+        duration=new_duration or source_event.duration,
+        description=new_description or source_event.description,
+        assets=new_assets or source_event.asset_rids,
+        properties=new_properties or source_event.properties,
+        labels=new_labels or source_event.labels,
+    )
+    logger.debug("New event created: %s (rid: %s)", new_event.name, new_event.rid, extra=log_extras)
+    return new_event
+
+
 def clone_asset(
     source_asset: Asset,
     destination_client: NominalClient,
@@ -463,6 +542,7 @@ def copy_asset_from(
     new_asset_properties: dict[str, Any] | None = None,
     new_asset_labels: Sequence[str] | None = None,
     include_data: bool = False,
+    include_events: bool = False,
 ) -> Asset:
     """Copy an asset from the source to the destination client.
 
@@ -474,6 +554,7 @@ def copy_asset_from(
         new_asset_properties: Optional new properties for the copied asset. If not provided, original properties used.
         new_asset_labels: Optional new labels for the copied asset. If not provided, the original labels are used.
         include_data: Whether to include data in the copied asset.
+        include_events: Whether to include events in the copied dataset.
 
     Returns:
         The new asset created.
@@ -496,6 +577,14 @@ def copy_asset_from(
             )
             new_datasets.append(new_dataset)
             new_asset.add_dataset(data_scope, new_dataset)
+
+    if include_events:
+        source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
+        new_events = []
+        for source_event in source_events:
+            new_event = copy_event_from(source_event, destination_client, new_assets=[new_asset])
+            new_events.append(new_event)
+
     logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
     return new_asset
 

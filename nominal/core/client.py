@@ -91,7 +91,8 @@ from nominal.core.dataset import (
     _get_datasets,
 )
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType, _create_event, _search_events
+from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.event_types import EventType
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run

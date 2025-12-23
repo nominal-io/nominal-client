@@ -22,7 +22,8 @@ from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
-from nominal.core.event import Event, EventType, _create_event, _search_events
+from nominal.core.event import Event, _create_event, _search_events
+from nominal.core.event_types import EventType, SearchEventOriginType
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
@@ -477,6 +478,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         data_review_rid: str | None = None,
         assignee_rid: str | None = None,
         event_type: EventType | None = None,
+        origin_types: Iterable[SearchEventOriginType] | None = None,
     ) -> Sequence[Event]:
         """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
         return _search_events(
@@ -492,6 +494,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             data_review_rid=data_review_rid,
             assignee_rid=assignee_rid,
             event_type=event_type,
+            origin_types=origin_types,
         )
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
