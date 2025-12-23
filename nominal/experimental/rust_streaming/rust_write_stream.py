@@ -5,9 +5,7 @@ import pathlib
 
 from nominal_streaming import NominalDatasetStream
 
-from nominal.core._stream.write_stream import (
-    DataStream,
-)
+from nominal.core._stream.write_stream import DataStream
 from nominal.core.datasource import DataSource
 
 

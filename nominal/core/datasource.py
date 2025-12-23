@@ -396,7 +396,12 @@ def _get_write_stream(
         )
     elif data_format == "rust_experimental":
         # Delayed import intentionally in case of any issues with experimental and pre-compiled binaries
-        from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
+        try:
+            from nominal.experimental.rust_streaming.rust_write_stream import RustWriteStream
+        except ImportError as ex:
+            raise ImportError(
+                "nominal-streaming is required to use get_write_stream with data_format='rust_experimental'"
+            ) from ex
 
         return RustWriteStream._from_datasource(
             write_rid,
