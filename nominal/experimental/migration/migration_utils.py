@@ -488,7 +488,7 @@ def copy_event_from(
         new_type: Optional new type for the copied event. If not provided, the original type is used.
         new_start: Optional new start time for the copied event. If not provided, the original start time is used.
         new_duration: Optional new duration for the copied event. If not provided, the original duration is used.
-        new_description: Optional new description for the copied event. If not provided, the original description is used.
+        new_description: Optional new description for the copied event. If not provided, the original description used.
         new_assets: Optional new assets for the copied event. If not provided, the original assets are used.
         new_properties: Optional new properties for the copied event. If not provided, the original properties are used.
         new_labels: Optional new labels for the copied event. If not provided, the original labels are used.

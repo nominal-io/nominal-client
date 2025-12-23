@@ -41,16 +41,16 @@ class EventType(Enum):
 
 class EventCreationType(Enum):
     MANUAL = "MANUAL"
-    AUTOMATED = "BY_EXTERNAL_RESOURCE"
+    BY_EXTERNAL_RESOURCE = "BY_EXTERNAL_RESOURCE"
 
 
 class SearchEventOriginType(Enum):
     WORKBOOK = ("WORKBOOK", EventCreationType.MANUAL)
     TEMPLATE = ("TEMPLATE", EventCreationType.MANUAL)
     API = ("API", EventCreationType.MANUAL)
-    DATA_REVIEW = ("DATA_REVIEW", EventCreationType.AUTOMATED)
-    PROCEDURE = ("PROCEDURE", EventCreationType.AUTOMATED)
-    STREAMING_CHECKLIST = ("STREAMING_CHECKLIST", EventCreationType.AUTOMATED)
+    DATA_REVIEW = ("DATA_REVIEW", EventCreationType.BY_EXTERNAL_RESOURCE)
+    PROCEDURE = ("PROCEDURE", EventCreationType.BY_EXTERNAL_RESOURCE)
+    STREAMING_CHECKLIST = ("STREAMING_CHECKLIST", EventCreationType.BY_EXTERNAL_RESOURCE)
 
     creation_type: EventCreationType
 
