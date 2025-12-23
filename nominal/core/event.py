@@ -10,10 +10,11 @@ from typing_extensions import Self
 
 from nominal.core import asset as core_asset
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
+from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.query_tools import _create_search_events_query
-from nominal.core.event_types import EventType, SearchEventOriginType
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 

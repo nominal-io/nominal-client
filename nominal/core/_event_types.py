@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, NamedTuple
 
 from nominal_api import event
 
@@ -44,36 +44,24 @@ class EventCreationType(Enum):
     BY_EXTERNAL_RESOURCE = "BY_EXTERNAL_RESOURCE"
 
 
-class SearchEventOriginType(Enum):
-    WORKBOOK = ("WORKBOOK", EventCreationType.MANUAL)
-    TEMPLATE = ("TEMPLATE", EventCreationType.MANUAL)
-    API = ("API", EventCreationType.MANUAL)
-    DATA_REVIEW = ("DATA_REVIEW", EventCreationType.BY_EXTERNAL_RESOURCE)
-    PROCEDURE = ("PROCEDURE", EventCreationType.BY_EXTERNAL_RESOURCE)
-    STREAMING_CHECKLIST = ("STREAMING_CHECKLIST", EventCreationType.BY_EXTERNAL_RESOURCE)
-
+class SearchEventOriginType(NamedTuple):
+    name: str
     creation_type: EventCreationType
-
-    def __new__(cls, value: str, creation_type: EventCreationType) -> SearchEventOriginType:
-        obj = object.__new__(cls)
-        obj._value_ = value
-        obj.creation_type = creation_type
-        return obj
 
     @classmethod
     def from_api_origin_type(cls, event: event.SearchEventOriginType) -> SearchEventOriginType:
         if event.name == "WORKBOOK":
-            return cls.WORKBOOK
+            return SearchEventOriginTypes.WORKBOOK
         elif event.name == "TEMPLATE":
-            return cls.TEMPLATE
+            return SearchEventOriginTypes.TEMPLATE
         elif event.name == "API":
-            return cls.API
+            return SearchEventOriginTypes.API
         elif event.name == "DATA_REVIEW":
-            return cls.DATA_REVIEW
+            return SearchEventOriginTypes.DATA_REVIEW
         elif event.name == "PROCEDURE":
-            return cls.PROCEDURE
+            return SearchEventOriginTypes.PROCEDURE
         elif event.name == "STREAMING_CHECKLIST":
-            return cls.STREAMING_CHECKLIST
+            return SearchEventOriginTypes.STREAMING_CHECKLIST
         else:
             raise ValueError(f"Unexpected Event Origin {event.name}")
 
@@ -96,4 +84,17 @@ class SearchEventOriginType(Enum):
     @classmethod
     def get_manual_origin_types(cls) -> Iterable[SearchEventOriginType]:
         """Return all origin types that are manually created."""
-        return [origin_type for origin_type in cls if origin_type.creation_type == EventCreationType.MANUAL]
+        return [
+            origin_type
+            for origin_type in SearchEventOriginTypes.__dict__.values()
+            if isinstance(origin_type, SearchEventOriginType) and origin_type.creation_type == EventCreationType.MANUAL
+        ]
+
+
+class SearchEventOriginTypes:
+    WORKBOOK = SearchEventOriginType("WORKBOOK", EventCreationType.MANUAL)
+    TEMPLATE = SearchEventOriginType("TEMPLATE", EventCreationType.MANUAL)
+    API = SearchEventOriginType("API", EventCreationType.MANUAL)
+    DATA_REVIEW = SearchEventOriginType("DATA_REVIEW", EventCreationType.BY_EXTERNAL_RESOURCE)
+    PROCEDURE = SearchEventOriginType("PROCEDURE", EventCreationType.BY_EXTERNAL_RESOURCE)
+    STREAMING_CHECKLIST = SearchEventOriginType("STREAMING_CHECKLIST", EventCreationType.BY_EXTERNAL_RESOURCE)

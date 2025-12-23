@@ -16,6 +16,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create_links, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core.attachment import Attachment, _iter_get_attachments
@@ -23,7 +24,6 @@ from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.event_types import EventType, SearchEventOriginType
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 

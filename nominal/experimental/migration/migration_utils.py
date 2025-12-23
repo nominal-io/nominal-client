@@ -22,7 +22,7 @@ from nominal.core import (
     Workbook,
     WorkbookTemplate,
 )
-from nominal.core.event_types import EventType, SearchEventOriginType
+from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
