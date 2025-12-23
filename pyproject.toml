@@ -29,7 +29,6 @@ dependencies = [
     "conjure-python-client>=3.1.0,<4",
     "ffmpeg-python>=0.2.0",
     "nominal-api==0.1032.0",
-    "nominal-streaming==0.5.8",
     "rich>=14.1.0",
     "tabulate>=0.9.0,<0.10",
     "truststore>=0.10.4",
@@ -42,6 +41,14 @@ dependencies = [
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
     "openpyxl>=0.0.0",
+    # nominal-streaming wheels exist for:
+    # - Windows x86_64 (AMD64)
+    # - macOS arm64
+    # - Linux x86_64 and armv7l
+    # To be conservative and prevent installation of the rest of the package on exotic architectures, we explicitly
+    # list only the exact platforms supported
+    # TODO(drake): support more architectures and clean up dependency markers.
+    "nominal-streaming==0.5.8; platform_python_implementation=='CPython' and python_version>='3.10' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='armv7l')))",
 ]
 
 
