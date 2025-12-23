@@ -530,7 +530,9 @@ def clone_asset(
     Returns:
         The newly created Asset in the target client.
     """
-    return copy_asset_from(source_asset=source_asset, destination_client=destination_client, include_data=True)
+    return copy_asset_from(
+        source_asset=source_asset, destination_client=destination_client, include_data=True, include_events=True
+    )
 
 
 def copy_asset_from(
