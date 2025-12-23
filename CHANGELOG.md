@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.102.0](https://github.com/nominal-io/nominal-client/compare/v1.101.0...v1.102.0) (2025-12-23)
+
+
+### Features
+
+* add util to search events by origin type and add clone/copy events ([#555](https://github.com/nominal-io/nominal-client/issues/555)) ([bc427d6](https://github.com/nominal-io/nominal-client/commit/bc427d6b97a777e6802dc8139c8d389582558a77))
+
 ## [1.101.0](https://github.com/nominal-io/nominal-client/compare/v1.100.0...v1.101.0) (2025-12-23)
 
 
