@@ -4,7 +4,17 @@ import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, BinaryIO, Iterable, Mapping, Sequence, TypeVar, Union, cast, overload
+from typing import (
+    Any,
+    BinaryIO,
+    Iterable,
+    Mapping,
+    Sequence,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
@@ -33,7 +43,9 @@ logger = logging.getLogger(__name__)
 ConjureType = Union[ConjureBeanType, ConjureUnionType, ConjureEnumType]
 
 # Regex pattern to match strings that have a UUID format with a prefix.
-UUID_PATTERN = re.compile(r"^(.*)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$")
+UUID_PATTERN = re.compile(
+    r"^(.*)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+)
 
 # Keeping tight control over ids we consider to be UUIDs.
 UUID_KEYS = ("id", "rid", "functionUuid", "plotId", "yAxisId", "chartRid")
@@ -64,7 +76,9 @@ def _check_and_add_uuid_to_mapping(input_str: str, mapping: dict[str, str]) -> N
     match = UUID_PATTERN.search(input_str)
     if match and input_str not in mapping:
         mapping[input_str] = f"{match.group(1)}{str(uuid.uuid4())}"
-        logger.debug("Found UUID and added to mapping: %s -> %s", input_str, mapping[input_str])
+        logger.debug(
+            "Found UUID and added to mapping: %s -> %s", input_str, mapping[input_str]
+        )
 
 
 def _extract_uuids_from_obj(obj: Any, mapping: dict[str, str]) -> None:
@@ -87,7 +101,9 @@ def _extract_uuids_from_obj(obj: Any, mapping: dict[str, str]) -> None:
             else:
                 _check_and_add_uuid_to_mapping(key, mapping)
             # Some values may be JSON strings that need to be parsed.
-            _extract_uuids_from_obj(_convert_if_json(value)[0] if isinstance(value, str) else value, mapping)
+            _extract_uuids_from_obj(
+                _convert_if_json(value)[0] if isinstance(value, str) else value, mapping
+            )
     elif isinstance(obj, list):
         for item in obj:
             _extract_uuids_from_obj(item, mapping)
@@ -183,7 +199,10 @@ def _replace_uuids_in_obj(obj: Any, mapping: dict[str, str]) -> Any:
             elif isinstance(value, str):
                 parsed_value, was_json = _convert_if_json(value)
                 if was_json:
-                    new_obj[key] = json.dumps(_replace_uuids_in_obj(parsed_value, mapping), separators=(",", ":"))
+                    new_obj[key] = json.dumps(
+                        _replace_uuids_in_obj(parsed_value, mapping),
+                        separators=(",", ":"),
+                    )
                 else:
                     new_obj[key] = _replace_uuids_in_obj(value, mapping)
             else:
@@ -206,7 +225,9 @@ def _clone_conjure_objects_with_new_uuids(
 
 
 @overload
-def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[ConjureType]: ...
+def _clone_conjure_objects_with_new_uuids(
+    objs: list[ConjureType],
+) -> list[ConjureType]: ...
 
 
 def _clone_conjure_objects_with_new_uuids(
@@ -239,7 +260,8 @@ def _clone_conjure_objects_with_new_uuids(
     # Deserialize each dict back to its original type
     decoder = ConjureDecoder()
     result = [
-        decoder.do_decode(new_json_obj, obj_type) for new_json_obj, obj_type in zip(new_json_objs, original_types)
+        decoder.do_decode(new_json_obj, obj_type)
+        for new_json_obj, obj_type in zip(new_json_objs, original_types)
     ]
 
     return tuple(result) if isinstance(objs, tuple) else result
@@ -293,9 +315,16 @@ def copy_workbook_template_from(
     Returns:
         The newly created WorkbookTemplate in the target workspace.
     """
-    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(
+            destination_client._clients.workspace_rid
+        ).rid
+    }
     logger.debug(
-        "Cloning workbook template: %s (rid: %s)", source_template.title, source_template.rid, extra=log_extras
+        "Cloning workbook template: %s (rid: %s)",
+        source_template.title,
+        source_template.rid,
+        extra=log_extras,
     )
     raw_source_template = source_template._clients.template.get(
         source_template._clients.auth_header, source_template.rid
@@ -304,8 +333,8 @@ def copy_workbook_template_from(
     if include_content_and_layout:
         template_layout = raw_source_template.layout
         template_content = raw_source_template.content
-        (new_template_layout, new_workbook_content) = _clone_conjure_objects_with_new_uuids(
-            (template_layout, template_content)
+        (new_template_layout, new_workbook_content) = (
+            _clone_conjure_objects_with_new_uuids((template_layout, template_content))
         )
     else:
         new_template_layout = scout_layout_api.WorkbookLayout(
@@ -320,17 +349,22 @@ def copy_workbook_template_from(
                 )
             )
         )
-        new_workbook_content = scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={})
+        new_workbook_content = scout_workbookcommon_api.WorkbookContent(
+            channel_variables={}, charts={}
+        )
     new_workbook_template = create_workbook_template_with_content_and_layout(
         client=destination_client,
         title=new_template_title or raw_source_template.metadata.title,
-        description=new_template_description or raw_source_template.metadata.description,
+        description=new_template_description
+        or raw_source_template.metadata.description,
         labels=new_template_labels or raw_source_template.metadata.labels,
         properties=new_template_properties or raw_source_template.metadata.properties,
         layout=new_template_layout,
         content=new_workbook_content,
         commit_message="Cloned from template",
-        workspace_rid=destination_client.get_workspace().rid,
+        workspace_rid=destination_client.get_workspace(
+            destination_client._clients.workspace_rid
+        ).rid,
     )
     logger.debug(
         "New workbook template created %s from %s (rid: %s)",
@@ -355,7 +389,9 @@ def copy_file_to_dataset(
     Returns:
         The dataset file in the new dataset.
     """
-    log_extras = {"destination_client_workspace": destination_dataset._clients.workspace_rid}
+    log_extras = {
+        "destination_client_workspace": destination_dataset._clients.workspace_rid
+    }
     logger.debug("Copying dataset file: %s", source_file.name, extra=log_extras)
     source_api_file = source_file._get_latest_api()
     if (
@@ -391,10 +427,14 @@ def copy_file_to_dataset(
         )
         return new_file
     else:  # Because these fields are optional, need to check for None. We shouldn't ever run into this.
-        raise ValueError("Unsupported file handle type or missing timestamp information.")
+        raise ValueError(
+            "Unsupported file handle type or missing timestamp information."
+        )
 
 
-def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) -> Dataset:
+def clone_dataset(
+    source_dataset: Dataset, destination_client: NominalClient
+) -> Dataset:
     """Clones a dataset, maintaining all properties and files.
 
     Args:
@@ -404,7 +444,11 @@ def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) ->
     Returns:
         The cloned dataset.
     """
-    return copy_dataset_from(source_dataset=source_dataset, destination_client=destination_client, include_files=True)
+    return copy_dataset_from(
+        source_dataset=source_dataset,
+        destination_client=destination_client,
+        include_files=True,
+    )
 
 
 def copy_dataset_from(
@@ -433,7 +477,11 @@ def copy_dataset_from(
     Returns:
         The newly created Dataset in the destination client.
     """
-    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(
+            destination_client._clients.workspace_rid
+        ).rid
+    }
     logger.debug(
         "Copying dataset %s (rid: %s)",
         source_dataset.name,
@@ -442,14 +490,31 @@ def copy_dataset_from(
     )
     new_dataset = destination_client.create_dataset(
         name=new_dataset_name if new_dataset_name is not None else source_dataset.name,
-        description=new_dataset_description if new_dataset_description is not None else source_dataset.description,
-        properties=new_dataset_properties if new_dataset_properties is not None else source_dataset.properties,
-        labels=new_dataset_labels if new_dataset_labels is not None else source_dataset.labels,
+        description=(
+            new_dataset_description
+            if new_dataset_description is not None
+            else source_dataset.description
+        ),
+        properties=(
+            new_dataset_properties
+            if new_dataset_properties is not None
+            else source_dataset.properties
+        ),
+        labels=(
+            new_dataset_labels
+            if new_dataset_labels is not None
+            else source_dataset.labels
+        ),
     )
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)
-    logger.debug("New dataset created: %s (rid: %s)", new_dataset.name, new_dataset.rid, extra=log_extras)
+    logger.debug(
+        "New dataset created: %s (rid: %s)",
+        new_dataset.name,
+        new_dataset.rid,
+        extra=log_extras,
+    )
     return new_dataset
 
 
@@ -463,7 +528,9 @@ def clone_event(source_event: Event, destination_client: NominalClient) -> Event
     Returns:
         The cloned event.
     """
-    return copy_event_from(source_event=source_event, destination_client=destination_client)
+    return copy_event_from(
+        source_event=source_event, destination_client=destination_client
+    )
 
 
 def copy_event_from(
@@ -496,7 +563,11 @@ def copy_event_from(
     Returns:
         The newly created Event in the destination client.
     """
-    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(
+            destination_client._clients.workspace_rid
+        ).rid
+    }
     logger.debug(
         "Copying event %s (rid: %s)",
         source_event.name,
@@ -513,7 +584,12 @@ def copy_event_from(
         properties=new_properties or source_event.properties,
         labels=new_labels or source_event.labels,
     )
-    logger.debug("New event created: %s (rid: %s)", new_event.name, new_event.rid, extra=log_extras)
+    logger.debug(
+        "New event created: %s (rid: %s)",
+        new_event.name,
+        new_event.rid,
+        extra=log_extras,
+    )
     return new_event
 
 
@@ -531,7 +607,10 @@ def clone_asset(
         The newly created Asset in the target client.
     """
     return copy_asset_from(
-        source_asset=source_asset, destination_client=destination_client, include_data=True, include_events=True
+        source_asset=source_asset,
+        destination_client=destination_client,
+        include_data=True,
+        include_events=True,
     )
 
 
@@ -561,13 +640,32 @@ def copy_asset_from(
     Returns:
         The new asset created.
     """
-    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
-    logger.debug("Copying asset %s (rid: %s)", source_asset.name, source_asset.rid, extra=log_extras)
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(
+            destination_client._clients.workspace_rid
+        ).rid
+    }
+    logger.debug(
+        "Copying asset %s (rid: %s)",
+        source_asset.name,
+        source_asset.rid,
+        extra=log_extras,
+    )
     new_asset = destination_client.create_asset(
         name=new_asset_name if new_asset_name is not None else source_asset.name,
-        description=new_asset_description if new_asset_description is not None else source_asset.description,
-        properties=new_asset_properties if new_asset_properties is not None else source_asset.properties,
-        labels=new_asset_labels if new_asset_labels is not None else source_asset.labels,
+        description=(
+            new_asset_description
+            if new_asset_description is not None
+            else source_asset.description
+        ),
+        properties=(
+            new_asset_properties
+            if new_asset_properties is not None
+            else source_asset.properties
+        ),
+        labels=(
+            new_asset_labels if new_asset_labels is not None else source_asset.labels
+        ),
     )
     if include_data:
         source_datasets = source_asset.list_datasets()
@@ -581,13 +679,19 @@ def copy_asset_from(
             new_asset.add_dataset(data_scope, new_dataset)
 
     if include_events:
-        source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
+        source_events = source_asset.search_events(
+            origin_types=SearchEventOriginType.get_manual_origin_types()
+        )
         new_events = []
         for source_event in source_events:
-            new_event = copy_event_from(source_event, destination_client, new_assets=[new_asset])
+            new_event = copy_event_from(
+                source_event, destination_client, new_assets=[new_asset]
+            )
             new_events.append(new_event)
 
-    logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
+    logger.debug(
+        "New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras
+    )
     return new_asset
 
 
@@ -595,7 +699,12 @@ def copy_resources_to_destination_client(
     destination_client: NominalClient,
     source_assets: Sequence[Asset],
     source_workbook_templates: Sequence[WorkbookTemplate],
-) -> tuple[Sequence[tuple[str, Dataset]], Sequence[Asset], Sequence[WorkbookTemplate], Sequence[Workbook]]:
+) -> tuple[
+    Sequence[tuple[str, Dataset]],
+    Sequence[Asset],
+    Sequence[WorkbookTemplate],
+    Sequence[Workbook],
+]:
     """Based on a list of assets and workbook templates, copy resources to destination client, creating
        new datasets, datafiles, and workbooks along the way.
 
@@ -609,11 +718,15 @@ def copy_resources_to_destination_client(
         All of the created resources.
     """
     log_extras = {
-        "destination_client_workspace": destination_client.get_workspace().rid,
+        "destination_client_workspace": destination_client.get_workspace(
+            destination_client._clients.workspace_rid
+        ).rid,
     }
 
     if len(source_assets) != 1:
-        raise ValueError("Currently, only single asset can be used to create workbook from template")
+        raise ValueError(
+            "Currently, only single asset can be used to create workbook from template"
+        )
 
     new_assets = []
     new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
@@ -625,10 +738,14 @@ def copy_resources_to_destination_client(
     new_workbooks = []
 
     for source_workbook_template in source_workbook_templates:
-        new_template = clone_workbook_template(source_workbook_template, destination_client)
+        new_template = clone_workbook_template(
+            source_workbook_template, destination_client
+        )
         new_templates.append(new_template)
         new_workbook = new_template.create_workbook(
-            title=new_template.title, description=new_template.description, asset=new_assets[0]
+            title=new_template.title,
+            description=new_template.description,
+            asset=new_assets[0],
         )
         logger.debug(
             "Created new workbook %s (rid: %s) from template %s (rid: %s)",
