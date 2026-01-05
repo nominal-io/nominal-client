@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.102.0](https://github.com/nominal-io/nominal-client/compare/v1.101.0...v1.102.0) (2026-01-05)
+
+
+### Features
+
+* add run creation on an asset ([#558](https://github.com/nominal-io/nominal-client/issues/558)) ([9c0718a](https://github.com/nominal-io/nominal-client/commit/9c0718ae2706d4192087fb787e99f76d702a18c9))
+* add util to search events by origin type and add clone/copy events ([#555](https://github.com/nominal-io/nominal-client/issues/555)) ([bc427d6](https://github.com/nominal-io/nominal-client/commit/bc427d6b97a777e6802dc8139c8d389582558a77))
+* allow unarchiving a run ([#560](https://github.com/nominal-io/nominal-client/issues/560)) ([0221a56](https://github.com/nominal-io/nominal-client/commit/0221a56c73d133581567cc5183fda237607d79b5))
+* clean up and deprecate old video creation methods in NominalClient ([#561](https://github.com/nominal-io/nominal-client/issues/561)) ([e61919c](https://github.com/nominal-io/nominal-client/commit/e61919ca338a5e0de818471431d750246d87977c))
+
+
+### Bug Fixes
+
+* update how workspaces are selected in migration_utils ([#559](https://github.com/nominal-io/nominal-client/issues/559)) ([4379121](https://github.com/nominal-io/nominal-client/commit/4379121f44411eed19248ee16540672bbed743a0))
+
 ## [1.101.0](https://github.com/nominal-io/nominal-client/compare/v1.100.0...v1.101.0) (2025-12-23)
 
 
