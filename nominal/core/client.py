@@ -44,7 +44,6 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.multipart import (
-    path_upload_name,
     upload_multipart_io,
 )
 from nominal.core._utils.pagination_tools import (
@@ -93,7 +92,7 @@ from nominal.core.dataset import (
 )
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
+from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
