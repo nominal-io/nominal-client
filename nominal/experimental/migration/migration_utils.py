@@ -496,12 +496,7 @@ def copy_event_from(
     log_extras = {
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
     }
-    logger.debug(
-        "Copying event %s (rid: %s)",
-        source_event.name,
-        source_event.rid,
-        extra=log_extras,
-    )
+    logger.debug("Copying event %s (rid: %s)", source_event.name, source_event.rid, extra=log_extras)
     new_event = destination_client.create_event(
         name=new_name or source_event.name,
         type=new_type or source_event.type,
