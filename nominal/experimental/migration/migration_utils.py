@@ -183,10 +183,7 @@ def _replace_uuids_in_obj(obj: Any, mapping: dict[str, str]) -> Any:
             elif isinstance(value, str):
                 parsed_value, was_json = _convert_if_json(value)
                 if was_json:
-                    new_obj[key] = json.dumps(
-                        _replace_uuids_in_obj(parsed_value, mapping),
-                        separators=(",", ":"),
-                    )
+                    new_obj[key] = json.dumps(_replace_uuids_in_obj(parsed_value, mapping), separators=(",", ":"))
                 else:
                     new_obj[key] = _replace_uuids_in_obj(value, mapping)
             else:
