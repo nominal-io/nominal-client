@@ -293,7 +293,9 @@ def copy_workbook_template_from(
     Returns:
         The newly created WorkbookTemplate in the target workspace.
     """
-    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+    }
     logger.debug(
         "Cloning workbook template: %s (rid: %s)", source_template.title, source_template.rid, extra=log_extras
     )
@@ -330,7 +332,7 @@ def copy_workbook_template_from(
         layout=new_template_layout,
         content=new_workbook_content,
         commit_message="Cloned from template",
-        workspace_rid=destination_client.get_workspace().rid,
+        workspace_rid=destination_client.get_workspace(destination_client._clients.workspace_rid).rid,
     )
     logger.debug(
         "New workbook template created %s from %s (rid: %s)",
@@ -433,7 +435,9 @@ def copy_dataset_from(
     Returns:
         The newly created Dataset in the destination client.
     """
-    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+    }
     logger.debug(
         "Copying dataset %s (rid: %s)",
         source_dataset.name,
@@ -496,7 +500,9 @@ def copy_event_from(
     Returns:
         The newly created Event in the destination client.
     """
-    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+    }
     logger.debug(
         "Copying event %s (rid: %s)",
         source_event.name,
@@ -561,7 +567,9 @@ def copy_asset_from(
     Returns:
         The new asset created.
     """
-    log_extras = {"destination_client_workspace": destination_client.get_workspace().rid}
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+    }
     logger.debug("Copying asset %s (rid: %s)", source_asset.name, source_asset.rid, extra=log_extras)
     new_asset = destination_client.create_asset(
         name=new_asset_name if new_asset_name is not None else source_asset.name,
@@ -609,7 +617,7 @@ def copy_resources_to_destination_client(
         All of the created resources.
     """
     log_extras = {
-        "destination_client_workspace": destination_client.get_workspace().rid,
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid,
     }
 
     if len(source_assets) != 1:
