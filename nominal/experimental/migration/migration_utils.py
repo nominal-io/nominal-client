@@ -4,17 +4,7 @@ import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import (
-    Any,
-    BinaryIO,
-    Iterable,
-    Mapping,
-    Sequence,
-    TypeVar,
-    Union,
-    cast,
-    overload,
-)
+from typing import Any, BinaryIO, Iterable, Mapping, Sequence, TypeVar, Union, cast, overload
 
 import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
@@ -274,9 +264,7 @@ def clone_workbook_template(
         The cloned template.
     """
     return copy_workbook_template_from(
-        source_template=source_template,
-        destination_client=destination_client,
-        include_content_and_layout=True,
+        source_template=source_template, destination_client=destination_client, include_content_and_layout=True
     )
 
 
@@ -569,10 +557,7 @@ def clone_asset(
         The newly created Asset in the target client.
     """
     return copy_asset_from(
-        source_asset=source_asset,
-        destination_client=destination_client,
-        include_data=True,
-        include_events=True,
+        source_asset=source_asset, destination_client=destination_client, include_data=True, include_events=True
     )
 
 
@@ -605,12 +590,7 @@ def copy_asset_from(
     log_extras = {
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
     }
-    logger.debug(
-        "Copying asset %s (rid: %s)",
-        source_asset.name,
-        source_asset.rid,
-        extra=log_extras,
-    )
+    logger.debug("Copying asset %s (rid: %s)", source_asset.name, source_asset.rid, extra=log_extras)
     new_asset = destination_client.create_asset(
         name=new_asset_name if new_asset_name is not None else source_asset.name,
         description=(new_asset_description if new_asset_description is not None else source_asset.description),
@@ -643,12 +623,7 @@ def copy_resources_to_destination_client(
     destination_client: NominalClient,
     source_assets: Sequence[Asset],
     source_workbook_templates: Sequence[WorkbookTemplate],
-) -> tuple[
-    Sequence[tuple[str, Dataset]],
-    Sequence[Asset],
-    Sequence[WorkbookTemplate],
-    Sequence[Workbook],
-]:
+) -> tuple[Sequence[tuple[str, Dataset]], Sequence[Asset], Sequence[WorkbookTemplate], Sequence[Workbook]]:
     """Based on a list of assets and workbook templates, copy resources to destination client, creating
        new datasets, datafiles, and workbooks along the way.
 
@@ -681,9 +656,7 @@ def copy_resources_to_destination_client(
         new_template = clone_workbook_template(source_workbook_template, destination_client)
         new_templates.append(new_template)
         new_workbook = new_template.create_workbook(
-            title=new_template.title,
-            description=new_template.description,
-            asset=new_assets[0],
+            title=new_template.title, description=new_template.description, asset=new_assets[0]
         )
         logger.debug(
             "Created new workbook %s (rid: %s) from template %s (rid: %s)",
