@@ -44,7 +44,6 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.multipart import (
-    path_upload_name,
     upload_multipart_io,
 )
 from nominal.core._utils.pagination_tools import (
@@ -93,7 +92,7 @@ from nominal.core.dataset import (
 )
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
+from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
@@ -733,7 +732,7 @@ class NominalClient:
 
         return dataset
 
-    def create_empty_video(
+    def create_video(
         self,
         name: str,
         *,
@@ -762,6 +761,8 @@ class NominalClient:
             workspace_rid=self._clients.workspace_rid,
         )
         return Video._from_conjure(self._clients, response)
+
+    create_empty_video = create_video
 
     def get_video(self, rid: str) -> Video:
         """Retrieve a video by its RID."""
@@ -958,6 +959,10 @@ class NominalClient:
         response = self._clients.connection.get_connection(self._clients.auth_header, rid)
         return Connection._from_conjure(self._clients, response)
 
+    @deprecated(
+        "`create_video_from_mcap` is deprecated and will be removed in a future version. "
+        "Create a new video with `create_video` and then `add_mcap` to upload a file to the video."
+    )
     def create_video_from_mcap(
         self,
         path: Path | str,
@@ -978,18 +983,14 @@ class NominalClient:
         if name is None:
             name = path.name
 
-        with path.open("rb") as data_file:
-            return self.create_video_from_mcap_io(
-                data_file,
-                name=name,
-                topic=topic,
-                file_type=FileTypes.MCAP,
-                description=description,
-                labels=labels,
-                properties=properties,
-                file_name=path_upload_name(path, FileTypes.MCAP),
-            )
+        video = self.create_video(name, description=description, labels=labels, properties=properties)
+        video.add_mcap(path, topic, description)
+        return video
 
+    @deprecated(
+        "`create_video_from_mcap_io` is deprecated and will be removed in a future version. "
+        "Create a new video with `create_video` and then `add_mcap_from_io` to upload a file to the video."
+    )
     def create_video_from_mcap_io(
         self,
         mcap: BinaryIO,
@@ -1008,40 +1009,9 @@ class NominalClient:
 
         If name is None, the name of the file will be used.
         """
-        if isinstance(mcap, TextIOBase):
-            raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
-
-        if file_name is None:
-            file_name = name
-
-        file_type = FileType(*file_type)
-        s3_path = upload_multipart_io(
-            self._clients.auth_header, self._clients.workspace_rid, mcap, file_name, file_type, self._clients.upload
-        )
-        request = ingest_api.IngestRequest(
-            options=ingest_api.IngestOptions(
-                video=ingest_api.VideoOpts(
-                    source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
-                    target=ingest_api.VideoIngestTarget(
-                        new=ingest_api.NewVideoIngestDestination(
-                            title=name,
-                            description=description,
-                            properties={} if properties is None else dict(properties),
-                            labels=list(labels),
-                            workspace=self._clients.workspace_rid,
-                            marking_rids=[],
-                        )
-                    ),
-                    timestamp_manifest=scout_video_api.VideoFileTimestampManifest(
-                        mcap=scout_video_api.McapTimestampManifest(api.McapChannelLocator(topic=topic))
-                    ),
-                )
-            )
-        )
-        response = self._clients.ingest.ingest(self._clients.auth_header, request)
-        if response.details.video is None:
-            raise NominalIngestError("error ingesting mcap video: no video created")
-        return self.get_video(response.details.video.video_rid)
+        video = self.create_video(name, description=description, labels=labels, properties=properties)
+        video.add_mcap_from_io(mcap, file_name or name, topic, description, file_type)
+        return video
 
     def create_streaming_connection(
         self,
