@@ -206,9 +206,7 @@ def _clone_conjure_objects_with_new_uuids(
 
 
 @overload
-def _clone_conjure_objects_with_new_uuids(
-    objs: list[ConjureType],
-) -> list[ConjureType]: ...
+def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[ConjureType]: ...
 
 
 def _clone_conjure_objects_with_new_uuids(
@@ -297,10 +295,7 @@ def copy_workbook_template_from(
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
     }
     logger.debug(
-        "Cloning workbook template: %s (rid: %s)",
-        source_template.title,
-        source_template.rid,
-        extra=log_extras,
+        "Cloning workbook template: %s (rid: %s)", source_template.title, source_template.rid, extra=log_extras
     )
     raw_source_template = source_template._clients.template.get(
         source_template._clients.auth_header, source_template.rid
@@ -409,11 +404,7 @@ def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) ->
     Returns:
         The cloned dataset.
     """
-    return copy_dataset_from(
-        source_dataset=source_dataset,
-        destination_client=destination_client,
-        include_files=True,
-    )
+    return copy_dataset_from(source_dataset=source_dataset, destination_client=destination_client, include_files=True)
 
 
 def copy_dataset_from(
@@ -445,27 +436,17 @@ def copy_dataset_from(
     log_extras = {
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
     }
-    logger.debug(
-        "Copying dataset %s (rid: %s)",
-        source_dataset.name,
-        source_dataset.rid,
-        extra=log_extras,
-    )
+    logger.debug("Copying dataset %s (rid: %s)", source_dataset.name, source_dataset.rid, extra=log_extras)
     new_dataset = destination_client.create_dataset(
         name=new_dataset_name if new_dataset_name is not None else source_dataset.name,
-        description=(new_dataset_description if new_dataset_description is not None else source_dataset.description),
-        properties=(new_dataset_properties if new_dataset_properties is not None else source_dataset.properties),
-        labels=(new_dataset_labels if new_dataset_labels is not None else source_dataset.labels),
+        description=new_dataset_description if new_dataset_description is not None else source_dataset.description,
+        properties=new_dataset_properties if new_dataset_properties is not None else source_dataset.properties,
+        labels=new_dataset_labels if new_dataset_labels is not None else source_dataset.labels,
     )
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)
-    logger.debug(
-        "New dataset created: %s (rid: %s)",
-        new_dataset.name,
-        new_dataset.rid,
-        extra=log_extras,
-    )
+    logger.debug("New dataset created: %s (rid: %s)", new_dataset.name, new_dataset.rid, extra=log_extras)
     return new_dataset
 
 
@@ -590,9 +571,9 @@ def copy_asset_from(
     logger.debug("Copying asset %s (rid: %s)", source_asset.name, source_asset.rid, extra=log_extras)
     new_asset = destination_client.create_asset(
         name=new_asset_name if new_asset_name is not None else source_asset.name,
-        description=(new_asset_description if new_asset_description is not None else source_asset.description),
-        properties=(new_asset_properties if new_asset_properties is not None else source_asset.properties),
-        labels=(new_asset_labels if new_asset_labels is not None else source_asset.labels),
+        description=new_asset_description if new_asset_description is not None else source_asset.description,
+        properties=new_asset_properties if new_asset_properties is not None else source_asset.properties,
+        labels=new_asset_labels if new_asset_labels is not None else source_asset.labels,
     )
     if include_data:
         source_datasets = source_asset.list_datasets()
