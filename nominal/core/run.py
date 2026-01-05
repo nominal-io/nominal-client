@@ -377,7 +377,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         self._clients.run.archive_run(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive this ru, allowing it to appear on the UI."""
+        """Unarchive this run, allowing it to appear on the UI."""
         self._clients.run.unarchive_run(self._clients.auth_header, self.rid)
 
     @classmethod
