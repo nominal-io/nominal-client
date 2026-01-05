@@ -192,8 +192,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             )
             for ds in conjure_asset.data_scopes
             if ds.data_scope_name not in scope_names_to_remove
-            and not set([ds.data_source.dataset, ds.data_source.connection, ds.data_source.video]).intersection(
-                scope_rids_to_remove
+            and all(
+                rid not in scope_rids_to_remove
+                for rid in (ds.data_source.dataset, ds.data_source.connection, ds.data_source.video)
             )
         ]
 
