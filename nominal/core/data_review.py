@@ -162,7 +162,25 @@ class DataReviewBuilder:
         self._integration_rids.append(integration_rid)
         return self
 
-    def add_request(self, run_rid: str, checklist_rid: str, asset_rid: str, commit: str) -> DataReviewBuilder:
+    def add_request(
+        self,
+        run_rid: str,
+        checklist_rid: str,
+        commit: str | None = None,
+        *,
+        asset_rid: str | None = None,
+    ) -> DataReviewBuilder:
+        """Add a request to create a data review for the given checklist and run.
+
+        Args:
+            run_rid: RID of the Run to run the Checklist on
+            checklist_rid: RID of the checklist to execute on the Run
+            commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
+            asset_rid: RID of the asset to run the checklist on within the Run (only required for multi-asset runs)
+
+        Returns:
+            DataReviewBuilder instance to continue building a data review with
+        """
         self._requests.append(scout_datareview_api.CreateDataReviewRequest(checklist_rid, run_rid, asset_rid, commit))
         return self
 
