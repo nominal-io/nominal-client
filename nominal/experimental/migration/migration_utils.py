@@ -507,12 +507,7 @@ def copy_event_from(
         properties=new_properties or source_event.properties,
         labels=new_labels or source_event.labels,
     )
-    logger.debug(
-        "New event created: %s (rid: %s)",
-        new_event.name,
-        new_event.rid,
-        extra=log_extras,
-    )
+    logger.debug("New event created: %s (rid: %s)", new_event.name, new_event.rid, extra=log_extras)
     return new_event
 
 
