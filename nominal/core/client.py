@@ -1485,7 +1485,7 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
             created_by: Searches for workbook templates with the given creator's rid
             archived: Searches for workbook templates that are archived if true
-            published: Searches f8or workbook templates that have been published if true
+            published: Searches for workbook templates that have been published if true
 
         Returns:
             All workbook templates which match all of the provided conditions

@@ -4,7 +4,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, cast
+from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
     event,
@@ -17,7 +17,14 @@ from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType, SearchEventOriginType
-from nominal.core._utils.api_tools import HasRid, Link, RefreshableMixin, create_links, rid_from_instance_or_string
+from nominal.core._utils.api_tools import (
+    HasRid,
+    Link,
+    LinkDict,
+    RefreshableMixin,
+    create_links,
+    rid_from_instance_or_string,
+)
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
@@ -37,6 +44,14 @@ def _filter_scopes(
     scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
 ) -> Sequence[scout_asset_api.DataScope]:
     return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
+
+
+def _filter_scope_rids(
+    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
+) -> Mapping[str, str]:
+    return {
+        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in _filter_scopes(scopes, scope_type)
+    }
 
 
 @dataclass(frozen=True)
@@ -81,13 +96,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
         return _filter_scopes(self._get_latest_api().data_scopes, "dataset")
 
-    def _scope_rid(self, stype: Literal["dataset", "video", "connection"]) -> dict[str, str]:
+    def _scope_rids(self, scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
         asset = self._get_latest_api()
-        return {
-            scope.data_scope_name: cast(str, getattr(scope.data_source, stype))
-            for scope in asset.data_scopes
-            if scope.data_source.type.lower() == stype
-        }
+        return _filter_scope_rids(asset.data_scopes, scope_type)
 
     def update(
         self,
@@ -154,43 +165,6 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         """
         return (*self.list_datasets(), *self.list_connections(), *self.list_videos())
 
-    def _remove_data_sources(
-        self,
-        *,
-        data_scope_names: Sequence[str] | None = None,
-        data_sources: Sequence[ScopeType | str] | None = None,
-    ) -> None:
-        data_scope_names = data_scope_names or []
-        data_sources = data_sources or []
-
-        if isinstance(data_sources, str):
-            raise RuntimeError("Expect `data_sources` to be a sequence, not a string")
-
-        data_source_rids = {rid_from_instance_or_string(ds) for ds in data_sources}
-
-        conjure_asset = self._get_latest_api()
-
-        data_sources_to_keep = [
-            scout_asset_api.CreateAssetDataScope(
-                data_scope_name=ds.data_scope_name,
-                data_source=ds.data_source,
-                series_tags=ds.series_tags,
-                offset=ds.offset,
-            )
-            for ds in conjure_asset.data_scopes
-            if ds.data_scope_name not in data_scope_names
-            and (ds.data_source.dataset or ds.data_source.connection or ds.data_source.video) not in data_source_rids
-        ]
-
-        api_asset = self._clients.assets.update_asset(
-            self._clients.auth_header,
-            scout_asset_api.UpdateAssetRequest(
-                data_scopes=data_sources_to_keep,
-            ),
-            self.rid,
-        )
-        self._refresh_from_api(api_asset)
-
     def remove_data_scopes(
         self,
         *,
@@ -199,10 +173,39 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     ) -> None:
         """Remove data scopes from this asset.
 
-        `names` are scope names.
-        `scopes` are rids or scope objects.
+        Args:
+            names: Names of datascopes to remove
+            scopes: Rids or instances of scope types (dataset, video, connection) to remove.
         """
-        self._remove_data_sources(data_scope_names=names, data_sources=scopes)
+        scope_names_to_remove = names or []
+        data_scopes_to_remove = scopes or []
+
+        scope_rids_to_remove = {rid_from_instance_or_string(ds) for ds in data_scopes_to_remove}
+        conjure_asset = self._get_latest_api()
+
+        data_scopes_to_keep = [
+            scout_asset_api.CreateAssetDataScope(
+                data_scope_name=ds.data_scope_name,
+                data_source=ds.data_source,
+                series_tags=ds.series_tags,
+                offset=ds.offset,
+            )
+            for ds in conjure_asset.data_scopes
+            if ds.data_scope_name not in scope_names_to_remove
+            and all(
+                rid not in scope_rids_to_remove
+                for rid in (ds.data_source.dataset, ds.data_source.connection, ds.data_source.video)
+            )
+        ]
+
+        updated_asset = self._clients.assets.update_asset(
+            self._clients.auth_header,
+            scout_asset_api.UpdateAssetRequest(
+                data_scopes=data_scopes_to_keep,
+            ),
+            self.rid,
+        )
+        self._refresh_from_api(updated_asset)
 
     def add_dataset(
         self,
@@ -383,6 +386,46 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             labels=labels,
         )
 
+    def create_run(
+        self,
+        name: str,
+        start: datetime.datetime | IntegralNanosecondsUTC,
+        end: datetime.datetime | IntegralNanosecondsUTC | None,
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+        links: Sequence[str | Link | LinkDict] = (),
+        attachments: Iterable[Attachment] | Iterable[str] = (),
+    ) -> Run:
+        """Create a run associated with this Asset for a given span of time.
+
+        Args:
+            name: Name of the run.
+            start: Starting timestamp of the run.
+            end: Ending timestamp of the run, or None for an unbounded run.
+            description: Optionally, a human readable description of the run to create.
+            properties: Key-value pairs to use as properties on the created run.
+            labels: Sequence of labels to use on the created run.
+            links: Link metadata to add to the created run.
+            attachments: Attachments to associate with the created run.
+
+        Returns:
+            Returns the created run
+        """
+        return _create_run(
+            self._clients,
+            name=name,
+            start=start,
+            end=end,
+            description=description,
+            properties=properties,
+            labels=labels,
+            links=links,
+            attachments=attachments,
+            asset_rids=[self.rid],
+        )
+
     def get_dataset(self, data_scope_name: str) -> Dataset:
         """Retrieve a dataset by data scope name, or raise ValueError if one is not found."""
         dataset = self.get_data_scope(data_scope_name)
@@ -411,7 +454,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         """List the datasets associated with this asset.
         Returns (data_scope_name, dataset) pairs for each dataset.
         """
-        scope_rid = self._scope_rid(stype="dataset")
+        scope_rid = self._scope_rids(scope_type="dataset")
         if not scope_rid:
             return []
 
@@ -429,7 +472,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         """List the connections associated with this asset.
         Returns (data_scope_name, connection) pairs for each connection.
         """
-        scope_rid = self._scope_rid(stype="connection")
+        scope_rid = self._scope_rids(scope_type="connection")
         connections_meta = _get_connections(self._clients, list(scope_rid.values()))
         return [
             (scope, Connection._from_conjure(self._clients, connection))
@@ -440,7 +483,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         """List the videos associated with this asset.
         Returns (data_scope_name, dataset) pairs for each video.
         """
-        scope_rid = self._scope_rid(stype="video")
+        scope_rid = self._scope_rids(scope_type="video")
         return [
             (scope, Video._from_conjure(self._clients, _get_video(self._clients, rid)))
             for (scope, rid) in scope_rid.items()
@@ -531,4 +574,4 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
 
 # Moving to bottom to deal with circular dependencies
-from nominal.core.run import Run  # noqa: E402
+from nominal.core.run import Run, _create_run  # noqa: E402
