@@ -20,8 +20,10 @@ from typing_extensions import Self, deprecated
 
 from nominal.core import checklist, event
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core.asset import Asset
 from nominal.core.exceptions import NominalMethodRemovedError
+from nominal.core.run import Run
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
@@ -162,6 +164,10 @@ class DataReviewBuilder:
         self._integration_rids.append(integration_rid)
         return self
 
+    @deprecated(
+        "`DataReviewBuilder.add_request` is deprecated and will be removed in a future release of the Nominal SDK. "
+        "Please use `DataReviewBuilder.add_review` instead."
+    )
     def add_request(
         self,
         run_rid: str,
@@ -181,7 +187,58 @@ class DataReviewBuilder:
         Returns:
             DataReviewBuilder instance to continue building a data review with
         """
-        self._requests.append(scout_datareview_api.CreateDataReviewRequest(checklist_rid, run_rid, asset_rid, commit))
+        return self.add_review(run_rid, checklist_rid, commit=commit, asset=asset_rid)
+
+    def add_review(
+        self,
+        run: str | Run,
+        checklist: str | checklist.Checklist,
+        *,
+        commit: str | None = None,
+        asset: str | Asset | None = None,
+    ) -> Self:
+        """Add a request to create a data review for the given checklist and run.
+
+        Args:
+            run: Instance or rid of the Run to run the Checklist on
+            checklist: Instance or rid of the checklist to execute on the Run
+            commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
+            asset: Instance or rid of the asset to run the checklist on within the Run
+                NOTE: only required for multi-asset runs
+
+        Returns:
+            DataReviewBuilder instance to continue building a data review with
+
+        Raises:
+            ValueError: If the given run has multiple associated assets and no asset was specified, or
+                if the run has an asset that differs from the provided asset.
+        """
+        checklist_rid = rid_from_instance_or_string(checklist)
+        run_rid = rid_from_instance_or_string(run)
+        asset_rid = None if asset is None else rid_from_instance_or_string(asset)
+
+        raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
+        if len(raw_run.assets) > 1 and asset is None:
+            raise ValueError(
+                f"Cannot run data review on checklist {checklist_rid} and {run_rid} without specifying `asset_rid`: "
+                f"run has {len(raw_run.assets)} assets!"
+            )
+        elif len(raw_run.assets) == 1 and asset_rid is not None:
+            raw_asset_rid = raw_run.assets[0]
+            if raw_asset_rid != asset_rid:
+                raise ValueError(
+                    f"Cannot run data review on checklist {checklist_rid} and {run_rid} with asset {asset_rid}: "
+                    f"run has a different asset {raw_asset_rid}!"
+                )
+
+        self._requests.append(
+            scout_datareview_api.CreateDataReviewRequest(
+                checklist_rid=checklist_rid,
+                run_rid=run_rid,
+                asset_rid=asset_rid,
+                commit=commit,
+            )
+        )
         return self
 
     def add_tags(self, tags: list[str]) -> DataReviewBuilder:
@@ -192,8 +249,7 @@ class DataReviewBuilder:
         """Initiates a batch data review process.
 
         Args:
-            wait_for_completion (bool): If True, waits for the data review process to complete before returning.
-                                        Default is True.
+            wait_for_completion: If True, waits for the data review process to complete before returning.
         """
         request = scout_datareview_api.BatchInitiateDataReviewRequest(
             notification_configurations=[
