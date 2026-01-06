@@ -95,6 +95,7 @@ from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalIngestError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
+from nominal.core.integration import Integration, IntegrationBuilder
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
 from nominal.core.unit import Unit, _available_units
@@ -1596,3 +1597,34 @@ class NominalClient:
 
         template = self._clients.template.create(self._clients.auth_header, request)
         return WorkbookTemplate._from_conjure(self._clients, template)
+
+    def get_integration(self, integration_rid: str) -> Integration:
+        """Retrieve a notification integration by RID."""
+        return Integration._from_conjure(
+            self._clients, self._clients.integrations.get_integration(self._clients.auth_header, integration_rid)
+        )
+
+    def list_integrations(self, *, workspaces: Sequence[Workspace | str] | None = None) -> Sequence[Integration]:
+        """List all non-archived integrations in the given workspace(s)
+
+        Args:
+            workspaces: List of workspaces to search within, or None for searching all workspaces accessible to the user
+
+        Returns:
+            List of configured and non-archived integrations
+        """
+        workspace_rids = (
+            None if workspaces is None else [rid_from_instance_or_string(workspace) for workspace in workspaces]
+        )
+        raw_integrations = self._clients.integrations.list_integrations(
+            self._clients.auth_header,
+            workspace_rids,
+        )
+        return [Integration._from_conjure(self._clients, raw_integration) for raw_integration in raw_integrations]
+
+    def integration_builder(self) -> IntegrationBuilder:
+        """Retrieve an Integration Bulider instance to create and publish integrations with Nominal.
+
+        See: `nominal.core.integration.IntegrationBuilder` for more details.
+        """
+        return IntegrationBuilder(self._clients)
