@@ -10,6 +10,7 @@ from nominal_api import attachments_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -69,11 +70,12 @@ class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
         # this acts like a file-like object in binary-mode.
         return cast(BinaryIO, response)
 
-    def write(self, path: Path, mkdir: bool = True) -> None:
+    def write(self, path: PathLike, mkdir: bool = True) -> None:
         """Write an attachment to the filesystem.
 
         `path` should be the path you want to save to, i.e. a file, not a directory.
         """
+        path = Path(path)
         if mkdir:
             path.parent.mkdir(exist_ok=True, parents=True)
         with open(path, "wb") as wf:

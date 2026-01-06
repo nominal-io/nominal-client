@@ -170,3 +170,10 @@ playground/
 # Backup files
 *~
 \#*
+
+# Don't check in local uv.toml settings
+uv.toml
+
+# Don't check in data
+*.csv
+*.parquet

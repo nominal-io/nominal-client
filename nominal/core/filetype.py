@@ -5,6 +5,8 @@ import mimetypes
 from pathlib import Path
 from typing import NamedTuple
 
+from nominal.core._types import PathLike
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,7 +15,7 @@ class FileType(NamedTuple):
     mimetype: str
 
     @classmethod
-    def from_path(cls, path: Path | str, default_mimetype: str = "application/octect-stream") -> FileType:
+    def from_path(cls, path: PathLike, default_mimetype: str = "application/octect-stream") -> FileType:
         path = Path(path)
 
         # Note: not using path.suffix because this fails for files with multiple suffixes,
@@ -70,7 +72,7 @@ class FileType(NamedTuple):
         return self in FileTypes._VIDEO_TYPES
 
     @classmethod
-    def from_path_dataset(cls, path: Path | str) -> FileType:
+    def from_path_dataset(cls, path: PathLike) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_parquet_file() and not file_type.is_csv():
             allowed_extensions = (*FileTypes._PARQUET_FILE_TYPES, *FileTypes._CSV_TYPES)
@@ -79,7 +81,7 @@ class FileType(NamedTuple):
         return file_type
 
     @classmethod
-    def from_tabular(cls, path: Path | str) -> FileType:
+    def from_tabular(cls, path: PathLike) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_csv() and not file_type.is_parquet():
             allowed_extensions = (
@@ -92,7 +94,7 @@ class FileType(NamedTuple):
         return file_type
 
     @classmethod
-    def from_path_journal_json(cls, path: Path | str) -> FileType:
+    def from_path_journal_json(cls, path: PathLike) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_journal():
             raise ValueError(
@@ -102,7 +104,7 @@ class FileType(NamedTuple):
         return file_type
 
     @classmethod
-    def from_video(cls, path: Path | str) -> FileType:
+    def from_video(cls, path: PathLike) -> FileType:
         file_type = cls.from_path(path)
         if not file_type.is_video():
             raise ValueError(f"video path '{path}' must end in one of {[f.extension for f in FileTypes._VIDEO_TYPES]}")
