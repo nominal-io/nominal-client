@@ -530,8 +530,8 @@ def clone_run(source_run: Run, destination_client: NominalClient) -> Run:
     """Clones a run, maintaining all properties, linked assets, and attachments.
 
     Args:
-        source_run (Run): The run to copy from.
-        destination_client (NominalClient): The destination client.
+        source_run: The run to copy from.
+        destination_client: The destination client.
 
     Returns:
         The cloned run.
@@ -558,15 +558,15 @@ def copy_run_from(
     Args:
         source_run: The source Run to copy.
         destination_client: The NominalClient to create the copied run in.
-        new_name: Optional new name for the copied run. If not provided, the original name is used.
-        new_start: Optional new start time for the copied run. If not provided, the original start time is used.
-        new_end: Optional new end time for the copied run. If not provided, the original end time is used.
-        new_description: Optional new description for the copied run. If not provided, the original description used.
-        new_properties: Optional new properties for the copied run. If not provided, the original properties are used.
-        new_labels: Optional new labels for the copied run. If not provided, the original labels are used.
-        new_links: Optional new links for the copied run. If not provided, the original links are used.
-        new_attachments: Optional new attachments for the copied run. If not provided, the original attachments used.
-        new_assets: Optional new assets for the copied event. If not provided, the original assets
+        new_name: Optionally override the name of the copied run. Defaults to original name.
+        new_start: Optionally override the start time of the copied run. Defaults to original start time.
+        new_end: Optionally override the end time of the copied run. Defaults to original end time.
+        new_description: Optionally override the description of the copied run. Defaults to original description.
+        new_properties: Optionally override the properties of the copied run. Defaults to original properties.
+        new_labels: Optionally override the labels of the copied run. Defaults to original labels.
+        new_links: Optionally override the links of the copied run. Defaults to original links.
+        new_attachments: Optionally override the attachments of the copied run. Defaults to original attachments.
+        new_assets: Optionally override the linked assets of the copied run. Defaults to original linked assets.
 
     Returns:
         The newly created Run in the destination client.
