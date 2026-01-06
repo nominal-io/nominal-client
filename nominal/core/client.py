@@ -37,6 +37,7 @@ from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._event_types import EventType
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import (
     Link,
     LinkDict,
@@ -853,7 +854,7 @@ class NominalClient:
 
     def create_attachment(
         self,
-        attachment_file: Path | str,
+        attachment_file: PathLike,
         *,
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
@@ -965,7 +966,7 @@ class NominalClient:
     )
     def create_video_from_mcap(
         self,
-        path: Path | str,
+        path: PathLike,
         topic: str,
         name: str | None = None,
         description: str | None = None,

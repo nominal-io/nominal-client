@@ -10,6 +10,7 @@ import pandas as pd
 from nptdms import TdmsChannel, TdmsFile, TdmsGroup
 
 from nominal import ts
+from nominal.core._types import PathLike
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _tdms_to_dataframe(
-    file: Path | str,
+    file: PathLike,
     timestamp_column: str | None = None,
     timestamp_type: ts._AnyTimestampType | None = None,
 ) -> Tuple[str, ts._AnyTimestampType, pd.DataFrame]:
@@ -46,7 +47,7 @@ def _tdms_to_dataframe(
 
 def upload_tdms_to_dataset(
     dataset: Dataset,
-    file: Path | str,
+    file: PathLike,
     timestamp_column: str | None = None,
     timestamp_type: ts._AnyTimestampType | None = None,
     *,
@@ -91,7 +92,7 @@ def upload_tdms_to_dataset(
 
 def upload_tdms(
     client: NominalClient,
-    file: Path | str,
+    file: PathLike,
     name: str | None = None,
     description: str | None = None,
     timestamp_column: str | None = None,

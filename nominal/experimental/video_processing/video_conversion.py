@@ -6,6 +6,7 @@ import shlex
 
 import ffmpeg
 
+from nominal.core._types import PathLike
 from nominal.experimental.video_processing.resolution import (
     AnyResolutionType,
     scale_factor_from_resolution,
@@ -20,8 +21,8 @@ DEFAULT_KEY_FRAME_INTERVAL_SEC = 2
 
 
 def normalize_video(
-    input_path: pathlib.Path,
-    output_path: pathlib.Path,
+    input_path: PathLike,
+    output_path: PathLike,
     key_frame_interval: int | None = DEFAULT_KEY_FRAME_INTERVAL_SEC,
     force: bool = True,
     resolution: AnyResolutionType | None = None,
@@ -59,6 +60,8 @@ def normalize_video(
 
     NOTE: this requires that you have installed ffmpeg on your system with support for H264.
     """
+    input_path = pathlib.Path(input_path)
+    output_path = pathlib.Path(output_path)
     assert input_path.exists(), "Input path must exist"
     assert output_path.suffix.lower() in (".mkv", ".mp4")
 

@@ -14,6 +14,7 @@ from typing_extensions import Self, deprecated
 
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.write_stream import LogStream, WriteStream
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
 from nominal.core.bounds import Bounds
@@ -112,7 +113,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
     def add_tabular_data(
         self,
-        path: Path | str,
+        path: PathLike,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
         tag_columns: Mapping[str, str] | None = None,
@@ -206,7 +207,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
     def add_avro_stream(
         self,
-        path: Path | str,
+        path: PathLike,
     ) -> DatasetFile:
         """Upload an avro stream file with a specific schema, described below.
 
@@ -278,7 +279,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
     def add_journal_json(
         self,
-        path: Path | str,
+        path: PathLike,
     ) -> DatasetFile:
         """Add a journald jsonl file to an existing dataset."""
         log_path = Path(path)
@@ -310,7 +311,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
     def add_mcap(
         self,
-        path: Path | str,
+        path: PathLike,
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
     ) -> DatasetFile:
@@ -384,7 +385,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
     def add_ardupilot_dataflash(
         self,
-        path: Path | str,
+        path: PathLike,
         tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         """Add a Dataflash file to an existing dataset.
@@ -415,7 +416,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, Path | str],
+        sources: Mapping[str, PathLike],
         tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
@@ -425,7 +426,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, Path | str],
+        sources: Mapping[str, PathLike],
         tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
@@ -436,7 +437,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, Path | str],
+        sources: Mapping[str, PathLike],
         tag: str | None = None,
         *,
         arguments: Mapping[str, str] | None = None,
@@ -708,7 +709,7 @@ class _DatasetWrapper(abc.ABC):
     def add_tabular_data(
         self,
         data_scope_name: str,
-        path: Path | str,
+        path: PathLike,
         *,
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
@@ -735,7 +736,7 @@ class _DatasetWrapper(abc.ABC):
     def add_avro_stream(
         self,
         data_scope_name: str,
-        path: Path | str,
+        path: PathLike,
     ) -> DatasetFile:
         """Upload an avro stream file to the dataset selected by `data_scope_name`.
 
@@ -761,7 +762,7 @@ class _DatasetWrapper(abc.ABC):
     def add_journal_json(
         self,
         data_scope_name: str,
-        path: Path | str,
+        path: PathLike,
     ) -> DatasetFile:
         """Add a journald json file to the dataset selected by `data_scope_name`.
 
@@ -787,7 +788,7 @@ class _DatasetWrapper(abc.ABC):
     def add_mcap(
         self,
         data_scope_name: str,
-        path: Path | str,
+        path: PathLike,
         *,
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
@@ -815,7 +816,7 @@ class _DatasetWrapper(abc.ABC):
     def add_ardupilot_dataflash(
         self,
         data_scope_name: str,
-        path: Path | str,
+        path: PathLike,
         tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         """Add a Dataflash file to the dataset selected by `data_scope_name`.
@@ -835,7 +836,7 @@ class _DatasetWrapper(abc.ABC):
         self,
         data_scope_name: str,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, Path | str],
+        sources: Mapping[str, PathLike],
         *,
         tag: str | None = None,
         tags: Mapping[str, str] | None = None,
@@ -845,7 +846,7 @@ class _DatasetWrapper(abc.ABC):
         self,
         data_scope_name: str,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, Path | str],
+        sources: Mapping[str, PathLike],
         *,
         tag: str | None = None,
         tags: Mapping[str, str] | None = None,
@@ -856,7 +857,7 @@ class _DatasetWrapper(abc.ABC):
         self,
         data_scope_name: str,
         extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, Path | str],
+        sources: Mapping[str, PathLike],
         *,
         tag: str | None = None,
         tags: Mapping[str, str] | None = None,

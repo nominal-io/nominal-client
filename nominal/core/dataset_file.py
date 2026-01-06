@@ -13,6 +13,7 @@ from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableMixin
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import (
@@ -128,7 +129,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
 
     def download(
         self,
-        output_directory: pathlib.Path,
+        output_directory: PathLike,
         *,
         part_size: int = DEFAULT_CHUNK_SIZE,
         num_retries: int = 3,
@@ -148,6 +149,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
             FileExistsError: File already exists at destination
             RuntimeError: Error downloading file
         """
+        output_directory = pathlib.Path(output_directory)
         if output_directory.exists() and not output_directory.is_dir():
             raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
 
@@ -160,7 +162,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
 
     def download_original_files(
         self,
-        output_directory: pathlib.Path,
+        output_directory: PathLike,
         *,
         part_size: int = DEFAULT_CHUNK_SIZE,
         num_retries: int = 3,
@@ -184,6 +186,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         NOTE: any file that fails to download will result in an error log and will not be returned
               as an output path
         """
+        output_directory = pathlib.Path(output_directory)
         if output_directory.exists() and not output_directory.is_dir():
             raise NotADirectoryError(f"Output directory is not a directory: {output_directory}")
 

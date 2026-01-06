@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pathlib
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal, Sequence, overload
@@ -8,6 +7,7 @@ from typing import Literal, Sequence, overload
 from nominal_api import scout_datasource_connection_api
 
 from nominal.core._stream.write_stream import DataStream
+from nominal.core._types import PathLike
 from nominal.core.datasource import DataSource, _get_write_stream
 
 
@@ -71,7 +71,7 @@ class StreamingConnection(Connection):
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["rust_experimental"] | None = None,
-        file_fallback: pathlib.Path | None = None,
+        file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> DataStream: ...
@@ -80,7 +80,7 @@ class StreamingConnection(Connection):
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None = None,
-        file_fallback: pathlib.Path | None = None,
+        file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> DataStream:

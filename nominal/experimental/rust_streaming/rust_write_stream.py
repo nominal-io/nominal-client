@@ -6,6 +6,7 @@ import pathlib
 from nominal_streaming import NominalDatasetStream
 
 from nominal.core._stream.write_stream import DataStream
+from nominal.core._types import PathLike
 from nominal.core.datasource import DataSource
 
 
@@ -22,7 +23,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         datasource_clients: DataSource._Clients,
         batch_size: int,
         max_wait: datetime.timedelta,
-        file_fallback: pathlib.Path | None = None,
+        file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> RustWriteStream:
@@ -41,7 +42,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         ).with_core_consumer(datasource_rid)
 
         if file_fallback is not None:
-            stream = stream.with_file_fallback(file_fallback)
+            stream = stream.with_file_fallback(pathlib.Path(file_fallback))
 
         if log_level is not None:
             stream = stream.enable_logging(log_level)

@@ -14,6 +14,7 @@ from nominal_api import api, ingest_api, scout_video, scout_video_api, upload_ap
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
@@ -118,7 +119,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
 
     def add_file(
         self,
-        path: pathlib.Path | str,
+        path: PathLike,
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
@@ -212,7 +213,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
 
     def add_mcap(
         self,
-        path: pathlib.Path,
+        path: PathLike,
         topic: str,
         description: str | None = None,
     ) -> VideoFile:

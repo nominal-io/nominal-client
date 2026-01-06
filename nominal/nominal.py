@@ -24,6 +24,7 @@ from nominal.core import (
     poll_until_ingestion_completed,
 )
 from nominal.core._constants import DEFAULT_API_BASE_URL
+from nominal.core._types import PathLike
 from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 
@@ -102,7 +103,7 @@ def get_user() -> User:
     "Use `nominal.thirdparty.tdms.upload_tdms` instead."
 )
 def upload_tdms(
-    file: Path | str,
+    file: PathLike,
     name: str | None = None,
     description: str | None = None,
     timestamp_column: str | None = None,
@@ -213,7 +214,7 @@ def create_dataset(
     "Use `nominal.create_dataset` or `nominal.get_dataset`, add data to an existing dataset instead."
 )
 def upload_csv(
-    file: Path | str,
+    file: PathLike,
     name: str | None,
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
@@ -245,7 +246,7 @@ def upload_csv(
 
 def _upload_csv(
     client: NominalClient,
-    file: Path | str,
+    file: PathLike,
     name: str | None,
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
@@ -317,7 +318,7 @@ def create_run(
     f"see {AUTHENTICATION_DOCS_LINK}"
 )
 def create_run_csv(
-    file: Path | str,
+    file: PathLike,
     name: str,
     timestamp_column: str,
     timestamp_type: ts._LiteralAbsolute | ts.Iso8601 | ts.Epoch,
@@ -379,7 +380,7 @@ def search_runs(
     f"Use `nominal.NominalClient.create_attachment` instead, see {AUTHENTICATION_DOCS_LINK}"
 )
 def upload_attachment(
-    file: Path | str,
+    file: PathLike,
     name: str,
     description: str | None = None,
 ) -> Attachment:
@@ -406,7 +407,7 @@ def get_attachment(rid: str) -> Attachment:
     "Use `nominal.NominalClient.get_attachment` and `nominal.core.Attachment.write` instead, "
     f"see {AUTHENTICATION_DOCS_LINK}"
 )
-def download_attachment(rid: str, file: Path | str) -> None:
+def download_attachment(rid: str, file: PathLike) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
     client = _get_default_client()
     attachment = client.get_attachment(rid)
@@ -418,7 +419,7 @@ def download_attachment(rid: str, file: Path | str) -> None:
     f"Use `nominal.NominalClient.create_video` instead, see {AUTHENTICATION_DOCS_LINK}"
 )
 def upload_video(
-    file: Path | str, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
+    file: PathLike, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
 ) -> Video:
     """Upload a video to Nominal from a file."""
     client = _get_default_client()
@@ -542,7 +543,7 @@ def get_checklist(checklist_rid: str) -> Checklist:
     f"Use `nominal.NominalClient.create_mcap_video` instead, see {AUTHENTICATION_DOCS_LINK}"
 )
 def upload_mcap_video(
-    file: Path | str,
+    file: PathLike,
     topic: str,
     name: str | None = None,
     description: str | None = None,

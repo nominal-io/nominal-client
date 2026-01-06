@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import pathlib
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Iterable, Literal, Mapping, Protocol, Sequence, overload
@@ -27,6 +26,7 @@ from nominal._utils import batched
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
+from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.unit import UnitMapping, _build_unit_update, _error_on_invalid_units
@@ -125,7 +125,7 @@ class DataSource(HasRid):
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["rust_experimental"] | None = None,
-        file_fallback: pathlib.Path | None = None,
+        file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> DataStream: ...
@@ -134,7 +134,7 @@ class DataSource(HasRid):
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
         data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None = None,
-        file_fallback: pathlib.Path | None = None,
+        file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> DataStream:
@@ -327,7 +327,7 @@ def _get_write_stream(
     batch_size: int,
     max_wait: timedelta,
     data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None,
-    file_fallback: pathlib.Path | None,
+    file_fallback: PathLike | None,
     log_level: str | None,
     num_workers: int | None,
     write_rid: str,
