@@ -1208,7 +1208,7 @@ class NominalClient:
         return list(self._iter_list_streaming_checklists(asset))
 
     def data_review_builder(self) -> DataReviewBuilder:
-        return DataReviewBuilder([], [], [], _clients=self._clients)
+        return DataReviewBuilder([], [], [], [], _clients=self._clients)
 
     def get_data_review(self, rid: str) -> DataReview:
         response = self._clients.datareview.get(self._clients.auth_header, rid)
