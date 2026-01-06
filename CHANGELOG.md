@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.103.0](https://github.com/nominal-io/nominal-client/compare/v1.102.0...v1.103.0) (2026-01-06)
+
+
+### Features
+
+* add clone/copy run ([#563](https://github.com/nominal-io/nominal-client/issues/563)) ([276c511](https://github.com/nominal-io/nominal-client/commit/276c511d10c73b9f80ea2efed32d4047fe33795b))
+* universally support paths and strings, and add PathLike alias ([#566](https://github.com/nominal-io/nominal-client/issues/566)) ([860dd3d](https://github.com/nominal-io/nominal-client/commit/860dd3d67456d269356b66b5434b904647e5a2ff))
+
 ## [1.102.0](https://github.com/nominal-io/nominal-client/compare/v1.101.0...v1.102.0) (2026-01-05)
 
 
