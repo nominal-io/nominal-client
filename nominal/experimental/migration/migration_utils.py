@@ -23,6 +23,9 @@ from nominal.core import (
     WorkbookTemplate,
 )
 from nominal.core._event_types import EventType, SearchEventOriginType
+from nominal.core._utils.api_tools import Link, LinkDict
+from nominal.core.attachment import Attachment
+from nominal.core.run import Run
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -523,6 +526,75 @@ def copy_event_from(
     return new_event
 
 
+def clone_run(source_run: Run, destination_client: NominalClient) -> Run:
+    """Clones a run, maintaining all properties, linked assets, and attachments.
+
+    Args:
+        source_run (Run): The run to copy from.
+        destination_client (NominalClient): The destination client.
+
+    Returns:
+        The cloned run.
+    """
+    return copy_run_from(source_run=source_run, destination_client=destination_client)
+
+
+def copy_run_from(
+    source_run: Run,
+    destination_client: NominalClient,
+    *,
+    new_name: str | None = None,
+    new_start: datetime | IntegralNanosecondsUTC | None = None,
+    new_end: datetime | IntegralNanosecondsUTC | None = None,
+    new_description: str | None = None,
+    new_properties: Mapping[str, str] | None = None,
+    new_labels: Sequence[str] = (),
+    new_links: Sequence[str | Link | LinkDict] = (),
+    new_attachments: Iterable[Attachment] | Iterable[str] = (),
+    new_assets: Sequence[Asset | str] = (),
+) -> Run:
+    """Copy a run from the source to the destination client.
+
+    Args:
+        source_run: The source Run to copy.
+        destination_client: The NominalClient to create the copied run in.
+        new_name: Optional new name for the copied run. If not provided, the original name is used.
+        new_start: Optional new start time for the copied run. If not provided, the original start time is used.
+        new_end: Optional new end time for the copied run. If not provided, the original end time is used.
+        new_description: Optional new description for the copied run. If not provided, the original description used.
+        new_properties: Optional new properties for the copied run. If not provided, the original properties are used.
+        new_labels: Optional new labels for the copied run. If not provided, the original labels are used.
+        new_links: Optional new links for the copied run. If not provided, the original links are used.
+        new_attachments: Optional new attachments for the copied run. If not provided, the original attachments used.
+        new_assets: Optional new assets for the copied event. If not provided, the original assets
+
+    Returns:
+        The newly created Run in the destination client.
+    """
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+    }
+    logger.debug(
+        "Copying run %s (rid: %s)",
+        source_run.name,
+        source_run.rid,
+        extra=log_extras,
+    )
+    new_run = destination_client.create_run(
+        name=new_name or source_run.name,
+        start=new_start or source_run.start,
+        end=new_end or source_run.end,
+        description=new_description or source_run.description,
+        properties=new_properties or source_run.properties,
+        labels=new_labels or source_run.labels,
+        assets=new_assets or source_run.assets,
+        links=new_links or source_run.links,
+        attachments=new_attachments or source_run.list_attachments(),
+    )
+    logger.debug("New run created: %s (rid: %s)", new_run.name, new_run.rid, extra=log_extras)
+    return new_run
+
+
 def clone_asset(
     source_asset: Asset,
     destination_client: NominalClient,
@@ -537,7 +609,11 @@ def clone_asset(
         The newly created Asset in the target client.
     """
     return copy_asset_from(
-        source_asset=source_asset, destination_client=destination_client, include_data=True, include_events=True
+        source_asset=source_asset,
+        destination_client=destination_client,
+        include_data=True,
+        include_events=True,
+        include_runs=True,
     )
 
 
@@ -551,6 +627,7 @@ def copy_asset_from(
     new_asset_labels: Sequence[str] | None = None,
     include_data: bool = False,
     include_events: bool = False,
+    include_runs: bool = False,
 ) -> Asset:
     """Copy an asset from the source to the destination client.
 
@@ -563,6 +640,7 @@ def copy_asset_from(
         new_asset_labels: Optional new labels for the copied asset. If not provided, the original labels are used.
         include_data: Whether to include data in the copied asset.
         include_events: Whether to include events in the copied dataset.
+        include_runs: Whether to include runs in the copied asset.
 
     Returns:
         The new asset created.
@@ -579,21 +657,23 @@ def copy_asset_from(
     )
     if include_data:
         source_datasets = source_asset.list_datasets()
-        new_datasets = []
         for data_scope, source_dataset in source_datasets:
             new_dataset = clone_dataset(
                 source_dataset=source_dataset,
                 destination_client=destination_client,
             )
-            new_datasets.append(new_dataset)
             new_asset.add_dataset(data_scope, new_dataset)
+    source_asset._list_dataset_scopes
 
     if include_events:
         source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
-        new_events = []
         for source_event in source_events:
-            new_event = copy_event_from(source_event, destination_client, new_assets=[new_asset])
-            new_events.append(new_event)
+            copy_event_from(source_event, destination_client, new_assets=[new_asset])
+
+    if include_runs:
+        source_runs = source_asset.list_runs()
+        for source_run in source_runs:
+            copy_run_from(source_run, destination_client, new_assets=[new_asset])
 
     logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
     return new_asset
