@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from time import sleep
-from typing import Protocol, Sequence
+from typing import Iterable, Protocol, Sequence
 
 from nominal_api import (
     event as event_api,
@@ -18,7 +18,6 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal.core import checklist, event
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
@@ -273,3 +272,26 @@ def poll_until_completed(
     data_reviews: Sequence[DataReview], interval: timedelta = timedelta(seconds=2)
 ) -> Sequence[DataReview]:
     return [review.poll_for_completion(interval) for review in data_reviews]
+
+
+def _iter_search_data_reviews(
+    clients: DataReview._Clients,
+    assets: Sequence[str] | None = None,
+    runs: Sequence[str] | None = None,
+) -> Iterable[DataReview]:
+    for review in search_data_reviews_paginated(
+        clients.datareview,
+        clients.auth_header,
+        assets=assets,
+        runs=runs,
+    ):
+        yield DataReview._from_conjure(clients, review)
+
+
+def _search_data_reviews(
+    clients: DataReview._Clients,
+    assets: Sequence[str] | None = None,
+    runs: Sequence[str] | None = None,
+) -> Sequence[DataReview]:
+    """Search for any data reviews present within a collection of runs and assets."""
+    return list(_iter_search_data_reviews(clients, assets, runs))

@@ -48,11 +48,8 @@ from nominal.core._utils.multipart import (
     upload_multipart_io,
 )
 from nominal.core._utils.pagination_tools import (
-    list_streaming_checklists_for_asset_paginated,
-    list_streaming_checklists_paginated,
     search_assets_paginated,
     search_checklists_paginated,
-    search_data_reviews_paginated,
     search_datasets_paginated,
     search_runs_by_asset_paginated,
     search_runs_paginated,
@@ -84,7 +81,7 @@ from nominal.core.containerized_extractors import (
     FileExtractionInput,
     FileOutputFormat,
 )
-from nominal.core.data_review import DataReview, DataReviewBuilder
+from nominal.core.data_review import DataReview, DataReviewBuilder, _search_data_reviews
 from nominal.core.dataset import (
     Dataset,
     _create_dataset,
@@ -97,6 +94,7 @@ from nominal.core.exceptions import NominalConfigError, NominalError, NominalMet
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
+from nominal.core.streaming_checklist import _list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video
@@ -1162,21 +1160,17 @@ class NominalClient:
         )
         return list(self._iter_search_assets(query))
 
-    def _iter_list_streaming_checklists(self, asset: str | None) -> Iterable[str]:
-        if asset is None:
-            return list_streaming_checklists_paginated(self._clients.checklist_execution, self._clients.auth_header)
-        return list_streaming_checklists_for_asset_paginated(
-            self._clients.checklist_execution, self._clients.auth_header, asset
-        )
-
-    def list_streaming_checklists(self, asset: Asset | str | None = None) -> Iterable[str]:
+    def list_streaming_checklists(self, asset: Asset | str | None = None) -> Sequence[str]:
         """List all Streaming Checklists.
 
         Args:
             asset: if provided, only return checklists associated with the given asset.
+
+        Returns:
+            All streaming checklist RIDs that match the provided conditions
         """
-        asset = None if asset is None else rid_from_instance_or_string(asset)
-        return list(self._iter_list_streaming_checklists(asset))
+        asset_rid = None if asset is None else rid_from_instance_or_string(asset)
+        return _list_streaming_checklists(self._clients, asset_rid)
 
     def data_review_builder(self) -> DataReviewBuilder:
         return DataReviewBuilder([], [], [], _clients=self._clients)
@@ -1220,27 +1214,27 @@ class NominalClient:
         responses = self._clients.event.batch_get_events(self._clients.auth_header, list(rids))
         return [Event._from_conjure(self._clients, response) for response in responses]
 
-    def _iter_search_data_reviews(
-        self,
-        assets: Sequence[Asset | str] | None = None,
-        runs: Sequence[Run | str] | None = None,
-    ) -> Iterable[DataReview]:
-        for review in search_data_reviews_paginated(
-            self._clients.datareview,
-            self._clients.auth_header,
-            assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
-            runs=[rid_from_instance_or_string(run) for run in runs] if runs else None,
-        ):
-            yield DataReview._from_conjure(self._clients, review)
-
     def search_data_reviews(
         self,
         assets: Sequence[Asset | str] | None = None,
         runs: Sequence[Run | str] | None = None,
     ) -> Sequence[DataReview]:
-        """Search for any data reviews present within a collection of runs and assets."""
+        """Search for data reviews meeting the specified filters.
+        Filters are ANDed together, e.g. `(data_review.asset == asset) AND (data_review.run == run)`
+
+        Args:
+            assets: List of assets that must be associated with a data review to be included.
+            runs: List of runs that must be associated with a data review to be included.
+
+        Returns:
+            All data reviews which match all of the provided conditions
+        """
         # TODO (drake-nominal): Expose checklist_refs to users
-        return list(self._iter_search_data_reviews(assets, runs))
+        return _search_data_reviews(
+            clients=self._clients,
+            assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
+            runs=[rid_from_instance_or_string(run) for run in runs] if runs else None,
+        )
 
     def search_events(
         self,
