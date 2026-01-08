@@ -468,7 +468,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 series_name=timestamp_column,
                 timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             )
-        elif None in (timestamp_column, timestamp_type):
+        elif (timestamp_column is None) != (timestamp_type is None):
             raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
 
         if isinstance(extractor, str):
