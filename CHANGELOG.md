@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.104.0](https://github.com/nominal-io/nominal-client/compare/v1.103.0...v1.104.0) (2026-01-08)
+
+
+### Features
+
+* properly use timestamp metadata fallback containerized ([#568](https://github.com/nominal-io/nominal-client/issues/568)) ([8aa5c8c](https://github.com/nominal-io/nominal-client/commit/8aa5c8cb39eeee54bb4b643ad087b80ac5e12f1a))
+
 ## [1.103.0](https://github.com/nominal-io/nominal-client/compare/v1.102.0...v1.103.0) (2026-01-06)
 
 
