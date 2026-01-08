@@ -166,7 +166,7 @@ class DataReviewBuilder:
 
     @deprecated(
         "`DataReviewBuilder.add_request` is deprecated and will be removed in a future release of the Nominal SDK. "
-        "Please use `DataReviewBuilder.add_review` instead."
+        "Please use `DataReviewBuilder.execute_checklist` instead."
     )
     def add_request(
         self,
@@ -187,9 +187,9 @@ class DataReviewBuilder:
         Returns:
             DataReviewBuilder instance to continue building a data review with
         """
-        return self.add_review(run_rid, checklist_rid, commit=commit, asset=asset_rid)
+        return self.execute_checklist(run_rid, checklist_rid, commit=commit, asset=asset_rid)
 
-    def add_review(
+    def execute_checklist(
         self,
         run: str | Run,
         checklist: str | checklist.Checklist,
