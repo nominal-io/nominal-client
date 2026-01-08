@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.104.1](https://github.com/nominal-io/nominal-client/compare/v1.104.0...v1.104.1) (2026-01-08)
+
+
+### Bug Fixes
+
+* add asset_rid to data_review request ([#508](https://github.com/nominal-io/nominal-client/issues/508)) ([b1baf4f](https://github.com/nominal-io/nominal-client/commit/b1baf4f3745ee8a485ff0407a53ad9ee1ee9b0fc))
+
 ## [1.104.0](https://github.com/nominal-io/nominal-client/compare/v1.103.0...v1.104.0) (2026-01-08)
 
 
