@@ -20,17 +20,20 @@ from typing_extensions import Self, deprecated
 
 from nominal.core import checklist, event
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core.asset import Asset
-from nominal.core.exceptions import NominalMethodRemovedError
 from nominal.core.run import Run
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
+MAX_OPSGENIE_TAGS = 20
+MAX_OPSGENIE_TAG_LENGTH = 50
+
 
 @dataclass(frozen=True)
-class DataReview(HasRid):
+class DataReview(HasRid, RefreshableMixin[scout_datareview_api.DataReview]):
     rid: str
     run_rid: str
+    asset_rid: str
     checklist_rid: str
     checklist_commit: str
     completed: bool
@@ -50,37 +53,25 @@ class DataReview(HasRid):
         @property
         def run(self) -> scout.RunService: ...
 
-    @classmethod
-    def _from_conjure(cls, clients: _Clients, data_review: scout_datareview_api.DataReview) -> Self:
-        executing_states = [
-            check.state._pending_execution or check.state._executing for check in data_review.check_evaluations
-        ]
-        completed = not any(executing_states)
-        return cls(
-            rid=data_review.rid,
-            run_rid=data_review.run_rid,
-            checklist_rid=data_review.checklist_ref.rid,
-            checklist_commit=data_review.checklist_ref.commit,
-            completed=completed,
-            created_at=_SecondsNanos.from_flexible(data_review.created_at).to_nanoseconds(),
-            _clients=clients,
-        )
+    @property
+    def nominal_url(self) -> str:
+        """Returns a link to the page for this Data Review in the Nominal app"""
+        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
+        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=checklist-executions&checklistExecution={self.rid}&openCheckExecutionErrorReview="  # noqa: E501
+
+    @property
+    def events_url(self) -> str:
+        """Returns a link to the page for events for this Data Review in the Nominal app"""
+        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
+        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=events&checklistExecution={self.rid}"
+
+    def _get_latest_api(self) -> scout_datareview_api.DataReview:
+        return self._clients.datareview.get(self._clients.auth_header, self.rid)
 
     def get_checklist(self) -> checklist.Checklist:
         return checklist.Checklist._from_conjure(
             self._clients,
             self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
-        )
-
-    @deprecated(
-        "CheckViolations are deprecated and will be removed in a future version. "
-        "Checklists now produce Events. Use get_events() instead."
-    )
-    def get_violations(self) -> Sequence[CheckViolation]:
-        """Retrieves the list of check violations for the data review."""
-        raise NominalMethodRemovedError(
-            "nominal.core.DataReview.get_violations",
-            "use 'nominal.core.DataReview.get_events()' instead",
         )
 
     def get_events(self) -> Sequence[event.Event]:
@@ -95,11 +86,13 @@ class DataReview(HasRid):
         event_response = self._clients.event.batch_get_events(self._clients.auth_header, all_event_rids)
         return [event.Event._from_conjure(self._clients, data_review_event) for data_review_event in event_response]
 
-    def reload(self) -> DataReview:
+    @deprecated(
+        "DataReview.reload() is deprecated and will be removed in a future version of the Nominal SDK. "
+        "Use DataReview.refresh() instead"
+    )
+    def reload(self) -> Self:
         """Reloads the data review from the server."""
-        return DataReview._from_conjure(
-            self._clients, self._clients.datareview.get(self._clients.auth_header, self.rid)
-        )
+        return self.refresh()
 
     def poll_for_completion(self, interval: timedelta = timedelta(seconds=2)) -> DataReview:
         """Polls the data review until it is completed."""
@@ -112,26 +105,34 @@ class DataReview(HasRid):
     def archive(self) -> None:
         """Archive this data review.
         Archived data reviews are not deleted, but are hidden from the UI.
-
-        NOTE: currently, it is not possible (yet) to unarchive a data review once archived.
         """
         self._clients.datareview.archive_data_review(self._clients.auth_header, self.rid)
 
-    @property
-    def nominal_url(self) -> str:
-        """Returns a link to the page for this Data Review in the Nominal app"""
-        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
-        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=checklist-executions&checklistExecution={self.rid}&openCheckExecutionErrorReview="  # noqa: E501
+    def unarchive(self) -> None:
+        """Unarchive this data review, allowing it to be visible in the UI."""
+        self._clients.datareview.unarchive_data_review(self._clients.auth_header, self.rid)
 
-    @property
-    def events_url(self) -> str:
-        """Returns a link to the page for events for this Data Review in the Nominal app"""
-        run = self._clients.run.get_run(self._clients.auth_header, self.run_rid)
-        return f"{self._clients.app_base_url}/runs/{run.run_number}/?tab=events&checklistExecution={self.rid}"
+    @classmethod
+    def _from_conjure(cls, clients: _Clients, data_review: scout_datareview_api.DataReview) -> Self:
+        executing_states = [
+            check.state._pending_execution or check.state._executing for check in data_review.check_evaluations
+        ]
+        completed = not any(executing_states)
+        return cls(
+            rid=data_review.rid,
+            run_rid=data_review.run_rid,
+            asset_rid=data_review.asset_rid,
+            checklist_rid=data_review.checklist_ref.rid,
+            checklist_commit=data_review.checklist_ref.commit,
+            completed=completed,
+            created_at=_SecondsNanos.from_flexible(data_review.created_at).to_nanoseconds(),
+            _clients=clients,
+        )
 
 
+@deprecated("CheckViolation is deprecated and will be removed in a future version of the Nominal SDK")
 @dataclass(frozen=True)
-class CheckViolation:
+class CheckViolation(HasRid):
     rid: str
     check_rid: str
     name: str
@@ -140,7 +141,7 @@ class CheckViolation:
     priority: checklist.Priority | None
 
     @classmethod
-    def _from_conjure(cls, check_alert: scout_datareview_api.CheckAlert) -> CheckViolation:
+    def _from_conjure(cls, check_alert: scout_datareview_api.CheckAlert) -> Self:
         return cls(
             rid=check_alert.rid,
             check_rid=check_alert.check_rid,
@@ -156,11 +157,21 @@ class CheckViolation:
 @dataclass(frozen=True)
 class DataReviewBuilder:
     _integration_rids: list[str]
+
     _requests: list[scout_datareview_api.CreateDataReviewRequest]
     _tags: list[str]
     _clients: DataReview._Clients = field(repr=False)
 
     def add_integration(self, integration_rid: str) -> DataReviewBuilder:
+        """Add an integration to send notifications with upon checklist execution.
+
+        Args:
+            integration_rid: Rid of the integration to add for notifications from the data review.
+
+        Returns:
+            Instance of the data review builder for further chaining.
+        """
+        # TODO(drake): allow per-integration tags that merge / validate with globally provided tags
         self._integration_rids.append(integration_rid)
         return self
 
@@ -242,6 +253,23 @@ class DataReviewBuilder:
         return self
 
     def add_tags(self, tags: list[str]) -> DataReviewBuilder:
+        """Tags are used to filter messages in Opsgenie.
+        For other integrations, tags are ignored.
+
+        NOTE: a maximum of 20 tags are allowed
+        NOTE: tags have a maximum size of 50 characters each
+        """
+        if len(self._tags) + len(tags) > MAX_OPSGENIE_TAGS:
+            raise ValueError(
+                f"Cannot add {len(tags)} tags to data review: a maximum of {MAX_OPSGENIE_TAGS} tags are allowed!"
+            )
+
+        for tag in tags:
+            if len(tag) > MAX_OPSGENIE_TAG_LENGTH:
+                raise ValueError(
+                    f"Cannot add tag '{tag}' to data review: tag is too long ({len(tag)} > {MAX_OPSGENIE_TAG_LENGTH})"
+                )
+
         self._tags.extend(tags)
         return self
 
@@ -250,10 +278,17 @@ class DataReviewBuilder:
 
         Args:
             wait_for_completion: If True, waits for the data review process to complete before returning.
+
+        Returns:
+            All initiated data reviews.
         """
         request = scout_datareview_api.BatchInitiateDataReviewRequest(
             notification_configurations=[
-                scout_integrations_api.NotificationConfiguration(c, tags=self._tags) for c in self._integration_rids
+                scout_integrations_api.NotificationConfiguration(
+                    integration_rid,
+                    tags=self._tags,
+                )
+                for integration_rid in self._integration_rids
             ],
             requests=self._requests,
         )
@@ -270,6 +305,7 @@ class DataReviewBuilder:
 
 
 def poll_until_completed(
-    data_reviews: Sequence[DataReview], interval: timedelta = timedelta(seconds=2)
+    data_reviews: Sequence[DataReview],
+    interval: timedelta = timedelta(seconds=2),
 ) -> Sequence[DataReview]:
     return [review.poll_for_completion(interval) for review in data_reviews]
