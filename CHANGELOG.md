@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.104.2](https://github.com/nominal-io/nominal-client/compare/v1.104.1...v1.104.2) (2026-01-08)
+
+
+### Bug Fixes
+
+* explicitly pin version of urllib to fix CVE ([#571](https://github.com/nominal-io/nominal-client/issues/571)) ([2014e51](https://github.com/nominal-io/nominal-client/commit/2014e51d95e8cf804b1dce269402b2671f5153f8))
+
 ## [1.104.1](https://github.com/nominal-io/nominal-client/compare/v1.104.0...v1.104.1) (2026-01-08)
 
 
