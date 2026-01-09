@@ -434,7 +434,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         timestamp_column: str,
         timestamp_type: _AnyTimestampType,
     ) -> DatasetFile: ...
-    def add_containerized(
+    def _ingest_containerized(
         self,
         extractor: str | ContainerizedExtractor,
         sources: Mapping[str, PathLike],
@@ -444,24 +444,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         tags: Mapping[str, str] | None = None,
         timestamp_column: str | None = None,
         timestamp_type: _AnyTimestampType | None = None,
-    ) -> DatasetFile:
-        """Add data from proprietary data formats using a pre-registered custom extractor.
-
-        Args:
-            extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
-            sources: Mapping of environment variables to source files to use with the extractor.
-                NOTE: these must match the registered inputs of the containerized extractor exactly
-            tag: Tag of the Docker container which hosts the extractor.
-                NOTE: if not provided, the default registered docker tag will be used.
-            arguments: Mapping of key-value pairs of input arguments to the extractor.
-            tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
-            timestamp_column: the column in the dataset that contains the timestamp data.
-                NOTE: this is applied uniformly to all output files
-                NOTE: must be provided with a `timestamp_type` or a ValueError will be raised
-            timestamp_type: the type of timestamp data in the dataset.
-                NOTE: this is applied uniformly to all output files
-                NOTE: must be provided with a `timestamp_column` or a ValueError will be raised
-        """
+    ) -> ingest_api.IngestResponse:
+        """Internal helper that performs containerized ingest and returns the raw response."""
         timestamp_metadata = None
         if timestamp_column is not None and timestamp_type is not None:
             timestamp_metadata = ingest_api.TimestampMetadata(
@@ -499,7 +483,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             s3_inputs[source] = s3_path
 
         logger.info("Triggering custom extractor %s (tag=%s) with %s", extractor.name, tag, s3_inputs)
-        resp = self._clients.ingest.ingest(
+        return self._clients.ingest.ingest(
             self._clients.auth_header,
             trigger_ingest=ingest_api.IngestRequest(
                 options=ingest_api.IngestOptions(
@@ -521,7 +505,112 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             ),
         )
 
+    def add_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyTimestampType | None = None,
+    ) -> DatasetFile:
+        """Add data from proprietary data formats using a pre-registered custom extractor.
+
+        Args:
+            extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
+            sources: Mapping of environment variables to source files to use with the extractor.
+                NOTE: these must match the registered inputs of the containerized extractor exactly
+            tag: Tag of the Docker container which hosts the extractor.
+                NOTE: if not provided, the default registered docker tag will be used.
+            arguments: Mapping of key-value pairs of input arguments to the extractor.
+            tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
+            timestamp_column: the column in the dataset that contains the timestamp data.
+                NOTE: this is applied uniformly to all output files
+                NOTE: must be provided with a `timestamp_type` or a ValueError will be raised
+            timestamp_type: the type of timestamp data in the dataset.
+                NOTE: this is applied uniformly to all output files
+                NOTE: must be provided with a `timestamp_column` or a ValueError will be raised
+        """
+        resp = self._ingest_containerized(
+            extractor,
+            sources,
+            tag,
+            arguments=arguments,
+            tags=tags,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
+        )
         return self._handle_ingest_response(resp)
+
+    @overload
+    def add_multifile_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> str | None: ...
+    @overload
+    def add_multifile_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> str | None: ...
+    def add_multifile_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyTimestampType | None = None,
+    ) -> str | None:
+        """Add data from proprietary data formats using a pre-registered custom extractor that produces multiple files.
+
+        Unlike `add_containerized`, this method is designed for extractors that produce multiple dataset files
+        from a single ingest operation. Since there is no single DatasetFile to return, this method returns
+        the ingest job RID which can be used to track the ingestion status.
+
+        Args:
+            extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
+            sources: Mapping of environment variables to source files to use with the extractor.
+                NOTE: these must match the registered inputs of the containerized extractor exactly
+            tag: Tag of the Docker container which hosts the extractor.
+                NOTE: if not provided, the default registered docker tag will be used.
+            arguments: Mapping of key-value pairs of input arguments to the extractor.
+            tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
+            timestamp_column: the column in the dataset that contains the timestamp data.
+                NOTE: this is applied uniformly to all output files
+                NOTE: must be provided with a `timestamp_type` or a ValueError will be raised
+            timestamp_type: the type of timestamp data in the dataset.
+                NOTE: this is applied uniformly to all output files
+                NOTE: must be provided with a `timestamp_column` or a ValueError will be raised
+
+        Returns:
+            The ingest job RID if available, or None. This can be used to track the status of the multi-file ingest.
+        """
+        resp = self._ingest_containerized(
+            extractor,
+            sources,
+            tag,
+            arguments=arguments,
+            tags=tags,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
+        )
+        return resp.ingest_job_rid
 
     def archive(self) -> None:
         """Archive this dataset.
@@ -895,6 +984,77 @@ class _DatasetWrapper(abc.ABC):
         else:
             raise ValueError(
                 "Only one of `timestamp_column` and `timestamp_type` were provided to `add_containerized`, "
+                "either both must or neither must be provided."
+            )
+
+    @overload
+    def add_multifile_containerized(
+        self,
+        data_scope_name: str,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        *,
+        tag: str | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> str | None: ...
+    @overload
+    def add_multifile_containerized(
+        self,
+        data_scope_name: str,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        *,
+        tag: str | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> str | None: ...
+    def add_multifile_containerized(
+        self,
+        data_scope_name: str,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        *,
+        tag: str | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str | None = None,
+        timestamp_type: _AnyTimestampType | None = None,
+    ) -> str | None:
+        """Add data from proprietary formats using a pre-registered custom extractor that produces multiple files.
+
+        This method behaves like `nominal.core.Dataset.add_multifile_containerized`, except that the data scope's
+        required tags are merged into `tags` before ingest (with user-provided tags taking precedence on key
+        collisions).
+
+        This wrapper also enforces that `timestamp_column` and `timestamp_type` are provided together (or omitted
+        together) before delegating.
+
+        For extractor inputs, tagging semantics, timestamp metadata behavior, and return value details, see
+        `nominal.core.Dataset.add_multifile_containerized`.
+
+        Returns:
+            The ingest job RID if available, or None. This can be used to track the status of the multi-file ingest.
+        """
+        dataset, scope_tags = self._get_dataset_scope(data_scope_name)
+        if timestamp_column is None and timestamp_type is None:
+            return dataset.add_multifile_containerized(
+                extractor,
+                sources,
+                tag=tag,
+                tags=_unify_tags(scope_tags, tags),
+            )
+        elif timestamp_column is not None and timestamp_type is not None:
+            return dataset.add_multifile_containerized(
+                extractor,
+                sources,
+                tag=tag,
+                tags=_unify_tags(scope_tags, tags),
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+            )
+        else:
+            raise ValueError(
+                "Only one of `timestamp_column` and `timestamp_type` were provided to `add_multifile_containerized`, "
                 "either both must or neither must be provided."
             )
 
