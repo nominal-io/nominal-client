@@ -412,28 +412,6 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     # Backward compatibility
     add_ardupilot_dataflash_to_dataset = add_ardupilot_dataflash
 
-    @overload
-    def add_containerized(
-        self,
-        extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, PathLike],
-        tag: str | None = None,
-        *,
-        arguments: Mapping[str, str] | None = None,
-        tags: Mapping[str, str] | None = None,
-    ) -> DatasetFile: ...
-    @overload
-    def add_containerized(
-        self,
-        extractor: str | ContainerizedExtractor,
-        sources: Mapping[str, PathLike],
-        tag: str | None = None,
-        *,
-        arguments: Mapping[str, str] | None = None,
-        tags: Mapping[str, str] | None = None,
-        timestamp_column: str,
-        timestamp_type: _AnyTimestampType,
-    ) -> DatasetFile: ...
     def _ingest_containerized(
         self,
         extractor: str | ContainerizedExtractor,
@@ -505,6 +483,28 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             ),
         )
 
+    @overload
+    def add_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> DatasetFile: ...
+    @overload
+    def add_containerized(
+        self,
+        extractor: str | ContainerizedExtractor,
+        sources: Mapping[str, PathLike],
+        tag: str | None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> DatasetFile: ...
     def add_containerized(
         self,
         extractor: str | ContainerizedExtractor,
