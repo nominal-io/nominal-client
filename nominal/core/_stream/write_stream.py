@@ -32,13 +32,15 @@ class BatchItem(Generic[StreamType]):
         return item._to_api_batch_key()
 
 
-DataStream: TypeAlias = WriteStreamBase[str | float | int]
+FlexibleTimestampType = str | datetime | IntegralNanosecondsUTC
+
+DataStream: TypeAlias = WriteStreamBase[str | float | int, FlexibleTimestampType]
 """Stream type for asynchronously sending timeseries data to the Nominal backend."""
 
 DataItem: TypeAlias = BatchItem[str | float | int]
 """Individual item of timeseries data to stream to Nominal."""
 
-LogStream: TypeAlias = WriteStreamBase[str]
+LogStream: TypeAlias = WriteStreamBase[str, str | datetime | IntegralNanosecondsUTC]
 """Stream type for asynchronously sending log data to the Nominal backend."""
 
 LogItem: TypeAlias = BatchItem[str]
@@ -46,7 +48,7 @@ LogItem: TypeAlias = BatchItem[str]
 
 
 @dataclass(frozen=True)
-class WriteStream(WriteStreamBase[StreamType]):
+class WriteStream(WriteStreamBase[StreamType, FlexibleTimestampType]):
     batch_size: int
     max_wait: timedelta
     _process_batch: Callable[[Sequence[BatchItem[StreamType]]], None]
@@ -92,7 +94,7 @@ class WriteStream(WriteStreamBase[StreamType]):
     def enqueue(
         self,
         channel_name: str,
-        timestamp: str | datetime | IntegralNanosecondsUTC,
+        timestamp: FlexibleTimestampType,
         value: StreamType,
         tags: Mapping[str, str] | None = None,
     ) -> None:
