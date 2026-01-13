@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.104.3](https://github.com/nominal-io/nominal-client/compare/v1.104.2...v1.104.3) (2026-01-13)
+
+
+### Bug Fixes
+
+* stop removing deprecated kwargs from method calls ([#574](https://github.com/nominal-io/nominal-client/issues/574)) ([c06fb08](https://github.com/nominal-io/nominal-client/commit/c06fb080475e53b0c86613745ea6e094d4035d65))
+
 ## [1.104.2](https://github.com/nominal-io/nominal-client/compare/v1.104.1...v1.104.2) (2026-01-08)
 
 
