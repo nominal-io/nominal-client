@@ -33,14 +33,8 @@ def warn_on_deprecated_argument(
         def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
             if argument_name in kwargs:
                 warnings.warn(warning_message, UserWarning, stacklevel=2)
-                filtered_kwargs = kwargs.copy()
-                filtered_kwargs.pop(argument_name)
-                return func(*args, **filtered_kwargs)  # type: ignore[arg-type]
-
             elif len(args) > len(param_names) - 1:
                 warnings.warn(warning_message, UserWarning, stacklevel=2)
-                filtered_args = args[: len(param_names) - 1]
-                return func(*filtered_args, **kwargs)  # type: ignore[arg-type]
 
             return func(*args, **kwargs)
 
