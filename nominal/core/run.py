@@ -11,7 +11,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core import asset as core_asset
+import nominal.core.asset as core_asset
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType
 from nominal.core._utils.api_tools import (
@@ -19,13 +19,14 @@ from nominal.core._utils.api_tools import (
     Link,
     LinkDict,
     RefreshableMixin,
+    _filter_scopes,
     create_links,
     rid_from_instance_or_string,
 )
-from nominal.core.asset import _filter_scopes
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.data_review import DataReview, _search_data_reviews
+
+# from nominal.core.data_review import DataReview, _search_data_reviews
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
 from nominal.core.event import Event, _create_event
 from nominal.core.video import Video, _get_video
@@ -360,19 +361,6 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def list_assets(self) -> Sequence[core_asset.Asset]:
         """List assets associated with this run."""
         return list(self._iter_list_assets())
-
-    def search_data_reviews(
-        self,
-        assets_rids: Sequence[str] | None = None,
-    ) -> Sequence[DataReview]:
-        """Search for data reviews associated with this Run. See nominal.core.data_review._search_data_reviews
-        for details.
-        """
-        return _search_data_reviews(
-            self._clients,
-            assets=assets_rids,
-            runs=[self.rid],
-        )
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this run.

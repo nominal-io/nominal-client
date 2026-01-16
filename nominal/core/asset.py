@@ -4,7 +4,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias
+from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
     event,
@@ -15,6 +15,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
@@ -22,38 +23,24 @@ from nominal.core._utils.api_tools import (
     Link,
     LinkDict,
     RefreshableMixin,
+    ScopeTypeSpecifier,
+    _filter_scope_rids,
+    _filter_scopes,
     create_links,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-from nominal.core.data_review import DataReview, _search_data_reviews
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.streaming_checklist import _list_streaming_checklists
 from nominal.core.video import Video, _create_video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
-ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video"]
 
 logger = logging.getLogger(__name__)
-
-
-def _filter_scopes(
-    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
-) -> Sequence[scout_asset_api.DataScope]:
-    return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
-
-
-def _filter_scope_rids(
-    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
-) -> Mapping[str, str]:
-    return {
-        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in _filter_scopes(scopes, scope_type)
-    }
 
 
 @dataclass(frozen=True)
@@ -72,7 +59,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         Video._Clients,
         Attachment._Clients,
         Event._Clients,
-        DataReview._Clients,
+        data_review.DataReview._Clients,
         HasScoutParams,
         Protocol,
     ):
@@ -546,11 +533,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def search_data_reviews(
         self,
         runs_rids: Sequence[str] | None = None,
-    ) -> Sequence[DataReview]:
+    ) -> Sequence[data_review.DataReview]:
         """Search for data reviews associated with this Asset. See nominal.core.data_review._search_data_reviews
         for details.
         """
-        return _search_data_reviews(
+        return data_review._search_data_reviews(
             self._clients,
             assets=[self.rid],
             runs=runs_rids,
@@ -560,7 +547,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         """List all Streaming Checklists associated with this Asset. See
         nominal.core.streaming_checklist._list_streaming_checklists for details.
         """
-        return _list_streaming_checklists(
+        return streaming_checklist._list_streaming_checklists(
             self._clients,
             asset_rid=self.rid,
         )

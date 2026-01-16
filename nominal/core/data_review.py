@@ -18,6 +18,7 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
+from nominal.core import checklist, event
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset

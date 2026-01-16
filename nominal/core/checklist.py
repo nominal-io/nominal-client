@@ -5,6 +5,8 @@ from datetime import timedelta
 from typing import Literal, Mapping, Protocol, Sequence
 
 from nominal_api import (
+    event,
+    scout,
     scout_api,
     scout_checklistexecution_api,
     scout_checks_api,
@@ -13,11 +15,10 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+import nominal.core.run as core_run
+from nominal.core import asset
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
-from nominal.core.asset import Asset
-from nominal.core.data_review import DataReview
-from nominal.core.run import Run
 from nominal.ts import _to_api_duration
 
 
@@ -30,13 +31,17 @@ class Checklist(HasRid):
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
-    class _Clients(DataReview._Clients, HasScoutParams, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
         @property
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
+        @property
+        def event(self) -> event.EventService: ...
+        @property
+        def run(self) -> scout.RunService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
@@ -53,7 +58,7 @@ class Checklist(HasRid):
             _clients=clients,
         )
 
-    def execute(self, run: Run | str, commit: str | None = None) -> DataReview:
+    def execute(self, run: core_run.Run | str, commit: str | None = None) -> DataReview:
         """Execute a checklist against a run.
 
         Args:
@@ -88,7 +93,7 @@ class Checklist(HasRid):
 
     def execute_streaming(
         self,
-        assets: Sequence[Asset | str],
+        assets: Sequence[asset.Asset | str],
         integration_rids: Sequence[str],
         *,
         evaluation_delay: timedelta = timedelta(),
@@ -119,7 +124,7 @@ class Checklist(HasRid):
         """Stop the checklist."""
         self._clients.checklist_execution.stop_streaming_checklist(self._clients.auth_header, self.rid)
 
-    def stop_streaming_for_assets(self, assets: Sequence[Asset | str]) -> None:
+    def stop_streaming_for_assets(self, assets: Sequence[asset.Asset | str]) -> None:
         """Stop the checklist for the given assets."""
         self._clients.checklist_execution.stop_streaming_checklist_for_assets(
             self._clients.auth_header,
@@ -152,7 +157,7 @@ class Checklist(HasRid):
         """Returns a link to the page for this checklist in the Nominal app"""
         return f"{self._clients.app_base_url}/checklists/{self.rid}"
 
-    def preview_for_run_url(self, run: Run | str) -> str:
+    def preview_for_run_url(self, run: core_run.Run | str) -> str:
         """Returns a link to the page for previewing this checklist on a given run in the Nominal app"""
         run_rid = rid_from_instance_or_string(run)
         return f"{self.nominal_url}?previewRunRid={run_rid}"
@@ -175,3 +180,6 @@ def _conjure_priority_to_priority(priority: scout_api.Priority) -> Priority:
     if priority in inverted_map:
         return inverted_map[priority]
     raise ValueError(f"unknown priority '{priority}', expected one of {_priority_to_conjure_map.values()}")
+
+
+from nominal.core.data_review import DataReview  # noqa: E402

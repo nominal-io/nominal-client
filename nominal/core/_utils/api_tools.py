@@ -5,12 +5,14 @@ import importlib.metadata
 import logging
 import platform
 import sys
-from typing import Any, Generic, Mapping, Protocol, Sequence, TypeAlias, TypedDict, TypeVar, runtime_checkable
+from typing import Any, Generic, Literal, Mapping, Protocol, Sequence, TypeAlias, TypedDict, TypeVar, runtime_checkable
 
-from nominal_api import scout_compute_api, scout_run_api
+from nominal_api import scout_asset_api, scout_compute_api, scout_run_api
 from typing_extensions import NotRequired, Self
 
 from nominal._utils.dataclass_tools import update_dataclass
+
+ScopeTypeSpecifier: TypeAlias = Literal["connection", "dataset", "video"]
 
 logger = logging.getLogger(__name__)
 
@@ -94,3 +96,17 @@ def create_api_tags(tags: Mapping[str, str] | None = None) -> dict[str, scout_co
         return {}
 
     return {key: scout_compute_api.StringConstant(literal=value) for key, value in tags.items()}
+
+
+def _filter_scopes(
+    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
+) -> Sequence[scout_asset_api.DataScope]:
+    return [scope for scope in scopes if scope.data_source.type.lower() == scope_type]
+
+
+def _filter_scope_rids(
+    scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
+) -> Mapping[str, str]:
+    return {
+        scope.data_scope_name: getattr(scope.data_source, scope_type) for scope in _filter_scopes(scopes, scope_type)
+    }
