@@ -1,6 +1,11 @@
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import WriteStream
 from nominal.core._utils.api_tools import LinkDict
+from nominal.core._video_types import (
+    McapVideoFileMetadata,
+    MiscVideoFileMetadata,
+    VideoFileIngestOptions,
+)
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
@@ -58,6 +63,8 @@ __all__ = [
     "IngestWaitType",
     "LinkDict",
     "LogPoint",
+    "McapVideoFileMetadata",
+    "MiscVideoFileMetadata",
     "NominalClient",
     "poll_until_ingestion_completed",
     "Run",
@@ -71,6 +78,7 @@ __all__ = [
     "UserPassAuth",
     "Video",
     "VideoFile",
+    "VideoFileIngestOptions",
     "wait_for_files_to_ingest",
     "Workbook",
     "WorkbookTemplate",

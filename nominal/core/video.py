@@ -8,15 +8,20 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from types import MappingProxyType
-from typing import BinaryIO, Mapping, Protocol, Sequence
+from typing import BinaryIO, Mapping, Protocol, Sequence, overload
 
-from nominal_api import api, ingest_api, scout_video, scout_video_api, upload_api
+from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api, upload_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
+from nominal.core._video_types import (
+    McapVideoFileMetadata,
+    MiscVideoFileMetadata,
+    VideoFileIngestOptions,
+)
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
@@ -44,6 +49,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         def ingest(self) -> ingest_api.IngestService: ...
         @property
         def video_file(self) -> scout_video.VideoFileService: ...
+        @property
+        def catalog(self) -> scout_catalog.CatalogService: ...
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -117,9 +124,69 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
+    def add_file_with_misc_args(
+        self,
+        path: PathLike,
+        options: VideoFileIngestOptions,
+        *,
+        description: str | None = None,
+    ) -> VideoFile:
+        """Add a video file to this video using ingest options metadata.
+
+        This method provides a convenient way to add video files using pre-configured
+        ingest options that specify the video file type and associated metadata.
+
+        Args:
+            path: Path to the video file to add to this video.
+            options: Video file ingest options (either McapVideoFileMetadata or MiscVideoFileMetadata).
+            description: Optional description of the video file.
+                NOTE: this is currently not displayed to users and may be removed in the future.
+
+        Returns:
+            Reference to the created video file.
+        """
+        if isinstance(options, McapVideoFileMetadata):
+            return self.add_mcap(
+                path=path,
+                topic=options.mcap_channel_locator_topic,
+                description=description,
+            )
+        elif isinstance(options, MiscVideoFileMetadata):
+            file = self.add_file(
+                path=path,
+                start=options.starting_timestamp,
+                description=description,
+            )
+            file.update(
+                starting_timestamp=options.starting_timestamp,
+                ending_timestamp=options.ending_timestamp,
+            )
+            return file
+        else:
+            raise TypeError(f"Unexpected options type: {type(options)}")
+
+    @overload
     def add_file(
         self,
         path: PathLike,
+        *,
+        start: datetime | IntegralNanosecondsUTC,
+        description: str | None = None,
+    ) -> VideoFile: ...
+
+    @overload
+    def add_file(
+        self,
+        path: PathLike,
+        *,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        description: str | None = None,
+    ) -> VideoFile: ...
+
+    def add_file(
+        self,
+        path: PathLike,
+        *,
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
@@ -137,20 +204,104 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         Returns:
             Reference to the created video file.
         """
+        # Validation: ensure exactly one of start or frame_timestamps is provided
+        if start is None and frame_timestamps is None:
+            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+        if start is not None and frame_timestamps is not None:
+            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
+
         path = pathlib.Path(path)
         file_type = FileType.from_video(path)
 
         with path.open("rb") as video_file:
-            return self.add_from_io(
-                video_file,
-                name=path_upload_name(path, file_type),
-                start=start,
-                frame_timestamps=frame_timestamps,
-                description=description,
-                file_type=file_type,
-            )
+            if start is not None:
+                return self.add_from_io(
+                    video_file,
+                    name=path_upload_name(path, file_type),
+                    start=start,
+                    description=description,
+                    file_type=file_type,
+                )
+            elif frame_timestamps is not None:
+                return self.add_from_io(
+                    video_file,
+                    name=path_upload_name(path, file_type),
+                    frame_timestamps=frame_timestamps,
+                    description=description,
+                    file_type=file_type,
+                )
+            else:  # This should never be reached due to the validation above
+                raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
 
     add_file_to_video = add_file
+
+    def add_from_io_with_misc_args(
+        self,
+        video: BinaryIO,
+        name: str,
+        options: VideoFileIngestOptions,
+        *,
+        description: str | None = None,
+    ) -> VideoFile:
+        """Add a video file to this video from a file-like object using ingest options metadata.
+
+        This method provides a convenient way to add video files from file-like objects
+        using pre-configured ingest options that specify the video file type and associated metadata.
+
+        Args:
+            video: File-like object containing video data encoded in H264 or H265.
+            name: Name of the file to use when uploading to S3.
+            options: Video file ingest options (either McapVideoFileMetadata or MiscVideoFileMetadata).
+            description: Optional description of the video file.
+                NOTE: this is currently not displayed to users and may be removed in the future.
+
+        Returns:
+            Reference to the created video file.
+        """
+        if isinstance(options, McapVideoFileMetadata):
+            return self.add_mcap_from_io(
+                mcap=video,
+                name=name,
+                topic=options.mcap_channel_locator_topic,
+                description=description,
+                file_type=FileTypes.MCAP,
+            )
+        elif isinstance(options, MiscVideoFileMetadata):
+            file = self.add_from_io(
+                video=video,
+                name=name,
+                start=options.starting_timestamp,
+                description=description,
+            )
+            file.update(
+                starting_timestamp=options.starting_timestamp,
+                ending_timestamp=options.ending_timestamp,
+            )
+            return file
+        else:
+            raise TypeError(f"Unexpected options type: {type(options)}")
+
+    @overload
+    def add_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        *,
+        start: datetime | IntegralNanosecondsUTC,
+        description: str | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+    ) -> VideoFile: ...
+
+    @overload
+    def add_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        *,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        description: str | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+    ) -> VideoFile: ...
 
     def add_from_io(
         self,
@@ -178,6 +329,12 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         """
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
+
+        # Validation: ensure exactly one of start or frame_timestamps is provided
+        if start is None and frame_timestamps is None:
+            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+        if start is not None and frame_timestamps is not None:
+            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
 
         timestamp_manifest = _build_video_file_timestamp_manifest(
             self._clients.auth_header, self._clients.workspace_rid, self._clients.upload, start, frame_timestamps

@@ -6,11 +6,16 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from nominal_api import scout_video, scout_video_api
+from nominal_api import scout_catalog, scout_video, scout_video_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._video_types import (
+    McapVideoFileMetadata,
+    MiscVideoFileMetadata,
+    VideoFileIngestOptions,
+)
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -28,6 +33,8 @@ class VideoFile(HasRid, RefreshableMixin[scout_video_api.VideoFile]):
     class _Clients(HasScoutParams, Protocol):
         @property
         def video_file(self) -> scout_video.VideoFileService: ...
+        @property
+        def catalog(self) -> scout_catalog.CatalogService: ...
 
     def archive(self) -> None:
         """Archive the video file, disallowing it to appear when playing back the video"""
@@ -127,6 +134,47 @@ class VideoFile(HasRid, RefreshableMixin[scout_video_api.VideoFile]):
                 raise NominalIngestError(f"Unhandled ingest status {status.type!r} for video {self.rid!r}")
 
             time.sleep(interval.total_seconds())
+
+    def get_file_ingest_options(self) -> VideoFileIngestOptions:
+        """Get ingest options metadata for this video file.
+
+        Retrieves metadata about the video file (such as timestamps, frame rate, and scale factor)
+        that can be used when ingesting this video into a video channel. The returned options
+        are either MCAP or MISC metadata depending on the video file type.
+
+        Returns:
+            Video file ingest options (either McapVideoFileMetadata or MiscVideoFileMetadata).
+
+        Raises:
+            ValueError: If the video file has an unexpected timestamp manifest type.
+        """
+        api_video_file = self._get_latest_api()
+        if api_video_file._origin_metadata._timestamp_manifest._type == "mcap":
+            mcap_manifest = api_video_file._origin_metadata._timestamp_manifest._mcap
+            topic = (
+                mcap_manifest.mcap_channel_locator.topic
+                if mcap_manifest and mcap_manifest.mcap_channel_locator and mcap_manifest.mcap_channel_locator.topic
+                else ""
+            )
+            return McapVideoFileMetadata(mcap_channel_locator_topic=topic)
+        else:
+            # TODO(sean): We need to add support for if starting timestamp isn't present, aka we have frame timestamps
+            # from S3.
+            if api_video_file._origin_metadata._timestamp_manifest._no_manifest is None:
+                raise ValueError(
+                    f"Expected no_manifest timestamp manifest for non-MCAP video file, "
+                    f"but got type: {api_video_file._origin_metadata._timestamp_manifest._type}"
+                )
+            return MiscVideoFileMetadata(
+                starting_timestamp=_SecondsNanos.from_api(
+                    api_video_file._origin_metadata._timestamp_manifest._no_manifest.starting_timestamp
+                ).to_nanoseconds(),
+                ending_timestamp=_SecondsNanos.from_api(
+                    api_video_file._segment_metadata.max_absolute_timestamp
+                ).to_nanoseconds()
+                if api_video_file._segment_metadata and api_video_file._segment_metadata.max_absolute_timestamp
+                else None,
+            )
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, video_file: scout_video_api.VideoFile) -> Self:
