@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Literal, Mapping, Protocol, Sequence
+from typing import Mapping, Protocol, Sequence
 
 from nominal_api import (
     event,
     scout,
-    scout_api,
     scout_checklistexecution_api,
     scout_checks_api,
     scout_datareview_api,
@@ -15,10 +14,11 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-import nominal.core.run as core_run
-from nominal.core import asset
+from nominal.core import run as core_run
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core.asset import Asset
+from nominal.core.data_review import DataReview
 from nominal.ts import _to_api_duration
 
 
@@ -93,7 +93,7 @@ class Checklist(HasRid):
 
     def execute_streaming(
         self,
-        assets: Sequence[asset.Asset | str],
+        assets: Sequence[Asset | str],
         integration_rids: Sequence[str],
         *,
         evaluation_delay: timedelta = timedelta(),
@@ -124,7 +124,7 @@ class Checklist(HasRid):
         """Stop the checklist."""
         self._clients.checklist_execution.stop_streaming_checklist(self._clients.auth_header, self.rid)
 
-    def stop_streaming_for_assets(self, assets: Sequence[asset.Asset | str]) -> None:
+    def stop_streaming_for_assets(self, assets: Sequence[Asset | str]) -> None:
         """Stop the checklist for the given assets."""
         self._clients.checklist_execution.stop_streaming_checklist_for_assets(
             self._clients.auth_header,
@@ -161,25 +161,3 @@ class Checklist(HasRid):
         """Returns a link to the page for previewing this checklist on a given run in the Nominal app"""
         run_rid = rid_from_instance_or_string(run)
         return f"{self.nominal_url}?previewRunRid={run_rid}"
-
-
-Priority = Literal[0, 1, 2, 3, 4]
-
-
-_priority_to_conjure_map: dict[Priority, scout_api.Priority] = {
-    0: scout_api.Priority.P0,
-    1: scout_api.Priority.P1,
-    2: scout_api.Priority.P2,
-    3: scout_api.Priority.P3,
-    4: scout_api.Priority.P4,
-}
-
-
-def _conjure_priority_to_priority(priority: scout_api.Priority) -> Priority:
-    inverted_map = {v: k for k, v in _priority_to_conjure_map.items()}
-    if priority in inverted_map:
-        return inverted_map[priority]
-    raise ValueError(f"unknown priority '{priority}', expected one of {_priority_to_conjure_map.values()}")
-
-
-from nominal.core.data_review import DataReview  # noqa: E402

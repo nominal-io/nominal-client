@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from time import sleep
-from typing import Iterable, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Protocol, Sequence
 
 from nominal_api import (
     event as event_api,
@@ -18,13 +18,17 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal.core import checklist, event
+from nominal.core._checklist_types import Priority, _conjure_priority_to_priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
+from nominal.core.event import Event
 from nominal.core.exceptions import NominalMethodRemovedError
 from nominal.core.run import Run
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+if TYPE_CHECKING:
+    from nominal.core.checklist import Checklist
 
 
 @dataclass(frozen=True)
@@ -66,8 +70,10 @@ class DataReview(HasRid):
             _clients=clients,
         )
 
-    def get_checklist(self) -> checklist.Checklist:
-        return checklist.Checklist._from_conjure(
+    def get_checklist(self) -> "Checklist":
+        from nominal.core.checklist import Checklist
+
+        return Checklist._from_conjure(
             self._clients,
             self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
         )
@@ -83,7 +89,7 @@ class DataReview(HasRid):
             "use 'nominal.core.DataReview.get_events()' instead",
         )
 
-    def get_events(self) -> Sequence[event.Event]:
+    def get_events(self) -> Sequence[Event]:
         """Retrieves the list of events for the data review."""
         data_review_response = self._clients.datareview.get(self._clients.auth_header, self.rid).check_evaluations
         all_event_rids = [
@@ -93,7 +99,7 @@ class DataReview(HasRid):
             for event_rid in check.state._generated_alerts.event_rids
         ]
         event_response = self._clients.event.batch_get_events(self._clients.auth_header, all_event_rids)
-        return [event.Event._from_conjure(self._clients, data_review_event) for data_review_event in event_response]
+        return [Event._from_conjure(self._clients, data_review_event) for data_review_event in event_response]
 
     def reload(self) -> DataReview:
         """Reloads the data review from the server."""
@@ -137,7 +143,7 @@ class CheckViolation:
     name: str
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
-    priority: checklist.Priority | None
+    priority: Priority | None
 
     @classmethod
     def _from_conjure(cls, check_alert: scout_datareview_api.CheckAlert) -> CheckViolation:
@@ -147,7 +153,7 @@ class CheckViolation:
             name=check_alert.name,
             start=_SecondsNanos.from_api(check_alert.start).to_nanoseconds(),
             end=_SecondsNanos.from_api(check_alert.end).to_nanoseconds() if check_alert.end is not None else None,
-            priority=checklist._conjure_priority_to_priority(check_alert.priority)
+            priority=_conjure_priority_to_priority(check_alert.priority)
             if check_alert.priority is not scout_api.Priority.UNKNOWN
             else None,
         )

@@ -7,11 +7,15 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
+    attachments_api,
     event,
     scout,
     scout_asset_api,
     scout_assets,
+    scout_catalog,
+    scout_datasource_connection,
     scout_run_api,
+    scout_video,
 )
 from typing_extensions import Self
 
@@ -66,9 +70,17 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def run(self) -> scout.RunService: ...
+        def attachment(self) -> attachments_api.AttachmentService: ...
+        @property
+        def catalog(self) -> scout_catalog.CatalogService: ...
+        @property
+        def connection(self) -> scout_datasource_connection.ConnectionService: ...
         @property
         def event(self) -> event.EventService: ...
+        @property
+        def run(self) -> scout.RunService: ...
+        @property
+        def video(self) -> scout_video.VideoService: ...
 
     @property
     def nominal_url(self) -> str:

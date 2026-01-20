@@ -32,6 +32,7 @@ def _list_streaming_checklists(
     """List all Streaming Checklists.
 
     Args:
+        clients: The clients to use for API calls.
         asset_rid: if provided, only return checklists associated with the given asset.
     """
     return list(_iter_list_streaming_checklists(clients, asset_rid))
