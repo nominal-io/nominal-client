@@ -21,14 +21,15 @@ from typing_extensions import Self, deprecated
 from nominal.core._checklist_types import Priority, _conjure_priority_to_priority
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
-from nominal.core.asset import Asset
+from nominal.core._utils.pagination_tools import search_data_reviews_paginated
 from nominal.core.event import Event
 from nominal.core.exceptions import NominalMethodRemovedError
-from nominal.core.run import Run
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 if TYPE_CHECKING:
+    from nominal.core.asset import Asset
     from nominal.core.checklist import Checklist
+    from nominal.core.run import Run
 
 
 @dataclass(frozen=True)
@@ -198,7 +199,7 @@ class DataReviewBuilder:
     def execute_checklist(
         self,
         run: str | Run,
-        checklist: str | checklist.Checklist,
+        checklist: str | Checklist,
         *,
         commit: str | None = None,
         asset: str | Asset | None = None,
