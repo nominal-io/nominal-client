@@ -18,7 +18,6 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType
 from nominal.core._utils.api_tools import (
     HasRid,
@@ -34,6 +33,7 @@ from nominal.core.connection import Connection, _get_connections
 
 # from nominal.core.data_review import DataReview, _search_data_reviews
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
+from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
@@ -59,23 +59,17 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        HasScoutParams,
+        Attachment._Clients,
+        DataSource._Clients,
+        Video._Clients,
         Protocol,
     ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def attachment(self) -> attachments_api.AttachmentService: ...
-        @property
-        def catalog(self) -> scout_catalog.CatalogService: ...
-        @property
-        def connection(self) -> scout_datasource_connection.ConnectionService: ...
-        @property
         def event(self) -> event.EventService: ...
         @property
         def run(self) -> scout.RunService: ...
-        @property
-        def video(self) -> scout_video.VideoService: ...
 
     @property
     def nominal_url(self) -> str:
@@ -376,10 +370,11 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def _iter_list_assets(self) -> Iterable["Asset"]:
         from nominal.core.asset import Asset
 
+        clients = cast("Asset._Clients", self._clients)
         run = self._get_latest_api()
         assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
         for a in assets.values():
-            yield Asset._from_conjure(self._clients, a)
+            yield Asset._from_conjure(clients, a)
 
     def list_assets(self) -> Sequence["Asset"]:
         """List assets associated with this run."""
