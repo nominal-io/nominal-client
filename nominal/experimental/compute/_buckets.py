@@ -335,7 +335,20 @@ def _numeric_buckets_from_compute_response(
     elif response.numeric is not None:
         # Not enough points to reach the number of requested bucket count, so
         # gets returned as all of the raw data.
-        yield from zip(response.numeric.timestamps, response.numeric.values)
+        for timestamp, value in zip(response.numeric.timestamps, response.numeric.values):
+            point = scout_compute_api.NumericPoint(timestamp, value)
+            yield (
+                timestamp,
+                scout_compute_api.NumericBucket(
+                    count=1,
+                    first_point=point,
+                    max=value,
+                    min=value,
+                    mean=value,
+                    variance=0,
+                    last_point=point,
+                ),
+            )
     elif response.bucketed_numeric is not None:
         # Actually bucketed data
         yield from zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)
