@@ -6,7 +6,6 @@ from nominal.experimental.migration.migration_utils import (
     copy_dataset_from,
     copy_resources_to_destination_client,
     copy_workbook_template_from,
-    create_dataset_with_uuid,
 )
 
 __all__ = [
@@ -17,5 +16,4 @@ __all__ = [
     "copy_dataset_from",
     "copy_resources_to_destination_client",
     "copy_workbook_template_from",
-    "create_dataset_with_uuid",
 ]
