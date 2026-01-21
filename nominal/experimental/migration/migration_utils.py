@@ -26,6 +26,7 @@ from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import Link, LinkDict
 from nominal.core.attachment import Attachment
 from nominal.core.run import Run
+from nominal.experimental.migration.migration_resources import MigrationResources
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -681,17 +682,14 @@ def copy_asset_from(
 
 def copy_resources_to_destination_client(
     destination_client: NominalClient,
-    source_assets: Sequence[Asset],
-    source_workbook_templates: Sequence[WorkbookTemplate],
+    migration_resources: MigrationResources,
 ) -> tuple[Sequence[tuple[str, Dataset]], Sequence[Asset], Sequence[WorkbookTemplate], Sequence[Workbook]]:
     """Based on a list of assets and workbook templates, copy resources to destination client, creating
        new datasets, datafiles, and workbooks along the way.
 
     Args:
         destination_client (NominalClient): client of the tenant/workspace to copy resources to.
-        source_assets (Sequence[Asset]): a list of assets to copy (with data)
-        source_workbook_templates (Sequence[WorkbookTemplate]): a list of workbook templates to clone
-        and create workbooks from.
+        migration_resources (MigrationResources): resources to copy.
 
     Returns:
         All of the created resources.
@@ -700,32 +698,30 @@ def copy_resources_to_destination_client(
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid,
     }
 
-    if len(source_assets) != 1:
-        raise ValueError("Currently, only single asset can be used to create workbook from template")
-
     new_assets = []
-    new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
-    for source_asset in source_assets:
-        new_asset = clone_asset(source_asset, destination_client)
-        new_assets.append(new_asset)
-        new_data_scopes_and_datasets.extend(new_asset.list_datasets())
     new_templates = []
     new_workbooks = []
 
-    for source_workbook_template in source_workbook_templates:
-        new_template = clone_workbook_template(source_workbook_template, destination_client)
-        new_templates.append(new_template)
-        new_workbook = new_template.create_workbook(
-            title=new_template.title, description=new_template.description, asset=new_assets[0]
-        )
-        logger.debug(
-            "Created new workbook %s (rid: %s) from template %s (rid: %s)",
-            new_workbook.title,
-            new_workbook.rid,
-            new_template.title,
-            new_template.rid,
-            extra=log_extras,
-        )
-        new_workbooks.append(new_workbook)
+    new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
+    for source_asset in migration_resources.source_assets:
+        new_asset = clone_asset(source_asset.asset, destination_client)
+        new_assets.append(new_asset)
+        new_data_scopes_and_datasets.extend(new_asset.list_datasets())
+
+        for source_workbook_template in source_asset.source_workbook_templates:
+            new_template = clone_workbook_template(source_workbook_template, destination_client)
+            new_templates.append(new_template)
+            new_workbook = new_template.create_workbook(
+                title=new_template.title, description=new_template.description, asset=new_assets[0]
+            )
+            logger.debug(
+                "Created new workbook %s (rid: %s) from template %s (rid: %s)",
+                new_workbook.title,
+                new_workbook.rid,
+                new_template.title,
+                new_template.rid,
+                extra=log_extras,
+            )
+            new_workbooks.append(new_workbook)
 
     return (new_data_scopes_and_datasets, new_assets, new_templates, new_workbooks)
