@@ -20,14 +20,12 @@ from nominal.core._utils.api_tools import (
     Link,
     LinkDict,
     RefreshableMixin,
-    _filter_scopes,
     create_links,
+    filter_scopes,
     rid_from_instance_or_string,
 )
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
-
-# from nominal.core.data_review import DataReview, _search_data_reviews
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
@@ -118,7 +116,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         if len(api_run.assets) > 1:
             raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
 
-        return _filter_scopes(api_run.asset_data_scopes, "dataset")
+        return filter_scopes(api_run.asset_data_scopes, "dataset")
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None

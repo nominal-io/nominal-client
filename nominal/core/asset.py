@@ -7,15 +7,11 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
-    attachments_api,
     event,
     scout,
     scout_asset_api,
     scout_assets,
-    scout_catalog,
-    scout_datasource_connection,
     scout_run_api,
-    scout_video,
 )
 from typing_extensions import Self
 
@@ -28,9 +24,9 @@ from nominal.core._utils.api_tools import (
     LinkDict,
     RefreshableMixin,
     ScopeTypeSpecifier,
-    _filter_scope_rids,
-    _filter_scopes,
     create_links,
+    filter_scope_rids,
+    filter_scopes,
     rid_from_instance_or_string,
 )
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
@@ -70,17 +66,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         @property
         def assets(self) -> scout_assets.AssetService: ...
         @property
-        def attachment(self) -> attachments_api.AttachmentService: ...
-        @property
-        def catalog(self) -> scout_catalog.CatalogService: ...
-        @property
-        def connection(self) -> scout_datasource_connection.ConnectionService: ...
-        @property
-        def event(self) -> event.EventService: ...
-        @property
         def run(self) -> scout.RunService: ...
         @property
-        def video(self) -> scout_video.VideoService: ...
+        def event(self) -> event.EventService: ...
 
     @property
     def nominal_url(self) -> str:
@@ -96,11 +84,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         return response[self.rid]
 
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
-        return _filter_scopes(self._get_latest_api().data_scopes, "dataset")
+        return filter_scopes(self._get_latest_api().data_scopes, "dataset")
 
     def _scope_rids(self, scope_type: ScopeTypeSpecifier) -> Mapping[str, str]:
         asset = self._get_latest_api()
-        return _filter_scope_rids(asset.data_scopes, scope_type)
+        return filter_scope_rids(asset.data_scopes, scope_type)
 
     def update(
         self,
@@ -544,20 +532,20 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
     def search_data_reviews(
         self,
-        runs_rids: Sequence[str] | None = None,
+        runs: Sequence[Run | str] | None = None,
     ) -> Sequence[data_review.DataReview]:
-        """Search for data reviews associated with this Asset. See nominal.core.data_review._search_data_reviews
+        """Search for data reviews associated with this Asset. See nominal.core.client.search_data_reviews
         for details.
         """
         return data_review._search_data_reviews(
             self._clients,
             assets=[self.rid],
-            runs=runs_rids,
+            runs=[rid_from_instance_or_string(run) for run in (runs or [])],
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:
         """List all Streaming Checklists associated with this Asset. See
-        nominal.core.streaming_checklist._list_streaming_checklists for details.
+        nominal.core.client.list_streaming_checklists for details.
         """
         return streaming_checklist._list_streaming_checklists(
             self._clients,
