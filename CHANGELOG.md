@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.106.0](https://github.com/nominal-io/nominal-client/compare/v1.105.0...v1.106.0) (2026-01-21)
+
+
+### Features
+
+* create dataset with uuid endpoint for mgiration ([#580](https://github.com/nominal-io/nominal-client/issues/580)) ([f3a3b38](https://github.com/nominal-io/nominal-client/commit/f3a3b383d62e8466af617179479918ef0d1ee534))
+
+
+### Bug Fixes
+
+* handle case where compute returns a non-bucketed response for a bucketed query ([#579](https://github.com/nominal-io/nominal-client/issues/579)) ([58b84f5](https://github.com/nominal-io/nominal-client/commit/58b84f55d282a84c8eb6703816b16920e3b8ecf3))
+
 ## [1.105.0](https://github.com/nominal-io/nominal-client/compare/v1.104.3...v1.105.0) (2026-01-21)
 
 
