@@ -26,6 +26,7 @@ from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import Link, LinkDict
 from nominal.core.attachment import Attachment
 from nominal.core.run import Run
+from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.migration.migration_resources import MigrationResources
 from nominal.ts import (
     IntegralNanosecondsDuration,
@@ -422,6 +423,7 @@ def copy_dataset_from(
     new_dataset_properties: dict[str, Any] | None = None,
     new_dataset_labels: Sequence[str] | None = None,
     include_files: bool = False,
+    preserve_uuid: bool = False,
 ) -> Dataset:
     """Copy a dataset from the source to the destination client.
 
@@ -435,6 +437,9 @@ def copy_dataset_from(
             properties are used.
         new_dataset_labels: Optional new labels for the copied dataset. If not provided, the original labels are used.
         include_files: Whether to include files in the copied dataset.
+        preserve_uuid: If True, create the dataset with the same UUID as the source dataset.
+            This is useful for migrations where references to datasets must be preserved.
+            Throws a conflict error if a dataset with the UUID already exists.
 
     Returns:
         The newly created Dataset in the destination client.
@@ -448,12 +453,34 @@ def copy_dataset_from(
         source_dataset.rid,
         extra=log_extras,
     )
-    new_dataset = destination_client.create_dataset(
-        name=new_dataset_name if new_dataset_name is not None else source_dataset.name,
-        description=new_dataset_description if new_dataset_description is not None else source_dataset.description,
-        properties=new_dataset_properties if new_dataset_properties is not None else source_dataset.properties,
-        labels=new_dataset_labels if new_dataset_labels is not None else source_dataset.labels,
-    )
+
+    dataset_name = new_dataset_name if new_dataset_name is not None else source_dataset.name
+    dataset_description = new_dataset_description if new_dataset_description is not None else source_dataset.description
+    dataset_properties = new_dataset_properties if new_dataset_properties is not None else source_dataset.properties
+    dataset_labels = new_dataset_labels if new_dataset_labels is not None else source_dataset.labels
+
+    if preserve_uuid:
+        # Extract the UUID from the source dataset's rid
+        match = UUID_PATTERN.search(source_dataset.rid)
+        if not match:
+            raise ValueError(f"Could not extract UUID from dataset rid: {source_dataset.rid}")
+        source_uuid = match.group(2)
+        new_dataset = create_dataset_with_uuid(
+            client=destination_client,
+            dataset_uuid=source_uuid,
+            name=dataset_name,
+            description=dataset_description,
+            labels=dataset_labels,
+            properties=dataset_properties,
+        )
+    else:
+        new_dataset = destination_client.create_dataset(
+            name=dataset_name,
+            description=dataset_description,
+            properties=dataset_properties,
+            labels=dataset_labels,
+        )
+
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)
