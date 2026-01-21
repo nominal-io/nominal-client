@@ -10,7 +10,7 @@ import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
 from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
-from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
+from nominal_api import scout_catalog, scout_layout_api, scout_template_api, scout_workbookcommon_api
 
 from nominal.core import (
     Asset,
@@ -400,6 +400,53 @@ def copy_file_to_dataset(
         raise ValueError("Unsupported file handle type or missing timestamp information.")
 
 
+def create_dataset_with_uuid(
+    client: NominalClient,
+    dataset_uuid: str,
+    name: str,
+    *,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+) -> Dataset:
+    """Create a dataset with a specific UUID.
+
+    This is useful for migrations where the dataset UUID must be controlled by the caller.
+    Throws a conflict error if a dataset with the specified UUID already exists.
+
+    This endpoint is not intended for general use. Use `NominalClient.create_dataset` instead
+    to create a new dataset with an auto-generated UUID.
+
+    Args:
+        client: The NominalClient to use for creating the dataset.
+        dataset_uuid: The UUID to assign to the new dataset.
+        name: Name of the dataset to create.
+        description: Human readable description of the dataset.
+        labels: Text labels to apply to the created dataset.
+        properties: Key-value properties to apply to the created dataset.
+
+    Returns:
+        Reference to the created dataset in Nominal.
+    """
+    create_dataset_request = scout_catalog.CreateDataset(
+        name=name,
+        description=description,
+        labels=list(labels),
+        properties={} if properties is None else dict(properties),
+        is_v2_dataset=True,
+        metadata={},
+        origin_metadata=scout_catalog.DatasetOriginMetadata(),
+        workspace=client._clients.workspace_rid,
+        marking_rids=[],
+    )
+    request = scout_catalog.CreateDatasetWithUuidRequest(
+        create_dataset=create_dataset_request,
+        uuid=dataset_uuid,
+    )
+    response = client._clients.catalog.create_dataset_with_uuid(client._clients.auth_header, request)
+    return Dataset._from_conjure(client._clients, response)
+
+
 def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) -> Dataset:
     """Clones a dataset, maintaining all properties and files.
 
@@ -422,6 +469,7 @@ def copy_dataset_from(
     new_dataset_properties: dict[str, Any] | None = None,
     new_dataset_labels: Sequence[str] | None = None,
     include_files: bool = False,
+    preserve_uuid: bool = False,
 ) -> Dataset:
     """Copy a dataset from the source to the destination client.
 
@@ -435,6 +483,9 @@ def copy_dataset_from(
             properties are used.
         new_dataset_labels: Optional new labels for the copied dataset. If not provided, the original labels are used.
         include_files: Whether to include files in the copied dataset.
+        preserve_uuid: If True, create the dataset with the same UUID as the source dataset.
+            This is useful for migrations where references to datasets must be preserved.
+            Throws a conflict error if a dataset with the UUID already exists.
 
     Returns:
         The newly created Dataset in the destination client.
@@ -448,12 +499,32 @@ def copy_dataset_from(
         source_dataset.rid,
         extra=log_extras,
     )
-    new_dataset = destination_client.create_dataset(
-        name=new_dataset_name if new_dataset_name is not None else source_dataset.name,
-        description=new_dataset_description if new_dataset_description is not None else source_dataset.description,
-        properties=new_dataset_properties if new_dataset_properties is not None else source_dataset.properties,
-        labels=new_dataset_labels if new_dataset_labels is not None else source_dataset.labels,
-    )
+
+    dataset_name = new_dataset_name if new_dataset_name is not None else source_dataset.name
+    dataset_description = new_dataset_description if new_dataset_description is not None else source_dataset.description
+    dataset_properties = new_dataset_properties if new_dataset_properties is not None else source_dataset.properties
+    dataset_labels = new_dataset_labels if new_dataset_labels is not None else source_dataset.labels
+
+    if preserve_uuid:
+        # Extract the UUID from the source dataset's rid
+        # RID format is typically like "ri.catalog.<instance>.dataset.<uuid>"
+        source_uuid = source_dataset.rid.split(".")[-1]
+        new_dataset = create_dataset_with_uuid(
+            client=destination_client,
+            dataset_uuid=source_uuid,
+            name=dataset_name,
+            description=dataset_description,
+            labels=dataset_labels,
+            properties=dataset_properties,
+        )
+    else:
+        new_dataset = destination_client.create_dataset(
+            name=dataset_name,
+            description=dataset_description,
+            properties=dataset_properties,
+            labels=dataset_labels,
+        )
+
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)

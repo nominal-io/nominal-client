@@ -1093,6 +1093,7 @@ def _construct_new_ingest_options(
                 tag_columns=tag_columns,
                 is_archive=file_type.is_parquet_archive(),
                 additional_file_tags={**tags} if tags else None,
+                exclude_columns=[],
             )
         )
     else:
@@ -1107,6 +1108,7 @@ def _construct_new_ingest_options(
                 channel_prefix=channel_prefix,
                 tag_columns=tag_columns,
                 additional_file_tags={**tags} if tags else None,
+                exclude_columns=[],
             )
         )
 
@@ -1139,6 +1141,7 @@ def _construct_existing_ingest_options(
                 tag_columns=tag_columns,
                 is_archive=file_type.is_parquet_archive(),
                 additional_file_tags={**tags} if tags else None,
+                exclude_columns=[],
             )
         )
     else:
@@ -1152,5 +1155,6 @@ def _construct_existing_ingest_options(
                 timestamp_metadata=timestamp_metadata,
                 tag_columns=tag_columns,
                 additional_file_tags={**tags} if tags else None,
+                exclude_columns=[],
             )
         )
