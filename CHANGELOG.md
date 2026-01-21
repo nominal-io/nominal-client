@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.105.0](https://github.com/nominal-io/nominal-client/compare/v1.104.3...v1.105.0) (2026-01-21)
+
+
+### Features
+
+* refactor top-level migration config to allow for mapping of templates to assets ([#577](https://github.com/nominal-io/nominal-client/issues/577)) ([9f1f39d](https://github.com/nominal-io/nominal-client/commit/9f1f39d721ea54135441e00b0a31c8fdd78b381c))
+
 ## [1.104.3](https://github.com/nominal-io/nominal-client/compare/v1.104.2...v1.104.3) (2026-01-13)
 
 
