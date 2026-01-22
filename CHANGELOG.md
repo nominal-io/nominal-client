@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.107.0](https://github.com/nominal-io/nominal-client/compare/v1.106.0...v1.107.0) (2026-01-22)
+
+
+### Features
+
+* make migration preserve uuid and dataset include options configurable ([#584](https://github.com/nominal-io/nominal-client/issues/584)) ([95ae64d](https://github.com/nominal-io/nominal-client/commit/95ae64de267ad957d15641378b6b418e8c234faa))
+
 ## [1.106.0](https://github.com/nominal-io/nominal-client/compare/v1.105.0...v1.106.0) (2026-01-21)
 
 
