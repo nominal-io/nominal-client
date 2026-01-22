@@ -15,7 +15,6 @@ from nominal_api import (
     scout_dataexport_api,
     scout_datasource,
     scout_datasource_connection,
-    storage_series_api,
     storage_writer_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
@@ -318,15 +317,7 @@ class DataSource(HasRid):
             conjure_python_client.ConjureHTTPError: If a channel with this name already exists
                 or if there's an error creating the channel.
         """
-        # Map ChannelDataType to storage_series_api.NominalDataType
-        data_type_mapping = {
-            ChannelDataType.DOUBLE: storage_series_api.NominalDataType.DOUBLE,
-            ChannelDataType.STRING: storage_series_api.NominalDataType.STRING,
-            ChannelDataType.LOG: storage_series_api.NominalDataType.LOG,
-            ChannelDataType.INT: storage_series_api.NominalDataType.INT64,
-            ChannelDataType.UNKNOWN: storage_series_api.NominalDataType.UNKNOWN,
-        }
-        nominal_data_type = data_type_mapping.get(data_type, storage_series_api.NominalDataType.UNKNOWN)
+        nominal_data_type = data_type._to_nominal_data_type()
 
         nominal_locator = timeseries_metadata_api.NominalLocatorTemplate(
             channel=name,
