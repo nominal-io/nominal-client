@@ -16,7 +16,7 @@ from nominal.core.containerized_extractors import (
     TimestampMetadata,
     UserPassAuth,
 )
-from nominal.core.data_review import CheckViolation, DataReview, DataReviewBuilder
+from nominal.core.data_review import DataReview, DataReviewBuilder
 from nominal.core.dataset import Dataset, poll_until_ingestion_completed
 from nominal.core.dataset_file import DatasetFile, IngestWaitType, as_files_ingested, wait_for_files_to_ingest
 from nominal.core.datasource import DataSource
@@ -41,7 +41,6 @@ __all__ = [
     "Channel",
     "ChannelDataType",
     "Checklist",
-    "CheckViolation",
     "Connection",
     "ContainerizedExtractor",
     "DataReview",
