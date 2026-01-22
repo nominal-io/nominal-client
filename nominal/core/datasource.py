@@ -328,16 +328,13 @@ class DataSource(HasRid):
         }
         nominal_data_type = data_type_mapping.get(data_type, storage_series_api.NominalDataType.UNKNOWN)
 
-        # Create the NominalLocatorTemplate for series metadata
         nominal_locator = timeseries_metadata_api.NominalLocatorTemplate(
             channel=name,
             type=nominal_data_type,
         )
 
-        # Create the LocatorTemplate union type
         locator = timeseries_metadata_api.LocatorTemplate(nominal=nominal_locator)
 
-        # Create the request
         create_request = timeseries_metadata_api.CreateSeriesMetadataRequest(
             channel=name,
             data_source_rid=self.rid,
@@ -346,11 +343,8 @@ class DataSource(HasRid):
             description=description,
             unit=unit,
         )
-
-        # Call the API to create the series metadata
         self._clients.series_metadata.create(self._clients.auth_header, create_request)
 
-        # Return the channel by fetching it after creation
         return self.get_channel(name)
 
 
