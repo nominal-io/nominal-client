@@ -19,6 +19,8 @@ from nominal_api import (
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
     timeseries_logicalseries,
+    timeseries_metadata,
+    timeseries_metadata_api,
     upload_api,
 )
 
@@ -66,6 +68,8 @@ class DataSource(HasRid):
         def proto_write(self) -> ProtoWriteService: ...
         @property
         def channel_metadata(self) -> timeseries_channelmetadata.ChannelMetadataService: ...
+        @property
+        def series_metadata(self) -> timeseries_metadata.SeriesMetadataService: ...
         @property
         def containerized_extractors(self) -> ingest_api.ContainerizedExtractorService: ...
 
@@ -286,6 +290,53 @@ class DataSource(HasRid):
         """
         request = datasource_api.IndexChannelPrefixTreeRequest(self.rid, delimiter=delimiter)
         self._clients.datasource.index_channel_prefix_tree(self._clients.auth_header, request)
+
+    def add_channel(
+        self,
+        name: str,
+        data_type: ChannelDataType,
+        *,
+        description: str | None = None,
+        unit: str | None = None,
+    ) -> Channel:
+        """Create a new channel (series metadata) for this data source.
+
+        This creates the channel metadata entry without uploading any data points.
+        Use this to pre-register channels before streaming data to them.
+
+        Args:
+            name: The name of the channel to create.
+            data_type: The data type of the channel (e.g., DOUBLE, STRING, LOG, INT).
+            description: Optional human-readable description of the channel.
+            unit: Optional unit symbol to associate with the channel.
+
+        Returns:
+            The created Channel object.
+
+        Raises:
+            conjure_python_client.ConjureHTTPError: If a channel with this name already exists
+                or if there's an error creating the channel.
+        """
+        nominal_data_type = data_type._to_nominal_data_type()
+
+        nominal_locator = timeseries_metadata_api.NominalLocatorTemplate(
+            channel=name,
+            type=nominal_data_type,
+        )
+
+        locator = timeseries_metadata_api.LocatorTemplate(nominal=nominal_locator)
+
+        create_request = timeseries_metadata_api.CreateSeriesMetadataRequest(
+            channel=name,
+            data_source_rid=self.rid,
+            locator=locator,
+            tags={},
+            description=description,
+            unit=unit,
+        )
+        self._clients.series_metadata.create(self._clients.auth_header, create_request)
+
+        return self.get_channel(name)
 
 
 def _construct_export_request(

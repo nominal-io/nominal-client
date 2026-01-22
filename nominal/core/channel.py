@@ -12,6 +12,7 @@ from nominal_api import (
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
+    storage_series_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
     timeseries_logicalseries_api,
@@ -51,6 +52,18 @@ class ChannelDataType(enum.Enum):
             return cls(data_type.value)
         else:
             return cls("UNKNOWN")
+
+    def _to_nominal_data_type(self) -> storage_series_api.NominalDataType:
+        if self == ChannelDataType.DOUBLE:
+            return storage_series_api.NominalDataType.DOUBLE
+        elif self == ChannelDataType.STRING:
+            return storage_series_api.NominalDataType.STRING
+        elif self == ChannelDataType.LOG:
+            return storage_series_api.NominalDataType.LOG
+        elif self == ChannelDataType.INT:
+            return storage_series_api.NominalDataType.INT64
+        else:
+            return storage_series_api.NominalDataType.UNKNOWN
 
 
 @dataclass

@@ -28,6 +28,7 @@ from nominal_api import (
     storage_writer_api,
     timeseries_channelmetadata,
     timeseries_logicalseries,
+    timeseries_metadata,
     upload_api,
 )
 from typing_extensions import Self
@@ -139,6 +140,7 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     event: event.EventService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
+    series_metadata: timeseries_metadata.SeriesMetadataService
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
@@ -179,6 +181,7 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
+            series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
