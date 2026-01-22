@@ -145,8 +145,8 @@ class VideoFile(HasRid, RefreshableMixin[scout_video_api.VideoFile]):
             ValueError: If the video file has an unexpected timestamp manifest type.
         """
         api_video_file = self._get_latest_api()
-        if api_video_file._origin_metadata._timestamp_manifest._type == "mcap":
-            mcap_manifest = api_video_file._origin_metadata._timestamp_manifest._mcap
+        if api_video_file.origin_metadata.timestamp_manifest.type == "mcap":
+            mcap_manifest = api_video_file.origin_metadata.timestamp_manifest.mcap
             topic = (
                 mcap_manifest.mcap_channel_locator.topic
                 if mcap_manifest and mcap_manifest.mcap_channel_locator and mcap_manifest.mcap_channel_locator.topic
@@ -159,29 +159,32 @@ class VideoFile(HasRid, RefreshableMixin[scout_video_api.VideoFile]):
         else:
             # TODO(sean): We need to add support for if starting timestamp isn't present, aka we have frame timestamps
             # from S3.
-            if api_video_file._origin_metadata._timestamp_manifest._no_manifest is None:
+            if api_video_file.origin_metadata.timestamp_manifest.no_manifest is None:
                 raise ValueError(
                     f"Expected no_manifest timestamp manifest for non-MCAP video file, "
                     f"but got type: {api_video_file._origin_metadata._timestamp_manifest._type}"
                 )
+            if api_video_file.segment_metadata is None:
+                raise ValueError(
+                    "Expected segment metadata for non-MCAP video file: %s", api_video_file.segment_metadata
+                )
             if (
-                api_video_file._segment_metadata is None
-                or api_video_file._segment_metadata.max_absolute_timestamp is None
-                or api_video_file._segment_metadata.scale_factor is None
-                or api_video_file._segment_metadata.media_frame_rate is None
+                api_video_file.segment_metadata.max_absolute_timestamp is None
+                or api_video_file.segment_metadata.scale_factor is None
+                or api_video_file.segment_metadata.media_frame_rate is None
             ):
                 raise ValueError(
-                    "Expected segment metadata for non-MCAP video file: %s", api_video_file._segment_metadata
+                    "Not all timestamp metadata is populated in segment metadata: %s", api_video_file.segment_metadata
                 )
             video_file_ingest_options = TimestampOptions(
                 starting_timestamp=_SecondsNanos.from_api(
-                    api_video_file._origin_metadata._timestamp_manifest._no_manifest.starting_timestamp
+                    api_video_file.origin_metadata.timestamp_manifest.no_manifest.starting_timestamp
                 ).to_nanoseconds(),
                 ending_timestamp=_SecondsNanos.from_api(
-                    api_video_file._segment_metadata.max_absolute_timestamp
+                    api_video_file.segment_metadata.max_absolute_timestamp
                 ).to_nanoseconds(),
-                scaling_factor=api_video_file._segment_metadata.scale_factor,
-                true_framerate=api_video_file._segment_metadata.media_frame_rate,
+                scaling_factor=api_video_file.segment_metadata.scale_factor,
+                true_framerate=api_video_file.segment_metadata.media_frame_rate,
             )
             return (None, video_file_ingest_options)
 
