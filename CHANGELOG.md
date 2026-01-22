@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.108.0](https://github.com/nominal-io/nominal-client/compare/v1.107.0...v1.108.0) (2026-01-22)
+
+
+### Features
+
+* add channels to datasets ([#583](https://github.com/nominal-io/nominal-client/issues/583)) ([35398ef](https://github.com/nominal-io/nominal-client/commit/35398ef63633c2b2fa198d9915a85a8e19e40323))
+
 ## [1.107.0](https://github.com/nominal-io/nominal-client/compare/v1.106.0...v1.107.0) (2026-01-22)
 
 
