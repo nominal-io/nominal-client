@@ -294,12 +294,3 @@ def _iter_search_data_reviews(
         runs=runs,
     ):
         yield DataReview._from_conjure(clients, review)
-
-
-def _search_data_reviews(
-    clients: DataReview._Clients,
-    assets: Sequence[str] | None = None,
-    runs: Sequence[str] | None = None,
-) -> Sequence[DataReview]:
-    """Search for any data reviews present within a collection of runs and assets."""
-    return list(_iter_search_data_reviews(clients, assets, runs))

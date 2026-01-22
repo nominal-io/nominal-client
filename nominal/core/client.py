@@ -81,7 +81,7 @@ from nominal.core.containerized_extractors import (
     FileExtractionInput,
     FileOutputFormat,
 )
-from nominal.core.data_review import DataReview, DataReviewBuilder, _search_data_reviews
+from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
 from nominal.core.dataset import (
     Dataset,
     _create_dataset,
@@ -94,7 +94,7 @@ from nominal.core.exceptions import NominalConfigError, NominalError, NominalMet
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
-from nominal.core.streaming_checklist import _list_streaming_checklists
+from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video
@@ -1170,7 +1170,7 @@ class NominalClient:
             All streaming checklist RIDs that match the provided conditions
         """
         asset_rid = None if asset is None else rid_from_instance_or_string(asset)
-        return _list_streaming_checklists(self._clients, asset_rid)
+        return list(_iter_list_streaming_checklists(self._clients, asset_rid))
 
     def data_review_builder(self) -> DataReviewBuilder:
         return DataReviewBuilder([], [], [], _clients=self._clients)
@@ -1230,10 +1230,12 @@ class NominalClient:
             All data reviews which match all of the provided conditions
         """
         # TODO (drake-nominal): Expose checklist_refs to users
-        return _search_data_reviews(
-            clients=self._clients,
-            assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
-            runs=[rid_from_instance_or_string(run) for run in runs] if runs else None,
+        return list(
+            _iter_search_data_reviews(
+                clients=self._clients,
+                assets=[rid_from_instance_or_string(asset) for asset in assets] if assets else None,
+                runs=[rid_from_instance_or_string(run) for run in runs] if runs else None,
+            )
         )
 
     def search_events(

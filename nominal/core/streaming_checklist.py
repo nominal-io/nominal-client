@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Protocol, Sequence
+from typing import Iterable, Protocol
 
 from nominal_api import scout_checklistexecution_api
 
@@ -23,16 +23,3 @@ def _iter_list_streaming_checklists(
     if asset_rid is None:
         return list_streaming_checklists_paginated(clients.checklist_execution, clients.auth_header)
     return list_streaming_checklists_for_asset_paginated(clients.checklist_execution, clients.auth_header, asset_rid)
-
-
-def _list_streaming_checklists(
-    clients: _Clients,
-    asset_rid: str | None = None,
-) -> Sequence[str]:
-    """List all Streaming Checklists.
-
-    Args:
-        clients: The clients to use for API calls.
-        asset_rid: if provided, only return checklists associated with the given asset.
-    """
-    return list(_iter_list_streaming_checklists(clients, asset_rid))
