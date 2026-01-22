@@ -27,6 +27,7 @@ from nominal.core._utils.api_tools import Link, LinkDict
 from nominal.core.attachment import Attachment
 from nominal.core.run import Run
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
+from nominal.experimental.migration.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migration_resources import MigrationResources
 from nominal.ts import (
     IntegralNanosecondsDuration,
@@ -639,7 +640,7 @@ def clone_asset(
     return copy_asset_from(
         source_asset=source_asset,
         destination_client=destination_client,
-        include_data=True,
+        dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=True, include_dataset_files=True),
         include_events=True,
         include_runs=True,
     )
@@ -653,7 +654,7 @@ def copy_asset_from(
     new_asset_description: str | None = None,
     new_asset_properties: dict[str, Any] | None = None,
     new_asset_labels: Sequence[str] | None = None,
-    include_data: bool = False,
+    dataset_config: MigrationDatasetConfig | None = None,
     include_events: bool = False,
     include_runs: bool = False,
 ) -> Asset:
@@ -666,7 +667,7 @@ def copy_asset_from(
         new_asset_description: Optional new description for the copied asset. If not provided, original description used
         new_asset_properties: Optional new properties for the copied asset. If not provided, original properties used.
         new_asset_labels: Optional new labels for the copied asset. If not provided, the original labels are used.
-        include_data: Whether to include data in the copied asset.
+        dataset_config: Configuration for dataset migration.
         include_events: Whether to include events in the copied dataset.
         include_runs: Whether to include runs in the copied asset.
 
@@ -683,15 +684,16 @@ def copy_asset_from(
         properties=new_asset_properties if new_asset_properties is not None else source_asset.properties,
         labels=new_asset_labels if new_asset_labels is not None else source_asset.labels,
     )
-    if include_data:
+    if dataset_config is not None:
         source_datasets = source_asset.list_datasets()
         for data_scope, source_dataset in source_datasets:
-            new_dataset = clone_dataset(
+            new_dataset = copy_dataset_from(
                 source_dataset=source_dataset,
                 destination_client=destination_client,
+                preserve_uuid=dataset_config.preserve_dataset_uuid,
+                include_files=dataset_config.include_dataset_files,
             )
             new_asset.add_dataset(data_scope, new_dataset)
-    source_asset._list_dataset_scopes
 
     if include_events:
         source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
@@ -710,6 +712,7 @@ def copy_asset_from(
 def copy_resources_to_destination_client(
     destination_client: NominalClient,
     migration_resources: MigrationResources,
+    dataset_config: MigrationDatasetConfig | None = None,
 ) -> tuple[Sequence[tuple[str, Dataset]], Sequence[Asset], Sequence[WorkbookTemplate], Sequence[Workbook]]:
     """Based on a list of assets and workbook templates, copy resources to destination client, creating
        new datasets, datafiles, and workbooks along the way.
@@ -717,6 +720,7 @@ def copy_resources_to_destination_client(
     Args:
         destination_client (NominalClient): client of the tenant/workspace to copy resources to.
         migration_resources (MigrationResources): resources to copy.
+        dataset_config (MigrationDataConfig | None): Configuration for dataset migration.
 
     Returns:
         All of the created resources.
@@ -731,7 +735,13 @@ def copy_resources_to_destination_client(
 
     new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
     for source_asset in migration_resources.source_assets:
-        new_asset = clone_asset(source_asset.asset, destination_client)
+        new_asset = copy_asset_from(
+            source_asset.asset,
+            destination_client,
+            dataset_config=dataset_config,
+            include_events=True,
+            include_runs=True,
+        )
         new_assets.append(new_asset)
         new_data_scopes_and_datasets.extend(new_asset.list_datasets())
 
@@ -739,7 +749,7 @@ def copy_resources_to_destination_client(
             new_template = clone_workbook_template(source_workbook_template, destination_client)
             new_templates.append(new_template)
             new_workbook = new_template.create_workbook(
-                title=new_template.title, description=new_template.description, asset=new_assets[0]
+                title=new_template.title, description=new_template.description, asset=new_asset
             )
             logger.debug(
                 "Created new workbook %s (rid: %s) from template %s (rid: %s)",
