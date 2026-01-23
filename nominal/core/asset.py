@@ -537,19 +537,23 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         """Search for data reviews associated with this Asset. See nominal.core.client.search_data_reviews
         for details.
         """
-        return data_review._search_data_reviews(
-            self._clients,
-            assets=[self.rid],
-            runs=[rid_from_instance_or_string(run) for run in (runs or [])],
+        return list(
+            data_review._iter_search_data_reviews(
+                self._clients,
+                assets=[self.rid],
+                runs=[rid_from_instance_or_string(run) for run in (runs or [])],
+            )
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:
         """List all Streaming Checklists associated with this Asset. See
         nominal.core.client.list_streaming_checklists for details.
         """
-        return streaming_checklist._list_streaming_checklists(
-            self._clients,
-            asset_rid=self.rid,
+        return list(
+            streaming_checklist._iter_list_streaming_checklists(
+                self._clients,
+                asset_rid=self.rid,
+            )
         )
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
