@@ -403,7 +403,7 @@ def copy_file_to_dataset(
 
 
 def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) -> Dataset:
-    """Clones a dataset, maintaining all properties and files.
+    """Clones a dataset, maintaining all properties, files, and channels.
 
     Args:
         source_dataset (Dataset): The dataset to copy from.
@@ -412,7 +412,11 @@ def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) ->
     Returns:
         The cloned dataset.
     """
-    return copy_dataset_from(source_dataset=source_dataset, destination_client=destination_client, include_files=True)
+    return copy_dataset_from(
+        source_dataset=source_dataset,
+        destination_client=destination_client,
+        include_files=True,
+    )
 
 
 def copy_dataset_from(
@@ -482,6 +486,20 @@ def copy_dataset_from(
             labels=dataset_labels,
         )
 
+    if preserve_uuid:
+        channels_copied_count = 0
+        for source_channel in source_dataset.search_channels():
+            if source_channel.data_type is None:
+                logger.warning("Skipping channel %s: unknown data type", source_channel.name, extra=log_extras)
+                continue
+            new_dataset.add_channel(
+                name=source_channel.name,
+                data_type=source_channel.data_type,
+                description=source_channel.description,
+                unit=source_channel.unit,
+            )
+            channels_copied_count += 1
+        logger.info("Copied %d channels from dataset %s", channels_copied_count, source_dataset.name, extra=log_extras)
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)
