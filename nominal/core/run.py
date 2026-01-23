@@ -364,7 +364,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def _iter_list_assets(self) -> Iterable["Asset"]:
         from nominal.core.asset import Asset
 
-        clients = cast("Asset._Clients", self._clients)
+        clients = cast(Asset._Clients, self._clients)
         run = self._get_latest_api()
         assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
         for a in assets.values():

@@ -14,18 +14,19 @@ class Priority(IntEnum):
 
     @classmethod
     def _from_conjure(cls, priority: scout_api.Priority) -> Priority:
-        if priority.name == "P0":
-            return cls.P0
-        elif priority.name == "P1":
-            return cls.P1
-        elif priority.name == "P2":
-            return cls.P2
-        elif priority.name == "P3":
-            return cls.P3
-        elif priority.name == "P4":
-            return cls.P4
-        else:
-            raise ValueError(f"unknown priority '{priority}', expected one of {list(cls)}")
+        match priority.name:
+            case "P0":
+                return cls.P0
+            case "P1":
+                return cls.P1
+            case "P2":
+                return cls.P2
+            case "P3":
+                return cls.P3
+            case "P4":
+                return cls.P4
+            case _:
+                raise ValueError(f"unknown priority '{priority}', expected one of {list(cls)}")
 
     def _to_conjure(self) -> scout_api.Priority:
         match self:
