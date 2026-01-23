@@ -18,7 +18,6 @@ from nominal_api import (
     storage_writer_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
-    timeseries_logicalseries,
     timeseries_metadata,
     timeseries_metadata_api,
     upload_api,
@@ -52,8 +51,6 @@ class DataSource(HasRid):
         def dataexport(self) -> scout_dataexport_api.DataExportService: ...
         @property
         def datasource(self) -> scout_datasource.DataSourceService: ...
-        @property
-        def logical_series(self) -> timeseries_logicalseries.LogicalSeriesService: ...
         @property
         def units(self) -> scout.UnitsService: ...
         @property

@@ -15,7 +15,6 @@ from nominal_api import (
     storage_series_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
-    timeseries_logicalseries_api,
 )
 from typing_extensions import Self
 
@@ -294,20 +293,6 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             data_source=channel.data_source,
             unit=channel_unit,
             description=channel.description,
-            data_type=channel_data_type,
-            _clients=clients,
-        )
-
-    @classmethod
-    def _from_conjure_logicalseries_api(
-        cls, clients: _Clients, series: timeseries_logicalseries_api.LogicalSeries
-    ) -> Self:
-        channel_data_type = ChannelDataType._from_conjure(series.series_data_type) if series.series_data_type else None
-        return cls(
-            name=series.channel,
-            data_source=series.data_source_rid,
-            unit=series.unit,
-            description=series.description,
             data_type=channel_data_type,
             _clients=clients,
         )

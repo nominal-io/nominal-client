@@ -27,7 +27,6 @@ from nominal_api import (
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
-    timeseries_logicalseries,
     timeseries_metadata,
     upload_api,
 )
@@ -124,7 +123,6 @@ class ClientsBunch:
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
-    logical_series: timeseries_logicalseries.LogicalSeriesService
     run: scout.RunService
     units: scout.UnitsService
     upload: upload_api.UploadService
@@ -165,7 +163,6 @@ class ClientsBunch:
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
-            logical_series=client_factory(timeseries_logicalseries.LogicalSeriesService),
             run=client_factory(scout.RunService),
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
