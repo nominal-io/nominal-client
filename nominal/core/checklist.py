@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Literal, Mapping, Protocol, Sequence
+from typing import Mapping, Protocol, Sequence
 
 from nominal_api import (
-    scout_api,
+    event,
+    scout,
     scout_checklistexecution_api,
     scout_checks_api,
     scout_datareview_api,
@@ -13,11 +14,11 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal.core import run as core_run
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
-from nominal.core.run import Run
 from nominal.ts import _to_api_duration
 
 
@@ -30,13 +31,17 @@ class Checklist(HasRid):
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
 
-    class _Clients(DataReview._Clients, HasScoutParams, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
         @property
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
         @property
         def datareview(self) -> scout_datareview_api.DataReviewService: ...
+        @property
+        def event(self) -> event.EventService: ...
+        @property
+        def run(self) -> scout.RunService: ...
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
@@ -53,7 +58,7 @@ class Checklist(HasRid):
             _clients=clients,
         )
 
-    def execute(self, run: Run | str, commit: str | None = None) -> DataReview:
+    def execute(self, run: core_run.Run | str, commit: str | None = None) -> DataReview:
         """Execute a checklist against a run.
 
         Args:
@@ -152,26 +157,7 @@ class Checklist(HasRid):
         """Returns a link to the page for this checklist in the Nominal app"""
         return f"{self._clients.app_base_url}/checklists/{self.rid}"
 
-    def preview_for_run_url(self, run: Run | str) -> str:
+    def preview_for_run_url(self, run: core_run.Run | str) -> str:
         """Returns a link to the page for previewing this checklist on a given run in the Nominal app"""
         run_rid = rid_from_instance_or_string(run)
         return f"{self.nominal_url}?previewRunRid={run_rid}"
-
-
-Priority = Literal[0, 1, 2, 3, 4]
-
-
-_priority_to_conjure_map: dict[Priority, scout_api.Priority] = {
-    0: scout_api.Priority.P0,
-    1: scout_api.Priority.P1,
-    2: scout_api.Priority.P2,
-    3: scout_api.Priority.P3,
-    4: scout_api.Priority.P4,
-}
-
-
-def _conjure_priority_to_priority(priority: scout_api.Priority) -> Priority:
-    inverted_map = {v: k for k, v in _priority_to_conjure_map.items()}
-    if priority in inverted_map:
-        return inverted_map[priority]
-    raise ValueError(f"unknown priority '{priority}', expected one of {_priority_to_conjure_map.values()}")

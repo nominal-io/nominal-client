@@ -3,16 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Sequence, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
+    event,
+    scout,
     scout_asset_api,
+    scout_assets,
     scout_run_api,
 )
 from typing_extensions import Self
 
-from nominal.core import asset as core_asset
-from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType
 from nominal.core._utils.api_tools import (
     HasRid,
@@ -20,15 +21,19 @@ from nominal.core._utils.api_tools import (
     LinkDict,
     RefreshableMixin,
     create_links,
+    filter_scopes,
     rid_from_instance_or_string,
 )
-from nominal.core.asset import _filter_scopes
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
+from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
 from nominal.core.video import Video, _get_video
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
+
+if TYPE_CHECKING:
+    from nominal.core.asset import Asset
 
 
 @dataclass(frozen=True)
@@ -48,11 +53,17 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     _clients: _Clients = field(repr=False)
 
     class _Clients(
-        core_asset.Asset._Clients,
-        HasScoutParams,
+        Attachment._Clients,
+        DataSource._Clients,
+        Video._Clients,
         Protocol,
     ):
-        pass
+        @property
+        def assets(self) -> scout_assets.AssetService: ...
+        @property
+        def event(self) -> event.EventService: ...
+        @property
+        def run(self) -> scout.RunService: ...
 
     @property
     def nominal_url(self) -> str:
@@ -105,7 +116,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         if len(api_run.assets) > 1:
             raise RuntimeError("Can't retrieve dataset scopes on multi-asset runs")
 
-        return _filter_scopes(api_run.asset_data_scopes, "dataset")
+        return filter_scopes(api_run.asset_data_scopes, "dataset")
 
     def _list_datasource_rids(
         self, datasource_type: str | None = None, property_name: str | None = None
@@ -350,13 +361,16 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         """List a sequence of Attachments associated with this Run."""
         return list(self._iter_list_attachments())
 
-    def _iter_list_assets(self) -> Iterable[core_asset.Asset]:
+    def _iter_list_assets(self) -> Iterable["Asset"]:
+        from nominal.core.asset import Asset
+
+        clients = cast(Asset._Clients, self._clients)
         run = self._get_latest_api()
         assets = self._clients.assets.get_assets(self._clients.auth_header, run.assets)
         for a in assets.values():
-            yield core_asset.Asset._from_conjure(self._clients, a)
+            yield Asset._from_conjure(clients, a)
 
-    def list_assets(self) -> Sequence[core_asset.Asset]:
+    def list_assets(self) -> Sequence["Asset"]:
         """List assets associated with this run."""
         return list(self._iter_list_assets())
 
