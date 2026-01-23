@@ -416,7 +416,7 @@ def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) ->
         source_dataset=source_dataset,
         destination_client=destination_client,
         include_files=True,
-        include_channels=True,
+        preserve_uuid=False,
     )
 
 
@@ -429,7 +429,6 @@ def copy_dataset_from(
     new_dataset_properties: dict[str, Any] | None = None,
     new_dataset_labels: Sequence[str] | None = None,
     include_files: bool = False,
-    include_channels: bool = False,
     preserve_uuid: bool = False,
 ) -> Dataset:
     """Copy a dataset from the source to the destination client.
@@ -444,7 +443,6 @@ def copy_dataset_from(
             properties are used.
         new_dataset_labels: Optional new labels for the copied dataset. If not provided, the original labels are used.
         include_files: Whether to include files in the copied dataset.
-        include_channels: Whether to copy channel metadata from the source dataset.
         preserve_uuid: If True, create the dataset with the same UUID as the source dataset.
             This is useful for migrations where references to datasets must be preserved.
             Throws a conflict error if a dataset with the UUID already exists.
@@ -489,8 +487,9 @@ def copy_dataset_from(
             labels=dataset_labels,
         )
 
-    if include_channels:
-        for source_channel in source_dataset.search_channels():
+    if preserve_uuid:
+        channel_list = list(source_dataset.search_channels())
+        for source_channel in channel_list:
             if source_channel.data_type is None:
                 logger.warning("Skipping channel %s: unknown data type", source_channel.name, extra=log_extras)
                 continue
@@ -500,8 +499,7 @@ def copy_dataset_from(
                 description=source_channel.description,
                 unit=source_channel.unit,
             )
-            logger.debug("Copied channel: %s", source_channel.name, extra=log_extras)
-
+        logger.info("Copied %d channels from dataset %s", len(channel_list), source_dataset.name, extra=log_extras)
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)
