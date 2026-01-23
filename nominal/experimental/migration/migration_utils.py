@@ -416,7 +416,6 @@ def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) ->
         source_dataset=source_dataset,
         destination_client=destination_client,
         include_files=True,
-        preserve_uuid=False,
     )
 
 
