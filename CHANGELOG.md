@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.109.0](https://github.com/nominal-io/nominal-client/compare/v1.108.0...v1.109.0) (2026-01-23)
+
+
+### Features
+
+* clone channels when cloning datasets ([#587](https://github.com/nominal-io/nominal-client/issues/587)) ([ab6de09](https://github.com/nominal-io/nominal-client/commit/ab6de0962c55e2c0a6933d6b9f94fb36f5e91273))
+
 ## [1.108.0](https://github.com/nominal-io/nominal-client/compare/v1.107.0...v1.108.0) (2026-01-22)
 
 
