@@ -487,8 +487,8 @@ def copy_dataset_from(
         )
 
     if preserve_uuid:
-        channel_list = list(source_dataset.search_channels())
-        for source_channel in channel_list:
+        channels_copied_count = 0
+        for source_channel in source_dataset.search_channels():
             if source_channel.data_type is None:
                 logger.warning("Skipping channel %s: unknown data type", source_channel.name, extra=log_extras)
                 continue
@@ -498,7 +498,8 @@ def copy_dataset_from(
                 description=source_channel.description,
                 unit=source_channel.unit,
             )
-        logger.info("Copied %d channels from dataset %s", len(channel_list), source_dataset.name, extra=log_extras)
+            channels_copied_count += 1
+        logger.info("Copied %d channels from dataset %s", channels_copied_count, source_dataset.name, extra=log_extras)
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)
