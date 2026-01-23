@@ -145,11 +145,12 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
     ) -> VideoFile:
-        """Append to a video from a file-path to H264-encoded video data.
+        """Append to a video from a file-path to H264-encoded video data. Only one of start or frame_timestamps
+        is allowed.
 
         Args:
             path: Path to the video file to add to an existing video within Nominal
-            start: Starting timestamp of the video file in absolute UTC time
+            start: Starting timestamp of the video file in absolute UTC time.
             frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.

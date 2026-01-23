@@ -930,6 +930,7 @@ def copy_resources_to_destination_client(
             dataset_config=dataset_config,
             include_events=True,
             include_runs=True,
+            include_video=True,
         )
         new_assets.append(new_asset)
         new_data_scopes_and_datasets.extend(new_asset.list_datasets())

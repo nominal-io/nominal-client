@@ -160,7 +160,7 @@ class VideoFile(HasRid, RefreshableMixin[scout_video_api.VideoFile]):
             # TODO(sean): We need to add support for if starting timestamp isn't present, aka we have frame timestamps
             # from S3.
             if api_video_file.origin_metadata.timestamp_manifest.no_manifest is None:
-                raise ValueError(
+                raise NotImplementedError(
                     f"Expected no_manifest timestamp manifest for non-MCAP video file, "
                     f"but got type: {api_video_file._origin_metadata._timestamp_manifest._type}"
                 )
