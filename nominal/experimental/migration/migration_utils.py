@@ -1072,4 +1072,4 @@ def copy_resources_to_destination_client(
     finally:
         file_handler.close()
         logger.removeHandler(file_handler)
-        return (new_data_scopes_and_datasets, new_assets, new_templates, new_workbooks)
+    return (new_data_scopes_and_datasets, new_assets, new_templates, new_workbooks)
