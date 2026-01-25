@@ -177,3 +177,4 @@ uv.toml
 # Don't check in data
 *.csv
 *.parquet
+*migration_utils_output_*.txt
