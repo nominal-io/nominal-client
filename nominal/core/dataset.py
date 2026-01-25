@@ -253,8 +253,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             ],
         }
 
-        Note: The extended schema (long, arrays, structs) is supported by the streaming library but may not
-        yet be fully supported by the Nominal backend for ingestion.
+        Note: The previous schema with only "double" and "string" value types is still fully supported.
 
         Args:
             path: Path to the .avro file to upload
