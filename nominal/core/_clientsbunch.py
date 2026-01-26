@@ -27,7 +27,7 @@ from nominal_api import (
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
-    timeseries_logicalseries,
+    timeseries_metadata,
     upload_api,
 )
 from typing_extensions import Self
@@ -123,7 +123,6 @@ class ClientsBunch:
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
-    logical_series: timeseries_logicalseries.LogicalSeriesService
     run: scout.RunService
     units: scout.UnitsService
     upload: upload_api.UploadService
@@ -139,6 +138,7 @@ class ClientsBunch:
     proto_write: ProtoWriteService
     event: event.EventService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
+    series_metadata: timeseries_metadata.SeriesMetadataService
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
@@ -163,7 +163,6 @@ class ClientsBunch:
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
-            logical_series=client_factory(timeseries_logicalseries.LogicalSeriesService),
             run=client_factory(scout.RunService),
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
@@ -179,6 +178,7 @@ class ClientsBunch:
             proto_write=client_factory(ProtoWriteService),
             event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
+            series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),

@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.110.0](https://github.com/nominal-io/nominal-client/compare/v1.109.0...v1.110.0) (2026-01-23)
+
+
+### Features
+
+* add data review/checklist methods to assets and runs ([#567](https://github.com/nominal-io/nominal-client/issues/567)) ([4b080d9](https://github.com/nominal-io/nominal-client/commit/4b080d96700fc51555b69a093d592cb03b92e073))
+* add video clone capability in experimental and refactor video methods ([#576](https://github.com/nominal-io/nominal-client/issues/576)) ([f58a89c](https://github.com/nominal-io/nominal-client/commit/f58a89c1fe2220677f439fdf306f0c743e441548))
+
+
+### Bug Fixes
+
+* properly handle dataset files in the new deletion states ([#590](https://github.com/nominal-io/nominal-client/issues/590)) ([e71bcc9](https://github.com/nominal-io/nominal-client/commit/e71bcc9f8fd752257dc2b33789380f0ffb7c5410))
+
+## [1.109.0](https://github.com/nominal-io/nominal-client/compare/v1.108.0...v1.109.0) (2026-01-23)
+
+
+### Features
+
+* clone channels when cloning datasets ([#587](https://github.com/nominal-io/nominal-client/issues/587)) ([ab6de09](https://github.com/nominal-io/nominal-client/commit/ab6de0962c55e2c0a6933d6b9f94fb36f5e91273))
+
+## [1.108.0](https://github.com/nominal-io/nominal-client/compare/v1.107.0...v1.108.0) (2026-01-22)
+
+
+### Features
+
+* add channels to datasets ([#583](https://github.com/nominal-io/nominal-client/issues/583)) ([35398ef](https://github.com/nominal-io/nominal-client/commit/35398ef63633c2b2fa198d9915a85a8e19e40323))
+
+## [1.107.0](https://github.com/nominal-io/nominal-client/compare/v1.106.0...v1.107.0) (2026-01-22)
+
+
+### Features
+
+* make migration preserve uuid and dataset include options configurable ([#584](https://github.com/nominal-io/nominal-client/issues/584)) ([95ae64d](https://github.com/nominal-io/nominal-client/commit/95ae64de267ad957d15641378b6b418e8c234faa))
+
 ## [1.106.0](https://github.com/nominal-io/nominal-client/compare/v1.105.0...v1.106.0) (2026-01-21)
 
 

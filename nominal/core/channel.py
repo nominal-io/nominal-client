@@ -12,9 +12,9 @@ from nominal_api import (
     scout_compute_api,
     scout_dataexport_api,
     scout_datasource,
+    storage_series_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
-    timeseries_logicalseries_api,
 )
 from typing_extensions import Self
 
@@ -51,6 +51,18 @@ class ChannelDataType(enum.Enum):
             return cls(data_type.value)
         else:
             return cls("UNKNOWN")
+
+    def _to_nominal_data_type(self) -> storage_series_api.NominalDataType:
+        if self == ChannelDataType.DOUBLE:
+            return storage_series_api.NominalDataType.DOUBLE
+        elif self == ChannelDataType.STRING:
+            return storage_series_api.NominalDataType.STRING
+        elif self == ChannelDataType.LOG:
+            return storage_series_api.NominalDataType.LOG
+        elif self == ChannelDataType.INT:
+            return storage_series_api.NominalDataType.INT64
+        else:
+            return storage_series_api.NominalDataType.UNKNOWN
 
 
 @dataclass
@@ -281,20 +293,6 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             data_source=channel.data_source,
             unit=channel_unit,
             description=channel.description,
-            data_type=channel_data_type,
-            _clients=clients,
-        )
-
-    @classmethod
-    def _from_conjure_logicalseries_api(
-        cls, clients: _Clients, series: timeseries_logicalseries_api.LogicalSeries
-    ) -> Self:
-        channel_data_type = ChannelDataType._from_conjure(series.series_data_type) if series.series_data_type else None
-        return cls(
-            name=series.channel,
-            data_source=series.data_source_rid,
-            unit=series.unit,
-            description=series.description,
             data_type=channel_data_type,
             _clients=clients,
         )

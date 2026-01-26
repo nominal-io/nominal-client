@@ -4,7 +4,17 @@ import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, BinaryIO, Iterable, Mapping, Sequence, TypeVar, Union, cast, overload
+from typing import (
+    Any,
+    BinaryIO,
+    Iterable,
+    Mapping,
+    Sequence,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
@@ -25,8 +35,12 @@ from nominal.core import (
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import Link, LinkDict
 from nominal.core.attachment import Attachment
+from nominal.core.filetype import FileTypes
 from nominal.core.run import Run
+from nominal.core.video import Video
+from nominal.core.video_file import VideoFile
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
+from nominal.experimental.migration.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migration_resources import MigrationResources
 from nominal.ts import (
     IntegralNanosecondsDuration,
@@ -36,6 +50,56 @@ from nominal.ts import (
 logger = logging.getLogger(__name__)
 
 ConjureType = Union[ConjureBeanType, ConjureUnionType, ConjureEnumType]
+
+
+def _install_migration_file_logger(
+    log_path: str | Path | None = None,
+    *,
+    logger: logging.Logger | None = None,
+    level: int = logging.INFO,
+    formatter: logging.Formatter | None = None,
+    mode: str = "a",
+) -> logging.FileHandler:
+    """Install a file handler that only writes log records with extra={"to_file": True}.
+
+    Args:
+        log_path: File path to write filtered logs to. If None (or a directory), a timestamped
+            file named "migration_utils_output_YYYY-MM-DD-HH-MM-SS.txt" is created.
+        logger: Logger to attach the handler to. Defaults to the root logger.
+        level: Minimum log level to write to the file.
+        formatter: Optional formatter to apply to the file handler.
+        mode: File open mode for the handler.
+
+    Returns:
+        The attached FileHandler instance.
+    """
+    if logger is None:
+        logger = logging.getLogger()
+
+    if log_path is None:
+        log_path_obj = Path.cwd()
+    else:
+        log_path_obj = Path(log_path)
+
+    if log_path_obj.is_dir():
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        log_path_obj = log_path_obj / f"migration_utils_output_{timestamp}.txt"
+
+    handler = logging.FileHandler(log_path_obj, mode=mode, encoding="utf-8")
+    handler.setLevel(level)
+    if formatter is not None:
+        handler.setFormatter(formatter)
+
+    filter_obj = logging.Filter()
+
+    def _filter(record: logging.LogRecord) -> bool:
+        return bool(getattr(record, "to_file", False))
+
+    filter_obj.filter = _filter  # type: ignore[method-assign]
+    handler.addFilter(filter_obj)
+    logger.addHandler(handler)
+    return handler
+
 
 # Regex pattern to match strings that have a UUID format with a prefix.
 UUID_PATTERN = re.compile(r"^(.*)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$")
@@ -188,7 +252,10 @@ def _replace_uuids_in_obj(obj: Any, mapping: dict[str, str]) -> Any:
             elif isinstance(value, str):
                 parsed_value, was_json = _convert_if_json(value)
                 if was_json:
-                    new_obj[key] = json.dumps(_replace_uuids_in_obj(parsed_value, mapping), separators=(",", ":"))
+                    new_obj[key] = json.dumps(
+                        _replace_uuids_in_obj(parsed_value, mapping),
+                        separators=(",", ":"),
+                    )
                 else:
                     new_obj[key] = _replace_uuids_in_obj(value, mapping)
             else:
@@ -211,7 +278,9 @@ def _clone_conjure_objects_with_new_uuids(
 
 
 @overload
-def _clone_conjure_objects_with_new_uuids(objs: list[ConjureType]) -> list[ConjureType]: ...
+def _clone_conjure_objects_with_new_uuids(
+    objs: list[ConjureType],
+) -> list[ConjureType]: ...
 
 
 def _clone_conjure_objects_with_new_uuids(
@@ -302,7 +371,10 @@ def copy_workbook_template_from(
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
     }
     logger.debug(
-        "Cloning workbook template: %s (rid: %s)", source_template.title, source_template.rid, extra=log_extras
+        "Cloning workbook template: %s (rid: %s)",
+        source_template.title,
+        source_template.rid,
+        extra=log_extras,
     )
     raw_source_template = source_template._clients.template.get(
         source_template._clients.auth_header, source_template.rid
@@ -346,7 +418,159 @@ def copy_workbook_template_from(
         source_template.rid,
         extra=log_extras,
     )
+    logger.info(
+        "WORKBOOK_TEMPLATE: Old RID: %s, New RID: %s",
+        source_template.rid,
+        new_workbook_template.rid,
+        extra={"to_file": True},
+    )
     return new_workbook_template
+
+
+def copy_video_file_to_video_dataset(
+    source_video_file: VideoFile,
+    destination_video_dataset: Video,
+) -> VideoFile | None:
+    """Copy a video dataset file from the source to the destination dataset.
+
+    This method is specifically designed to handle video files, which may require special handling
+    due to their size and streaming nature. It retrieves the video file from the source dataset,
+    streams it, and uploads it to the destination dataset while maintaining all associated metadata.
+
+    Args:
+        source_video_file: The source VideoFile to copy. Must be a video file with S3 handle.
+        destination_video_dataset: The Video dataset to create the copied file in.
+
+    Returns:
+        The dataset file in the new dataset.
+    """
+    log_extras = {"destination_client_workspace": destination_video_dataset._clients.workspace_rid}
+    logger.debug("Copying video file: %s", source_video_file.name, extra=log_extras)
+
+    (mcap_video_details, timestamp_options) = source_video_file._get_file_ingest_options()
+
+    old_file_uri = source_video_file._clients.catalog.get_video_file_uri(
+        source_video_file._clients.auth_header, source_video_file.rid
+    ).uri
+
+    response = requests.get(old_file_uri, stream=True)
+    response.raise_for_status()
+
+    file_name = source_video_file.name
+    file_stem = Path(file_name).stem
+    if timestamp_options is not None:
+        new_file = destination_video_dataset.add_from_io(
+            video=cast(BinaryIO, response.raw),
+            name=file_stem,
+            start=timestamp_options.starting_timestamp,
+            description=source_video_file.description,
+        )
+        new_file.update(
+            starting_timestamp=timestamp_options.starting_timestamp,
+            ending_timestamp=timestamp_options.ending_timestamp,
+        )
+    elif mcap_video_details is not None:
+        new_file = destination_video_dataset.add_mcap_from_io(
+            mcap=cast(BinaryIO, response.raw),
+            name=file_stem,
+            topic=mcap_video_details.mcap_channel_locator_topic,
+            description=source_video_file.description,
+            file_type=FileTypes.MCAP,
+        )
+    else:
+        raise ValueError(
+            "Unsupported video file ingest options for copying video file. "
+            "Expected either _mcap_video_details or _timestamp_options to be set."
+        )
+    logger.debug(
+        "New video file created %s in video dataset: %s (rid: %s)",
+        new_file.name,
+        destination_video_dataset.name,
+        destination_video_dataset.rid,
+    )
+    logger.info(
+        "VIDEO_FILE: Old RID: %s, New RID: %s",
+        source_video_file.rid,
+        new_file.rid,
+        extra={"to_file": True},
+    )
+    return new_file
+
+
+def clone_video(source_video: Video, destination_client: NominalClient) -> Video:
+    """Clones a video, maintaining all properties and files.
+
+    Args:
+        source_video (Video): The video to copy from.
+        destination_client (NominalClient): The destination client.
+
+    Returns:
+        The cloned video.
+    """
+    return copy_video_from(
+        source_video=source_video,
+        destination_client=destination_client,
+        include_files=True,
+    )
+
+
+def copy_video_from(
+    source_video: Video,
+    destination_client: NominalClient,
+    *,
+    new_video_name: str | None = None,
+    new_video_description: str | None = None,
+    new_video_properties: dict[str, Any] | None = None,
+    new_video_labels: Sequence[str] | None = None,
+    include_files: bool = False,
+) -> Video:
+    """Copy a video from the source to the destination client.
+
+    Args:
+        source_video: The source Video to copy.
+        destination_client: The NominalClient to create the copied video in.
+        new_video_name: Optional new name for the copied video. If not provided, the original name is used.
+        new_video_description: Optional new description for the copied video.
+            If not provided, the original description is used.
+        new_video_properties: Optional new properties for the copied video. If not provided, the original
+            properties are used.
+        new_video_labels: Optional new labels for the copied video. If not provided, the original labels are used.
+        include_files: Whether to include files in the copied video.
+
+    Returns:
+        The newly created Video in the destination client.
+    """
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+    }
+    logger.debug(
+        "Copying dataset %s (rid: %s)",
+        source_video.name,
+        source_video.rid,
+        extra=log_extras,
+    )
+    new_video = destination_client.create_video(
+        name=new_video_name if new_video_name is not None else source_video.name,
+        description=new_video_description if new_video_description is not None else source_video.description,
+        properties=new_video_properties if new_video_properties is not None else source_video.properties,
+        labels=new_video_labels if new_video_labels is not None else source_video.labels,
+    )
+    if include_files:
+        for source_file in source_video.list_files():
+            copy_video_file_to_video_dataset(source_file, new_video)
+    logger.debug(
+        "New video created: %s (rid: %s)",
+        new_video.name,
+        new_video.rid,
+        extra=log_extras,
+    )
+    logger.info(
+        "VIDEO: Old RID: %s, New RID: %s",
+        source_video.rid,
+        new_video.rid,
+        extra={"to_file": True},
+    )
+    return new_video
 
 
 def copy_file_to_dataset(
@@ -396,13 +620,19 @@ def copy_file_to_dataset(
             destination_dataset.name,
             destination_dataset.rid,
         )
+        logger.info(
+            "DATASET_FILE: Old RID: %s, New RID: %s",
+            source_file.id,
+            new_file.id,
+            extra={"to_file": True},
+        )
         return new_file
     else:  # Because these fields are optional, need to check for None. We shouldn't ever run into this.
         raise ValueError("Unsupported file handle type or missing timestamp information.")
 
 
 def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) -> Dataset:
-    """Clones a dataset, maintaining all properties and files.
+    """Clones a dataset, maintaining all properties, files, and channels.
 
     Args:
         source_dataset (Dataset): The dataset to copy from.
@@ -411,7 +641,11 @@ def clone_dataset(source_dataset: Dataset, destination_client: NominalClient) ->
     Returns:
         The cloned dataset.
     """
-    return copy_dataset_from(source_dataset=source_dataset, destination_client=destination_client, include_files=True)
+    return copy_dataset_from(
+        source_dataset=source_dataset,
+        destination_client=destination_client,
+        include_files=True,
+    )
 
 
 def copy_dataset_from(
@@ -481,10 +715,35 @@ def copy_dataset_from(
             labels=dataset_labels,
         )
 
+    if preserve_uuid:
+        channels_copied_count = 0
+        for source_channel in source_dataset.search_channels():
+            if source_channel.data_type is None:
+                logger.warning("Skipping channel %s: unknown data type", source_channel.name, extra=log_extras)
+                continue
+            new_dataset.add_channel(
+                name=source_channel.name,
+                data_type=source_channel.data_type,
+                description=source_channel.description,
+                unit=source_channel.unit,
+            )
+            channels_copied_count += 1
+        logger.info("Copied %d channels from dataset %s", channels_copied_count, source_dataset.name, extra=log_extras)
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)
-    logger.debug("New dataset created: %s (rid: %s)", new_dataset.name, new_dataset.rid, extra=log_extras)
+    logger.debug(
+        "New dataset created: %s (rid: %s)",
+        new_dataset.name,
+        new_dataset.rid,
+        extra=log_extras,
+    )
+    logger.info(
+        "DATASET: Old RID: %s, New RID: %s",
+        source_dataset.rid,
+        new_dataset.rid,
+        extra={"to_file": True},
+    )
     return new_dataset
 
 
@@ -550,7 +809,18 @@ def copy_event_from(
         properties=new_properties or source_event.properties,
         labels=new_labels or source_event.labels,
     )
-    logger.debug("New event created: %s (rid: %s)", new_event.name, new_event.rid, extra=log_extras)
+    logger.debug(
+        "New event created: %s (rid: %s)",
+        new_event.name,
+        new_event.rid,
+        extra=log_extras,
+    )
+    logger.info(
+        "EVENT: Old RID: %s, New RID: %s",
+        source_event.rid,
+        new_event.rid,
+        extra={"to_file": True},
+    )
     return new_event
 
 
@@ -608,6 +878,7 @@ def copy_run_from(
         source_run.rid,
         extra=log_extras,
     )
+
     new_run = destination_client.create_run(
         name=new_name or source_run.name,
         start=new_start or source_run.start,
@@ -620,6 +891,12 @@ def copy_run_from(
         attachments=new_attachments or source_run.list_attachments(),
     )
     logger.debug("New run created: %s (rid: %s)", new_run.name, new_run.rid, extra=log_extras)
+    logger.info(
+        "RUN: Old RID: %s, New RID: %s",
+        source_run.rid,
+        new_run.rid,
+        extra={"to_file": True},
+    )
     return new_run
 
 
@@ -639,9 +916,10 @@ def clone_asset(
     return copy_asset_from(
         source_asset=source_asset,
         destination_client=destination_client,
-        include_data=True,
+        dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=True, include_dataset_files=True),
         include_events=True,
         include_runs=True,
+        include_video=True,
     )
 
 
@@ -653,9 +931,10 @@ def copy_asset_from(
     new_asset_description: str | None = None,
     new_asset_properties: dict[str, Any] | None = None,
     new_asset_labels: Sequence[str] | None = None,
-    include_data: bool = False,
+    dataset_config: MigrationDatasetConfig | None = None,
     include_events: bool = False,
     include_runs: bool = False,
+    include_video: bool = False,
 ) -> Asset:
     """Copy an asset from the source to the destination client.
 
@@ -666,9 +945,10 @@ def copy_asset_from(
         new_asset_description: Optional new description for the copied asset. If not provided, original description used
         new_asset_properties: Optional new properties for the copied asset. If not provided, original properties used.
         new_asset_labels: Optional new labels for the copied asset. If not provided, the original labels are used.
-        include_data: Whether to include data in the copied asset.
+        dataset_config: Configuration for dataset migration.
         include_events: Whether to include events in the copied dataset.
         include_runs: Whether to include runs in the copied asset.
+        include_video: Whether to include video in the copied asset.
 
     Returns:
         The new asset created.
@@ -676,22 +956,30 @@ def copy_asset_from(
     log_extras = {
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
     }
-    logger.debug("Copying asset %s (rid: %s)", source_asset.name, source_asset.rid, extra=log_extras)
+
+    logger.debug(
+        "Copying asset %s (rid: %s)",
+        source_asset.name,
+        source_asset.rid,
+        extra=log_extras,
+    )
     new_asset = destination_client.create_asset(
         name=new_asset_name if new_asset_name is not None else source_asset.name,
         description=new_asset_description if new_asset_description is not None else source_asset.description,
         properties=new_asset_properties if new_asset_properties is not None else source_asset.properties,
         labels=new_asset_labels if new_asset_labels is not None else source_asset.labels,
     )
-    if include_data:
+
+    if dataset_config is not None:
         source_datasets = source_asset.list_datasets()
         for data_scope, source_dataset in source_datasets:
-            new_dataset = clone_dataset(
+            new_dataset = copy_dataset_from(
                 source_dataset=source_dataset,
                 destination_client=destination_client,
+                preserve_uuid=dataset_config.preserve_dataset_uuid,
+                include_files=dataset_config.include_dataset_files,
             )
             new_asset.add_dataset(data_scope, new_dataset)
-    source_asset._list_dataset_scopes
 
     if include_events:
         source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
@@ -703,13 +991,32 @@ def copy_asset_from(
         for source_run in source_runs:
             copy_run_from(source_run, destination_client, new_assets=[new_asset])
 
+    if include_video:
+        for data_scope, video_dataset in source_asset.list_videos():
+            new_video_dataset = destination_client.create_video(
+                name=video_dataset.name,
+                description=video_dataset.description,
+                properties=video_dataset.properties,
+                labels=video_dataset.labels,
+            )
+            new_asset.add_video(data_scope, new_video_dataset)
+            for source_video_file in video_dataset.list_files():
+                copy_video_file_to_video_dataset(source_video_file, new_video_dataset)
+
     logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
+    logger.info(
+        "ASSET: Old RID: %s, New RID: %s",
+        source_asset.rid,
+        new_asset.rid,
+        extra={"to_file": True},
+    )
     return new_asset
 
 
 def copy_resources_to_destination_client(
     destination_client: NominalClient,
     migration_resources: MigrationResources,
+    dataset_config: MigrationDatasetConfig | None = None,
 ) -> tuple[Sequence[tuple[str, Dataset]], Sequence[Asset], Sequence[WorkbookTemplate], Sequence[Workbook]]:
     """Based on a list of assets and workbook templates, copy resources to destination client, creating
        new datasets, datafiles, and workbooks along the way.
@@ -717,38 +1024,52 @@ def copy_resources_to_destination_client(
     Args:
         destination_client (NominalClient): client of the tenant/workspace to copy resources to.
         migration_resources (MigrationResources): resources to copy.
+        dataset_config (MigrationDataConfig | None): Configuration for dataset migration.
 
     Returns:
         All of the created resources.
     """
-    log_extras = {
-        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid,
-    }
+    file_handler = _install_migration_file_logger()
+    try:
+        log_extras = {
+            "destination_client_workspace": destination_client.get_workspace(
+                destination_client._clients.workspace_rid
+            ).rid,
+        }
 
-    new_assets = []
-    new_templates = []
-    new_workbooks = []
+        new_assets = []
+        new_templates = []
+        new_workbooks = []
 
-    new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
-    for source_asset in migration_resources.source_assets:
-        new_asset = clone_asset(source_asset.asset, destination_client)
-        new_assets.append(new_asset)
-        new_data_scopes_and_datasets.extend(new_asset.list_datasets())
-
-        for source_workbook_template in source_asset.source_workbook_templates:
-            new_template = clone_workbook_template(source_workbook_template, destination_client)
-            new_templates.append(new_template)
-            new_workbook = new_template.create_workbook(
-                title=new_template.title, description=new_template.description, asset=new_assets[0]
+        new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
+        for source_asset in migration_resources.source_assets:
+            new_asset = copy_asset_from(
+                source_asset.asset,
+                destination_client,
+                dataset_config=dataset_config,
+                include_events=True,
+                include_runs=True,
+                include_video=True,
             )
-            logger.debug(
-                "Created new workbook %s (rid: %s) from template %s (rid: %s)",
-                new_workbook.title,
-                new_workbook.rid,
-                new_template.title,
-                new_template.rid,
-                extra=log_extras,
-            )
-            new_workbooks.append(new_workbook)
+            new_assets.append(new_asset)
+            new_data_scopes_and_datasets.extend(new_asset.list_datasets())
 
+            for source_workbook_template in source_asset.source_workbook_templates:
+                new_template = clone_workbook_template(source_workbook_template, destination_client)
+                new_templates.append(new_template)
+                new_workbook = new_template.create_workbook(
+                    title=new_template.title, description=new_template.description, asset=new_asset
+                )
+                logger.debug(
+                    "Created new workbook %s (rid: %s) from template %s (rid: %s)",
+                    new_workbook.title,
+                    new_workbook.rid,
+                    new_template.title,
+                    new_template.rid,
+                    extra=log_extras,
+                )
+                new_workbooks.append(new_workbook)
+    finally:
+        file_handler.close()
+        logger.removeHandler(file_handler)
     return (new_data_scopes_and_datasets, new_assets, new_templates, new_workbooks)
