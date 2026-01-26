@@ -51,6 +51,56 @@ logger = logging.getLogger(__name__)
 
 ConjureType = Union[ConjureBeanType, ConjureUnionType, ConjureEnumType]
 
+
+def _install_migration_file_logger(
+    log_path: str | Path | None = None,
+    *,
+    logger: logging.Logger | None = None,
+    level: int = logging.INFO,
+    formatter: logging.Formatter | None = None,
+    mode: str = "a",
+) -> logging.FileHandler:
+    """Install a file handler that only writes log records with extra={"to_file": True}.
+
+    Args:
+        log_path: File path to write filtered logs to. If None (or a directory), a timestamped
+            file named "migration_utils_output_YYYY-MM-DD-HH-MM-SS.txt" is created.
+        logger: Logger to attach the handler to. Defaults to the root logger.
+        level: Minimum log level to write to the file.
+        formatter: Optional formatter to apply to the file handler.
+        mode: File open mode for the handler.
+
+    Returns:
+        The attached FileHandler instance.
+    """
+    if logger is None:
+        logger = logging.getLogger()
+
+    if log_path is None:
+        log_path_obj = Path.cwd()
+    else:
+        log_path_obj = Path(log_path)
+
+    if log_path_obj.is_dir():
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        log_path_obj = log_path_obj / f"migration_utils_output_{timestamp}.txt"
+
+    handler = logging.FileHandler(log_path_obj, mode=mode, encoding="utf-8")
+    handler.setLevel(level)
+    if formatter is not None:
+        handler.setFormatter(formatter)
+
+    filter_obj = logging.Filter()
+
+    def _filter(record: logging.LogRecord) -> bool:
+        return bool(getattr(record, "to_file", False))
+
+    filter_obj.filter = _filter  # type: ignore[method-assign]
+    handler.addFilter(filter_obj)
+    logger.addHandler(handler)
+    return handler
+
+
 # Regex pattern to match strings that have a UUID format with a prefix.
 UUID_PATTERN = re.compile(r"^(.*)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$")
 
@@ -368,6 +418,12 @@ def copy_workbook_template_from(
         source_template.rid,
         extra=log_extras,
     )
+    logger.info(
+        "WORKBOOK_TEMPLATE: Old RID: %s, New RID: %s",
+        source_template.rid,
+        new_workbook_template.rid,
+        extra={"to_file": True},
+    )
     return new_workbook_template
 
 
@@ -431,6 +487,12 @@ def copy_video_file_to_video_dataset(
         new_file.name,
         destination_video_dataset.name,
         destination_video_dataset.rid,
+    )
+    logger.info(
+        "VIDEO_FILE: Old RID: %s, New RID: %s",
+        source_video_file.rid,
+        new_file.rid,
+        extra={"to_file": True},
     )
     return new_file
 
@@ -502,6 +564,12 @@ def copy_video_from(
         new_video.rid,
         extra=log_extras,
     )
+    logger.info(
+        "VIDEO: Old RID: %s, New RID: %s",
+        source_video.rid,
+        new_video.rid,
+        extra={"to_file": True},
+    )
     return new_video
 
 
@@ -551,6 +619,12 @@ def copy_file_to_dataset(
             new_file.name,
             destination_dataset.name,
             destination_dataset.rid,
+        )
+        logger.info(
+            "DATASET_FILE: Old RID: %s, New RID: %s",
+            source_file.id,
+            new_file.id,
+            extra={"to_file": True},
         )
         return new_file
     else:  # Because these fields are optional, need to check for None. We shouldn't ever run into this.
@@ -664,6 +738,12 @@ def copy_dataset_from(
         new_dataset.rid,
         extra=log_extras,
     )
+    logger.info(
+        "DATASET: Old RID: %s, New RID: %s",
+        source_dataset.rid,
+        new_dataset.rid,
+        extra={"to_file": True},
+    )
     return new_dataset
 
 
@@ -735,6 +815,12 @@ def copy_event_from(
         new_event.rid,
         extra=log_extras,
     )
+    logger.info(
+        "EVENT: Old RID: %s, New RID: %s",
+        source_event.rid,
+        new_event.rid,
+        extra={"to_file": True},
+    )
     return new_event
 
 
@@ -792,6 +878,7 @@ def copy_run_from(
         source_run.rid,
         extra=log_extras,
     )
+
     new_run = destination_client.create_run(
         name=new_name or source_run.name,
         start=new_start or source_run.start,
@@ -804,6 +891,12 @@ def copy_run_from(
         attachments=new_attachments or source_run.list_attachments(),
     )
     logger.debug("New run created: %s (rid: %s)", new_run.name, new_run.rid, extra=log_extras)
+    logger.info(
+        "RUN: Old RID: %s, New RID: %s",
+        source_run.rid,
+        new_run.rid,
+        extra={"to_file": True},
+    )
     return new_run
 
 
@@ -863,6 +956,7 @@ def copy_asset_from(
     log_extras = {
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
     }
+
     logger.debug(
         "Copying asset %s (rid: %s)",
         source_asset.name,
@@ -875,6 +969,7 @@ def copy_asset_from(
         properties=new_asset_properties if new_asset_properties is not None else source_asset.properties,
         labels=new_asset_labels if new_asset_labels is not None else source_asset.labels,
     )
+
     if dataset_config is not None:
         source_datasets = source_asset.list_datasets()
         for data_scope, source_dataset in source_datasets:
@@ -909,6 +1004,12 @@ def copy_asset_from(
                 copy_video_file_to_video_dataset(source_video_file, new_video_dataset)
 
     logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
+    logger.info(
+        "ASSET: Old RID: %s, New RID: %s",
+        source_asset.rid,
+        new_asset.rid,
+        extra={"to_file": True},
+    )
     return new_asset
 
 
@@ -928,41 +1029,47 @@ def copy_resources_to_destination_client(
     Returns:
         All of the created resources.
     """
-    log_extras = {
-        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid,
-    }
+    file_handler = _install_migration_file_logger()
+    try:
+        log_extras = {
+            "destination_client_workspace": destination_client.get_workspace(
+                destination_client._clients.workspace_rid
+            ).rid,
+        }
 
-    new_assets = []
-    new_templates = []
-    new_workbooks = []
+        new_assets = []
+        new_templates = []
+        new_workbooks = []
 
-    new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
-    for source_asset in migration_resources.source_assets:
-        new_asset = copy_asset_from(
-            source_asset.asset,
-            destination_client,
-            dataset_config=dataset_config,
-            include_events=True,
-            include_runs=True,
-            include_video=True,
-        )
-        new_assets.append(new_asset)
-        new_data_scopes_and_datasets.extend(new_asset.list_datasets())
-
-        for source_workbook_template in source_asset.source_workbook_templates:
-            new_template = clone_workbook_template(source_workbook_template, destination_client)
-            new_templates.append(new_template)
-            new_workbook = new_template.create_workbook(
-                title=new_template.title, description=new_template.description, asset=new_asset
+        new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
+        for source_asset in migration_resources.source_assets:
+            new_asset = copy_asset_from(
+                source_asset.asset,
+                destination_client,
+                dataset_config=dataset_config,
+                include_events=True,
+                include_runs=True,
+                include_video=True,
             )
-            logger.debug(
-                "Created new workbook %s (rid: %s) from template %s (rid: %s)",
-                new_workbook.title,
-                new_workbook.rid,
-                new_template.title,
-                new_template.rid,
-                extra=log_extras,
-            )
-            new_workbooks.append(new_workbook)
+            new_assets.append(new_asset)
+            new_data_scopes_and_datasets.extend(new_asset.list_datasets())
 
+            for source_workbook_template in source_asset.source_workbook_templates:
+                new_template = clone_workbook_template(source_workbook_template, destination_client)
+                new_templates.append(new_template)
+                new_workbook = new_template.create_workbook(
+                    title=new_template.title, description=new_template.description, asset=new_asset
+                )
+                logger.debug(
+                    "Created new workbook %s (rid: %s) from template %s (rid: %s)",
+                    new_workbook.title,
+                    new_workbook.rid,
+                    new_template.title,
+                    new_template.rid,
+                    extra=log_extras,
+                )
+                new_workbooks.append(new_workbook)
+    finally:
+        file_handler.close()
+        logger.removeHandler(file_handler)
     return (new_data_scopes_and_datasets, new_assets, new_templates, new_workbooks)
