@@ -317,10 +317,41 @@ def _compute_buckets(
 def _numeric_buckets_from_compute_response(
     response: scout_compute_api.ComputeNodeResponse,
 ) -> Iterable[tuple[api.Timestamp, scout_compute_api.NumericBucket]]:
-    if response.type != "bucketedNumeric" or response.bucketed_numeric is None:
-        return
-
-    yield from zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)
+    if response.numeric_point is not None:
+        # single point would be returned-- create a synthetic bucket
+        val = response.numeric_point.value
+        yield (
+            response.numeric_point.timestamp,
+            scout_compute_api.NumericBucket(
+                count=1,
+                first_point=response.numeric_point,
+                max=val,
+                mean=val,
+                min=val,
+                variance=0,
+                last_point=response.numeric_point,
+            ),
+        )
+    elif response.numeric is not None:
+        # Not enough points to reach the number of requested bucket count, so
+        # gets returned as all of the raw data.
+        for timestamp, value in zip(response.numeric.timestamps, response.numeric.values):
+            point = scout_compute_api.NumericPoint(timestamp, value)
+            yield (
+                timestamp,
+                scout_compute_api.NumericBucket(
+                    count=1,
+                    first_point=point,
+                    max=value,
+                    min=value,
+                    mean=value,
+                    variance=0,
+                    last_point=point,
+                ),
+            )
+    elif response.bucketed_numeric is not None:
+        # Actually bucketed data
+        yield from zip(response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets)
 
 
 def _timestamp_from_conjure(timestamp: api.Timestamp) -> params.NanosecondsUTC:

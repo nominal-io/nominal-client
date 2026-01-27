@@ -280,6 +280,8 @@ class IngestStatus(Enum):
     SUCCESS = "SUCCESS"
     IN_PROGRESS = "IN_PROGRESS"
     FAILED = "FAILED"
+    DELETION_IN_PROGRESS = "DELETION_IN_PROGRESS"
+    DELETED = "DELETED"
 
     @classmethod
     def _from_conjure(cls, status: api.IngestStatusV2) -> IngestStatus:
@@ -289,6 +291,10 @@ class IngestStatus(Enum):
             return cls.IN_PROGRESS
         elif status.error is not None:
             return cls.FAILED
+        elif status.deletion_in_progress is not None:
+            return cls.DELETION_IN_PROGRESS
+        elif status.deleted is not None:
+            return cls.DELETED
         raise ValueError(f"Unknown ingest status: {status.type}")
 
 

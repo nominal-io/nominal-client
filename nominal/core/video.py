@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import BytesIO, TextIOBase, TextIOWrapper
 from types import MappingProxyType
-from typing import BinaryIO, Mapping, Protocol, Sequence
+from typing import BinaryIO, Mapping, Protocol, Sequence, overload
 
-from nominal_api import api, ingest_api, scout_video, scout_video_api, upload_api
+from nominal_api import api, ingest_api, scout_catalog, scout_video, scout_video_api, upload_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
@@ -44,6 +44,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         def ingest(self) -> ingest_api.IngestService: ...
         @property
         def video_file(self) -> scout_video.VideoFileService: ...
+        @property
+        def catalog(self) -> scout_catalog.CatalogService: ...
 
     def poll_until_ingestion_completed(self, interval: timedelta = timedelta(seconds=1)) -> None:
         """Block until video ingestion has completed.
@@ -117,18 +119,38 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         """Unarchives this video, allowing it to show up in the 'All Videos' pane in the UI."""
         self._clients.video.unarchive(self._clients.auth_header, self.rid)
 
+    @overload
     def add_file(
         self,
         path: PathLike,
+        *,
+        start: datetime | IntegralNanosecondsUTC,
+        description: str | None = None,
+    ) -> VideoFile: ...
+
+    @overload
+    def add_file(
+        self,
+        path: PathLike,
+        *,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        description: str | None = None,
+    ) -> VideoFile: ...
+
+    def add_file(
+        self,
+        path: PathLike,
+        *,
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
     ) -> VideoFile:
-        """Append to a video from a file-path to H264-encoded video data.
+        """Append to a video from a file-path to H264-encoded video data. Only one of start or frame_timestamps
+        is allowed.
 
         Args:
             path: Path to the video file to add to an existing video within Nominal
-            start: Starting timestamp of the video file in absolute UTC time
+            start: Starting timestamp of the video file in absolute UTC time.
             frame_timestamps: Per-frame absolute nanosecond timestamps. Most usecases should instead use the 'start'
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
@@ -141,16 +163,46 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         file_type = FileType.from_video(path)
 
         with path.open("rb") as video_file:
-            return self.add_from_io(
-                video_file,
-                name=path_upload_name(path, file_type),
-                start=start,
-                frame_timestamps=frame_timestamps,
-                description=description,
-                file_type=file_type,
-            )
+            if start is not None:
+                return self.add_from_io(
+                    video_file,
+                    name=path_upload_name(path, file_type),
+                    start=start,
+                    description=description,
+                    file_type=file_type,
+                )
+            elif frame_timestamps is not None:
+                return self.add_from_io(
+                    video_file,
+                    name=path_upload_name(path, file_type),
+                    frame_timestamps=frame_timestamps,
+                    description=description,
+                    file_type=file_type,
+                )
+            else:  # This should never be reached due to the validation above
+                raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
 
-    add_file_to_video = add_file
+    @overload
+    def add_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        *,
+        start: datetime | IntegralNanosecondsUTC,
+        description: str | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+    ) -> VideoFile: ...
+
+    @overload
+    def add_from_io(
+        self,
+        video: BinaryIO,
+        name: str,
+        *,
+        frame_timestamps: Sequence[IntegralNanosecondsUTC],
+        description: str | None = None,
+        file_type: tuple[str, str] | FileType = FileTypes.MP4,
+    ) -> VideoFile: ...
 
     def add_from_io(
         self,
@@ -178,6 +230,12 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         """
         if isinstance(video, TextIOBase):
             raise TypeError(f"video {video} must be open in binary mode, rather than text mode")
+
+        # Validation: ensure exactly one of start or frame_timestamps is provided
+        if start is None and frame_timestamps is None:
+            raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
+        if start is not None and frame_timestamps is not None:
+            raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
 
         timestamp_manifest = _build_video_file_timestamp_manifest(
             self._clients.auth_header, self._clients.workspace_rid, self._clients.upload, start, frame_timestamps

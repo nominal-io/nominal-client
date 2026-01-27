@@ -1,5 +1,86 @@
 # Changelog
 
+## [1.110.0](https://github.com/nominal-io/nominal-client/compare/v1.109.0...v1.110.0) (2026-01-23)
+
+
+### Features
+
+* add data review/checklist methods to assets and runs ([#567](https://github.com/nominal-io/nominal-client/issues/567)) ([4b080d9](https://github.com/nominal-io/nominal-client/commit/4b080d96700fc51555b69a093d592cb03b92e073))
+* add video clone capability in experimental and refactor video methods ([#576](https://github.com/nominal-io/nominal-client/issues/576)) ([f58a89c](https://github.com/nominal-io/nominal-client/commit/f58a89c1fe2220677f439fdf306f0c743e441548))
+
+
+### Bug Fixes
+
+* properly handle dataset files in the new deletion states ([#590](https://github.com/nominal-io/nominal-client/issues/590)) ([e71bcc9](https://github.com/nominal-io/nominal-client/commit/e71bcc9f8fd752257dc2b33789380f0ffb7c5410))
+
+## [1.109.0](https://github.com/nominal-io/nominal-client/compare/v1.108.0...v1.109.0) (2026-01-23)
+
+
+### Features
+
+* clone channels when cloning datasets ([#587](https://github.com/nominal-io/nominal-client/issues/587)) ([ab6de09](https://github.com/nominal-io/nominal-client/commit/ab6de0962c55e2c0a6933d6b9f94fb36f5e91273))
+
+## [1.108.0](https://github.com/nominal-io/nominal-client/compare/v1.107.0...v1.108.0) (2026-01-22)
+
+
+### Features
+
+* add channels to datasets ([#583](https://github.com/nominal-io/nominal-client/issues/583)) ([35398ef](https://github.com/nominal-io/nominal-client/commit/35398ef63633c2b2fa198d9915a85a8e19e40323))
+
+## [1.107.0](https://github.com/nominal-io/nominal-client/compare/v1.106.0...v1.107.0) (2026-01-22)
+
+
+### Features
+
+* make migration preserve uuid and dataset include options configurable ([#584](https://github.com/nominal-io/nominal-client/issues/584)) ([95ae64d](https://github.com/nominal-io/nominal-client/commit/95ae64de267ad957d15641378b6b418e8c234faa))
+
+## [1.106.0](https://github.com/nominal-io/nominal-client/compare/v1.105.0...v1.106.0) (2026-01-21)
+
+
+### Features
+
+* create dataset with uuid endpoint for mgiration ([#580](https://github.com/nominal-io/nominal-client/issues/580)) ([f3a3b38](https://github.com/nominal-io/nominal-client/commit/f3a3b383d62e8466af617179479918ef0d1ee534))
+
+
+### Bug Fixes
+
+* handle case where compute returns a non-bucketed response for a bucketed query ([#579](https://github.com/nominal-io/nominal-client/issues/579)) ([58b84f5](https://github.com/nominal-io/nominal-client/commit/58b84f55d282a84c8eb6703816b16920e3b8ecf3))
+
+## [1.105.0](https://github.com/nominal-io/nominal-client/compare/v1.104.3...v1.105.0) (2026-01-21)
+
+
+### Features
+
+* refactor top-level migration config to allow for mapping of templates to assets ([#577](https://github.com/nominal-io/nominal-client/issues/577)) ([9f1f39d](https://github.com/nominal-io/nominal-client/commit/9f1f39d721ea54135441e00b0a31c8fdd78b381c))
+
+## [1.104.3](https://github.com/nominal-io/nominal-client/compare/v1.104.2...v1.104.3) (2026-01-13)
+
+
+### Bug Fixes
+
+* stop removing deprecated kwargs from method calls ([#574](https://github.com/nominal-io/nominal-client/issues/574)) ([c06fb08](https://github.com/nominal-io/nominal-client/commit/c06fb080475e53b0c86613745ea6e094d4035d65))
+
+## [1.104.2](https://github.com/nominal-io/nominal-client/compare/v1.104.1...v1.104.2) (2026-01-08)
+
+
+### Bug Fixes
+
+* explicitly pin version of urllib to fix CVE ([#571](https://github.com/nominal-io/nominal-client/issues/571)) ([2014e51](https://github.com/nominal-io/nominal-client/commit/2014e51d95e8cf804b1dce269402b2671f5153f8))
+
+## [1.104.1](https://github.com/nominal-io/nominal-client/compare/v1.104.0...v1.104.1) (2026-01-08)
+
+
+### Bug Fixes
+
+* add asset_rid to data_review request ([#508](https://github.com/nominal-io/nominal-client/issues/508)) ([b1baf4f](https://github.com/nominal-io/nominal-client/commit/b1baf4f3745ee8a485ff0407a53ad9ee1ee9b0fc))
+
+## [1.104.0](https://github.com/nominal-io/nominal-client/compare/v1.103.0...v1.104.0) (2026-01-08)
+
+
+### Features
+
+* properly use timestamp metadata fallback containerized ([#568](https://github.com/nominal-io/nominal-client/issues/568)) ([8aa5c8c](https://github.com/nominal-io/nominal-client/commit/8aa5c8cb39eeee54bb4b643ad087b80ac5e12f1a))
+
 ## [1.103.0](https://github.com/nominal-io/nominal-client/compare/v1.102.0...v1.103.0) (2026-01-06)
 
 

@@ -468,7 +468,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 series_name=timestamp_column,
                 timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             )
-        elif None in (timestamp_column, timestamp_type):
+        elif (timestamp_column is None) != (timestamp_type is None):
             raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
 
         if isinstance(extractor, str):
@@ -1093,6 +1093,7 @@ def _construct_new_ingest_options(
                 tag_columns=tag_columns,
                 is_archive=file_type.is_parquet_archive(),
                 additional_file_tags={**tags} if tags else None,
+                exclude_columns=[],
             )
         )
     else:
@@ -1107,6 +1108,7 @@ def _construct_new_ingest_options(
                 channel_prefix=channel_prefix,
                 tag_columns=tag_columns,
                 additional_file_tags={**tags} if tags else None,
+                exclude_columns=[],
             )
         )
 
@@ -1139,6 +1141,7 @@ def _construct_existing_ingest_options(
                 tag_columns=tag_columns,
                 is_archive=file_type.is_parquet_archive(),
                 additional_file_tags={**tags} if tags else None,
+                exclude_columns=[],
             )
         )
     else:
@@ -1152,5 +1155,6 @@ def _construct_existing_ingest_options(
                 timestamp_metadata=timestamp_metadata,
                 tag_columns=tag_columns,
                 additional_file_tags={**tags} if tags else None,
+                exclude_columns=[],
             )
         )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from time import sleep
-from typing import Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Protocol, Sequence
 
 from nominal_api import (
     event as event_api,
@@ -18,11 +18,18 @@ from nominal_api import (
 )
 from typing_extensions import Self, deprecated
 
-from nominal.core import checklist, event
+from nominal.core._checklist_types import Priority, _conjure_priority_to_priority
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid
+from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core._utils.pagination_tools import search_data_reviews_paginated
+from nominal.core.event import Event
 from nominal.core.exceptions import NominalMethodRemovedError
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+if TYPE_CHECKING:
+    from nominal.core.asset import Asset
+    from nominal.core.checklist import Checklist
+    from nominal.core.run import Run
 
 
 @dataclass(frozen=True)
@@ -64,8 +71,10 @@ class DataReview(HasRid):
             _clients=clients,
         )
 
-    def get_checklist(self) -> checklist.Checklist:
-        return checklist.Checklist._from_conjure(
+    def get_checklist(self) -> "Checklist":
+        from nominal.core.checklist import Checklist
+
+        return Checklist._from_conjure(
             self._clients,
             self._clients.checklist.get(self._clients.auth_header, self.checklist_rid, commit=self.checklist_commit),
         )
@@ -81,7 +90,7 @@ class DataReview(HasRid):
             "use 'nominal.core.DataReview.get_events()' instead",
         )
 
-    def get_events(self) -> Sequence[event.Event]:
+    def get_events(self) -> Sequence[Event]:
         """Retrieves the list of events for the data review."""
         data_review_response = self._clients.datareview.get(self._clients.auth_header, self.rid).check_evaluations
         all_event_rids = [
@@ -91,7 +100,7 @@ class DataReview(HasRid):
             for event_rid in check.state._generated_alerts.event_rids
         ]
         event_response = self._clients.event.batch_get_events(self._clients.auth_header, all_event_rids)
-        return [event.Event._from_conjure(self._clients, data_review_event) for data_review_event in event_response]
+        return [Event._from_conjure(self._clients, data_review_event) for data_review_event in event_response]
 
     def reload(self) -> DataReview:
         """Reloads the data review from the server."""
@@ -135,7 +144,7 @@ class CheckViolation:
     name: str
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC | None
-    priority: checklist.Priority | None
+    priority: Priority | None
 
     @classmethod
     def _from_conjure(cls, check_alert: scout_datareview_api.CheckAlert) -> CheckViolation:
@@ -145,7 +154,7 @@ class CheckViolation:
             name=check_alert.name,
             start=_SecondsNanos.from_api(check_alert.start).to_nanoseconds(),
             end=_SecondsNanos.from_api(check_alert.end).to_nanoseconds() if check_alert.end is not None else None,
-            priority=checklist._conjure_priority_to_priority(check_alert.priority)
+            priority=_conjure_priority_to_priority(check_alert.priority)
             if check_alert.priority is not scout_api.Priority.UNKNOWN
             else None,
         )
@@ -162,8 +171,81 @@ class DataReviewBuilder:
         self._integration_rids.append(integration_rid)
         return self
 
-    def add_request(self, run_rid: str, checklist_rid: str, commit: str) -> DataReviewBuilder:
-        self._requests.append(scout_datareview_api.CreateDataReviewRequest(checklist_rid, run_rid, commit))
+    @deprecated(
+        "`DataReviewBuilder.add_request` is deprecated and will be removed in a future release of the Nominal SDK. "
+        "Please use `DataReviewBuilder.execute_checklist` instead."
+    )
+    def add_request(
+        self,
+        run_rid: str,
+        checklist_rid: str,
+        commit: str | None = None,
+        *,
+        asset_rid: str | None = None,
+    ) -> DataReviewBuilder:
+        """Add a request to create a data review for the given checklist and run.
+
+        Args:
+            run_rid: RID of the Run to run the Checklist on
+            checklist_rid: RID of the checklist to execute on the Run
+            commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
+            asset_rid: RID of the asset to run the checklist on within the Run (only required for multi-asset runs)
+
+        Returns:
+            DataReviewBuilder instance to continue building a data review with
+        """
+        return self.execute_checklist(run_rid, checklist_rid, commit=commit, asset=asset_rid)
+
+    def execute_checklist(
+        self,
+        run: str | Run,
+        checklist: str | Checklist,
+        *,
+        commit: str | None = None,
+        asset: str | Asset | None = None,
+    ) -> Self:
+        """Add a request to create a data review for the given checklist and run.
+
+        Args:
+            run: Instance or rid of the Run to run the Checklist on
+            checklist: Instance or rid of the checklist to execute on the Run
+            commit: Commit hash of the version of the checklist to run, or the latest version if None is provided
+            asset: Instance or rid of the asset to run the checklist on within the Run
+                NOTE: only required for multi-asset runs
+
+        Returns:
+            DataReviewBuilder instance to continue building a data review with
+
+        Raises:
+            ValueError: If the given run has multiple associated assets and no asset was specified, or
+                if the run has an asset that differs from the provided asset.
+        """
+        checklist_rid = rid_from_instance_or_string(checklist)
+        run_rid = rid_from_instance_or_string(run)
+        asset_rid = None if asset is None else rid_from_instance_or_string(asset)
+
+        raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
+        if len(raw_run.assets) > 1 and asset is None:
+            raise ValueError(
+                f"Cannot run data review on checklist {checklist_rid} and {run_rid} without specifying `asset_rid`: "
+                f"run has {len(raw_run.assets)} assets!"
+            )
+        elif len(raw_run.assets) == 1 and asset_rid is not None:
+            raw_asset_rid = raw_run.assets[0]
+            if raw_asset_rid != asset_rid:
+                raise ValueError(
+                    f"Cannot run data review on checklist {checklist_rid} and {run_rid} with asset {asset_rid}: "
+                    f"run has a different asset {raw_asset_rid}!"
+                )
+
+        self._requests.append(
+            scout_datareview_api.CreateDataReviewRequest(
+                checklist_rid=checklist_rid,
+                run_rid=run_rid,
+                asset_rid=asset_rid,
+                commit=commit,
+            )
+        )
         return self
 
     def add_tags(self, tags: list[str]) -> DataReviewBuilder:
@@ -174,8 +256,7 @@ class DataReviewBuilder:
         """Initiates a batch data review process.
 
         Args:
-            wait_for_completion (bool): If True, waits for the data review process to complete before returning.
-                                        Default is True.
+            wait_for_completion: If True, waits for the data review process to complete before returning.
         """
         request = scout_datareview_api.BatchInitiateDataReviewRequest(
             notification_configurations=[
@@ -199,3 +280,17 @@ def poll_until_completed(
     data_reviews: Sequence[DataReview], interval: timedelta = timedelta(seconds=2)
 ) -> Sequence[DataReview]:
     return [review.poll_for_completion(interval) for review in data_reviews]
+
+
+def _iter_search_data_reviews(
+    clients: DataReview._Clients,
+    assets: Sequence[str] | None = None,
+    runs: Sequence[str] | None = None,
+) -> Iterable[DataReview]:
+    for review in search_data_reviews_paginated(
+        clients.datareview,
+        clients.auth_header,
+        assets=assets,
+        runs=runs,
+    ):
+        yield DataReview._from_conjure(clients, review)

@@ -1018,7 +1018,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.101.0"
+version = "1.109.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1038,6 +1038,7 @@ dependencies = [
     { name = "truststore" },
     { name = "types-cachetools" },
     { name = "typing-extensions" },
+    { name = "urllib3" },
 ]
 
 [package.optional-dependencies]
@@ -1077,7 +1078,7 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1032.0" },
+    { name = "nominal-api", specifier = "==0.1079.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.949.2" },
     { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.5.8" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
@@ -1092,6 +1093,7 @@ requires-dist = [
     { name = "truststore", specifier = ">=0.10.4" },
     { name = "types-cachetools", specifier = ">=6.0.0.20250525" },
     { name = "typing-extensions", specifier = ">=4,<5" },
+    { name = "urllib3", specifier = "==2.6.3" },
 ]
 provides-extras = ["protos", "tdms"]
 
@@ -1121,15 +1123,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1032.0"
+version = "0.1079.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/af/dee62383ce2cc4b840a480737cb7578e96a669eeafb608c6754c056bb176/nominal_api-0.1032.0.tar.gz", hash = "sha256:d31e173ff524d7c815c270e0c9cd4195df963977fdaad0b7668da607e9a51011", size = 624298, upload-time = "2025-12-13T00:15:15.356Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/2b/7fc8f05c6df2519a07f8a657bfd66790cde2c3637ba8006fb76a0976aee5/nominal_api-0.1079.0.tar.gz", hash = "sha256:30669865e738170147d56ab40050e6613b3f6782ba54b21ef0eaffe9cdd2bf1a", size = 639689, upload-time = "2026-01-22T20:12:28.997Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0a/ef/aaecc1976d47f4aad61d0976266085dc1765b243e8c43497db8c3668f914/nominal_api-0.1032.0-py3-none-any.whl", hash = "sha256:2bcdd21fbaf0b9a8832cc1ec2adfd65d8a9a1742bb74256abbd928726ebdde68", size = 657860, upload-time = "2025-12-13T00:15:13.757Z" },
+    { url = "https://files.pythonhosted.org/packages/de/43/1bfb222aa90ce1a2f9328231fc7d98cba6c74470e997a6ce3b02885e2067/nominal_api-0.1079.0-py3-none-any.whl", hash = "sha256:7f45aae7871cb3026324bf032c4a9a5451a7bb2b7f6d2db44a8c84da325ef2c1", size = 672870, upload-time = "2026-01-22T20:12:27.226Z" },
 ]
 
 [[package]]
@@ -2084,11 +2086,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.5.0"
+version = "2.6.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/15/22/9ee70a2574a4f4599c47dd506532914ce044817c7752a79b6a51286319bc/urllib3-2.5.0.tar.gz", hash = "sha256:3fc47733c7e419d4bc3f6b3dc2b4f890bb743906a30d56ba4a5bfa4bbff92760", size = 393185, upload-time = "2025-06-18T14:07:41.644Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/24/5f1b3bdffd70275f6661c76461e25f024d5a38a46f04aaca912426a2b1d3/urllib3-2.6.3.tar.gz", hash = "sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed", size = 435556, upload-time = "2026-01-07T16:24:43.925Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/c2/fe1e52489ae3122415c51f387e221dd0773709bad6c6cdaa599e8a2c5185/urllib3-2.5.0-py3-none-any.whl", hash = "sha256:e6b01673c0fa6a13e374b50871808eb3bf7046c4b125b216f6bf1cc604cff0dc", size = 129795, upload-time = "2025-06-18T14:07:40.39Z" },
+    { url = "https://files.pythonhosted.org/packages/39/08/aaaad47bc4e9dc8c725e68f9d04865dbcb2052843ff09c97b08904852d84/urllib3-2.6.3-py3-none-any.whl", hash = "sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4", size = 131584, upload-time = "2026-01-07T16:24:42.685Z" },
 ]
 
 [[package]]
