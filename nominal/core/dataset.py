@@ -253,6 +253,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             ],
         }
 
+        For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
+
         Note: The previous schema with only "double" and "string" value types is still fully supported.
 
         Args:
