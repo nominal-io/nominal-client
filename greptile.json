@@ -1,5 +1,17 @@
 {
   "patternRepositories": [
     "nominal-io/scout"
-  ]
+  ],
+  "customContext": {
+    "rules": [
+      {
+        "rule": "SDK methods must align with Scout API contracts defined in scout-service-api/",
+        "scope": ["nominal/**/*.py"]
+      },
+      {
+        "rule": "nominal-api dependency version should match Scout API version for compatibility",
+        "scope": ["pyproject.toml"]
+      }
+    ]
+  }
 }
