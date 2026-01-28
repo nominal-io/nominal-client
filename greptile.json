@@ -1,0 +1,17 @@
+{
+  "patternRepositories": [
+    "nominal-io/scout"
+  ],
+  "customContext": {
+    "rules": [
+      {
+        "rule": "SDK methods should align with Scout API contracts defined in scout-service-api/ but often work might be unrelated. Please be judicious when commenting on something that is very high risk or not.",
+        "scope": ["nominal/**/*.py"]
+      },
+      {
+        "rule": "nominal-api dependency version isn't always required to match scout's release. Sometimes we are a bit behind to validate compatibility. Please judicious when commenting on something that is very high risk or not.",
+        "scope": ["pyproject.toml"]
+      }
+    ]
+  }
+}
