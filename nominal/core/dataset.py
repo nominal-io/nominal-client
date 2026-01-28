@@ -216,6 +216,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         API, making it useful for use cases where network connection drops during streaming and a backup file needs
         to be created.
 
+        For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
+
         If this schema is not used, will result in a failed ingestion.
         {
             "type": "record",
