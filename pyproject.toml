@@ -150,6 +150,9 @@ ignore = [
     "PLW0603", # globals
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"nominal/core/dataset.py" = ["E501"]  # allow long lines for avro schema in docstring
+
 [tool.mypy]
 strict = true
 packages = ["nominal"]

@@ -216,6 +216,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         API, making it useful for use cases where network connection drops during streaming and a backup file needs
         to be created.
 
+        For struct columns, values should be converted to JSON strings and wrapped in the JsonStruct record type.
+
         If this schema is not used, will result in a failed ingestion.
         {
             "type": "record",
@@ -234,8 +236,15 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 },
                 {
                     "name": "values",
-                    "type": {"type": "array", "items": ["double", "string"]},
-                    "doc": "Array of values. Can either be doubles or strings",
+                    "type": {"type": "array", "items": [
+                        "double",
+                        "string",
+                        "long",
+                        {"type": "record", "name": "DoubleArray", "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
+                        {"type": "record", "name": "StringArray", "fields": [{"name": "items", "type": {"type": "array", "items": "string"}}]},
+                        {"type": "record", "name": "JsonStruct", "fields": [{"name": "json", "type": "string"}]}
+                    ]},
+                    "doc": "Array of values. Can be doubles, longs, strings, arrays, or JSON structs",
                 },
                 {
                     "name": "tags",
@@ -245,6 +254,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 },
             ],
         }
+
+        Note: The previous schema with only "double" and "string" value types is still fully supported.
 
         Args:
             path: Path to the .avro file to upload
