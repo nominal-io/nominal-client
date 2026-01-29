@@ -732,6 +732,14 @@ def copy_dataset_from(
     if include_files:
         for source_file in source_dataset.list_files():
             copy_file_to_dataset(source_file, new_dataset)
+
+    # Copy bounds from source dataset if they exist
+    if source_dataset.bounds is not None:
+        new_dataset = new_dataset.update_bounds(
+            start=source_dataset.bounds.start,
+            end=source_dataset.bounds.end,
+        )
+
     logger.debug(
         "New dataset created: %s (rid: %s)",
         new_dataset.name,
