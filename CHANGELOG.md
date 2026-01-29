@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.111.0](https://github.com/nominal-io/nominal-client/compare/v1.110.0...v1.111.0) (2026-01-29)
+
+
+### Features
+
+* add RID mapping logging to migration utils ([#593](https://github.com/nominal-io/nominal-client/issues/593)) ([bf19a8b](https://github.com/nominal-io/nominal-client/commit/bf19a8b99f176d0d25586c9f134278a684cedcd2))
+* copy over bounds in clone dataset method ([#597](https://github.com/nominal-io/nominal-client/issues/597)) ([49f0cc1](https://github.com/nominal-io/nominal-client/commit/49f0cc119895768f48fd94a70719ad516bf51a94))
+
+
+### Bug Fixes
+
+* remove logical series service references ([#591](https://github.com/nominal-io/nominal-client/issues/591)) ([ec3ce3b](https://github.com/nominal-io/nominal-client/commit/ec3ce3bc6ddfad7a3e07cfc51f0681bbb719f952))
+
+
+### Documentation
+
+* update avro stream docstring with new schema types ([#594](https://github.com/nominal-io/nominal-client/issues/594)) ([690e5a3](https://github.com/nominal-io/nominal-client/commit/690e5a34dc782601df13d72034c452844fc644a4))
+
 ## [1.110.0](https://github.com/nominal-io/nominal-client/compare/v1.109.0...v1.110.0) (2026-01-23)
 
 
