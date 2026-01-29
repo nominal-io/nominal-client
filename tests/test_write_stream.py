@@ -7,8 +7,8 @@ from nominal_api_protos.nominal_write_pb2 import (
     WriteRequestNominal,
 )
 
-from nominal.core._stream.batch_processor_proto import process_batch
-from nominal.core._stream.write_stream import BatchItem
+from nominal.core._stream.batch_processor_proto import process_array_batch, process_batch
+from nominal.core._stream.write_stream import BatchItem, FloatArrayItem, StringArrayItem
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -699,3 +699,197 @@ def test_multiple_write_streams_dataset(mock_dataset):
     assert len(string_points) == 2
     assert string_points[0].value == "value1"
     assert string_points[1].value == "value2"
+
+
+# ============== Array Streaming Tests ==============
+
+
+def test_process_array_batch_float_arrays(mock_connection):
+    """Test processing a batch of float array items."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        FloatArrayItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0, 3.0]),
+        FloatArrayItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [4.0, 5.0, 6.0]),
+    ]
+
+    # Process the batch using the imported process_array_batch function
+    process_array_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    # Get the actual request that was sent
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
+    mock_write.assert_called_once()
+
+    # Check the arguments using kwargs
+    kwargs = mock_write.call_args.kwargs
+    assert kwargs["auth_header"] == "test-auth-header"
+    assert kwargs["data_source_rid"] == "test-datasource-rid"
+    actual_request = kwargs["request"]
+
+    # Convert bytes back to WriteRequestNominal
+    actual_request = WriteRequestNominal.FromString(actual_request)
+
+    # Verify it's the correct type
+    assert isinstance(actual_request, WriteRequestNominal)
+
+    # Verify series structure
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert isinstance(series, Series)
+    assert series.channel.name == "test_channel"
+
+    # Verify points - should be array_points
+    points = series.points
+    assert points.HasField("array_points")
+    assert points.array_points.HasField("double_array_points")
+
+    double_array_points = points.array_points.double_array_points.points
+    assert len(double_array_points) == 2
+
+    # Verify individual point values
+    assert list(double_array_points[0].value) == [1.0, 2.0, 3.0]
+    assert list(double_array_points[1].value) == [4.0, 5.0, 6.0]
+
+
+def test_process_array_batch_string_arrays(mock_connection):
+    """Test processing a batch of string array items."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        StringArrayItem("test_channel", dt_to_nano(timestamp), ["a", "b", "c"]),
+        StringArrayItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), ["d", "e", "f"]),
+    ]
+
+    # Process the batch
+    process_array_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    # Get the actual request that was sent
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteRequestNominal.FromString(kwargs["request"])
+
+    # Verify series structure
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert series.channel.name == "test_channel"
+
+    # Verify points - should be array_points with string arrays
+    points = series.points
+    assert points.HasField("array_points")
+    assert points.array_points.HasField("string_array_points")
+
+    string_array_points = points.array_points.string_array_points.points
+    assert len(string_array_points) == 2
+
+    # Verify individual point values
+    assert list(string_array_points[0].value) == ["a", "b", "c"]
+    assert list(string_array_points[1].value) == ["d", "e", "f"]
+
+
+def test_process_array_batch_with_tags(mock_connection):
+    """Test processing array items with tags."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        FloatArrayItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0], {"tag1": "value1"}),
+        FloatArrayItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [3.0, 4.0], {"tag1": "value1"}),
+    ]
+
+    process_array_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteRequestNominal.FromString(kwargs["request"])
+
+    # Verify tags were included
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert series.tags == {"tag1": "value1"}
+
+
+def test_float_array_item_sort_key():
+    """Test that FloatArrayItem.sort_key returns correct values."""
+    timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
+    item = FloatArrayItem("channel1", timestamp, [1.0, 2.0], {"tag": "value"})
+
+    key = FloatArrayItem.sort_key(item)
+    assert key[0] == "channel1"
+    assert key[1] == [("tag", "value")]
+    assert key[2] == "float_array"
+
+
+def test_string_array_item_sort_key():
+    """Test that StringArrayItem.sort_key returns correct values."""
+    timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
+    item = StringArrayItem("channel1", timestamp, ["a", "b"], {"tag": "value"})
+
+    key = StringArrayItem.sort_key(item)
+    assert key[0] == "channel1"
+    assert key[1] == [("tag", "value")]
+    assert key[2] == "string_array"
+
+
+def test_write_stream_enqueue_float_array(mock_dataset):
+    """Test enqueue_float_array on a write stream."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream:
+        stream.enqueue_float_array("channel1", timestamp, [1.0, 2.0, 3.0])
+        stream.enqueue_float_array("channel1", timestamp + timedelta(seconds=1), [4.0, 5.0, 6.0])
+
+    # Verify the write was called
+    mock_write = mock_dataset._clients.proto_write.write_nominal_batches
+    assert mock_write.call_count >= 1
+
+    # Check the last call contains array data
+    last_call = mock_write.call_args_list[-1].kwargs
+    actual_request = WriteRequestNominal.FromString(last_call["request"])
+
+    # Find the series with array points
+    array_series = [s for s in actual_request.series if s.points.HasField("array_points")]
+    assert len(array_series) >= 1
+
+    series = array_series[0]
+    assert series.channel.name == "channel1"
+    assert series.points.array_points.HasField("double_array_points")
+
+
+def test_write_stream_enqueue_string_array(mock_dataset):
+    """Test enqueue_string_array on a write stream."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream:
+        stream.enqueue_string_array("channel1", timestamp, ["a", "b", "c"])
+        stream.enqueue_string_array("channel1", timestamp + timedelta(seconds=1), ["d", "e", "f"])
+
+    # Verify the write was called
+    mock_write = mock_dataset._clients.proto_write.write_nominal_batches
+    assert mock_write.call_count >= 1
+
+    # Check the last call contains array data
+    last_call = mock_write.call_args_list[-1].kwargs
+    actual_request = WriteRequestNominal.FromString(last_call["request"])
+
+    # Find the series with array points
+    array_series = [s for s in actual_request.series if s.points.HasField("array_points")]
+    assert len(array_series) >= 1
+
+    series = array_series[0]
+    assert series.channel.name == "channel1"
+    assert series.points.array_points.HasField("string_array_points")

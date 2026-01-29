@@ -9,26 +9,38 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 try:
     from nominal_api_protos.nominal_write_pb2 import (
-        Channel as NominalChannel,
-    )
-    from nominal_api_protos.nominal_write_pb2 import (
+        ArrayPoints,
+        DoubleArrayPoint,
+        DoubleArrayPoints,
         DoublePoint,
         DoublePoints,
         IntegerPoint,
         IntegerPoints,
         Points,
         Series,
+        StringArrayPoint,
+        StringArrayPoints,
         StringPoint,
         StringPoints,
         WriteRequestNominal,
+    )
+    from nominal_api_protos.nominal_write_pb2 import (
+        Channel as NominalChannel,
     )
 except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._stream.write_stream import BatchItem, DataItem
+from nominal.core._stream.write_stream import BatchItem, DataItem, FloatArrayItem, StringArrayItem
 from nominal.core._utils.queueing import Batch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+ArrayItem = FloatArrayItem | StringArrayItem
+
+
+def _array_item_sort_key(item: ArrayItem) -> tuple[str, Sequence[tuple[str, str]], str]:
+    """Common sort key function for array items."""
+    return item._to_api_batch_key()
 
 
 @dataclass(frozen=True)
@@ -38,6 +50,43 @@ class SerializedBatch:
     data: bytes  # Serialized protobuf data
     oldest_timestamp: IntegralNanosecondsUTC  # Oldest timestamp in the batch
     newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
+
+
+def make_array_points_proto(api_batch: Sequence[ArrayItem]) -> Points:
+    """Create Points protobuf for array data (float arrays or string arrays)."""
+    first_item = api_batch[0]
+    if isinstance(first_item, FloatArrayItem):
+        return Points(
+            array_points=ArrayPoints(
+                double_array_points=DoubleArrayPoints(
+                    points=[
+                        DoubleArrayPoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            value=list(item.value),
+                        )
+                        for item in api_batch
+                        if isinstance(item, FloatArrayItem)
+                    ]
+                )
+            )
+        )
+    elif isinstance(first_item, StringArrayItem):
+        return Points(
+            array_points=ArrayPoints(
+                string_array_points=StringArrayPoints(
+                    points=[
+                        StringArrayPoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            value=list(item.value),
+                        )
+                        for item in api_batch
+                        if isinstance(item, StringArrayItem)
+                    ]
+                )
+            )
+        )
+    else:
+        raise ValueError(f"Unsupported array item type: {type(first_item)}")
 
 
 def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
@@ -110,6 +159,42 @@ def process_batch(
         raise ValueError("Writing not implemented for this connection type")
 
     request = create_write_request(batch)
+
+    proto_write.write_nominal_batches(
+        auth_header=auth_header,
+        data_source_rid=nominal_data_source_rid,
+        request=request.SerializeToString(),
+    )
+
+
+def create_array_write_request(batch: Sequence[ArrayItem]) -> WriteRequestNominal:
+    """Create a WriteRequestNominal from batches of array items."""
+    api_batched = groupby(sorted(batch, key=_array_item_sort_key), key=_array_item_sort_key)
+
+    api_batches = [list(api_batch) for _, api_batch in api_batched]
+    return WriteRequestNominal(
+        series=[
+            Series(
+                channel=NominalChannel(name=api_batch[0].channel_name),
+                points=make_array_points_proto(api_batch),
+                tags=dict(api_batch[0].tags) if api_batch[0].tags else {},
+            )
+            for api_batch in api_batches
+        ]
+    )
+
+
+def process_array_batch(
+    batch: Sequence[ArrayItem],
+    nominal_data_source_rid: str | None,
+    auth_header: str,
+    proto_write: ProtoWriteService,
+) -> None:
+    """Process a batch of array items to write."""
+    if nominal_data_source_rid is None:
+        raise ValueError("Writing not implemented for this connection type")
+
+    request = create_array_write_request(batch)
 
     proto_write.write_nominal_batches(
         auth_header=auth_header,
