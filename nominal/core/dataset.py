@@ -118,8 +118,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             end=_SecondsNanos.from_flexible(end).to_nanoseconds(),
         )
         request = scout_catalog.UpdateBoundsRequest(bounds=bounds._to_conjure())
-        updated_dataset = self._clients.catalog.update_bounds(self._clients.auth_header, request, self.rid)
-        return self._refresh_from_api(updated_dataset)
+        self._clients.catalog.update_global_dataset_bounds(self._clients.auth_header, request, self.rid)
+        return self.refresh()
 
     def _handle_ingest_response(self, response: ingest_api.IngestResponse) -> DatasetFile:
         if response.details.dataset is None:
