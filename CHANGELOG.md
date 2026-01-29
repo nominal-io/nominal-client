@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.111.1](https://github.com/nominal-io/nominal-client/compare/v1.111.0...v1.111.1) (2026-01-29)
+
+
+### Bug Fixes
+
+* update bounds on dataset ([#598](https://github.com/nominal-io/nominal-client/issues/598)) ([9d57d3a](https://github.com/nominal-io/nominal-client/commit/9d57d3ae515359dce3ae4c102ffe230e3bf91faf))
+
 ## [1.111.0](https://github.com/nominal-io/nominal-client/compare/v1.110.0...v1.111.0) (2026-01-29)
 
 
