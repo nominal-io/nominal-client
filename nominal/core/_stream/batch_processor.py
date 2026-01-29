@@ -5,52 +5,45 @@ from typing import Sequence, cast
 
 from nominal_api import storage_writer_api
 
-from nominal.core._stream.write_stream import BatchItem, FloatArrayItem, LogItem, StringArrayItem
+from nominal.core._stream.write_stream import BatchItem, DataItem, LogItem
 from nominal.ts import _SecondsNanos
 
-ArrayItem = FloatArrayItem | StringArrayItem
 
+def make_points(api_batch: Sequence[DataItem]) -> storage_writer_api.PointsExternal:
+    """Create PointsExternal for a batch of items with the same value type."""
+    sample_value = api_batch[0].value
 
-def _array_item_sort_key(item: ArrayItem) -> tuple[str, Sequence[tuple[str, str]], str]:
-    """Common sort key function for array items."""
-    return item._to_api_batch_key()
-
-
-def make_array_points(
-    api_batch: Sequence[ArrayItem],
-) -> storage_writer_api.PointsExternal:
-    """Create PointsExternal for array data (float arrays or string arrays)."""
-    first_item = api_batch[0]
-    if isinstance(first_item, FloatArrayItem):
-        return storage_writer_api.PointsExternal(
-            array=storage_writer_api.ArrayPoints(
-                double=[
-                    storage_writer_api.DoubleArrayPoint(
-                        timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                        value=list(cast(FloatArrayItem, item).value),
-                    )
-                    for item in api_batch
-                ]
+    # Handle list types (arrays)
+    if isinstance(sample_value, list):
+        if len(sample_value) > 0 and isinstance(sample_value[0], str):
+            # String array
+            return storage_writer_api.PointsExternal(
+                array=storage_writer_api.ArrayPoints(
+                    string=[
+                        storage_writer_api.StringArrayPoint(
+                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                            value=cast(list[str], item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
             )
-        )
-    elif isinstance(first_item, StringArrayItem):
-        return storage_writer_api.PointsExternal(
-            array=storage_writer_api.ArrayPoints(
-                string=[
-                    storage_writer_api.StringArrayPoint(
-                        timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                        value=list(cast(StringArrayItem, item).value),
-                    )
-                    for item in api_batch
-                ]
+        else:
+            # Float/numeric array (default for empty or numeric lists)
+            return storage_writer_api.PointsExternal(
+                array=storage_writer_api.ArrayPoints(
+                    double=[
+                        storage_writer_api.DoubleArrayPoint(
+                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                            value=cast(list[float], item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
             )
-        )
-    else:
-        raise ValueError(f"Unsupported array item type: {type(first_item)}")
 
-
-def make_points(api_batch: Sequence[BatchItem[str | float | int]]) -> storage_writer_api.PointsExternal:
-    if isinstance(api_batch[0].value, str):
+    # Handle scalar types
+    if isinstance(sample_value, str):
         return storage_writer_api.PointsExternal(
             string=[
                 storage_writer_api.StringPoint(
@@ -60,7 +53,7 @@ def make_points(api_batch: Sequence[BatchItem[str | float | int]]) -> storage_wr
                 for item in api_batch
             ]
         )
-    elif isinstance(api_batch[0].value, float):
+    elif isinstance(sample_value, float):
         return storage_writer_api.PointsExternal(
             double=[
                 storage_writer_api.DoublePoint(
@@ -70,25 +63,27 @@ def make_points(api_batch: Sequence[BatchItem[str | float | int]]) -> storage_wr
                 for item in api_batch
             ]
         )
-    elif isinstance(api_batch[0].value, int):
+    elif isinstance(sample_value, int):
         return storage_writer_api.PointsExternal(
             int_=[
                 storage_writer_api.IntPoint(
-                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(), value=cast(int, item.value)
+                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                    value=cast(int, item.value),
                 )
                 for item in api_batch
             ]
         )
     else:
-        raise ValueError("only float and string are supported types for value")
+        raise ValueError(f"Unsupported value type: {type(sample_value)}")
 
 
 def process_batch_legacy(
-    batch: Sequence[BatchItem[str | float | int]],
+    batch: Sequence[DataItem],
     nominal_data_source_rid: str,
     auth_header: str,
     storage_writer: storage_writer_api.NominalChannelWriterService,
 ) -> None:
+    """Process a batch of data items (scalars or arrays) using the legacy JSON API."""
     api_batched = itertools.groupby(sorted(batch, key=BatchItem.sort_key), key=BatchItem.sort_key)
 
     api_batches = [list(api_batch) for _, api_batch in api_batched]
@@ -97,33 +92,6 @@ def process_batch_legacy(
             storage_writer_api.RecordsBatchExternal(
                 channel=api_batch[0].channel_name,
                 points=make_points(api_batch),
-                tags=dict(api_batch[0].tags) if api_batch[0].tags is not None else {},
-            )
-            for api_batch in api_batches
-        ],
-        data_source_rid=nominal_data_source_rid,
-    )
-    storage_writer.write_batches(
-        auth_header,
-        request,
-    )
-
-
-def process_array_batch_legacy(
-    batch: Sequence[ArrayItem],
-    nominal_data_source_rid: str,
-    auth_header: str,
-    storage_writer: storage_writer_api.NominalChannelWriterService,
-) -> None:
-    """Process a batch of array items using the legacy JSON API."""
-    api_batched = itertools.groupby(sorted(batch, key=_array_item_sort_key), key=_array_item_sort_key)
-
-    api_batches = [list(api_batch) for _, api_batch in api_batched]
-    request = storage_writer_api.WriteBatchesRequestExternal(
-        batches=[
-            storage_writer_api.RecordsBatchExternal(
-                channel=api_batch[0].channel_name,
-                points=make_array_points(api_batch),
                 tags=dict(api_batch[0].tags) if api_batch[0].tags is not None else {},
             )
             for api_batch in api_batches

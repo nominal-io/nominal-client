@@ -25,7 +25,7 @@ from nominal_api import (
 
 from nominal._utils import batched
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
-from nominal.core._stream.batch_processor import process_array_batch_legacy, process_batch_legacy
+from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid
@@ -404,16 +404,10 @@ def _get_write_stream(
                 auth_header=clients.auth_header,
                 storage_writer=clients.storage_writer,
             ),
-            process_array_batch=lambda batch: process_array_batch_legacy(
-                batch=batch,
-                nominal_data_source_rid=write_rid,
-                auth_header=clients.auth_header,
-                storage_writer=clients.storage_writer,
-            ),
         )
     elif data_format == "protobuf":
         try:
-            from nominal.core._stream.batch_processor_proto import process_array_batch, process_batch
+            from nominal.core._stream.batch_processor_proto import process_batch
         except ImportError as ex:
             raise ImportError(
                 "nominal-api-protos is required to use get_write_stream with data_format='protobuf'"
@@ -423,12 +417,6 @@ def _get_write_stream(
             batch_size,
             max_wait,
             lambda batch: process_batch(
-                batch=batch,
-                nominal_data_source_rid=write_rid,
-                auth_header=clients.auth_header,
-                proto_write=clients.proto_write,
-            ),
-            lambda batch: process_array_batch(
                 batch=batch,
                 nominal_data_source_rid=write_rid,
                 auth_header=clients.auth_header,

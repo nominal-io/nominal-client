@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing_extensions import Self
 
 from nominal.core._stream.batch_processor_proto import SerializedBatch, serialize_batch
+from nominal.core._stream.write_stream import StreamValueType
 from nominal.core._utils.queueing import Batch
 
 
@@ -26,7 +27,7 @@ class BatchSerializer:
         pool = ProcessPoolExecutor(max_workers=max_workers)
         return cls(pool=pool)
 
-    def serialize(self, batch: Batch[str | float | int]) -> Future[SerializedBatch]:
+    def serialize(self, batch: Batch[StreamValueType]) -> Future[SerializedBatch]:
         return self.pool.submit(serialize_batch, batch)
 
     def __enter__(self) -> BatchSerializer:

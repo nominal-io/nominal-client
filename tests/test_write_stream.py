@@ -7,8 +7,8 @@ from nominal_api_protos.nominal_write_pb2 import (
     WriteRequestNominal,
 )
 
-from nominal.core._stream.batch_processor_proto import process_array_batch, process_batch
-from nominal.core._stream.write_stream import BatchItem, FloatArrayItem, StringArrayItem
+from nominal.core._stream.batch_processor_proto import process_batch
+from nominal.core._stream.write_stream import BatchItem
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -202,13 +202,13 @@ def test_process_batch_invalid_type(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    # Lists are not supported
+    # Dictionaries are not supported
     batch = [
-        BatchItem("test_channel", dt_to_nano(timestamp), [1, 2, 3]),  # type: ignore[arg-type]
+        BatchItem("test_channel", dt_to_nano(timestamp), {"key": "value"}),  # type: ignore[arg-type]
     ]
 
     # Verify it raises the correct error
-    with pytest.raises(ValueError, match="only float, int, and string are supported types for value"):
+    with pytest.raises(ValueError, match="Unsupported value type"):
         process_batch(
             batch=batch,
             nominal_data_source_rid=mock_connection.nominal_data_source_rid,
@@ -525,13 +525,13 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    # Lists are not supported
+    # Dictionaries are not supported
     batch = [
-        BatchItem("test_channel", dt_to_nano(timestamp), [1, 2, 3]),  # type: ignore[arg-type]
+        BatchItem("test_channel", dt_to_nano(timestamp), {"key": "value"}),  # type: ignore[arg-type]
     ]
 
     # Verify it raises the correct error
-    with pytest.raises(ValueError, match="only float, int, and string are supported types for value"):
+    with pytest.raises(ValueError, match="Unsupported value type"):
         process_batch(
             batch=batch,
             nominal_data_source_rid=mock_dataset.rid,
@@ -704,16 +704,16 @@ def test_multiple_write_streams_dataset(mock_dataset):
 # ============== Array Streaming Tests ==============
 
 
-def test_process_array_batch_float_arrays(mock_connection):
-    """Test processing a batch of float array items."""
+def test_process_batch_float_arrays(mock_connection):
+    """Test processing a batch of float array items using unified BatchItem."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        FloatArrayItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0, 3.0]),
-        FloatArrayItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [4.0, 5.0, 6.0]),
+        BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0, 3.0]),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [4.0, 5.0, 6.0]),
     ]
 
-    # Process the batch using the imported process_array_batch function
-    process_array_batch(
+    # Process the batch using the unified process_batch function
+    process_batch(
         batch=batch,
         nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
@@ -755,16 +755,16 @@ def test_process_array_batch_float_arrays(mock_connection):
     assert list(double_array_points[1].value) == [4.0, 5.0, 6.0]
 
 
-def test_process_array_batch_string_arrays(mock_connection):
-    """Test processing a batch of string array items."""
+def test_process_batch_string_arrays(mock_connection):
+    """Test processing a batch of string array items using unified BatchItem."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        StringArrayItem("test_channel", dt_to_nano(timestamp), ["a", "b", "c"]),
-        StringArrayItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), ["d", "e", "f"]),
+        BatchItem("test_channel", dt_to_nano(timestamp), ["a", "b", "c"]),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), ["d", "e", "f"]),
     ]
 
     # Process the batch
-    process_array_batch(
+    process_batch(
         batch=batch,
         nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
@@ -796,15 +796,15 @@ def test_process_array_batch_string_arrays(mock_connection):
     assert list(string_array_points[1].value) == ["d", "e", "f"]
 
 
-def test_process_array_batch_with_tags(mock_connection):
-    """Test processing array items with tags."""
+def test_process_batch_arrays_with_tags(mock_connection):
+    """Test processing array items with tags using unified BatchItem."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
-        FloatArrayItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0], {"tag1": "value1"}),
-        FloatArrayItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [3.0, 4.0], {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0], {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [3.0, 4.0], {"tag1": "value1"}),
     ]
 
-    process_array_batch(
+    process_batch(
         batch=batch,
         nominal_data_source_rid=mock_connection.nominal_data_source_rid,
         auth_header=mock_connection._clients.auth_header,
@@ -823,26 +823,26 @@ def test_process_array_batch_with_tags(mock_connection):
     assert series.tags == {"tag1": "value1"}
 
 
-def test_float_array_item_sort_key():
-    """Test that FloatArrayItem.sort_key returns correct values."""
+def test_batch_item_sort_key_float_array():
+    """Test that BatchItem.sort_key returns correct values for float arrays."""
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
-    item = FloatArrayItem("channel1", timestamp, [1.0, 2.0], {"tag": "value"})
+    item = BatchItem("channel1", timestamp, [1.0, 2.0], {"tag": "value"})
 
-    key = FloatArrayItem.sort_key(item)
+    key = BatchItem.sort_key(item)
     assert key[0] == "channel1"
     assert key[1] == [("tag", "value")]
-    assert key[2] == "float_array"
+    assert key[2] == "list_float"
 
 
-def test_string_array_item_sort_key():
-    """Test that StringArrayItem.sort_key returns correct values."""
+def test_batch_item_sort_key_string_array():
+    """Test that BatchItem.sort_key returns correct values for string arrays."""
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
-    item = StringArrayItem("channel1", timestamp, ["a", "b"], {"tag": "value"})
+    item = BatchItem("channel1", timestamp, ["a", "b"], {"tag": "value"})
 
-    key = StringArrayItem.sort_key(item)
+    key = BatchItem.sort_key(item)
     assert key[0] == "channel1"
     assert key[1] == [("tag", "value")]
-    assert key[2] == "string_array"
+    assert key[2] == "list_str"
 
 
 def test_write_stream_enqueue_float_array(mock_dataset):

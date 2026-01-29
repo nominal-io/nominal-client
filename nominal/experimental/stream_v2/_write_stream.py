@@ -20,6 +20,7 @@ from nominal.core._stream.write_stream import (
     BatchItem,
     DataItem,
     DataStream,
+    StreamValueType,
 )
 from nominal.core._utils.queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.experimental.stream_v2._serializer import BatchSerializer
@@ -111,7 +112,7 @@ class WriteStreamV2(DataStream):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: float | str | int,
+        value: StreamValueType,
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write a single value."""
@@ -123,7 +124,7 @@ class WriteStreamV2(DataStream):
     def enqueue_from_dict(
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        channel_values: Mapping[str, float | str | int],
+        channel_values: Mapping[str, StreamValueType],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write multiple channel values at a single timestamp using a flattened dictionary.
@@ -249,7 +250,7 @@ def serialize_and_write_batches(
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
     item_queue: Queue[DataItem | QueueShutdown],
-    batch_queue: ReadQueue[Batch[str | float]],
+    batch_queue: ReadQueue[Batch[StreamValueType]],
     track_metrics: bool,
 ) -> None:
     """Worker that processes batches."""
@@ -265,7 +266,7 @@ def spawn_batch_serialize_thread(
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
-    batch_queue: ReadQueue[Batch[str | float]],
+    batch_queue: ReadQueue[Batch[StreamValueType]],
     item_queue: Queue[DataItem | QueueShutdown],
     track_metrics: bool,
 ) -> threading.Thread:
