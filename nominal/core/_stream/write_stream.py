@@ -17,6 +17,14 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 logger = logging.getLogger(__name__)
 
 
+def _get_value_type_name(value: object) -> str:
+    """Get a type name for batch grouping that distinguishes list element types."""
+    if isinstance(value, list) and len(value) > 0:
+        # For non-empty lists, include the element type
+        return f"list_{type(value[0]).__name__}"
+    return type(value).__name__
+
+
 @dataclass(frozen=True)
 class BatchItem(Generic[StreamType]):
     channel_name: str
@@ -25,51 +33,30 @@ class BatchItem(Generic[StreamType]):
     tags: Mapping[str, str] | None = None
 
     def _to_api_batch_key(self) -> tuple[str, Sequence[tuple[str, str]], str]:
-        return self.channel_name, sorted(self.tags.items()) if self.tags is not None else [], type(self.value).__name__
+        return (
+            self.channel_name,
+            sorted(self.tags.items()) if self.tags is not None else [],
+            _get_value_type_name(self.value),
+        )
 
     @classmethod
     def sort_key(cls, item: Self) -> tuple[str, Sequence[tuple[str, str]], str]:
         return item._to_api_batch_key()
 
 
-@dataclass(frozen=True)
-class FloatArrayItem:
-    """Batch item for streaming arrays of floats."""
+ScalarType: TypeAlias = str | float | int
+"""Scalar value types supported for streaming."""
 
-    channel_name: str
-    timestamp: IntegralNanosecondsUTC
-    value: Sequence[float]
-    tags: Mapping[str, str] | None = None
+ArrayType: TypeAlias = list[float] | list[str]
+"""Array value types supported for streaming."""
 
-    def _to_api_batch_key(self) -> tuple[str, Sequence[tuple[str, str]], str]:
-        return self.channel_name, sorted(self.tags.items()) if self.tags is not None else [], "float_array"
+StreamValueType: TypeAlias = ScalarType | ArrayType
+"""All value types supported for streaming (scalars and arrays)."""
 
-    @classmethod
-    def sort_key(cls, item: "FloatArrayItem") -> tuple[str, Sequence[tuple[str, str]], str]:
-        return item._to_api_batch_key()
-
-
-@dataclass(frozen=True)
-class StringArrayItem:
-    """Batch item for streaming arrays of strings."""
-
-    channel_name: str
-    timestamp: IntegralNanosecondsUTC
-    value: Sequence[str]
-    tags: Mapping[str, str] | None = None
-
-    def _to_api_batch_key(self) -> tuple[str, Sequence[tuple[str, str]], str]:
-        return self.channel_name, sorted(self.tags.items()) if self.tags is not None else [], "string_array"
-
-    @classmethod
-    def sort_key(cls, item: "StringArrayItem") -> tuple[str, Sequence[tuple[str, str]], str]:
-        return item._to_api_batch_key()
-
-
-DataStream: TypeAlias = WriteStreamBase[str | float | int]
+DataStream: TypeAlias = WriteStreamBase[StreamValueType]
 """Stream type for asynchronously sending timeseries data to the Nominal backend."""
 
-DataItem: TypeAlias = BatchItem[str | float | int]
+DataItem: TypeAlias = BatchItem[StreamValueType]
 """Individual item of timeseries data to stream to Nominal."""
 
 LogStream: TypeAlias = WriteStreamBase[str]
@@ -88,9 +75,6 @@ class WriteStream(WriteStreamBase[StreamType]):
     _thread_safe_batch: ThreadSafeBatch[StreamType]
     _stop: threading.Event
     _pending_jobs: threading.BoundedSemaphore
-    # Optional array batch processing support
-    _process_array_batch: Callable[[Sequence[ArrayItem]], None] | None = None
-    _thread_safe_array_batch: ThreadSafeArrayBatch | None = None
 
     @classmethod
     def create(
@@ -98,23 +82,15 @@ class WriteStream(WriteStreamBase[StreamType]):
         batch_size: int,
         max_wait: timedelta,
         process_batch: Callable[[Sequence[BatchItem[StreamType]]], None],
-        process_array_batch: Callable[[Sequence[ArrayItem]], None] | None = None,
     ) -> Self:
         """Create the stream.
 
         Args:
             batch_size: Maximum number of items to batch before flushing.
             max_wait: Maximum time to wait before flushing a batch.
-            process_batch: Callable to process batches of scalar items.
-            process_array_batch: Optional callable to process batches of array items.
-                If provided, enables enqueue_float_array and enqueue_string_array methods.
+            process_batch: Callable to process batches of items.
         """
         executor = concurrent.futures.ThreadPoolExecutor()
-
-        # Only create array batch if array processing is enabled
-        array_batch: ThreadSafeArrayBatch | None = None
-        if process_array_batch is not None:
-            array_batch = ThreadSafeArrayBatch()
 
         instance = cls(
             batch_size,
@@ -124,8 +100,6 @@ class WriteStream(WriteStreamBase[StreamType]):
             ThreadSafeBatch(),
             threading.Event(),
             threading.BoundedSemaphore(3),
-            process_array_batch,
-            array_batch,
         )
 
         executor.submit(instance._process_timeout_batches)
@@ -168,25 +142,13 @@ class WriteStream(WriteStreamBase[StreamType]):
     ) -> None:
         """Add an array of floats to the queue after normalizing the timestamp.
 
-        The message is added to the thread-safe array batch and flushed if the batch
-        size is reached.
-
         Args:
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
             value: Array of float values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
-
-        Raises:
-            NotImplementedError: If array streaming is not enabled for this stream.
         """
-        if self._process_array_batch is None or self._thread_safe_array_batch is None:
-            raise NotImplementedError("Array streaming is not enabled for this stream")
-
-        dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        item = FloatArrayItem(channel_name, dt_timestamp, value, tags)
-        self._thread_safe_array_batch.add([item])
-        self._flush_arrays(condition=lambda size: size >= self.batch_size)
+        self.enqueue(channel_name, timestamp, list(value), tags)  # type: ignore[arg-type]
 
     def enqueue_string_array(
         self,
@@ -197,25 +159,13 @@ class WriteStream(WriteStreamBase[StreamType]):
     ) -> None:
         """Add an array of strings to the queue after normalizing the timestamp.
 
-        The message is added to the thread-safe array batch and flushed if the batch
-        size is reached.
-
         Args:
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
             value: Array of string values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
-
-        Raises:
-            NotImplementedError: If array streaming is not enabled for this stream.
         """
-        if self._process_array_batch is None or self._thread_safe_array_batch is None:
-            raise NotImplementedError("Array streaming is not enabled for this stream")
-
-        dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        item = StringArrayItem(channel_name, dt_timestamp, value, tags)
-        self._thread_safe_array_batch.add([item])
-        self._flush_arrays(condition=lambda size: size >= self.batch_size)
+        self.enqueue(channel_name, timestamp, list(value), tags)  # type: ignore[arg-type]
 
     def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
         batch = self._thread_safe_batch.swap(condition)
@@ -239,35 +189,6 @@ class WriteStream(WriteStreamBase[StreamType]):
 
         logger.debug(f"Starting flush with {len(batch)} records")
         future = self._executor.submit(self._process_batch, batch)
-        future.add_done_callback(process_future)
-        return future
-
-    def _flush_arrays(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
-        """Flush array batch to Nominal."""
-        if self._thread_safe_array_batch is None or self._process_array_batch is None:
-            return None
-
-        batch = self._thread_safe_array_batch.swap(condition)
-
-        if batch is None:
-            return None
-        if not batch:
-            logger.debug("Not flushing arrays... no enqueued array batch")
-            return None
-
-        self._pending_jobs.acquire()
-
-        def process_future(fut: concurrent.futures.Future) -> None:  # type: ignore[type-arg]
-            """Callback to print errors to the console if an array batch upload fails."""
-            self._pending_jobs.release()
-            maybe_ex = fut.exception()
-            if maybe_ex is not None:
-                logger.error("Array batched upload task failed with exception", exc_info=maybe_ex)
-            else:
-                logger.debug("Array batched upload task succeeded")
-
-        logger.debug(f"Starting array flush with {len(batch)} records")
-        future = self._executor.submit(self._process_array_batch, batch)
         future.add_done_callback(process_future)
         return future
 
@@ -295,12 +216,7 @@ class WriteStream(WriteStreamBase[StreamType]):
             now = time.monotonic()
 
             last_batch_time = self._thread_safe_batch.last_time
-            # Also check array batch time if available
-            last_array_batch_time = (
-                self._thread_safe_array_batch.last_time if self._thread_safe_array_batch is not None else now
-            )
-            min_last_time = min(last_batch_time, last_array_batch_time)
-            timeout = max(self.max_wait.seconds - (now - min_last_time), 0)
+            timeout = max(self.max_wait.seconds - (now - last_batch_time), 0)
             self._stop.wait(timeout=timeout)
 
             # check if flush has been called in the mean time
@@ -309,21 +225,14 @@ class WriteStream(WriteStreamBase[StreamType]):
 
             self._flush()
 
-            # Also flush arrays if enabled
-            if self._thread_safe_array_batch is not None:
-                if self._thread_safe_array_batch.last_time <= last_array_batch_time:
-                    self._flush_arrays()
-
     def close(self, wait: bool = True) -> None:
         """Close the Nominal Stream.
 
-        Stop the process timeout thread
-        Flush any remaining batches (including array batches)
+        Stop the process timeout thread and flush any remaining batches.
         """
         self._stop.set()
 
         self._flush()
-        self._flush_arrays()
 
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
 
@@ -349,41 +258,6 @@ class ThreadSafeBatch(Generic[StreamType]):
         return batch
 
     def add(self, items: Sequence[BatchItem[StreamType]]) -> None:
-        with self._lock:
-            self._batch.extend(items)
-
-    @property
-    def last_time(self) -> float:
-        with self._lock:
-            return self._last_time
-
-
-ArrayItem = FloatArrayItem | StringArrayItem
-
-
-class ThreadSafeArrayBatch:
-    """Thread-safe batch for array items (FloatArrayItem or StringArrayItem)."""
-
-    def __init__(self) -> None:
-        """Thread-safe access to array batch and last swap time."""
-        self._batch: list[ArrayItem] = []
-        self._last_time = time.monotonic()
-        self._lock = threading.Lock()
-
-    def swap(self, condition: Callable[[int], bool] | None = None) -> list[ArrayItem] | None:
-        """Swap the current batch with an empty one and return the old batch.
-
-        If condition is provided, the swap will only occur if the condition is met, otherwise None is returned.
-        """
-        with self._lock:
-            if condition and not condition(len(self._batch)):
-                return None
-            batch = self._batch
-            self._batch = []
-            self._last_time = time.monotonic()
-        return batch
-
-    def add(self, items: Sequence[ArrayItem]) -> None:
         with self._lock:
             self._batch.extend(items)
 

@@ -31,16 +31,9 @@ except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._stream.write_stream import BatchItem, DataItem, FloatArrayItem, StringArrayItem
+from nominal.core._stream.write_stream import BatchItem, DataItem, StreamValueType
 from nominal.core._utils.queueing import Batch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
-
-ArrayItem = FloatArrayItem | StringArrayItem
-
-
-def _array_item_sort_key(item: ArrayItem) -> tuple[str, Sequence[tuple[str, str]], str]:
-    """Common sort key function for array items."""
-    return item._to_api_batch_key()
 
 
 @dataclass(frozen=True)
@@ -52,46 +45,44 @@ class SerializedBatch:
     newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
 
 
-def make_array_points_proto(api_batch: Sequence[ArrayItem]) -> Points:
-    """Create Points protobuf for array data (float arrays or string arrays)."""
-    first_item = api_batch[0]
-    if isinstance(first_item, FloatArrayItem):
-        return Points(
-            array_points=ArrayPoints(
-                double_array_points=DoubleArrayPoints(
-                    points=[
-                        DoubleArrayPoint(
-                            timestamp=_make_timestamp(item.timestamp),
-                            value=list(item.value),
-                        )
-                        for item in api_batch
-                        if isinstance(item, FloatArrayItem)
-                    ]
-                )
-            )
-        )
-    elif isinstance(first_item, StringArrayItem):
-        return Points(
-            array_points=ArrayPoints(
-                string_array_points=StringArrayPoints(
-                    points=[
-                        StringArrayPoint(
-                            timestamp=_make_timestamp(item.timestamp),
-                            value=list(item.value),
-                        )
-                        for item in api_batch
-                        if isinstance(item, StringArrayItem)
-                    ]
-                )
-            )
-        )
-    else:
-        raise ValueError(f"Unsupported array item type: {type(first_item)}")
-
-
 def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
-    # Check first value to determine type
+    """Create Points protobuf for a batch of items with the same value type."""
     sample_value = api_batch[0].value
+
+    # Handle list types (arrays)
+    if isinstance(sample_value, list):
+        if len(sample_value) > 0 and isinstance(sample_value[0], str):
+            # String array
+            return Points(
+                array_points=ArrayPoints(
+                    string_array_points=StringArrayPoints(
+                        points=[
+                            StringArrayPoint(
+                                timestamp=_make_timestamp(item.timestamp),
+                                value=cast(list[str], item.value),
+                            )
+                            for item in api_batch
+                        ]
+                    )
+                )
+            )
+        else:
+            # Float/numeric array (default for empty or numeric lists)
+            return Points(
+                array_points=ArrayPoints(
+                    double_array_points=DoubleArrayPoints(
+                        points=[
+                            DoubleArrayPoint(
+                                timestamp=_make_timestamp(item.timestamp),
+                                value=cast(list[float], item.value),
+                            )
+                            for item in api_batch
+                        ]
+                    )
+                )
+            )
+
+    # Handle scalar types
     if isinstance(sample_value, str):
         return Points(
             string_points=StringPoints(
@@ -129,7 +120,7 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
             )
         )
     else:
-        raise ValueError("only float, int, and string are supported types for value")
+        raise ValueError(f"Unsupported value type: {type(sample_value)}")
 
 
 def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:
@@ -154,7 +145,7 @@ def process_batch(
     auth_header: str,
     proto_write: ProtoWriteService,
 ) -> None:
-    """Process a batch of items to write."""
+    """Process a batch of data items (scalars or arrays) to write."""
     if nominal_data_source_rid is None:
         raise ValueError("Writing not implemented for this connection type")
 
@@ -167,43 +158,7 @@ def process_batch(
     )
 
 
-def create_array_write_request(batch: Sequence[ArrayItem]) -> WriteRequestNominal:
-    """Create a WriteRequestNominal from batches of array items."""
-    api_batched = groupby(sorted(batch, key=_array_item_sort_key), key=_array_item_sort_key)
-
-    api_batches = [list(api_batch) for _, api_batch in api_batched]
-    return WriteRequestNominal(
-        series=[
-            Series(
-                channel=NominalChannel(name=api_batch[0].channel_name),
-                points=make_array_points_proto(api_batch),
-                tags=dict(api_batch[0].tags) if api_batch[0].tags else {},
-            )
-            for api_batch in api_batches
-        ]
-    )
-
-
-def process_array_batch(
-    batch: Sequence[ArrayItem],
-    nominal_data_source_rid: str | None,
-    auth_header: str,
-    proto_write: ProtoWriteService,
-) -> None:
-    """Process a batch of array items to write."""
-    if nominal_data_source_rid is None:
-        raise ValueError("Writing not implemented for this connection type")
-
-    request = create_array_write_request(batch)
-
-    proto_write.write_nominal_batches(
-        auth_header=auth_header,
-        data_source_rid=nominal_data_source_rid,
-        request=request.SerializeToString(),
-    )
-
-
-def serialize_batch(batch: Batch[str | float]) -> SerializedBatch:
+def serialize_batch(batch: Batch[StreamValueType]) -> SerializedBatch:
     """Process a batch of items and return serialized request."""
     request = create_write_request(batch.items)
     return SerializedBatch(
