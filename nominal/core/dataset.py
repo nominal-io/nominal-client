@@ -26,6 +26,8 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint, _write_logs
 from nominal.ts import (
     _AnyTimestampType,
+    _InferrableTimestampType,
+    _SecondsNanos,
     _to_typed_timestamp_type,
 )
 
@@ -91,6 +93,32 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             properties=None if properties is None else dict(properties),
         )
         updated_dataset = self._clients.catalog.update_dataset_metadata(self._clients.auth_header, self.rid, request)
+        return self._refresh_from_api(updated_dataset)
+
+    def update_bounds(
+        self,
+        *,
+        start: _InferrableTimestampType,
+        end: _InferrableTimestampType,
+    ) -> Self:
+        """Update the bounds (start and end timestamps) of the dataset.
+        Updates the current instance, and returns it.
+
+        Args:
+            start: The start timestamp of the dataset bounds. Can be a datetime, ISO 8601 string,
+                or integer nanoseconds since epoch.
+            end: The end timestamp of the dataset bounds. Can be a datetime, ISO 8601 string,
+                or integer nanoseconds since epoch.
+
+        Returns:
+            The updated Dataset instance with new bounds.
+        """
+        bounds = Bounds(
+            start=_SecondsNanos.from_flexible(start).to_nanoseconds(),
+            end=_SecondsNanos.from_flexible(end).to_nanoseconds(),
+        )
+        request = scout_catalog.UpdateBoundsRequest(bounds=bounds._to_conjure())
+        updated_dataset = self._clients.catalog.update_bounds(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated_dataset)
 
     def _handle_ingest_response(self, response: ingest_api.IngestResponse) -> DatasetFile:
