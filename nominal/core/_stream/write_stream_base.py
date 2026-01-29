@@ -89,6 +89,48 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value, tags)
 
+    def enqueue_float_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: Sequence[float],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write an array of floats to the stream at a single timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Array of float values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+
+        Raises:
+            NotImplementedError: If the stream implementation does not support array streaming.
+        """
+        raise NotImplementedError("Array streaming is not supported by this stream implementation")
+
+    def enqueue_string_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: Sequence[str],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write an array of strings to the stream at a single timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Array of string values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+
+        Raises:
+            NotImplementedError: If the stream implementation does not support array streaming.
+        """
+        raise NotImplementedError("Array streaming is not supported by this stream implementation")
+
     @abc.abstractmethod
     def close(self, wait: bool = True) -> None:
         """Close the stream.
