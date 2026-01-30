@@ -1018,7 +1018,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.111.0"
+version = "1.111.1"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1080,7 +1080,7 @@ requires-dist = [
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "nominal-api", specifier = "==0.1079.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.949.2" },
-    { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.5.8" },
+    { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.7.11" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "openpyxl", specifier = ">=0.0.0" },
     { name = "pandas", specifier = ">=0.0.0" },
@@ -1148,19 +1148,19 @@ wheels = [
 
 [[package]]
 name = "nominal-streaming"
-version = "0.5.8"
+version = "0.7.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
     { name = "typing-extensions", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/d2/5ae27b2c0caeef6da98b896a6364669cb0d29c4f30119571326d4878dc9f/nominal_streaming-0.5.8-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:3ecc5fe6beda872df9ffefb2ee053d3eb28847fdea7a845a130de66b5a9d8659", size = 3163984, upload-time = "2025-10-23T19:39:25.044Z" },
-    { url = "https://files.pythonhosted.org/packages/bc/9c/b132a593661d6af6b9795132c628c81644a7495767664d2dbac2fdea1f18/nominal_streaming-0.5.8-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:cefa65f067153774d13db9b78d128a3f87b43d956fc9dd377295ad7919b51f0a", size = 3100034, upload-time = "2025-10-23T19:40:42.863Z" },
-    { url = "https://files.pythonhosted.org/packages/2d/1e/b902c914b281256c94ac572374e523e8c8f34916d5fd519cb8a2a56bd0eb/nominal_streaming-0.5.8-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dedfc6989e1e3388764305310ec2b1a3c0069e78c0107c41b31b871ed7989a3f", size = 3603079, upload-time = "2025-10-23T19:40:40.964Z" },
-    { url = "https://files.pythonhosted.org/packages/09/f5/d526ea78898dc9a3c409e7089d17152bec1269bfd19d9f2e47041e655ef5/nominal_streaming-0.5.8-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:9d1eabc6ed1bfc0d185e48da5d8bba591a378ffe21f45df18b57f842649283a0", size = 3313038, upload-time = "2025-10-23T19:40:24.149Z" },
-    { url = "https://files.pythonhosted.org/packages/de/f0/dd81f920ec57c8ec8273f184c355bc037e681cc79fd93e0f41efa33c0eb8/nominal_streaming-0.5.8-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a8e114f40367b7578aff58bbae9419956e319d6db29883e7bc349ca06b5a49b5", size = 3729378, upload-time = "2025-10-23T19:40:14.7Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/d1/7c91bc5b0d4f0c889af6371d0aeb0986fba88f48e74d36a0c6735bb1750c/nominal_streaming-0.5.8-cp310-abi3-win_amd64.whl", hash = "sha256:88530a72c3feba22a2ccaa8cd8f3ebc18dfd52b6c80420c0bdc6369c1cb4fe86", size = 3327656, upload-time = "2025-10-23T19:47:31.763Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/47/171f703d0facd9be51ebc7388bf288c1e5f302370dfeb1464e71d4596353/nominal_streaming-0.7.11-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:5fd9eb73dda76444467dd33867f13b0d92ed79f2f3a7802d37f9107ce83a0ac3", size = 3004735, upload-time = "2026-01-30T17:39:43.249Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/e1/8dcecd87dea85e16e55b96a24e6c7e1ea119b80152309219f614dfa065af/nominal_streaming-0.7.11-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:f72c0983c00b8ce2e8892c371cc7d00a2ba8b3d769e009235d5d6f0d2fcd4197", size = 2986144, upload-time = "2026-01-30T17:38:07.704Z" },
+    { url = "https://files.pythonhosted.org/packages/01/59/d319bab8c0248017bdb0df5163ef1a57f328b01c6abbea8e411786491150/nominal_streaming-0.7.11-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:70095255b9c878d2110e0934e1db6570e9dfe9389db784601171f56208c53d1f", size = 3523508, upload-time = "2026-01-30T17:38:04.897Z" },
+    { url = "https://files.pythonhosted.org/packages/42/c6/c45f48bc0cd79f844bca93b200f973035ec4faf433d2e05905b3b95e3492/nominal_streaming-0.7.11-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:630ef59a241d2ffe7c98f6d72fe58f4d9abe70726ae7584f5435f36b707c8706", size = 3206135, upload-time = "2026-01-30T17:38:10.221Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/6d/85db667aaac0060103300efe2a8e21e0bc178dac9db0a9c0efcfff266a70/nominal_streaming-0.7.11-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:1bdd6c8c3f598f376298cc9451d4f7565a63272c4aa34f0d9e483e1b230ad547", size = 3658578, upload-time = "2026-01-30T17:38:08.265Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/e7/d5a8d115d08182d762e6c5a49a865c5c0ef2a5993f63842ee59955e21220/nominal_streaming-0.7.11-cp310-abi3-win_amd64.whl", hash = "sha256:fa887a7e3d6e612db21aaf2a682560ce83a1fe2d0184b52cb15752a6c7501fe7", size = 3150866, upload-time = "2026-01-30T17:46:28.33Z" },
 ]
 
 [[package]]
