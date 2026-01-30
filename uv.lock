@@ -1018,7 +1018,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.111.0"
+version = "1.111.1"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1026,7 +1026,7 @@ dependencies = [
     { name = "conjure-python-client" },
     { name = "ffmpeg-python" },
     { name = "nominal-api" },
-    { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
+    { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "polars" },
@@ -1080,7 +1080,7 @@ requires-dist = [
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "nominal-api", specifier = "==0.1079.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.949.2" },
-    { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.5.8" },
+    { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.7.12" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "openpyxl", specifier = ">=0.0.0" },
     { name = "pandas", specifier = ">=0.0.0" },
@@ -1148,19 +1148,21 @@ wheels = [
 
 [[package]]
 name = "nominal-streaming"
-version = "0.5.8"
+version = "0.7.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "python-dateutil", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
-    { name = "typing-extensions", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
+    { name = "python-dateutil" },
+    { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/d2/5ae27b2c0caeef6da98b896a6364669cb0d29c4f30119571326d4878dc9f/nominal_streaming-0.5.8-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:3ecc5fe6beda872df9ffefb2ee053d3eb28847fdea7a845a130de66b5a9d8659", size = 3163984, upload-time = "2025-10-23T19:39:25.044Z" },
-    { url = "https://files.pythonhosted.org/packages/bc/9c/b132a593661d6af6b9795132c628c81644a7495767664d2dbac2fdea1f18/nominal_streaming-0.5.8-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:cefa65f067153774d13db9b78d128a3f87b43d956fc9dd377295ad7919b51f0a", size = 3100034, upload-time = "2025-10-23T19:40:42.863Z" },
-    { url = "https://files.pythonhosted.org/packages/2d/1e/b902c914b281256c94ac572374e523e8c8f34916d5fd519cb8a2a56bd0eb/nominal_streaming-0.5.8-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dedfc6989e1e3388764305310ec2b1a3c0069e78c0107c41b31b871ed7989a3f", size = 3603079, upload-time = "2025-10-23T19:40:40.964Z" },
-    { url = "https://files.pythonhosted.org/packages/09/f5/d526ea78898dc9a3c409e7089d17152bec1269bfd19d9f2e47041e655ef5/nominal_streaming-0.5.8-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:9d1eabc6ed1bfc0d185e48da5d8bba591a378ffe21f45df18b57f842649283a0", size = 3313038, upload-time = "2025-10-23T19:40:24.149Z" },
-    { url = "https://files.pythonhosted.org/packages/de/f0/dd81f920ec57c8ec8273f184c355bc037e681cc79fd93e0f41efa33c0eb8/nominal_streaming-0.5.8-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a8e114f40367b7578aff58bbae9419956e319d6db29883e7bc349ca06b5a49b5", size = 3729378, upload-time = "2025-10-23T19:40:14.7Z" },
-    { url = "https://files.pythonhosted.org/packages/c1/d1/7c91bc5b0d4f0c889af6371d0aeb0986fba88f48e74d36a0c6735bb1750c/nominal_streaming-0.5.8-cp310-abi3-win_amd64.whl", hash = "sha256:88530a72c3feba22a2ccaa8cd8f3ebc18dfd52b6c80420c0bdc6369c1cb4fe86", size = 3327656, upload-time = "2025-10-23T19:47:31.763Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/02/d37454e0b3fc0a5d4e847059e22da40ced85d8189760629ea4f2c6cd9a9b/nominal_streaming-0.7.12-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:3d87d515d33abed102c8c0d70b5197677bd1821a25f883769dee3c6e0e955bc9", size = 3004182, upload-time = "2026-02-02T17:13:22.241Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/d2/279810bfc34e88b5ddf55fb100b34d337a1905c66345ee3f82412535b929/nominal_streaming-0.7.12-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:07fe1e4764ed2eba7a224b6b5a6c0e292427355ae7015e09072e6967f4ec333b", size = 3256181, upload-time = "2026-02-02T17:11:03.463Z" },
+    { url = "https://files.pythonhosted.org/packages/59/a7/ca350959078d13714b4d0561ed9f894bfa47df0cb67fcdf63b788fbb1008/nominal_streaming-0.7.12-cp310-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:ecff691afd289c2810fc3aa666cb1ebcbd1dd34704597af0fd270b437887cde9", size = 2986015, upload-time = "2026-02-02T17:11:44.342Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/42/a42c9acfa56cdba5ff59f3988b6b49cd7a985bba6dce467547d62cc9736c/nominal_streaming-0.7.12-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8512ca6507058595a220cec68a8ca8b58a04dc91522049abab6dc210f3192086", size = 3523489, upload-time = "2026-02-02T17:11:41.491Z" },
+    { url = "https://files.pythonhosted.org/packages/49/fe/858eed69c42a542802f8a63b2eb265420b8b1979f42b96c79f4124bea94f/nominal_streaming-0.7.12-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:906d25f34214963426a1898b54477b1f2f6e6492232dacb735a5a4b8072a6928", size = 3432622, upload-time = "2026-02-02T17:11:50.371Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/fe/b202667acfebb09123b1b5a63a4cd2b01e0df45fcf443407c5f46cfb1744/nominal_streaming-0.7.12-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:9b9508b89862b8c9d23514662ad7d32838438d147d97bbc463032602c93cd83e", size = 3206626, upload-time = "2026-02-02T17:11:48.982Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/cb/46c0fd44ba3f33f2b8303b3425d275021e6559b990fd9dd8b7c3b58fc23b/nominal_streaming-0.7.12-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a4963c3e49671f8aea08fe5e3cc5f770744ad73dbf6e5f2ff05f31e998923a1a", size = 3658668, upload-time = "2026-02-02T17:11:55.585Z" },
+    { url = "https://files.pythonhosted.org/packages/00/ed/fad20c542f307e6d59c92c5df809a2f63bbc32976189e884439a9e5a98a5/nominal_streaming-0.7.12-cp310-abi3-win_amd64.whl", hash = "sha256:5f9882cf6fd82d46956b70f435b16734fcb845214fc4fd2a823d05fa81f3621a", size = 3150372, upload-time = "2026-02-02T17:18:34.856Z" },
 ]
 
 [[package]]
