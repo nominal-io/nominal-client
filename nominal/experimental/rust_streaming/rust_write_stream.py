@@ -10,7 +10,7 @@ from nominal.core._types import PathLike
 from nominal.core.datasource import DataSource
 
 
-class RustWriteStream(NominalDatasetStream, DataStream):
+class RustWriteStream(NominalDatasetStream, DataStream):  # type: ignore[misc]
     """Thin wrapper around the existing Rust Dataset Stream.
 
     See: `nominal_streaming.NominalDatasetStream` for more details

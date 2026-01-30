@@ -9,24 +9,29 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 try:
     from nominal_api_protos.nominal_write_pb2 import (
-        Channel as NominalChannel,
-    )
-    from nominal_api_protos.nominal_write_pb2 import (
+        ArrayPoints,
+        DoubleArrayPoint,
+        DoubleArrayPoints,
         DoublePoint,
         DoublePoints,
         IntegerPoint,
         IntegerPoints,
         Points,
         Series,
+        StringArrayPoint,
+        StringArrayPoints,
         StringPoint,
         StringPoints,
         WriteRequestNominal,
+    )
+    from nominal_api_protos.nominal_write_pb2 import (
+        Channel as NominalChannel,
     )
 except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._stream.write_stream import BatchItem, DataItem
+from nominal.core._stream.write_stream import BatchItem, DataItem, StreamValueType
 from nominal.core._utils.queueing import Batch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -41,8 +46,43 @@ class SerializedBatch:
 
 
 def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
-    # Check first value to determine type
+    """Create Points protobuf for a batch of items with the same value type."""
     sample_value = api_batch[0].value
+
+    # Handle list types (arrays)
+    if isinstance(sample_value, list):
+        if len(sample_value) > 0 and isinstance(sample_value[0], str):
+            # String array
+            return Points(
+                array_points=ArrayPoints(
+                    string_array_points=StringArrayPoints(
+                        points=[
+                            StringArrayPoint(
+                                timestamp=_make_timestamp(item.timestamp),
+                                value=cast(list[str], item.value),
+                            )
+                            for item in api_batch
+                        ]
+                    )
+                )
+            )
+        else:
+            # Float/numeric array (default for empty or numeric lists)
+            return Points(
+                array_points=ArrayPoints(
+                    double_array_points=DoubleArrayPoints(
+                        points=[
+                            DoubleArrayPoint(
+                                timestamp=_make_timestamp(item.timestamp),
+                                value=cast(list[float], item.value),
+                            )
+                            for item in api_batch
+                        ]
+                    )
+                )
+            )
+
+    # Handle scalar types
     if isinstance(sample_value, str):
         return Points(
             string_points=StringPoints(
@@ -80,7 +120,7 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
             )
         )
     else:
-        raise ValueError("only float, int, and string are supported types for value")
+        raise ValueError(f"Unsupported value type: {type(sample_value)}")
 
 
 def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:
@@ -105,7 +145,7 @@ def process_batch(
     auth_header: str,
     proto_write: ProtoWriteService,
 ) -> None:
-    """Process a batch of items to write."""
+    """Process a batch of data items (scalars or arrays) to write."""
     if nominal_data_source_rid is None:
         raise ValueError("Writing not implemented for this connection type")
 
@@ -118,7 +158,7 @@ def process_batch(
     )
 
 
-def serialize_batch(batch: Batch[str | float]) -> SerializedBatch:
+def serialize_batch(batch: Batch[StreamValueType]) -> SerializedBatch:
     """Process a batch of items and return serialized request."""
     request = create_write_request(batch.items)
     return SerializedBatch(

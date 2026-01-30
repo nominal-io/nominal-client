@@ -17,6 +17,14 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 logger = logging.getLogger(__name__)
 
 
+def _get_value_type_name(value: object) -> str:
+    """Get a type name for batch grouping that distinguishes list element types."""
+    if isinstance(value, list) and len(value) > 0:
+        # For non-empty lists, include the element type
+        return f"list_{type(value[0]).__name__}"
+    return type(value).__name__
+
+
 @dataclass(frozen=True)
 class BatchItem(Generic[StreamType]):
     channel_name: str
@@ -25,17 +33,30 @@ class BatchItem(Generic[StreamType]):
     tags: Mapping[str, str] | None = None
 
     def _to_api_batch_key(self) -> tuple[str, Sequence[tuple[str, str]], str]:
-        return self.channel_name, sorted(self.tags.items()) if self.tags is not None else [], type(self.value).__name__
+        return (
+            self.channel_name,
+            sorted(self.tags.items()) if self.tags is not None else [],
+            _get_value_type_name(self.value),
+        )
 
     @classmethod
     def sort_key(cls, item: Self) -> tuple[str, Sequence[tuple[str, str]], str]:
         return item._to_api_batch_key()
 
 
-DataStream: TypeAlias = WriteStreamBase[str | float | int]
+ScalarType: TypeAlias = str | float | int
+"""Scalar value types supported for streaming."""
+
+ArrayType: TypeAlias = list[float] | list[str]
+"""Array value types supported for streaming."""
+
+StreamValueType: TypeAlias = ScalarType | ArrayType
+"""All value types supported for streaming (scalars and arrays)."""
+
+DataStream: TypeAlias = WriteStreamBase[StreamValueType]
 """Stream type for asynchronously sending timeseries data to the Nominal backend."""
 
-DataItem: TypeAlias = BatchItem[str | float | int]
+DataItem: TypeAlias = BatchItem[StreamValueType]
 """Individual item of timeseries data to stream to Nominal."""
 
 LogStream: TypeAlias = WriteStreamBase[str]
@@ -62,7 +83,13 @@ class WriteStream(WriteStreamBase[StreamType]):
         max_wait: timedelta,
         process_batch: Callable[[Sequence[BatchItem[StreamType]]], None],
     ) -> Self:
-        """Create the stream."""
+        """Create the stream.
+
+        Args:
+            batch_size: Maximum number of items to batch before flushing.
+            max_wait: Maximum time to wait before flushing a batch.
+            process_batch: Callable to process batches of items.
+        """
         executor = concurrent.futures.ThreadPoolExecutor()
 
         instance = cls(
@@ -105,6 +132,40 @@ class WriteStream(WriteStreamBase[StreamType]):
         item = BatchItem(channel_name, dt_timestamp, value, tags)
         self._thread_safe_batch.add([item])
         self._flush(condition=lambda size: size >= self.batch_size)
+
+    def enqueue_float_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: Sequence[float],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Add an array of floats to the queue after normalizing the timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Array of float values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        self.enqueue(channel_name, timestamp, list(value), tags)  # type: ignore[arg-type]
+
+    def enqueue_string_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: Sequence[str],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Add an array of strings to the queue after normalizing the timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Array of string values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        self.enqueue(channel_name, timestamp, list(value), tags)  # type: ignore[arg-type]
 
     def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
         batch = self._thread_safe_batch.swap(condition)
@@ -167,8 +228,7 @@ class WriteStream(WriteStreamBase[StreamType]):
     def close(self, wait: bool = True) -> None:
         """Close the Nominal Stream.
 
-        Stop the process timeout thread
-        Flush any remaining batches
+        Stop the process timeout thread and flush any remaining batches.
         """
         self._stop.set()
 
