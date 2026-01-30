@@ -42,6 +42,10 @@ DEFAULT_POINTS_PER_DATAFRAME = 25_000_000
 # Maximum number of channels to get data for within a single request to Nominal
 DEFAULT_CHANNELS_PER_REQUEST = 25
 
+# Maximum number of buckets / decimated points exported per compute query.
+# TODO(drake) raise 1000 limit once backend limit is raised
+MAX_NUM_BUCKETS = 1000
+
 DEFAULT_EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
 _INTERNAL_TS_COL = "__nmnl_ts__"  # internal join key, chosen to avoid collision with channel names
 
@@ -133,8 +137,8 @@ def _batch_channel_points_per_second(
     if not channels:
         logger.warning("No channels given!")
         return {}
-    elif num_buckets > 1000:
-        raise ValueError("num_buckets must be <=1000")
+    elif num_buckets > MAX_NUM_BUCKETS:
+        raise ValueError(f"num_buckets ({num_buckets}) must be <= {MAX_NUM_BUCKETS}")
 
     # For each channel that has data with the given tags within the provided time range, add a
     # compute expression to later retrieve decimated bucket stats
@@ -682,6 +686,27 @@ class PolarsExportHandler:
         # Ensure user has not selected incompatible decimation options
         if None not in (buckets, resolution):
             raise ValueError("Cannot export data decimated with both buckets and resolution")
+
+        if resolution is not None:
+            # If the batch duration is higher than this number, and data is actually downsampled with the
+            # given resolution, then it would error today if the batch duration is any larger than this.
+            computed_batch_duration = datetime.timedelta(seconds=(resolution * MAX_NUM_BUCKETS) / 1e9)
+            if batch_duration is None:
+                logger.info(
+                    "Manually setting batch_duration to %fs (resolution=%dns)",
+                    computed_batch_duration.total_seconds(),
+                    resolution,
+                )
+                batch_duration = computed_batch_duration
+            elif computed_batch_duration < batch_duration:
+                logger.warning(
+                    "Configured batch_duration of %fs would result in failing exports with resolution=%dns. "
+                    "Setting batch_duration to %fs instead.",
+                    batch_duration.total_seconds(),
+                    resolution,
+                    computed_batch_duration.total_seconds(),
+                )
+                batch_duration = computed_batch_duration
 
         # Determine download schedule
         export_jobs = self._compute_export_jobs(
