@@ -96,9 +96,10 @@ def test_get_write_stream_rust_experimental_worker_thread(mock_connection):
 def _subprocess_test_main_thread(result_queue):
     """Run in subprocess: test stream creation in main thread."""
     try:
-        from unittest.mock import MagicMock, patch
         import sys
         from datetime import timedelta
+        from unittest.mock import MagicMock, patch
+
         from nominal.core.connection import StreamingConnection
 
         # Set up mocks within the subprocess
@@ -141,10 +142,11 @@ def _subprocess_test_main_thread(result_queue):
 def _subprocess_test_worker_thread(result_queue):
     """Run in subprocess: test stream creation in worker thread."""
     try:
-        from unittest.mock import MagicMock, patch
         import sys
         import threading
         from datetime import timedelta
+        from unittest.mock import MagicMock, patch
+
         from nominal.core.connection import StreamingConnection
 
         # Create mock connection
