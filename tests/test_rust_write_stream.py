@@ -46,9 +46,12 @@ def test_get_write_stream_rust_experimental_main_thread(mock_connection):
     mock_module = MagicMock()
     mock_module.RustWriteStream = mock_class
 
-    with patch.dict(sys.modules, {
-        "nominal.experimental.rust_streaming.rust_write_stream": mock_module,
-    }):
+    with patch.dict(
+        sys.modules,
+        {
+            "nominal.experimental.rust_streaming.rust_write_stream": mock_module,
+        },
+    ):
         mock_connection.get_write_stream(
             data_format="rust_experimental",
             batch_size=1000,
@@ -66,9 +69,12 @@ def test_get_write_stream_rust_experimental_worker_thread(mock_connection):
             mock_module = MagicMock()
             mock_module.RustWriteStream = mock_class
 
-            with patch.dict(sys.modules, {
-                "nominal.experimental.rust_streaming.rust_write_stream": mock_module,
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "nominal.experimental.rust_streaming.rust_write_stream": mock_module,
+                },
+            ):
                 mock_connection.get_write_stream(
                     data_format="rust_experimental",
                     batch_size=1000,
@@ -115,9 +121,12 @@ def _subprocess_test_main_thread(result_queue):
             nominal_data_source_rid="test-datasource-rid",
         )
 
-        with patch.dict(sys.modules, {
-            "nominal.experimental.rust_streaming.rust_write_stream": mock_module,
-        }):
+        with patch.dict(
+            sys.modules,
+            {
+                "nominal.experimental.rust_streaming.rust_write_stream": mock_module,
+            },
+        ):
             connection.get_write_stream(
                 data_format="rust_experimental",
                 batch_size=1000,
@@ -162,9 +171,12 @@ def _subprocess_test_worker_thread(result_queue):
                 mock_module = MagicMock()
                 mock_module.RustWriteStream = mock_class
 
-                with patch.dict(sys.modules, {
-                    "nominal.experimental.rust_streaming.rust_write_stream": mock_module,
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "nominal.experimental.rust_streaming.rust_write_stream": mock_module,
+                    },
+                ):
                     connection.get_write_stream(
                         data_format="rust_experimental",
                         batch_size=1000,
