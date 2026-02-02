@@ -11,7 +11,7 @@ on:
 
 jobs:
   check-and-test:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
