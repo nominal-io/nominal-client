@@ -2,18 +2,23 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+from typing import Mapping, Sequence
 
 from nominal_streaming import NominalDatasetStream
 
 from nominal.core._stream.write_stream import DataStream
 from nominal.core._types import PathLike
 from nominal.core.datasource import DataSource
+from nominal.ts import IntegralNanosecondsUTC
 
 
-class RustWriteStream(NominalDatasetStream, DataStream):  # type: ignore[misc]
+class RustWriteStream(NominalDatasetStream, DataStream):
     """Thin wrapper around the existing Rust Dataset Stream.
 
     See: `nominal_streaming.NominalDatasetStream` for more details
+
+    Note: Array streaming is not currently supported by the Rust streaming backend.
+    Use enqueue() for scalar values only.
     """
 
     @classmethod
@@ -48,3 +53,35 @@ class RustWriteStream(NominalDatasetStream, DataStream):  # type: ignore[misc]
             stream = stream.enable_logging(log_level)
 
         return stream
+
+    def enqueue_float_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime.datetime | IntegralNanosecondsUTC,
+        value: Sequence[float],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Not supported by Rust streaming backend.
+
+        Raises:
+            NotImplementedError: Always, as array streaming is not supported.
+        """
+        raise NotImplementedError(
+            "Array streaming is not supported by the Rust streaming backend. Use enqueue() for scalar values only."
+        )
+
+    def enqueue_string_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime.datetime | IntegralNanosecondsUTC,
+        value: Sequence[str],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Not supported by Rust streaming backend.
+
+        Raises:
+            NotImplementedError: Always, as array streaming is not supported.
+        """
+        raise NotImplementedError(
+            "Array streaming is not supported by the Rust streaming backend. Use enqueue() for scalar values only."
+        )

@@ -53,11 +53,14 @@ ArrayType: TypeAlias = list[float] | list[str]
 StreamValueType: TypeAlias = ScalarType | ArrayType
 """All value types supported for streaming (scalars and arrays)."""
 
-DataStream: TypeAlias = WriteStreamBase[StreamValueType]
-"""Stream type for asynchronously sending timeseries data to the Nominal backend."""
+DataStream: TypeAlias = WriteStreamBase[ScalarType]
+"""Stream type for asynchronously sending scalar timeseries data to the Nominal backend.
+
+For array data, use the enqueue_float_array() and enqueue_string_array() methods.
+"""
 
 DataItem: TypeAlias = BatchItem[StreamValueType]
-"""Individual item of timeseries data to stream to Nominal."""
+"""Individual item of timeseries data to stream to Nominal (scalars or arrays)."""
 
 LogStream: TypeAlias = WriteStreamBase[str]
 """Stream type for asynchronously sending log data to the Nominal backend."""
@@ -148,7 +151,10 @@ class WriteStream(WriteStreamBase[StreamType]):
             value: Array of float values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
         """
-        self.enqueue(channel_name, timestamp, list(value), tags)  # type: ignore[arg-type]
+        dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(channel_name, dt_timestamp, list(value), tags)
+        self._thread_safe_batch.add([item])  # type: ignore[list-item]
+        self._flush(condition=lambda size: size >= self.batch_size)
 
     def enqueue_string_array(
         self,
@@ -165,7 +171,10 @@ class WriteStream(WriteStreamBase[StreamType]):
             value: Array of string values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
         """
-        self.enqueue(channel_name, timestamp, list(value), tags)  # type: ignore[arg-type]
+        dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(channel_name, dt_timestamp, list(value), tags)
+        self._thread_safe_batch.add([item])  # type: ignore[list-item]
+        self._flush(condition=lambda size: size >= self.batch_size)
 
     def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
         batch = self._thread_safe_batch.swap(condition)

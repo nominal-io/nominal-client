@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
 from types import TracebackType
-from typing import Callable, Mapping, Protocol, Type
+from typing import Callable, Mapping, Protocol, Sequence, Type
 
 from typing_extensions import Self
 
@@ -20,6 +20,7 @@ from nominal.core._stream.write_stream import (
     BatchItem,
     DataItem,
     DataStream,
+    ScalarType,
     StreamValueType,
 )
 from nominal.core._utils.queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
@@ -112,29 +113,67 @@ class WriteStreamV2(DataStream):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: StreamValueType,
+        value: ScalarType,
         tags: Mapping[str, str] | None = None,
     ) -> None:
-        """Write a single value."""
+        """Write a single scalar value."""
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
 
-        item = BatchItem(channel_name, timestamp_normalized, value, tags)
+        item: DataItem = BatchItem(channel_name, timestamp_normalized, value, tags)
+        self._item_queue.put(item)
+
+    def enqueue_float_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: Sequence[float],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write an array of floats at a single timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Array of float values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(channel_name, timestamp_normalized, list(value), tags)
+        self._item_queue.put(item)
+
+    def enqueue_string_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: Sequence[str],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write an array of strings at a single timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Array of string values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(channel_name, timestamp_normalized, list(value), tags)
         self._item_queue.put(item)
 
     def enqueue_from_dict(
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        channel_values: Mapping[str, StreamValueType],
+        channel_values: Mapping[str, ScalarType],
         tags: Mapping[str, str] | None = None,
     ) -> None:
-        """Write multiple channel values at a single timestamp using a flattened dictionary.
+        """Write multiple scalar channel values at a single timestamp using a flattened dictionary.
 
         Each key in the dictionary is treated as a channel name and
         the corresponding value is enqueued with the provided timestamp.
 
         Args:
             timestamp: The common timestamp to use for all enqueued items.
-            channel_values: A dictionary mapping channel names to their values.
+            channel_values: A dictionary mapping channel names to their scalar values.
             tags: Key-value tags associated with the data being uploaded.
                 NOTE: This *should* include all `required_tags` used when creating a `Connection` to Nominal.
         """
