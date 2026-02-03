@@ -6,6 +6,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import Enum, auto
 from types import TracebackType
 from typing import Callable, Generic, Mapping, Sequence, Type, TypeAlias
 
@@ -17,26 +18,97 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 logger = logging.getLogger(__name__)
 
 
-def _get_value_type_name(value: object) -> str:
-    """Get a type name for batch grouping that distinguishes list element types."""
-    if isinstance(value, list) and len(value) > 0:
-        # For non-empty lists, include the element type
-        return f"list_{type(value[0]).__name__}"
-    return type(value).__name__
+class PointType(Enum):
+    """Enumeration of all supported point value types for streaming."""
+
+    STRING = auto()
+    """Scalar string value."""
+
+    DOUBLE = auto()
+    """Scalar float/double value."""
+
+    INT = auto()
+    """Scalar integer value."""
+
+    DOUBLE_ARRAY = auto()
+    """Array of float/double values."""
+
+    STRING_ARRAY = auto()
+    """Array of string values."""
+
+
+def infer_point_type(value: object, explicit_type: PointType | None = None) -> PointType:
+    """Infer the point type from a value, or use the explicit type if provided.
+
+    Args:
+        value: The value to infer the type from.
+        explicit_type: If provided, this type is returned directly (used for empty arrays).
+
+    Returns:
+        The inferred or explicit PointType.
+
+    Raises:
+        ValueError: If the type cannot be inferred (e.g., empty list without explicit type)
+                   or if the value type is unsupported.
+    """
+    # If explicit type is provided, use it (allows empty arrays)
+    if explicit_type is not None:
+        return explicit_type
+
+    # Handle list types (arrays)
+    if isinstance(value, list):
+        if len(value) == 0:
+            raise ValueError(
+                "Cannot infer type from empty array. Use enqueue_float_array() or "
+                "enqueue_string_array() to explicitly specify the array type."
+            )
+        first_element = value[0]
+        if isinstance(first_element, str):
+            return PointType.STRING_ARRAY
+        elif isinstance(first_element, (int, float)):
+            return PointType.DOUBLE_ARRAY
+        else:
+            raise ValueError(f"Unsupported array element type: {type(first_element)}")
+
+    # Handle scalar types
+    if isinstance(value, str):
+        return PointType.STRING
+    elif isinstance(value, float):
+        return PointType.DOUBLE
+    elif isinstance(value, int):
+        return PointType.INT
+    else:
+        raise ValueError(f"Unsupported value type: {type(value)}")
 
 
 @dataclass(frozen=True)
 class BatchItem(Generic[StreamType]):
+    """A single item in a batch to be written to the stream.
+
+    Attributes:
+        channel_name: Name of the channel.
+        timestamp: Timestamp in nanoseconds.
+        value: The value to write.
+        tags: Optional key-value tags.
+        point_type: Explicit point type (used for arrays to avoid inference issues with empty arrays).
+    """
+
     channel_name: str
     timestamp: IntegralNanosecondsUTC
     value: StreamType
     tags: Mapping[str, str] | None = None
+    point_type: PointType | None = None
+
+    def get_point_type(self) -> PointType:
+        """Get the point type, inferring from value if not explicitly set."""
+        return infer_point_type(self.value, self.point_type)
 
     def _to_api_batch_key(self) -> tuple[str, Sequence[tuple[str, str]], str]:
+        """Generate a key for grouping batch items by channel, tags, and type."""
         return (
             self.channel_name,
             sorted(self.tags.items()) if self.tags is not None else [],
-            _get_value_type_name(self.value),
+            self.get_point_type().name,
         )
 
     @classmethod
@@ -152,7 +224,7 @@ class WriteStream(WriteStreamBase[StreamType]):
             tags: Key-value tags associated with the data being uploaded.
         """
         dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        item: DataItem = BatchItem(channel_name, dt_timestamp, list(value), tags)
+        item: DataItem = BatchItem(channel_name, dt_timestamp, list(value), tags, point_type=PointType.DOUBLE_ARRAY)
         self._thread_safe_batch.add([item])  # type: ignore[list-item]
         self._flush(condition=lambda size: size >= self.batch_size)
 
@@ -172,7 +244,7 @@ class WriteStream(WriteStreamBase[StreamType]):
             tags: Key-value tags associated with the data being uploaded.
         """
         dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        item: DataItem = BatchItem(channel_name, dt_timestamp, list(value), tags)
+        item: DataItem = BatchItem(channel_name, dt_timestamp, list(value), tags, point_type=PointType.STRING_ARRAY)
         self._thread_safe_batch.add([item])  # type: ignore[list-item]
         self._flush(condition=lambda size: size >= self.batch_size)
 

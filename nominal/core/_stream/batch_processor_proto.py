@@ -31,7 +31,7 @@ except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._stream.write_stream import BatchItem, DataItem, StreamValueType
+from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, StreamValueType
 from nominal.core._utils.queueing import Batch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -46,44 +46,43 @@ class SerializedBatch:
 
 
 def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
-    """Create Points protobuf for a batch of items with the same value type."""
-    sample_value = api_batch[0].value
+    """Create Points protobuf for a batch of items with the same value type.
 
-    # Handle list types (arrays)
-    if isinstance(sample_value, list):
-        if len(sample_value) > 0 and isinstance(sample_value[0], str):
-            # String array
-            return Points(
-                array_points=ArrayPoints(
-                    string_array_points=StringArrayPoints(
-                        points=[
-                            StringArrayPoint(
-                                timestamp=_make_timestamp(item.timestamp),
-                                value=cast(list[str], item.value),
-                            )
-                            for item in api_batch
-                        ]
-                    )
+    Uses the centralized PointType inference from BatchItem.get_point_type().
+    All items in the batch are assumed to have the same type (enforced by grouping).
+    """
+    # Get point type from the first item (all items in batch have same type due to grouping)
+    point_type = api_batch[0].get_point_type()
+
+    if point_type == PointType.STRING_ARRAY:
+        return Points(
+            array_points=ArrayPoints(
+                string_array_points=StringArrayPoints(
+                    points=[
+                        StringArrayPoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            value=cast(list[str], item.value),
+                        )
+                        for item in api_batch
+                    ]
                 )
             )
-        else:
-            # Float/numeric array (default for empty or numeric lists)
-            return Points(
-                array_points=ArrayPoints(
-                    double_array_points=DoubleArrayPoints(
-                        points=[
-                            DoubleArrayPoint(
-                                timestamp=_make_timestamp(item.timestamp),
-                                value=cast(list[float], item.value),
-                            )
-                            for item in api_batch
-                        ]
-                    )
+        )
+    elif point_type == PointType.DOUBLE_ARRAY:
+        return Points(
+            array_points=ArrayPoints(
+                double_array_points=DoubleArrayPoints(
+                    points=[
+                        DoubleArrayPoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            value=cast(list[float], item.value),
+                        )
+                        for item in api_batch
+                    ]
                 )
             )
-
-    # Handle scalar types
-    if isinstance(sample_value, str):
+        )
+    elif point_type == PointType.STRING:
         return Points(
             string_points=StringPoints(
                 points=[
@@ -95,7 +94,7 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
                 ]
             )
         )
-    elif isinstance(sample_value, float):
+    elif point_type == PointType.DOUBLE:
         return Points(
             double_points=DoublePoints(
                 points=[
@@ -107,7 +106,7 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
                 ]
             )
         )
-    elif isinstance(sample_value, int):
+    elif point_type == PointType.INT:
         return Points(
             integer_points=IntegerPoints(
                 points=[
@@ -120,7 +119,7 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
             )
         )
     else:
-        raise ValueError(f"Unsupported value type: {type(sample_value)}")
+        raise ValueError(f"Unsupported point type: {point_type}")
 
 
 def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:

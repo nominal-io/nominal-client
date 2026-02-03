@@ -5,45 +5,44 @@ from typing import Sequence, cast
 
 from nominal_api import storage_writer_api
 
-from nominal.core._stream.write_stream import BatchItem, DataItem, LogItem
+from nominal.core._stream.write_stream import BatchItem, DataItem, LogItem, PointType
 from nominal.ts import _SecondsNanos
 
 
 def make_points(api_batch: Sequence[DataItem]) -> storage_writer_api.PointsExternal:
-    """Create PointsExternal for a batch of items with the same value type."""
-    sample_value = api_batch[0].value
+    """Create PointsExternal for a batch of items with the same value type.
 
-    # Handle list types (arrays)
-    if isinstance(sample_value, list):
-        if len(sample_value) > 0 and isinstance(sample_value[0], str):
-            # String array
-            return storage_writer_api.PointsExternal(
-                array=storage_writer_api.ArrayPoints(
-                    string=[
-                        storage_writer_api.StringArrayPoint(
-                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                            value=cast(list[str], item.value),
-                        )
-                        for item in api_batch
-                    ]
-                )
-            )
-        else:
-            # Float/numeric array (default for empty or numeric lists)
-            return storage_writer_api.PointsExternal(
-                array=storage_writer_api.ArrayPoints(
-                    double=[
-                        storage_writer_api.DoubleArrayPoint(
-                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                            value=cast(list[float], item.value),
-                        )
-                        for item in api_batch
-                    ]
-                )
-            )
+    Uses the centralized PointType inference from BatchItem.get_point_type().
+    All items in the batch are assumed to have the same type (enforced by grouping).
+    """
+    # Get point type from the first item (all items in batch have same type due to grouping)
+    point_type = api_batch[0].get_point_type()
 
-    # Handle scalar types
-    if isinstance(sample_value, str):
+    if point_type == PointType.STRING_ARRAY:
+        return storage_writer_api.PointsExternal(
+            array=storage_writer_api.ArrayPoints(
+                string=[
+                    storage_writer_api.StringArrayPoint(
+                        timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                        value=cast(list[str], item.value),
+                    )
+                    for item in api_batch
+                ]
+            )
+        )
+    elif point_type == PointType.DOUBLE_ARRAY:
+        return storage_writer_api.PointsExternal(
+            array=storage_writer_api.ArrayPoints(
+                double=[
+                    storage_writer_api.DoubleArrayPoint(
+                        timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                        value=cast(list[float], item.value),
+                    )
+                    for item in api_batch
+                ]
+            )
+        )
+    elif point_type == PointType.STRING:
         return storage_writer_api.PointsExternal(
             string=[
                 storage_writer_api.StringPoint(
@@ -53,7 +52,7 @@ def make_points(api_batch: Sequence[DataItem]) -> storage_writer_api.PointsExter
                 for item in api_batch
             ]
         )
-    elif isinstance(sample_value, float):
+    elif point_type == PointType.DOUBLE:
         return storage_writer_api.PointsExternal(
             double=[
                 storage_writer_api.DoublePoint(
@@ -63,7 +62,7 @@ def make_points(api_batch: Sequence[DataItem]) -> storage_writer_api.PointsExter
                 for item in api_batch
             ]
         )
-    elif isinstance(sample_value, int):
+    elif point_type == PointType.INT:
         return storage_writer_api.PointsExternal(
             int_=[
                 storage_writer_api.IntPoint(
@@ -74,7 +73,7 @@ def make_points(api_batch: Sequence[DataItem]) -> storage_writer_api.PointsExter
             ]
         )
     else:
-        raise ValueError(f"Unsupported value type: {type(sample_value)}")
+        raise ValueError(f"Unsupported point type: {point_type}")
 
 
 def process_batch_legacy(

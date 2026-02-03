@@ -20,6 +20,7 @@ from nominal.core._stream.write_stream import (
     BatchItem,
     DataItem,
     DataStream,
+    PointType,
     ScalarType,
     StreamValueType,
 )
@@ -138,7 +139,9 @@ class WriteStreamV2(DataStream):
             tags: Key-value tags associated with the data being uploaded.
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        item: DataItem = BatchItem(channel_name, timestamp_normalized, list(value), tags)
+        item: DataItem = BatchItem(
+            channel_name, timestamp_normalized, list(value), tags, point_type=PointType.DOUBLE_ARRAY
+        )
         self._item_queue.put(item)
 
     def enqueue_string_array(
@@ -157,7 +160,9 @@ class WriteStreamV2(DataStream):
             tags: Key-value tags associated with the data being uploaded.
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        item: DataItem = BatchItem(channel_name, timestamp_normalized, list(value), tags)
+        item: DataItem = BatchItem(
+            channel_name, timestamp_normalized, list(value), tags, point_type=PointType.STRING_ARRAY
+        )
         self._item_queue.put(item)
 
     def enqueue_from_dict(

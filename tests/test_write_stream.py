@@ -831,7 +831,7 @@ def test_batch_item_sort_key_float_array():
     key = BatchItem.sort_key(item)
     assert key[0] == "channel1"
     assert key[1] == [("tag", "value")]
-    assert key[2] == "list_float"
+    assert key[2] == "DOUBLE_ARRAY"
 
 
 def test_batch_item_sort_key_string_array():
@@ -842,7 +842,7 @@ def test_batch_item_sort_key_string_array():
     key = BatchItem.sort_key(item)
     assert key[0] == "channel1"
     assert key[1] == [("tag", "value")]
-    assert key[2] == "list_str"
+    assert key[2] == "STRING_ARRAY"
 
 
 def test_write_stream_enqueue_float_array(mock_dataset):
@@ -893,3 +893,35 @@ def test_write_stream_enqueue_string_array(mock_dataset):
     series = array_series[0]
     assert series.channel.name == "channel1"
     assert series.points.array_points.HasField("string_array_points")
+
+
+def test_empty_array_without_explicit_type_raises_error():
+    """Test that creating a BatchItem with an empty array without explicit type raises an error."""
+    from nominal.core._stream.write_stream import BatchItem, infer_point_type
+
+    timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
+
+    # Empty array without explicit type should raise an error when getting point type
+    item = BatchItem("channel1", timestamp, [])
+
+    with pytest.raises(ValueError, match="Cannot infer type from empty array"):
+        item.get_point_type()
+
+    # Direct call to infer_point_type should also raise
+    with pytest.raises(ValueError, match="Cannot infer type from empty array"):
+        infer_point_type([])
+
+
+def test_empty_array_with_explicit_type_works():
+    """Test that creating a BatchItem with an empty array with explicit type works."""
+    from nominal.core._stream.write_stream import BatchItem, PointType
+
+    timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
+
+    # Empty float array with explicit type should work
+    float_item = BatchItem("channel1", timestamp, [], point_type=PointType.DOUBLE_ARRAY)
+    assert float_item.get_point_type() == PointType.DOUBLE_ARRAY
+
+    # Empty string array with explicit type should work
+    string_item = BatchItem("channel1", timestamp, [], point_type=PointType.STRING_ARRAY)
+    assert string_item.get_point_type() == PointType.STRING_ARRAY
