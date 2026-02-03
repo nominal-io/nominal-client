@@ -58,6 +58,9 @@ class Checklist(HasRid):
             _clients=clients,
         )
 
+    def _get_latest_api(self) -> scout_checks_api.VersionedChecklist:
+        return self._clients.checklist.get(self._clients.auth_header, self.rid)
+
     def execute(self, run: core_run.Run | str, commit: str | None = None) -> DataReview:
         """Execute a checklist against a run.
 

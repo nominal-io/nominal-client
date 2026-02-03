@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import (
     Any,
     BinaryIO,
+    Dict,
     Iterable,
     Mapping,
     Sequence,
@@ -20,7 +21,7 @@ import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
 from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
-from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
+from nominal_api import scout_checks_api, scout_layout_api, scout_template_api, scout_workbookcommon_api
 
 from nominal.core import (
     Asset,
@@ -35,10 +36,16 @@ from nominal.core import (
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import Link, LinkDict
 from nominal.core.attachment import Attachment
+from nominal.core.checklist import Checklist
 from nominal.core.filetype import FileTypes
 from nominal.core.run import Run
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
+from nominal.experimental.checklist_utils.checklist_utils import (
+    _create_checklist_with_content,
+    _to_create_checklist_entries,
+    _to_unresolved_checklist_variables,
+)
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.migration.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migration_resources import MigrationResources
@@ -425,6 +432,54 @@ def copy_workbook_template_from(
         extra={"to_file": True},
     )
     return new_workbook_template
+
+
+def copy_checklist_from(
+    source_checklist: Checklist,
+    destination_client: NominalClient,
+    *,
+    new_title: str | None = None,
+    new_commit_message: str | None = None,
+    new_assignee_rid: str | None = None,
+    new_description: str | None = None,
+    new_checks: list[scout_checks_api.CreateChecklistEntryRequest] | None = None,
+    new_properties: dict[str, str] | None = None,
+    new_labels: list[str] | None = None,
+    new_checklist_variables: list[scout_checks_api.UnresolvedChecklistVariable] | None = None,
+    new_is_published: bool | None = False,
+) -> Checklist:
+    log_extras = {"destination_client_workspace": destination_client._clients.workspace_rid}
+    logger.debug("Copying checklist: %s", source_checklist.name, extra=log_extras)
+
+    api_source_checklist = source_checklist._get_latest_api()
+
+    new_checklist = _create_checklist_with_content(
+        client=destination_client,
+        commit_message=new_commit_message or api_source_checklist.commit.message,
+        title=new_title or source_checklist.name,
+        description=new_description or source_checklist.description,
+        checks=new_checks or _to_create_checklist_entries(api_source_checklist.checks),
+        properties=new_properties or api_source_checklist.metadata.properties,
+        labels=new_labels or api_source_checklist.metadata.labels,
+        checklist_variables=new_checklist_variables
+        or _to_unresolved_checklist_variables(api_source_checklist.checklist_variables),
+        is_published=new_is_published or api_source_checklist.metadata.is_published,
+        workspace=destination_client.get_workspace(destination_client._clients.workspace_rid).rid,
+    )
+
+    logger.debug(
+        "New checklist created %s: (rid: %s)",
+        new_checklist.name,
+        new_checklist.rid,
+    )
+    logger.info(
+        "CHECKLIST: Old RID: %s, New RID: %s",
+        source_checklist.rid,
+        new_checklist.rid,
+        extra={"to_file": True},
+    )
+
+    return new_checklist
 
 
 def copy_video_file_to_video_dataset(
@@ -923,6 +978,100 @@ def clone_asset(
     )
 
 
+def _copy_asset_events(
+    source_asset: Asset,
+    destination_client: NominalClient,
+    new_asset: Asset,
+) -> None:
+    """Copy events from source asset to new asset.
+
+    Args:
+        source_asset: The source asset to copy events from.
+        destination_client: The NominalClient to use for copying.
+        new_asset: The destination asset to copy events to.
+    """
+    source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
+    for source_event in source_events:
+        copy_event_from(source_event, destination_client, new_assets=[new_asset])
+
+
+def _copy_asset_runs(
+    source_asset: Asset,
+    destination_client: NominalClient,
+    new_asset: Asset,
+) -> Dict[str, str]:
+    """Copy runs from source asset to new asset.
+
+    Args:
+        source_asset: The source asset to copy runs from.
+        destination_client: The NominalClient to use for copying.
+        new_asset: The destination asset to copy runs to.
+
+    Returns:
+        A mapping from source run RIDs to destination run RIDs.
+    """
+    run_mapping: Dict[str, str] = {}
+    source_runs = source_asset.list_runs()
+    for source_run in source_runs:
+        new_run = copy_run_from(source_run, destination_client, new_assets=[new_asset])
+        run_mapping[source_run.rid] = new_run.rid
+    return run_mapping
+
+
+def _copy_asset_checklists(
+    source_asset: Asset,
+    destination_client: NominalClient,
+    run_mapping: Dict[str, str],
+) -> None:
+    """Copy and execute checklists from source asset.
+
+    Args:
+        source_asset: The source asset to copy checklists from.
+        destination_client: The NominalClient to use for copying.
+        run_mapping: Mapping from source run RIDs to destination run RIDs.
+
+    Raises:
+        ValueError: If run_mapping is empty (checklists require runs).
+    """
+    if not run_mapping:
+        raise ValueError("include_checklists requires include_runs to be True")
+
+    source_checklist_rid_to_destination_checklist_map: Dict[str, Checklist] = {}
+    for source_data_review in source_asset.search_data_reviews():
+        source_checklist = source_data_review.get_checklist()
+        logger.debug("Found Data Review %s", source_checklist.rid)
+        if source_checklist.rid not in source_checklist_rid_to_destination_checklist_map:
+            destination_checklist = copy_checklist_from(source_checklist, destination_client)
+            source_checklist_rid_to_destination_checklist_map[source_checklist.rid] = destination_checklist
+        else:
+            destination_checklist = source_checklist_rid_to_destination_checklist_map[source_checklist.rid]
+        destination_checklist.execute(run_mapping[source_data_review.run_rid])
+
+
+def _copy_asset_videos(
+    source_asset: Asset,
+    destination_client: NominalClient,
+    new_asset: Asset,
+) -> None:
+    """Copy video datasets and files from source asset to new asset.
+
+    Args:
+        source_asset: The source asset to copy videos from.
+        destination_client: The NominalClient to use for copying.
+        new_asset: The destination asset to copy videos to.
+    """
+    for data_scope, video_dataset in source_asset.list_videos():
+        new_video_dataset = destination_client.create_video(
+            name=video_dataset.name,
+            description=video_dataset.description,
+            properties=video_dataset.properties,
+            labels=video_dataset.labels,
+        )
+        new_asset.add_video(data_scope, new_video_dataset)
+        for source_video_file in video_dataset.list_files():
+            copy_video_file_to_video_dataset(source_video_file, new_video_dataset)
+
+
 def copy_asset_from(
     source_asset: Asset,
     destination_client: NominalClient,
@@ -935,6 +1084,7 @@ def copy_asset_from(
     include_events: bool = False,
     include_runs: bool = False,
     include_video: bool = False,
+    include_checklists: bool = False,
 ) -> Asset:
     """Copy an asset from the source to the destination client.
 
@@ -949,6 +1099,7 @@ def copy_asset_from(
         include_events: Whether to include events in the copied dataset.
         include_runs: Whether to include runs in the copied asset.
         include_video: Whether to include video in the copied asset.
+        include_checklists: Whether to include and execute checklists in the copied asset.
 
     Returns:
         The new asset created.
@@ -981,27 +1132,19 @@ def copy_asset_from(
             )
             new_asset.add_dataset(data_scope, new_dataset)
 
+    run_mapping: Dict[str, str] = {}
+
     if include_events:
-        source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
-        for source_event in source_events:
-            copy_event_from(source_event, destination_client, new_assets=[new_asset])
+        _copy_asset_events(source_asset, destination_client, new_asset)
 
     if include_runs:
-        source_runs = source_asset.list_runs()
-        for source_run in source_runs:
-            copy_run_from(source_run, destination_client, new_assets=[new_asset])
+        run_mapping = _copy_asset_runs(source_asset, destination_client, new_asset)
+
+    if include_checklists:
+        _copy_asset_checklists(source_asset, destination_client, run_mapping)
 
     if include_video:
-        for data_scope, video_dataset in source_asset.list_videos():
-            new_video_dataset = destination_client.create_video(
-                name=video_dataset.name,
-                description=video_dataset.description,
-                properties=video_dataset.properties,
-                labels=video_dataset.labels,
-            )
-            new_asset.add_video(data_scope, new_video_dataset)
-            for source_video_file in video_dataset.list_files():
-                copy_video_file_to_video_dataset(source_video_file, new_video_dataset)
+        _copy_asset_videos(source_asset, destination_client, new_asset)
 
     logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
     logger.info(
@@ -1050,6 +1193,7 @@ def copy_resources_to_destination_client(
                 include_events=True,
                 include_runs=True,
                 include_video=True,
+                include_checklists=True,
             )
             new_assets.append(new_asset)
             new_data_scopes_and_datasets.extend(new_asset.list_datasets())
