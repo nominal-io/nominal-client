@@ -1051,9 +1051,10 @@ def copy_resources_to_destination_client(
         new_workbooks = []
 
         new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
-        for source_asset in migration_resources.source_assets:
+        for asset_resources in migration_resources.source_assets.values():
+            source_asset = asset_resources.asset
             new_asset = copy_asset_from(
-                source_asset.asset,
+                source_asset,
                 destination_client,
                 dataset_config=dataset_config,
                 include_events=True,
@@ -1063,7 +1064,7 @@ def copy_resources_to_destination_client(
             new_assets.append(new_asset)
             new_data_scopes_and_datasets.extend(new_asset.list_datasets())
 
-            for source_workbook_template in source_asset.source_workbook_templates:
+            for source_workbook_template in asset_resources.source_workbook_templates:
                 new_template = clone_workbook_template(source_workbook_template, destination_client)
                 new_templates.append(new_template)
                 new_workbook = new_template.create_workbook(
