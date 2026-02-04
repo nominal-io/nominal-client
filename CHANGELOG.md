@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.111.2](https://github.com/nominal-io/nominal-client/compare/v1.111.1...v1.111.2) (2026-02-04)
+
+
+### Bug Fixes
+
+* prevent decimated exports from bricking polars export handler ([#596](https://github.com/nominal-io/nominal-client/issues/596)) ([8106f74](https://github.com/nominal-io/nominal-client/commit/8106f74dbc985c3f62946dbc4861eefa8e064964))
+
 ## [1.111.1](https://github.com/nominal-io/nominal-client/compare/v1.111.0...v1.111.1) (2026-01-29)
 
 
