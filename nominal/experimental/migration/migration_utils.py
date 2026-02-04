@@ -1027,7 +1027,8 @@ def copy_resources_to_destination_client(
     dataset_config: MigrationDatasetConfig | None = None,
 ) -> tuple[Sequence[tuple[str, Dataset]], Sequence[Asset], Sequence[WorkbookTemplate], Sequence[Workbook]]:
     """Based on a list of assets and workbook templates, copy resources to destination client, creating
-       new datasets, datafiles, and workbooks along the way.
+       new datasets, datafiles, and workbooks along the way. Standalone templates are cloned without
+       creating workbooks.
 
     Args:
         destination_client (NominalClient): client of the tenant/workspace to copy resources to.
@@ -1077,6 +1078,10 @@ def copy_resources_to_destination_client(
                     extra=log_extras,
                 )
                 new_workbooks.append(new_workbook)
+
+        for source_template in migration_resources.source_standalone_templates:
+            new_template = clone_workbook_template(source_template, destination_client)
+            new_templates.append(new_template)
     finally:
         file_handler.close()
         logger.removeHandler(file_handler)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Sequence
 
 from nominal.core.asset import Asset
@@ -15,4 +15,5 @@ class AssetResources:
 
 @dataclass(frozen=True)
 class MigrationResources:
-    source_assets: Sequence[AssetResources]
+    source_assets: Sequence[AssetResources] = field(default_factory=tuple)
+    source_standalone_templates: Sequence[WorkbookTemplate] = field(default_factory=tuple)
