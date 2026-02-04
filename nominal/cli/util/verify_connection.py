@@ -12,6 +12,9 @@ def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> 
     status_code = 200
     err_msg = ""
     client = NominalClient.create(base_url, token)
+
+    # first, validate that the api key is correct for the tenant / org by fetching the
+    # current user using the api key
     try:
         client.get_user()
     except ConjureHTTPError as err:
@@ -26,6 +29,13 @@ def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> 
                 f"Ensure the url subdomain begins with 'api' (not 'app'), "
                 f"and create a new token: {docs_link} ({status_code})"
             )
+    if err_msg:
+        click.secho(err_msg, err=True, fg="red")
+        raise click.ClickException("Failed to authenticate. See above for details")
+
+    # next, attempt to check the provided workspace rid (or lack thereof) to see if
+    # we are able to resolve down to a particular workspace. If this step fails,
+    # most other commands in the client will also fail.
     try:
         client.get_workspace(workspace_rid)
     except RuntimeError:
