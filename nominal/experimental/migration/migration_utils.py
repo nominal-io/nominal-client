@@ -983,13 +983,6 @@ def _copy_asset_events(
     destination_client: NominalClient,
     new_asset: Asset,
 ) -> None:
-    """Copy events from source asset to new asset.
-
-    Args:
-        source_asset: The source asset to copy events from.
-        destination_client: The NominalClient to use for copying.
-        new_asset: The destination asset to copy events to.
-    """
     source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
     for source_event in source_events:
         copy_event_from(source_event, destination_client, new_assets=[new_asset])
@@ -1000,16 +993,6 @@ def _copy_asset_runs(
     destination_client: NominalClient,
     new_asset: Asset,
 ) -> Dict[str, str]:
-    """Copy runs from source asset to new asset.
-
-    Args:
-        source_asset: The source asset to copy runs from.
-        destination_client: The NominalClient to use for copying.
-        new_asset: The destination asset to copy runs to.
-
-    Returns:
-        A mapping from source run RIDs to destination run RIDs.
-    """
     run_mapping: Dict[str, str] = {}
     source_runs = source_asset.list_runs()
     for source_run in source_runs:
@@ -1023,19 +1006,6 @@ def _copy_asset_checklists(
     destination_client: NominalClient,
     run_mapping: Dict[str, str],
 ) -> None:
-    """Copy and execute checklists from source asset.
-
-    Args:
-        source_asset: The source asset to copy checklists from.
-        destination_client: The NominalClient to use for copying.
-        run_mapping: Mapping from source run RIDs to destination run RIDs.
-
-    Raises:
-        ValueError: If run_mapping is empty (checklists require runs).
-    """
-    if not run_mapping:
-        raise ValueError("include_checklists requires include_runs to be True")
-
     source_checklist_rid_to_destination_checklist_map: Dict[str, Checklist] = {}
     for source_data_review in source_asset.search_data_reviews():
         source_checklist = source_data_review.get_checklist()
@@ -1053,13 +1023,6 @@ def _copy_asset_videos(
     destination_client: NominalClient,
     new_asset: Asset,
 ) -> None:
-    """Copy video datasets and files from source asset to new asset.
-
-    Args:
-        source_asset: The source asset to copy videos from.
-        destination_client: The NominalClient to use for copying.
-        new_asset: The destination asset to copy videos to.
-    """
     for data_scope, video_dataset in source_asset.list_videos():
         new_video_dataset = destination_client.create_video(
             name=video_dataset.name,
@@ -1104,6 +1067,9 @@ def copy_asset_from(
     Returns:
         The new asset created.
     """
+    if include_checklists and not include_runs:
+        raise ValueError("include_checklists set to True requires include_runs to be set to True.")
+
     log_extras = {
         "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
     }
