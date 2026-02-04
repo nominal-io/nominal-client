@@ -140,7 +140,7 @@ class WriteStreamV2(DataStream):
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         item: DataItem = BatchItem(
-            channel_name, timestamp_normalized, list(value), tags, point_type=PointType.DOUBLE_ARRAY
+            channel_name, timestamp_normalized, list(value), tags, point_type_override=PointType.DOUBLE_ARRAY
         )
         self._item_queue.put(item)
 
@@ -161,7 +161,7 @@ class WriteStreamV2(DataStream):
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         item: DataItem = BatchItem(
-            channel_name, timestamp_normalized, list(value), tags, point_type=PointType.STRING_ARRAY
+            channel_name, timestamp_normalized, list(value), tags, point_type_override=PointType.STRING_ARRAY
         )
         self._item_queue.put(item)
 

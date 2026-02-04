@@ -919,9 +919,9 @@ def test_empty_array_with_explicit_type_works():
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
 
     # Empty float array with explicit type should work
-    float_item = BatchItem("channel1", timestamp, [], point_type=PointType.DOUBLE_ARRAY)
+    float_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.DOUBLE_ARRAY)
     assert float_item.get_point_type() == PointType.DOUBLE_ARRAY
 
     # Empty string array with explicit type should work
-    string_item = BatchItem("channel1", timestamp, [], point_type=PointType.STRING_ARRAY)
+    string_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.STRING_ARRAY)
     assert string_item.get_point_type() == PointType.STRING_ARRAY
