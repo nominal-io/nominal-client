@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.112.0](https://github.com/nominal-io/nominal-client/compare/v1.111.2...v1.112.0) (2026-02-04)
+
+
+### Features
+
+* add option for standalone template cloning in migration_utils ([#605](https://github.com/nominal-io/nominal-client/issues/605)) ([d12a290](https://github.com/nominal-io/nominal-client/commit/d12a2908559f1f3f655981c247b67e9b07c4ce4c))
+
 ## [1.111.2](https://github.com/nominal-io/nominal-client/compare/v1.111.1...v1.111.2) (2026-02-04)
 
 
