@@ -20,7 +20,7 @@ jobs:
   # Build job
   build:
     name: Build github pages
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-small
     needs: build
     steps:
       - name: Deploy to GitHub Pages
