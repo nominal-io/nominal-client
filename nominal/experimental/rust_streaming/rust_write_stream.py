@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-from typing import Mapping, Sequence
+from typing import Mapping
 
 from nominal_streaming import NominalDatasetStream
 
@@ -58,7 +58,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         self,
         channel_name: str,
         timestamp: str | datetime.datetime | IntegralNanosecondsUTC,
-        value: Sequence[float],
+        value: list[float],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Not supported by Rust streaming backend.
@@ -74,7 +74,7 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         self,
         channel_name: str,
         timestamp: str | datetime.datetime | IntegralNanosecondsUTC,
-        value: Sequence[str],
+        value: list[str],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Not supported by Rust streaming backend.

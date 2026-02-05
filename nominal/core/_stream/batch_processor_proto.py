@@ -54,72 +54,73 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
     # Get point type from the first item (all items in batch have same type due to grouping)
     point_type = api_batch[0].get_point_type()
 
-    if point_type == PointType.STRING_ARRAY:
-        return Points(
-            array_points=ArrayPoints(
-                string_array_points=StringArrayPoints(
+    match point_type:
+        case PointType.STRING_ARRAY:
+            return Points(
+                array_points=ArrayPoints(
+                    string_array_points=StringArrayPoints(
+                        points=[
+                            StringArrayPoint(
+                                timestamp=_make_timestamp(item.timestamp),
+                                value=cast(list[str], item.value),
+                            )
+                            for item in api_batch
+                        ]
+                    )
+                )
+            )
+        case PointType.DOUBLE_ARRAY:
+            return Points(
+                array_points=ArrayPoints(
+                    double_array_points=DoubleArrayPoints(
+                        points=[
+                            DoubleArrayPoint(
+                                timestamp=_make_timestamp(item.timestamp),
+                                value=cast(list[float], item.value),
+                            )
+                            for item in api_batch
+                        ]
+                    )
+                )
+            )
+        case PointType.STRING:
+            return Points(
+                string_points=StringPoints(
                     points=[
-                        StringArrayPoint(
+                        StringPoint(
                             timestamp=_make_timestamp(item.timestamp),
-                            value=cast(list[str], item.value),
+                            value=cast(str, item.value),
                         )
                         for item in api_batch
                     ]
                 )
             )
-        )
-    elif point_type == PointType.DOUBLE_ARRAY:
-        return Points(
-            array_points=ArrayPoints(
-                double_array_points=DoubleArrayPoints(
+        case PointType.DOUBLE:
+            return Points(
+                double_points=DoublePoints(
                     points=[
-                        DoubleArrayPoint(
+                        DoublePoint(
                             timestamp=_make_timestamp(item.timestamp),
-                            value=cast(list[float], item.value),
+                            value=cast(float, item.value),
                         )
                         for item in api_batch
                     ]
                 )
             )
-        )
-    elif point_type == PointType.STRING:
-        return Points(
-            string_points=StringPoints(
-                points=[
-                    StringPoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=cast(str, item.value),
-                    )
-                    for item in api_batch
-                ]
+        case PointType.INT:
+            return Points(
+                integer_points=IntegerPoints(
+                    points=[
+                        IntegerPoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            value=cast(int, item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
             )
-        )
-    elif point_type == PointType.DOUBLE:
-        return Points(
-            double_points=DoublePoints(
-                points=[
-                    DoublePoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=cast(float, item.value),
-                    )
-                    for item in api_batch
-                ]
-            )
-        )
-    elif point_type == PointType.INT:
-        return Points(
-            integer_points=IntegerPoints(
-                points=[
-                    IntegerPoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=cast(int, item.value),
-                    )
-                    for item in api_batch
-                ]
-            )
-        )
-    else:
-        raise ValueError(f"Unsupported point type: {point_type}")
+        case _:
+            raise ValueError(f"Unsupported point type: {point_type}")
 
 
 def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:

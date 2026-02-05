@@ -18,62 +18,63 @@ def make_points(api_batch: Sequence[DataItem]) -> storage_writer_api.PointsExter
     # Get point type from the first item (all items in batch have same type due to grouping)
     point_type = api_batch[0].get_point_type()
 
-    if point_type == PointType.STRING_ARRAY:
-        return storage_writer_api.PointsExternal(
-            array=storage_writer_api.ArrayPoints(
+    match point_type:
+        case PointType.STRING_ARRAY:
+            return storage_writer_api.PointsExternal(
+                array=storage_writer_api.ArrayPoints(
+                    string=[
+                        storage_writer_api.StringArrayPoint(
+                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                            value=cast(list[str], item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
+            )
+        case PointType.DOUBLE_ARRAY:
+            return storage_writer_api.PointsExternal(
+                array=storage_writer_api.ArrayPoints(
+                    double=[
+                        storage_writer_api.DoubleArrayPoint(
+                            timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                            value=cast(list[float], item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
+            )
+        case PointType.STRING:
+            return storage_writer_api.PointsExternal(
                 string=[
-                    storage_writer_api.StringArrayPoint(
+                    storage_writer_api.StringPoint(
                         timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                        value=cast(list[str], item.value),
+                        value=cast(str, item.value),
                     )
                     for item in api_batch
                 ]
             )
-        )
-    elif point_type == PointType.DOUBLE_ARRAY:
-        return storage_writer_api.PointsExternal(
-            array=storage_writer_api.ArrayPoints(
+        case PointType.DOUBLE:
+            return storage_writer_api.PointsExternal(
                 double=[
-                    storage_writer_api.DoubleArrayPoint(
+                    storage_writer_api.DoublePoint(
                         timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                        value=cast(list[float], item.value),
+                        value=cast(float, item.value),
                     )
                     for item in api_batch
                 ]
             )
-        )
-    elif point_type == PointType.STRING:
-        return storage_writer_api.PointsExternal(
-            string=[
-                storage_writer_api.StringPoint(
-                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                    value=cast(str, item.value),
-                )
-                for item in api_batch
-            ]
-        )
-    elif point_type == PointType.DOUBLE:
-        return storage_writer_api.PointsExternal(
-            double=[
-                storage_writer_api.DoublePoint(
-                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                    value=cast(float, item.value),
-                )
-                for item in api_batch
-            ]
-        )
-    elif point_type == PointType.INT:
-        return storage_writer_api.PointsExternal(
-            int_=[
-                storage_writer_api.IntPoint(
-                    timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                    value=cast(int, item.value),
-                )
-                for item in api_batch
-            ]
-        )
-    else:
-        raise ValueError(f"Unsupported point type: {point_type}")
+        case PointType.INT:
+            return storage_writer_api.PointsExternal(
+                int_=[
+                    storage_writer_api.IntPoint(
+                        timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
+                        value=cast(int, item.value),
+                    )
+                    for item in api_batch
+                ]
+            )
+        case _:
+            raise ValueError(f"Unsupported point type: {point_type}")
 
 
 def process_batch_legacy(

@@ -93,7 +93,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: Sequence[float],
+        value: list[float],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write an array of floats to the stream at a single timestamp.
@@ -101,7 +101,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
         Args:
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
-            value: Array of float values to write to the specified channel.
+            value: List of float values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
                 NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
 
@@ -114,7 +114,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: Sequence[str],
+        value: list[str],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write an array of strings to the stream at a single timestamp.
@@ -122,7 +122,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
         Args:
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
-            value: Array of string values to write to the specified channel.
+            value: List of string values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
                 NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
 

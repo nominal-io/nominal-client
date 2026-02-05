@@ -40,17 +40,20 @@ class PointType(Enum):
         """Convert a scalar PointType to its corresponding array type.
 
         Raises:
-            ValueError: If the PointType is already an array type or INT (no int array support).
+            ValueError: If the PointType is already an array type, INT, or unsupported.
         """
-        if self == PointType.STRING:
-            return PointType.STRING_ARRAY
-        elif self == PointType.DOUBLE:
-            return PointType.DOUBLE_ARRAY
-        elif self == PointType.INT:
-            # INT arrays are stored as DOUBLE arrays
-            return PointType.DOUBLE_ARRAY
-        else:
-            raise ValueError(f"Cannot convert {self} to array type (already an array or unsupported)")
+        match self:
+            case PointType.STRING:
+                return PointType.STRING_ARRAY
+            case PointType.DOUBLE:
+                return PointType.DOUBLE_ARRAY
+            case PointType.INT:
+                raise ValueError(
+                    "Integer arrays are not supported. Use enqueue_float_array() with float values, "
+                    "or convert your integers to floats before streaming."
+                )
+            case _:
+                raise ValueError(f"Cannot convert {self} to array type (already an array or unsupported)")
 
 
 def _infer_scalar_type(value: object) -> PointType:
@@ -237,15 +240,13 @@ class WriteStream(WriteStreamBase[StreamType]):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: Sequence[float] | Sequence[str],
+        value: list[float] | list[str],
         tags: Mapping[str, str] | None,
         point_type: PointType,
     ) -> None:
         """Internal helper to enqueue an array value with explicit type."""
         dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
-        # Cast needed because Sequence[float] | Sequence[str] -> list[object] when converted
-        array_value: list[float] | list[str] = list(value)  # type: ignore[assignment]
-        item: DataItem = BatchItem(channel_name, dt_timestamp, array_value, tags, point_type_override=point_type)
+        item: DataItem = BatchItem(channel_name, dt_timestamp, value, tags, point_type_override=point_type)
         self._thread_safe_batch.add([item])  # type: ignore[list-item]
         self._flush(condition=lambda size: size >= self.batch_size)
 
@@ -253,7 +254,7 @@ class WriteStream(WriteStreamBase[StreamType]):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: Sequence[float],
+        value: list[float],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Add an array of floats to the queue after normalizing the timestamp.
@@ -261,7 +262,7 @@ class WriteStream(WriteStreamBase[StreamType]):
         Args:
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
-            value: Array of float values to write to the specified channel.
+            value: List of float values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
         """
         self._enqueue_array(channel_name, timestamp, value, tags, PointType.DOUBLE_ARRAY)
@@ -270,7 +271,7 @@ class WriteStream(WriteStreamBase[StreamType]):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: Sequence[str],
+        value: list[str],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Add an array of strings to the queue after normalizing the timestamp.
@@ -278,7 +279,7 @@ class WriteStream(WriteStreamBase[StreamType]):
         Args:
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
-            value: Array of string values to write to the specified channel.
+            value: List of string values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
         """
         self._enqueue_array(channel_name, timestamp, value, tags, PointType.STRING_ARRAY)

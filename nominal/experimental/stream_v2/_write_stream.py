@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
 from types import TracebackType
-from typing import Callable, Mapping, Protocol, Sequence, Type
+from typing import Callable, Mapping, Protocol, Type
 
 from typing_extensions import Self
 
@@ -127,7 +127,7 @@ class WriteStreamV2(DataStream):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: Sequence[float],
+        value: list[float],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write an array of floats at a single timestamp.
@@ -135,12 +135,12 @@ class WriteStreamV2(DataStream):
         Args:
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
-            value: Array of float values to write to the specified channel.
+            value: List of float values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         item: DataItem = BatchItem(
-            channel_name, timestamp_normalized, list(value), tags, point_type_override=PointType.DOUBLE_ARRAY
+            channel_name, timestamp_normalized, value, tags, point_type_override=PointType.DOUBLE_ARRAY
         )
         self._item_queue.put(item)
 
@@ -148,7 +148,7 @@ class WriteStreamV2(DataStream):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: Sequence[str],
+        value: list[str],
         tags: Mapping[str, str] | None = None,
     ) -> None:
         """Write an array of strings at a single timestamp.
@@ -156,12 +156,12 @@ class WriteStreamV2(DataStream):
         Args:
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
-            value: Array of string values to write to the specified channel.
+            value: List of string values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
         """
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         item: DataItem = BatchItem(
-            channel_name, timestamp_normalized, list(value), tags, point_type_override=PointType.STRING_ARRAY
+            channel_name, timestamp_normalized, value, tags, point_type_override=PointType.STRING_ARRAY
         )
         self._item_queue.put(item)
 
