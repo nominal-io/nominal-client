@@ -71,6 +71,15 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         """
         self._clients.ingest.delete_file(self._clients.auth_header, self.dataset_rid, self.id)
 
+    def get_ingest_error(self) -> NominalIngestError | None:
+        """Returns the ingest exception if the file FAILED, or None if there is no error"""
+        api_file = self._get_latest_api()
+        self._refresh_from_api(api_file)
+        if self.ingest_status is IngestStatus.FAILED:
+            return self._build_ingest_exception(api_file.ingest_status)
+        else:
+            return None
+
     def poll_until_ingestion_completed(self, interval: datetime.timedelta = datetime.timedelta(seconds=1)) -> Self:
         """Block until dataset file ingestion has completed
 
@@ -80,34 +89,40 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         while True:
             api_file = self._get_latest_api()
             self._refresh_from_api(api_file)
-            if self.ingest_status is IngestStatus.SUCCESS:
-                break
-            elif self.ingest_status is IngestStatus.IN_PROGRESS:
-                pass
-            elif self.ingest_status is IngestStatus.FAILED:
-                # Get error message to display to user
-                file_error = api_file.ingest_status.error
-                if file_error is None:
+
+            match self.ingest_status:
+                case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
+                    break
+                case IngestStatus.IN_PROGRESS:
+                    continue
+                case IngestStatus.FAILED:
+                    # Get error message to display to user
+                    raise self._build_ingest_exception(api_file.ingest_status)
+                case _:
                     raise NominalIngestError(
-                        f"Ingest status marked as 'error' but with no details for file={self.id!r} and "
+                        f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
                         f"dataset_rid={self.dataset_rid!r}"
                     )
-                else:
-                    raise NominalIngestError(
-                        f"Ingest failed for file={self.id!r} and dataset_rid={self.dataset_rid!r}: "
-                        f"{file_error.message} ({file_error.error_type})"
-                    )
-            else:
-                raise NominalIngestError(
-                    f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
-                    f"dataset_rid={self.dataset_rid!r}"
-                )
 
             # Sleep for specified interval
             logger.debug("Sleeping for %f seconds before polling for ingest status", interval.total_seconds())
             time.sleep(interval.total_seconds())
 
         return self
+
+    def _build_ingest_exception(self, ingest_status: api.IngestStatusV2) -> NominalIngestError:
+        """Build ingest exception for a given error ingest status
+
+        Raises:
+            Raises ValueError if the ingest_status does not indicate an error occurred.
+        """
+        if ingest_status.error is None:
+            raise ValueError(f"Cannot build ingest error for status {ingest_status}-- not an error status!")
+
+        return NominalIngestError(
+            f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset '{self.dataset_rid!r}': "
+            f"{ingest_status.error.message} ({ingest_status.error.error_type})"
+        )
 
     def _presigned_url_provider(self, ttl_secs: float = 60.0, skew_secs: float = 15.0) -> PresignedURLProvider:
         def fetch() -> str:
