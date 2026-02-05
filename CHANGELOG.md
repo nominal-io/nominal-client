@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.112.1](https://github.com/nominal-io/nominal-client/compare/v1.112.0...v1.112.1) (2026-02-05)
+
+
+### Bug Fixes
+
+* allow polling for ingest completion on deleted files, allow retrieving ingest errors ([#609](https://github.com/nominal-io/nominal-client/issues/609)) ([2949f96](https://github.com/nominal-io/nominal-client/commit/2949f96e01aac8234798243a64757eca8efb73d2))
+* allow retrieving deleted or deleting dataset files and ingest errors ([2949f96](https://github.com/nominal-io/nominal-client/commit/2949f96e01aac8234798243a64757eca8efb73d2))
+* return correct error message to user upon bad api key in config profile add CLI ([#607](https://github.com/nominal-io/nominal-client/issues/607)) ([f864224](https://github.com/nominal-io/nominal-client/commit/f864224fe7b163542f7994bcc597a3a331e036ee))
+
 ## [1.112.0](https://github.com/nominal-io/nominal-client/compare/v1.111.2...v1.112.0) (2026-02-04)
 
 
