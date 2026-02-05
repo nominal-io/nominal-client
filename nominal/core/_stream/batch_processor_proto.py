@@ -9,24 +9,29 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 try:
     from nominal_api_protos.nominal_write_pb2 import (
-        Channel as NominalChannel,
-    )
-    from nominal_api_protos.nominal_write_pb2 import (
+        ArrayPoints,
+        DoubleArrayPoint,
+        DoubleArrayPoints,
         DoublePoint,
         DoublePoints,
         IntegerPoint,
         IntegerPoints,
         Points,
         Series,
+        StringArrayPoint,
+        StringArrayPoints,
         StringPoint,
         StringPoints,
         WriteRequestNominal,
+    )
+    from nominal_api_protos.nominal_write_pb2 import (
+        Channel as NominalChannel,
     )
 except ModuleNotFoundError:
     raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
 
 from nominal.core._clientsbunch import ProtoWriteService
-from nominal.core._stream.write_stream import BatchItem, DataItem
+from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, StreamValueType
 from nominal.core._utils.queueing import Batch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
@@ -41,46 +46,81 @@ class SerializedBatch:
 
 
 def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
-    # Check first value to determine type
-    sample_value = api_batch[0].value
-    if isinstance(sample_value, str):
-        return Points(
-            string_points=StringPoints(
-                points=[
-                    StringPoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=cast(str, item.value),
+    """Create Points protobuf for a batch of items with the same value type.
+
+    Uses the centralized PointType inference from BatchItem.get_point_type().
+    All items in the batch are assumed to have the same type (enforced by grouping).
+    """
+    # Get point type from the first item (all items in batch have same type due to grouping)
+    point_type = api_batch[0].get_point_type()
+
+    match point_type:
+        case PointType.STRING_ARRAY:
+            return Points(
+                array_points=ArrayPoints(
+                    string_array_points=StringArrayPoints(
+                        points=[
+                            StringArrayPoint(
+                                timestamp=_make_timestamp(item.timestamp),
+                                value=cast(list[str], item.value),
+                            )
+                            for item in api_batch
+                        ]
                     )
-                    for item in api_batch
-                ]
+                )
             )
-        )
-    elif isinstance(sample_value, float):
-        return Points(
-            double_points=DoublePoints(
-                points=[
-                    DoublePoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=cast(float, item.value),
+        case PointType.DOUBLE_ARRAY:
+            return Points(
+                array_points=ArrayPoints(
+                    double_array_points=DoubleArrayPoints(
+                        points=[
+                            DoubleArrayPoint(
+                                timestamp=_make_timestamp(item.timestamp),
+                                value=cast(list[float], item.value),
+                            )
+                            for item in api_batch
+                        ]
                     )
-                    for item in api_batch
-                ]
+                )
             )
-        )
-    elif isinstance(sample_value, int):
-        return Points(
-            integer_points=IntegerPoints(
-                points=[
-                    IntegerPoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=cast(int, item.value),
-                    )
-                    for item in api_batch
-                ]
+        case PointType.STRING:
+            return Points(
+                string_points=StringPoints(
+                    points=[
+                        StringPoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            value=cast(str, item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
             )
-        )
-    else:
-        raise ValueError("only float, int, and string are supported types for value")
+        case PointType.DOUBLE:
+            return Points(
+                double_points=DoublePoints(
+                    points=[
+                        DoublePoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            value=cast(float, item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
+            )
+        case PointType.INT:
+            return Points(
+                integer_points=IntegerPoints(
+                    points=[
+                        IntegerPoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            value=cast(int, item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
+            )
+        case _:
+            raise ValueError(f"Unsupported point type: {point_type}")
 
 
 def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:
@@ -105,7 +145,7 @@ def process_batch(
     auth_header: str,
     proto_write: ProtoWriteService,
 ) -> None:
-    """Process a batch of items to write."""
+    """Process a batch of data items (scalars or arrays) to write."""
     if nominal_data_source_rid is None:
         raise ValueError("Writing not implemented for this connection type")
 
@@ -118,7 +158,7 @@ def process_batch(
     )
 
 
-def serialize_batch(batch: Batch[str | float]) -> SerializedBatch:
+def serialize_batch(batch: Batch[StreamValueType]) -> SerializedBatch:
     """Process a batch of items and return serialized request."""
     request = create_write_request(batch.items)
     return SerializedBatch(

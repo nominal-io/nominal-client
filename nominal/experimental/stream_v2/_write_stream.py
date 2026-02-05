@@ -20,6 +20,9 @@ from nominal.core._stream.write_stream import (
     BatchItem,
     DataItem,
     DataStream,
+    PointType,
+    ScalarType,
+    StreamValueType,
 )
 from nominal.core._utils.queueing import Batch, QueueShutdown, ReadQueue, iter_queue, spawn_batching_thread
 from nominal.experimental.stream_v2._serializer import BatchSerializer
@@ -111,29 +114,71 @@ class WriteStreamV2(DataStream):
         self,
         channel_name: str,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        value: float | str | int,
+        value: ScalarType,
         tags: Mapping[str, str] | None = None,
     ) -> None:
-        """Write a single value."""
+        """Write a single scalar value."""
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
 
-        item = BatchItem(channel_name, timestamp_normalized, value, tags)
+        item: DataItem = BatchItem(channel_name, timestamp_normalized, value, tags)
+        self._item_queue.put(item)
+
+    def enqueue_float_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: list[float],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write an array of floats at a single timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: List of float values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(
+            channel_name, timestamp_normalized, value, tags, point_type_override=PointType.DOUBLE_ARRAY
+        )
+        self._item_queue.put(item)
+
+    def enqueue_string_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: list[str],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write an array of strings at a single timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: List of string values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(
+            channel_name, timestamp_normalized, value, tags, point_type_override=PointType.STRING_ARRAY
+        )
         self._item_queue.put(item)
 
     def enqueue_from_dict(
         self,
         timestamp: str | datetime | IntegralNanosecondsUTC,
-        channel_values: Mapping[str, float | str | int],
+        channel_values: Mapping[str, ScalarType],
         tags: Mapping[str, str] | None = None,
     ) -> None:
-        """Write multiple channel values at a single timestamp using a flattened dictionary.
+        """Write multiple scalar channel values at a single timestamp using a flattened dictionary.
 
         Each key in the dictionary is treated as a channel name and
         the corresponding value is enqueued with the provided timestamp.
 
         Args:
             timestamp: The common timestamp to use for all enqueued items.
-            channel_values: A dictionary mapping channel names to their values.
+            channel_values: A dictionary mapping channel names to their scalar values.
             tags: Key-value tags associated with the data being uploaded.
                 NOTE: This *should* include all `required_tags` used when creating a `Connection` to Nominal.
         """
@@ -249,7 +294,7 @@ def serialize_and_write_batches(
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
     item_queue: Queue[DataItem | QueueShutdown],
-    batch_queue: ReadQueue[Batch[str | float]],
+    batch_queue: ReadQueue[Batch[StreamValueType]],
     track_metrics: bool,
 ) -> None:
     """Worker that processes batches."""
@@ -265,7 +310,7 @@ def spawn_batch_serialize_thread(
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
     nominal_data_source_rid: str,
-    batch_queue: ReadQueue[Batch[str | float]],
+    batch_queue: ReadQueue[Batch[StreamValueType]],
     item_queue: Queue[DataItem | QueueShutdown],
     track_metrics: bool,
 ) -> threading.Thread:
