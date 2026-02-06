@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 from nominal_api import (
     scout_checks_api,
 )
@@ -13,9 +11,7 @@ from nominal.core._utils.api_tools import (
 from nominal.core.checklist import Checklist
 from nominal.core.client import WorkspaceSearchType
 from nominal.core.workspace import Workspace
-
-# Regex pattern to match UUID at the end of a string (e.g., from RID)
-UUID_PATTERN = re.compile(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$")
+from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 
 
 def _create_checklist_with_content(
@@ -52,6 +48,9 @@ def _create_checklist_with_content(
 def _to_unresolved_variable_locator(
     locator: scout_checks_api.VariableLocator,
 ) -> scout_checks_api.UnresolvedVariableLocator:
+    """Transforms VariableLocator (in the Checklist Conjure object) to its
+    required format in the request, preserving all underlying data.
+    """
     if locator.checklist_variable is not None:
         return scout_checks_api.UnresolvedVariableLocator(checklist_variable=locator.checklist_variable)
     if locator.series is not None:
@@ -74,6 +73,9 @@ def _to_unresolved_variable_locator(
 def _to_unresolved_condition(
     condition: scout_checks_api.CheckCondition | None,
 ) -> scout_checks_api.UnresolvedCheckCondition | None:
+    """Transforms CheckCondition (in the Checklist Conjure object) to its
+    required format in the request, preserving all underlying data.
+    """
     if condition is None:
         return None
 
@@ -123,19 +125,19 @@ def _to_unresolved_condition(
 def _to_create_check_request(
     check: scout_checks_api.Check,
 ) -> scout_checks_api.CreateCheckRequest:
+    """Transforms CheckRequest (in the Checklist Conjure object) to its
+    required format in the request, preserving all underlying data.
+    """
     # Extract UUID from check_lineage_rid if it's a full RID
     # The API expects a UUID, not a full RID string
     check_lineage_uuid = None
     if check.check_lineage_rid:
-        # Check if it's already a UUID (simple format check: 36 chars with 4 hyphens)
         if len(check.check_lineage_rid) == 36 and check.check_lineage_rid.count("-") == 4:
             check_lineage_uuid = check.check_lineage_rid
         else:
-            # Extract UUID from RID string using regex
             match = UUID_PATTERN.search(check.check_lineage_rid)
             if match:
                 check_lineage_uuid = match.group(1)
-            # If no match, leave as None (will create new lineage per API docs)
 
     return scout_checks_api.CreateCheckRequest(
         check_lineage_rid=check_lineage_uuid,
@@ -153,6 +155,9 @@ def _to_create_check_request(
 def _to_create_checklist_entries(
     entries: list[scout_checks_api.ChecklistEntry],
 ) -> list[scout_checks_api.CreateChecklistEntryRequest]:
+    """Transforms ChecklistEntries (in the Checklist Conjure object) to its
+    required format in the request, preserving all underlying data.
+    """
     result: list[scout_checks_api.CreateChecklistEntryRequest] = []
     for entry in entries:
         if entry.check is None:
@@ -164,6 +169,9 @@ def _to_create_checklist_entries(
 def _to_unresolved_checklist_variables(
     variables: list[scout_checks_api.ChecklistVariable],
 ) -> list[scout_checks_api.UnresolvedChecklistVariable]:
+    """Transforms ChecklistVariable (in the Checklist Conjure object) to its
+    required format in the request, preserving all underlying data.
+    """
     return [
         scout_checks_api.UnresolvedChecklistVariable(
             name=variable.name,

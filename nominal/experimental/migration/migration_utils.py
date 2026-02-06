@@ -47,6 +47,7 @@ from nominal.experimental.checklist_utils.checklist_utils import (
     _to_unresolved_checklist_variables,
 )
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
+from nominal.experimental.id_utils.id_utils import UUID_KEYS, UUID_PATTERN
 from nominal.experimental.migration.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migration_resources import MigrationResources
 from nominal.ts import (
@@ -106,13 +107,6 @@ def _install_migration_file_logger(
     handler.addFilter(filter_obj)
     logger.addHandler(handler)
     return handler
-
-
-# Regex pattern to match strings that have a UUID format with a prefix.
-UUID_PATTERN = re.compile(r"^(.*)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$")
-
-# Keeping tight control over ids we consider to be UUIDs.
-UUID_KEYS = ("id", "rid", "functionUuid", "plotId", "yAxisId", "chartRid")
 
 
 def _convert_if_json(s: str) -> tuple[Any, bool]:
