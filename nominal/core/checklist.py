@@ -16,14 +16,14 @@ from typing_extensions import Self
 
 from nominal.core import run as core_run
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core.asset import Asset
 from nominal.core.data_review import DataReview
 from nominal.ts import _to_api_duration
 
 
 @dataclass(frozen=True)
-class Checklist(HasRid):
+class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
     rid: str
     name: str
     description: str
@@ -57,6 +57,9 @@ class Checklist(HasRid):
             labels=checklist.metadata.labels,
             _clients=clients,
         )
+
+    def _get_latest_api(self) -> scout_checks_api.VersionedChecklist:
+        return self._clients.checklist.get(self._clients.auth_header, self.rid)
 
     def execute(self, run: core_run.Run | str, commit: str | None = None) -> DataReview:
         """Execute a checklist against a run.
