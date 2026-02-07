@@ -21,7 +21,7 @@ import requests
 from conjure_python_client import ConjureBeanType, ConjureEnumType, ConjureUnionType
 from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
-from nominal_api import scout_checks_api, scout_layout_api, scout_template_api, scout_workbookcommon_api
+from nominal_api import scout_checks_api, scout_layout_api, scout_workbookcommon_api
 
 from nominal.core import (
     Asset,
@@ -176,54 +176,6 @@ def _generate_uuid_mapping(objs: list[Any]) -> dict[str, str]:
     for obj in objs:
         _extract_uuids_from_obj(obj, mapping)
     return mapping
-
-
-def create_workbook_template_with_content_and_layout(
-    client: NominalClient,
-    title: str,
-    layout: scout_layout_api.WorkbookLayout,
-    content: scout_workbookcommon_api.WorkbookContent,
-    workspace_rid: str,
-    *,
-    description: str | None = None,
-    labels: Sequence[str] | None = None,
-    properties: Mapping[str, str] | None = None,
-    commit_message: str | None = None,
-) -> WorkbookTemplate:
-    """Create a workbook template with specified content and layout.
-
-    This is a helper method that constructs and creates a workbook template
-    request with the provided parameters, including layout and content.  Method is considered experimental and may
-    change in future releases. The template is created in the target workspace and is not discoverable by default.
-
-    Args:
-        client: The NominalClient to use for creating the template.
-        title: The title of the template.
-        layout: The workbook layout to use.
-        content: The workbook content to use.
-        workspace_rid: The resource ID of the workspace to create the template in.
-        description: The description of the template.
-        labels: List of labels to apply to the template.
-        properties: Dictionary of properties for the template.
-        commit_message: The commit message for the template creation.
-
-    Returns:
-        The newly created WorkbookTemplate.
-    """
-    request = scout_template_api.CreateTemplateRequest(
-        title=title,
-        description=description if description is not None else "",
-        labels=list(labels) if labels is not None else [],
-        properties=dict(properties) if properties is not None else {},
-        is_published=False,
-        layout=layout,
-        content=content,
-        message=commit_message if commit_message is not None else "",
-        workspace=client._workspace_rid_for_search(workspace_rid),
-    )
-
-    template = client._clients.template.create(client._clients.auth_header, request)
-    return WorkbookTemplate._from_conjure(client._clients, template)
 
 
 def _replace_uuids_in_obj(obj: Any, mapping: dict[str, str]) -> Any:
@@ -401,8 +353,8 @@ def copy_workbook_template_from(
             )
         )
         new_workbook_content = scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={})
-    new_workbook_template = create_workbook_template_with_content_and_layout(
-        client=destination_client,
+    new_workbook_template = _create_workbook_template_with_content_and_layout(
+        clients=destination_client._clients,
         title=new_template_title or raw_source_template.metadata.title,
         description=new_template_description or raw_source_template.metadata.description,
         labels=new_template_labels or raw_source_template.metadata.labels,
