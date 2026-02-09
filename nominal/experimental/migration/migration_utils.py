@@ -940,6 +940,7 @@ def copy_asset_from(
     new_asset_properties: dict[str, Any] | None = None,
     new_asset_labels: Sequence[str] | None = None,
     dataset_config: MigrationDatasetConfig | None = None,
+    old_to_new_dataset_rid_mapping: dict[str, str] = {},
     include_events: bool = False,
     include_runs: bool = False,
     include_video: bool = False,
@@ -954,6 +955,7 @@ def copy_asset_from(
         new_asset_properties: Optional new properties for the copied asset. If not provided, original properties used.
         new_asset_labels: Optional new labels for the copied asset. If not provided, the original labels are used.
         dataset_config: Configuration for dataset migration.
+        old_to_new_dataset_rid_mapping: Mapping of old dataset RIDs to new dataset RIDs to avoid duplicate copies.
         include_events: Whether to include events in the copied dataset.
         include_runs: Whether to include runs in the copied asset.
         include_video: Whether to include video in the copied asset.
@@ -981,12 +983,17 @@ def copy_asset_from(
     if dataset_config is not None:
         source_datasets = source_asset.list_datasets()
         for data_scope, source_dataset in source_datasets:
-            new_dataset = copy_dataset_from(
-                source_dataset=source_dataset,
-                destination_client=destination_client,
-                preserve_uuid=dataset_config.preserve_dataset_uuid,
-                include_files=dataset_config.include_dataset_files,
-            )
+            if source_dataset.rid in old_to_new_dataset_rid_mapping.keys():
+                new_dataset_rid = old_to_new_dataset_rid_mapping[source_dataset.rid]
+                new_dataset = destination_client.get_dataset(new_dataset_rid)
+            else:
+                new_dataset = copy_dataset_from(
+                    source_dataset=source_dataset,
+                    destination_client=destination_client,
+                    preserve_uuid=dataset_config.preserve_dataset_uuid,
+                    include_files=dataset_config.include_dataset_files,
+                )
+            old_to_new_dataset_rid_mapping[source_dataset.rid] = new_dataset.rid
             new_asset.add_dataset(data_scope, new_dataset)
 
     if include_events:
@@ -1051,12 +1058,14 @@ def copy_resources_to_destination_client(
         new_workbooks = []
 
         new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
+        old_to_new_dataset_rid_mapping: dict[str, str] = {}
         for asset_resources in migration_resources.source_assets.values():
             source_asset = asset_resources.asset
             new_asset = copy_asset_from(
                 source_asset,
                 destination_client,
                 dataset_config=dataset_config,
+                old_to_new_dataset_rid_mapping=old_to_new_dataset_rid_mapping,
                 include_events=True,
                 include_runs=True,
                 include_video=True,
