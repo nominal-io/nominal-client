@@ -214,7 +214,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         """Delete the workbook permanently."""
         self._clients.notebook.delete(self._clients.auth_header, self.rid)
 
-    def create_template_from_workbook(
+    def _create_template_from_workbook(
         self,
         *,
         title: str | None = None,
