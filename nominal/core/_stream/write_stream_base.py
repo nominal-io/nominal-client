@@ -89,6 +89,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
         for channel, value in channel_values.items():
             self.enqueue(channel, timestamp, value, tags)
 
+    @abc.abstractmethod
     def enqueue_float_array(
         self,
         channel_name: str,
@@ -104,12 +105,9 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             value: List of float values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
                 NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
-
-        Raises:
-            NotImplementedError: If the stream implementation does not support array streaming.
         """
-        raise NotImplementedError("Array streaming is not supported by this stream implementation")
 
+    @abc.abstractmethod
     def enqueue_string_array(
         self,
         channel_name: str,
@@ -125,11 +123,7 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             value: List of string values to write to the specified channel.
             tags: Key-value tags associated with the data being uploaded.
                 NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
-
-        Raises:
-            NotImplementedError: If the stream implementation does not support array streaming.
         """
-        raise NotImplementedError("Array streaming is not supported by this stream implementation")
 
     @abc.abstractmethod
     def close(self, wait: bool = True) -> None:
