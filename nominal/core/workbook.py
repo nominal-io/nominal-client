@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Mapping, Protocol, Sequence
 
-from nominal_api import scout, scout_notebook_api
+from nominal_api import scout, scout_notebook_api, scout_workbookcommon_api
 from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
@@ -235,8 +235,6 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         Returns:
             The created WorkbookTemplate
         """
-        from nominal_api import scout_workbookcommon_api
-
         from nominal.core.workbook_template import _create_workbook_template_with_content_and_layout
 
         raw_workbook = self._get_latest_api()
