@@ -41,6 +41,7 @@ from nominal.core.filetype import FileTypes
 from nominal.core.run import Run
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
+from nominal.core.workbook_template import _create_workbook_template_with_content_and_layout
 from nominal.experimental.checklist_utils.checklist_utils import (
     _create_checklist_with_content,
     _to_create_checklist_entries,
