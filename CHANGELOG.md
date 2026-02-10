@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.113.0](https://github.com/nominal-io/nominal-client/compare/v1.112.0...v1.113.0) (2026-02-10)
+
+
+### Features
+
+* clone checklists and executions ([#604](https://github.com/nominal-io/nominal-client/issues/604)) ([75ae901](https://github.com/nominal-io/nominal-client/commit/75ae9011a034d5078539ba449bddee3e8d07e840))
+* prevent duplication of datasets shared across assets ([#610](https://github.com/nominal-io/nominal-client/issues/610)) ([5caf2b2](https://github.com/nominal-io/nominal-client/commit/5caf2b238357c9af72bdc13455e9277d0583bb84))
+* support streaming arrays from python client ([#600](https://github.com/nominal-io/nominal-client/issues/600)) ([f024b1c](https://github.com/nominal-io/nominal-client/commit/f024b1cd03bb7fb9de943814029afcb62fbc6c38))
+
+
+### Bug Fixes
+
+* allow polling for ingest completion on deleted files, allow retrieving ingest errors ([#609](https://github.com/nominal-io/nominal-client/issues/609)) ([2949f96](https://github.com/nominal-io/nominal-client/commit/2949f96e01aac8234798243a64757eca8efb73d2))
+* allow retrieving deleted or deleting dataset files and ingest errors ([2949f96](https://github.com/nominal-io/nominal-client/commit/2949f96e01aac8234798243a64757eca8efb73d2))
+* return correct error message to user upon bad api key in config profile add CLI ([#607](https://github.com/nominal-io/nominal-client/issues/607)) ([f864224](https://github.com/nominal-io/nominal-client/commit/f864224fe7b163542f7994bcc597a3a331e036ee))
+
 ## [1.112.0](https://github.com/nominal-io/nominal-client/compare/v1.111.2...v1.112.0) (2026-02-04)
 
 
