@@ -6,6 +6,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import Enum
 from types import TracebackType
 from typing import Callable, Generic, Mapping, Sequence, Type, TypeAlias
 
@@ -17,26 +18,149 @@ from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 logger = logging.getLogger(__name__)
 
 
+class PointType(Enum):
+    """Enumeration of all supported point value types for streaming."""
+
+    STRING = "STRING"
+    """Scalar string value."""
+
+    DOUBLE = "DOUBLE"
+    """Scalar float/double value."""
+
+    INT = "INT"
+    """Scalar integer value."""
+
+    DOUBLE_ARRAY = "DOUBLE_ARRAY"
+    """Array of float/double values."""
+
+    STRING_ARRAY = "STRING_ARRAY"
+    """Array of string values."""
+
+    def to_array_type(self) -> PointType:
+        """Convert a scalar PointType to its corresponding array type.
+
+        Raises:
+            ValueError: If the PointType is already an array type, INT, or unsupported.
+        """
+        match self:
+            case PointType.STRING:
+                return PointType.STRING_ARRAY
+            case PointType.DOUBLE:
+                return PointType.DOUBLE_ARRAY
+            case PointType.INT:
+                raise ValueError(
+                    "Integer arrays are not supported. Use enqueue_float_array() with float values, "
+                    "or convert your integers to floats before streaming."
+                )
+            case _:
+                raise ValueError(f"Cannot convert {self} to array type (already an array or unsupported)")
+
+
+def _infer_scalar_type(value: object) -> PointType:
+    """Infer the scalar PointType from a single value.
+
+    Args:
+        value: A scalar value (str, float, or int).
+
+    Returns:
+        The inferred scalar PointType.
+
+    Raises:
+        ValueError: If the value type is unsupported.
+    """
+    if isinstance(value, str):
+        return PointType.STRING
+    elif isinstance(value, float):
+        return PointType.DOUBLE
+    elif isinstance(value, int):
+        return PointType.INT
+    else:
+        raise ValueError(f"Unsupported value type: {type(value)}")
+
+
+def infer_point_type(value: object, explicit_type: PointType | None = None) -> PointType:
+    """Infer the point type from a value, or use the explicit type if provided.
+
+    Args:
+        value: The value to infer the type from.
+        explicit_type: If provided, this type is returned directly (used for empty arrays).
+
+    Returns:
+        The inferred or explicit PointType.
+
+    Raises:
+        ValueError: If the type cannot be inferred (e.g., empty list without explicit type)
+                   or if the value type is unsupported.
+    """
+    # If explicit type is provided, use it (allows empty arrays)
+    if explicit_type is not None:
+        return explicit_type
+
+    # Handle list types (arrays) - recurse to infer element type, then convert to array type
+    if isinstance(value, list):
+        if len(value) == 0:
+            raise ValueError(
+                "Cannot infer type from empty array. Use enqueue_float_array() or "
+                "enqueue_string_array() to explicitly specify the array type."
+            )
+        # Recurse to get the scalar type of the first element, then convert to array type
+        element_type = _infer_scalar_type(value[0])
+        return element_type.to_array_type()
+
+    # Handle scalar types
+    return _infer_scalar_type(value)
+
+
 @dataclass(frozen=True)
 class BatchItem(Generic[StreamType]):
+    """A single item in a batch to be written to the stream.
+
+    Attributes:
+        channel_name: Name of the channel.
+        timestamp: Timestamp in nanoseconds.
+        value: The value to write.
+        tags: Optional key-value tags.
+        point_type_override: Explicit point type override, used when the type cannot be
+            inferred from the value (e.g., empty arrays). If None, the type is inferred.
+    """
+
     channel_name: str
     timestamp: IntegralNanosecondsUTC
     value: StreamType
     tags: Mapping[str, str] | None = None
+    point_type_override: PointType | None = None
+
+    def get_point_type(self) -> PointType:
+        """Get the point type, using override if set, otherwise inferring from value."""
+        return infer_point_type(self.value, self.point_type_override)
 
     def _to_api_batch_key(self) -> tuple[str, Sequence[tuple[str, str]], str]:
-        return self.channel_name, sorted(self.tags.items()) if self.tags is not None else [], type(self.value).__name__
+        """Generate a key for grouping batch items by channel, tags, and type."""
+        return (
+            self.channel_name,
+            sorted(self.tags.items()) if self.tags is not None else [],
+            self.get_point_type().name,
+        )
 
     @classmethod
     def sort_key(cls, item: Self) -> tuple[str, Sequence[tuple[str, str]], str]:
         return item._to_api_batch_key()
 
 
-DataStream: TypeAlias = WriteStreamBase[str | float | int]
+ScalarType: TypeAlias = str | float | int
+"""Scalar value types supported for streaming."""
+
+ArrayType: TypeAlias = list[float] | list[str]
+"""Array value types supported for streaming."""
+
+StreamValueType: TypeAlias = ScalarType | ArrayType
+"""All value types supported for streaming (scalars and arrays)."""
+
+DataStream: TypeAlias = WriteStreamBase[ScalarType]
 """Stream type for asynchronously sending timeseries data to the Nominal backend."""
 
-DataItem: TypeAlias = BatchItem[str | float | int]
-"""Individual item of timeseries data to stream to Nominal."""
+DataItem: TypeAlias = BatchItem[StreamValueType]
+"""Individual item of timeseries data to stream to Nominal (scalars or arrays)."""
 
 LogStream: TypeAlias = WriteStreamBase[str]
 """Stream type for asynchronously sending log data to the Nominal backend."""
@@ -62,7 +186,13 @@ class WriteStream(WriteStreamBase[StreamType]):
         max_wait: timedelta,
         process_batch: Callable[[Sequence[BatchItem[StreamType]]], None],
     ) -> Self:
-        """Create the stream."""
+        """Create the stream.
+
+        Args:
+            batch_size: Maximum number of items to batch before flushing.
+            max_wait: Maximum time to wait before flushing a batch.
+            process_batch: Callable to process batches of items.
+        """
         executor = concurrent.futures.ThreadPoolExecutor()
 
         instance = cls(
@@ -105,6 +235,54 @@ class WriteStream(WriteStreamBase[StreamType]):
         item = BatchItem(channel_name, dt_timestamp, value, tags)
         self._thread_safe_batch.add([item])
         self._flush(condition=lambda size: size >= self.batch_size)
+
+    def _enqueue_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: list[float] | list[str],
+        tags: Mapping[str, str] | None,
+        point_type: PointType,
+    ) -> None:
+        """Internal helper to enqueue an array value with explicit type."""
+        dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(channel_name, dt_timestamp, value, tags, point_type_override=point_type)
+        self._thread_safe_batch.add([item])  # type: ignore[list-item]
+        self._flush(condition=lambda size: size >= self.batch_size)
+
+    def enqueue_float_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: list[float],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Add an array of floats to the queue after normalizing the timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: List of float values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        self._enqueue_array(channel_name, timestamp, value, tags, PointType.DOUBLE_ARRAY)
+
+    def enqueue_string_array(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: list[str],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Add an array of strings to the queue after normalizing the timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: List of string values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        self._enqueue_array(channel_name, timestamp, value, tags, PointType.STRING_ARRAY)
 
     def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
         batch = self._thread_safe_batch.swap(condition)
@@ -167,8 +345,7 @@ class WriteStream(WriteStreamBase[StreamType]):
     def close(self, wait: bool = True) -> None:
         """Close the Nominal Stream.
 
-        Stop the process timeout thread
-        Flush any remaining batches
+        Stop the process timeout thread and flush any remaining batches.
         """
         self._stop.set()
 

@@ -202,13 +202,13 @@ def test_process_batch_invalid_type(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    # Lists are not supported
+    # Dictionaries are not supported
     batch = [
-        BatchItem("test_channel", dt_to_nano(timestamp), [1, 2, 3]),  # type: ignore[arg-type]
+        BatchItem("test_channel", dt_to_nano(timestamp), {"key": "value"}),  # type: ignore[arg-type]
     ]
 
     # Verify it raises the correct error
-    with pytest.raises(ValueError, match="only float, int, and string are supported types for value"):
+    with pytest.raises(ValueError, match="Unsupported value type"):
         process_batch(
             batch=batch,
             nominal_data_source_rid=mock_connection.nominal_data_source_rid,
@@ -525,13 +525,13 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    # Lists are not supported
+    # Dictionaries are not supported
     batch = [
-        BatchItem("test_channel", dt_to_nano(timestamp), [1, 2, 3]),  # type: ignore[arg-type]
+        BatchItem("test_channel", dt_to_nano(timestamp), {"key": "value"}),  # type: ignore[arg-type]
     ]
 
     # Verify it raises the correct error
-    with pytest.raises(ValueError, match="only float, int, and string are supported types for value"):
+    with pytest.raises(ValueError, match="Unsupported value type"):
         process_batch(
             batch=batch,
             nominal_data_source_rid=mock_dataset.rid,
@@ -699,3 +699,229 @@ def test_multiple_write_streams_dataset(mock_dataset):
     assert len(string_points) == 2
     assert string_points[0].value == "value1"
     assert string_points[1].value == "value2"
+
+
+# ============== Array Streaming Tests ==============
+
+
+def test_process_batch_float_arrays(mock_connection):
+    """Test processing a batch of float array items using unified BatchItem."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0, 3.0]),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [4.0, 5.0, 6.0]),
+    ]
+
+    # Process the batch using the unified process_batch function
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    # Get the actual request that was sent
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
+    mock_write.assert_called_once()
+
+    # Check the arguments using kwargs
+    kwargs = mock_write.call_args.kwargs
+    assert kwargs["auth_header"] == "test-auth-header"
+    assert kwargs["data_source_rid"] == "test-datasource-rid"
+    actual_request = kwargs["request"]
+
+    # Convert bytes back to WriteRequestNominal
+    actual_request = WriteRequestNominal.FromString(actual_request)
+
+    # Verify it's the correct type
+    assert isinstance(actual_request, WriteRequestNominal)
+
+    # Verify series structure
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert isinstance(series, Series)
+    assert series.channel.name == "test_channel"
+
+    # Verify points - should be array_points
+    points = series.points
+    assert points.HasField("array_points")
+    assert points.array_points.HasField("double_array_points")
+
+    double_array_points = points.array_points.double_array_points.points
+    assert len(double_array_points) == 2
+
+    # Verify individual point values
+    assert list(double_array_points[0].value) == [1.0, 2.0, 3.0]
+    assert list(double_array_points[1].value) == [4.0, 5.0, 6.0]
+
+
+def test_process_batch_string_arrays(mock_connection):
+    """Test processing a batch of string array items using unified BatchItem."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        BatchItem("test_channel", dt_to_nano(timestamp), ["a", "b", "c"]),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), ["d", "e", "f"]),
+    ]
+
+    # Process the batch
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    # Get the actual request that was sent
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteRequestNominal.FromString(kwargs["request"])
+
+    # Verify series structure
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert series.channel.name == "test_channel"
+
+    # Verify points - should be array_points with string arrays
+    points = series.points
+    assert points.HasField("array_points")
+    assert points.array_points.HasField("string_array_points")
+
+    string_array_points = points.array_points.string_array_points.points
+    assert len(string_array_points) == 2
+
+    # Verify individual point values
+    assert list(string_array_points[0].value) == ["a", "b", "c"]
+    assert list(string_array_points[1].value) == ["d", "e", "f"]
+
+
+def test_process_batch_arrays_with_tags(mock_connection):
+    """Test processing array items with tags using unified BatchItem."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0], {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [3.0, 4.0], {"tag1": "value1"}),
+    ]
+
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    mock_write = mock_connection._clients.proto_write.write_nominal_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteRequestNominal.FromString(kwargs["request"])
+
+    # Verify tags were included
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert series.tags == {"tag1": "value1"}
+
+
+def test_batch_item_sort_key_float_array():
+    """Test that BatchItem.sort_key returns correct values for float arrays."""
+    timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
+    item = BatchItem("channel1", timestamp, [1.0, 2.0], {"tag": "value"})
+
+    key = BatchItem.sort_key(item)
+    assert key[0] == "channel1"
+    assert key[1] == [("tag", "value")]
+    assert key[2] == "DOUBLE_ARRAY"
+
+
+def test_batch_item_sort_key_string_array():
+    """Test that BatchItem.sort_key returns correct values for string arrays."""
+    timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
+    item = BatchItem("channel1", timestamp, ["a", "b"], {"tag": "value"})
+
+    key = BatchItem.sort_key(item)
+    assert key[0] == "channel1"
+    assert key[1] == [("tag", "value")]
+    assert key[2] == "STRING_ARRAY"
+
+
+def test_write_stream_enqueue_float_array(mock_dataset):
+    """Test enqueue_float_array on a write stream."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream:
+        stream.enqueue_float_array("channel1", timestamp, [1.0, 2.0, 3.0])
+        stream.enqueue_float_array("channel1", timestamp + timedelta(seconds=1), [4.0, 5.0, 6.0])
+
+    # Verify the write was called
+    mock_write = mock_dataset._clients.proto_write.write_nominal_batches
+    assert mock_write.call_count >= 1
+
+    # Check the last call contains array data
+    last_call = mock_write.call_args_list[-1].kwargs
+    actual_request = WriteRequestNominal.FromString(last_call["request"])
+
+    # Find the series with array points
+    array_series = [s for s in actual_request.series if s.points.HasField("array_points")]
+    assert len(array_series) >= 1
+
+    series = array_series[0]
+    assert series.channel.name == "channel1"
+    assert series.points.array_points.HasField("double_array_points")
+
+
+def test_write_stream_enqueue_string_array(mock_dataset):
+    """Test enqueue_string_array on a write stream."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    with mock_dataset.get_write_stream(batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf") as stream:
+        stream.enqueue_string_array("channel1", timestamp, ["a", "b", "c"])
+        stream.enqueue_string_array("channel1", timestamp + timedelta(seconds=1), ["d", "e", "f"])
+
+    # Verify the write was called
+    mock_write = mock_dataset._clients.proto_write.write_nominal_batches
+    assert mock_write.call_count >= 1
+
+    # Check the last call contains array data
+    last_call = mock_write.call_args_list[-1].kwargs
+    actual_request = WriteRequestNominal.FromString(last_call["request"])
+
+    # Find the series with array points
+    array_series = [s for s in actual_request.series if s.points.HasField("array_points")]
+    assert len(array_series) >= 1
+
+    series = array_series[0]
+    assert series.channel.name == "channel1"
+    assert series.points.array_points.HasField("string_array_points")
+
+
+def test_empty_array_without_explicit_type_raises_error():
+    """Test that creating a BatchItem with an empty array without explicit type raises an error."""
+    from nominal.core._stream.write_stream import BatchItem, infer_point_type
+
+    timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
+
+    # Empty array without explicit type should raise an error when getting point type
+    item = BatchItem("channel1", timestamp, [])
+
+    with pytest.raises(ValueError, match="Cannot infer type from empty array"):
+        item.get_point_type()
+
+    # Direct call to infer_point_type should also raise
+    with pytest.raises(ValueError, match="Cannot infer type from empty array"):
+        infer_point_type([])
+
+
+def test_empty_array_with_explicit_type_works():
+    """Test that creating a BatchItem with an empty array with explicit type works."""
+    from nominal.core._stream.write_stream import BatchItem, PointType
+
+    timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
+
+    # Empty float array with explicit type should work
+    float_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.DOUBLE_ARRAY)
+    assert float_item.get_point_type() == PointType.DOUBLE_ARRAY
+
+    # Empty string array with explicit type should work
+    string_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.STRING_ARRAY)
+    assert string_item.get_point_type() == PointType.STRING_ARRAY
