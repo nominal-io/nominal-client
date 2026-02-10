@@ -227,24 +227,26 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         Args:
             title: Title for the new template. Defaults to "Template from {title}" (or "workbook" if empty).
             description: Description for the new template. Defaults to the current workbook description.
-            labels: Labels for the new template. Defaults to the workbook labels.
-            properties: Properties for the new template. Defaults to the workbook properties.
+            labels: Labels for the new template. Defaults to the current workbook labels.
+            properties: Properties for the new template. Defaults to the current workbook properties.
 
         Returns:
             The created WorkbookTemplate
         """
+        from nominal_api import scout_workbookcommon_api
+
         from nominal.core.workbook_template import _create_workbook_template_with_content_and_layout
 
         raw_workbook = self._get_latest_api()
-        content_v2 = getattr(raw_workbook, "content_v2", None)
+        content_v2 = raw_workbook.content_v2
+        if content_v2 is not None and not isinstance(content_v2, scout_workbookcommon_api.UnifiedWorkbookContent):
+            raise ValueError("Unexpected content_v2 type")
         if self.workbook_type == WorkbookType.COMPARISON_WORKBOOK or (
-            content_v2 is not None and getattr(content_v2, "comparison_workbook", None) is not None
+            content_v2 is not None and content_v2.comparison_workbook is not None
         ):
             raise ValueError("Comparison workbook types not yet supported")
 
-        content = (getattr(content_v2, "workbook", None) if content_v2 is not None else None) or getattr(
-            raw_workbook, "content", None
-        )
+        content = (content_v2.workbook if content_v2 is not None else None) or raw_workbook.content
         if content is None:
             raise ValueError("Missing content for workbook")
 
