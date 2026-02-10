@@ -221,6 +221,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         description: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        workspace_rid: str | None = None,
     ) -> WorkbookTemplate:
         """Create a workbook template from this workbook.
 
@@ -229,6 +230,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
             description: Description for the new template. Defaults to the current workbook description.
             labels: Labels for the new template. Defaults to the current workbook labels.
             properties: Properties for the new template. Defaults to the current workbook properties.
+            workspace_rid: Workspace RID to create the template in. Defaults to the current workbook's workspace.
 
         Returns:
             The created WorkbookTemplate
@@ -250,8 +252,8 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         if content is None:
             raise ValueError("Missing content for workbook")
 
-        workbook_title = raw_workbook.metadata.title if raw_workbook.metadata.title else "workbook"
-        workspace_rid = self._clients.workspace_rid
+        workbook_title = raw_workbook.metadata.title or "workbook"
+        workspace_rid = workspace_rid or self._clients.workspace_rid
         if workspace_rid is None:
             raise ValueError("Workspace RID is required to create a workbook template")
 
