@@ -1016,6 +1016,7 @@ def _copy_asset_workbook(
     new_template = clone_workbook_template(source_template, destination_client)
     new_workbook = new_template.create_workbook(asset=destination_asset, title=source_workbook.title)
     new_template.archive()
+    source_template.archive()
     logger.debug(
         "New asset workbook created: %s (rid: %s)",
         new_workbook.title,
@@ -1055,6 +1056,7 @@ def _copy_run_workbook(source_workbook: Workbook, source_run: Run, destination_c
     new_template = clone_workbook_template(source_template, destination_client)
     new_workbook = new_template.create_workbook(run=source_run, title=source_workbook.title)
     new_template.archive()
+    source_template.archive()
     logger.debug(
         "New run workbook created: %s (rid: %s)",
         new_workbook.title,
