@@ -41,8 +41,6 @@ def _create_checklist_with_content(
         workspace=client._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
     )
 
-    print(request)
-
     template = client._clients.checklist.create(client._clients.auth_header, request)
     return Checklist._from_conjure(client._clients, template)
 
@@ -132,7 +130,6 @@ def _to_create_check_request(
     """
     # Extract UUID from check_lineage_rid if it's a full RID
     # The API expects a UUID, not a full RID string
-    print(check.check_lineage_rid)
     check_lineage_uuid = None
     if check.check_lineage_rid:
         if len(check.check_lineage_rid) == 36 and check.check_lineage_rid.count("-") == 4:

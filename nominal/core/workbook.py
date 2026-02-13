@@ -296,15 +296,11 @@ def _iter_search_workbooks(
 ) -> Iterable[Workbook]:
     from nominal.core._utils.pagination_tools import search_workbooks_paginated
 
-    for raw_workbook in search_workbooks_paginated(
-        clients.notebook, clients.auth_header, query, include_archived
-    ):
+    for raw_workbook in search_workbooks_paginated(clients.notebook, clients.auth_header, query, include_archived):
         try:
             yield Workbook._from_notebook_metadata(clients, raw_workbook)
         except ValueError:
-            logger.exception(
-                "Failed to deserialize workbook metadata with rid %s: %s", raw_workbook.rid, raw_workbook
-            )
+            logger.exception("Failed to deserialize workbook metadata with rid %s: %s", raw_workbook.rid, raw_workbook)
 
 
 def _search_workbooks(
