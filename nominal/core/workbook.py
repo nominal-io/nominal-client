@@ -294,7 +294,6 @@ def _iter_search_workbooks(
     query: scout_notebook_api.SearchNotebooksQuery,
     include_archived: bool,
 ) -> Iterable[Workbook]:
-
     for raw_workbook in search_workbooks_paginated(clients.notebook, clients.auth_header, query, include_archived):
         try:
             yield Workbook._from_notebook_metadata(clients, raw_workbook)
@@ -317,7 +316,6 @@ def _search_workbooks(
     workspace_rid: str | None = None,
     archived: bool | None = None,
 ) -> Sequence[Workbook]:
-
     query = create_search_workbooks_query(
         exact_match=exact_match,
         search_text=search_text,
