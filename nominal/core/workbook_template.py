@@ -154,6 +154,14 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
         return raw_template.metadata.is_published
 
+    def archive(self) -> None:
+        """Archive this workbook template.
+        Archived workbook templates are not deleted, but are hidden from the UI.
+        """
+        self._clients.template.update_metadata(
+            self._clients.auth_header, scout_template_api.UpdateMetadataRequest(is_archived=True), self.rid
+        )
+
     @classmethod
     def _from_conjure(cls, clients: _Clients, template: scout_template_api.Template) -> Self:
         return cls._from_template_summary(

@@ -990,6 +990,107 @@ def _copy_asset_videos(
             copy_video_file_to_video_dataset(source_video_file, new_video_dataset)
 
 
+def _copy_asset_workbook(
+    source_workbook: Workbook, destination_asset: Asset, destination_client: NominalClient
+) -> Workbook:
+    """Copy a workbook from the source to the destination client.
+
+    Args:
+        source_workbook: The source Workbook to copy.
+        destination_asset: The destination Asset with whichto create the copied workbook.
+        destination_client: The NominalClient to create the copied workbook in.
+
+    Returns:
+        The newly created Workbook in the destination client.
+    """
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+    }
+    logger.debug(
+        "Copying asset workbook %s (rid: %s)",
+        source_workbook.title,
+        source_workbook.rid,
+        extra=log_extras,
+    )
+    source_template = source_workbook._create_template_from_workbook()
+    new_template = clone_workbook_template(source_template, destination_client)
+    new_workbook = new_template.create_workbook(asset=destination_asset, title=source_workbook.title)
+    new_template.archive()
+    logger.debug(
+        "New asset workbook created: %s (rid: %s)",
+        new_workbook.title,
+        new_workbook.rid,
+        extra=log_extras,
+    )
+    logger.info(
+        "WORKBOOK: Old RID: %s, New RID: %s",
+        source_workbook.rid,
+        new_workbook.rid,
+        extra={"to_file": True},
+    )
+    return new_workbook
+
+
+def _copy_run_workbook(source_workbook: Workbook, source_run: Run, destination_client: NominalClient) -> Workbook:
+    """Copy a workbook from the source to the destination client.
+
+    Args:
+        source_workbook: The source Workbook to copy.
+        source_run: The source Run with which to create the copied workbook.
+        destination_client: The NominalClient to create the copied workbook in.
+
+    Returns:
+        The newly created Workbook in the destination client.
+    """
+    log_extras = {
+        "destination_client_workspace": destination_client.get_workspace(destination_client._clients.workspace_rid).rid
+    }
+    logger.debug(
+        "Copying run workbook %s (rid: %s)",
+        source_workbook.title,
+        source_workbook.rid,
+        extra=log_extras,
+    )
+    source_template = source_workbook._create_template_from_workbook()
+    new_template = clone_workbook_template(source_template, destination_client)
+    new_workbook = new_template.create_workbook(run=source_run, title=source_workbook.title)
+    new_template.archive()
+    logger.debug(
+        "New run workbook created: %s (rid: %s)",
+        new_workbook.title,
+        new_workbook.rid,
+        extra=log_extras,
+    )
+    logger.info(
+        "WORKBOOK: Old RID: %s, New RID: %s",
+        source_workbook.rid,
+        new_workbook.rid,
+        extra={"to_file": True},
+    )
+    return new_workbook
+
+
+def _copy_asset_and_run_workbooks(source_asset: Asset, new_asset: Asset, destination_client: NominalClient) -> None:
+    """Copy workbooks associated with the source asset and its runs to the destination client.
+
+    For asset workbooks with exactly one asset, copies them as asset workbooks.
+    For run workbooks with exactly one run, copies them as run workbooks.
+    Otherwise, copies them as asset workbooks on the new asset.
+    """
+    asset_workbooks = source_asset.search_workbooks()
+    for workbook in asset_workbooks:
+        if workbook.asset_rids and len(workbook.asset_rids) == 1:
+            _copy_asset_workbook(workbook, new_asset, destination_client)
+
+    for run in source_asset.list_runs():
+        run_workbooks = run.search_workbooks()
+        for workbook in run_workbooks:
+            if workbook.run_rids and len(workbook.run_rids) == 1:
+                _copy_run_workbook(workbook, run, destination_client)
+            else:
+                _copy_asset_workbook(workbook, new_asset, destination_client)
+
+
 def copy_asset_from(
     source_asset: Asset,
     destination_client: NominalClient,
@@ -1073,6 +1174,8 @@ def copy_asset_from(
 
     if include_video:
         _copy_asset_videos(source_asset, destination_client, new_asset)
+
+    _copy_asset_and_run_workbooks(source_asset, new_asset, destination_client)
 
     logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
     logger.info(

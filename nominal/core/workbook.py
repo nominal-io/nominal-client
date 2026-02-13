@@ -3,13 +3,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Mapping, Protocol, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
 from nominal_api import scout, scout_notebook_api, scout_workbookcommon_api
 from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.pagination_tools import search_workbooks_paginated
+from nominal.core._utils.query_tools import create_search_workbooks_query
 from nominal.core.exceptions import NominalMethodRemovedError
 
 logger = logging.getLogger(__name__)
@@ -285,3 +287,53 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
             workbook_type=workbook_type,
             _clients=clients,
         )
+
+
+def _iter_search_workbooks(
+    clients: Workbook._Clients,
+    query: scout_notebook_api.SearchNotebooksQuery,
+    include_archived: bool,
+) -> Iterable[Workbook]:
+    from nominal.core._utils.pagination_tools import search_workbooks_paginated
+
+    for raw_workbook in search_workbooks_paginated(
+        clients.notebook, clients.auth_header, query, include_archived
+    ):
+        try:
+            yield Workbook._from_notebook_metadata(clients, raw_workbook)
+        except ValueError:
+            logger.exception(
+                "Failed to deserialize workbook metadata with rid %s: %s", raw_workbook.rid, raw_workbook
+            )
+
+
+def _search_workbooks(
+    clients: Workbook._Clients,
+    *,
+    include_archived: bool = False,
+    exact_match: str | None = None,
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    asset_rid: str | None = None,
+    exact_asset_rids: Sequence[str] | None = None,
+    author_rid: str | None = None,
+    run_rid: str | None = None,
+    workspace_rid: str | None = None,
+    archived: bool | None = None,
+) -> Sequence[Workbook]:
+    from nominal.core._utils.query_tools import create_search_workbooks_query
+
+    query = create_search_workbooks_query(
+        exact_match=exact_match,
+        search_text=search_text,
+        labels=labels,
+        properties=properties,
+        asset_rid=asset_rid,
+        exact_asset_rids=exact_asset_rids,
+        author_rid=author_rid,
+        run_rid=run_rid,
+        workspace_rid=workspace_rid,
+        archived=archived,
+    )
+    return list(_iter_search_workbooks(clients, query, include_archived))
