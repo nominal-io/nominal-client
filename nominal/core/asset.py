@@ -36,6 +36,7 @@ from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video, _get_video
+from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -59,6 +60,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         Video._Clients,
         Attachment._Clients,
         Event._Clients,
+        Workbook._Clients,
         data_review.DataReview._Clients,
         HasScoutParams,
         Protocol,
@@ -543,6 +545,30 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
                 assets=[self.rid],
                 runs=[rid_from_instance_or_string(run) for run in (runs or [])],
             )
+        )
+
+    def search_workbooks(
+        self,
+        *,
+        include_archived: bool = False,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        created_by_rid: str | None = None,
+        run_rid: str | None = None,
+    ) -> Sequence[Workbook]:
+        """Search for workbooks associated with this Asset. See nominal.core.workbook._search_workbooks for details."""
+        return _search_workbooks(
+            self._clients,
+            include_archived=include_archived,
+            exact_match=exact_match,
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            asset_rid=self.rid,
+            author_rid=created_by_rid,
+            run_rid=run_rid,
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:

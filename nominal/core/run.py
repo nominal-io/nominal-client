@@ -30,6 +30,7 @@ from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
 from nominal.core.video import Video, _get_video
+from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 if TYPE_CHECKING:
@@ -56,6 +57,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         Attachment._Clients,
         DataSource._Clients,
         Video._Clients,
+        Workbook._Clients,
         Protocol,
     ):
         @property
@@ -383,6 +385,30 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         rids = [rid_from_instance_or_string(a) for a in attachments]
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
+
+    def search_workbooks(
+        self,
+        *,
+        include_archived: bool = False,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        asset_rid: str | None = None,
+        created_by_rid: str | None = None,
+    ) -> Sequence[Workbook]:
+        """Search for workbooks associated with this Run. See nominal.core.workbook._search_workbooks for details."""
+        return _search_workbooks(
+            self._clients,
+            include_archived=include_archived,
+            exact_match=exact_match,
+            search_text=search_text,
+            labels=labels,
+            properties=properties,
+            run_rid=self.rid,
+            asset_rid=asset_rid,
+            author_rid=created_by_rid,
+        )
 
     def archive(self) -> None:
         """Archive this run.
