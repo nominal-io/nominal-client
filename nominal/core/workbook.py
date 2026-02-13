@@ -294,7 +294,6 @@ def _iter_search_workbooks(
     query: scout_notebook_api.SearchNotebooksQuery,
     include_archived: bool,
 ) -> Iterable[Workbook]:
-    from nominal.core._utils.pagination_tools import search_workbooks_paginated
 
     for raw_workbook in search_workbooks_paginated(clients.notebook, clients.auth_header, query, include_archived):
         try:
@@ -318,7 +317,6 @@ def _search_workbooks(
     workspace_rid: str | None = None,
     archived: bool | None = None,
 ) -> Sequence[Workbook]:
-    from nominal.core._utils.query_tools import create_search_workbooks_query
 
     query = create_search_workbooks_query(
         exact_match=exact_match,
