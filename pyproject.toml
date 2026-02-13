@@ -31,6 +31,7 @@ dependencies = [
     "nominal-api==0.1079.0",
     "rich>=14.1.0",
     "tabulate>=0.9.0,<0.10",
+    "textual>=1.0.0",
     "truststore>=0.10.4",
     "types-cachetools>=6.0.0.20250525",
     "typing-extensions>=4,<5",
