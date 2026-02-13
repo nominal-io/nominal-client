@@ -997,7 +997,7 @@ def _copy_asset_workbook(
 
     Args:
         source_workbook: The source Workbook to copy.
-        destination_asset: The destination Asset with whichto create the copied workbook.
+        destination_asset: The destination Asset with which to create the copied workbook.
         destination_client: The NominalClient to create the copied workbook in.
 
     Returns:
@@ -1070,25 +1070,32 @@ def _copy_run_workbook(source_workbook: Workbook, source_run: Run, destination_c
     return new_workbook
 
 
-def _copy_asset_and_run_workbooks(source_asset: Asset, new_asset: Asset, destination_client: NominalClient) -> None:
+def _copy_asset_and_run_workbooks(
+    source_asset: Asset,
+    new_asset: Asset,
+    destination_client: NominalClient,
+    run_mapping: Dict[str, str] | None = None,
+) -> None:
     """Copy workbooks associated with the source asset and its runs to the destination client.
 
     For asset workbooks with exactly one asset, copies them as asset workbooks.
-    For run workbooks with exactly one run, copies them as run workbooks.
-    Otherwise, copies them as asset workbooks on the new asset.
+    For run workbooks with exactly one run and a matching run mapping, copies them as run workbooks
+    on the destination run.
     """
     asset_workbooks = source_asset.search_workbooks()
     for workbook in asset_workbooks:
         if workbook.asset_rids and len(workbook.asset_rids) == 1:
             _copy_asset_workbook(workbook, new_asset, destination_client)
 
-    for run in source_asset.list_runs():
-        run_workbooks = run.search_workbooks()
-        for workbook in run_workbooks:
-            if workbook.run_rids and len(workbook.run_rids) == 1:
-                _copy_run_workbook(workbook, run, destination_client)
+    if run_mapping:
+        for source_run in source_asset.list_runs():
+            if source_run.rid not in run_mapping:
+                logger.warning("Run %s not found in run mapping", source_run.rid)
             else:
-                _copy_asset_workbook(workbook, new_asset, destination_client)
+                destination_run = destination_client.get_run(run_mapping[source_run.rid])
+                for workbook in source_run.search_workbooks():
+                    if workbook.run_rids and len(workbook.run_rids) == 1:
+                        _copy_run_workbook(workbook, destination_run, destination_client)
 
 
 def copy_asset_from(
@@ -1175,7 +1182,7 @@ def copy_asset_from(
     if include_video:
         _copy_asset_videos(source_asset, destination_client, new_asset)
 
-    _copy_asset_and_run_workbooks(source_asset, new_asset, destination_client)
+    _copy_asset_and_run_workbooks(source_asset, new_asset, destination_client, run_mapping)
 
     logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
     logger.info(
