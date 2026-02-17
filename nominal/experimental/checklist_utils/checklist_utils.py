@@ -137,7 +137,7 @@ def _to_create_check_request(
         else:
             match = UUID_PATTERN.search(check.check_lineage_rid)
             if match:
-                check_lineage_uuid = match.group(1)
+                check_lineage_uuid = match.group(2)
 
     return scout_checks_api.CreateCheckRequest(
         check_lineage_rid=check_lineage_uuid,
