@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import groupby
-from typing import Sequence, cast
+from typing import Any, Sequence, cast
 
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -128,7 +128,7 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
                     points=[
                         StructPoint(
                             timestamp=_make_timestamp(item.timestamp),
-                            json_string=json.dumps(cast(dict, item.value)),
+                                json_string=json.dumps(cast(dict[str, Any], item.value)),
                         )
                         for item in api_batch
                     ]

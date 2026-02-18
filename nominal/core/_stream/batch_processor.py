@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 import json
-from typing import Sequence, cast
+from typing import Any, Sequence, cast
 
 from nominal_api import storage_writer_api
 
@@ -79,7 +79,7 @@ def make_points(api_batch: Sequence[DataItem]) -> storage_writer_api.PointsExter
                 struct=[
                     storage_writer_api.StructPoint(
                         timestamp=_SecondsNanos.from_flexible(item.timestamp).to_api(),
-                        json_string=json.dumps(cast(dict, item.value)),
+                        json_string=json.dumps(cast(dict[str, Any], item.value)),
                     )
                     for item in api_batch
                 ]
