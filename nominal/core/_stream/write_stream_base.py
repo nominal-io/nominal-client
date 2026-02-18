@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 from datetime import datetime
 from types import TracebackType
-from typing import Generic, Mapping, Sequence, Type, TypeVar
+from typing import Any, Generic, Mapping, Sequence, Type, TypeVar
 
 from typing_extensions import Self
 
@@ -121,6 +121,24 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
             channel_name: Name of the channel to upload data for.
             timestamp: Absolute timestamp of the data being uploaded.
             value: List of string values to write to the specified channel.
+            tags: Key-value tags associated with the data being uploaded.
+                NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
+        """
+
+    @abc.abstractmethod
+    def enqueue_struct(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: dict[str, Any],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write a struct (dict) to the stream at a single timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Dict to write to the specified channel. Must be JSON-serializable.
             tags: Key-value tags associated with the data being uploaded.
                 NOTE: This *must* include all `required_tags` used when creating a `Connection` to Nominal.
         """

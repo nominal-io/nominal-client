@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import groupby
@@ -22,6 +23,8 @@ try:
         StringArrayPoints,
         StringPoint,
         StringPoints,
+        StructPoint,
+        StructPoints,
         WriteRequestNominal,
     )
     from nominal_api_protos.nominal_write_pb2 import (
@@ -114,6 +117,18 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
                         IntegerPoint(
                             timestamp=_make_timestamp(item.timestamp),
                             value=cast(int, item.value),
+                        )
+                        for item in api_batch
+                    ]
+                )
+            )
+        case PointType.STRUCT:
+            return Points(
+                struct_points=StructPoints(
+                    points=[
+                        StructPoint(
+                            timestamp=_make_timestamp(item.timestamp),
+                            json_string=json.dumps(cast(dict, item.value)),
                         )
                         for item in api_batch
                     ]
