@@ -128,7 +128,7 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
                     points=[
                         StructPoint(
                             timestamp=_make_timestamp(item.timestamp),
-                                json_string=json.dumps(cast(dict[str, Any], item.value)),
+                            json_string=json.dumps(cast(dict[str, Any], item.value)),
                         )
                         for item in api_batch
                     ]
