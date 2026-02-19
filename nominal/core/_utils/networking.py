@@ -3,11 +3,9 @@ from __future__ import annotations
 import gzip
 import logging
 import os
-import ssl
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
-import truststore
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
@@ -22,10 +20,13 @@ GZIP_COMPRESSION_LEVEL = 1
 
 
 class SslBypassRequestsAdapter(HTTPAdapter):
-    """Transport adapter that allows customizing SSL options and forwarding host truststore.
+    """Transport adapter that allows customizing keep-alive settings.
 
-    NOTE: based on a combination of injecting `truststore.SSLContext` into
-        `conjure_python_client._http.requests_client.TransportAdapter`.
+    NOTE: based on `conjure_python_client._http.requests_client.TransportAdapter`.
+    SSL verification is handled by the standard requests/urllib3 flow via the
+    `verify` parameter (certifi CA bundle or custom trust_store_path) rather than
+    injecting a custom ssl_context, which avoids platform-specific issues with
+    urllib3's `is_verified` tracking (see: https://github.com/sethmlarson/truststore/issues/167).
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
@@ -43,7 +44,7 @@ class SslBypassRequestsAdapter(HTTPAdapter):
         **pool_kwargs: Mapping[str, Any],
     ) -> None:
         """Wrapper around the standard init_poolmanager from HTTPAdapter with modifications
-        to support keep-alive settings and injecting SSL context.
+        to support keep-alive settings.
         """
         if self._enable_keep_alive:
             keep_alive_kwargs: dict[str, Any] = {
@@ -53,8 +54,6 @@ class SslBypassRequestsAdapter(HTTPAdapter):
                 ]
             }
             pool_kwargs = {**pool_kwargs, **keep_alive_kwargs}
-
-        pool_kwargs["ssl_context"] = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
         super().init_poolmanager(connections, maxsize, block, **pool_kwargs)  # type: ignore[no-untyped-call]
 
