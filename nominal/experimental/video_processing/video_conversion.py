@@ -109,7 +109,7 @@ def normalize_video(
     frames_after = frame_count(output_path)
     if frames_before != frames_after:
         logger.warning(
-            "H264 re-encoded video '%' has differing frames from original '%s' (%d vs. %d)",
+            "H264 re-encoded video '%s' has differing frames from original '%s' (%d vs. %d)",
             output_path,
             input_path,
             frames_after,
