@@ -557,6 +557,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         properties: Mapping[str, str] | None = None,
         created_by_rid: str | None = None,
         run_rid: str | None = None,
+        include_drafts: bool = False,
     ) -> Sequence[Workbook]:
         """Search for workbooks associated with this Asset. See nominal.core.workbook._search_workbooks for details."""
         return _search_workbooks(
@@ -569,6 +570,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             asset_rid=self.rid,
             author_rid=created_by_rid,
             run_rid=run_rid,
+            include_drafts=include_drafts,
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:
