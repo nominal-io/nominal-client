@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from types import TracebackType
-from typing import Callable, Generic, Mapping, Sequence, Type, TypeAlias
+from typing import Any, Callable, Generic, Mapping, Sequence, Type, TypeAlias
 
 from typing_extensions import Self
 
@@ -35,6 +35,9 @@ class PointType(Enum):
 
     STRING_ARRAY = "STRING_ARRAY"
     """Array of string values."""
+
+    STRUCT = "STRUCT"
+    """JSON-serializable struct (dict)."""
 
     def to_array_type(self) -> PointType:
         """Convert a scalar PointType to its corresponding array type.
@@ -153,7 +156,10 @@ ScalarType: TypeAlias = str | float | int
 ArrayType: TypeAlias = list[float] | list[str]
 """Array value types supported for streaming."""
 
-StreamValueType: TypeAlias = ScalarType | ArrayType
+StructType: TypeAlias = dict[str, Any]
+"""Struct value type supported for streaming."""
+
+StreamValueType: TypeAlias = ScalarType | ArrayType | StructType
 """All value types supported for streaming (scalars and arrays)."""
 
 DataStream: TypeAlias = WriteStreamBase[ScalarType]
@@ -283,6 +289,26 @@ class WriteStream(WriteStreamBase[StreamType]):
             tags: Key-value tags associated with the data being uploaded.
         """
         self._enqueue_array(channel_name, timestamp, value, tags, PointType.STRING_ARRAY)
+
+    def enqueue_struct(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: dict[str, Any],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Add a struct (dict) to the queue after normalizing the timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Dict to write to the specified channel. Must be JSON-serializable.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        dt_timestamp = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(channel_name, dt_timestamp, value, tags, point_type_override=PointType.STRUCT)
+        self._thread_safe_batch.add([item])  # type: ignore[list-item]
+        self._flush(condition=lambda size: size >= self.batch_size)
 
     def _flush(self, condition: Callable[[int], bool] | None = None) -> concurrent.futures.Future[None] | None:
         batch = self._thread_safe_batch.swap(condition)
