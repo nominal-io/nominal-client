@@ -396,6 +396,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         properties: Mapping[str, str] | None = None,
         asset_rid: str | None = None,
         created_by_rid: str | None = None,
+        include_drafts: bool = False,
     ) -> Sequence[Workbook]:
         """Search for workbooks associated with this Run. See nominal.core.workbook._search_workbooks for details."""
         return _search_workbooks(
@@ -408,6 +409,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             run_rid=self.rid,
             asset_rid=asset_rid,
             author_rid=created_by_rid,
+            include_drafts=include_drafts,
         )
 
     def archive(self) -> None:

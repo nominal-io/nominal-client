@@ -1390,12 +1390,13 @@ class NominalClient:
         run: Run | str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         archived: bool | None = None,
+        include_drafts: bool = False,
     ) -> Sequence[Workbook]:
         """Search for workbooks meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
 
         Args:
-            include_archived: If true, include archived workbooks in results
+            include_archived: If true, include archived workbooks in results. Defaults to False.
             exact_match: Searches for a string to match exactly in the workbook's metadata
             search_text: Fuzzy-searches for a string in the workbook's metadata
             labels: A list of labels that must ALL be present on an workbook to be included.
@@ -1406,6 +1407,7 @@ class NominalClient:
             run: Searches for workbooks with the given run
             workspace: Filters search to given workspace.
             archived: Return workbooks that are either archived or not
+            include_drafts: If true, include workbooks in draft state in results. Defaults to false.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
@@ -1431,6 +1433,7 @@ class NominalClient:
             run_rid=None if run is None else rid_from_instance_or_string(run),
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
             archived=archived,
+            include_drafts=include_drafts,
         )
 
     def get_workbook_template(self, rid: str) -> WorkbookTemplate:

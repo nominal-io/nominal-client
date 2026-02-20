@@ -1084,7 +1084,7 @@ def _copy_asset_and_run_workbooks(
     For run workbooks with exactly one run and a matching run mapping, copies them as run workbooks
     on the destination run.
     """
-    asset_workbooks = source_asset.search_workbooks()
+    asset_workbooks = source_asset.search_workbooks(include_drafts=True)
     for workbook in asset_workbooks:
         if workbook.asset_rids and len(workbook.asset_rids) == 1:
             _copy_asset_workbook(workbook, new_asset, destination_client)
@@ -1095,7 +1095,7 @@ def _copy_asset_and_run_workbooks(
                 logger.warning("Run %s not found in run mapping", source_run.rid)
             else:
                 destination_run = destination_client.get_run(run_mapping[source_run.rid])
-                for workbook in source_run.search_workbooks():
+                for workbook in source_run.search_workbooks(include_drafts=True):
                     if workbook.run_rids and len(workbook.run_rids) == 1:
                         _copy_run_workbook(workbook, destination_run, destination_client)
 
