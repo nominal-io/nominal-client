@@ -1056,7 +1056,9 @@ def _copy_run_workbook(source_workbook: Workbook, source_run: Run, destination_c
     )
     source_template = source_workbook._create_template_from_workbook()
     new_template = clone_workbook_template(source_template, destination_client)
-    new_workbook = new_template.create_workbook(run=source_run, title=source_workbook.title)
+    new_workbook = new_template.create_workbook(
+        run=source_run, title=source_workbook.title, is_draft=source_workbook.is_draft()
+    )
     new_template.archive()
     source_template.archive()
     logger.debug(
