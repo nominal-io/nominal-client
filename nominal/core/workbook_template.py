@@ -89,6 +89,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
         title: str | None = None,
         description: str | None = None,
         run: Run | str,
+        is_draft: bool = False,
     ) -> Workbook: ...
 
     @overload
@@ -98,6 +99,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
         title: str | None = None,
         description: str | None = None,
         asset: Asset | str,
+        is_draft: bool = False,
     ) -> Workbook: ...
 
     def create_workbook(
@@ -107,6 +109,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
         description: str | None = None,
         run: Run | str | None = None,
         asset: Asset | str | None = None,
+        is_draft: bool = False,
     ) -> Workbook:
         """Create workbook from this workbook template
 
@@ -117,6 +120,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
                 NOTE: may not be provided alongside `asset`
             asset: Asset to visualize in the workbook
                 NOTE: may not be provided alongside `run`
+            is_draft: Whether to create the workbook in draft state. Defaults to False.
 
         NOTE: only supports singular `run` instead of a list of `runs` because workbook templates only support
               standard workbooks and not comparison workbooks.
@@ -135,7 +139,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
         request = scout_notebook_api.CreateNotebookRequest(
             title=f"Workbook from '{self.title}'" if title is None else title,
             description=self.description if description is None else description,
-            is_draft=False,
+            is_draft=is_draft,
             state_as_json="{}",
             data_scope=scout_notebook_api.NotebookDataScope(
                 run_rids=None if run is None else [rid_from_instance_or_string(run)],

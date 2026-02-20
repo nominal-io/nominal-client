@@ -92,6 +92,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
+        is_draft: bool | None = None,
     ) -> Self:
         """Replace workbook metadata.
         Updates the current instance, and returns it.
@@ -116,6 +117,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
                 description=description,
                 labels=None if labels is None else [*labels],
                 properties=None if properties is None else {**properties},
+                is_draft=is_draft,
             ),
             self.rid,
         )
@@ -174,6 +176,10 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
     def is_archived(self) -> bool:
         """Return whether or not the workbook is currently archived."""
         return self._get_latest_api().metadata.is_archived
+
+    def is_draft(self) -> bool:
+        """Return whether or not the workbook is currently a draft."""
+        return self._get_latest_api().metadata.is_draft
 
     def lock(self) -> None:
         """Locks the workbook, preventing changes from being made to it.

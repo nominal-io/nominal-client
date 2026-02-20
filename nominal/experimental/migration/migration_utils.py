@@ -1014,7 +1014,9 @@ def _copy_asset_workbook(
     )
     source_template = source_workbook._create_template_from_workbook()
     new_template = clone_workbook_template(source_template, destination_client)
-    new_workbook = new_template.create_workbook(asset=destination_asset, title=source_workbook.title)
+    new_workbook = new_template.create_workbook(
+        asset=destination_asset, title=source_workbook.title, is_draft=source_workbook.is_draft()
+    )
     new_template.archive()
     source_template.archive()
     logger.debug(
