@@ -239,11 +239,12 @@ def search_workbooks_paginated(
     auth_header: str,
     query: scout_notebook_api.SearchNotebooksQuery,
     include_archived: bool,
+    show_drafts: bool,
 ) -> Iterable[scout_notebook_api.NotebookMetadataWithRid]:
     def factory(page_token: str | None) -> scout_notebook_api.SearchNotebooksRequest:
         return scout_notebook_api.SearchNotebooksRequest(
             query=query,
-            show_drafts=False,
+            show_drafts=show_drafts,
             show_archived=include_archived,
             next_page_token=page_token,
         )

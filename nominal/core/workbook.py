@@ -92,6 +92,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         description: str | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
+        is_draft: bool | None = None,
     ) -> Self:
         """Replace workbook metadata.
         Updates the current instance, and returns it.
@@ -116,6 +117,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
                 description=description,
                 labels=None if labels is None else [*labels],
                 properties=None if properties is None else {**properties},
+                is_draft=is_draft,
             ),
             self.rid,
         )
@@ -174,6 +176,12 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
     def is_archived(self) -> bool:
         """Return whether or not the workbook is currently archived."""
         return self._get_latest_api().metadata.is_archived
+
+    def is_draft(self) -> bool:
+        """Return whether or not the workbook is currently a draft. Note that a workbook in draft state isn't visible
+        to other users and shows up as Private in the UI.
+        """
+        return self._get_latest_api().metadata.is_draft
 
     def lock(self) -> None:
         """Locks the workbook, preventing changes from being made to it.
@@ -293,8 +301,11 @@ def _iter_search_workbooks(
     clients: Workbook._Clients,
     query: scout_notebook_api.SearchNotebooksQuery,
     include_archived: bool,
+    include_drafts: bool,
 ) -> Iterable[Workbook]:
-    for raw_workbook in search_workbooks_paginated(clients.notebook, clients.auth_header, query, include_archived):
+    for raw_workbook in search_workbooks_paginated(
+        clients.notebook, clients.auth_header, query, include_archived, include_drafts
+    ):
         try:
             yield Workbook._from_notebook_metadata(clients, raw_workbook)
         except ValueError:
@@ -315,6 +326,7 @@ def _search_workbooks(
     run_rid: str | None = None,
     workspace_rid: str | None = None,
     archived: bool | None = None,
+    include_drafts: bool = False,
 ) -> Sequence[Workbook]:
     query = create_search_workbooks_query(
         exact_match=exact_match,
@@ -328,4 +340,4 @@ def _search_workbooks(
         workspace_rid=workspace_rid,
         archived=archived,
     )
-    return list(_iter_search_workbooks(clients, query, include_archived))
+    return list(_iter_search_workbooks(clients, query, include_archived, include_drafts))
