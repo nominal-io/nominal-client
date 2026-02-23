@@ -178,7 +178,9 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
         return self._get_latest_api().metadata.is_archived
 
     def is_draft(self) -> bool:
-        """Return whether or not the workbook is currently a draft."""
+        """Return whether or not the workbook is currently a draft. Note that a workbook in draft state isn't visible
+        to other users and shows up as Private in the UI.
+        """
         return self._get_latest_api().metadata.is_draft
 
     def lock(self) -> None:
