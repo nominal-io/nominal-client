@@ -4,7 +4,8 @@ import gzip
 import logging
 import os
 import ssl
-from typing import Any, Callable, Mapping, Type, TypeVar
+import threading
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Type, TypeVar, Union
 
 import requests
 import truststore
@@ -19,6 +20,48 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 GZIP_COMPRESSION_LEVEL = 1
+
+if TYPE_CHECKING:
+    from typing_extensions import Buffer
+
+
+class VerificationEnforcingSSLContext(truststore.SSLContext):
+    """A truststore.SSLContext that protects verify_mode and check_hostname from external mutation.
+
+    urllib3 calls load_verify_locations() on the SSL context every time it opens a new connection,
+    in order to apply the ca_certs from its own configuration. This call inadvertently resets
+    verify_mode to CERT_NONE and check_hostname to False on the underlying OpenSSL context,
+    silently disabling SSL verification for all subsequent connections.
+
+    This class overrides load_verify_locations() to snapshot verify_mode and check_hostname before
+    the call and restore them afterwards if they were clobbered.
+    """
+
+    def load_verify_locations(
+        self,
+        cafile: str | bytes | os.PathLike[str] | os.PathLike[bytes] | None = None,
+        capath: str | bytes | os.PathLike[str] | os.PathLike[bytes] | None = None,
+        cadata: Union[str, "Buffer", None] = None,
+    ) -> None:
+        verify_mode = self._ctx.verify_mode
+        check_hostname = self._ctx.check_hostname
+
+        super().load_verify_locations(cafile=cafile, capath=capath, cadata=cadata)
+
+        clobbered = []
+        if self._ctx.verify_mode != verify_mode:
+            self._ctx.verify_mode = verify_mode
+            clobbered.append("verify_mode")
+        if self._ctx.check_hostname != check_hostname:
+            self._ctx.check_hostname = check_hostname
+            clobbered.append("check_hostname")
+
+        if clobbered:
+            logger.debug(
+                "VerificationEnforcingSSLContext: load_verify_locations clobbered %s; now restored. (thread=%s)",
+                " and ".join(clobbered),
+                threading.get_ident(),
+            )
 
 
 class SslBypassRequestsAdapter(HTTPAdapter):
@@ -54,7 +97,7 @@ class SslBypassRequestsAdapter(HTTPAdapter):
             }
             pool_kwargs = {**pool_kwargs, **keep_alive_kwargs}
 
-        pool_kwargs["ssl_context"] = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        pool_kwargs["ssl_context"] = VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
         super().init_poolmanager(connections, maxsize, block, **pool_kwargs)  # type: ignore[no-untyped-call]
 
