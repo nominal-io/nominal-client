@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.114.0](https://github.com/nominal-io/nominal-client/compare/v1.113.0...v1.114.0) (2026-02-23)
+
+
+### Features
+
+* add search_workbooks to asset and run classes, update migration_utils to clone workbooks ([#615](https://github.com/nominal-io/nominal-client/issues/615)) ([fdff644](https://github.com/nominal-io/nominal-client/commit/fdff64463a51cb4e967165fd7657a8d30bb4a77d))
+* allow workbook template create from workbook ([#611](https://github.com/nominal-io/nominal-client/issues/611)) ([4963d6b](https://github.com/nominal-io/nominal-client/commit/4963d6b0e6d53a26977f907cc029578887468751))
+* expose include_drafts in workbooks search ([#618](https://github.com/nominal-io/nominal-client/issues/618)) ([55666d8](https://github.com/nominal-io/nominal-client/commit/55666d864d8931486bf3839acf045e17d771f69e))
+
+
+### Bug Fixes
+
+* fix log warning for re-encoding introducing frame count discrepancies ([#617](https://github.com/nominal-io/nominal-client/issues/617)) ([ecc61f4](https://github.com/nominal-io/nominal-client/commit/ecc61f4f6be432e5e2bcdb635ec9bad5b5d25621))
+
 ## [1.113.0](https://github.com/nominal-io/nominal-client/compare/v1.112.0...v1.113.0) (2026-02-10)
 
 
