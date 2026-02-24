@@ -3,13 +3,13 @@ from __future__ import annotations
 import gzip
 import logging
 import os
-import socket
 import ssl
 import threading
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
 import truststore
+import typing_extensions
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
@@ -23,7 +23,7 @@ T = TypeVar("T")
 GZIP_COMPRESSION_LEVEL = 1
 
 
-class VerificationEnforcingSSLContext(truststore.SSLContext):
+class ThreadSafeSSLContext(truststore.SSLContext):
     """A truststore.SSLContext that is safe to share across threads.
 
     truststore's wrap_socket temporarily sets verify_mode=CERT_NONE while the
@@ -39,35 +39,27 @@ class VerificationEnforcingSSLContext(truststore.SSLContext):
 
     def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
+
+        # Intentionally expanding type from lock -> rlock
         self._ctx_lock: threading.RLock = threading.RLock()  # type: ignore[assignment]
 
+    @typing_extensions.override
     def wrap_socket(
         self,
-        sock: socket.socket,
-        server_side: bool = False,
-        do_handshake_on_connect: bool = True,
-        suppress_ragged_eofs: bool = True,
-        server_hostname: str | None = None,
-        session: ssl.SSLSession | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> ssl.SSLSocket:
         with self._ctx_lock:
-            return super().wrap_socket(
-                sock,
-                server_side=server_side,
-                do_handshake_on_connect=do_handshake_on_connect,
-                suppress_ragged_eofs=suppress_ragged_eofs,
-                server_hostname=server_hostname,
-                session=session,
-            )
+            return super().wrap_socket(*args, **kwargs)
 
 
 class SslBypassRequestsAdapter(HTTPAdapter):
     """Transport adapter that uses the OS trust store via truststore.
 
     Accepts an ssl_context argument so callers control thread-safety:
-    pass a VerificationEnforcingSSLContext for sessions shared across threads,
+    pass a ThreadSafeSSLContext for sessions shared across threads,
     or a plain truststore.SSLContext for single-thread sessions where locking
-    overhead is unnecessary. Defaults to VerificationEnforcingSSLContext.
+    overhead is unnecessary. Defaults to ThreadSafeSSLContext.
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
@@ -81,7 +73,7 @@ class SslBypassRequestsAdapter(HTTPAdapter):
         **kwargs: Any,
     ):
         self._enable_keep_alive = enable_keep_alive
-        self._ssl_context = ssl_context or VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self._ssl_context = ssl_context or ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -106,7 +98,7 @@ class SslBypassRequestsAdapter(HTTPAdapter):
     def __setstate__(self, state: dict[str, Any]) -> None:
         state[self.ENABLE_KEEP_ALIVE_ATTR] = state.get(self.ENABLE_KEEP_ALIVE_ATTR, False)
         if "_ssl_context" not in state:
-            state["_ssl_context"] = VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            state["_ssl_context"] = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__setstate__(state)  # type: ignore[misc]
 
 
@@ -192,7 +184,7 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    # No ssl_context passed: defaults to VerificationEnforcingSSLContext, which is
+    # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
     # required since this session is shared across threads via ClientsBunch.
     transport_adapter = NominalRequestsAdapter(max_retries=retry)
     session = requests.Session()
@@ -260,7 +252,7 @@ def create_multipart_request_session(
         status_forcelist=(429, 500, 502, 503, 504),
     )
     ctx: ssl.SSLContext = (
-        VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         if shared_context
         else truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     )
