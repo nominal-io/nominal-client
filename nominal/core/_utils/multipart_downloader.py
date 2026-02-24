@@ -128,7 +128,7 @@ class MultipartFileDownloader:
             max_workers = multiprocessing.cpu_count()
             logger.info("Inferring core count as %d", max_workers)
 
-        session = create_multipart_request_session(pool_size=max_workers)
+        session = create_multipart_request_session(pool_size=max_workers, shared_context=True)
         pool = ThreadPoolExecutor(max_workers=max_workers)
         return cls(max_workers, timeout, max_part_retries, _session=session, _pool=pool, _closed=False)
 

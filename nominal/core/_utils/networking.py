@@ -4,6 +4,7 @@ import gzip
 import logging
 import os
 import ssl
+import threading
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
@@ -11,6 +12,7 @@ import truststore
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
+from typing_extensions import Buffer
 from urllib3.connection import HTTPConnection
 from urllib3.util.retry import Retry
 
@@ -21,18 +23,98 @@ T = TypeVar("T")
 GZIP_COMPRESSION_LEVEL = 1
 
 
-class SslBypassRequestsAdapter(HTTPAdapter):
-    """Transport adapter that allows customizing SSL options and forwarding host truststore.
+class VerificationEnforcingSSLContext(truststore.SSLContext):
+    """A truststore.SSLContext that coordinates truststore's _configure_context +
+    wrap_socket with urllib3's load_verify_locations so they never interleave.
 
-    NOTE: based on a combination of injecting `truststore.SSLContext` into
-        `conjure_python_client._http.requests_client.TransportAdapter`.
+    truststore intentionally sets verify_mode=CERT_NONE and check_hostname=False
+    before calling wrap_socket (deferring verification to the OS trust store after
+    the handshake). urllib3 calls load_verify_locations on the same context when
+    recycling connections, and can snapshot the temporarily-disabled state,
+    corrupting it for subsequent connections.
+
+    The fix is to hold an RLock across the entire wrap_socket call (which internally
+    also acquires the lock around _configure_context), so load_verify_locations
+    cannot interleave. RLock is required because wrap_socket -> super().wrap_socket
+    -> _configure_context all re-acquire the same lock from the same thread.
+
+    This class should only be used for shared contexts (i.e. those held inside
+    ClientsBunch sessions which are accessed from multiple threads). Ephemeral
+    per-thread sessions should use a plain truststore.SSLContext instead.
+    """
+
+    def __init__(self, protocol: int = None) -> None:  # type: ignore[assignment]
+        super().__init__(protocol)
+        # Replace the plain Lock truststore creates with an RLock so our
+        # wrap_socket override can hold it while super().wrap_socket() also
+        # tries to acquire it.
+        self._ctx_lock = threading.RLock()
+
+    def load_verify_locations(
+        self,
+        cafile: str | bytes | os.PathLike[str] | os.PathLike[bytes] | None = None,
+        capath: str | bytes | os.PathLike[str] | os.PathLike[bytes] | None = None,
+        cadata: str | Buffer | None = None,
+    ) -> None:
+        with self._ctx_lock:
+            verify_mode = self._ctx.verify_mode
+            check_hostname = self._ctx.check_hostname
+            super().load_verify_locations(cafile=cafile, capath=capath, cadata=cadata)
+            clobbered = []
+            if self._ctx.verify_mode != verify_mode:
+                self._ctx.verify_mode = verify_mode
+                clobbered.append("verify_mode")
+            if self._ctx.check_hostname != check_hostname:
+                self._ctx.check_hostname = check_hostname
+                clobbered.append("check_hostname")
+            if clobbered:
+                logger.debug(
+                    "VerificationEnforcingSSLContext: load_verify_locations clobbered %s and they were restored. "
+                    "(thread=%s)",
+                    " and ".join(clobbered),
+                    threading.get_ident(),
+                )
+
+    def wrap_socket(
+        self,
+        sock: Any,
+        server_side: bool = False,
+        do_handshake_on_connect: bool = True,
+        suppress_ragged_eofs: bool = True,
+        server_hostname: str | None = None,
+        session: ssl.SSLSession | None = None,
+    ) -> ssl.SSLSocket:
+        with self._ctx_lock:
+            return super().wrap_socket(
+                sock,
+                server_side=server_side,
+                do_handshake_on_connect=do_handshake_on_connect,
+                suppress_ragged_eofs=suppress_ragged_eofs,
+                server_hostname=server_hostname,
+                session=session,
+            )
+
+
+class SslBypassRequestsAdapter(HTTPAdapter):
+    """Transport adapter that uses the OS trust store via truststore.
+
+    When shared_context=True (the default), uses a VerificationEnforcingSSLContext
+    which is safe to share across threads. When shared_context=False, uses a plain
+    truststore.SSLContext — suitable for ephemeral per-thread sessions where no
+    sharing occurs and the locking overhead is unnecessary.
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
-    __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
+    SHARED_CONTEXT_ATTR = "_shared_context"
+    __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR, SHARED_CONTEXT_ATTR]
 
-    def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
+    def __init__(self, *args: Any, enable_keep_alive: bool = False, shared_context: bool = True, **kwargs: Any):
         self._enable_keep_alive = enable_keep_alive
+        self._shared_context = shared_context
+        if shared_context:
+            self._ssl_context: ssl.SSLContext = VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        else:
+            self._ssl_context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -42,39 +124,42 @@ class SslBypassRequestsAdapter(HTTPAdapter):
         block: bool = False,
         **pool_kwargs: Mapping[str, Any],
     ) -> None:
-        """Wrapper around the standard init_poolmanager from HTTPAdapter with modifications
-        to support keep-alive settings and injecting SSL context.
-        """
         if self._enable_keep_alive:
-            keep_alive_kwargs: dict[str, Any] = {
+            pool_kwargs = {
+                **pool_kwargs,
                 "socket_options": [
                     *HTTPConnection.default_socket_options,
                     *KEEP_ALIVE_SOCKET_OPTIONS,
-                ]
+                ],
             }
-            pool_kwargs = {**pool_kwargs, **keep_alive_kwargs}
-
-        pool_kwargs["ssl_context"] = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
+        pool_kwargs["ssl_context"] = self._ssl_context
         super().init_poolmanager(connections, maxsize, block, **pool_kwargs)  # type: ignore[no-untyped-call]
+
+    def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
+        proxy_kwargs["ssl_context"] = self._ssl_context
+        return super().proxy_manager_for(proxy, **proxy_kwargs)
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         state[self.ENABLE_KEEP_ALIVE_ATTR] = state.get(self.ENABLE_KEEP_ALIVE_ATTR, False)
+        state[self.SHARED_CONTEXT_ATTR] = state.get(self.SHARED_CONTEXT_ATTR, True)
+        if "_ssl_context" not in state:
+            shared = state[self.SHARED_CONTEXT_ATTR]
+            state["_ssl_context"] = (
+                VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                if shared
+                else truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            )
         super().__setstate__(state)  # type: ignore[misc]
 
 
 class NominalRequestsAdapter(SslBypassRequestsAdapter):
-    """Adapter used with `requests` library for sending gzip-compressed data.
-
-    Based on: https://github.com/psf/requests/issues/1753#issuecomment-417806737
-    """
+    """Adapter used with `requests` library for sending gzip-compressed data."""
 
     ACCEPT_ENCODING = "Accept-Encoding"
     CONTENT_ENCODING = "Content-Encoding"
     CONTENT_LENGTH = "Content-Length"
 
     def add_headers(self, request: requests.PreparedRequest, **kwargs: Any) -> None:
-        """Tell the server that we support compression."""
         super().add_headers(request, **kwargs)  # type: ignore[no-untyped-call]
 
         body = request.body
@@ -105,13 +190,9 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         cert: bytes | str | tuple[bytes | str, bytes | str] | None = None,
         proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
-        """Compress data before sending."""
         if stream:
-            # We don't need to gzip streamed data via requests-- any such api endpoint today has a
-            # multi-part upload based mechanism for uploading large requests.
             return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
         elif request.body is not None:
-            # If there is data being posted to the API, gzip-encode it to save network bandwidth
             body = request.body if isinstance(request.body, bytes) else request.body.encode("utf-8")
             request.body = gzip.compress(body, compresslevel=GZIP_COMPRESSION_LEVEL)
 
@@ -153,8 +234,9 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    transport_adapter = NominalRequestsAdapter(max_retries=retry)
-    # create a session, for shared connection polling, user agent, etc
+
+    # shared_context=True: this session is shared across threads via ClientsBunch
+    transport_adapter = NominalRequestsAdapter(max_retries=retry, shared_context=True)
     session = requests.Session()
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
@@ -198,13 +280,28 @@ def create_multipart_request_session(
     *,
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
+    shared_context: bool = False,
 ) -> requests.Session:
+    """Create a requests Session configured for multipart uploads to S3.
+
+    Each call produces an independent session with its own SSLContext and
+    connection pool.
+
+    Args:
+        pool_size: Maximum number of connections to keep in the pool.
+        num_retries: Number of times to retry failed requests.
+        shared_context: Whether the session will be shared across threads.
+            Pass True when the session is held on a long-lived object and
+            called from multiple threads concurrently (e.g. MultipartFileDownloader).
+            Pass False (the default) when the session is used exclusively by a
+            single thread, which avoids unnecessary locking overhead.
+    """
     retries = Retry(
         total=num_retries,
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
     session = requests.Session()
-    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size)
+    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size, shared_context=shared_context)
     session.mount("https://", adapter)
     return session
