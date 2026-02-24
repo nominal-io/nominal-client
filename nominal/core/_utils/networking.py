@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import logging
 import os
+import socket
 import ssl
 import threading
 from typing import Any, Callable, Mapping, Type, TypeVar
@@ -12,7 +13,6 @@ import truststore
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
-from typing_extensions import Buffer
 from urllib3.connection import HTTPConnection
 from urllib3.util.retry import Retry
 
@@ -24,60 +24,26 @@ GZIP_COMPRESSION_LEVEL = 1
 
 
 class VerificationEnforcingSSLContext(truststore.SSLContext):
-    """A truststore.SSLContext that coordinates truststore's _configure_context +
-    wrap_socket with urllib3's load_verify_locations so they never interleave.
+    """A truststore.SSLContext that is safe to share across threads.
 
-    truststore intentionally sets verify_mode=CERT_NONE and check_hostname=False
-    before calling wrap_socket (deferring verification to the OS trust store after
-    the handshake). urllib3 calls load_verify_locations on the same context when
-    recycling connections, and can snapshot the temporarily-disabled state,
-    corrupting it for subsequent connections.
+    truststore's wrap_socket temporarily sets verify_mode=CERT_NONE while the
+    TLS handshake is in progress, releasing _ctx_lock before the handshake runs.
+    This creates a window where urllib3's load_verify_locations can snapshot the
+    disabled state and corrupt the context for subsequent connections.
 
-    The fix is to hold an RLock across the entire wrap_socket call (which internally
-    also acquires the lock around _configure_context), so load_verify_locations
-    cannot interleave. RLock is required because wrap_socket -> super().wrap_socket
-    -> _configure_context all re-acquire the same lock from the same thread.
-
-    This class should only be used for shared contexts (i.e. those held inside
-    ClientsBunch sessions which are accessed from multiple threads). Ephemeral
-    per-thread sessions should use a plain truststore.SSLContext instead.
+    This subclass replaces _ctx_lock with an RLock and holds it across the full
+    wrap_socket call, making load_verify_locations and wrap_socket mutually
+    exclusive. RLock is required because truststore's wrap_socket re-acquires
+    _ctx_lock internally around _configure_context.
     """
 
-    def __init__(self, protocol: int = None) -> None:  # type: ignore[assignment]
-        super().__init__(protocol)
-        # Replace the plain Lock truststore creates with an RLock so our
-        # wrap_socket override can hold it while super().wrap_socket() also
-        # tries to acquire it.
-        self._ctx_lock = threading.RLock()
-
-    def load_verify_locations(
-        self,
-        cafile: str | bytes | os.PathLike[str] | os.PathLike[bytes] | None = None,
-        capath: str | bytes | os.PathLike[str] | os.PathLike[bytes] | None = None,
-        cadata: str | Buffer | None = None,
-    ) -> None:
-        with self._ctx_lock:
-            verify_mode = self._ctx.verify_mode
-            check_hostname = self._ctx.check_hostname
-            super().load_verify_locations(cafile=cafile, capath=capath, cadata=cadata)
-            clobbered = []
-            if self._ctx.verify_mode != verify_mode:
-                self._ctx.verify_mode = verify_mode
-                clobbered.append("verify_mode")
-            if self._ctx.check_hostname != check_hostname:
-                self._ctx.check_hostname = check_hostname
-                clobbered.append("check_hostname")
-            if clobbered:
-                logger.debug(
-                    "VerificationEnforcingSSLContext: load_verify_locations clobbered %s and they were restored. "
-                    "(thread=%s)",
-                    " and ".join(clobbered),
-                    threading.get_ident(),
-                )
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self._ctx_lock: threading.RLock = threading.RLock()  # type: ignore[assignment]
 
     def wrap_socket(
         self,
-        sock: Any,
+        sock: socket.socket,
         server_side: bool = False,
         do_handshake_on_connect: bool = True,
         suppress_ragged_eofs: bool = True,
@@ -98,23 +64,24 @@ class VerificationEnforcingSSLContext(truststore.SSLContext):
 class SslBypassRequestsAdapter(HTTPAdapter):
     """Transport adapter that uses the OS trust store via truststore.
 
-    When shared_context=True (the default), uses a VerificationEnforcingSSLContext
-    which is safe to share across threads. When shared_context=False, uses a plain
-    truststore.SSLContext — suitable for ephemeral per-thread sessions where no
-    sharing occurs and the locking overhead is unnecessary.
+    Accepts an ssl_context argument so callers control thread-safety:
+    pass a VerificationEnforcingSSLContext for sessions shared across threads,
+    or a plain truststore.SSLContext for single-thread sessions where locking
+    overhead is unnecessary. Defaults to VerificationEnforcingSSLContext.
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
-    SHARED_CONTEXT_ATTR = "_shared_context"
-    __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR, SHARED_CONTEXT_ATTR]
+    __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
 
-    def __init__(self, *args: Any, enable_keep_alive: bool = False, shared_context: bool = True, **kwargs: Any):
+    def __init__(
+        self,
+        *args: Any,
+        enable_keep_alive: bool = False,
+        ssl_context: ssl.SSLContext | None = None,
+        **kwargs: Any,
+    ):
         self._enable_keep_alive = enable_keep_alive
-        self._shared_context = shared_context
-        if shared_context:
-            self._ssl_context: ssl.SSLContext = VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        else:
-            self._ssl_context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self._ssl_context = ssl_context or VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -124,31 +91,22 @@ class SslBypassRequestsAdapter(HTTPAdapter):
         block: bool = False,
         **pool_kwargs: Mapping[str, Any],
     ) -> None:
+        kwargs: dict[str, Any] = {**pool_kwargs}
         if self._enable_keep_alive:
-            pool_kwargs = {
-                **pool_kwargs,
-                "socket_options": [
-                    *HTTPConnection.default_socket_options,
-                    *KEEP_ALIVE_SOCKET_OPTIONS,
-                ],
-            }
-        pool_kwargs["ssl_context"] = self._ssl_context
-        super().init_poolmanager(connections, maxsize, block, **pool_kwargs)  # type: ignore[no-untyped-call]
+            kwargs["socket_options"] = [
+                *HTTPConnection.default_socket_options,
+                *KEEP_ALIVE_SOCKET_OPTIONS,
+            ]
+        super().init_poolmanager(connections, maxsize, block, **kwargs, ssl_context=self._ssl_context)  # type: ignore[no-untyped-call]
 
     def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
-        proxy_kwargs["ssl_context"] = self._ssl_context
-        return super().proxy_manager_for(proxy, **proxy_kwargs)
+        proxy_kwargs.pop("ssl_context", None)
+        return super().proxy_manager_for(proxy, **proxy_kwargs, ssl_context=self._ssl_context)  # type: ignore[no-untyped-call]
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         state[self.ENABLE_KEEP_ALIVE_ATTR] = state.get(self.ENABLE_KEEP_ALIVE_ATTR, False)
-        state[self.SHARED_CONTEXT_ATTR] = state.get(self.SHARED_CONTEXT_ATTR, True)
         if "_ssl_context" not in state:
-            shared = state[self.SHARED_CONTEXT_ATTR]
-            state["_ssl_context"] = (
-                VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
-                if shared
-                else truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            )
+            state["_ssl_context"] = VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__setstate__(state)  # type: ignore[misc]
 
 
@@ -234,9 +192,9 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-
-    # shared_context=True: this session is shared across threads via ClientsBunch
-    transport_adapter = NominalRequestsAdapter(max_retries=retry, shared_context=True)
+    # No ssl_context passed: defaults to VerificationEnforcingSSLContext, which is
+    # required since this session is shared across threads via ClientsBunch.
+    transport_adapter = NominalRequestsAdapter(max_retries=retry)
     session = requests.Session()
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
@@ -301,7 +259,12 @@ def create_multipart_request_session(
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
+    ctx: ssl.SSLContext = (
+        VerificationEnforcingSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        if shared_context
+        else truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    )
     session = requests.Session()
-    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size, shared_context=shared_context)
+    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size, ssl_context=ctx)
     session.mount("https://", adapter)
     return session
