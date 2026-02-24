@@ -17,7 +17,7 @@ from nominal.core.filetype import FileType
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CHUNK_SIZE = 8_000_000
+DEFAULT_CHUNK_SIZE = 64_000_000
 DEFAULT_NUM_WORKERS = 8
 
 
