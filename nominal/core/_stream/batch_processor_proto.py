@@ -5,6 +5,7 @@ from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
 
+from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._columnar_write_pb2 import (
     DoublePoints,
     IntPoints,
@@ -14,7 +15,6 @@ from nominal.core._columnar_write_pb2 import (
     Timestamp,
     WriteBatchesRequest,
 )
-from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, StreamValueType
 from nominal.core._utils.queueing import Batch
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
