@@ -61,43 +61,6 @@ class RequestMetrics:
 
 
 class ProtoWriteService(Service):
-    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
-        _headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/x-protobuf",
-            "Authorization": auth_header,
-        }
-        _path = f"/storage/writer/v1/nominal/{data_source_rid}"
-        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
-
-    def write_nominal_batches_with_metrics(
-        self,
-        auth_header: str,
-        data_source_rid: str,
-        request: bytes,
-        oldest_timestamp: IntegralNanosecondsUTC,
-        newest_timestamp: IntegralNanosecondsUTC,
-    ) -> RequestMetrics:
-        _headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/x-protobuf",
-            "Authorization": auth_header,
-        }
-        _path = f"/storage/writer/v1/nominal/{data_source_rid}"
-        before_req = time.time_ns()
-
-        self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
-
-        after_req = time.time_ns()
-
-        return RequestMetrics(
-            largest_latency_before_request=(before_req - oldest_timestamp) / 1e9,
-            smallest_latency_before_request=(before_req - newest_timestamp) / 1e9,
-            request_rtt=(after_req - before_req) / 1e9,
-            largest_latency_after_request=(after_req - oldest_timestamp) / 1e9,
-            smallest_latency_after_request=(after_req - newest_timestamp) / 1e9,
-        )
-
     def write_nominal_columnar_batches(self, auth_header: str, request: bytes) -> None:
         _headers = {
             "Accept": "application/json",
