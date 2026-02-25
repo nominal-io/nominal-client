@@ -152,6 +152,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "nominal/core/dataset.py" = ["E501"]  # allow long lines for avro schema in docstring
+"nominal/core/_columnar_write_pb2.py" = ["E501"]  # generated protobuf file
 
 [tool.mypy]
 strict = true
