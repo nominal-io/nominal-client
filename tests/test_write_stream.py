@@ -5,7 +5,7 @@ import pytest
 
 from nominal.core._columnar_write_pb2 import WriteBatchesRequest
 from nominal.core._stream.batch_processor_proto import process_batch
-from nominal.core._stream.write_stream import BatchItem
+from nominal.core._stream.write_stream import BatchItem, DataItem
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -51,7 +51,7 @@ def mock_dataset(mock_clients):
 def test_process_batch_double_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42.0),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
     ]
@@ -108,7 +108,7 @@ def test_process_batch_double_points(mock_connection):
 def test_process_batch_string_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), "value1"),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
     ]
@@ -150,7 +150,7 @@ def test_process_batch_string_points(mock_connection):
 def test_process_batch_with_tags(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42.0, {"tag1": "value1"}),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0, {"tag1": "value1"}),
     ]
@@ -181,7 +181,7 @@ def test_process_batch_invalid_type(mock_connection):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     # Dictionaries are not supported
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), {"key": "value"}),  # type: ignore[arg-type]
     ]
 
@@ -198,7 +198,7 @@ def test_process_batch_invalid_type(mock_connection):
 def test_process_batch_int_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43),
     ]
@@ -243,7 +243,7 @@ def test_process_batch_int_points(mock_connection):
 def test_process_batch_multiple_channels(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("channel1", dt_to_nano(timestamp), 42.0),
         BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
         BatchItem("channel2", dt_to_nano(timestamp), "value1"),
@@ -348,7 +348,7 @@ def test_multiple_write_streams(mock_connection):
 
 def test_process_batch_double_points_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42.0),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
     ]
@@ -391,7 +391,7 @@ def test_process_batch_double_points_dataset(mock_dataset):
 
 def test_process_batch_string_points_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), "value1"),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
     ]
@@ -421,7 +421,7 @@ def test_process_batch_string_points_dataset(mock_dataset):
 
 def test_process_batch_with_tags_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42.0, {"tag1": "value1"}),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0, {"tag1": "value1"}),
     ]
@@ -447,7 +447,7 @@ def test_process_batch_with_tags_dataset(mock_dataset):
 def test_process_batch_invalid_type_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), {"key": "value"}),  # type: ignore[arg-type]
     ]
 
@@ -462,7 +462,7 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
 
 def test_process_batch_int_points_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43),
     ]
@@ -494,7 +494,7 @@ def test_process_batch_int_points_dataset(mock_dataset):
 
 def test_process_batch_multiple_channels_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("channel1", dt_to_nano(timestamp), 42.0),
         BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
         BatchItem("channel2", dt_to_nano(timestamp), "value1"),
@@ -580,7 +580,7 @@ def test_multiple_write_streams_dataset(mock_dataset):
 def test_process_batch_float_arrays(mock_connection):
     """Test processing a batch of float array items in columnar format."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0, 3.0]),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [4.0, 5.0, 6.0]),
     ]
@@ -616,7 +616,7 @@ def test_process_batch_float_arrays(mock_connection):
 def test_process_batch_string_arrays(mock_connection):
     """Test processing a batch of string array items in columnar format."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), ["a", "b", "c"]),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), ["d", "e", "f"]),
     ]
@@ -651,7 +651,7 @@ def test_process_batch_string_arrays(mock_connection):
 def test_process_batch_arrays_with_tags(mock_connection):
     """Test processing array items with tags in columnar format."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: list[DataItem] = [
         BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0], {"tag1": "value1"}),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [3.0, 4.0], {"tag1": "value1"}),
     ]
@@ -674,13 +674,80 @@ def test_process_batch_arrays_with_tags(mock_connection):
     assert dict(batch_proto.tags) == {"tag1": "value1"}
 
 
+# ============== Write Stream Array Enqueue Tests ==============
+
+
+def test_write_stream_enqueue_float_array(mock_connection):
+    """Test enqueue_float_array through the write stream."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    with mock_connection.get_write_stream(
+        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
+    ) as stream:
+        stream.enqueue_float_array("channel1", timestamp, [1.0, 2.0, 3.0])
+        stream.enqueue_float_array("channel1", timestamp + timedelta(seconds=1), [4.0, 5.0, 6.0])
+
+    mock_write = mock_connection._clients.proto_write.write_nominal_columnar_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteBatchesRequest.FromString(kwargs["request"])
+
+    assert actual_request.data_source_rid == "test-datasource-rid"
+    assert len(actual_request.batches) == 1
+    batch_proto = actual_request.batches[0]
+    assert batch_proto.channel == "channel1"
+
+    points = batch_proto.points
+    assert points.HasField("array_points")
+    assert points.array_points.HasField("double_array_points")
+    assert len(points.timestamps) == 2
+
+    double_array_points = points.array_points.double_array_points.points
+    assert len(double_array_points) == 2
+    assert list(double_array_points[0].value) == [1.0, 2.0, 3.0]
+    assert list(double_array_points[1].value) == [4.0, 5.0, 6.0]
+
+
+def test_write_stream_enqueue_string_array(mock_connection):
+    """Test enqueue_string_array through the write stream."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    with mock_connection.get_write_stream(
+        batch_size=2, max_wait=timedelta(seconds=1), data_format="protobuf"
+    ) as stream:
+        stream.enqueue_string_array("channel1", timestamp, ["a", "b", "c"])
+        stream.enqueue_string_array("channel1", timestamp + timedelta(seconds=1), ["d", "e", "f"])
+
+    mock_write = mock_connection._clients.proto_write.write_nominal_columnar_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteBatchesRequest.FromString(kwargs["request"])
+
+    assert actual_request.data_source_rid == "test-datasource-rid"
+    assert len(actual_request.batches) == 1
+    batch_proto = actual_request.batches[0]
+    assert batch_proto.channel == "channel1"
+
+    points = batch_proto.points
+    assert points.HasField("array_points")
+    assert points.array_points.HasField("string_array_points")
+    assert len(points.timestamps) == 2
+
+    string_array_points = points.array_points.string_array_points.points
+    assert len(string_array_points) == 2
+    assert list(string_array_points[0].value) == ["a", "b", "c"]
+    assert list(string_array_points[1].value) == ["d", "e", "f"]
+
+
 # ============== BatchItem Unit Tests ==============
 
 
 def test_batch_item_sort_key_float_array():
     """Test that BatchItem.sort_key returns correct values for float arrays."""
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
-    item = BatchItem("channel1", timestamp, [1.0, 2.0], {"tag": "value"})
+    item: DataItem = BatchItem("channel1", timestamp, [1.0, 2.0], {"tag": "value"})
 
     key = BatchItem.sort_key(item)
     assert key[0] == "channel1"
@@ -691,7 +758,7 @@ def test_batch_item_sort_key_float_array():
 def test_batch_item_sort_key_string_array():
     """Test that BatchItem.sort_key returns correct values for string arrays."""
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
-    item = BatchItem("channel1", timestamp, ["a", "b"], {"tag": "value"})
+    item: DataItem = BatchItem("channel1", timestamp, ["a", "b"], {"tag": "value"})
 
     key = BatchItem.sort_key(item)
     assert key[0] == "channel1"
@@ -706,7 +773,7 @@ def test_empty_array_without_explicit_type_raises_error():
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
 
     # Empty array without explicit type should raise an error when getting point type
-    item = BatchItem("channel1", timestamp, [])
+    item: DataItem = BatchItem("channel1", timestamp, [])
 
     with pytest.raises(ValueError, match="Cannot infer type from empty array"):
         item.get_point_type()
@@ -723,9 +790,9 @@ def test_empty_array_with_explicit_type_works():
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
 
     # Empty float array with explicit type should work
-    float_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.DOUBLE_ARRAY)
+    float_item: DataItem = BatchItem("channel1", timestamp, [], point_type_override=PointType.DOUBLE_ARRAY)
     assert float_item.get_point_type() == PointType.DOUBLE_ARRAY
 
     # Empty string array with explicit type should work
-    string_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.STRING_ARRAY)
+    string_item: DataItem = BatchItem("channel1", timestamp, [], point_type_override=PointType.STRING_ARRAY)
     assert string_item.get_point_type() == PointType.STRING_ARRAY
