@@ -1,5 +1,4 @@
-# ⬖ `nominal`
-
+# ⟢ Nominal
 Nominal Python SDK for test data, storage, and compute.
 
 ### 📖 Docs
@@ -10,10 +9,5 @@ View on [docs.nominal.io](https://docs.nominal.io/).
 pip install nominal
 ```
 
-### 💻 Usage
-
-```py
-import nominal as nm
-```
-
-See examples in the [documentation](https://docs.nominal.io/python/quickstart).
+### Usage
+Please refer to usage examples in the [documentation](https://docs.nominal.io/core/sdk/python-client/quickstart).

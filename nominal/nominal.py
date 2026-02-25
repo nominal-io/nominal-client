@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 from datetime import datetime
-from functools import cache, partial
+from functools import cache
 from pathlib import Path
-from threading import Thread
-from typing import TYPE_CHECKING, BinaryIO, Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
-from nominal import Connection, _config, ts
-from nominal._utils import deprecate_keyword_argument, reader_writer
+import typing_extensions
+
+from nominal import ts
+from nominal.config import _config
 from nominal.core import (
     Asset,
     Attachment,
     Checklist,
+    Connection,
     Dataset,
     FileType,
-    FileTypes,
-    Log,
-    LogSet,
     NominalClient,
     Run,
     User,
@@ -24,16 +23,21 @@ from nominal.core import (
     Workbook,
     poll_until_ingestion_completed,
 )
+from nominal.core._constants import DEFAULT_API_BASE_URL
+from nominal.core._types import PathLike
 from nominal.core.connection import StreamingConnection
 from nominal.core.data_review import DataReview, DataReviewBuilder
 
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
-_DEFAULT_BASE_URL = "https://api.gov.nominal.io/api"
+
 
 # global variable which `set_base_url()` modifies
-_global_base_url = _DEFAULT_BASE_URL
+_global_base_url = DEFAULT_API_BASE_URL
+
+# Link to docs
+AUTHENTICATION_DOCS_LINK = "https://docs.nominal.io/core/sdk/python-client/authentication"
 
 
 @cache
@@ -41,6 +45,10 @@ def _get_or_create_connection(base_url: str, token: str) -> NominalClient:
     return NominalClient.create(base_url, token)
 
 
+@typing_extensions.deprecated(
+    "nominal.set_base_url is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.from_profile` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def set_base_url(base_url: str) -> None:
     """Set the default Nominal platform base url.
 
@@ -54,6 +62,10 @@ def set_base_url(base_url: str) -> None:
     _global_base_url = base_url
 
 
+@typing_extensions.deprecated(
+    "nominal.set_token is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.from_profile` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def set_token(base_url: str, token: str) -> None:
     """Set the default token to be used in association with a given base url.
 
@@ -62,20 +74,36 @@ def set_token(base_url: str, token: str) -> None:
     _config.set_token(base_url, token)
 
 
-def get_default_client() -> NominalClient:
-    """Retrieve the default client to the Nominal platform."""
+def _get_default_client() -> NominalClient:
     token = _config.get_token(_global_base_url)
     return _get_or_create_connection(_global_base_url, token)
 
 
+@typing_extensions.deprecated(
+    "nominal.get_default_client is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.from_profile` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
+def get_default_client() -> NominalClient:
+    """Retrieve the default client to the Nominal platform."""
+    return _get_default_client()
+
+
+@typing_extensions.deprecated(
+    "nominal.get_user is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_user` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_user() -> User:
-    """Retrieve the user associated with the default client."""
-    conn = get_default_client()
-    return conn.get_user()
+    """Retrieve current user."""
+    client = _get_default_client()
+    return client.get_user()
 
 
+@typing_extensions.deprecated(
+    "`nominal.upload_tdms` is deprecated and will be removed in a future version. "
+    "Use `nominal.thirdparty.tdms.upload_tdms` instead."
+)
 def upload_tdms(
-    file: Path | str,
+    file: PathLike,
     name: str | None = None,
     description: str | None = None,
     timestamp_column: str | None = None,
@@ -83,43 +111,19 @@ def upload_tdms(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a tdms file.
+    """Create a dataset in the Nominal platform from a tdms file."""
+    from nominal.thirdparty.tdms import upload_tdms
 
-    If `name` is None, the dataset is created with the name of the file with a .csv suffix.
-
-    If 'timestamp_column' is provided, it must be present in every group and the length of all data columns must be
-    equal to (and aligned with) with 'timestamp_column'.
-
-    If 'timestamp_column' is None, TDMS channel properties must have both a `wf_increment` and `wf_start_time`
-    property to be included in the dataset.
-
-    Note that both 'timestamp_column' and 'timestamp_type' must be included together, or excluded together.
-
-    Channels will be named as f"{group_name}.{channel_name}" with spaces replaced with underscores.
-
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
-    from nominal import _tdms
-
-    path = Path(file)
-    upload_func = partial(
-        upload_pandas,
-        name=name if name is not None else path.with_suffix(".csv").name,
-        description=description,
-        wait_until_complete=wait_until_complete,
+    client = _get_default_client()
+    return upload_tdms(
+        client, file, name, description, timestamp_column, timestamp_type, wait_until_complete=wait_until_complete
     )
-    if timestamp_column is not None and timestamp_type is not None:
-        df = _tdms.tdms_with_time_column_to_pandas(path, timestamp_column)
-        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=timestamp_type)
-    elif timestamp_column is None and timestamp_type is None:
-        timestamp_column = "time_ns"
-        df = _tdms.tdms_with_waveform_props_to_pandas(path, timestamp_column)
-        return upload_func(df, timestamp_column=timestamp_column, timestamp_type=ts.EPOCH_NANOSECONDS)
-    raise ValueError("'timestamp_column' and 'timestamp_type' must be included together, or excluded together.")
 
 
+@typing_extensions.deprecated(
+    "`nominal.upload_pandas` is deprecated and will be removed in a future version. "
+    "Use `nominal.thirdparty.pandas.upload_dataframe` instead."
+)
 def upload_pandas(
     df: pd.DataFrame,
     name: str,
@@ -130,39 +134,26 @@ def upload_pandas(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a pandas.DataFrame.
+    """Create a dataset in the Nominal platform from a pandas.DataFrame."""
+    from nominal.thirdparty.pandas import upload_dataframe
 
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
-    """
-    conn = get_default_client()
-
-    # TODO(alkasm): use parquet instead of CSV as an intermediary
-
-    def write_and_close(df: pd.DataFrame, w: BinaryIO) -> None:
-        df.to_csv(w)
-        w.close()
-
-    with reader_writer() as (reader, writer):
-        # write the dataframe to CSV in another thread
-        t = Thread(target=write_and_close, args=(df, writer))
-        t.start()
-        dataset = conn.create_dataset_from_io(
-            reader,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
-            description=description,
-            prefix_tree_delimiter=channel_name_delimiter,
-        )
-        t.join()
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
-    return dataset
+    client = _get_default_client()
+    return upload_dataframe(
+        client,
+        df,
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
+    )
 
 
+@typing_extensions.deprecated(
+    "`nominal.upload_polars` is deprecated and will be removed in a future version. "
+    "Use `nominal.thirdparty.pandas.upload_dataframe(df.to_pandas(), ...)` instead."
+)
 def upload_polars(
     df: pl.DataFrame,
     name: str,
@@ -173,39 +164,57 @@ def upload_polars(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    """Create a dataset in the Nominal platform from a polars.DataFrame.
+    """Create a dataset in the Nominal platform from a polars.DataFrame."""
+    from nominal.thirdparty.pandas import upload_dataframe
 
-    If `wait_until_complete=True` (the default), this function waits until the dataset has completed ingestion before
-        returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
-        `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
+    client = _get_default_client()
+    return upload_dataframe(
+        client,
+        df.to_pandas(),
+        name,
+        timestamp_column,
+        timestamp_type,
+        description,
+        channel_name_delimiter,
+        wait_until_complete=wait_until_complete,
+    )
+
+
+@typing_extensions.deprecated(
+    "nominal.create_dataset is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.create_dataset` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
+def create_dataset(
+    name: str,
+    description: str | None = None,
+    labels: Sequence[str] = (),
+    properties: Mapping[str, str] | None = None,
+    prefix_tree_delimiter: str | None = None,
+) -> Dataset:
+    """Create an empty dataset.
+
+    Args:
+        name: Name of the dataset to create in Nominal.
+        description: Human readable description of the dataset.
+        labels: Text labels to apply to the created dataset
+        properties: Key-value properties to apply to the cleated dataset
+        prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+
+    Returns:
+        Reference to the created dataset in Nominal.
     """
-    conn = get_default_client()
-
-    def write_and_close(df: pl.DataFrame, w: BinaryIO) -> None:
-        df.write_csv(w)
-        w.close()
-
-    with reader_writer() as (reader, writer):
-        # write the dataframe to CSV in another thread
-        t = Thread(target=write_and_close, args=(df, writer))
-        t.start()
-        dataset = conn.create_dataset_from_io(
-            reader,
-            name,
-            timestamp_column=timestamp_column,
-            timestamp_type=timestamp_type,
-            file_type=FileTypes.CSV,
-            description=description,
-            prefix_tree_delimiter=channel_name_delimiter,
-        )
-        t.join()
-    if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
-    return dataset
+    client = _get_default_client()
+    return client.create_dataset(
+        name, description=description, labels=labels, properties=properties, prefix_tree_delimiter=prefix_tree_delimiter
+    )
 
 
+@typing_extensions.deprecated(
+    "`nominal.upload_csv` is deprecated and will be removed in a future version. "
+    "Use `nominal.create_dataset` or `nominal.get_dataset`, add data to an existing dataset instead."
+)
 def upload_csv(
-    file: Path | str,
+    file: PathLike,
     name: str | None,
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
@@ -222,9 +231,9 @@ def upload_csv(
         returning. If you are uploading many datasets, set `wait_until_complete=False` instead and call
         `wait_until_ingestions_complete()` after uploading all datasets to allow for parallel ingestion.
     """
-    conn = get_default_client()
+    client = _get_default_client()
     return _upload_csv(
-        conn,
+        client,
         file,
         name,
         timestamp_column,
@@ -236,8 +245,8 @@ def upload_csv(
 
 
 def _upload_csv(
-    conn: NominalClient,
-    file: Path | str,
+    client: NominalClient,
+    file: PathLike,
     name: str | None,
     timestamp_column: str,
     timestamp_type: ts._AnyTimestampType,
@@ -246,25 +255,35 @@ def _upload_csv(
     *,
     wait_until_complete: bool = True,
 ) -> Dataset:
-    dataset = conn.create_csv_dataset(
-        file,
-        name,
-        timestamp_column=timestamp_column,
-        timestamp_type=timestamp_type,
+    dataset = client.create_dataset(
+        name if name else Path(file).name,
         description=description,
         prefix_tree_delimiter=channel_name_delimiter,
     )
+    dataset_file = dataset.add_tabular_data(
+        file,
+        timestamp_column=timestamp_column,
+        timestamp_type=timestamp_type,
+    )
     if wait_until_complete:
-        dataset.poll_until_ingestion_completed()
+        dataset_file.poll_until_ingestion_completed()
     return dataset
 
 
+@typing_extensions.deprecated(
+    "nominal.get_dataset is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_dataset` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_dataset(rid: str) -> Dataset:
     """Retrieve a dataset from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_dataset(rid)
+    client = _get_default_client()
+    return client.get_dataset(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.create_run is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.create_run` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def create_run(
     name: str,
     start: datetime | str | ts.IntegralNanosecondsUTC,
@@ -281,8 +300,8 @@ def create_run(
 
     To add a dataset to the run, use `run.add_dataset()`.
     """
-    conn = get_default_client()
-    return conn.create_run(
+    client = _get_default_client()
+    return client.create_run(
         name,
         start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
         end=None if end is None else ts._SecondsNanos.from_flexible(end).to_nanoseconds(),
@@ -293,8 +312,13 @@ def create_run(
     )
 
 
+@typing_extensions.deprecated(
+    "nominal.create_run_csv is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.create_dataset` and `nominal.NominalClient.create_run` instead, "
+    f"see {AUTHENTICATION_DOCS_LINK}"
+)
 def create_run_csv(
-    file: Path | str,
+    file: PathLike,
     name: str,
     timestamp_column: str,
     timestamp_type: ts._LiteralAbsolute | ts.Iso8601 | ts.Epoch,
@@ -302,127 +326,134 @@ def create_run_csv(
 ) -> Run:
     """Create a dataset from a CSV file, and create a run based on it.
 
-    This is a convenience function that combines `upload_csv()` and `create_run()` and can only be used with absolute
-    timestamps. For relative timestamps or custom formats, use `upload_dataset()` and `create_run()` separately.
-
-    The name and description are added to the run. The dataset is created with the name "Dataset for Run: {name}".
-    The reference name for the dataset in the run is "dataset".
-
-    The run start and end times are created from the minimum and maximum timestamps in the CSV file in the timestamp
-    column.
+    This is a convenience function that combines `upload_csv()` and `create_run()`.
     """
-    ts_type = ts._to_typed_timestamp_type(timestamp_type)
-    if not isinstance(ts_type, (ts.Iso8601, ts.Epoch)):
-        raise ValueError(
-            "`create_run_csv()` only supports iso8601 or epoch timestamps: use "
-            "`upload_dataset()` and `create_run()` instead"
-        )
-    start, end = _get_start_end_timestamp_csv_file(file, timestamp_column, ts_type)
-    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, ts_type)
-    run = create_run(name, start=start, end=end, description=description)
+    dataset = upload_csv(file, f"Dataset for Run: {name}", timestamp_column, timestamp_type)
+    dataset.refresh()
+    assert dataset.bounds is not None
+    run = create_run(name, start=dataset.bounds.start, end=dataset.bounds.end, description=description)
     run.add_dataset("dataset", dataset)
     return run
 
 
+@typing_extensions.deprecated(
+    "nominal.get_run is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_run` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_run(rid: str) -> Run:
     """Retrieve a run from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_run(rid)
+    client = _get_default_client()
+    return client.get_run(rid)
 
 
-@deprecate_keyword_argument("name_substring", "exact_name")
+@typing_extensions.deprecated(
+    "nominal.search_runs is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.search_runs` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def search_runs(
     *,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
-    label: str | None = None,
     labels: Sequence[str] | None = None,
-    property: tuple[str, str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> Sequence[Run]:
     """Search for runs meeting the specified filters.
-    Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
+    Filters are ANDed together, e.g. `(labels in run.labels) AND (run.end <= end)`
 
     Args:
         start: Inclusive start time for filtering runs.
         end: Inclusive end time for filtering runs.
         name_substring: Searches for a (case-insensitive) substring in the name
-        label: Deprecated, use labels instead.
         labels: A sequence of labels that must ALL be present on a run to be included.
-        property: Deprecated, use properties instead.
         properties: A mapping of key-value pairs that must ALL be present on a run to be included.
 
     Returns:
         All runs which match all of the provided conditions
     """
-    conn = get_default_client()
-    return conn.search_runs(
-        start=start,
-        end=end,
-        name_substring=name_substring,
-        label=label,
-        labels=labels,
-        property=property,
-        properties=properties,
-    )
+    client = _get_default_client()
+    return client.search_runs(start=start, end=end, name_substring=name_substring, labels=labels, properties=properties)
 
 
+@typing_extensions.deprecated(
+    "nominal.upload_attachment is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.create_attachment` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def upload_attachment(
-    file: Path | str,
+    file: PathLike,
     name: str,
     description: str | None = None,
 ) -> Attachment:
     """Upload an attachment to the Nominal platform."""
     path = Path(file)
-    conn = get_default_client()
+    client = _get_default_client()
     file_type = FileType.from_path(path)
     with open(path, "rb") as f:
-        return conn.create_attachment_from_io(f, name, file_type, description)
+        return client.create_attachment_from_io(f, name, file_type, description)
 
 
+@typing_extensions.deprecated(
+    "nominal.get_attachment is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_attachment` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_attachment(rid: str) -> Attachment:
     """Retrieve an attachment from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_attachment(rid)
+    client = _get_default_client()
+    return client.get_attachment(rid)
 
 
-def get_log_set(rid: str) -> LogSet:
-    """Retrieve a log set from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_log_set(rid)
-
-
-def download_attachment(rid: str, file: Path | str) -> None:
+@typing_extensions.deprecated(
+    "nominal.download_attachment is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_attachment` and `nominal.core.Attachment.write` instead, "
+    f"see {AUTHENTICATION_DOCS_LINK}"
+)
+def download_attachment(rid: str, file: PathLike) -> None:
     """Retrieve an attachment from the Nominal platform and save it to `file`."""
-    conn = get_default_client()
-    attachment = conn.get_attachment(rid)
+    client = _get_default_client()
+    attachment = client.get_attachment(rid)
     attachment.write(Path(file))
 
 
+@typing_extensions.deprecated(
+    "nominal.upload_video is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.create_video` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def upload_video(
-    file: Path | str, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
+    file: PathLike, name: str, start: datetime | str | ts.IntegralNanosecondsUTC, description: str | None = None
 ) -> Video:
     """Upload a video to Nominal from a file."""
-    conn = get_default_client()
+    client = _get_default_client()
     path = Path(file)
     file_type = FileType.from_path(path)
+    video = client.create_empty_video(
+        name=name,
+        description=description,
+    )
     with open(file, "rb") as f:
-        return conn.create_video_from_io(
+        video.add_from_io(
             f,
             name,
             start=ts._SecondsNanos.from_flexible(start).to_nanoseconds(),
             description=description,
             file_type=file_type,
         )
+    return video
 
 
+@typing_extensions.deprecated(
+    "nominal.get_video is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_video` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_video(rid: str) -> Video:
     """Retrieve a video from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_video(rid)
+    client = _get_default_client()
+    return client.get_video(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.create_asset is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.create_asset` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def create_asset(
     name: str,
     description: str | None = None,
@@ -431,24 +462,28 @@ def create_asset(
     labels: Sequence[str] = (),
 ) -> Asset:
     """Create an asset."""
-    conn = get_default_client()
-    return conn.create_asset(name, description, properties=properties, labels=labels)
+    client = _get_default_client()
+    return client.create_asset(name, description, properties=properties, labels=labels)
 
 
+@typing_extensions.deprecated(
+    "nominal.get_asset is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_asset` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_asset(rid: str) -> Asset:
     """Retrieve an asset by its RID."""
-    conn = get_default_client()
-    return conn.get_asset(rid)
+    client = _get_default_client()
+    return client.get_asset(rid)
 
 
-@deprecate_keyword_argument("properties", "property")
-@deprecate_keyword_argument("labels", "label")
+@typing_extensions.deprecated(
+    "nominal.search_assets is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.search_assets` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def search_assets(
     *,
     search_text: str | None = None,
-    label: str | None = None,
     labels: Sequence[str] | None = None,
-    property: tuple[str, str] | None = None,
     properties: Mapping[str, str] | None = None,
 ) -> Sequence[Asset]:
     """Search for assets meeting the specified filters.
@@ -456,34 +491,35 @@ def search_assets(
 
     Args:
         search_text: case-insensitive search for any of the keywords in all string fields
-        label: Deprecated, use labels instead.
         labels: A sequence of labels that must ALL be present on a asset to be included.
-        property: Deprecated, use properties instead.
         properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
 
     Returns:
         All assets which match all of the provided conditions
     """
-    conn = get_default_client()
-    return conn.search_assets(
-        search_text=search_text,
-        label=label,
-        property=property,
-        labels=labels,
-        properties=properties,
-    )
+    client = _get_default_client()
+    return client.search_assets(search_text=search_text, labels=labels, properties=properties)
 
 
+@typing_extensions.deprecated(
+    "nominal.list_streaming_checklists is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.list_streaming_checklists` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def list_streaming_checklists(asset: Asset | str | None = None) -> Iterable[str]:
     """List all Streaming Checklists.
 
     Args:
         asset: if provided, only return checklists associated with the given asset.
     """
-    conn = get_default_client()
-    return conn.list_streaming_checklists(asset)
+    client = _get_default_client()
+    return client.list_streaming_checklists(asset)
 
 
+@typing_extensions.deprecated(
+    "nominal.wait_until_ingestions_complete is deprecated and will be removed in a future version. "
+    "Use `nominal.NominalClient.get_dataset` and `nominal.core.Dataset.poll_until_ingestion_complete` "
+    f"instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     """Wait until all datasets have completed ingestion.
 
@@ -493,49 +529,21 @@ def wait_until_ingestions_complete(datasets: list[Dataset]) -> None:
     poll_until_ingestion_completed(datasets)
 
 
-def _get_start_end_timestamp_csv_file(
-    file: Path | str,
-    timestamp_column: str,
-    timestamp_type: ts.Iso8601 | ts.Epoch,
-) -> tuple[ts.IntegralNanosecondsUTC, ts.IntegralNanosecondsUTC]:
-    import pandas as pd
-
-    df = pd.read_csv(file)
-    ts_col = df[timestamp_column]
-
-    if isinstance(timestamp_type, ts.Iso8601):
-        ts_col = pd.to_datetime(ts_col)
-    elif isinstance(timestamp_type, ts.Epoch):
-        pd_units: dict[ts._LiteralTimeUnit, str] = {
-            "hours": "s",  # hours are not supported by pandas
-            "minutes": "s",  # minutes are not supported by pandas
-            "seconds": "s",
-            "milliseconds": "ms",
-            "microseconds": "us",
-            "nanoseconds": "ns",
-        }
-        if timestamp_type.unit == "hours":
-            ts_col *= 60 * 60
-        elif timestamp_type.unit == "minutes":
-            ts_col *= 60
-        ts_col = pd.to_datetime(ts_col, unit=pd_units[timestamp_type.unit])
-    else:
-        raise ValueError(f"unhandled timestamp type {timestamp_type}")
-
-    start, end = ts_col.min(), ts_col.max()
-    return (
-        ts.IntegralNanosecondsUTC(start.to_datetime64().astype(int)),
-        ts.IntegralNanosecondsUTC(end.to_datetime64().astype(int)),
-    )
-
-
+@typing_extensions.deprecated(
+    "nominal.get_checklist is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_checklist` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_checklist(checklist_rid: str) -> Checklist:
-    conn = get_default_client()
-    return conn.get_checklist(checklist_rid)
+    client = _get_default_client()
+    return client.get_checklist(checklist_rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.upload_mcap_video is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.create_mcap_video` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def upload_mcap_video(
-    file: Path | str,
+    file: PathLike,
     topic: str,
     name: str | None = None,
     description: str | None = None,
@@ -550,7 +558,7 @@ def upload_mcap_video(
         returning. If you are uploading many videos, set `wait_until_complete=False` instead and call
         `wait_until_ingestion_complete()` after uploading all videos to allow for parallel ingestion.
     """
-    conn = get_default_client()
+    client = _get_default_client()
 
     path = Path(file)
     file_type = FileType.from_path(path)
@@ -558,7 +566,7 @@ def upload_mcap_video(
         name = path.name
 
     with open(file, "rb") as f:
-        video = conn.create_video_from_mcap_io(
+        video = client.create_video_from_mcap_io(
             f,
             topic,
             name,
@@ -570,6 +578,10 @@ def upload_mcap_video(
     return video
 
 
+@typing_extensions.deprecated(
+    "nominal.create_streaming_connection is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.create_streaming_connection` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def create_streaming_connection(
     datasource_id: str,
     connection_name: str,
@@ -581,18 +593,26 @@ def create_streaming_connection(
 
     datasource_id: A human readable identifier. Must be unique within an organization.
     """
-    conn = get_default_client()
-    return conn.create_streaming_connection(
+    client = _get_default_client()
+    return client.create_streaming_connection(
         datasource_id, connection_name, datasource_description, required_tag_names=required_tag_names
     )
 
 
+@typing_extensions.deprecated(
+    "nominal.get_connection is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_connection` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_connection(rid: str) -> Connection:
     """Retrieve a connection from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_connection(rid)
+    client = _get_default_client()
+    return client.get_connection(rid)
 
 
+@typing_extensions.deprecated(
+    "nominal.create_workbook_from_template is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.create_workbook_from_template` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def create_workbook_from_template(
     template_rid: str, run_rid: str, *, title: str | None = None, description: str | None = None, is_draft: bool = False
 ) -> Workbook:
@@ -600,25 +620,15 @@ def create_workbook_from_template(
     template_rid: The template to use for the workbook.
     run_rid: The run to associate the workbook with.
     """
-    conn = get_default_client()
-    return conn.create_workbook_from_template(template_rid, run_rid, title, description, is_draft)
+    client = _get_default_client()
+    template = client.get_workbook_template(template_rid)
+    return template.create_workbook(title=title, description=description, run=run_rid)
 
 
-def create_log_set(
-    name: str,
-    logs: Iterable[Log] | Iterable[tuple[datetime | ts.IntegralNanosecondsUTC, str]],
-    timestamp_type: ts.LogTimestampType = "absolute",
-    description: str | None = None,
-) -> LogSet:
-    """Create an immutable log set with the given logs.
-
-    The logs are attached during creation and cannot be modified afterwards. Logs can either be of type `Log`
-    or a tuple of a timestamp and a string. Timestamp type must be either 'absolute' or 'relative'.
-    """
-    conn = get_default_client()
-    return conn.create_log_set(name, logs, timestamp_type, description)
-
-
+@typing_extensions.deprecated(
+    "nominal.data_review_builder is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.data_review_builder` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def data_review_builder() -> DataReviewBuilder:
     """Create a batch of data reviews to be initiated together.
 
@@ -635,11 +645,15 @@ def data_review_builder() -> DataReviewBuilder:
         print(review.get_violations())
     ```
     """
-    conn = get_default_client()
-    return conn.data_review_builder()
+    client = _get_default_client()
+    return client.data_review_builder()
 
 
+@typing_extensions.deprecated(
+    "nominal.get_data_review is deprecated and will be removed in a future version. "
+    f"Use `nominal.NominalClient.get_data_review` instead, see {AUTHENTICATION_DOCS_LINK}"
+)
 def get_data_review(rid: str) -> DataReview:
     """Retrieve a data review from the Nominal platform by its RID."""
-    conn = get_default_client()
-    return conn.get_data_review(rid)
+    client = _get_default_client()
+    return client.get_data_review(rid)

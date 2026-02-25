@@ -7,13 +7,13 @@ import pdb  # noqa: T100
 import typing
 
 import click
-import typing_extensions
 
-from nominal._config import _DEFAULT_NOMINAL_CONFIG_PATH, get_token
-from nominal.cli.util.click_log_handler import install_log_handler
 from nominal.core.client import NominalClient
+from nominal.experimental.logging import install_click_log_handler
 
-Param = typing_extensions.ParamSpec("Param")
+logger = logging.getLogger(__name__)
+
+Param = typing.ParamSpec("Param")
 T = typing.TypeVar("T")
 
 
@@ -39,7 +39,10 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
     color_option = click.option("--no-color", is_flag=True, help="If provided, don't color terminal log output")
 
     @functools.wraps(func)
-    def wrapped_function(*args: Param.args, verbose: int, no_color: bool, **kwargs: Param.kwargs) -> T:
+    def wrapped_function(*args: Param.args, **kwargs: Param.kwargs) -> T:
+        verbose: int = kwargs.pop("verbose")  # type: ignore[assignment]
+        no_color: bool = kwargs.pop("no_color")  # type: ignore[assignment]
+
         log_level = logging.NOTSET
         if verbose == 0:
             log_level = logging.WARNING
@@ -48,7 +51,15 @@ def verbosity_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]
         elif verbose >= 2:
             log_level = logging.DEBUG
 
-        install_log_handler(level=log_level, no_color=no_color)
+        # Store parameters for later use
+        ctx = click.get_current_context()
+        if ctx.obj is None:
+            ctx.obj = {}
+
+        ctx.obj["log_level"] = log_level
+        ctx.obj["no_color"] = no_color
+
+        install_click_log_handler(level=log_level, no_color=no_color)
         return func(*args, **kwargs)
 
     return color_option(verbosity_option(wrapped_function))
@@ -69,7 +80,8 @@ def debug_switch(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     )
 
     @functools.wraps(func)
-    def wrapped_function(*args: Param.args, debug: bool, **kwargs: Param.kwargs) -> T:
+    def wrapped_function(*args: Param.args, **kwargs: Param.kwargs) -> T:
+        debug: bool = kwargs.pop("debug", False)  # type: ignore[assignment]
         try:
             return func(*args, **kwargs)
         except Exception as e:
@@ -90,40 +102,28 @@ def global_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
 
 def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     """Decorator to add click options to a click command for dynamically creating and injecting an instance of the
-    NominalClient into commands based on user-provided flags containing the base API url and a path to a configuration
-    file containing an API Access Key.
+    NominalClient into commands based on user-provided flags to configure its creation.
 
-    This will add two options, --base-url and --token, which perform the two aforementioned configurations before
-    spawning a NominalClient.
+    This will add an option --profile which perform the aforementioned configurations before spawning a NominalClient.
 
     NOTE: any click command utilizing this decorator MUST accept a key-value argument pair named client of type
         NominalClient.
     """
-    url_option = click.option(
-        "--base-url",
-        default="https://api.gov.nominal.io/api",
-        show_default=True,
-        help="Base URL of the Nominal API to hit. Useful for hitting other clusters, e.g., staging for internal users.",
-    )
-    token_path_option = click.option(
-        "--token-path",
-        default=_DEFAULT_NOMINAL_CONFIG_PATH,
-        type=click.Path(dir_okay=False, resolve_path=True, path_type=pathlib.Path),
-        show_default=True,
-        help="Path to the yaml file containing the Nominal access token for authenticating with the API",
-    )
-    token_option = click.option(
-        "--token",
+    profile_option = click.option(
+        "--profile",
+        required=True,
         help=(
-            "API Access token to use when creating the nominal client. "
-            "If provided, takes precedence over --token-path and --base-url"
+            "If provided, use the given named config profile for instantiating a Nominal Client. "
+            "This is the preferred mechanism for instantiating a client today-- see `nom config profile add` "
+            "to create a configuration profile. If provided, takes precedence over --token, --token-path, and "
+            "--base-url."
         ),
     )
     trust_store_option = click.option(
         "--trust-store-path",
         type=click.Path(dir_okay=False, exists=True, resolve_path=True, path_type=pathlib.Path),
         help=(
-            "Path to a trust store CA root file to initiate SSL connections."
+            "Path to a trust store CA root file to initiate SSL connections. "
             "If not provided, defaults to certifi's trust store."
         ),
     )
@@ -131,26 +131,16 @@ def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     @functools.wraps(func)
     def wrapped_function(
         *args: Param.args,
-        base_url: str,
-        token: str | None,
-        token_path: pathlib.Path,
-        trust_store_path: pathlib.Path | None,
         **kwargs: Param.kwargs,
     ) -> T:
-        if token is None:
-            if token_path.exists():
-                token = get_token(base_url, token_path)
-            else:
-                raise ValueError(
-                    f"Cannot instantiate client: no token provided and token path {token_path} does not exist."
-                )
+        profile: str = kwargs.pop("profile")  # type: ignore[assignment]
+        trust_store_path: pathlib.Path | None = kwargs.pop("trust_store_path")  # type: ignore[assignment]
 
-        client = NominalClient.create(
-            base_url,
-            token=token,
-            trust_store_path=str(trust_store_path) if trust_store_path else None,
-        )
+        trust_store_str = str(trust_store_path) if trust_store_path else None
+
+        logger.info("Instantiating client from profile '%s'", profile)
+        client = NominalClient.from_profile(profile, trust_store_path=trust_store_str)
         kwargs["client"] = client
         return func(*args, **kwargs)
 
-    return trust_store_option(url_option(token_path_option(token_option(wrapped_function))))
+    return profile_option(trust_store_option(wrapped_function))

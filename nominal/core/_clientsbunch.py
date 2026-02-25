@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
-from functools import partial
 from typing import Protocol
 
-from conjure_python_client import RequestsClient, Service, ServiceConfiguration
+from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
-    datasource_logset,
+    event,
     ingest_api,
     scout,
     scout_assets,
@@ -22,14 +22,17 @@ from nominal_api import (
     scout_datasource,
     scout_datasource_connection,
     scout_video,
+    secrets_api,
+    security_api_workspace,
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
-    timeseries_logicalseries,
+    timeseries_metadata,
     upload_api,
 )
 from typing_extensions import Self
 
+from nominal.core._utils.networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -144,6 +147,8 @@ class ProtoWriteService(Service):
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
+    workspace_rid: str | None
+    app_base_url: str
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
@@ -154,8 +159,6 @@ class ClientsBunch:
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
-    logical_series: timeseries_logicalseries.LogicalSeriesService
-    logset: datasource_logset.LogSetService
     run: scout.RunService
     units: scout.UnitsService
     upload: upload_api.UploadService
@@ -169,14 +172,24 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
+    event: event.EventService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
+    series_metadata: timeseries_metadata.SeriesMetadataService
+    workspace: security_api_workspace.WorkspaceService
+    containerized_extractors: ingest_api.ContainerizedExtractorService
+    secrets: secrets_api.SecretService
 
     @classmethod
-    def from_config(cls, cfg: ServiceConfiguration, agent: str, token: str) -> Self:
-        client_factory = partial(RequestsClient.create, user_agent=agent, service_config=cfg)
+    def from_config(
+        cls, cfg: ServiceConfiguration, base_url: str, agent: str, token: str, workspace_rid: str | None
+    ) -> Self:
+        app_base_url = api_base_url_to_app_base_url(base_url)
+        client_factory = create_conjure_client_factory(user_agent=agent, service_config=cfg)
 
         return cls(
             auth_header=f"Bearer {token}",
+            workspace_rid=workspace_rid,
+            app_base_url=app_base_url,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
@@ -186,8 +199,6 @@ class ClientsBunch:
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
-            logical_series=client_factory(timeseries_logicalseries.LogicalSeriesService),
-            logset=client_factory(datasource_logset.LogSetService),
             run=client_factory(scout.RunService),
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
@@ -201,10 +212,38 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
+            event=client_factory(event.EventService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
+            series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
+            workspace=client_factory(security_api_workspace.WorkspaceService),
+            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
+            secrets=client_factory(secrets_api.SecretService),
         )
 
 
-class HasAuthHeader(Protocol):
+class HasScoutParams(Protocol):
     @property
     def auth_header(self) -> str: ...
+    @property
+    def workspace_rid(self) -> str | None: ...
+    @property
+    def app_base_url(self) -> str: ...
+
+
+def api_base_url_to_app_base_url(api_base_url: str, fallback: str = "") -> str:
+    """Convert from API base URL to APP base URL.
+
+    Rules:
+    - https://api$ANYTHING/api -> https://app$ANYTHING
+    - https://api$ANYTHING -> https://app$ANYTHING (this is mainly for local dev @ api.nominal.test)
+
+    Examples:
+    - https://api.gov.nominal.io/api -> https://app.gov.nominal.io
+    - https://api-staging.gov.nominal.io/api -> https://app-staging.gov.nominal.io
+    - https://api.nominal.test -> https://app.nominal.test
+    """
+    api_base_url = api_base_url.rstrip("/")
+    match = re.match(r"^(https?://)api([^/]*)(/api)?", api_base_url)
+    if match:
+        return f"{match.group(1)}app{match.group(2)}"
+    return fallback

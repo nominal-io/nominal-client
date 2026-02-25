@@ -5,10 +5,9 @@ from uuid import uuid4
 
 import pandas as pd
 import polars as pl
-import pytest
 
 import nominal as nm
-from nominal import _utils
+from nominal._utils import reader_writer
 from tests.e2e import _create_random_start_end
 
 
@@ -195,21 +194,6 @@ def test_search_runs_substring():
     assert run2.name == run.name == name
 
 
-def test_search_runs_substring_deprecated():
-    name = f"run-{uuid4()}"
-    desc = f"top-level test to search for a run by name {uuid4()}"
-    start, end = _create_random_start_end()
-    run = nm.create_run(name, start, end, desc)
-
-    with pytest.warns(UserWarning):
-        runs = nm.search_runs(exact_name=name[4:])
-    assert len(runs) == 1
-    run2 = runs[0]
-
-    assert run2.rid == run.rid != ""
-    assert run2.name == run.name == name
-
-
 def test_upload_attachment(csv_data):
     at_title = f"attachment-{uuid4()}"
     at_desc = f"top-level test to upload an attachment {uuid4()}"
@@ -246,10 +230,12 @@ def test_download_attachment(csv_data):
     with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
         at = nm.upload_attachment("fake_path.csv", at_title, at_desc)
 
-    with _utils.reader_writer() as (r, w):
-        with mock.patch("builtins.open", return_value=w):
-            nm.download_attachment(at.rid, "fake_path.csv")
-            assert r.read() == csv_data
+    with (
+        reader_writer() as (r, w),
+        mock.patch("builtins.open", return_value=w),
+    ):
+        nm.download_attachment(at.rid, "fake_path.csv")
+        assert r.read() == csv_data
 
 
 def test_upload_video(mp4_data):

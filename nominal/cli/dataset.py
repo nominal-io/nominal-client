@@ -65,18 +65,20 @@ def upload_csv(
     """Upload a local CSV file to Nominal, create and ingest the data into a dataset, and print the details of
     the newly created dataset to the user.
     """
-    dataset = client.create_csv_dataset(
-        file,
-        name,
-        timestamp_column=timestamp_column,
-        timestamp_type=timestamp_type,
+    dataset = client.create_dataset(
+        name=name,
         description=description,
         prefix_tree_delimiter=channel_name_delimiter,
+    )
+    dataset_file = dataset.add_tabular_data(
+        file,
+        timestamp_column=timestamp_column,
+        timestamp_type=timestamp_type,
     )
 
     # block until ingestion completed, if requested
     if wait:
-        dataset.poll_until_ingestion_completed()
+        dataset_file.poll_until_ingestion_completed()
 
     click.echo(dataset)
 

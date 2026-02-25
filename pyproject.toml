@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.40.0"
+version = "1.113.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -15,19 +15,24 @@ readme = "README.md"
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
-requires-python = ">=3.9,<4"
+requires-python = ">=3.10,<4"
 dependencies = [
+    "cachetools>=6.1.0",
     "click>=8,<9",
-    "conjure-python-client>=2.8.0,<3",
-    "nominal-api==0.584.3",
-    "nptdms>=1.9.0,<2",
+    "conjure-python-client>=3.1.0,<4",
+    "ffmpeg-python>=0.2.0",
+    "nominal-api==0.1079.0",
+    "rich>=14.1.0",
     "tabulate>=0.9.0,<0.10",
+    "truststore>=0.10.4",
+    "types-cachetools>=6.0.0.20250525",
     "typing-extensions>=4,<5",
     # Any version is okay for these dependencies
     "pandas>=0.0.0",
@@ -35,6 +40,17 @@ dependencies = [
     "python-dateutil>=0.0.0",
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
+    "openpyxl>=0.0.0",
+    # nominal-streaming wheels exist for:
+    # - Windows x86_64 (AMD64)
+    # - macOS arm64
+    # - Linux x86_64, arm64, and armv7l
+    # To be conservative and prevent installation of the rest of the package on exotic architectures, we explicitly
+    # list only the exact platforms supported
+    # TODO(drake): support more architectures and clean up dependency markers.
+    "nominal-streaming==0.7.12; platform_python_implementation=='CPython' and python_version>='3.10' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='armv7l' or platform_machine=='aarch64' or platform_machine=='arm64')))",
+    # Explicitly specifying urllib3 version to handle CVE present in earlier versions
+    "urllib3==2.6.3",
 ]
 
 
@@ -49,38 +65,37 @@ default-groups = ["dev"]
 [dependency-groups]
 dev = [
     "black>=24.8.0,<25",
-    "jupyter>=1.1.1,<2",
-    "jupyterlab>=4.2.5,<5",
+    "coverage[toml]>=7.0.0",
+    "ipykernel>=6.30.0",
+    "mkdocs-click>=0.9.0",
     "mkdocs-material>=9.5.34,<10",
     "mkdocs>=1.6.1,<2",
-    "mkdocstrings-python>=1.11.1,<2",
-    "mkdocstrings>=0.26.1,<0.27",
-    "mypy>=1.11.2,<2",
+    "mkdocstrings-python>=1.16.10,<2",
+    "mkdocstrings>=0.29.1,<1",
+    "mypy>=1.18.2,<2",
+    "nominal-api-protos>=0.1090.0",
     "pandas-stubs~=2.0",
     "pytest-cov>=5.0.0,<6",
     "pytest>=8.3.2,<9",
-    "types-tabulate>=0.9.0.20240106,<0.10",
-    "ruff>=0.4.2,<0.5",
+    "ruff==0.12.1",
+    "types-protobuf>=4.24.0.20240311,<5",
+    "types-python-dateutil>=2.9.0.20250822",
     "types-pyyaml>=6.0.12.20240808,<7",
     "types-requests>=2.32.0.20240712,<3",
-    "types-protobuf>=4.24.0.20240311,<5",
-    "mkdocs-click",                         # Sourced separately from github fork
+    "types-tabulate>=0.9.0.20240106,<0.10",
     "types-tabulate>=0.9.0.20241207,<0.10",
-    "nominal-api-protos>=0.549.0",
 ]
 
 [tool.uv.sources]
-mkdocs-click = { git = "https://github.com/alkasm/mkdocs-click", branch = "alkasm/keep-context-settings" }
 nominal = { workspace = true }
 
-
 [project.optional-dependencies]
-hdf5 = ["h5py>=3.0", "tables>=3.7"]
-protos = ["nominal-api-protos>=0.549.0"]
-video = ["ffmpeg-python>=0.2.0"]
+protos = ["nominal-api-protos>=0.1090.0"]
+tdms = ["nptdms>=1.9.0,<2"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
+nominal = 'nominal.cli:nom'
 
 [build-system]
 requires = ["hatchling"]
@@ -98,9 +113,6 @@ include = ["nominal/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.ruff.lint.pylint]
-max-args = 10
 
 [tool.ruff.lint]
 # See rules and codes: https://docs.astral.sh/ruff/rules/
@@ -120,21 +132,26 @@ extend-select = [
     "D417", # no missing arguments
 ]
 ignore = [
-    "FIX002",  # Ignore TODOs
+    "D100",    # missing-module-docstring
+    "D101",    # missing-public-class-docstring
+    "D102",    # missing-public-method-docstring
+    "D103",    # missing-class-docstring
+    "D104",    # missing-package-docstring
     "D203",    # one-blank-line-before-class
     "D205",    # 1 blank line between summary and description
     "D213",    # multiline-summary-docs
-    "D103",    # missing-class-docstring
-    "D102",    # missing-public-method-docstring
-    "D101",    # missing-public-class-docstring
-    "D100",    # missing-module-docstring
-    "D104",    # missing-package-docstring
     "D400",    # doc line ends in period
-    "D415",    # doc line ends in punctuation
     "D401",    # imperative mood
-    "PLW0603", # globals
+    "D415",    # doc line ends in punctuation
+    "FIX002",  # Ignore TODOs
+    "PLC0415", # import should be at top-level of a file  
+    "PLR0913", # too many arguments
     "PLR2004", # magic values
+    "PLW0603", # globals
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"nominal/core/dataset.py" = ["E501"]  # allow long lines for avro schema in docstring
 
 [tool.mypy]
 strict = true
@@ -154,15 +171,21 @@ ignore_missing_imports = true
 module = "ffmpeg"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "tests.*"
+disable_error_code = ["no-untyped-def"]
+
 [tool.pytest.ini_options]
 filterwarnings = [
     "error", # transform all warnings into errors, except ignore: ones.
-    # DeprecationWarning: The 'strict' parameter is no longer needed on Python 3+. This will raise an error in urllib3 v2.1.0.
-    # from conjure-python-client, in conjure_python_client/_http/requests_client.py,
-    # TransportAdapter.init_poolmanager() uses urllib3.poolmanager.PoolManager(..., strict=True) which is deprecated.
-    "ignore:The 'strict' parameter is no longer needed on Python 3+.",
 ]
 testpaths = ["tests"]
 # make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
 addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"
+
+[tool.coverage.run]
+omit = ["tests/*", "*__init__*", "nominal/__main__.py"]
+
+[tool.pyright]
+typeCheckingMode = "off"

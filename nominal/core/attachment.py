@@ -9,22 +9,29 @@ from typing import BinaryIO, Iterable, Mapping, Protocol, Sequence, cast
 from nominal_api import attachments_api
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import HasRid, update_dataclass
+from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._types import PathLike
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
 @dataclass(frozen=True)
-class Attachment(HasRid):
+class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
     rid: str
     name: str
     description: str
     properties: Mapping[str, str]
     labels: Sequence[str]
+    created_at: IntegralNanosecondsUTC
+
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def attachment(self) -> attachments_api.AttachmentService: ...
+
+    def _get_latest_api(self) -> attachments_api.Attachment:
+        return self._clients.attachment.get(self._clients.auth_header, self.rid)
 
     def update(
         self,
@@ -51,10 +58,8 @@ class Attachment(HasRid):
             properties=None if properties is None else dict(properties),
             title=name,
         )
-        response = self._clients.attachment.update(self._clients.auth_header, request, self.rid)
-        attachment = self.__class__._from_conjure(self._clients, response)
-        update_dataclass(self, attachment, fields=self.__dataclass_fields__)
-        return self
+        updated_attachment = self._clients.attachment.update(self._clients.auth_header, request, self.rid)
+        return self._refresh_from_api(updated_attachment)
 
     def get_contents(self) -> BinaryIO:
         """Retrieve the contents of this attachment.
@@ -65,11 +70,12 @@ class Attachment(HasRid):
         # this acts like a file-like object in binary-mode.
         return cast(BinaryIO, response)
 
-    def write(self, path: Path, mkdir: bool = True) -> None:
+    def write(self, path: PathLike, mkdir: bool = True) -> None:
         """Write an attachment to the filesystem.
 
         `path` should be the path you want to save to, i.e. a file, not a directory.
         """
+        path = Path(path)
         if mkdir:
             path.parent.mkdir(exist_ok=True, parents=True)
         with open(path, "wb") as wf:
@@ -93,6 +99,7 @@ class Attachment(HasRid):
             description=attachment.description,
             properties=MappingProxyType(attachment.properties),
             labels=tuple(attachment.labels),
+            created_at=_SecondsNanos.from_flexible(attachment.created_at).to_nanoseconds(),
             _clients=clients,
         )
 

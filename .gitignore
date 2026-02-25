@@ -140,7 +140,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+docs/site
 
 # mypy
 .mypy_cache/
@@ -166,3 +166,15 @@ cython_debug/
 playground/
 
 .vscode
+
+# Backup files
+*~
+\#*
+
+# Don't check in local uv.toml settings
+uv.toml
+
+# Don't check in data
+*.csv
+*.parquet
+*migration_utils_output_*.txt

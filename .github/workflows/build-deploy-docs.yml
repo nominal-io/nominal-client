@@ -3,7 +3,7 @@ name: Build and deploy mkdocs site to Pages
 on:
   push:
     branches: ["main"]
-  
+
   pull_request:
     branches: ["main"]
 
@@ -20,19 +20,19 @@ jobs:
   # Build job
   build:
     name: Build github pages
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
-          version: "0.4.x"
-          enable-cache: true
+          version: "0.8.x"
+          enable-cache: false
           cache-dependency-glob: "uv.lock"
           python-version: "3.12"
       - name: Install just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v3
       - name: Install dependencies
         run: |
           just install
@@ -45,7 +45,7 @@ jobs:
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: ./docs/site
 
   # Deployment job
   deploy:
@@ -55,10 +55,9 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-small
     needs: build
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-

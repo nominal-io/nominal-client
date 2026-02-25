@@ -1,49 +1,343 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from typing import Protocol
+from enum import Enum
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
-from nominal_api import scout, scout_notebook_api
-from typing_extensions import Self
+from nominal_api import scout, scout_notebook_api, scout_workbookcommon_api
+from typing_extensions import Self, deprecated
 
-from nominal.core._clientsbunch import HasAuthHeader
-from nominal.core._utils import HasRid
+from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin
+from nominal.core._utils.pagination_tools import search_workbooks_paginated
+from nominal.core._utils.query_tools import create_search_workbooks_query
+from nominal.core.exceptions import NominalMethodRemovedError
+
+logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from nominal.core.workbook_template import WorkbookTemplate
+
+
+class WorkbookType(Enum):
+    WORKBOOK = "WORKBOOK"
+    COMPARISON_WORKBOOK = "COMPARISON_WORKBOOK"
+
+    @classmethod
+    def _from_conjure(cls, workbook_type: scout_notebook_api.NotebookType) -> WorkbookType:
+        if workbook_type.value == "WORKBOOK":
+            return cls.WORKBOOK
+        elif workbook_type.value == "COMPARISON_WORKBOOK":
+            return cls.COMPARISON_WORKBOOK
+        else:
+            raise ValueError(f"Unknown workbook type: {workbook_type}")
+
+    def _to_conjure(self) -> scout_notebook_api.NotebookType:
+        return {
+            "WORKBOOK": scout_notebook_api.NotebookType.WORKBOOK,
+            "COMPARISON_WORKBOOK": scout_notebook_api.NotebookType.COMPARISON_WORKBOOK,
+        }[self.value]
 
 
 @dataclass(frozen=True)
-class Workbook(HasRid):
+class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
     rid: str
     title: str
     description: str
-    run_rid: str | None
+    workbook_type: WorkbookType
+
+    run_rids: Sequence[str] | None
+    """Mutually exclusive with `asset_rids`.
+
+    May be empty when a workbook is a fresh comparison workbook.
+    """
+
+    asset_rids: Sequence[str] | None
+    """Mutually exclusive with `run_rids`.
+
+    May be empty when a workbook is a fresh comparison workbook.
+    """
+
     _clients: _Clients = field(repr=False)
 
-    class _Clients(HasAuthHeader, Protocol):
+    class _Clients(HasScoutParams, Protocol):
         @property
         def notebook(self) -> scout.NotebookService: ...
+        @property
+        def template(self) -> scout.TemplateService: ...
 
     @property
     def nominal_url(self) -> str:
         """Returns a link to the page for this Workbook in the Nominal app"""
-        # TODO (drake): move logic into _from_conjure() factory function to accomodate different URL schemes
-        return f"https://app.gov.nominal.io/workbooks/{self.rid}"
+        return f"{self._clients.app_base_url}/workbooks/{self.rid}"
+
+    @property
+    @deprecated(
+        "`Workbook.run_rid` is deprecated and will be removed in a future release: use Workbook.run_rids instead"
+    )
+    def run_rid(self) -> str | None:
+        raise NominalMethodRemovedError(
+            "nominal.core.Workbook.run_rid",
+            "use 'nominal.core.Workbook.run_rids' instead",
+        )
+
+    def _get_latest_api(self) -> scout_notebook_api.Notebook:
+        return self._clients.notebook.get(self._clients.auth_header, self.rid)
+
+    def update(
+        self,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] | None = None,
+        is_draft: bool | None = None,
+    ) -> Self:
+        """Replace workbook metadata.
+        Updates the current instance, and returns it.
+
+        Only the metadata passed in will be replaced, the rest will remain untouched.
+
+        NOTE: This replaces the metadata rather than appending it. To append to labels or properties, merge them before
+        calling this method. E.g.:
+
+            new_labels = ["new-label-a", "new-label-b"]
+            for old_label in workbook.labels:
+                new_labels.append(old_label)
+            workbook = workbook.update(labels=new_labels)
+        """
+        # TODO(drake): Support updating runs / assets on a workbook once behavior is more defined
+        # NOTE: not saving updated metadata response, as we deserialize from a notebook rather than
+        #       from metadata
+        self._clients.notebook.update_metadata(
+            self._clients.auth_header,
+            scout_notebook_api.UpdateNotebookMetadataRequest(
+                title=title,
+                description=description,
+                labels=None if labels is None else [*labels],
+                properties=None if properties is None else {**properties},
+                is_draft=is_draft,
+            ),
+            self.rid,
+        )
+        return self.refresh()
+
+    def clone(
+        self,
+        title: str | None = None,
+        description: str | None = None,
+    ) -> Self:
+        r"""Create a new workbook copy from this workbook and return a reference to the cloned version.
+
+        Args:
+            title: New title for the cloned workbook.
+                Defaults to "Workbook clone from '[title]'" for the current workbook title.
+            description: New description for the cloned workbook. Defaults to the current description.
+
+        Returns:
+            Reference to the cloned workbook
+        """
+        raw_workbook = self._get_latest_api()
+        new_workbook = self._clients.notebook.create(
+            self._clients.auth_header,
+            scout_notebook_api.CreateNotebookRequest(
+                title=f"Workbook clone from '{self.title}'" if title is None else title,
+                description=self.description if description is None else description,
+                is_draft=False,
+                state_as_json=raw_workbook.state_as_json,
+                data_scope=scout_notebook_api.NotebookDataScope(
+                    run_rids=None if self.run_rids is None else [*self.run_rids],
+                    asset_rids=None if self.asset_rids is None else [*self.asset_rids],
+                ),
+                layout=raw_workbook.layout,
+                content_v2=raw_workbook.content_v2,
+                event_refs=raw_workbook.event_refs,
+                workspace=self._clients.workspace_rid,
+            ),
+        )
+
+        return self._from_conjure(self._clients, new_workbook)
+
+    def get_refnames(self) -> Sequence[str]:
+        """Get the list of refnames used within the workbook."""
+        return self._clients.notebook.get_used_ref_names(self._clients.auth_header, self.rid)
+
+    def update_refnames(self, refname_map: Mapping[str, str]) -> None:
+        """Updates refnames using a provided map of original refnames to the new refnames to replace them."""
+        self._clients.notebook.update_ref_names(
+            self._clients.auth_header, scout_notebook_api.UpdateRefNameRequest({**refname_map}), self.rid
+        )
+
+    def is_locked(self) -> bool:
+        """Return whether or not the workbook is currently locked."""
+        return self._get_latest_api().metadata.lock.is_locked
+
+    def is_archived(self) -> bool:
+        """Return whether or not the workbook is currently archived."""
+        return self._get_latest_api().metadata.is_archived
+
+    def is_draft(self) -> bool:
+        """Return whether or not the workbook is currently a draft. Note that a workbook in draft state isn't visible
+        to other users and shows up as Private in the UI.
+        """
+        return self._get_latest_api().metadata.is_draft
+
+    def lock(self) -> None:
+        """Locks the workbook, preventing changes from being made to it.
+
+        Note:
+            Locking is an idemponent operation-- calling lock() on a locked workbook
+            will result in the workbook staying locked.
+        """
+        self._clients.notebook.lock(self._clients.auth_header, self.rid)
+
+    def unlock(self) -> None:
+        """Unlocks the workbook, allowing changes to be made to it.
+
+        Note:
+            Unlocking is an idemponent operation-- calling unlock() on an unlocked workbook
+            will result in the workbook staying unlocked.
+        """
+        self._clients.notebook.unlock(self._clients.auth_header, self.rid)
 
     def archive(self) -> None:
         """Archive this workbook.
         Archived workbooks are not deleted, but are hidden from the UI.
+
+        Note:
+            Archiving is an idemponent operation-- calling archive() on a archived workbook
+            will result in the workbook staying archived.
         """
         self._clients.notebook.archive(self._clients.auth_header, self.rid)
 
     def unarchive(self) -> None:
-        """Unarchive this workbook, allowing it to be viewed in the UI."""
+        """Unarchive this workbook, allowing it to be viewed in the UI.
+
+        Note:
+            Unarchiving is an idemponent operation-- calling unarchive() on a unarchived workbook
+            will result in the workbook staying unarchived.
+        """
         self._clients.notebook.unarchive(self._clients.auth_header, self.rid)
+
+    def delete(self) -> None:
+        """Delete the workbook permanently."""
+        self._clients.notebook.delete(self._clients.auth_header, self.rid)
+
+    def _create_template_from_workbook(
+        self,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        workspace_rid: str | None = None,
+    ) -> WorkbookTemplate:
+        """Create a workbook template from this workbook.
+
+        Args:
+            title: Title for the new template. Defaults to "Template from {title}" (or "workbook" if empty).
+            description: Description for the new template. Defaults to the current workbook description.
+            labels: Labels for the new template. Defaults to the current workbook labels.
+            properties: Properties for the new template. Defaults to the current workbook properties.
+            workspace_rid: Workspace RID to create the template in. Defaults to the current workbook's workspace.
+
+        Returns:
+            The created WorkbookTemplate
+        """
+        from nominal.core.workbook_template import _create_workbook_template_with_content_and_layout
+
+        raw_workbook = self._get_latest_api()
+        content_v2 = raw_workbook.content_v2
+        if content_v2 is not None and not isinstance(content_v2, scout_workbookcommon_api.UnifiedWorkbookContent):
+            raise ValueError("Unexpected content_v2 type")
+        if self.workbook_type == WorkbookType.COMPARISON_WORKBOOK or (
+            content_v2 is not None and content_v2.comparison_workbook is not None
+        ):
+            raise ValueError("Comparison workbook types not yet supported")
+
+        content = (content_v2.workbook if content_v2 is not None else None) or raw_workbook.content
+        if content is None:
+            raise ValueError("Missing content for workbook")
+
+        workbook_title = raw_workbook.metadata.title or "workbook"
+        workspace_rid = workspace_rid or self._clients.workspace_rid
+        if workspace_rid is None:
+            raise ValueError("Workspace RID is required to create a workbook template")
+
+        return _create_workbook_template_with_content_and_layout(
+            self._clients,
+            title=title or f"Template from {workbook_title}",
+            layout=raw_workbook.layout,
+            content=content,
+            workspace_rid=workspace_rid,
+            description=description or raw_workbook.metadata.description,
+            labels=raw_workbook.metadata.labels if labels is None else [*labels],
+            properties=raw_workbook.metadata.properties if properties is None else {**properties},
+            commit_message="Initial version",
+        )
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, notebook: scout_notebook_api.Notebook) -> Self:
+        return cls._from_notebook_metadata(
+            clients, scout_notebook_api.NotebookMetadataWithRid(metadata=notebook.metadata, rid=notebook.rid)
+        )
+
+    @classmethod
+    def _from_notebook_metadata(cls, clients: _Clients, notebook: scout_notebook_api.NotebookMetadataWithRid) -> Self:
+        workbook_type = WorkbookType._from_conjure(notebook.metadata.notebook_type)
         return cls(
             rid=notebook.rid,
             title=notebook.metadata.title,
             description=notebook.metadata.description,
-            run_rid=notebook.metadata.run_rid,
+            run_rids=notebook.metadata.data_scope.run_rids,
+            asset_rids=notebook.metadata.data_scope.asset_rids,
+            workbook_type=workbook_type,
             _clients=clients,
         )
+
+
+def _iter_search_workbooks(
+    clients: Workbook._Clients,
+    query: scout_notebook_api.SearchNotebooksQuery,
+    include_archived: bool,
+    include_drafts: bool,
+) -> Iterable[Workbook]:
+    for raw_workbook in search_workbooks_paginated(
+        clients.notebook, clients.auth_header, query, include_archived, include_drafts
+    ):
+        try:
+            yield Workbook._from_notebook_metadata(clients, raw_workbook)
+        except ValueError:
+            logger.exception("Failed to deserialize workbook metadata with rid %s: %s", raw_workbook.rid, raw_workbook)
+
+
+def _search_workbooks(
+    clients: Workbook._Clients,
+    *,
+    include_archived: bool = False,
+    exact_match: str | None = None,
+    search_text: str | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    asset_rid: str | None = None,
+    exact_asset_rids: Sequence[str] | None = None,
+    author_rid: str | None = None,
+    run_rid: str | None = None,
+    workspace_rid: str | None = None,
+    archived: bool | None = None,
+    include_drafts: bool = False,
+) -> Sequence[Workbook]:
+    query = create_search_workbooks_query(
+        exact_match=exact_match,
+        search_text=search_text,
+        labels=labels,
+        properties=properties,
+        asset_rid=asset_rid,
+        exact_asset_rids=exact_asset_rids,
+        author_rid=author_rid,
+        run_rid=run_rid,
+        workspace_rid=workspace_rid,
+        archived=archived,
+    )
+    return list(_iter_search_workbooks(clients, query, include_archived, include_drafts))

@@ -11,7 +11,7 @@ name: release-please
 
 jobs:
   release-please:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-24.04-small
     steps:
       - uses: googleapis/release-please-action@v4
         with:
