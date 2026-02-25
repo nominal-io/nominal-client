@@ -1,0 +1,50 @@
+// Self-contained columnar write proto for nominal-client.
+// Wire-compatible with nominal.direct_channel_writer.v2.
+// Timestamp is inlined to avoid namespace conflicts with the nominal Python package.
+syntax = "proto3";
+
+package nominal_columnar;
+
+// Wire-compatible with nominal.types.time.Timestamp (matching field numbers/types).
+message Timestamp {
+  optional int64 seconds = 1;
+  optional int64 nanos = 2;
+  optional int32 picos = 3;
+}
+
+message WriteBatchesRequest {
+  repeated RecordsBatch batches = 1;
+  string data_source_rid = 2;
+}
+
+message RecordsBatch {
+  string channel = 1;
+  map<string, string> tags = 2;
+  Points points = 3;
+}
+
+message Points {
+  repeated Timestamp timestamps = 1;
+  oneof points {
+    DoublePoints double_points = 2;
+    StringPoints string_points = 3;
+    IntPoints int_points = 5;
+    Uint64Points uint64_points = 8;
+  }
+}
+
+message DoublePoints {
+  repeated double points = 1;
+}
+
+message StringPoints {
+  repeated string points = 1;
+}
+
+message IntPoints {
+  repeated int64 points = 1;
+}
+
+message Uint64Points {
+  repeated uint64 points = 1;
+}

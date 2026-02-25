@@ -44,7 +44,6 @@ class WriteStreamV2:
         cls,
         clients: _Clients,
         serializer: BatchSerializer,
-        nominal_data_source_rid: str,
         max_batch_size: int,
         max_wait: timedelta,
         max_queue_size: int,
@@ -63,7 +62,7 @@ class WriteStreamV2:
             max_queue_size=batch_queue_maxsize,
         )
         batch_serialize_thread = spawn_batch_serialize_thread(
-            write_pool, clients, serializer, nominal_data_source_rid, batch_queue, item_queue, track_metrics
+            write_pool, clients, serializer, batch_queue, item_queue, track_metrics
         )
 
         def add_metric_impl(channel_name: str, timestamp: IntegralNanosecondsUTC, value: float) -> None:
@@ -177,7 +176,6 @@ class WriteStreamV2:
 def _write_serialized_batch(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
-    nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
     write_callback: Callable[[concurrent.futures.Future[RequestMetrics]], None],
     future: concurrent.futures.Future[SerializedBatch],
@@ -185,9 +183,8 @@ def _write_serialized_batch(
     try:
         serialized = future.result()
         write_future = pool.submit(
-            clients.proto_write.write_nominal_batches_with_metrics,
+            clients.proto_write.write_nominal_columnar_batches_with_metrics,
             clients.auth_header,
-            nominal_data_source_rid,
             serialized.data,
             serialized.oldest_timestamp,
             serialized.newest_timestamp,
@@ -257,14 +254,13 @@ def serialize_and_write_batches(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
-    nominal_data_source_rid: str,
     item_queue: Queue[BatchItem | QueueShutdown],
     batch_queue: ReadQueue[Batch],
     track_metrics: bool,
 ) -> None:
     """Worker that processes batches."""
     write_callback = partial(_on_write_complete_with_metrics, item_queue) if track_metrics else _on_write_complete_noop
-    callback = partial(_write_serialized_batch, pool, clients, nominal_data_source_rid, item_queue, write_callback)
+    callback = partial(_write_serialized_batch, pool, clients, item_queue, write_callback)
     for batch in iter_queue(batch_queue):
         future = serializer.serialize(batch)
         future.add_done_callback(callback)
@@ -274,14 +270,13 @@ def spawn_batch_serialize_thread(
     pool: ThreadPoolExecutor,
     clients: WriteStreamV2._Clients,
     serializer: BatchSerializer,
-    nominal_data_source_rid: str,
     batch_queue: ReadQueue[Batch],
     item_queue: Queue[BatchItem | QueueShutdown],
     track_metrics: bool,
 ) -> threading.Thread:
     thread = threading.Thread(
         target=serialize_and_write_batches,
-        args=(pool, clients, serializer, nominal_data_source_rid, item_queue, batch_queue, track_metrics),
+        args=(pool, clients, serializer, item_queue, batch_queue, track_metrics),
     )
     thread.start()
     return thread

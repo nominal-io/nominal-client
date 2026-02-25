@@ -5,24 +5,14 @@ from datetime import datetime
 from itertools import groupby
 from typing import Sequence, cast
 
-from google.protobuf.timestamp_pb2 import Timestamp
-
-try:
-    from nominal_api_protos.nominal_write_pb2 import (
-        Channel as NominalChannel,
-    )
-    from nominal_api_protos.nominal_write_pb2 import (
-        DoublePoint,
-        DoublePoints,
-        Points,
-        Series,
-        StringPoint,
-        StringPoints,
-        WriteRequestNominal,
-    )
-except ModuleNotFoundError:
-    raise ImportError("nominal[protos] is required to use the protobuf-based streaming API")
-
+from nominal.core._columnar_write_pb2 import (
+    DoublePoints,
+    Points,
+    RecordsBatch,
+    StringPoints,
+    Timestamp,
+    WriteBatchesRequest,
+)
 from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._queueing import Batch
 from nominal.core._utils import _to_api_batch_key
@@ -39,50 +29,38 @@ class SerializedBatch:
     newest_timestamp: IntegralNanosecondsUTC  # Newest timestamp in the batch
 
 
-def make_points_proto(api_batch: Sequence[BatchItem]) -> Points:
-    # Check first value to determine type
+def _make_columnar_points(api_batch: Sequence[BatchItem]) -> Points:
+    """Create columnar Points from a batch of items with the same channel/tags/type."""
+    timestamps = [_make_timestamp(item.timestamp) for item in api_batch]
     sample_value = api_batch[0].value
     if isinstance(sample_value, str):
         return Points(
-            string_points=StringPoints(
-                points=[
-                    StringPoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=cast(str, item.value),
-                    )
-                    for item in api_batch
-                ]
-            )
+            timestamps=timestamps,
+            string_points=StringPoints(points=[cast(str, item.value) for item in api_batch]),
         )
     elif isinstance(sample_value, float):
         return Points(
-            double_points=DoublePoints(
-                points=[
-                    DoublePoint(
-                        timestamp=_make_timestamp(item.timestamp),
-                        value=cast(float, item.value),
-                    )
-                    for item in api_batch
-                ]
-            )
+            timestamps=timestamps,
+            double_points=DoublePoints(points=[cast(float, item.value) for item in api_batch]),
         )
     else:
         raise ValueError("only float and string are supported types for value")
 
 
-def create_write_request(batch: Sequence[BatchItem]) -> WriteRequestNominal:
-    """Create a WriteRequestNominal from batches of items."""
+def create_write_request(batch: Sequence[BatchItem], nominal_data_source_rid: str = "") -> WriteBatchesRequest:
+    """Create a WriteBatchesRequest in columnar format from batches of items."""
     api_batched = groupby(sorted(batch, key=_to_api_batch_key), key=_to_api_batch_key)
     api_batches = [list(api_batch) for _, api_batch in api_batched]
-    return WriteRequestNominal(
-        series=[
-            Series(
-                channel=NominalChannel(name=api_batch[0].channel_name),
-                points=make_points_proto(api_batch),
+    return WriteBatchesRequest(
+        data_source_rid=nominal_data_source_rid,
+        batches=[
+            RecordsBatch(
+                channel=api_batch[0].channel_name,
+                points=_make_columnar_points(api_batch),
                 tags=api_batch[0].tags or {},
             )
             for api_batch in api_batches
-        ]
+        ],
     )
 
 
@@ -96,18 +74,17 @@ def process_batch(
     if nominal_data_source_rid is None:
         raise ValueError("Writing not implemented for this connection type")
 
-    request = create_write_request(batch)
+    request = create_write_request(batch, nominal_data_source_rid)
 
-    proto_write.write_nominal_batches(
+    proto_write.write_nominal_columnar_batches(
         auth_header=auth_header,
-        data_source_rid=nominal_data_source_rid,
         request=request.SerializeToString(),
     )
 
 
-def serialize_batch(batch: Batch) -> SerializedBatch:
+def serialize_batch(batch: Batch, data_source_rid: str = "") -> SerializedBatch:
     """Process a batch of items and return serialized request."""
-    request = create_write_request(batch.items)
+    request = create_write_request(batch.items, data_source_rid)
     return SerializedBatch(
         data=request.SerializeToString(),
         oldest_timestamp=batch.oldest_timestamp,
@@ -116,7 +93,6 @@ def serialize_batch(batch: Batch) -> SerializedBatch:
 
 
 def _make_timestamp(timestamp: str | datetime | IntegralNanosecondsUTC) -> Timestamp:
-    """Convert timestamp to protobuf Timestamp format."""
+    """Convert timestamp to columnar Timestamp format."""
     seconds_nanos = _SecondsNanos.from_flexible(timestamp)
-    ts = Timestamp(seconds=seconds_nanos.seconds, nanos=seconds_nanos.nanos)
-    return ts
+    return Timestamp(seconds=seconds_nanos.seconds, nanos=seconds_nanos.nanos)

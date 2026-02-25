@@ -41,11 +41,13 @@ def create_write_stream(
             stream.enqueue("temperature", 43.0, timestamp="2021-01-01T00:00:00Z", tags={"thermocouple": "B"})
         ```
     """
-    serializer = BatchSerializer.create(max_workers=serialize_process_workers)
+    serializer = BatchSerializer.create(
+        max_workers=serialize_process_workers,
+        data_source_rid=streaming_connection.nominal_data_source_rid,
+    )
     with WriteStreamV2.create(
         streaming_connection._clients,
         serializer,
-        streaming_connection.nominal_data_source_rid,
         max_batch_size,
         max_wait,
         max_queue_size,
