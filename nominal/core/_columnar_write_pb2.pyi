@@ -42,18 +42,20 @@ class RecordsBatch(_message.Message):
     def __init__(self, channel: _Optional[str] = ..., tags: _Optional[_Mapping[str, str]] = ..., points: _Optional[_Union[Points, _Mapping[str, _Any]]] = ...) -> None: ...
 
 class Points(_message.Message):
-    __slots__ = ("timestamps", "double_points", "string_points", "int_points", "uint64_points")
+    __slots__ = ("timestamps", "double_points", "string_points", "int_points", "array_points", "uint64_points")
     TIMESTAMPS_FIELD_NUMBER: _ClassVar[int]
     DOUBLE_POINTS_FIELD_NUMBER: _ClassVar[int]
     STRING_POINTS_FIELD_NUMBER: _ClassVar[int]
     INT_POINTS_FIELD_NUMBER: _ClassVar[int]
+    ARRAY_POINTS_FIELD_NUMBER: _ClassVar[int]
     UINT64_POINTS_FIELD_NUMBER: _ClassVar[int]
     timestamps: _containers.RepeatedCompositeFieldContainer[Timestamp]
     double_points: DoublePoints
     string_points: StringPoints
     int_points: IntPoints
+    array_points: ArrayPoints
     uint64_points: Uint64Points
-    def __init__(self, timestamps: _Optional[_Iterable[_Union[Timestamp, _Mapping[str, _Any]]]] = ..., double_points: _Optional[_Union[DoublePoints, _Mapping[str, _Any]]] = ..., string_points: _Optional[_Union[StringPoints, _Mapping[str, _Any]]] = ..., int_points: _Optional[_Union[IntPoints, _Mapping[str, _Any]]] = ..., uint64_points: _Optional[_Union[Uint64Points, _Mapping[str, _Any]]] = ...) -> None: ...
+    def __init__(self, timestamps: _Optional[_Iterable[_Union[Timestamp, _Mapping[str, _Any]]]] = ..., double_points: _Optional[_Union[DoublePoints, _Mapping[str, _Any]]] = ..., string_points: _Optional[_Union[StringPoints, _Mapping[str, _Any]]] = ..., int_points: _Optional[_Union[IntPoints, _Mapping[str, _Any]]] = ..., array_points: _Optional[_Union[ArrayPoints, _Mapping[str, _Any]]] = ..., uint64_points: _Optional[_Union[Uint64Points, _Mapping[str, _Any]]] = ...) -> None: ...
 
 class DoublePoints(_message.Message):
     __slots__ = ("points",)
@@ -78,3 +80,35 @@ class Uint64Points(_message.Message):
     POINTS_FIELD_NUMBER: _ClassVar[int]
     points: _containers.RepeatedScalarFieldContainer[int]
     def __init__(self, points: _Optional[_Iterable[int]] = ...) -> None: ...
+
+class ArrayPoints(_message.Message):
+    __slots__ = ("double_array_points", "string_array_points")
+    DOUBLE_ARRAY_POINTS_FIELD_NUMBER: _ClassVar[int]
+    STRING_ARRAY_POINTS_FIELD_NUMBER: _ClassVar[int]
+    double_array_points: DoubleArrayPoints
+    string_array_points: StringArrayPoints
+    def __init__(self, double_array_points: _Optional[_Union[DoubleArrayPoints, _Mapping[str, _Any]]] = ..., string_array_points: _Optional[_Union[StringArrayPoints, _Mapping[str, _Any]]] = ...) -> None: ...
+
+class DoubleArrayPoints(_message.Message):
+    __slots__ = ("points",)
+    POINTS_FIELD_NUMBER: _ClassVar[int]
+    points: _containers.RepeatedCompositeFieldContainer[DoubleArrayPoint]
+    def __init__(self, points: _Optional[_Iterable[_Union[DoubleArrayPoint, _Mapping[str, _Any]]]] = ...) -> None: ...
+
+class DoubleArrayPoint(_message.Message):
+    __slots__ = ("value",)
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    value: _containers.RepeatedScalarFieldContainer[float]
+    def __init__(self, value: _Optional[_Iterable[float]] = ...) -> None: ...
+
+class StringArrayPoints(_message.Message):
+    __slots__ = ("points",)
+    POINTS_FIELD_NUMBER: _ClassVar[int]
+    points: _containers.RepeatedCompositeFieldContainer[StringArrayPoint]
+    def __init__(self, points: _Optional[_Iterable[_Union[StringArrayPoint, _Mapping[str, _Any]]]] = ...) -> None: ...
+
+class StringArrayPoint(_message.Message):
+    __slots__ = ("value",)
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    value: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, value: _Optional[_Iterable[str]] = ...) -> None: ...

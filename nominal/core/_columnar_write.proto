@@ -29,6 +29,7 @@ message Points {
     DoublePoints double_points = 2;
     StringPoints string_points = 3;
     IntPoints int_points = 5;
+    ArrayPoints array_points = 6;
     Uint64Points uint64_points = 8;
   }
 }
@@ -47,4 +48,27 @@ message IntPoints {
 
 message Uint64Points {
   repeated uint64 points = 1;
+}
+
+message ArrayPoints {
+  oneof array_type {
+    DoubleArrayPoints double_array_points = 1;
+    StringArrayPoints string_array_points = 2;
+  }
+}
+
+message DoubleArrayPoints {
+  repeated DoubleArrayPoint points = 1;
+}
+
+message DoubleArrayPoint {
+  repeated double value = 2;
+}
+
+message StringArrayPoints {
+  repeated StringArrayPoint points = 1;
+}
+
+message StringArrayPoint {
+  repeated string value = 2;
 }

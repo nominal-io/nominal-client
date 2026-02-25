@@ -575,42 +575,103 @@ def test_multiple_write_streams_dataset(mock_dataset):
 
 
 # ============== Array Streaming Tests ==============
-# Note: The columnar protobuf endpoint does not support array types.
-# Arrays are still supported via data_format='json'.
 
 
-def test_process_batch_float_arrays_not_supported(mock_connection):
-    """Test that float array items raise ValueError with columnar endpoint."""
+def test_process_batch_float_arrays(mock_connection):
+    """Test processing a batch of float array items in columnar format."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
         BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0, 3.0]),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [4.0, 5.0, 6.0]),
     ]
 
-    with pytest.raises(ValueError, match="Array types.*not supported by the columnar protobuf endpoint"):
-        process_batch(
-            batch=batch,
-            nominal_data_source_rid=mock_connection.nominal_data_source_rid,
-            auth_header=mock_connection._clients.auth_header,
-            proto_write=mock_connection._clients.proto_write,
-        )
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    mock_write = mock_connection._clients.proto_write.write_nominal_columnar_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteBatchesRequest.FromString(kwargs["request"])
+
+    assert len(actual_request.batches) == 1
+    batch_proto = actual_request.batches[0]
+    assert batch_proto.channel == "test_channel"
+
+    points = batch_proto.points
+    assert points.HasField("array_points")
+    assert points.array_points.HasField("double_array_points")
+
+    assert len(points.timestamps) == 2
+    double_array_points = points.array_points.double_array_points.points
+    assert len(double_array_points) == 2
+    assert list(double_array_points[0].value) == [1.0, 2.0, 3.0]
+    assert list(double_array_points[1].value) == [4.0, 5.0, 6.0]
 
 
-def test_process_batch_string_arrays_not_supported(mock_connection):
-    """Test that string array items raise ValueError with columnar endpoint."""
+def test_process_batch_string_arrays(mock_connection):
+    """Test processing a batch of string array items in columnar format."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     batch = [
         BatchItem("test_channel", dt_to_nano(timestamp), ["a", "b", "c"]),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), ["d", "e", "f"]),
     ]
 
-    with pytest.raises(ValueError, match="Array types.*not supported by the columnar protobuf endpoint"):
-        process_batch(
-            batch=batch,
-            nominal_data_source_rid=mock_connection.nominal_data_source_rid,
-            auth_header=mock_connection._clients.auth_header,
-            proto_write=mock_connection._clients.proto_write,
-        )
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    mock_write = mock_connection._clients.proto_write.write_nominal_columnar_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteBatchesRequest.FromString(kwargs["request"])
+
+    assert len(actual_request.batches) == 1
+    batch_proto = actual_request.batches[0]
+
+    points = batch_proto.points
+    assert points.HasField("array_points")
+    assert points.array_points.HasField("string_array_points")
+
+    assert len(points.timestamps) == 2
+    string_array_points = points.array_points.string_array_points.points
+    assert len(string_array_points) == 2
+    assert list(string_array_points[0].value) == ["a", "b", "c"]
+    assert list(string_array_points[1].value) == ["d", "e", "f"]
+
+
+def test_process_batch_arrays_with_tags(mock_connection):
+    """Test processing array items with tags in columnar format."""
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    batch = [
+        BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0], {"tag1": "value1"}),
+        BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [3.0, 4.0], {"tag1": "value1"}),
+    ]
+
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_connection.nominal_data_source_rid,
+        auth_header=mock_connection._clients.auth_header,
+        proto_write=mock_connection._clients.proto_write,
+    )
+
+    mock_write = mock_connection._clients.proto_write.write_nominal_columnar_batches
+    mock_write.assert_called_once()
+
+    kwargs = mock_write.call_args.kwargs
+    actual_request = WriteBatchesRequest.FromString(kwargs["request"])
+
+    assert len(actual_request.batches) == 1
+    batch_proto = actual_request.batches[0]
+    assert dict(batch_proto.tags) == {"tag1": "value1"}
 
 
 # ============== BatchItem Unit Tests ==============

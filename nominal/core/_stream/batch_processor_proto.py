@@ -7,10 +7,15 @@ from typing import Sequence, cast
 
 from nominal.core._clientsbunch import ProtoWriteService
 from nominal.core._columnar_write_pb2 import (
+    ArrayPoints,
+    DoubleArrayPoint,
+    DoubleArrayPoints,
     DoublePoints,
     IntPoints,
     Points,
     RecordsBatch,
+    StringArrayPoint,
+    StringArrayPoints,
     StringPoints,
     Timestamp,
     WriteBatchesRequest,
@@ -54,10 +59,23 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
                 timestamps=timestamps,
                 int_points=IntPoints(points=[cast(int, item.value) for item in api_batch]),
             )
-        case PointType.DOUBLE_ARRAY | PointType.STRING_ARRAY:
-            raise ValueError(
-                f"Array types ({point_type}) are not supported by the columnar protobuf endpoint. "
-                "Use data_format='json' for array streaming."
+        case PointType.DOUBLE_ARRAY:
+            return Points(
+                timestamps=timestamps,
+                array_points=ArrayPoints(
+                    double_array_points=DoubleArrayPoints(
+                        points=[DoubleArrayPoint(value=cast(list[float], item.value)) for item in api_batch]
+                    )
+                ),
+            )
+        case PointType.STRING_ARRAY:
+            return Points(
+                timestamps=timestamps,
+                array_points=ArrayPoints(
+                    string_array_points=StringArrayPoints(
+                        points=[StringArrayPoint(value=cast(list[str], item.value)) for item in api_batch]
+                    )
+                ),
             )
         case _:
             raise ValueError(f"Unsupported point type: {point_type}")
