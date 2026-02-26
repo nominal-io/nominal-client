@@ -18,17 +18,18 @@ class BatchSerializer:
     """
 
     pool: ProcessPoolExecutor
+    data_source_rid: str = ""
 
     def close(self, cancel_futures: bool = False) -> None:
         self.pool.shutdown(cancel_futures=cancel_futures)
 
     @classmethod
-    def create(cls, max_workers: int | None) -> Self:
+    def create(cls, max_workers: int | None, data_source_rid: str = "") -> Self:
         pool = ProcessPoolExecutor(max_workers=max_workers)
-        return cls(pool=pool)
+        return cls(pool=pool, data_source_rid=data_source_rid)
 
     def serialize(self, batch: Batch[StreamValueType]) -> Future[SerializedBatch]:
-        return self.pool.submit(serialize_batch, batch)
+        return self.pool.submit(serialize_batch, batch, self.data_source_rid)
 
     def __enter__(self) -> BatchSerializer:
         return self

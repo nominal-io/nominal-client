@@ -61,19 +61,18 @@ class RequestMetrics:
 
 
 class ProtoWriteService(Service):
-    def write_nominal_batches(self, auth_header: str, data_source_rid: str, request: bytes) -> None:
+    def write_nominal_columnar_batches(self, auth_header: str, request: bytes) -> None:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
-        _path = f"/storage/writer/v1/nominal/{data_source_rid}"
+        _path = "/storage/writer/v1/nominal-columnar"
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
-    def write_nominal_batches_with_metrics(
+    def write_nominal_columnar_batches_with_metrics(
         self,
         auth_header: str,
-        data_source_rid: str,
         request: bytes,
         oldest_timestamp: IntegralNanosecondsUTC,
         newest_timestamp: IntegralNanosecondsUTC,
@@ -83,7 +82,7 @@ class ProtoWriteService(Service):
             "Content-Type": "application/x-protobuf",
             "Authorization": auth_header,
         }
-        _path = f"/storage/writer/v1/nominal/{data_source_rid}"
+        _path = "/storage/writer/v1/nominal-columnar"
         before_req = time.time_ns()
 
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)

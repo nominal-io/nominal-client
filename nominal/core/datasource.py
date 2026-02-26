@@ -434,8 +434,7 @@ def _get_write_stream(
 
         return WriteStreamV2.create(
             clients=clients,
-            serializer=BatchSerializer.create(max_workers=None),
-            nominal_data_source_rid=write_rid,
+            serializer=BatchSerializer.create(max_workers=None, data_source_rid=write_rid),
             max_batch_size=batch_size,
             max_wait=max_wait,
             max_queue_size=0,
