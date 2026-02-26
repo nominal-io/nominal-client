@@ -4,10 +4,12 @@ import gzip
 import logging
 import os
 import ssl
+import threading
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
 import truststore
+import typing_extensions
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
@@ -21,18 +23,57 @@ T = TypeVar("T")
 GZIP_COMPRESSION_LEVEL = 1
 
 
-class SslBypassRequestsAdapter(HTTPAdapter):
-    """Transport adapter that allows customizing SSL options and forwarding host truststore.
+class ThreadSafeSSLContext(truststore.SSLContext):
+    """A truststore.SSLContext that is safe to share across threads.
 
-    NOTE: based on a combination of injecting `truststore.SSLContext` into
-        `conjure_python_client._http.requests_client.TransportAdapter`.
+    truststore's wrap_socket temporarily sets verify_mode=CERT_NONE while the
+    TLS handshake is in progress, releasing _ctx_lock before the handshake runs.
+    This creates a window where urllib3's load_verify_locations can snapshot the
+    disabled state and corrupt the context for subsequent connections.
+
+    This subclass replaces _ctx_lock with an RLock and holds it across the full
+    wrap_socket call, making load_verify_locations and wrap_socket mutually
+    exclusive. RLock is required because truststore's wrap_socket re-acquires
+    _ctx_lock internally around _configure_context.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+
+        # Intentionally expanding type from lock -> rlock
+        self._ctx_lock: threading.RLock = threading.RLock()  # type: ignore[assignment]
+
+    @typing_extensions.override
+    def wrap_socket(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> ssl.SSLSocket:
+        with self._ctx_lock:
+            return super().wrap_socket(*args, **kwargs)
+
+
+class SslBypassRequestsAdapter(HTTPAdapter):
+    """Transport adapter that uses the OS trust store via truststore.
+
+    Accepts an ssl_context argument so callers control thread-safety:
+    pass a ThreadSafeSSLContext for sessions shared across threads,
+    or a plain truststore.SSLContext for single-thread sessions where locking
+    overhead is unnecessary. Defaults to ThreadSafeSSLContext.
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
     __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
 
-    def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
+    def __init__(
+        self,
+        *args: Any,
+        enable_keep_alive: bool = False,
+        ssl_context: ssl.SSLContext | None = None,
+        **kwargs: Any,
+    ):
         self._enable_keep_alive = enable_keep_alive
+        self._ssl_context = ssl_context or ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -42,39 +83,33 @@ class SslBypassRequestsAdapter(HTTPAdapter):
         block: bool = False,
         **pool_kwargs: Mapping[str, Any],
     ) -> None:
-        """Wrapper around the standard init_poolmanager from HTTPAdapter with modifications
-        to support keep-alive settings and injecting SSL context.
-        """
+        kwargs: dict[str, Any] = {**pool_kwargs}
         if self._enable_keep_alive:
-            keep_alive_kwargs: dict[str, Any] = {
-                "socket_options": [
-                    *HTTPConnection.default_socket_options,
-                    *KEEP_ALIVE_SOCKET_OPTIONS,
-                ]
-            }
-            pool_kwargs = {**pool_kwargs, **keep_alive_kwargs}
+            kwargs["socket_options"] = [
+                *HTTPConnection.default_socket_options,
+                *KEEP_ALIVE_SOCKET_OPTIONS,
+            ]
+        super().init_poolmanager(connections, maxsize, block, **kwargs, ssl_context=self._ssl_context)  # type: ignore[no-untyped-call]
 
-        pool_kwargs["ssl_context"] = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
-        super().init_poolmanager(connections, maxsize, block, **pool_kwargs)  # type: ignore[no-untyped-call]
+    def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
+        proxy_kwargs.pop("ssl_context", None)
+        return super().proxy_manager_for(proxy, **proxy_kwargs, ssl_context=self._ssl_context)  # type: ignore[no-untyped-call]
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         state[self.ENABLE_KEEP_ALIVE_ATTR] = state.get(self.ENABLE_KEEP_ALIVE_ATTR, False)
+        if "_ssl_context" not in state:
+            state["_ssl_context"] = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__setstate__(state)  # type: ignore[misc]
 
 
 class NominalRequestsAdapter(SslBypassRequestsAdapter):
-    """Adapter used with `requests` library for sending gzip-compressed data.
-
-    Based on: https://github.com/psf/requests/issues/1753#issuecomment-417806737
-    """
+    """Adapter used with `requests` library for sending gzip-compressed data."""
 
     ACCEPT_ENCODING = "Accept-Encoding"
     CONTENT_ENCODING = "Content-Encoding"
     CONTENT_LENGTH = "Content-Length"
 
     def add_headers(self, request: requests.PreparedRequest, **kwargs: Any) -> None:
-        """Tell the server that we support compression."""
         super().add_headers(request, **kwargs)  # type: ignore[no-untyped-call]
 
         body = request.body
@@ -105,13 +140,9 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         cert: bytes | str | tuple[bytes | str, bytes | str] | None = None,
         proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
-        """Compress data before sending."""
         if stream:
-            # We don't need to gzip streamed data via requests-- any such api endpoint today has a
-            # multi-part upload based mechanism for uploading large requests.
             return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
         elif request.body is not None:
-            # If there is data being posted to the API, gzip-encode it to save network bandwidth
             body = request.body if isinstance(request.body, bytes) else request.body.encode("utf-8")
             request.body = gzip.compress(body, compresslevel=GZIP_COMPRESSION_LEVEL)
 
@@ -153,8 +184,9 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
+    # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
+    # required since this session is shared across threads via ClientsBunch.
     transport_adapter = NominalRequestsAdapter(max_retries=retry)
-    # create a session, for shared connection polling, user agent, etc
     session = requests.Session()
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
@@ -198,13 +230,33 @@ def create_multipart_request_session(
     *,
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
+    shared_context: bool = False,
 ) -> requests.Session:
+    """Create a requests Session configured for multipart uploads to S3.
+
+    Each call produces an independent session with its own SSLContext and
+    connection pool.
+
+    Args:
+        pool_size: Maximum number of connections to keep in the pool.
+        num_retries: Number of times to retry failed requests.
+        shared_context: Whether the session will be shared across threads.
+            Pass True when the session is held on a long-lived object and
+            called from multiple threads concurrently (e.g. MultipartFileDownloader).
+            Pass False (the default) when the session is used exclusively by a
+            single thread, which avoids unnecessary locking overhead.
+    """
     retries = Retry(
         total=num_retries,
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
+    ctx: ssl.SSLContext = (
+        ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        if shared_context
+        else truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    )
     session = requests.Session()
-    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size)
+    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size, ssl_context=ctx)
     session.mount("https://", adapter)
     return session
