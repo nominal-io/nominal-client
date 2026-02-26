@@ -124,28 +124,35 @@ def export_channels_to_matlab(
         ```python
         # Export undecimated data over a given time range
         export_channels_to_matlab(
-            client,
-            pathlib.Path("out/my_export.mat"),
-            [channel_a, channel_b],
+            client=client,
+            output_path=pathlib.Path("out/my_export.mat"),
+            channels=[channel_a, channel_b],
             start_time=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
             end_time=datetime.datetime(2024, 2, 1, tzinfo=datetime.timezone.utc),
         )
 
         # Export with fixed resolution (100ms) and relative timestamps in microseconds
         export_channels_to_matlab(
-            client,
-            pathlib.Path("out/resampled.mat"),
-            [channel_a, channel_b],
+            client=client,
+            output_path=pathlib.Path("out/resampled.mat"),
+            channels=[channel_a, channel_b],
             resolution=100_000_000,
-            relative_to=datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc),
-            relative_resolution="microseconds",
+            export_timestamp_type=Relative("microseconds", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)),
+        )
+
+        # Export with original resolution but timestamps as seconds since unix epoch
+        export_channels_to_matlab(
+            client=client,
+            output_path=pathlib.Path("out/epoch_seconds.mat"),
+            channels=[channel_a, channel_b],
+            export_timestamp_type="epoch_seconds",
         )
 
         # Export bucketed data with forward fill up to 5 seconds
         export_channels_to_matlab(
-            client,
-            pathlib.Path("out/bucketed.mat"),
-            [channel_a, channel_b, channel_c],
+            client=client,
+            output_path=pathlib.Path("out/bucketed.mat"),
+            channels=[channel_a, channel_b, channel_c],
             num_buckets=3600,
             forward_fill_lookback=5_000_000_000,
         )
