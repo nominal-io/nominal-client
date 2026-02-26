@@ -101,14 +101,18 @@ class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
         *,
         evaluation_delay: timedelta = timedelta(),
         recovery_delay: timedelta = timedelta(seconds=15),
+        auto_create_events: bool = False,
     ) -> None:
         """Execute the checklist for the given assets.
-        - `assets`: Can be `Asset` instances, or Asset RIDs.
-        - `integration_rids`: Checklist violations will be sent to the specified integrations. At least one integration
-           must be specified. See https://app.gov.nominal.io/settings/integrations for a list of available integrations.
-        - `evaluation_delay`: Delays the evaluation of the streaming checklist. This is useful for when data is delayed.
-        - `recovery_delay`: Specifies the minimum amount of time that must pass before a check can recover from a
-                            failure. Minimum value is 15 seconds.
+
+        Args:
+            assets: List of assets or asset rids to execute the streaming checklist upon
+            integration_rids: List of rids of integrations to apply to the created streaming checklist for notifications
+            evaluation_delay: Delays the evaluation of the streaming checklist-- useful when data lags behind live.
+            recovery_delay: Specifies the minimum amount of time that must pass before a check may recover from a
+                failure state. Minimum value is 15 seconds.
+            auto_create_events: If true, automatically creates events for check status changes, in particular, when
+                checks fail and then recover.
         """
         self._clients.checklist_execution.execute_streaming_checklist(
             self._clients.auth_header,
@@ -120,6 +124,7 @@ class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
                 ],
                 evaluation_delay=_to_api_duration(evaluation_delay),
                 recovery_delay=_to_api_duration(recovery_delay),
+                auto_create_events=auto_create_events,
             ),
         )
 
