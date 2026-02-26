@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.115.0](https://github.com/nominal-io/nominal-client/compare/v1.114.0...v1.115.0) (2026-02-26)
+
+
+### Features
+
+* allow streaming checklists to auto create events ([#623](https://github.com/nominal-io/nominal-client/issues/623)) ([43d05ed](https://github.com/nominal-io/nominal-client/commit/43d05ede4907caa6a7a8eb2d17709ce6e1251782))
+
+
+### Bug Fixes
+
+* fix errant warning from race condition between truststore and urllib3 ([#620](https://github.com/nominal-io/nominal-client/issues/620)) ([9b0a7ba](https://github.com/nominal-io/nominal-client/commit/9b0a7bac04b26fc655723573bf7422d8f0830d09))
+* update docstring examples for export_channels_to_matlab ([#622](https://github.com/nominal-io/nominal-client/issues/622)) ([b7ff2d3](https://github.com/nominal-io/nominal-client/commit/b7ff2d37ca6b034f9cc4fc62bbd6df788478c5e6))
+
 ## [1.114.0](https://github.com/nominal-io/nominal-client/compare/v1.113.0...v1.114.0) (2026-02-23)
 
 
