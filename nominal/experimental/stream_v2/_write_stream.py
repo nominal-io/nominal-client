@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from queue import Queue
 from types import TracebackType
-from typing import Callable, Mapping, Protocol, Type
+from typing import Any, Callable, Mapping, Protocol, Type
 
 from typing_extensions import Self
 
@@ -162,6 +162,27 @@ class WriteStreamV2(DataStream):
         timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
         item: DataItem = BatchItem(
             channel_name, timestamp_normalized, value, tags, point_type_override=PointType.STRING_ARRAY
+        )
+        self._item_queue.put(item)
+
+    def enqueue_struct(
+        self,
+        channel_name: str,
+        timestamp: str | datetime | IntegralNanosecondsUTC,
+        value: dict[str, Any],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Write a struct (dict) at a single timestamp.
+
+        Args:
+            channel_name: Name of the channel to upload data for.
+            timestamp: Absolute timestamp of the data being uploaded.
+            value: Dict to write to the specified channel. Must be JSON-serializable.
+            tags: Key-value tags associated with the data being uploaded.
+        """
+        timestamp_normalized = _SecondsNanos.from_flexible(timestamp).to_nanoseconds()
+        item: DataItem = BatchItem(
+            channel_name, timestamp_normalized, value, tags, point_type_override=PointType.STRUCT
         )
         self._item_queue.put(item)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-from typing import Mapping
+from typing import Any, Mapping
 
 from nominal_streaming import NominalDatasetStream
 
@@ -84,4 +84,20 @@ class RustWriteStream(NominalDatasetStream, DataStream):
         """
         raise NotImplementedError(
             "Array streaming is not supported by the Rust streaming backend. Use enqueue() for scalar values only."
+        )
+
+    def enqueue_struct(
+        self,
+        channel_name: str,
+        timestamp: str | datetime.datetime | IntegralNanosecondsUTC,
+        value: dict[str, Any],
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Not supported by Rust streaming backend.
+
+        Raises:
+            NotImplementedError: Always, as struct streaming is not supported.
+        """
+        raise NotImplementedError(
+            "Struct streaming is not supported by the Rust streaming backend. Use enqueue() for scalar values only."
         )
