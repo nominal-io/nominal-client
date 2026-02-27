@@ -147,6 +147,7 @@ def test_create_run_csv(client: NominalClient, csv_data, archive: Callable):
 
     run = client.create_run(name, start=ds.bounds.start, end=ds.bounds.end, description=desc)
     archive(run)
+    run.add_dataset("dataset", ds)
 
     expected_start = datetime.fromisoformat("2024-09-05T18:00:00Z")
     expected_end = datetime.fromisoformat("2024-09-05T18:09:00Z")
