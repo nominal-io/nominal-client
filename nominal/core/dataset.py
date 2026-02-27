@@ -630,16 +630,19 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     def search_files(
         self,
         *,
-        before: str | datetime | IntegralNanosecondsUTC | None = None,
-        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        start: str | datetime | IntegralNanosecondsUTC | None = None,
+        end: str | datetime | IntegralNanosecondsUTC | None = None,
         file_tags: Mapping[str, str] | None = None,
     ) -> Sequence[DatasetFile]:
         """Search for files within this dataset.
-        See nominal.core.client.NominalClient.search_dataset_files for details.
 
-        NOTE: `before` and `after` are truncated to whole seconds — sub-second precision is dropped.
+        `start` and `end` filter on the file's OWN start/end time, not on overlap:
+        a file starting before `start` is excluded even if it overlaps the window.
+        Both bounds are inclusive and truncated to whole seconds.
+
+        See NominalClient.search_dataset_files for full parameter documentation.
         """
-        return _search_dataset_files(self._clients, self.rid, before=before, after=after, file_tags=file_tags)
+        return _search_dataset_files(self._clients, self.rid, start=start, end=end, file_tags=file_tags)
 
     def get_log_stream(
         self,
@@ -995,11 +998,11 @@ def _search_dataset_files(
     clients: DataSource._Clients,
     dataset_rid: str,
     *,
-    before: str | datetime | IntegralNanosecondsUTC | None = None,
-    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    start: str | datetime | IntegralNanosecondsUTC | None = None,
+    end: str | datetime | IntegralNanosecondsUTC | None = None,
     file_tags: Mapping[str, str] | None = None,
 ) -> Sequence[DatasetFile]:
-    query = create_search_dataset_files_query(before=before, after=after, file_tags=file_tags)
+    query = create_search_dataset_files_query(start=start, end=end, file_tags=file_tags)
     return list(_iter_search_dataset_files(clients, dataset_rid, query))
 
 

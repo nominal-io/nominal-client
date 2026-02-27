@@ -381,18 +381,22 @@ class NominalClient:
         self,
         dataset: Dataset | str,
         *,
-        before: str | datetime | IntegralNanosecondsUTC | None = None,
-        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        start: str | datetime | IntegralNanosecondsUTC | None = None,
+        end: str | datetime | IntegralNanosecondsUTC | None = None,
         file_tags: Mapping[str, str] | None = None,
     ) -> Sequence[DatasetFile]:
         """Search for dataset files within a specific dataset.
-        Filters are ANDed together, e.g. `(file.time_range intersects [after, before]) AND (file.tags == file_tags)`
+        Filters are ANDed together, e.g. `(file.start >= start) AND (file.end <= end) AND (file.tags == file_tags)`
 
         Args:
             dataset: The dataset (or its RID) to search for files within.
-            before: Searches for dataset files whose time range ends before this time (inclusive).
+            start: Inclusive lower bound on a file's own start time. Only files whose time range
+                begins at or after this timestamp are returned. A file that starts before `start`
+                is excluded even if it overlaps the search window (no overlap semantics).
                 NOTE: Truncated to whole seconds — sub-second precision is dropped.
-            after: Searches for dataset files whose time range starts after this time (inclusive).
+            end: Inclusive upper bound on a file's own end time. Only files whose time range
+                ends at or before this timestamp are returned. A file that ends after `end`
+                is excluded even if it overlaps the search window (no overlap semantics).
                 NOTE: Truncated to whole seconds — sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
@@ -402,8 +406,8 @@ class NominalClient:
         return _search_dataset_files(
             self._clients,
             rid_from_instance_or_string(dataset),
-            before=before,
-            after=after,
+            start=start,
+            end=end,
             file_tags=file_tags,
         )
 

@@ -150,16 +150,18 @@ def create_search_checklists_query(
 
 
 def create_search_dataset_files_query(
-    before: str | datetime | IntegralNanosecondsUTC | None = None,
-    after: str | datetime | IntegralNanosecondsUTC | None = None,
+    start: str | datetime | IntegralNanosecondsUTC | None = None,
+    end: str | datetime | IntegralNanosecondsUTC | None = None,
     file_tags: Mapping[str, str] | None = None,
 ) -> scout_catalog.SearchDatasetFilesQuery:
     queries = []
-    if before is not None or after is not None:
-        start = None if after is None else _SecondsNanos.from_flexible(after).to_scout_catalog()
-        end = None if before is None else _SecondsNanos.from_flexible(before).to_scout_catalog()
+    if start is not None or end is not None:
+        range_start = None if start is None else _SecondsNanos.from_flexible(start).to_scout_catalog()
+        range_end = None if end is None else _SecondsNanos.from_flexible(end).to_scout_catalog()
         queries.append(
-            scout_catalog.SearchDatasetFilesQuery(time_range=scout_catalog.TimeRangeFilter(start=start, end=end))
+            scout_catalog.SearchDatasetFilesQuery(
+                time_range=scout_catalog.TimeRangeFilter(start=range_start, end=range_end)
+            )
         )
     if file_tags is not None:
         queries.append(scout_catalog.SearchDatasetFilesQuery(file_tags=dict(file_tags)))
