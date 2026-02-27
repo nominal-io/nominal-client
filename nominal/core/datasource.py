@@ -18,9 +18,12 @@ from nominal_api import (
     storage_writer_api,
     timeseries_channelmetadata,
     timeseries_channelmetadata_api,
-    timeseries_logicalseries,
     upload_api,
 )
+try:
+    from nominal_api import timeseries_logicalseries
+except ImportError:
+    timeseries_logicalseries = None  # type: ignore[assignment]
 
 from nominal._utils import batched
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService

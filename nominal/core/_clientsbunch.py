@@ -27,9 +27,12 @@ from nominal_api import (
     storage_datasource_api,
     storage_writer_api,
     timeseries_channelmetadata,
-    timeseries_logicalseries,
     upload_api,
 )
+try:
+    from nominal_api import timeseries_logicalseries
+except ImportError:
+    timeseries_logicalseries = None  # type: ignore[assignment]
 from typing_extensions import Self
 
 from nominal.core._utils.networking import create_conjure_client_factory
