@@ -64,7 +64,7 @@ class SslBypassRequestsAdapter(HTTPAdapter):
 
     def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
         self._enable_keep_alive = enable_keep_alive
-        self._ssl_context: ssl.SSLContext = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self._ssl_context = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
