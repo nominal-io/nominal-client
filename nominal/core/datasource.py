@@ -130,14 +130,23 @@ class DataSource(HasRid):
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> DataStream: ...
+    @overload
     def get_write_stream(
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None = None,
+        data_format: Literal["arrow_flight"] | None = None,
+        flight_uri: str = "grpc://localhost:8815",
+    ) -> DataStream: ...
+    def get_write_stream(
+        self,
+        batch_size: int = 50_000,
+        max_wait: timedelta = timedelta(seconds=1),
+        data_format: Literal["json", "protobuf", "experimental", "rust_experimental", "arrow_flight"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
+        flight_uri: str = "grpc://localhost:8815",
     ) -> DataStream:
         """Stream to write timeseries data to a datasource.
 
@@ -175,6 +184,7 @@ class DataSource(HasRid):
             num_workers=num_workers,
             write_rid=self.rid,
             clients=self._clients,
+            flight_uri=flight_uri,
         )
 
     def search_channels(
@@ -374,12 +384,13 @@ def _construct_export_request(
 def _get_write_stream(
     batch_size: int,
     max_wait: timedelta,
-    data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None,
+    data_format: Literal["json", "protobuf", "experimental", "rust_experimental", "arrow_flight"] | None,
     file_fallback: PathLike | None,
     log_level: str | None,
     num_workers: int | None,
     write_rid: str,
     clients: DataSource._Clients,
+    flight_uri: str = "grpc://localhost:8815",
 ) -> DataStream:
     if data_format is None:
         data_format = "json"
@@ -459,7 +470,24 @@ def _get_write_stream(
             log_level=log_level,
             num_workers=num_workers,
         )
+    elif data_format == "arrow_flight":
+        try:
+            from nominal.core._stream.batch_processor_arrow_flight import process_batch_arrow_flight
+        except ImportError as ex:
+            raise ImportError(
+                "pyarrow is required to use get_write_stream with data_format='arrow_flight'"
+            ) from ex
+
+        return WriteStream.create(
+            batch_size=batch_size,
+            max_wait=max_wait,
+            process_batch=lambda batch: process_batch_arrow_flight(
+                batch=batch,
+                nominal_data_source_rid=write_rid,
+                flight_uri=flight_uri,
+            ),
+        )
     else:
         raise ValueError(
-            f"Expected `data_format` to be one of {{json, protobuf, experimental}}, received '{data_format}'"
+            f"Expected `data_format` to be one of {{json, protobuf, experimental, arrow_flight}}, received '{data_format}'"
         )
