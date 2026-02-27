@@ -1,3 +1,8 @@
+
+# NOTE: THIS WHOLE FILE IS ESSENTIALLY JUST A HACK TO GET THE GRPC API TO WORK (the whole client is very conjure-coded)
+# PLAN: implement a public facing, pythonic ingest flow builder, and then also implement python typing by ingest flow
+# This file will remain unchanged and just be used internally for us so public facing stuff can work easily
+
 from __future__ import annotations
 
 import importlib.util
