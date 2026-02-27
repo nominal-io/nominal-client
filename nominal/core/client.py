@@ -84,7 +84,9 @@ from nominal.core.dataset import (
     _create_dataset,
     _get_dataset,
     _get_datasets,
+    _search_dataset_files,
 )
+from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
@@ -374,6 +376,36 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_datasets(query))
+
+    def search_dataset_files(
+        self,
+        dataset: Dataset | str,
+        *,
+        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        file_tags: Mapping[str, str] | None = None,
+    ) -> Sequence[DatasetFile]:
+        """Search for dataset files within a specific dataset.
+        Filters are ANDed together, e.g. `(file.time_range intersects [after, before]) AND (file.tags == file_tags)`
+
+        Args:
+            dataset: The dataset (or its RID) to search for files within.
+            before: Searches for dataset files whose time range ends before this time (inclusive).
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+            after: Searches for dataset files whose time range starts after this time (inclusive).
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+            file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
+
+        Returns:
+            All dataset files within the given dataset which match all of the provided conditions
+        """
+        return _search_dataset_files(
+            self._clients,
+            rid_from_instance_or_string(dataset),
+            before=before,
+            after=after,
+            file_tags=file_tags,
+        )
 
     def create_secret(
         self,

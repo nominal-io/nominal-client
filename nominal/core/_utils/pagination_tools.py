@@ -66,6 +66,28 @@ def search_datasets_paginated(
         yield from response.results
 
 
+def search_dataset_files_paginated(
+    client: scout_catalog.CatalogService,
+    auth_header: str,
+    dataset_rid: str,
+    query: scout_catalog.SearchDatasetFilesQuery,
+) -> Iterable[scout_catalog.DatasetFile]:
+    def factory(page_token: str | None) -> scout_catalog.SearchDatasetFilesRequest:
+        return scout_catalog.SearchDatasetFilesRequest(
+            dataset_rid=dataset_rid,
+            page_size=DEFAULT_PAGE_SIZE,
+            query=query,
+            sort_options=scout_catalog.DatasetFileSortOptions(
+                field=scout_catalog.DatasetFileSortField.UPLOADED_AT,
+                is_descending=True,
+            ),
+            token=page_token,
+        )
+
+    for response in paginate_rpc(client.search_dataset_files, auth_header, request_factory=factory):
+        yield from response.results
+
+
 def search_assets_paginated(
     client: scout_assets.AssetService,
     auth_header: str,
