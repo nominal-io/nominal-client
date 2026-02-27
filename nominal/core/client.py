@@ -49,7 +49,6 @@ from nominal.core._utils.multipart import (
 from nominal.core._utils.pagination_tools import (
     search_assets_paginated,
     search_checklists_paginated,
-    search_dataset_files_paginated,
     search_datasets_paginated,
     search_runs_by_asset_paginated,
     search_runs_paginated,
@@ -62,7 +61,6 @@ from nominal.core._utils.query_tools import (
     create_search_assets_query,
     create_search_checklists_query,
     create_search_containerized_extractors_query,
-    create_search_dataset_files_query,
     create_search_datasets_query,
     create_search_runs_query,
     create_search_secrets_query,
@@ -86,6 +84,7 @@ from nominal.core.dataset import (
     _create_dataset,
     _get_dataset,
     _get_datasets,
+    _search_dataset_files,
 )
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
@@ -378,14 +377,6 @@ class NominalClient:
         )
         return list(self._iter_search_datasets(query))
 
-    def _iter_search_dataset_files(
-        self, dataset_rid: str, query: scout_catalog.SearchDatasetFilesQuery
-    ) -> Iterable[DatasetFile]:
-        for raw_file in search_dataset_files_paginated(
-            self._clients.catalog, self._clients.auth_header, dataset_rid, query
-        ):
-            yield DatasetFile._from_conjure(self._clients, raw_file)
-
     def search_dataset_files(
         self,
         dataset: Dataset | str,
@@ -406,13 +397,13 @@ class NominalClient:
         Returns:
             All dataset files within the given dataset which match all of the provided conditions
         """
-        dataset_rid = rid_from_instance_or_string(dataset)
-        query = create_search_dataset_files_query(
+        return _search_dataset_files(
+            self._clients,
+            rid_from_instance_or_string(dataset),
             before=before,
             after=after,
             file_tags=file_tags,
         )
-        return list(self._iter_search_dataset_files(dataset_rid, query))
 
     def create_secret(
         self,
