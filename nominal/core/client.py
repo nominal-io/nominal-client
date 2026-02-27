@@ -391,7 +391,9 @@ class NominalClient:
         Args:
             dataset: The dataset (or its RID) to search for files within.
             before: Searches for dataset files whose time range ends before this time (inclusive).
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
             after: Searches for dataset files whose time range starts after this time (inclusive).
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
         Returns:

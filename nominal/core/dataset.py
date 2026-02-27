@@ -636,6 +636,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     ) -> Sequence[DatasetFile]:
         """Search for files within this dataset.
         See nominal.core.client.NominalClient.search_dataset_files for details.
+
+        NOTE: `before` and `after` are truncated to whole seconds — sub-second precision is dropped.
         """
         return _search_dataset_files(self._clients, self.rid, before=before, after=after, file_tags=file_tags)
 
