@@ -36,6 +36,24 @@ def set_connection(client) -> Iterator[None]:
         yield
 
 
+@pytest.fixture
+def archive(request):
+    """Register archivable objects to be cleaned up (archived) after the test.
+
+    Usage::
+
+        def test_something(client, archive):
+            obj = client.create_dataset(...)
+            archive(obj)  # archived even if the test fails
+            ...
+    """
+
+    def _register(obj):
+        request.addfinalizer(obj.archive)
+
+    return _register
+
+
 @pytest.fixture(scope="session")
 def csv_data():
     return b"""\
