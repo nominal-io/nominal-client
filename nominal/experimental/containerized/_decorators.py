@@ -90,12 +90,12 @@ def _validate_param_in_signature(
 
 def _collect_containerized_env_inputs(
     env: Mapping[str, str] | None = None,
-) -> tuple[list[str], list[str], dict[str, str]]:
+) -> tuple[list[str], dict[str, str], dict[str, str]]:
     """Collect containerized runtime inputs from environment variables."""
     environment = os.environ if env is None else env
 
     files: list[str] = []
-    secrets: list[str] = []
+    secrets: dict[str, str] = {}
     parameters: dict[str, str] = {}
 
     for key in sorted(environment):
@@ -103,7 +103,8 @@ def _collect_containerized_env_inputs(
         if key.startswith(_FILE_ENV_PREFIX):
             files.append(value)
         elif key.startswith(_SECRET_ENV_PREFIX):
-            secrets.append(value)
+            secret_name = key.removeprefix(_SECRET_ENV_PREFIX)
+            secrets[secret_name] = value
         elif key.startswith(_PARAMETER_ENV_PREFIX):
             parameter_name = key.removeprefix(_PARAMETER_ENV_PREFIX)
             parameters[parameter_name] = value
@@ -116,11 +117,11 @@ def containerized_env_inputs(func: Callable[Param, T]) -> Callable[..., T]:
 
     NOTE: wrapped functions must accept the following keyword arguments:
       - files: list
-      - secrets: list
+      - secrets: dict
       - parameters: dict
     """
     _validate_param_in_signature(func, "files", list)
-    _validate_param_in_signature(func, "secrets", list)
+    _validate_param_in_signature(func, "secrets", dict)
     _validate_param_in_signature(func, "parameters", dict)
 
     @functools.wraps(func)
