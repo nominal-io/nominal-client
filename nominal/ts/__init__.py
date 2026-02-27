@@ -197,6 +197,7 @@ nm.upload_csv("temperature.csv", "Exterior Temps", "timestamp",
 from __future__ import annotations
 
 import abc
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
@@ -205,6 +206,8 @@ from typing import Literal, Mapping, NamedTuple, TypeAlias, cast, get_args
 import dateutil.parser
 from nominal_api import api, ingest_api, scout_catalog, scout_dataexport_api, scout_run_api
 from typing_extensions import Self
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "Iso8601",
@@ -470,8 +473,24 @@ class _SecondsNanos(NamedTuple):
     seconds: int
     nanos: int
 
+    def _warn_if_nanos_truncated(self) -> None:
+        if self.nanos != 0:
+            logger.warning(
+                "Truncating sub-second precision: %d nanos will be lost",
+                self.nanos,
+            )
+
     def to_scout_run_api(self) -> scout_run_api.UtcTimestamp:
         return scout_run_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
+
+    def to_scout_catalog(self) -> scout_catalog.UtcTimestamp:
+        """Convert to a scout_catalog.UtcTimestamp.
+
+        NOTE: scout_catalog.UtcTimestamp only supports second-level precision;
+        any sub-second component (nanos) will be truncated and a warning will be logged.
+        """
+        self._warn_if_nanos_truncated()
+        return scout_catalog.UtcTimestamp(seconds_since_epoch=self.seconds)
 
     def to_ingest_api(self) -> ingest_api.UtcTimestamp:
         return ingest_api.UtcTimestamp(seconds_since_epoch=self.seconds, offset_nanoseconds=self.nanos)
