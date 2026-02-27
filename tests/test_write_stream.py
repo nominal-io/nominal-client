@@ -4,11 +4,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from nominal_api_protos.nominal_write_pb2 import (
     Series,
+    StructPoints,
     WriteRequestNominal,
 )
 
 from nominal.core._stream.batch_processor_proto import process_batch
-from nominal.core._stream.write_stream import BatchItem
+from nominal.core._stream.write_stream import BatchItem, PointType, WriteStream, infer_point_type
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -895,8 +896,6 @@ def test_write_stream_enqueue_string_array(mock_dataset):
 
 def test_empty_array_without_explicit_type_raises_error():
     """Test that creating a BatchItem with an empty array without explicit type raises an error."""
-    from nominal.core._stream.write_stream import BatchItem, infer_point_type
-
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
 
     # Empty array without explicit type should raise an error when getting point type
@@ -912,8 +911,6 @@ def test_empty_array_without_explicit_type_raises_error():
 
 def test_empty_array_with_explicit_type_works():
     """Test that creating a BatchItem with an empty array with explicit type works."""
-    from nominal.core._stream.write_stream import BatchItem, PointType
-
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
 
     # Empty float array with explicit type should work
@@ -926,8 +923,6 @@ def test_empty_array_with_explicit_type_works():
 
 
 def test_process_batch_struct_points(mock_dataset):
-    from nominal_api_protos.nominal_write_pb2 import StructPoints
-
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     struct_value = {"x": 1.0, "label": "test"}
 
@@ -959,8 +954,6 @@ def test_process_batch_struct_points(mock_dataset):
 
 def test_enqueue_batch_with_structs():
     """enqueue_batch with dict values should create STRUCT BatchItems via type inference."""
-    from nominal.core._stream.write_stream import PointType, WriteStream
-
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
     struct_value = {"x": 1.0, "label": "test"}
 
@@ -985,8 +978,6 @@ def test_enqueue_batch_with_structs():
 
 def test_enqueue_from_dict_with_struct():
     """enqueue_from_dict with a dict value should create a STRUCT BatchItem via type inference."""
-    from nominal.core._stream.write_stream import PointType, WriteStream
-
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     captured: list = []
@@ -1008,8 +999,6 @@ def test_enqueue_from_dict_with_struct():
 
 def test_infer_point_type_dict():
     """Dicts should be inferred as STRUCT."""
-    from nominal.core._stream.write_stream import PointType, infer_point_type
-
     assert infer_point_type({"key": "value"}) == PointType.STRUCT
     assert infer_point_type({"nested": {"x": 1}}) == PointType.STRUCT
     assert infer_point_type({}) == PointType.STRUCT
