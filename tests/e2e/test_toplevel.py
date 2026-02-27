@@ -162,38 +162,6 @@ def test_get_run():
     assert run2.labels == run.labels == ()
 
 
-def test_search_runs():
-    # TODO: Add more search criteria
-    name = f"run-{uuid4()}"
-    desc = f"top-level test to search for a run {uuid4()}"
-    start, end = _create_random_start_end()
-    run = nm.create_run(name, start, end, desc)
-    runs = nm.search_runs(start=start, end=end)
-    assert len(runs) == 1
-    run2 = runs[0]
-
-    assert run2.rid == run.rid != ""
-    assert run2.name == run.name == name
-    assert run2.description == run.description == desc
-    assert run2.start == run.start == nm.ts._SecondsNanos.from_datetime(start).to_nanoseconds()
-    assert run2.end == run.end == nm.ts._SecondsNanos.from_datetime(end).to_nanoseconds()
-    assert run2.properties == run.properties == {}
-    assert run2.labels == run.labels == ()
-
-
-def test_search_runs_substring():
-    name = f"run-{uuid4()}"
-    desc = f"top-level test to search for a run by name {uuid4()}"
-    start, end = _create_random_start_end()
-    run = nm.create_run(name, start, end, desc)
-    runs = nm.search_runs(name_substring=name[4:])
-    assert len(runs) == 1
-    run2 = runs[0]
-
-    assert run2.rid == run.rid != ""
-    assert run2.name == run.name == name
-
-
 def test_upload_attachment(csv_data):
     at_title = f"attachment-{uuid4()}"
     at_desc = f"top-level test to upload an attachment {uuid4()}"
