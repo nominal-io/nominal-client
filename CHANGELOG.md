@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.117.0](https://github.com/nominal-io/nominal-client/compare/v1.116.0...v1.117.0) (2026-02-27)
+
+
+### Features
+
+* simplify multipart request session creation, remove edge case ([#627](https://github.com/nominal-io/nominal-client/issues/627)) ([50bcc7a](https://github.com/nominal-io/nominal-client/commit/50bcc7aea57decdbc57355c8216aaedae26642a4))
+
+
+### Bug Fixes
+
+* bump nominal-api to latest, fixing serde issues with workbook templates ([#633](https://github.com/nominal-io/nominal-client/issues/633)) ([13cc4a1](https://github.com/nominal-io/nominal-client/commit/13cc4a1ba98cbcde0cb345712a49783600b1a525))
+
 ## [1.116.0](https://github.com/nominal-io/nominal-client/compare/v1.115.0...v1.116.0) (2026-02-27)
 
 
