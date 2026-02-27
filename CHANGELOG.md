@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.116.0](https://github.com/nominal-io/nominal-client/compare/v1.115.0...v1.116.0) (2026-02-27)
+
+
+### Features
+
+* allow searching for dataset files by dataset, time range, and tags ([#628](https://github.com/nominal-io/nominal-client/issues/628)) ([dde3ddc](https://github.com/nominal-io/nominal-client/commit/dde3ddc2fe5cc21448c622cb392b9cd240ae7c0b))
+* streaming structs via json and protobuf ([#616](https://github.com/nominal-io/nominal-client/issues/616)) ([52de17f](https://github.com/nominal-io/nominal-client/commit/52de17f0b0c86437074499286baa0ed86136f358))
+
 ## [1.115.0](https://github.com/nominal-io/nominal-client/compare/v1.114.0...v1.115.0) (2026-02-26)
 
 
