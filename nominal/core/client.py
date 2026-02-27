@@ -508,7 +508,7 @@ class NominalClient:
             a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
             be constrained to that workspace if the user has access to the workspace.
 
-        # TODO: expose ingest_status filtering once a unified IngestStatus enum is available.
+        # TODO(drake): expose ingest_status filtering once a unified IngestStatus enum is available.
 
         Returns:
             All videos which match all of the provided conditions
@@ -1485,7 +1485,6 @@ class NominalClient:
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         archived: bool | None = None,
         include_drafts: bool = False,
-        draft_state: bool | None = None,
         authors: Sequence[User | str] | None = None,
         runs: Sequence[Run | str] | None = None,
         workbook_types: Sequence[WorkbookType] | None = None,
@@ -1506,7 +1505,6 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archived: Return workbooks that are either archived or not
             include_drafts: If true, include workbooks in draft state in results. Defaults to false.
-            draft_state: Filter by whether the workbook is in draft state.
             authors: Filter by multiple authors (OR semantics). Each can be a User instance or a user RID string.
             runs: Filter by multiple runs (OR semantics). Each can be a Run instance or a run RID string.
             workbook_types: Filter by workbook type (e.g. WorkbookType.WORKBOOK, WorkbookType.COMPARISON_WORKBOOK).
@@ -1536,7 +1534,6 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
             archived=archived,
             include_drafts=include_drafts,
-            draft_state=draft_state,
             author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
             run_rids=None if runs is None else [rid_from_instance_or_string(r) for r in runs],
             workbook_types=workbook_types,

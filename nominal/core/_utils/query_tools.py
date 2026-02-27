@@ -322,7 +322,6 @@ def create_search_workbooks_query(  # noqa: PLR0912
     run_rid: str | None = None,
     workspace_rid: str | None = None,
     archived: bool | None = None,
-    draft_state: bool | None = None,
     author_rids: Sequence[str] | None = None,
     run_rids: Sequence[str] | None = None,
     workbook_types: Sequence[scout_notebook_api.NotebookType] | None = None,
@@ -360,9 +359,6 @@ def create_search_workbooks_query(  # noqa: PLR0912
 
     if archived is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(archived=archived))
-
-    if draft_state is not None:
-        queries.append(scout_notebook_api.SearchNotebooksQuery(draft_state=draft_state))
 
     if author_rids is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(author_rids=list(author_rids)))
