@@ -30,6 +30,8 @@ from nominal.core.run import Run
 from nominal.core.video import Video
 from tests.e2e import _create_random_start_end
 
+_DATASET_HEADER = b"timestamp,temperature,pressure\n"
+
 
 @dataclass
 class SearchContext:
@@ -65,14 +67,14 @@ class SearchContext:
     video: Video
     """Fully ingested video (ingest_status=SUCCEEDED)."""
 
-    # Dataset + files (for dataset-file search tests)
+    # Dataset + files
     dataset: Dataset
     file_jan: DatasetFile
-    """Jan 2024 · source=alpha, region=us-east"""
+    """Jan 2024 · source=alpha, region=us-east · spans [2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z]"""
     file_jun: DatasetFile
-    """Jun 2024 · source=beta, region=eu-west"""
+    """Jun 2024 · source=beta,  region=eu-west · spans [2024-06-01T00:00:00Z, 2024-06-01T01:00:00Z]"""
     file_dec: DatasetFile
-    """Dec 2024 · source=alpha, region=eu-west"""
+    """Dec 2024 · source=alpha, region=eu-west · spans [2024-12-01T00:00:00Z, 2024-12-01T01:00:00Z]"""
 
 
 @pytest.fixture(scope="session")
@@ -115,24 +117,23 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
     video_file.poll_until_ingestion_completed(interval=timedelta(seconds=0.5))
 
     # --- Dataset + files ---
-    _HEADER = b"timestamp,temperature,pressure\n"
     dataset = client.create_dataset(f"dataset-{tag}")
     file_jan = dataset.add_from_io(
-        BytesIO(_HEADER + b"1704067200,20.1,1013.2\n1704070800,21.3,1012.8\n"),
+        BytesIO(_DATASET_HEADER + b"1704067200,20.1,1013.2\n1704070800,21.3,1012.8\n"),
         timestamp_column="timestamp",
         timestamp_type="epoch_seconds",
         file_name="jan_2024",
         tags={"source": "alpha", "region": "us-east"},
     )
     file_jun = dataset.add_from_io(
-        BytesIO(_HEADER + b"1717200000,25.4,1008.1\n1717203600,26.0,1007.5\n"),
+        BytesIO(_DATASET_HEADER + b"1717200000,25.4,1008.1\n1717203600,26.0,1007.5\n"),
         timestamp_column="timestamp",
         timestamp_type="epoch_seconds",
         file_name="jun_2024",
         tags={"source": "beta", "region": "eu-west"},
     )
     file_dec = dataset.add_from_io(
-        BytesIO(_HEADER + b"1733011200,8.2,1020.3\n1733014800,7.9,1021.0\n"),
+        BytesIO(_DATASET_HEADER + b"1733011200,8.2,1020.3\n1733014800,7.9,1021.0\n"),
         timestamp_column="timestamp",
         timestamp_type="epoch_seconds",
         file_name="dec_2024",
@@ -161,8 +162,16 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
     yield ctx
 
     # Teardown: archive all live entities so they don't accumulate in the environment.
-    for entity in [run, run_with_asset, run_multi_asset, asset, asset2, event_info, event_error, event_flag, video]:
-        entity.archive()
+    run.archive()
+    run_with_asset.archive()
+    run_multi_asset.archive()
+    asset.archive()
+    asset2.archive()
+    event_info.archive()
+    event_error.archive()
+    event_flag.archive()
+    video.archive()
+    dataset.archive()
 
 
 # ---------------------------------------------------------------------------
@@ -327,42 +336,115 @@ def test_search_videos_by_name(client: NominalClient, search_context: SearchCont
 def test_search_dataset_files_no_filter(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_dataset_files(ctx.dataset)
-    assert len(results) == 3
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
 
 
 def test_search_dataset_files_by_source_alpha(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_dataset_files(ctx.dataset, file_tags={"source": "alpha"})
-    assert len(results) == 2
-    assert all(f.file_tags is not None and f.file_tags.get("source") == "alpha" for f in results)
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jan.id, ctx.file_dec.id}
+
+
+def test_search_dataset_files_by_source_beta(client: NominalClient, search_context: SearchContext) -> None:
+    ctx = search_context
+    results = client.search_dataset_files(ctx.dataset, file_tags={"source": "beta"})
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jun.id}
 
 
 def test_search_dataset_files_by_region_eu_west(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_dataset_files(ctx.dataset, file_tags={"region": "eu-west"})
-    assert len(results) == 2
-    assert all(f.file_tags is not None and f.file_tags.get("region") == "eu-west" for f in results)
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jun.id, ctx.file_dec.id}
+
+
+def test_search_dataset_files_by_region_us_east(client: NominalClient, search_context: SearchContext) -> None:
+    ctx = search_context
+    results = client.search_dataset_files(ctx.dataset, file_tags={"region": "us-east"})
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jan.id}
 
 
 def test_search_dataset_files_by_combined_tags(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
-    # source=alpha AND region=eu-west → dec_2024.csv only
+    # source=alpha AND region=eu-west → dec_2024 only
     results = client.search_dataset_files(ctx.dataset, file_tags={"source": "alpha", "region": "eu-west"})
-    assert len(results) == 1
-    assert results[0].name == "dec_2024.csv"
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_dec.id}
 
 
 def test_search_dataset_files_by_time_range(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
-    # Mar–Sep 2024 → jun_2024.csv only
-    results = client.search_dataset_files(ctx.dataset, after="2024-03-01", before="2024-09-01")
-    assert len(results) == 1
-    assert results[0].name == "jun_2024.csv"
+    # Mar–Sep 2024 window fully contains jun_2024 and nothing else
+    results = client.search_dataset_files(ctx.dataset, start="2024-03-01", end="2024-09-01")
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jun.id}
 
 
 def test_search_dataset_files_combined_tag_and_time(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
-    # source=alpha AND after Jun 2024 → dec_2024.csv only
-    results = client.search_dataset_files(ctx.dataset, after="2024-06-01", file_tags={"source": "alpha"})
-    assert len(results) == 1
-    assert results[0].name == "dec_2024.csv"
+    # source=alpha AND file starts on or after Jun 2024 → dec_2024 only
+    results = client.search_dataset_files(ctx.dataset, start="2024-06-01", file_tags={"source": "alpha"})
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_dec.id}
+
+
+# ---------------------------------------------------------------------------
+# Dataset file search — boundary / overlap semantics
+#
+# file_jan spans [2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z]
+# file_dec spans [2024-12-01T00:00:00Z, 2024-12-01T01:00:00Z]
+#
+# The server uses OVERLAP semantics:
+#   `start` → file included if file.end   >= search.start  (not entirely before the window)
+#   `end`   → file included if file.start <= search.end    (not entirely after the window)
+#
+# A file that straddles the boundary IS included.
+# A file that ends before `start`, or starts after `end`, is excluded.
+#
+# This answers: "if search start=6 and file spans [4, 8], is it included?" → YES.
+# ---------------------------------------------------------------------------
+
+
+def test_search_dataset_files_start_exact_boundary_is_inclusive(
+    client: NominalClient, search_context: SearchContext
+) -> None:
+    ctx = search_context
+    # search start == file_jan's own start → file_jan is included (inclusive lower bound)
+    results = client.search_dataset_files(ctx.dataset, start="2024-01-01T00:00:00Z")
+    ids = {f.id for f in results}
+    assert ctx.file_jan.id in ids
+
+
+def test_search_dataset_files_end_exact_boundary_is_inclusive(
+    client: NominalClient, search_context: SearchContext
+) -> None:
+    ctx = search_context
+    # search end == file_dec's own end → file_dec is included (inclusive upper bound)
+    results = client.search_dataset_files(ctx.dataset, end="2024-12-01T01:00:00Z")
+    ids = {f.id for f in results}
+    assert ctx.file_dec.id in ids
+
+
+def test_search_dataset_files_start_uses_overlap_semantics(
+    client: NominalClient, search_context: SearchContext
+) -> None:
+    ctx = search_context
+    # file_jan spans [00:00, 01:00] on Jan 1. Search start is the midpoint (00:30).
+    # file_jan starts BEFORE the search start but its range still overlaps → IS included.
+    # This directly answers: "if search start=6 and file spans [4, 8], is it included?" → YES.
+    results = client.search_dataset_files(ctx.dataset, start="2024-01-01T00:30:00Z")
+    ids = {f.id for f in results}
+    assert ctx.file_jan.id in ids
+
+
+def test_search_dataset_files_end_uses_overlap_semantics(client: NominalClient, search_context: SearchContext) -> None:
+    ctx = search_context
+    # file_dec spans [00:00, 01:00] on Dec 1. Search end is the midpoint (00:30).
+    # file_dec ends AFTER the search end but its range still overlaps → IS included.
+    results = client.search_dataset_files(ctx.dataset, end="2024-12-01T00:30:00Z")
+    ids = {f.id for f in results}
+    assert ctx.file_dec.id in ids

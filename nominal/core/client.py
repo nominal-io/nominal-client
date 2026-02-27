@@ -387,17 +387,18 @@ class NominalClient:
         file_tags: Mapping[str, str] | None = None,
     ) -> Sequence[DatasetFile]:
         """Search for dataset files within a specific dataset.
-        Filters are ANDed together, e.g. `(file.start >= start) AND (file.end <= end) AND (file.tags == file_tags)`
+        Filters are ANDed together. Time range uses overlap semantics: a file is included if its
+        time range overlaps with [start, end], i.e. `file.end >= start AND file.start <= end`.
 
         Args:
             dataset: The dataset (or its RID) to search for files within.
-            start: Inclusive lower bound on a file's own start time. Only files whose time range
-                begins at or after this timestamp are returned. A file that starts before `start`
-                is excluded even if it overlaps the search window (no overlap semantics).
+            start: Inclusive lower bound of the search window. Files whose time range ends at or
+                after this timestamp are returned — including files that started before `start`
+                but still overlap the window. Files ending entirely before `start` are excluded.
                 NOTE: Truncated to whole seconds — sub-second precision is dropped.
-            end: Inclusive upper bound on a file's own end time. Only files whose time range
-                ends at or before this timestamp are returned. A file that ends after `end`
-                is excluded even if it overlaps the search window (no overlap semantics).
+            end: Inclusive upper bound of the search window. Files whose time range starts at or
+                before this timestamp are returned — including files that end after `end` but
+                still overlap the window. Files starting entirely after `end` are excluded.
                 NOTE: Truncated to whole seconds — sub-second precision is dropped.
             file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 

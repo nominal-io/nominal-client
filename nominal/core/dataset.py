@@ -636,9 +636,9 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     ) -> Sequence[DatasetFile]:
         """Search for files within this dataset.
 
-        `start` and `end` filter on the file's OWN start/end time, not on overlap:
-        a file starting before `start` is excluded even if it overlaps the window.
-        Both bounds are inclusive and truncated to whole seconds.
+        Uses overlap semantics: a file is included if its time range overlaps [start, end].
+        A file that straddles `start` or `end` is included; only files entirely outside the
+        window are excluded. Both bounds are inclusive and truncated to whole seconds.
 
         See NominalClient.search_dataset_files for full parameter documentation.
         """
