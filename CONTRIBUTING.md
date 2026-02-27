@@ -8,10 +8,20 @@ To run all tests and checks: `just verify`. To include e2e tests (for Nominal de
 
 As a rule, all tools should be configured via pyproject.toml, and should prefer configuration over parameters for project information. For example, `uv run mypy` should work without having to run `uv run mypy nominal`.
 
-Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end (e2e) tests in `tests/e2e`. To run e2e tests, `pytest` needs to be passed the e2e test directory with command-line arguments for connecting to the Nominal platform to test against. The e2e tests can be ran manually as:
+Tests are written with `pytest`. By default, `pytest` runs all the tests in `tests/` except the end-to-end (e2e) tests in `tests/e2e`. To run e2e tests, `pytest` needs to be passed the e2e test directory with command-line arguments for connecting to the Nominal platform to test against.
+
+The preferred way is to use a named Nominal profile:
+
+```sh
+uv run pytest tests/e2e --profile PROFILE_NAME
+```
+
+or simply with `just test-e2e <profile>`.
+
+Alternatively, a raw auth token can be supplied directly:
 
 ```sh
 uv run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
 ```
 
-or simply with `just test-e2e <token>`.
+or with `just test-e2e-token <token>`.

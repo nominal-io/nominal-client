@@ -20,8 +20,12 @@ python *args:
 test:
     uv run pytest
 
-# run e2e tests | token: auth token for api.nominal.test
-test-e2e token:
+# run e2e tests using a named Nominal profile (preferred)
+test-e2e profile:
+    uv run pytest tests/e2e --profile {{profile}}
+
+# run e2e tests using a raw auth token
+test-e2e-token token:
     uv run pytest tests/e2e --auth-token {{token}}
 
 # check static typing
@@ -62,7 +66,7 @@ fix: fix-format fix-imports
 verify: install test check
 
 # run all tests and checks, including e2e tests
-verify-e2e token: install check test (test-e2e token)
+verify-e2e profile: install check test (test-e2e profile)
 
 # clean up uv environments
 clean:

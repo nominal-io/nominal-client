@@ -10,21 +10,23 @@ from nominal.core import NominalClient
 
 def pytest_addoption(parser):
     parser.addoption("--base-url", default="https://api.nominal.test")
-    parser.addoption("--auth-token", required=True)
+    parser.addoption("--auth-token", default=None)
+    parser.addoption(
+        "--profile", default=None, help="Nominal profile name (takes precedence over --auth-token / --base-url)"
+    )
 
 
 @pytest.fixture(scope="session")
-def auth_token(pytestconfig):
-    return pytestconfig.getoption("auth_token")
-
-
-@pytest.fixture(scope="session")
-def base_url(pytestconfig):
-    return pytestconfig.getoption("base_url")
-
-
-@pytest.fixture(scope="session")
-def client(base_url, auth_token) -> NominalClient:
+def client(pytestconfig) -> NominalClient:
+    profile = pytestconfig.getoption("profile")
+    if profile is not None:
+        print(f"Using NominalClient.from_profile({profile!r})")
+        return NominalClient.from_profile(profile)
+    auth_token = pytestconfig.getoption("auth_token")
+    if auth_token is None:
+        raise pytest.UsageError("Either --profile or --auth-token must be provided")
+    base_url = pytestconfig.getoption("base_url")
+    print(f"Using NominalClient.create(base_url={base_url!r})")
     return NominalClient.create(base_url=base_url, token=auth_token)
 
 
