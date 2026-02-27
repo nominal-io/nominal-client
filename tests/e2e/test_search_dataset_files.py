@@ -21,11 +21,11 @@ _HEADER = b"timestamp,temperature,pressure\n"
 class DatasetSearchContext:
     dataset: Dataset
     file_jan: DatasetFile
-    """Jan 2024 · source=alpha, region=us-east"""
+    """Jan 2024 · source=alpha, region=us-east · spans [2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z]"""
     file_jun: DatasetFile
-    """Jun 2024 · source=beta, region=eu-west"""
+    """Jun 2024 · source=beta,  region=eu-west · spans [2024-06-01T00:00:00Z, 2024-06-01T01:00:00Z]"""
     file_dec: DatasetFile
-    """Dec 2024 · source=alpha, region=eu-west"""
+    """Dec 2024 · source=alpha, region=eu-west · spans [2024-12-01T00:00:00Z, 2024-12-01T01:00:00Z]"""
 
 
 @pytest.fixture(scope="session")
@@ -66,11 +66,16 @@ def dataset_search_context(client: NominalClient) -> Iterator[DatasetSearchConte
     dataset.archive()
 
 
+# ---------------------------------------------------------------------------
+# Tag filters
+# ---------------------------------------------------------------------------
+
+
 def test_search_dataset_files_no_filter(client: NominalClient, dataset_search_context: DatasetSearchContext) -> None:
     ctx = dataset_search_context
     results = client.search_dataset_files(ctx.dataset)
-    names = {f.name for f in results}
-    assert names == {"jan_2024.csv", "jun_2024.csv", "dec_2024.csv"}
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
 
 
 def test_search_dataset_files_by_source_alpha(
@@ -78,9 +83,17 @@ def test_search_dataset_files_by_source_alpha(
 ) -> None:
     ctx = dataset_search_context
     results = client.search_dataset_files(ctx.dataset, file_tags={"source": "alpha"})
-    names = {f.name for f in results}
-    assert names == {"jan_2024.csv", "dec_2024.csv"}
-    assert all(f.file_tags is not None and f.file_tags.get("source") == "alpha" for f in results)
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jan.id, ctx.file_dec.id}
+
+
+def test_search_dataset_files_by_source_beta(
+    client: NominalClient, dataset_search_context: DatasetSearchContext
+) -> None:
+    ctx = dataset_search_context
+    results = client.search_dataset_files(ctx.dataset, file_tags={"source": "beta"})
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jun.id}
 
 
 def test_search_dataset_files_by_region_eu_west(
@@ -88,9 +101,17 @@ def test_search_dataset_files_by_region_eu_west(
 ) -> None:
     ctx = dataset_search_context
     results = client.search_dataset_files(ctx.dataset, file_tags={"region": "eu-west"})
-    names = {f.name for f in results}
-    assert names == {"jun_2024.csv", "dec_2024.csv"}
-    assert all(f.file_tags is not None and f.file_tags.get("region") == "eu-west" for f in results)
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jun.id, ctx.file_dec.id}
+
+
+def test_search_dataset_files_by_region_us_east(
+    client: NominalClient, dataset_search_context: DatasetSearchContext
+) -> None:
+    ctx = dataset_search_context
+    results = client.search_dataset_files(ctx.dataset, file_tags={"region": "us-east"})
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jan.id}
 
 
 def test_search_dataset_files_by_combined_tags(
@@ -99,28 +120,33 @@ def test_search_dataset_files_by_combined_tags(
     ctx = dataset_search_context
     # source=alpha AND region=eu-west → dec_2024 only
     results = client.search_dataset_files(ctx.dataset, file_tags={"source": "alpha", "region": "eu-west"})
-    assert len(results) == 1
-    assert results[0].name == "dec_2024.csv"
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_dec.id}
+
+
+# ---------------------------------------------------------------------------
+# Time range filters
+# ---------------------------------------------------------------------------
 
 
 def test_search_dataset_files_by_time_range(
     client: NominalClient, dataset_search_context: DatasetSearchContext
 ) -> None:
     ctx = dataset_search_context
-    # Mar–Sep 2024 → jun_2024 only
+    # Mar–Sep 2024 window fully contains jun_2024 and nothing else
     results = client.search_dataset_files(ctx.dataset, start="2024-03-01", end="2024-09-01")
-    assert len(results) == 1
-    assert results[0].name == "jun_2024.csv"
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_jun.id}
 
 
 def test_search_dataset_files_combined_tag_and_time(
     client: NominalClient, dataset_search_context: DatasetSearchContext
 ) -> None:
     ctx = dataset_search_context
-    # source=alpha AND start >= Jun 2024 → dec_2024 only
+    # source=alpha AND file starts on or after Jun 2024 → dec_2024 only
     results = client.search_dataset_files(ctx.dataset, start="2024-06-01", file_tags={"source": "alpha"})
-    assert len(results) == 1
-    assert results[0].name == "dec_2024.csv"
+    ids = {f.id for f in results}
+    assert ids == {ctx.file_dec.id}
 
 
 # ---------------------------------------------------------------------------
@@ -142,46 +168,46 @@ def test_search_dataset_files_start_exact_boundary_is_inclusive(
     client: NominalClient, dataset_search_context: DatasetSearchContext
 ) -> None:
     ctx = dataset_search_context
-    # search start == jan_2024's own start → jan_2024 should be included (inclusive bound)
+    # search start == jan_2024's own start → jan_2024 is included (inclusive lower bound)
     results = client.search_dataset_files(ctx.dataset, start="2024-01-01T00:00:00Z")
-    names = {f.name for f in results}
-    assert "jan_2024.csv" in names
+    ids = {f.id for f in results}
+    assert ctx.file_jan.id in ids
 
 
 def test_search_dataset_files_end_exact_boundary_is_inclusive(
     client: NominalClient, dataset_search_context: DatasetSearchContext
 ) -> None:
     ctx = dataset_search_context
-    # search end == dec_2024's own end → dec_2024 should be included (inclusive bound)
+    # search end == dec_2024's own end → dec_2024 is included (inclusive upper bound)
     results = client.search_dataset_files(ctx.dataset, end="2024-12-01T01:00:00Z")
-    names = {f.name for f in results}
-    assert "dec_2024.csv" in names
+    ids = {f.id for f in results}
+    assert ctx.file_dec.id in ids
 
 
 def test_search_dataset_files_start_no_overlap_semantics(
     client: NominalClient, dataset_search_context: DatasetSearchContext
 ) -> None:
     ctx = dataset_search_context
-    # jan_2024 spans [00:00, 01:00] on Jan 1.  Search start is the midpoint (00:30).
+    # jan_2024 spans [00:00, 01:00] on Jan 1. Search start is the midpoint (00:30).
     # Because `start` compares against the file's OWN start time, jan_2024 (which starts
     # at 00:00, BEFORE 00:30) is excluded even though it overlaps the search window.
     # This directly answers: "if search start=6 and file spans [4, 8], is it included?" → NO.
     results = client.search_dataset_files(ctx.dataset, start="2024-01-01T00:30:00Z")
-    names = {f.name for f in results}
-    assert "jan_2024.csv" not in names
-    assert "jun_2024.csv" in names
-    assert "dec_2024.csv" in names
+    ids = {f.id for f in results}
+    assert ctx.file_jan.id not in ids
+    assert ctx.file_jun.id in ids
+    assert ctx.file_dec.id in ids
 
 
 def test_search_dataset_files_end_no_overlap_semantics(
     client: NominalClient, dataset_search_context: DatasetSearchContext
 ) -> None:
     ctx = dataset_search_context
-    # dec_2024 spans [00:00, 01:00] on Dec 1.  Search end is the midpoint (00:30).
+    # dec_2024 spans [00:00, 01:00] on Dec 1. Search end is the midpoint (00:30).
     # Because `end` compares against the file's OWN end time, dec_2024 (which ends
     # at 01:00, AFTER 00:30) is excluded even though it overlaps the search window.
     results = client.search_dataset_files(ctx.dataset, end="2024-12-01T00:30:00Z")
-    names = {f.name for f in results}
-    assert "dec_2024.csv" not in names
-    assert "jan_2024.csv" in names
-    assert "jun_2024.csv" in names
+    ids = {f.id for f in results}
+    assert ctx.file_dec.id not in ids
+    assert ctx.file_jan.id in ids
+    assert ctx.file_jun.id in ids
