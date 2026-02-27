@@ -204,6 +204,7 @@ class DataSource(HasRid):
                 fuzzy_search_text=fuzzy_search_text,
                 previously_selected_channels={},
                 next_page_token=next_page_token,
+                data_types=[],
                 page_size=None,
                 prefix=None,
             )
