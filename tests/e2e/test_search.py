@@ -183,59 +183,56 @@ def test_search_runs_by_name_substring(client: NominalClient, search_context: Se
     ctx = search_context
     results = client.search_runs(name_substring=ctx.tag)
     rids = {r.rid for r in results}
-    assert ctx.run.rid in rids
-    assert ctx.run_with_asset.rid in rids
-    # Archived runs must not appear in default (non-archived) results
-    assert ctx.archived_run.rid not in rids
+    # All three non-archived runs contain the tag; archived_run must not appear
+    assert rids == {ctx.run.rid, ctx.run_with_asset.rid, ctx.run_multi_asset.rid}
 
 
 def test_search_runs_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_runs(labels=["search-test"], name_substring=ctx.tag)
     rids = {r.rid for r in results}
-    assert ctx.run.rid in rids
+    # Only `run` was created with the search-test label
+    assert rids == {ctx.run.rid}
 
 
 def test_search_runs_by_properties(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_runs(properties={"search-tag": ctx.tag})
     rids = {r.rid for r in results}
-    assert ctx.run.rid in rids
+    # Only `run` was created with the search-tag property
+    assert rids == {ctx.run.rid}
 
 
 def test_search_runs_by_asset_rids(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_runs(asset_rids=[ctx.asset])
     rids = {r.rid for r in results}
-    assert ctx.run_with_asset.rid in rids
-    assert ctx.run.rid not in rids
+    # Both run_with_asset (asset only) and run_multi_asset (asset + asset2) are linked to asset
+    assert rids == {ctx.run_with_asset.rid, ctx.run_multi_asset.rid}
 
 
 def test_search_runs_has_single_asset(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_runs(has_single_asset=True, name_substring=ctx.tag)
     rids = {r.rid for r in results}
-    # Both single-asset runs must appear; the multi-asset run must not.
-    assert ctx.run.rid in rids  # auto-staged asset counts as single
-    assert ctx.run_with_asset.rid in rids
-    assert ctx.run_multi_asset.rid not in rids
+    # run (auto-staged asset counts as single) and run_with_asset; run_multi_asset excluded
+    assert rids == {ctx.run.rid, ctx.run_with_asset.rid}
 
 
 def test_search_runs_not_single_asset(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_runs(has_single_asset=False, name_substring=ctx.tag)
     rids = {r.rid for r in results}
-    assert ctx.run_multi_asset.rid in rids
-    assert ctx.run.rid not in rids
-    assert ctx.run_with_asset.rid not in rids
+    # Only run_multi_asset has more than one asset
+    assert rids == {ctx.run_multi_asset.rid}
 
 
 def test_search_runs_is_archived(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_runs(is_archived=True, name_substring=ctx.tag)
     rids = {r.rid for r in results}
-    assert ctx.archived_run.rid in rids
-    assert ctx.run.rid not in rids
+    # Only archived_run was pre-archived
+    assert rids == {ctx.archived_run.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -247,31 +244,32 @@ def test_search_assets_by_name(client: NominalClient, search_context: SearchCont
     ctx = search_context
     results = client.search_assets(search_text=ctx.tag)
     rids = {a.rid for a in results}
-    assert ctx.asset.rid in rids
-    # Archived asset must not appear in default results
-    assert ctx.archived_asset.rid not in rids
+    # asset and asset2 both have the tag in their name; archived_asset is filtered out
+    assert rids == {ctx.asset.rid, ctx.asset2.rid}
 
 
 def test_search_assets_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_assets(labels=["search-test"], search_text=ctx.tag)
     rids = {a.rid for a in results}
-    assert ctx.asset.rid in rids
+    # Only `asset` was created with the search-test label
+    assert rids == {ctx.asset.rid}
 
 
 def test_search_assets_by_properties(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_assets(properties={"search-tag": ctx.tag})
     rids = {a.rid for a in results}
-    assert ctx.asset.rid in rids
+    # Only `asset` was created with the search-tag property
+    assert rids == {ctx.asset.rid}
 
 
 def test_search_assets_is_archived(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_assets(is_archived=True, search_text=ctx.tag)
     rids = {a.rid for a in results}
-    assert ctx.archived_asset.rid in rids
-    assert ctx.asset.rid not in rids
+    # Only archived_asset was pre-archived
+    assert rids == {ctx.archived_asset.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -283,27 +281,24 @@ def test_search_events_by_asset(client: NominalClient, search_context: SearchCon
     ctx = search_context
     results = client.search_events(assets=[ctx.asset])
     rids = {e.rid for e in results}
-    assert ctx.event_info.rid in rids
-    assert ctx.event_error.rid in rids
-    assert ctx.event_flag.rid in rids
+    # All three test events are attached to ctx.asset (which was freshly created)
+    assert rids == {ctx.event_info.rid, ctx.event_error.rid, ctx.event_flag.rid}
 
 
 def test_search_events_by_event_type(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_events(event_type=EventType.INFO, assets=[ctx.asset])
     rids = {e.rid for e in results}
-    assert ctx.event_info.rid in rids
-    assert ctx.event_error.rid not in rids
-    assert ctx.event_flag.rid not in rids
+    # Only event_info has type INFO
+    assert rids == {ctx.event_info.rid}
 
 
 def test_search_events_by_event_types(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     results = client.search_events(event_types=[EventType.INFO, EventType.ERROR], assets=[ctx.asset])
     rids = {e.rid for e in results}
-    assert ctx.event_info.rid in rids
-    assert ctx.event_error.rid in rids
-    assert ctx.event_flag.rid not in rids
+    # event_info (INFO) and event_error (ERROR) match; event_flag (FLAG) does not
+    assert rids == {ctx.event_info.rid, ctx.event_error.rid}
 
 
 def test_search_events_by_created_by(client: NominalClient, search_context: SearchContext) -> None:
@@ -311,9 +306,8 @@ def test_search_events_by_created_by(client: NominalClient, search_context: Sear
     me = client.get_user()
     results = client.search_events(created_by_any_of=[me], assets=[ctx.asset])
     rids = {e.rid for e in results}
-    assert ctx.event_info.rid in rids
-    assert ctx.event_error.rid in rids
-    assert ctx.event_flag.rid in rids
+    # All three test events were created by the current user on a freshly-created asset
+    assert rids == {ctx.event_info.rid, ctx.event_error.rid, ctx.event_flag.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +319,8 @@ def test_search_videos_by_name(client: NominalClient, search_context: SearchCont
     ctx = search_context
     results = client.search_videos(search_text=ctx.tag)
     rids = {v.rid for v in results}
-    assert ctx.video.rid in rids
+    # Only one video was created with the tag in its name
+    assert rids == {ctx.video.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -413,20 +408,22 @@ def test_search_dataset_files_start_exact_boundary_is_inclusive(
     client: NominalClient, search_context: SearchContext
 ) -> None:
     ctx = search_context
-    # search start == file_jan's own start → file_jan is included (inclusive lower bound)
+    # search start == file_jan's own start → file_jan is included (inclusive lower bound).
+    # All three files end on or after Jan 1 00:00, so all three are returned.
     results = client.search_dataset_files(ctx.dataset, start="2024-01-01T00:00:00Z")
     ids = {f.id for f in results}
-    assert ctx.file_jan.id in ids
+    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
 
 
 def test_search_dataset_files_end_exact_boundary_is_inclusive(
     client: NominalClient, search_context: SearchContext
 ) -> None:
     ctx = search_context
-    # search end == file_dec's own end → file_dec is included (inclusive upper bound)
+    # search end == file_dec's own end → file_dec is included (inclusive upper bound).
+    # All three files start on or before Dec 1 01:00, so all three are returned.
     results = client.search_dataset_files(ctx.dataset, end="2024-12-01T01:00:00Z")
     ids = {f.id for f in results}
-    assert ctx.file_dec.id in ids
+    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
 
 
 def test_search_dataset_files_start_uses_overlap_semantics(
@@ -436,15 +433,17 @@ def test_search_dataset_files_start_uses_overlap_semantics(
     # file_jan spans [00:00, 01:00] on Jan 1. Search start is the midpoint (00:30).
     # file_jan starts BEFORE the search start but its range still overlaps → IS included.
     # This directly answers: "if search start=6 and file spans [4, 8], is it included?" → YES.
+    # file_jun and file_dec both end well after 00:30 Jan 1, so all three are returned.
     results = client.search_dataset_files(ctx.dataset, start="2024-01-01T00:30:00Z")
     ids = {f.id for f in results}
-    assert ctx.file_jan.id in ids
+    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
 
 
 def test_search_dataset_files_end_uses_overlap_semantics(client: NominalClient, search_context: SearchContext) -> None:
     ctx = search_context
     # file_dec spans [00:00, 01:00] on Dec 1. Search end is the midpoint (00:30).
     # file_dec ends AFTER the search end but its range still overlaps → IS included.
+    # file_jan and file_jun both start well before 00:30 Dec 1, so all three are returned.
     results = client.search_dataset_files(ctx.dataset, end="2024-12-01T00:30:00Z")
     ids = {f.id for f in results}
-    assert ctx.file_dec.id in ids
+    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
