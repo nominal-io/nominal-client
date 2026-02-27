@@ -7,6 +7,7 @@ import pandas as pd
 
 import nominal as nm
 from nominal.core.channel import ChannelDataType
+from nominal.core.dataset_file import wait_for_files_to_ingest
 from nominal.ts import _SecondsNanos
 from tests.e2e import _create_random_start_end
 
@@ -201,3 +202,64 @@ def test_get_dataset_pandas(csv_data):
     pd.testing.assert_frame_equal(df_sorted, expected_data)
     df2 = ds.to_pandas(channel_exact_match=["relative", "minutes"])
     pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])
+
+
+def test_search_dataset_files(client):
+    _HEADER = b"timestamp,temperature,pressure,humidity\n"
+    # Three files with distinct epoch-seconds time ranges and file tags:
+    #   file1 · Jan 2024 · source=alpha, region=us-east
+    #   file2 · Jun 2024 · source=beta,  region=eu-west
+    #   file3 · Dec 2024 · source=alpha, region=eu-west
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+
+    file1 = ds.add_from_io(
+        BytesIO(_HEADER + b"1704067200,20.1,1013.2,55.0\n1704070800,21.3,1012.8,54.5\n"),
+        timestamp_column="timestamp",
+        timestamp_type="epoch_seconds",
+        file_name="jan_2024.csv",
+        tags={"source": "alpha", "region": "us-east"},
+    )
+    file2 = ds.add_from_io(
+        BytesIO(_HEADER + b"1717200000,25.4,1008.1,60.2\n1717203600,26.0,1007.5,59.8\n"),
+        timestamp_column="timestamp",
+        timestamp_type="epoch_seconds",
+        file_name="jun_2024.csv",
+        tags={"source": "beta", "region": "eu-west"},
+    )
+    file3 = ds.add_from_io(
+        BytesIO(_HEADER + b"1733011200,8.2,1020.3,70.1\n1733014800,7.9,1021.0,71.3\n"),
+        timestamp_column="timestamp",
+        timestamp_type="epoch_seconds",
+        file_name="dec_2024.csv",
+        tags={"source": "alpha", "region": "eu-west"},
+    )
+    wait_for_files_to_ingest([file1, file2, file3], poll_interval=timedelta(seconds=0.1))
+
+    # No filters → all 3 files
+    all_files = client.search_dataset_files(ds)
+    assert len(all_files) == 3
+
+    # file_tags: source=alpha → files 1 + 3
+    alpha_files = client.search_dataset_files(ds, file_tags={"source": "alpha"})
+    assert len(alpha_files) == 2
+    assert all(f.file_tags is not None and f.file_tags.get("source") == "alpha" for f in alpha_files)
+
+    # file_tags: region=eu-west → files 2 + 3
+    eu_files = client.search_dataset_files(ds, file_tags={"region": "eu-west"})
+    assert len(eu_files) == 2
+    assert all(f.file_tags is not None and f.file_tags.get("region") == "eu-west" for f in eu_files)
+
+    # file_tags: source=alpha AND region=eu-west → file 3 only
+    combined_tag_files = client.search_dataset_files(ds, file_tags={"source": "alpha", "region": "eu-west"})
+    assert len(combined_tag_files) == 1
+    assert combined_tag_files[0].name == "dec_2024.csv"
+
+    # time range Mar–Sep 2024 → file 2 only (Jun 2024)
+    mid_year_files = client.search_dataset_files(ds, after="2024-03-01", before="2024-09-01")
+    assert len(mid_year_files) == 1
+    assert mid_year_files[0].name == "jun_2024.csv"
+
+    # combined: source=alpha AND after Jun 2024 → file 3 only (Dec 2024)
+    combined = client.search_dataset_files(ds, after="2024-06-01", file_tags={"source": "alpha"})
+    assert len(combined) == 1
+    assert combined[0].name == "dec_2024.csv"

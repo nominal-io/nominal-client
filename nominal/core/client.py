@@ -49,6 +49,7 @@ from nominal.core._utils.multipart import (
 from nominal.core._utils.pagination_tools import (
     search_assets_paginated,
     search_checklists_paginated,
+    search_dataset_files_paginated,
     search_datasets_paginated,
     search_runs_by_asset_paginated,
     search_runs_paginated,
@@ -61,6 +62,7 @@ from nominal.core._utils.query_tools import (
     create_search_assets_query,
     create_search_checklists_query,
     create_search_containerized_extractors_query,
+    create_search_dataset_files_query,
     create_search_datasets_query,
     create_search_runs_query,
     create_search_secrets_query,
@@ -85,6 +87,7 @@ from nominal.core.dataset import (
     _get_dataset,
     _get_datasets,
 )
+from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
@@ -374,6 +377,42 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_datasets(query))
+
+    def _iter_search_dataset_files(
+        self, dataset_rid: str, query: scout_catalog.SearchDatasetFilesQuery
+    ) -> Iterable[DatasetFile]:
+        for raw_file in search_dataset_files_paginated(
+            self._clients.catalog, self._clients.auth_header, dataset_rid, query
+        ):
+            yield DatasetFile._from_conjure(self._clients, raw_file)
+
+    def search_dataset_files(
+        self,
+        dataset: Dataset | str,
+        *,
+        before: str | datetime | IntegralNanosecondsUTC | None = None,
+        after: str | datetime | IntegralNanosecondsUTC | None = None,
+        file_tags: Mapping[str, str] | None = None,
+    ) -> Sequence[DatasetFile]:
+        """Search for dataset files within a specific dataset.
+        Filters are ANDed together, e.g. `(file.time_range intersects [after, before]) AND (file.tags == file_tags)`
+
+        Args:
+            dataset: The dataset (or its RID) to search for files within.
+            before: Searches for dataset files whose time range ends before this time (inclusive).
+            after: Searches for dataset files whose time range starts after this time (inclusive).
+            file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
+
+        Returns:
+            All dataset files within the given dataset which match all of the provided conditions
+        """
+        dataset_rid = rid_from_instance_or_string(dataset)
+        query = create_search_dataset_files_query(
+            before=before,
+            after=after,
+            file_tags=file_tags,
+        )
+        return list(self._iter_search_dataset_files(dataset_rid, query))
 
     def create_secret(
         self,
