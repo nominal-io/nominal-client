@@ -149,6 +149,25 @@ def create_search_checklists_query(
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
 
+def create_search_dataset_files_query(
+    start: str | datetime | IntegralNanosecondsUTC | None = None,
+    end: str | datetime | IntegralNanosecondsUTC | None = None,
+    file_tags: Mapping[str, str] | None = None,
+) -> scout_catalog.SearchDatasetFilesQuery:
+    queries = []
+    if start is not None or end is not None:
+        range_start = None if start is None else _SecondsNanos.from_flexible(start).to_scout_catalog()
+        range_end = None if end is None else _SecondsNanos.from_flexible(end).to_scout_catalog()
+        queries.append(
+            scout_catalog.SearchDatasetFilesQuery(
+                time_range=scout_catalog.TimeRangeFilter(start=range_start, end=range_end)
+            )
+        )
+    if file_tags is not None:
+        queries.append(scout_catalog.SearchDatasetFilesQuery(file_tags=dict(file_tags)))
+    return scout_catalog.SearchDatasetFilesQuery(and_=queries)
+
+
 def create_search_datasets_query(
     exact_match: str | None = None,
     search_text: str | None = None,

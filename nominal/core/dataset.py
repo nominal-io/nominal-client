@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import logging
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
@@ -17,6 +17,8 @@ from nominal.core._stream.write_stream import LogStream, WriteStream
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_file, upload_multipart_io
+from nominal.core._utils.pagination_tools import search_dataset_files_paginated
+from nominal.core._utils.query_tools import create_search_dataset_files_query
 from nominal.core.bounds import Bounds
 from nominal.core.containerized_extractors import ContainerizedExtractor
 from nominal.core.dataset_file import DatasetFile
@@ -25,6 +27,7 @@ from nominal.core.exceptions import NominalIngestError, NominalIngestMultiError,
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint, _write_logs
 from nominal.ts import (
+    IntegralNanosecondsUTC,
     _AnyTimestampType,
     _InferrableTimestampType,
     _SecondsNanos,
@@ -624,6 +627,23 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 f"Failed to retrieve dataset file {dataset_file_id} from dataset {self.rid}"
             ) from ex
 
+    def search_files(
+        self,
+        *,
+        start: str | datetime | IntegralNanosecondsUTC | None = None,
+        end: str | datetime | IntegralNanosecondsUTC | None = None,
+        file_tags: Mapping[str, str] | None = None,
+    ) -> Sequence[DatasetFile]:
+        """Search for files within this dataset.
+
+        `start` and `end` filter on the file's OWN start/end time, not on overlap:
+        a file starting before `start` is excluded even if it overlaps the window.
+        Both bounds are inclusive and truncated to whole seconds.
+
+        See NominalClient.search_dataset_files for full parameter documentation.
+        """
+        return _search_dataset_files(self._clients, self.rid, start=start, end=end, file_tags=file_tags)
+
     def get_log_stream(
         self,
         batch_size: int = 50_000,
@@ -685,10 +705,6 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             channel_name=channel_name,
             batch_size=batch_size,
         )
-
-
-def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, str] | None) -> Mapping[str, str]:
-    return {**datascope_tags, **(provided_tags or {})}
 
 
 class _DatasetWrapper(abc.ABC):
@@ -967,6 +983,31 @@ class _DatasetWrapper(abc.ABC):
             tag_columns=tag_columns,
             tags=_unify_tags(scope_tags, tags),
         )
+
+
+def _iter_search_dataset_files(
+    clients: DataSource._Clients,
+    dataset_rid: str,
+    query: scout_catalog.SearchDatasetFilesQuery,
+) -> Iterable[DatasetFile]:
+    for raw_file in search_dataset_files_paginated(clients.catalog, clients.auth_header, dataset_rid, query):
+        yield DatasetFile._from_conjure(clients, raw_file)
+
+
+def _search_dataset_files(
+    clients: DataSource._Clients,
+    dataset_rid: str,
+    *,
+    start: str | datetime | IntegralNanosecondsUTC | None = None,
+    end: str | datetime | IntegralNanosecondsUTC | None = None,
+    file_tags: Mapping[str, str] | None = None,
+) -> Sequence[DatasetFile]:
+    query = create_search_dataset_files_query(start=start, end=end, file_tags=file_tags)
+    return list(_iter_search_dataset_files(clients, dataset_rid, query))
+
+
+def _unify_tags(datascope_tags: Mapping[str, str], provided_tags: Mapping[str, str] | None) -> Mapping[str, str]:
+    return {**datascope_tags, **(provided_tags or {})}
 
 
 @deprecated(

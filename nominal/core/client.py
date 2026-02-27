@@ -84,7 +84,9 @@ from nominal.core.dataset import (
     _create_dataset,
     _get_dataset,
     _get_datasets,
+    _search_dataset_files,
 )
+from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
@@ -374,6 +376,40 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_datasets(query))
+
+    def search_dataset_files(
+        self,
+        dataset: Dataset | str,
+        *,
+        start: str | datetime | IntegralNanosecondsUTC | None = None,
+        end: str | datetime | IntegralNanosecondsUTC | None = None,
+        file_tags: Mapping[str, str] | None = None,
+    ) -> Sequence[DatasetFile]:
+        """Search for dataset files within a specific dataset.
+        Filters are ANDed together, e.g. `(file.start >= start) AND (file.end <= end) AND (file.tags == file_tags)`
+
+        Args:
+            dataset: The dataset (or its RID) to search for files within.
+            start: Inclusive lower bound on a file's own start time. Only files whose time range
+                begins at or after this timestamp are returned. A file that starts before `start`
+                is excluded even if it overlaps the search window (no overlap semantics).
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+            end: Inclusive upper bound on a file's own end time. Only files whose time range
+                ends at or before this timestamp are returned. A file that ends after `end`
+                is excluded even if it overlaps the search window (no overlap semantics).
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+            file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
+
+        Returns:
+            All dataset files within the given dataset which match all of the provided conditions
+        """
+        return _search_dataset_files(
+            self._clients,
+            rid_from_instance_or_string(dataset),
+            start=start,
+            end=end,
+            file_tags=file_tags,
+        )
 
     def create_secret(
         self,
