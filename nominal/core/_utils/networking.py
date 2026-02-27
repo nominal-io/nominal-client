@@ -56,24 +56,15 @@ class ThreadSafeSSLContext(truststore.SSLContext):
 class SslBypassRequestsAdapter(HTTPAdapter):
     """Transport adapter that uses the OS trust store via truststore.
 
-    Accepts an ssl_context argument so callers control thread-safety:
-    pass a ThreadSafeSSLContext for sessions shared across threads,
-    or a plain truststore.SSLContext for single-thread sessions where locking
-    overhead is unnecessary. Defaults to ThreadSafeSSLContext.
+    All sessions use a ThreadSafeSSLContext, which is safe to share across threads.
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
     __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
 
-    def __init__(
-        self,
-        *args: Any,
-        enable_keep_alive: bool = False,
-        ssl_context: ssl.SSLContext | None = None,
-        **kwargs: Any,
-    ):
+    def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
         self._enable_keep_alive = enable_keep_alive
-        self._ssl_context = ssl_context or ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self._ssl_context: ssl.SSLContext = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -230,33 +221,22 @@ def create_multipart_request_session(
     *,
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
-    shared_context: bool = False,
 ) -> requests.Session:
     """Create a requests Session configured for multipart uploads to S3.
 
-    Each call produces an independent session with its own SSLContext and
-    connection pool.
+    Each call produces an independent session with its own ThreadSafeSSLContext
+    and connection pool, safe for concurrent use across threads.
 
     Args:
         pool_size: Maximum number of connections to keep in the pool.
         num_retries: Number of times to retry failed requests.
-        shared_context: Whether the session will be shared across threads.
-            Pass True when the session is held on a long-lived object and
-            called from multiple threads concurrently (e.g. MultipartFileDownloader).
-            Pass False (the default) when the session is used exclusively by a
-            single thread, which avoids unnecessary locking overhead.
     """
     retries = Retry(
         total=num_retries,
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
-    ctx: ssl.SSLContext = (
-        ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        if shared_context
-        else truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    )
     session = requests.Session()
-    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size, ssl_context=ctx)
+    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size)
     session.mount("https://", adapter)
     return session

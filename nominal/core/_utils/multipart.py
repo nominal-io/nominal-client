@@ -23,6 +23,7 @@ DEFAULT_NUM_WORKERS = 8
 
 def _sign_and_upload_part_job(
     upload_client: upload_api.UploadService,
+    multipart_session: requests.Session,
     auth_header: str,
     key: str,
     upload_id: str,
@@ -31,10 +32,6 @@ def _sign_and_upload_part_job(
     num_retries: int = 3,
 ) -> requests.Response:
     data = q.get()
-
-    # Each worker thread creates its own session so that concurrent calls to
-    # load_verify_locations and wrap_socket never race on a shared SSLContext.
-    multipart_session = create_multipart_request_session(pool_size=1, shared_context=False)
 
     try:
         last_ex: Exception | None = None
@@ -146,12 +143,16 @@ def put_multipart_upload(
     )
     initiate_response = upload_client.initiate_multipart_upload(auth_header, initiate_request)
     key, upload_id = initiate_response.key, initiate_response.upload_id
-    _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, auth_header, key, upload_id, q)
+
+    # One session shared across all part jobs for this upload.
+    session = create_multipart_request_session(pool_size=max_workers)
+
+    # Prefill arguments for helper function
+    _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, session, auth_header, key, upload_id, q)
 
     jobs: list[concurrent.futures.Future[requests.Response]] = []
 
     try:
-        # S3 requires parts to start at 1
         for part, chunk in enumerate(_iter_chunks(f, chunk_size), start=1):
             q.put(chunk)
             fut = pool.submit(_sign_and_upload_part, part)
