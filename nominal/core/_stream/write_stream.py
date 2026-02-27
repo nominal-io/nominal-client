@@ -99,6 +99,10 @@ def infer_point_type(value: object, explicit_type: PointType | None = None) -> P
     if explicit_type is not None:
         return explicit_type
 
+    # Handle struct types
+    if isinstance(value, dict):
+        return PointType.STRUCT
+
     # Handle list types (arrays) - recurse to infer element type, then convert to array type
     if isinstance(value, list):
         if len(value) == 0:

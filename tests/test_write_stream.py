@@ -202,12 +202,11 @@ def test_process_batch_invalid_type(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    # Dictionaries are not supported
+    # Arbitrary objects with no known serialization are not supported
     batch = [
-        BatchItem("test_channel", dt_to_nano(timestamp), {"key": "value"}),  # type: ignore[arg-type]
+        BatchItem("test_channel", dt_to_nano(timestamp), object()),  # type: ignore[arg-type]
     ]
 
-    # Verify it raises the correct error
     with pytest.raises(ValueError, match="Unsupported value type"):
         process_batch(
             batch=batch,
@@ -525,12 +524,11 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    # Dictionaries are not supported
+    # Arbitrary objects with no known serialization are not supported
     batch = [
-        BatchItem("test_channel", dt_to_nano(timestamp), {"key": "value"}),  # type: ignore[arg-type]
+        BatchItem("test_channel", dt_to_nano(timestamp), object()),  # type: ignore[arg-type]
     ]
 
-    # Verify it raises the correct error
     with pytest.raises(ValueError, match="Unsupported value type"):
         process_batch(
             batch=batch,
@@ -925,3 +923,93 @@ def test_empty_array_with_explicit_type_works():
     # Empty string array with explicit type should work
     string_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.STRING_ARRAY)
     assert string_item.get_point_type() == PointType.STRING_ARRAY
+
+
+def test_process_batch_struct_points(mock_dataset):
+    from nominal_api_protos.nominal_write_pb2 import StructPoints
+
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    struct_value = {"x": 1.0, "label": "test"}
+
+    # Dicts are inferred as STRUCT — no explicit point_type_override needed
+    batch = [
+        BatchItem("struct_channel", dt_to_nano(timestamp), struct_value),
+        BatchItem("struct_channel", dt_to_nano(timestamp + timedelta(seconds=1)), struct_value),
+    ]
+
+    process_batch(
+        batch=batch,
+        nominal_data_source_rid=mock_dataset.rid,
+        auth_header=mock_dataset._clients.auth_header,
+        proto_write=mock_dataset._clients.proto_write,
+    )
+
+    kwargs = mock_dataset._clients.proto_write.write_nominal_batches.call_args.kwargs
+    actual_request = WriteRequestNominal.FromString(kwargs["request"])
+
+    assert len(actual_request.series) == 1
+    series = actual_request.series[0]
+    assert series.channel.name == "struct_channel"
+
+    points = series.points
+    assert points.HasField("struct_points")
+    assert isinstance(points.struct_points, StructPoints)
+    assert len(points.struct_points.points) == 2
+
+
+def test_enqueue_batch_with_structs():
+    """enqueue_batch with dict values should create STRUCT BatchItems via type inference."""
+    from nominal.core._stream.write_stream import PointType, WriteStream
+
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+    struct_value = {"x": 1.0, "label": "test"}
+
+    captured: list = []
+    stream = WriteStream.create(
+        batch_size=100,
+        max_wait=timedelta(seconds=10),
+        process_batch=lambda batch: captured.extend(batch),
+    )
+
+    stream.enqueue_batch(
+        channel_name="struct_channel",
+        timestamps=[timestamp, timestamp + timedelta(seconds=1)],
+        values=[struct_value, struct_value],
+    )
+    stream.close()
+
+    assert len(captured) == 2
+    for item in captured:
+        assert item.get_point_type() == PointType.STRUCT
+
+
+def test_enqueue_from_dict_with_struct():
+    """enqueue_from_dict with a dict value should create a STRUCT BatchItem via type inference."""
+    from nominal.core._stream.write_stream import PointType, WriteStream
+
+    timestamp = datetime(2024, 1, 1, 12, 0, 0)
+
+    captured: list = []
+    stream = WriteStream.create(
+        batch_size=100,
+        max_wait=timedelta(seconds=10),
+        process_batch=lambda batch: captured.extend(batch),
+    )
+
+    stream.enqueue_from_dict(
+        timestamp=timestamp,
+        channel_values={"struct_channel": {"x": 1.0, "label": "test"}},
+    )
+    stream.close()
+
+    assert len(captured) == 1
+    assert captured[0].get_point_type() == PointType.STRUCT
+
+
+def test_infer_point_type_dict():
+    """Dicts should be inferred as STRUCT."""
+    from nominal.core._stream.write_stream import PointType, infer_point_type
+
+    assert infer_point_type({"key": "value"}) == PointType.STRUCT
+    assert infer_point_type({"nested": {"x": 1}}) == PointType.STRUCT
+    assert infer_point_type({}) == PointType.STRUCT
