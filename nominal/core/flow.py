@@ -124,7 +124,6 @@ class Flow:
                 labels=self._run_labels,
                 asset=self._asset_rid,
             )
-            run.add_dataset(self._refname or dataset.name, dataset)
 
         return FlowResult(dataset_file=dataset_file, run=run)
 
@@ -192,8 +191,24 @@ class FlowBuilder:
         response = ingest_client.get(rid)
         self._rid = rid
         self._client = client
-        self._state = response.ingest_flow.state
+
+        flow = response.ingest_flow
+        title = flow.metadata.title if flow.HasField("metadata") else rid
+
+        self._state = flow.state
+        if not self._state.steps:
+            raise FlowBuilderError(
+                f"Ingest flow '{title}' ({rid}) has no steps configured. "
+                f"Add steps to the flow in the Nominal UI before using FlowBuilder."
+            )
+
         self._current_uuid: str = self._state.start_step_uuid
+        if not self._current_uuid:
+            raise FlowBuilderError(
+                f"Ingest flow '{title}' ({rid}) has steps but no start_step_uuid. "
+                f"The flow may be partially configured — check the flow in the Nominal UI."
+            )
+
         self._steps: list[FlowStep] = []
         self._path_uuids: list[str] = [self._current_uuid]
 
@@ -206,7 +221,8 @@ class FlowBuilder:
 
         if self._current_uuid not in self._state.steps:
             raise FlowBuilderError(
-                f"Start step '{self._current_uuid}' not found in flow graph"
+                f"Start step '{self._current_uuid}' not found in flow graph for '{title}' ({rid}). "
+                f"Available step UUIDs: {list(self._state.steps.keys())}"
             )
 
     @property
@@ -376,3 +392,127 @@ def _step_type_name(step) -> str:
         if step.HasField(name):
             return name
     return "unknown"
+
+
+_TIMESTAMP_TYPES = (
+    "iso_8601",
+    "epoch_days",
+    "epoch_hours",
+    "epoch_minutes",
+    "epoch_seconds",
+    "epoch_milliseconds",
+    "epoch_microseconds",
+    "epoch_nanoseconds",
+)
+
+
+def _handle_interactive_select(builder: FlowBuilder, step: object) -> None:
+    import click
+
+    options = list(step.select.options)
+    click.echo("")
+    for i, opt in enumerate(options, 1):
+        click.echo(f"  [{i}] {opt.title}")
+    click.echo("")
+
+    while True:
+        raw = click.prompt("Select an option (enter number)", type=str)
+        try:
+            choice_idx = int(raw) - 1
+            if 0 <= choice_idx < len(options):
+                builder.select(options[choice_idx].title)
+                return
+            else:
+                click.echo(f"  Please enter a number between 1 and {len(options)}.")
+        except ValueError:
+            click.echo(f"  Invalid input. Please enter a number between 1 and {len(options)}.")
+
+
+def _handle_interactive_form(builder: FlowBuilder, step: object) -> None:
+    import click
+
+    values: dict[str, str] = {}
+    click.echo("")
+
+    for form_field in step.form.fields:
+        suffix = " (required)" if form_field.is_required else " (optional, Enter to skip)"
+
+        while True:
+            raw = click.prompt(f"  {form_field.label}{suffix}", default="", show_default=False)
+            if raw.strip() == "" and form_field.is_required:
+                click.echo("    This field is required. Please enter a value.")
+                continue
+            if raw.strip():
+                values[form_field.label] = raw.strip()
+            break
+
+    builder.fill(values)
+
+
+def run_interactive_flow(rid: str, client: NominalClient) -> FlowResult:
+    """Interactively walk through an ingest flow, prompting for selections and form values.
+
+    Fetches the ingest flow definition, then walks through each step:
+    - Select steps: displays numbered options and prompts for a choice
+    - Form steps: prompts for each field value
+    - Upload step: prompts for file path, timestamp column, and timestamp type,
+      then uploads the data and returns the result.
+
+    Example::
+
+        from nominal.core.client import NominalClient
+        from nominal.core.flow import run_interactive_flow
+
+        client = NominalClient.from_profile("default")
+        result = run_interactive_flow("ri.ingest-flow.main.flow.abc123", client)
+        print(result.dataset_file)
+
+    Args:
+        rid: The RID of the ingest flow to run.
+        client: An authenticated NominalClient instance.
+
+    Returns:
+        A FlowResult containing the uploaded dataset file and optional run.
+    """
+    import click
+
+    builder = FlowBuilder(rid, client=client)
+
+    while True:
+        step = builder._current_step
+        step_type = _step_type_name(step)
+
+        click.echo(f"\n--- {step.title} ---")
+        if step.description:
+            click.echo(f"  {step.description}")
+
+        if step_type == "select":
+            _handle_interactive_select(builder, step)
+
+        elif step_type == "form":
+            _handle_interactive_form(builder, step)
+
+        elif step_type == "upload":
+            flow = builder.build()
+            click.echo("\nFlow path complete. Now provide upload details.\n")
+
+            file_path = click.prompt("  File path", type=click.Path(exists=True))
+            timestamp_column = click.prompt("  Timestamp column")
+            timestamp_type = click.prompt(
+                "  Timestamp type",
+                type=click.Choice(_TIMESTAMP_TYPES),
+            )
+            run_name = click.prompt("  Run name (optional, Enter to skip)", default="", show_default=False)
+
+            result = flow.add_tabular_data(
+                file_path,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+                run_name=run_name.strip() or None,
+            )
+
+            click.echo("\nUpload complete.")
+            return result
+
+        else:
+            raise FlowBuilderError(f"Unknown step type at '{step.title}'")
