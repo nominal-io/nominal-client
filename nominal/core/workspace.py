@@ -13,6 +13,7 @@ class Workspace(HasRid):
     rid: str
     id: str
     org: str
+    display_name: str | None = None
 
     @classmethod
     def _from_conjure(cls, workspace: security_api_workspace.Workspace) -> Self:
@@ -20,4 +21,5 @@ class Workspace(HasRid):
             rid=workspace.rid,
             id=workspace.id,
             org=workspace.org,
+            display_name=getattr(workspace, "display_name", None),
         )

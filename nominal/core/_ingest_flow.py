@@ -25,13 +25,24 @@ def _ensure_proto_stubs() -> None:
         return
 
     spec = importlib.util.find_spec("nominal_api_protos")
-    if spec is None or spec.origin is None:
+    if spec is None:
         raise ImportError("nominal_api_protos is not installed — install with: uv pip install nominal-api-protos")
 
-    site_packages = os.path.dirname(os.path.dirname(spec.origin))
+    # nominal_api_protos is a namespace package (no __init__.py), so spec.origin is None.
+    # Use submodule_search_locations to find the package path instead.
+    if spec.origin is not None:
+        pkg_dir = os.path.dirname(spec.origin)
+    elif spec.submodule_search_locations:
+        pkg_dir = list(spec.submodule_search_locations)[0]
+    else:
+        raise ImportError("nominal_api_protos is installed but its location cannot be determined")
+
+    site_packages = os.path.dirname(pkg_dir)
 
     stubs = {
         "buf/validate/validate_pb2.py": ("buf/validate/validate.proto", "buf.validate"),
+        "google/api/annotations_pb2.py": ("google/api/annotations.proto", "google.api"),
+        "google/api/http_pb2.py": ("google/api/http.proto", "google.api"),
         "nominal_api_protos/nominal/gen/v1/alias_pb2.py": ("nominal/gen/v1/alias.proto", "nominal.gen.v1"),
         "nominal_api_protos/nominal/gen/v1/error_pb2.py": ("nominal/gen/v1/error.proto", "nominal.gen.v1"),
         "nominal_api_protos/nominal/conjure/v1/compat_pb2.py": ("nominal/conjure/v1/compat.proto", "nominal.conjure.v1"),

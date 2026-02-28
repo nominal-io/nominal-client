@@ -709,6 +709,7 @@ def _construct_new_ingest_options(
 
         return ingest_api.IngestOptions(
             csv=ingest_api.CsvOpts(
+                exclude_columns=[],
                 source=source,
                 target=target,
                 timestamp_metadata=timestamp_metadata,
@@ -755,6 +756,7 @@ def _construct_existing_ingest_options(
 
         return ingest_api.IngestOptions(
             csv=ingest_api.CsvOpts(
+                exclude_columns=[],
                 source=source,
                 target=target,
                 timestamp_metadata=timestamp_metadata,

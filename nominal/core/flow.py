@@ -6,9 +6,13 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Mapping, Sequence, Type, Union
 
+import logging
+
 from typing_extensions import Self
 
 from nominal.core._ingest_flow import IngestFlowClient
+
+logger = logging.getLogger(__name__)
 from nominal.core._stream.write_stream import DataStream
 from nominal.ts import IntegralNanosecondsUTC
 
@@ -44,6 +48,33 @@ class UploadStep:
 
 
 FlowStep = Union[SelectStep, FormStep, UploadStep]
+
+
+@dataclass(frozen=True)
+class SelectOptionInfo:
+    """Read-only info about a single option in a select step."""
+
+    title: str
+
+
+@dataclass(frozen=True)
+class FormFieldInfo:
+    """Read-only info about a single field in a form step."""
+
+    label: str
+    is_required: bool
+    placeholder: str
+
+
+@dataclass(frozen=True)
+class StepInfo:
+    """Read-only snapshot of the current step in the flow graph."""
+
+    step_type: str  # "select" | "form" | "upload"
+    title: str
+    description: str
+    options: tuple[SelectOptionInfo, ...] = ()
+    fields: tuple[FormFieldInfo, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -127,7 +158,19 @@ class Flow:
                 labels=self._run_labels,
                 asset=self._asset_rid,
             )
-            run.add_dataset(self._refname or dataset.name, dataset)
+            try:
+                run.add_dataset(self._refname or dataset.name, dataset)
+            except Exception as e:
+                # When a run is created on an asset, it inherits existing data source
+                # ref names. If the ref name is already used, the dataset is already
+                # associated via the asset — skip rather than fail.
+                _is_ref_conflict = (
+                    hasattr(e, "error_name") and e.error_name == "Scout:RefNamesAlreadyUsed"
+                )
+                if _is_ref_conflict:
+                    logger.debug("Ref name already on run (inherited from asset), skipping add_dataset")
+                else:
+                    raise
             if self._checklist_rid:
                 checklist = self._client.get_checklist(self._checklist_rid)
                 checklist.execute(run)
@@ -221,6 +264,34 @@ class FlowBuilder:
     @property
     def _current_step(self):
         return self._state.steps[self._current_uuid]
+
+    def current_step_info(self) -> StepInfo:
+        """Return read-only information about the current step."""
+        step = self._current_step
+        step_type = _step_type_name(step)
+
+        options: tuple[SelectOptionInfo, ...] = ()
+        fields: tuple[FormFieldInfo, ...] = ()
+
+        if step.HasField("select"):
+            options = tuple(SelectOptionInfo(title=o.title) for o in step.select.options)
+        elif step.HasField("form"):
+            fields = tuple(
+                FormFieldInfo(
+                    label=f.label,
+                    is_required=f.is_required,
+                    placeholder=getattr(f, "placeholder", "") or "",
+                )
+                for f in step.form.fields
+            )
+
+        return StepInfo(
+            step_type=step_type,
+            title=step.title,
+            description=step.description,
+            options=options,
+            fields=fields,
+        )
 
     def select(self, option: str) -> Self:
         step = self._current_step
