@@ -27,5 +27,4 @@ def run_flow(rid: str, client: NominalClient) -> None:
     if result.run:
         click.echo(f"\n{result.run.nominal_url}")
     else:
-        dataset = client.get_dataset(result.dataset_file.dataset_rid)
-        click.echo(f"\n{dataset.nominal_url}")
+        click.echo(f"\n{client.get_dataset(result.dataset_file.dataset_rid).nominal_url}")
