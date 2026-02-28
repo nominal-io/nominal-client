@@ -30,12 +30,31 @@ _ARROW_VALUE_TYPES: dict[PointType, pa.DataType] = {
 }
 
 
+class FlightClientPool:
+    """Reuses a single Arrow Flight client across batch sends to avoid per-batch TCP connections."""
+
+    def __init__(self, flight_uri: str) -> None:
+        self._flight_uri = flight_uri
+        self._client: flight.FlightClient | None = None
+
+    def get(self) -> flight.FlightClient:
+        if self._client is None:
+            self._client = flight.connect(self._flight_uri)
+        return self._client
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+
 def process_batch_arrow_flight(
     batch: Sequence[DataItem],
     nominal_data_source_rid: str,
     flight_uri: str,
     org_rid: str = "",
     auth_header: str = "",
+    client_pool: FlightClientPool | None = None,
 ) -> None:
     """Process a batch of data items by sending them via Arrow Flight DoPut.
 
@@ -44,6 +63,8 @@ def process_batch_arrow_flight(
 
     The FlightDescriptor includes series_metadata and org_rid so that stream-consumer
     can write series rows to ClickHouse and Postgres without additional DB lookups.
+
+    Pass a FlightClientPool to reuse connections across batches.
     """
     if not batch:
         return
@@ -130,14 +151,20 @@ def process_batch_arrow_flight(
         json.dumps(descriptor_payload).encode("utf-8")
     )
 
-    # Connect and send
-    client = flight.connect(flight_uri)
+    # Reuse client from pool, or create a one-shot connection
+    owns_client = client_pool is None
+    client = flight.connect(flight_uri) if owns_client else client_pool.get()
     try:
         writer, _reader = client.do_put(descriptor, schema)
         writer.write_batch(record_batch)
         writer.close()
+    except Exception:
+        if client_pool is not None:
+            client_pool.close()  # force reconnect on next batch
+        raise
     finally:
-        client.close()
+        if owns_client:
+            client.close()
 
     logger.info(
         "Arrow Flight: sent %d points (%d series) to %s",
