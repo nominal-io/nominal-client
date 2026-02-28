@@ -88,6 +88,9 @@ class Flow:
     _dataset_rid: str | None = field(repr=False, default=None)
     _asset_rid: str | None = field(repr=False, default=None)
     _refname: str | None = field(repr=False, default=None)
+    _workbook_template_rid: str | None = field(repr=False, default=None)
+    _checklist_rid: str | None = field(repr=False, default=None)
+    _run_title: str | None = field(repr=False, default=None)
 
     def _get_dataset(self):
         if self._dataset_rid is None:
@@ -96,7 +99,7 @@ class Flow:
 
     @property
     def _has_run_metadata(self) -> bool:
-        return bool(self._run_labels or self._run_properties)
+        return bool(self._run_labels or self._run_properties or self._run_title)
 
     def add_tabular_data(
         self,
@@ -117,7 +120,7 @@ class Flow:
         run = None
         if self._has_run_metadata:
             run = self._client.create_run(
-                name=run_name or Path(path).stem,
+                name=run_name or self._run_title or Path(path).stem,
                 start=datetime.now(),
                 end=None,
                 properties=self._run_properties or None,
@@ -125,6 +128,9 @@ class Flow:
                 asset=self._asset_rid,
             )
             run.add_dataset(self._refname or dataset.name, dataset)
+            if self._checklist_rid:
+                checklist = self._client.get_checklist(self._checklist_rid)
+                checklist.execute(run)
 
         return FlowResult(dataset_file=dataset_file, run=run)
 
@@ -203,6 +209,9 @@ class FlowBuilder:
         self._dataset_rid: str | None = None
         self._asset_rid: str | None = None
         self._refname: str | None = None
+        self._workbook_template_rid: str | None = None
+        self._checklist_rid: str | None = None
+        self._run_title: str | None = None
 
         if self._current_uuid not in self._state.steps:
             raise FlowBuilderError(
@@ -293,6 +302,9 @@ class FlowBuilder:
             _dataset_rid=self._dataset_rid,
             _asset_rid=self._asset_rid,
             _refname=self._refname,
+            _workbook_template_rid=self._workbook_template_rid,
+            _checklist_rid=self._checklist_rid,
+            _run_title=self._run_title,
         )
 
     def _advance(self, next_uuid: str) -> None:
@@ -361,6 +373,10 @@ class FlowBuilder:
                 self._asset_rid = action.use_asset.asset_rid
             elif action.HasField("use_refname"):
                 self._refname = action.use_refname.refname
+            elif action.HasField("create_workbook"):
+                self._workbook_template_rid = action.create_workbook.workbook_template_rid
+            elif action.HasField("use_checklist"):
+                self._checklist_rid = action.use_checklist.checklist_rid
 
     def _accumulate_form_field_action(self, form_field, value: str) -> None:
         if form_field.HasField("set_run_property"):
@@ -369,6 +385,8 @@ class FlowBuilder:
             self._tags[form_field.set_tag.key] = value
         elif form_field.HasField("set_run_label"):
             self._run_labels.append(value)
+        elif form_field.HasField("set_run_title"):
+            self._run_title = value
 
 
 def _step_type_name(step) -> str:

@@ -1713,8 +1713,8 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=2.8.0,<4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1136.0.dev20260226235345" },
-    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = "==0.1136.0.dev20260226235345" },
+    { name = "nominal-api", specifier = "==0.1136.0.dev20260228004615" },
+    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = "==0.1136.0.dev20260228004615" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "pandas", specifier = ">=0.0.0" },
     { name = "python-dateutil", specifier = ">=0.0.0" },
@@ -1738,7 +1738,7 @@ dev = [
     { name = "mkdocstrings", specifier = ">=0.29.1,<1" },
     { name = "mkdocstrings-python", specifier = ">=1.16.10,<2" },
     { name = "mypy", specifier = ">=1.11.2,<2" },
-    { name = "nominal-api-protos", specifier = "==0.1136.0.dev20260226235345" },
+    { name = "nominal-api-protos", specifier = "==0.1136.0.dev20260228004615" },
     { name = "pandas-stubs", specifier = "~=2.0" },
     { name = "polars", specifier = ">=0.0.0" },
     { name = "pytest", specifier = ">=8.3.2,<9" },
@@ -1753,29 +1753,29 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1136.0.dev20260226235345"
+version = "0.1136.0.dev20260228004615"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1c/32/d6deaf83cc58ea3507dfec7bb75fee5d28153694d24bbe4a7622e0418032/nominal_api-0.1136.0.dev20260226235345.tar.gz", hash = "sha256:1e887fab0062b59e9affcc4d77029357664da156d1829c66a17dd415564daff8", size = 665060, upload-time = "2026-02-26T23:55:12.642Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e5/a2/d677c83911c36ef757a19fe18bf0fb568cbd52f0cd81e009dfdc7d418761/nominal_api-0.1136.0.dev20260228004615.tar.gz", hash = "sha256:12e1c364ad0b393eefdcf35b59d9d0fd80ad5f69e404f3893709cad8ebf30ff0", size = 665059, upload-time = "2026-02-28T00:47:39.838Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/72/b10e1771fa16c3b0babd346dd4ad88ba1999d110e1e32175bc45055023c9/nominal_api-0.1136.0.dev20260226235345-py3-none-any.whl", hash = "sha256:1a7f0fd80eacfbe264987dda6e08f2a9f438e71ac953165b7bd5289ef3fc31dd", size = 698722, upload-time = "2026-02-26T23:55:11.394Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/be/8bac007e469f0718ba8af225fae108c69d53d415219da38e61c842306b88/nominal_api-0.1136.0.dev20260228004615-py3-none-any.whl", hash = "sha256:9d402d5d72df1ed0b0e1bfaf326a6a1b90008d26e3d4b4a23786e86cae7b68c9", size = 698723, upload-time = "2026-02-28T00:47:37.973Z" },
 ]
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.1136.0.dev20260226235345"
+version = "0.1136.0.dev20260228004615"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpcio" },
     { name = "grpcio-tools" },
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/76/d5/f2d95d37d29a3500706a907ed429a080465846db7c1168343a774a3a53cb/nominal_api_protos-0.1136.0.dev20260226235345.tar.gz", hash = "sha256:0ca0da53a4891556942f52c663a487f9bcff77f54ee1ff66379fa190f2d6335a", size = 178254, upload-time = "2026-02-26T23:55:15.638Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c1/c7/08117812cf56b80b8215f7c1253c32d9e53548b51d28de70bed4380426bb/nominal_api_protos-0.1136.0.dev20260228004615.tar.gz", hash = "sha256:92f286660a1d5b7c7eae134d18d65ba649ffcd5759e68c5999445b2d30ee93b4", size = 178877, upload-time = "2026-02-28T00:47:42.621Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/a3/82b82df4920f2b0ecc946c7582e1ecbff5f1ec390cc1e86976f154daab94/nominal_api_protos-0.1136.0.dev20260226235345-py3-none-any.whl", hash = "sha256:0bd9d0401771bc1779e34415fb8867069706107eb778fd3ab1f3548db0315519", size = 248307, upload-time = "2026-02-26T23:55:14.035Z" },
+    { url = "https://files.pythonhosted.org/packages/73/60/c9c4623242f181d2034a534382de17bc3f5bf1a87ad411524b0416e90318/nominal_api_protos-0.1136.0.dev20260228004615-py3-none-any.whl", hash = "sha256:4f92a5a038305e6d9b3a835c6fe053aaa50c430eb1c5210a1c7eafdf8c1673b9", size = 248754, upload-time = "2026-02-28T00:47:40.957Z" },
 ]
 
 [[package]]
