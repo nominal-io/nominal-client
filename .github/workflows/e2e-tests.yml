@@ -43,14 +43,25 @@ jobs:
       - name: Install dependencies
         run: just install
 
-      - name: Run e2e tests
+      - name: Write Nominal profile
         env:
           NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
+        run: |
+          mkdir -p ~/.config/nominal
+          cat > ~/.config/nominal/config.yml <<EOF
+          version: 2
+          profiles:
+            staging-e2e:
+              base_url: https://api-staging.gov.nominal.io/api
+              token: ${NOMINAL_E2E_TOKEN}
+              workspace_rid: ${NOMINAL_E2E_WORKSPACE_RID}
+          EOF
+
+      - name: Run e2e tests
         run: |
           uv run pytest tests/e2e \
-            --auth-token "$NOMINAL_E2E_TOKEN" \
-            --base-url "https://api-staging.gov.nominal.io/api" \
-            --workspace "python-e2e" \
+            --profile staging-e2e \
             -v \
             --tb=short \
             --no-cov
