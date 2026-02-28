@@ -1,0 +1,67 @@
+# End-to-end tests against Nominal staging.
+# Requires the E2E_NOMINAL_STAGING_API_KEY repository secret.
+
+name: E2E Tests (Staging)
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+# Serialize e2e runs per-ref so we don't overwhelm staging with concurrent
+# test suites from the same branch.  A new push cancels the in-flight run.
+concurrency:
+  group: e2e-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-tests:
+    name: E2E Tests
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 15
+
+    # Fork PRs don't have access to secrets — skip gracefully.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.x"
+          enable-cache: false
+          cache-dependency-glob: "uv.lock"
+          python-version: "3.12"
+
+      - name: Install just
+        uses: extractions/setup-just@v3
+
+      - name: Install dependencies
+        run: just install
+
+      - name: Write Nominal profile
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
+        run: |
+          mkdir -p ~/.config/nominal
+          cat > ~/.config/nominal/config.yml <<EOF
+          version: 2
+          profiles:
+            staging-e2e:
+              base_url: https://api-staging.gov.nominal.io/api
+              token: ${NOMINAL_E2E_TOKEN}
+              workspace_rid: ${NOMINAL_E2E_WORKSPACE_RID}
+          EOF
+
+      - name: Run e2e tests
+        run: |
+          uv run pytest tests/e2e \
+            --profile staging-e2e \
+            -v \
+            --tb=short \
+            --no-cov
