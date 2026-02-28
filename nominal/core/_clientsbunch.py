@@ -126,7 +126,7 @@ class ClientsBunch:
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest: ingest_api.IngestService
-    logical_series: timeseries_logicalseries.LogicalSeriesService
+    logical_series: object  # timeseries_logicalseries.LogicalSeriesService or None
     run: scout.RunService
     units: scout.UnitsService
     upload: upload_api.UploadService
@@ -166,7 +166,7 @@ class ClientsBunch:
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest=client_factory(ingest_api.IngestService),
-            logical_series=client_factory(timeseries_logicalseries.LogicalSeriesService),
+            logical_series=client_factory(timeseries_logicalseries.LogicalSeriesService) if timeseries_logicalseries else None,
             run=client_factory(scout.RunService),
             units=client_factory(scout.UnitsService),
             upload=client_factory(upload_api.UploadService),
