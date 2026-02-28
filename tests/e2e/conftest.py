@@ -14,6 +14,11 @@ def pytest_addoption(parser):
     parser.addoption(
         "--profile", default=None, help="Nominal profile name (takes precedence over --auth-token / --base-url)"
     )
+    parser.addoption(
+        "--workspace",
+        default=None,
+        help="Workspace name or RID to scope API calls to (e.g. 'python-e2e' or 'ri.security...')",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -26,8 +31,24 @@ def client(pytestconfig) -> NominalClient:
     if auth_token is None:
         raise pytest.UsageError("Either --profile or --auth-token must be provided")
     base_url = pytestconfig.getoption("base_url")
-    print(f"Using NominalClient.create(base_url={base_url!r})")
-    return NominalClient.create(base_url=base_url, token=auth_token)
+    workspace = pytestconfig.getoption("workspace")
+
+    workspace_rid = None
+    if workspace is not None:
+        if workspace.startswith("ri."):
+            workspace_rid = workspace
+        else:
+            temp_client = NominalClient.create(base_url=base_url, token=auth_token)
+            for ws in temp_client.list_workspaces():
+                if ws.id == workspace:
+                    workspace_rid = ws.rid
+                    break
+            else:
+                available = [ws.id for ws in temp_client.list_workspaces()]
+                raise pytest.UsageError(f"Workspace '{workspace}' not found. Available: {available}")
+
+    print(f"Using NominalClient.create(base_url={base_url!r}, workspace_rid={workspace_rid!r})")
+    return NominalClient.create(base_url=base_url, token=auth_token, workspace_rid=workspace_rid)
 
 
 @pytest.fixture(scope="session", autouse=True)
