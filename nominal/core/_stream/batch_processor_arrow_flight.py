@@ -34,11 +34,16 @@ def process_batch_arrow_flight(
     batch: Sequence[DataItem],
     nominal_data_source_rid: str,
     flight_uri: str,
+    org_rid: str = "",
+    auth_header: str = "",
 ) -> None:
     """Process a batch of data items by sending them via Arrow Flight DoPut.
 
     Groups items by (channel, tags, type), computes a series UUID for each group,
     and sends all data in a single Arrow RecordBatch with schema (series, timestamp, value).
+
+    The FlightDescriptor includes series_metadata and org_rid so that stream-consumer
+    can write series rows to ClickHouse and Postgres without additional DB lookups.
     """
     if not batch:
         return
@@ -54,6 +59,7 @@ def process_batch_arrow_flight(
     timestamp_values: list[int] = []
     double_values: list[float | None] = []
     value_type: PointType | None = None
+    series_metadata: dict[str, dict] = {}
 
     for _key, group_iter in grouped:
         group = list(group_iter)
@@ -79,6 +85,12 @@ def process_batch_arrow_flight(
         channel = group[0].channel_name
         tags = dict(group[0].tags) if group[0].tags else {}
         sid = str(series_uuid(channel, data_source_uuid, tags, point_type.name))
+
+        series_metadata[sid] = {
+            "channel": channel,
+            "tags": tags,
+            "data_type": point_type.name,
+        }
 
         for item in group:
             series_values.append(sid)
@@ -107,9 +119,15 @@ def process_batch_arrow_flight(
     ]
     record_batch = pa.record_batch(arrays, schema=schema)
 
-    # FlightDescriptor: just the dataset RID (server detects multi-series mode from schema)
+    descriptor_payload: dict = {
+        "dataset_rid": nominal_data_source_rid,
+        "org_rid": org_rid,
+        "series_metadata": series_metadata,
+    }
+    if auth_header:
+        descriptor_payload["auth_header"] = auth_header
     descriptor = flight.FlightDescriptor.for_command(
-        json.dumps({"dataset_rid": nominal_data_source_rid}).encode("utf-8")
+        json.dumps(descriptor_payload).encode("utf-8")
     )
 
     # Connect and send
