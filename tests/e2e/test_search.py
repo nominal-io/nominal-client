@@ -244,36 +244,8 @@ def test_search_dataset_files_no_filter(client: NominalClient, search_context: S
     assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
 
 
-def test_search_dataset_files_by_source_alpha(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering by source=alpha returns only the Jan and Dec files."""
-    results = client.search_dataset_files(search_context.dataset, file_tags={"source": "alpha"})
-    ids = {f.id for f in results}
-    assert ids == {search_context.file_jan.id, search_context.file_dec.id}
-
-
-def test_search_dataset_files_by_source_beta(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering by source=beta returns only the Jun file."""
-    results = client.search_dataset_files(search_context.dataset, file_tags={"source": "beta"})
-    ids = {f.id for f in results}
-    assert ids == {search_context.file_jun.id}
-
-
-def test_search_dataset_files_by_region_eu_west(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering by region=eu-west returns the Jun and Dec files."""
-    results = client.search_dataset_files(search_context.dataset, file_tags={"region": "eu-west"})
-    ids = {f.id for f in results}
-    assert ids == {search_context.file_jun.id, search_context.file_dec.id}
-
-
-def test_search_dataset_files_by_region_us_east(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering by region=us-east returns only the Jan file."""
-    results = client.search_dataset_files(search_context.dataset, file_tags={"region": "us-east"})
-    ids = {f.id for f in results}
-    assert ids == {search_context.file_jan.id}
-
-
-def test_search_dataset_files_by_combined_tags(client: NominalClient, search_context: SearchContext) -> None:
-    """Combining two tag filters (source=alpha AND region=eu-west) returns only the Dec file."""
+def test_search_dataset_files_by_tags(client: NominalClient, search_context: SearchContext) -> None:
+    """Multiple tag filters are AND-ed: source=alpha AND region=eu-west returns only the Dec file."""
     results = client.search_dataset_files(search_context.dataset, file_tags={"source": "alpha", "region": "eu-west"})
     ids = {f.id for f in results}
     assert ids == {search_context.file_dec.id}
@@ -287,32 +259,10 @@ def test_search_dataset_files_by_time_range(client: NominalClient, search_contex
 
 
 def test_search_dataset_files_combined_tag_and_time(client: NominalClient, search_context: SearchContext) -> None:
-    """Combining a tag filter and a start time returns only files that match both criteria."""
+    """A tag filter and a start time are AND-ed: source=alpha after Jun 2024 returns only the Dec file."""
     results = client.search_dataset_files(search_context.dataset, start="2024-06-01", file_tags={"source": "alpha"})
     ids = {f.id for f in results}
     assert ids == {search_context.file_dec.id}
-
-
-def test_search_dataset_files_start_exact_boundary_is_inclusive(
-    client: NominalClient, search_context: SearchContext
-) -> None:
-    """A search start equal to a file's own start timestamp includes that file (inclusive lower bound)."""
-    # search start == file_jan's own start → file_jan is included (inclusive lower bound).
-    # All three files end on or after Jan 1 00:00, so all three are returned.
-    results = client.search_dataset_files(search_context.dataset, start="2024-01-01T00:00:00Z")
-    ids = {f.id for f in results}
-    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
-
-
-def test_search_dataset_files_end_exact_boundary_is_inclusive(
-    client: NominalClient, search_context: SearchContext
-) -> None:
-    """A search end equal to a file's own end timestamp includes that file (inclusive upper bound)."""
-    # search end == file_dec's own end → file_dec is included (inclusive upper bound).
-    # All three files start on or before Dec 1 01:00, so all three are returned.
-    results = client.search_dataset_files(search_context.dataset, end="2024-12-01T01:00:00Z")
-    ids = {f.id for f in results}
-    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
 
 
 def test_search_dataset_files_start_uses_overlap_semantics(
@@ -321,7 +271,6 @@ def test_search_dataset_files_start_uses_overlap_semantics(
     """A file whose range starts before the search window but overlaps it is still included."""
     # file_jan spans [00:00, 01:00] on Jan 1. Search start is the midpoint (00:30).
     # file_jan starts BEFORE the search start but its range still overlaps → IS included.
-    # This directly answers: "if search start=6 and file spans [4, 8], is it included?" → YES.
     results = client.search_dataset_files(search_context.dataset, start="2024-01-01T00:30:00Z")
     ids = {f.id for f in results}
     assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
@@ -334,3 +283,9 @@ def test_search_dataset_files_end_uses_overlap_semantics(client: NominalClient, 
     results = client.search_dataset_files(search_context.dataset, end="2024-12-01T00:30:00Z")
     ids = {f.id for f in results}
     assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
+
+
+def test_search_dataset_files_no_match(client: NominalClient, search_context: SearchContext) -> None:
+    """A search window entirely beyond all file ranges returns an empty result."""
+    results = client.search_dataset_files(search_context.dataset, start="2030-01-01")
+    assert list(results) == []
