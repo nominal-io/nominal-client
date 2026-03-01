@@ -175,4 +175,6 @@ def test_custom_day_of_year(request, client: NominalClient, temperature_data):
         return f"{temp},{ts.strftime(r'%H:%M:%S.%f')}"
 
     csv_bytes = _create_csv_data(temperature_data, fmt)
-    _upload_and_assert(client, name, desc, csv_bytes, Custom(r"HH:mm:ss.SSSSSS", default_year=2024, default_day_of_year=1))
+    _upload_and_assert(
+        client, name, desc, csv_bytes, Custom(r"HH:mm:ss.SSSSSS", default_year=2024, default_day_of_year=1)
+    )

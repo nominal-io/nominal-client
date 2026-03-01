@@ -209,5 +209,3 @@ def test_get_dataset_pandas(ingested_dataset: Dataset, csv_data):
     # "relative" AND "minutes" matches only "relative_minutes"
     df2 = datasource_to_dataframe(ingested_dataset, channel_exact_match=["relative", "minutes"])
     pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])
-
-

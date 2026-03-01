@@ -18,11 +18,11 @@ from io import BytesIO
 from typing import Callable
 from uuid import uuid4
 
-import nominal as nm
 import pandas as pd
 import polars as pl
 import pytest
 
+import nominal as nm
 from nominal.core import NominalClient
 from nominal.core.filetype import FileTypes
 from nominal.thirdparty.pandas import upload_dataframe

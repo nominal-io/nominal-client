@@ -178,7 +178,6 @@ def test_search_runs_by_properties(client: NominalClient, search_context: Search
     assert rids == {ctx.run.rid}
 
 
-
 # ---------------------------------------------------------------------------
 # Asset search
 # ---------------------------------------------------------------------------
@@ -208,7 +207,6 @@ def test_search_assets_by_properties(client: NominalClient, search_context: Sear
     assert rids == {ctx.asset.rid}
 
 
-
 # ---------------------------------------------------------------------------
 # Event search
 # ---------------------------------------------------------------------------
@@ -228,7 +226,6 @@ def test_search_events_by_event_type(client: NominalClient, search_context: Sear
     results = client.search_events(event_type=EventType.INFO, assets=[ctx.asset])
     rids = {e.rid for e in results}
     assert rids == {ctx.event_info.rid}
-
 
 
 # ---------------------------------------------------------------------------
@@ -313,23 +310,6 @@ def test_search_dataset_files_combined_tag_and_time(client: NominalClient, searc
     assert ids == {ctx.file_dec.id}
 
 
-# ---------------------------------------------------------------------------
-# Dataset file search — boundary / overlap semantics
-#
-# file_jan spans [2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z]
-# file_dec spans [2024-12-01T00:00:00Z, 2024-12-01T01:00:00Z]
-#
-# The server uses OVERLAP semantics:
-#   `start` → file included if file.end   >= search.start  (not entirely before the window)
-#   `end`   → file included if file.start <= search.end    (not entirely after the window)
-#
-# A file that straddles the boundary IS included.
-# A file that ends before `start`, or starts after `end`, is excluded.
-#
-# This answers: "if search start=6 and file spans [4, 8], is it included?" → YES.
-# ---------------------------------------------------------------------------
-
-
 def test_search_dataset_files_start_exact_boundary_is_inclusive(
     client: NominalClient, search_context: SearchContext
 ) -> None:
@@ -367,9 +347,7 @@ def test_search_dataset_files_start_uses_overlap_semantics(
     assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
 
 
-def test_search_dataset_files_end_uses_overlap_semantics(
-    client: NominalClient, search_context: SearchContext
-) -> None:
+def test_search_dataset_files_end_uses_overlap_semantics(client: NominalClient, search_context: SearchContext) -> None:
     """A file whose range ends after the search window but overlaps it is still included."""
     ctx = search_context
     # file_dec spans [00:00, 01:00] on Dec 1. Search end is the midpoint (00:30).
