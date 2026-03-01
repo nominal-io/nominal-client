@@ -1,6 +1,9 @@
 import random
 from datetime import datetime, timedelta
 
+POLL_INTERVAL = timedelta(seconds=0.1)
+"""Default polling interval for `poll_until_ingestion_completed` calls in e2e tests."""
+
 
 def _create_random_start_end():
     random_epoch_start = int(datetime(2020, 1, 1).timestamp())
