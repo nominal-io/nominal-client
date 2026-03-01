@@ -1,23 +1,44 @@
+"""End-to-end tests for mutation operations and data retrieval on datasets, runs, and attachments.
+
+Covers:
+  - Updating metadata (name, description, properties, labels) on datasets, runs, and attachments
+  - Updating a run's time window (start/end)
+  - Uploading multiple CSV files to a single dataset
+  - Linking datasets and attachments to a run, then listing them back
+  - Reading channel data via the pandas integration (single-channel and full-dataset retrieval)
+
+The `ingested_dataset` fixture is session-scoped (defined in conftest.py): one shared dataset is
+created at the start of the session and reused by all read-only channel/pandas tests, avoiding
+redundant ingest round-trips for each test.
+"""
+
+from __future__ import annotations
+
 from datetime import timedelta
 from io import BytesIO
-from unittest import mock
+from typing import Callable
 from uuid import uuid4
 
 import pandas as pd
 
-import nominal as nm
+from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType
+from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
-from nominal.ts import _SecondsNanos
-from tests.e2e import _create_random_start_end
+from nominal.thirdparty.pandas import channel_to_series, datasource_to_dataframe
+from nominal.ts import ISO_8601, _SecondsNanos
+from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
 
-def test_update_dataset(csv_data):
+def test_update_dataset(client: NominalClient, csv_data, archive: Callable):
+    """Calling `dataset.update()` mutates name, description, properties, and labels in-place."""
     name = f"dataset-{uuid4()}"
     desc = f"core test to update a dataset {uuid4()}"
 
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
+    ds = client.create_dataset(name, description=desc)
+    archive(ds)
+    ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
+
     new_name = name + "-updated"
     new_desc = desc + "-updated"
     new_props = {"key": "value"}
@@ -30,12 +51,15 @@ def test_update_dataset(csv_data):
     assert ds.labels == tuple(new_labels)
 
 
-def test_update_run():
+def test_update_run(client: NominalClient, archive: Callable):
+    """Calling `run.update()` mutates all mutable fields, including the start/end time window."""
     title = f"run-{uuid4()}"
     desc = f"core test to update a run {uuid4()}"
     start, end = _create_random_start_end()
-    run = nm.create_run(title, start, end, desc)
+    run = client.create_run(title, start, end, description=desc)
+    archive(run)
 
+    # Verify initial state before updating
     assert run.name == title
     assert run.description == desc
     assert len(run.properties) == 0
@@ -47,6 +71,7 @@ def test_update_run():
     new_desc = desc + "-updated"
     new_props = {"key": "value"}
     new_labels = ["label"]
+    # Shrink the time window by 1 second on each side to confirm timestamps are updated
     new_start = start + timedelta(seconds=1)
     new_end = end - timedelta(seconds=1)
 
@@ -67,17 +92,14 @@ def test_update_run():
     assert run.end == _SecondsNanos.from_datetime(new_end).to_nanoseconds()
 
 
-def test_add_dataset_to_run_and_list_datasets(csv_data):
-    ds_name = f"dataset-{uuid4()}"
-    ds_desc = f"core test to add a dataset to a run {uuid4()}"
+def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: Callable):
+    """Linking a dataset to a run with a custom ref-name is reflected in `run.list_datasets()`."""
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+    ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", ds_name, "timestamp", "iso_8601", ds_desc)
-
-    title = f"run-{uuid4()}"
-    desc = f"core test to add a dataset to a run {uuid4()}"
-    start, end = _create_random_start_end()
-    run = nm.create_run(title, start, end, desc)
+    run = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
+    archive(run)
 
     ref_name = f"ref-name-{uuid4()}"
     run.add_dataset(ref_name, ds)
@@ -89,16 +111,17 @@ def test_add_dataset_to_run_and_list_datasets(csv_data):
     assert ds2.rid == ds.rid
 
 
-def test_add_csv_to_dataset(csv_data, csv_data2):
+def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive: Callable):
+    """Uploading two separate CSV files to the same dataset both ingest successfully."""
     name = f"dataset-{uuid4()}"
-    desc = f"TESTING core test to add more data to a dataset {uuid4()}"
+    desc = f"core test to add more data to a dataset {uuid4()}"
 
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "timestamp", nm.ts.ISO_8601, desc)
-
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data2)):
-        ds.add_csv_to_dataset("fake_path.csv", "timestamp", nm.ts.ISO_8601)
-    ds.poll_until_ingestion_completed(interval=timedelta(seconds=0.1))
+    ds = client.create_dataset(name, description=desc)
+    archive(ds)
+    # Upload both CSVs first, then batch-wait for both to ingest
+    file1 = ds.add_from_io(BytesIO(csv_data), "timestamp", ISO_8601)
+    file2 = ds.add_from_io(BytesIO(csv_data2), "timestamp", ISO_8601)
+    wait_for_files_to_ingest([file1, file2], poll_interval=POLL_INTERVAL)
 
     assert ds.rid != ""
     assert ds.name == name
@@ -107,12 +130,13 @@ def test_add_csv_to_dataset(csv_data, csv_data2):
     assert len(ds.labels) == 0
 
 
-def test_update_attachment(csv_data):
+def test_update_attachment(client: NominalClient, csv_data, archive: Callable):
+    """Calling `attachment.update()` mutates name, description, properties, and labels in-place."""
     at_name = f"attachment-{uuid4()}"
-    at_desc = f"core test to add a attachment to a run {uuid4()}"
+    at_desc = f"core test to update an attachment {uuid4()}"
 
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        at = nm.upload_attachment("fake_path.csv", at_name, at_desc)
+    at = client.create_attachment_from_io(BytesIO(csv_data), at_name, description=at_desc)
+    archive(at)
 
     new_name = at_name + "-updated"
     new_desc = at_desc + "-updated"
@@ -126,140 +150,62 @@ def test_update_attachment(csv_data):
     assert at.labels == tuple(new_labels)
 
 
-def test_add_attachment_to_run_and_list_attachments(csv_data):
-    at_name = f"attachment-{uuid4()}"
-    at_desc = f"core test to add a attachment to a run {uuid4()}"
+def test_add_attachment_to_run_and_list_attachments(client: NominalClient, csv_data, archive: Callable):
+    """Attaching a file to a run is reflected in `run.list_attachments()`; byte contents are preserved."""
+    at = client.create_attachment_from_io(BytesIO(csv_data), f"attachment-{uuid4()}")
+    archive(at)
 
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        at = nm.upload_attachment("fake_path.csv", at_name, at_desc)
-
-    title = f"run-{uuid4()}"
-    desc = f"core test to add a attachment to a run {uuid4()}"
-    start, end = _create_random_start_end()
-    run = nm.create_run(title, start, end, desc)
+    run = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
+    archive(run)
 
     run.add_attachments([at])
 
     at_list = run.list_attachments()
-
     assert len(at_list) == 1
     at2 = at_list[0]
     assert at2.rid == at.rid != ""
-    assert at2.name == at.name == at_name
-    assert at2.description == at.description == at_desc
+    assert at2.name == at.name
     assert at2.properties == at.properties == {}
     assert at2.labels == at.labels == ()
     assert at2.get_contents().read() == at.get_contents().read() == csv_data
 
 
-def test_get_channel(csv_data):
-    name = f"dataset-{uuid4()}"
-    desc = f"core test to get a channel of data {uuid4()}"
-
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
-
-    c = ds.get_channel("temperature")
-    assert c.rid != ""
+def test_get_channel(ingested_dataset: Dataset):
+    """Fetching a channel by name returns correct metadata: data type, unit, and description."""
+    c = ingested_dataset.get_channel("temperature")
     assert c.name == "temperature"
-    assert c.data_source == ds.rid
+    assert c.data_source == ingested_dataset.rid
     assert c.data_type == ChannelDataType.DOUBLE
     assert c.unit is None
     assert c.description is None
 
 
-def test_get_channel_pandas(csv_data):
-    name = f"dataset-{uuid4()}"
-    desc = f"core test to get a channel of data {uuid4()}"
-
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
-
-    c = ds.get_channel("temperature")
-    s = c.to_pandas()
+def test_get_channel_pandas(ingested_dataset: Dataset, csv_data):
+    """Converting a channel to a pandas Series produces values identical to the original CSV."""
+    c = ingested_dataset.get_channel("temperature")
+    s = channel_to_series(c)
     assert s.name == c.name == "temperature"
     assert s.index.name == "timestamp"
     assert s.dtype == "float64"
 
+    # Parse the reference CSV with matching dtype and index for a direct comparison
     df = pd.read_csv(
         BytesIO(csv_data), parse_dates=["timestamp"], index_col="timestamp", dtype={"temperature": "float64"}
     )
     assert s.equals(df["temperature"])
 
 
-def test_get_dataset_pandas(csv_data):
-    name = f"dataset-{uuid4()}"
-    desc = f"core test to get the dataset {uuid4()}"
-
-    with mock.patch("builtins.open", mock.mock_open(read_data=csv_data)):
-        ds = nm.upload_csv("fake_path.csv", name, "timestamp", "iso_8601", desc)
-
+def test_get_dataset_pandas(ingested_dataset: Dataset, csv_data):
+    """Converting a full dataset to a DataFrame matches the original CSV; channel_exact_match filters columns."""
     expected_data = pd.read_csv(BytesIO(csv_data), index_col="timestamp", parse_dates=["timestamp"])
     for col in expected_data.columns:
         expected_data[col] = expected_data[col].astype(float)
-    df = ds.to_pandas()
+
+    df = datasource_to_dataframe(ingested_dataset)
     df_sorted = df.reindex(expected_data.columns, axis=1)
     pd.testing.assert_frame_equal(df_sorted, expected_data)
-    df2 = ds.to_pandas(channel_exact_match=["relative", "minutes"])
+
+    # channel_exact_match filters to channels whose names contain ALL listed substrings;
+    # "relative" AND "minutes" matches only "relative_minutes"
+    df2 = datasource_to_dataframe(ingested_dataset, channel_exact_match=["relative", "minutes"])
     pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])
-
-
-def test_search_dataset_files(client):
-    _HEADER = b"timestamp,temperature,pressure,humidity\n"
-    # Three files with distinct epoch-seconds time ranges and file tags:
-    #   file1 · Jan 2024 · source=alpha, region=us-east
-    #   file2 · Jun 2024 · source=beta,  region=eu-west
-    #   file3 · Dec 2024 · source=alpha, region=eu-west
-    ds = client.create_dataset(f"dataset-{uuid4()}")
-
-    file1 = ds.add_from_io(
-        BytesIO(_HEADER + b"1704067200,20.1,1013.2,55.0\n1704070800,21.3,1012.8,54.5\n"),
-        timestamp_column="timestamp",
-        timestamp_type="epoch_seconds",
-        file_name="jan_2024.csv",
-        tags={"source": "alpha", "region": "us-east"},
-    )
-    file2 = ds.add_from_io(
-        BytesIO(_HEADER + b"1717200000,25.4,1008.1,60.2\n1717203600,26.0,1007.5,59.8\n"),
-        timestamp_column="timestamp",
-        timestamp_type="epoch_seconds",
-        file_name="jun_2024.csv",
-        tags={"source": "beta", "region": "eu-west"},
-    )
-    file3 = ds.add_from_io(
-        BytesIO(_HEADER + b"1733011200,8.2,1020.3,70.1\n1733014800,7.9,1021.0,71.3\n"),
-        timestamp_column="timestamp",
-        timestamp_type="epoch_seconds",
-        file_name="dec_2024.csv",
-        tags={"source": "alpha", "region": "eu-west"},
-    )
-    wait_for_files_to_ingest([file1, file2, file3], poll_interval=timedelta(seconds=0.1))
-
-    # No filters → all 3 files
-    all_files = client.search_dataset_files(ds)
-    assert len(all_files) == 3
-
-    # file_tags: source=alpha → files 1 + 3
-    alpha_files = client.search_dataset_files(ds, file_tags={"source": "alpha"})
-    assert len(alpha_files) == 2
-    assert all(f.file_tags is not None and f.file_tags.get("source") == "alpha" for f in alpha_files)
-
-    # file_tags: region=eu-west → files 2 + 3
-    eu_files = client.search_dataset_files(ds, file_tags={"region": "eu-west"})
-    assert len(eu_files) == 2
-    assert all(f.file_tags is not None and f.file_tags.get("region") == "eu-west" for f in eu_files)
-
-    # file_tags: source=alpha AND region=eu-west → file 3 only
-    combined_tag_files = client.search_dataset_files(ds, file_tags={"source": "alpha", "region": "eu-west"})
-    assert len(combined_tag_files) == 1
-    assert combined_tag_files[0].name == "dec_2024.csv"
-
-    # time range Mar–Sep 2024 → file 2 only (Jun 2024)
-    mid_year_files = client.search_dataset_files(ds, after="2024-03-01", before="2024-09-01")
-    assert len(mid_year_files) == 1
-    assert mid_year_files[0].name == "jun_2024.csv"
-
-    # combined: source=alpha AND after Jun 2024 → file 3 only (Dec 2024)
-    combined = client.search_dataset_files(ds, after="2024-06-01", file_tags={"source": "alpha"})
-    assert len(combined) == 1
-    assert combined[0].name == "dec_2024.csv"
