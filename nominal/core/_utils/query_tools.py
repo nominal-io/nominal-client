@@ -440,7 +440,6 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
     origin_types: Iterable[event.SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
     is_archived: bool | None = None,
-    disposition_statuses: Iterable[event.EventDispositionStatus] | None = None,
     priorities: Iterable[scout_api.Priority] | None = None,
     assignee_rids: Iterable[str] | None = None,
     event_types: Iterable[event.EventType] | None = None,
@@ -479,8 +478,6 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
         queries.append(event.SearchQuery(workspace=workspace_rid))
     if is_archived is not None:
         queries.append(event.SearchQuery(archived=is_archived))
-    if disposition_statuses is not None:
-        queries.append(event.SearchQuery(disposition_statuses=list(disposition_statuses)))
     if priorities is not None:
         queries.append(event.SearchQuery(priorities=list(priorities)))
     if assignee_rids is not None:

@@ -11,7 +11,6 @@ from typing_extensions import Self
 from nominal.core import asset as core_asset
 from nominal.core._checklist_types import Priority as Priority  # noqa: PLC0414
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._event_types import EventDispositionStatus as EventDispositionStatus  # noqa: PLC0414
 from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
 from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
@@ -177,7 +176,6 @@ def _search_events(
     origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
     is_archived: bool | None = None,
-    disposition_statuses: Iterable[EventDispositionStatus] | None = None,
     priorities: Iterable[Priority] | None = None,
     assignee_rids: Iterable[str] | None = None,
     event_types: Iterable[EventType] | None = None,
@@ -200,7 +198,6 @@ def _search_events(
         else None,
         workspace_rid=workspace_rid,
         is_archived=is_archived,
-        disposition_statuses=[s._to_api() for s in disposition_statuses] if disposition_statuses else None,
         priorities=[p._to_conjure() for p in priorities] if priorities else None,
         assignee_rids=assignee_rids,
         event_types=[et._to_api_event_type() for et in event_types] if event_types else None,

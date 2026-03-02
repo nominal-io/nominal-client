@@ -181,65 +181,58 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
 
 def test_search_runs_by_name_substring(client: NominalClient, search_context: SearchContext) -> None:
     """Searching runs by name_substring returns all non-archived session runs; archived ones are excluded."""
-    ctx = search_context
-    results = client.search_runs(name_substring=ctx.tag)
+    results = client.search_runs(name_substring=search_context.tag)
     rids = {r.rid for r in results}
     # All three non-archived runs contain the tag; archived_run must not appear
-    assert rids == {ctx.run.rid, ctx.run_with_asset.rid, ctx.run_multi_asset.rid}
+    assert rids == {search_context.run.rid, search_context.run_with_asset.rid, search_context.run_multi_asset.rid}
 
 
 def test_search_runs_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a label narrows results to only the run created with that label."""
-    ctx = search_context
-    results = client.search_runs(labels=["search-test"], name_substring=ctx.tag)
+    results = client.search_runs(labels=["search-test"], name_substring=search_context.tag)
     rids = {r.rid for r in results}
     # Only `run` was created with the search-test label
-    assert rids == {ctx.run.rid}
+    assert rids == {search_context.run.rid}
 
 
 def test_search_runs_by_properties(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a key-value property returns only the run that carries that property."""
-    ctx = search_context
-    results = client.search_runs(properties={"search-tag": ctx.tag})
+    results = client.search_runs(properties={"search-tag": search_context.tag})
     rids = {r.rid for r in results}
     # Only `run` was created with the search-tag property
-    assert rids == {ctx.run.rid}
+    assert rids == {search_context.run.rid}
 
 
 def test_search_runs_by_asset_rids(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by asset RID returns only runs linked to that asset."""
-    ctx = search_context
-    results = client.search_runs(asset_rids=[ctx.asset])
+    results = client.search_runs(asset_rids=[search_context.asset])
     rids = {r.rid for r in results}
     # Both run_with_asset (asset only) and run_multi_asset (asset + asset2) are linked to asset
-    assert rids == {ctx.run_with_asset.rid, ctx.run_multi_asset.rid}
+    assert rids == {search_context.run_with_asset.rid, search_context.run_multi_asset.rid}
 
 
 def test_search_runs_has_single_asset(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering has_single_asset=True returns only runs linked to exactly one asset."""
-    ctx = search_context
-    results = client.search_runs(has_single_asset=True, name_substring=ctx.tag)
+    results = client.search_runs(has_single_asset=True, name_substring=search_context.tag)
     rids = {r.rid for r in results}
     # run (auto-staged asset counts as single) and run_with_asset; run_multi_asset excluded
-    assert rids == {ctx.run.rid, ctx.run_with_asset.rid}
+    assert rids == {search_context.run.rid, search_context.run_with_asset.rid}
 
 
 def test_search_runs_not_single_asset(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering has_single_asset=False returns only runs linked to more than one asset."""
-    ctx = search_context
-    results = client.search_runs(has_single_asset=False, name_substring=ctx.tag)
+    results = client.search_runs(has_single_asset=False, name_substring=search_context.tag)
     rids = {r.rid for r in results}
     # Only run_multi_asset has more than one asset
-    assert rids == {ctx.run_multi_asset.rid}
+    assert rids == {search_context.run_multi_asset.rid}
 
 
 def test_search_runs_is_archived(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering is_archived=True returns archived runs and excludes live ones."""
-    ctx = search_context
-    results = client.search_runs(is_archived=True, name_substring=ctx.tag)
+    results = client.search_runs(is_archived=True, name_substring=search_context.tag)
     rids = {r.rid for r in results}
     # Only archived_run was pre-archived
-    assert rids == {ctx.archived_run.rid}
+    assert rids == {search_context.archived_run.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -249,38 +242,34 @@ def test_search_runs_is_archived(client: NominalClient, search_context: SearchCo
 
 def test_search_assets_by_name(client: NominalClient, search_context: SearchContext) -> None:
     """Searching assets by name substring returns live assets matching the tag; archived ones are excluded."""
-    ctx = search_context
-    results = client.search_assets(search_text=ctx.tag)
+    results = client.search_assets(search_text=search_context.tag)
     rids = {a.rid for a in results}
     # asset and asset2 both have the tag in their name; archived_asset is filtered out
-    assert rids == {ctx.asset.rid, ctx.asset2.rid}
+    assert rids == {search_context.asset.rid, search_context.asset2.rid}
 
 
 def test_search_assets_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a label narrows results to only the asset created with that label."""
-    ctx = search_context
-    results = client.search_assets(labels=["search-test"], search_text=ctx.tag)
+    results = client.search_assets(labels=["search-test"], search_text=search_context.tag)
     rids = {a.rid for a in results}
     # Only `asset` was created with the search-test label
-    assert rids == {ctx.asset.rid}
+    assert rids == {search_context.asset.rid}
 
 
 def test_search_assets_by_properties(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a key-value property returns only the asset that carries that property."""
-    ctx = search_context
-    results = client.search_assets(properties={"search-tag": ctx.tag})
+    results = client.search_assets(properties={"search-tag": search_context.tag})
     rids = {a.rid for a in results}
     # Only `asset` was created with the search-tag property
-    assert rids == {ctx.asset.rid}
+    assert rids == {search_context.asset.rid}
 
 
 def test_search_assets_is_archived(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering is_archived=True returns archived assets and excludes live ones."""
-    ctx = search_context
-    results = client.search_assets(is_archived=True, search_text=ctx.tag)
+    results = client.search_assets(is_archived=True, search_text=search_context.tag)
     rids = {a.rid for a in results}
     # Only archived_asset was pre-archived
-    assert rids == {ctx.archived_asset.rid}
+    assert rids == {search_context.archived_asset.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -290,39 +279,35 @@ def test_search_assets_is_archived(client: NominalClient, search_context: Search
 
 def test_search_events_by_asset(client: NominalClient, search_context: SearchContext) -> None:
     """Searching events scoped to an asset returns all events attached to that asset."""
-    ctx = search_context
-    results = client.search_events(assets=[ctx.asset])
+    results = client.search_events(assets=[search_context.asset])
     rids = {e.rid for e in results}
-    # All three test events are attached to ctx.asset (which was freshly created)
-    assert rids == {ctx.event_info.rid, ctx.event_error.rid, ctx.event_flag.rid}
+    # All three test events are attached to search_context.asset (which was freshly created)
+    assert rids == {search_context.event_info.rid, search_context.event_error.rid, search_context.event_flag.rid}
 
 
 def test_search_events_by_event_type(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by event_type returns only events whose type matches."""
-    ctx = search_context
-    results = client.search_events(event_type=EventType.INFO, assets=[ctx.asset])
+    results = client.search_events(event_type=EventType.INFO, assets=[search_context.asset])
     rids = {e.rid for e in results}
     # Only event_info has type INFO
-    assert rids == {ctx.event_info.rid}
+    assert rids == {search_context.event_info.rid}
 
 
 def test_search_events_by_event_types(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by event_types (plural) returns events matching any of the specified types."""
-    ctx = search_context
-    results = client.search_events(event_types=[EventType.INFO, EventType.ERROR], assets=[ctx.asset])
+    results = client.search_events(event_types=[EventType.INFO, EventType.ERROR], assets=[search_context.asset])
     rids = {e.rid for e in results}
     # event_info (INFO) and event_error (ERROR) match; event_flag (FLAG) does not
-    assert rids == {ctx.event_info.rid, ctx.event_error.rid}
+    assert rids == {search_context.event_info.rid, search_context.event_error.rid}
 
 
 def test_search_events_by_created_by(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by created_by_any_of returns all events created by the current user."""
-    ctx = search_context
     me = client.get_user()
-    results = client.search_events(created_by_any_of=[me], assets=[ctx.asset])
+    results = client.search_events(created_by_any_of=[me], assets=[search_context.asset])
     rids = {e.rid for e in results}
     # All three test events were created by the current user on a freshly-created asset
-    assert rids == {ctx.event_info.rid, ctx.event_error.rid, ctx.event_flag.rid}
+    assert rids == {search_context.event_info.rid, search_context.event_error.rid, search_context.event_flag.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -332,11 +317,10 @@ def test_search_events_by_created_by(client: NominalClient, search_context: Sear
 
 def test_search_videos_by_name(client: NominalClient, search_context: SearchContext) -> None:
     """Searching videos by name substring returns only the video whose name contains the session tag."""
-    ctx = search_context
-    results = client.search_videos(search_text=ctx.tag)
+    results = client.search_videos(search_text=search_context.tag)
     rids = {v.rid for v in results}
     # Only one video was created with the tag in its name
-    assert rids == {ctx.video.rid}
+    assert rids == {search_context.video.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -346,36 +330,32 @@ def test_search_videos_by_name(client: NominalClient, search_context: SearchCont
 
 def test_search_dataset_files_no_filter(client: NominalClient, search_context: SearchContext) -> None:
     """Listing dataset files with no filter arguments returns all files in the dataset."""
-    ctx = search_context
-    results = client.search_dataset_files(ctx.dataset)
+    results = client.search_dataset_files(search_context.dataset)
     ids = {f.id for f in results}
-    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
+    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
 
 
 def test_search_dataset_files_by_tags(client: NominalClient, search_context: SearchContext) -> None:
     """Multiple tag filters are AND-ed: source=alpha AND region=eu-west returns only the Dec file."""
-    ctx = search_context
-    results = client.search_dataset_files(ctx.dataset, file_tags={"source": "alpha", "region": "eu-west"})
+    results = client.search_dataset_files(search_context.dataset, file_tags={"source": "alpha", "region": "eu-west"})
     ids = {f.id for f in results}
-    assert ids == {ctx.file_dec.id}
+    assert ids == {search_context.file_dec.id}
 
 
 def test_search_dataset_files_by_time_range(client: NominalClient, search_context: SearchContext) -> None:
     """A time range that fully contains only Jun 2024 returns only that file."""
-    ctx = search_context
     # Mar–Sep 2024 window fully contains jun_2024 and nothing else
-    results = client.search_dataset_files(ctx.dataset, start="2024-03-01", end="2024-09-01")
+    results = client.search_dataset_files(search_context.dataset, start="2024-03-01", end="2024-09-01")
     ids = {f.id for f in results}
-    assert ids == {ctx.file_jun.id}
+    assert ids == {search_context.file_jun.id}
 
 
 def test_search_dataset_files_combined_tag_and_time(client: NominalClient, search_context: SearchContext) -> None:
     """A tag filter and a start time are AND-ed: source=alpha after Jun 2024 returns only the Dec file."""
-    ctx = search_context
     # source=alpha AND file starts on or after Jun 2024 → dec_2024 only
-    results = client.search_dataset_files(ctx.dataset, start="2024-06-01", file_tags={"source": "alpha"})
+    results = client.search_dataset_files(search_context.dataset, start="2024-06-01", file_tags={"source": "alpha"})
     ids = {f.id for f in results}
-    assert ids == {ctx.file_dec.id}
+    assert ids == {search_context.file_dec.id}
 
 
 # ---------------------------------------------------------------------------
@@ -397,52 +377,47 @@ def test_search_dataset_files_start_exact_boundary_is_inclusive(
     client: NominalClient, search_context: SearchContext
 ) -> None:
     """search.start == file_jan.start: the boundary is inclusive, so file_jan is included."""
-    ctx = search_context
     # search start == file_jan's own start → file_jan is included (inclusive lower bound).
     # All three files end on or after Jan 1 00:00, so all three are returned.
-    results = client.search_dataset_files(ctx.dataset, start="2024-01-01T00:00:00Z")
+    results = client.search_dataset_files(search_context.dataset, start="2024-01-01T00:00:00Z")
     ids = {f.id for f in results}
-    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
+    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
 
 
 def test_search_dataset_files_end_exact_boundary_is_inclusive(
     client: NominalClient, search_context: SearchContext
 ) -> None:
     """search.end == file_dec.end: the boundary is inclusive, so file_dec is included."""
-    ctx = search_context
     # search end == file_dec's own end → file_dec is included (inclusive upper bound).
     # All three files start on or before Dec 1 01:00, so all three are returned.
-    results = client.search_dataset_files(ctx.dataset, end="2024-12-01T01:00:00Z")
+    results = client.search_dataset_files(search_context.dataset, end="2024-12-01T01:00:00Z")
     ids = {f.id for f in results}
-    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
+    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
 
 
 def test_search_dataset_files_start_uses_overlap_semantics(
     client: NominalClient, search_context: SearchContext
 ) -> None:
     """A file whose range starts before the search window but overlaps it is still included."""
-    ctx = search_context
     # file_jan spans [00:00, 01:00] on Jan 1. Search start is the midpoint (00:30).
     # file_jan starts BEFORE the search start but its range still overlaps → IS included.
     # file_jun and file_dec both end well after 00:30 Jan 1, so all three are returned.
-    results = client.search_dataset_files(ctx.dataset, start="2024-01-01T00:30:00Z")
+    results = client.search_dataset_files(search_context.dataset, start="2024-01-01T00:30:00Z")
     ids = {f.id for f in results}
-    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
+    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
 
 
 def test_search_dataset_files_end_uses_overlap_semantics(client: NominalClient, search_context: SearchContext) -> None:
     """A file whose range ends after the search window but overlaps it is still included."""
-    ctx = search_context
     # file_dec spans [00:00, 01:00] on Dec 1. Search end is the midpoint (00:30).
     # file_dec ends AFTER the search end but its range still overlaps → IS included.
     # file_jan and file_jun both start well before 00:30 Dec 1, so all three are returned.
-    results = client.search_dataset_files(ctx.dataset, end="2024-12-01T00:30:00Z")
+    results = client.search_dataset_files(search_context.dataset, end="2024-12-01T00:30:00Z")
     ids = {f.id for f in results}
-    assert ids == {ctx.file_jan.id, ctx.file_jun.id, ctx.file_dec.id}
+    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
 
 
 def test_search_dataset_files_no_match(client: NominalClient, search_context: SearchContext) -> None:
     """A search window entirely beyond all file ranges returns an empty result."""
-    ctx = search_context
-    results = client.search_dataset_files(ctx.dataset, start="2030-01-01")
+    results = client.search_dataset_files(search_context.dataset, start="2030-01-01")
     assert list(results) == []
