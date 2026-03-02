@@ -1475,7 +1475,7 @@ class NominalClient:
         archived: bool | None = None,
         include_drafts: bool = False,
         created_by_any_of: Sequence[User | str] | None = None,
-        runs: Sequence[Run | str] | None = None,
+        run_any_of: Sequence[Run | str] | None = None,
         workbook_types: Sequence[WorkbookType] | None = None,
     ) -> Sequence[Workbook]:
         """Search for workbooks meeting the specified filters.
@@ -1495,7 +1495,7 @@ class NominalClient:
             include_drafts: If true, include workbooks in draft state in results. Defaults to false.
             created_by_any_of: Filter by multiple authors (OR semantics). Each can be a User instance
                 or a user RID string.
-            runs: Filter by multiple runs (OR semantics). Each can be a Run instance or a run RID string.
+            run_any_of: Filter by multiple runs (OR semantics). Each can be a Run instance or a run RID string.
             workbook_types: Filter by workbook type (e.g. WorkbookType.WORKBOOK, WorkbookType.COMPARISON_WORKBOOK).
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
@@ -1524,7 +1524,7 @@ class NominalClient:
             created_by_rids=None
             if created_by_any_of is None
             else [rid_from_instance_or_string(a) for a in created_by_any_of],
-            run_rids=None if runs is None else [rid_from_instance_or_string(r) for r in runs],
+            run_rids=None if run_any_of is None else [rid_from_instance_or_string(r) for r in run_any_of],
             workbook_types=workbook_types,
         )
 
