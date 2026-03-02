@@ -16,8 +16,9 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal.core import data_review, streaming_checklist
+from nominal.core._checklist_types import Priority
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._event_types import EventType, SearchEventOriginType
+from nominal.core._event_types import EventDispositionStatus, EventType, SearchEventOriginType
 from nominal.core._utils.api_tools import (
     HasRid,
     Link,
@@ -514,6 +515,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         assignee_rid: str | None = None,
         event_type: EventType | None = None,
         origin_types: Iterable[SearchEventOriginType] | None = None,
+        is_archived: bool | None = None,
+        disposition_statuses: Iterable[EventDispositionStatus] | None = None,
+        priorities: Iterable[Priority] | None = None,
+        assignee_rids: Iterable[str] | None = None,
+        event_types: Iterable[EventType] | None = None,
+        created_by_rids: Iterable[str] | None = None,
     ) -> Sequence[Event]:
         """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
         return _search_events(
@@ -530,6 +537,12 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             assignee_rid=assignee_rid,
             event_type=event_type,
             origin_types=origin_types,
+            is_archived=is_archived,
+            disposition_statuses=disposition_statuses,
+            priorities=priorities,
+            assignee_rids=assignee_rids,
+            event_types=event_types,
+            created_by_rids=created_by_rids,
         )
 
     def search_data_reviews(

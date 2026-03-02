@@ -39,6 +39,39 @@ class EventType(Enum):
             return event.EventType.UNKNOWN
 
 
+class EventDispositionStatus(Enum):
+    PENDING_REVIEW = "PENDING_REVIEW"
+    CLOSED_IGNORED = "CLOSED_IGNORED"
+    CLOSED_REQUIRES_FURTHER_ACTION = "CLOSED_REQUIRES_FURTHER_ACTION"
+    NO_DISPOSITION = "NO_DISPOSITION"
+    UNKNOWN = "UNKNOWN"
+
+    def _to_api(self) -> event.EventDispositionStatus:
+        if self == EventDispositionStatus.PENDING_REVIEW:
+            return event.EventDispositionStatus.PENDING_REVIEW
+        elif self == EventDispositionStatus.CLOSED_IGNORED:
+            return event.EventDispositionStatus.CLOSED_IGNORED
+        elif self == EventDispositionStatus.CLOSED_REQUIRES_FURTHER_ACTION:
+            return event.EventDispositionStatus.CLOSED_REQUIRES_FURTHER_ACTION
+        elif self == EventDispositionStatus.NO_DISPOSITION:
+            return event.EventDispositionStatus.NO_DISPOSITION
+        else:
+            return event.EventDispositionStatus.UNKNOWN
+
+    @classmethod
+    def _from_api(cls, v: event.EventDispositionStatus) -> EventDispositionStatus:
+        if v == event.EventDispositionStatus.PENDING_REVIEW:
+            return cls.PENDING_REVIEW
+        elif v == event.EventDispositionStatus.CLOSED_IGNORED:
+            return cls.CLOSED_IGNORED
+        elif v == event.EventDispositionStatus.CLOSED_REQUIRES_FURTHER_ACTION:
+            return cls.CLOSED_REQUIRES_FURTHER_ACTION
+        elif v == event.EventDispositionStatus.NO_DISPOSITION:
+            return cls.NO_DISPOSITION
+        else:
+            return cls.UNKNOWN
+
+
 class EventCreationType(Enum):
     MANUAL = "MANUAL"
     BY_EXTERNAL_RESOURCE = "BY_EXTERNAL_RESOURCE"

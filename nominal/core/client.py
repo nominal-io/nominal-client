@@ -35,7 +35,8 @@ from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.config import NominalConfig, _config
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
-from nominal.core._event_types import EventType
+from nominal.core._checklist_types import Priority
+from nominal.core._event_types import EventDispositionStatus, EventType
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import (
     Link,
@@ -1318,6 +1319,12 @@ class NominalClient:
         assignee: User | str | None = None,
         event_type: EventType | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        is_archived: bool | None = None,
+        disposition_statuses: Iterable[EventDispositionStatus] | None = None,
+        priorities: Iterable[Priority] | None = None,
+        assignees: Iterable[User | str] | None = None,
+        event_types: Iterable[EventType] | None = None,
+        created_by_any_of: Iterable[User | str] | None = None,
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
         Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
@@ -1335,12 +1342,18 @@ class NominalClient:
             assignee: Search for events with the given assignee
             event_type: Search for events based on level
             workspace: Filters search to given workspace.
+            is_archived: If True, only returns archived events. If False, only returns non-archived events.
+                If None (default), returns all events regardless of archive status.
+            disposition_statuses: Filter events matching ANY of the given disposition statuses.
+            priorities: Filter events matching ANY of the given priorities.
+            assignees: Filter events assigned to ANY of the given users.
+            event_types: Filter events matching ANY of the given event types.
+            created_by_any_of: Filter events created by ANY of the given users.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
             a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
             be constrained to that workspace if the user has access to the workspace.
-
 
         Returns:
             All events which match all of the provided conditions
@@ -1359,6 +1372,12 @@ class NominalClient:
             assignee_rid=rid_from_instance_or_string(assignee) if assignee else None,
             event_type=event_type,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            is_archived=is_archived,
+            disposition_statuses=disposition_statuses,
+            priorities=priorities,
+            assignee_rids=[rid_from_instance_or_string(a) for a in assignees] if assignees else None,
+            event_types=event_types,
+            created_by_rids=[rid_from_instance_or_string(u) for u in created_by_any_of] if created_by_any_of else None,
         )
 
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:

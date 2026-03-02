@@ -8,6 +8,7 @@ from nominal_api import (
     authentication_api,
     event,
     ingest_api,
+    scout_api,
     scout_asset_api,
     scout_catalog,
     scout_checks_api,
@@ -390,7 +391,7 @@ def create_search_workbook_templates_query(
     return scout_template_api.SearchTemplatesQuery(and_=queries)
 
 
-def _create_search_events_query(  # noqa: PLR0912
+def _create_search_events_query(  # noqa: PLR0912, PLR0915
     search_text: str | None = None,
     after: str | datetime | IntegralNanosecondsUTC | None = None,
     before: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -404,6 +405,12 @@ def _create_search_events_query(  # noqa: PLR0912
     event_type: event.EventType | None = None,
     origin_types: Iterable[event.SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
+    is_archived: bool | None = None,
+    disposition_statuses: Iterable[event.EventDispositionStatus] | None = None,
+    priorities: Iterable[scout_api.Priority] | None = None,
+    assignee_rids: Iterable[str] | None = None,
+    event_types: Iterable[event.EventType] | None = None,
+    created_by_rids: Iterable[str] | None = None,
 ) -> event.SearchQuery:
     queries = []
     if search_text is not None:
@@ -436,5 +443,21 @@ def _create_search_events_query(  # noqa: PLR0912
         queries.append(event.SearchQuery(origin_types=origin_type_filter))
     if workspace_rid is not None:
         queries.append(event.SearchQuery(workspace=workspace_rid))
+    if is_archived is not None:
+        queries.append(event.SearchQuery(archived=is_archived))
+    if disposition_statuses is not None:
+        queries.append(event.SearchQuery(disposition_statuses=list(disposition_statuses)))
+    if priorities is not None:
+        queries.append(event.SearchQuery(priorities=list(priorities)))
+    if assignee_rids is not None:
+        queries.append(
+            event.SearchQuery(
+                assignees=event.AssigneesFilter(assignees=list(assignee_rids), operator=api.SetOperator.OR)
+            )
+        )
+    if event_types is not None:
+        queries.append(event.SearchQuery(event_types=list(event_types)))
+    if created_by_rids is not None:
+        queries.append(event.SearchQuery(created_by_any_of=list(created_by_rids)))
 
     return event.SearchQuery(and_=queries)

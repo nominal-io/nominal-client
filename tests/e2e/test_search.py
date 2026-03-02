@@ -291,6 +291,25 @@ def test_search_events_by_event_type(client: NominalClient, search_context: Sear
     assert rids == {search_context.event_info.rid}
 
 
+def test_search_events_by_event_types(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering by event_types (plural) returns events matching any of the specified types."""
+    ctx = search_context
+    results = client.search_events(event_types=[EventType.INFO, EventType.ERROR], assets=[ctx.asset])
+    rids = {e.rid for e in results}
+    # event_info (INFO) and event_error (ERROR) match; event_flag (FLAG) does not
+    assert rids == {ctx.event_info.rid, ctx.event_error.rid}
+
+
+def test_search_events_by_created_by(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering by created_by_any_of returns all events created by the current user."""
+    ctx = search_context
+    me = client.get_user()
+    results = client.search_events(created_by_any_of=[me], assets=[ctx.asset])
+    rids = {e.rid for e in results}
+    # All three test events were created by the current user on a freshly-created asset
+    assert rids == {ctx.event_info.rid, ctx.event_error.rid, ctx.event_flag.rid}
+
+
 # ---------------------------------------------------------------------------
 # Video search
 # ---------------------------------------------------------------------------
