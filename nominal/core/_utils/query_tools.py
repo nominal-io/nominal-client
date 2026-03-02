@@ -311,7 +311,7 @@ def create_search_runs_query(  # noqa: PLR0912
     return scout_run_api.SearchQuery(and_=queries)
 
 
-def create_search_workbooks_query(
+def create_search_workbooks_query(  # noqa: PLR0912
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
@@ -322,6 +322,9 @@ def create_search_workbooks_query(
     run_rid: str | None = None,
     workspace_rid: str | None = None,
     archived: bool | None = None,
+    author_rids: Sequence[str] | None = None,
+    run_rids: Sequence[str] | None = None,
+    workbook_types: Sequence[scout_notebook_api.NotebookType] | None = None,
 ) -> scout_notebook_api.SearchNotebooksQuery:
     queries = []
 
@@ -356,6 +359,23 @@ def create_search_workbooks_query(
 
     if archived is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(archived=archived))
+
+    if author_rids is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(author_rids=list(author_rids)))
+
+    if run_rids is not None:
+        queries.append(
+            scout_notebook_api.SearchNotebooksQuery(
+                run_rids=scout_notebook_api.RunsFilter(operator=api.SetOperator.OR, runs=list(run_rids))
+            )
+        )
+
+    if workbook_types is not None:
+        queries.append(
+            scout_notebook_api.SearchNotebooksQuery(
+                notebook_types=scout_notebook_api.NotebookTypesFilter(types=list(workbook_types))
+            )
+        )
 
     return scout_notebook_api.SearchNotebooksQuery(and_=queries)
 

@@ -37,7 +37,7 @@ from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video, _get_video
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import Workbook, WorkbookType, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -571,6 +571,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         created_by_rid: str | None = None,
         run_rid: str | None = None,
         include_drafts: bool = False,
+        author_rids: Sequence[str] | None = None,
+        run_rids: Sequence[str] | None = None,
+        workbook_types: Sequence[WorkbookType] | None = None,
     ) -> Sequence[Workbook]:
         """Search for workbooks associated with this Asset. See nominal.core.workbook._search_workbooks for details."""
         return _search_workbooks(
@@ -584,6 +587,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             author_rid=created_by_rid,
             run_rid=run_rid,
             include_drafts=include_drafts,
+            author_rids=author_rids,
+            run_rids=run_rids,
+            workbook_types=workbook_types,
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:

@@ -327,6 +327,9 @@ def _search_workbooks(
     workspace_rid: str | None = None,
     archived: bool | None = None,
     include_drafts: bool = False,
+    author_rids: Sequence[str] | None = None,
+    run_rids: Sequence[str] | None = None,
+    workbook_types: Sequence[WorkbookType] | None = None,
 ) -> Sequence[Workbook]:
     query = create_search_workbooks_query(
         exact_match=exact_match,
@@ -339,5 +342,8 @@ def _search_workbooks(
         run_rid=run_rid,
         workspace_rid=workspace_rid,
         archived=archived,
+        author_rids=author_rids,
+        run_rids=run_rids,
+        workbook_types=None if workbook_types is None else [t._to_conjure() for t in workbook_types],
     )
     return list(_iter_search_workbooks(clients, query, include_archived, include_drafts))

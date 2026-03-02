@@ -98,7 +98,7 @@ from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import Workbook, WorkbookType, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
 from nominal.ts import (
@@ -1483,6 +1483,9 @@ class NominalClient:
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         archived: bool | None = None,
         include_drafts: bool = False,
+        authors: Sequence[User | str] | None = None,
+        runs: Sequence[Run | str] | None = None,
+        workbook_types: Sequence[WorkbookType] | None = None,
     ) -> Sequence[Workbook]:
         """Search for workbooks meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
@@ -1500,12 +1503,14 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archived: Return workbooks that are either archived or not
             include_drafts: If true, include workbooks in draft state in results. Defaults to false.
+            authors: Filter by multiple authors (OR semantics). Each can be a User instance or a user RID string.
+            runs: Filter by multiple runs (OR semantics). Each can be a Run instance or a run RID string.
+            workbook_types: Filter by workbook type (e.g. WorkbookType.WORKBOOK, WorkbookType.COMPARISON_WORKBOOK).
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
             a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
             be constrained to that workspace if the user has access to the workspace.
-
 
         Returns:
             All workbooks which match all of the provided conditions
@@ -1526,6 +1531,9 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
             archived=archived,
             include_drafts=include_drafts,
+            author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
+            run_rids=None if runs is None else [rid_from_instance_or_string(r) for r in runs],
+            workbook_types=workbook_types,
         )
 
     def get_workbook_template(self, rid: str) -> WorkbookTemplate:
