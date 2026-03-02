@@ -55,6 +55,8 @@ class SearchContext:
     """Asset with search-test label and property; all test events are attached here."""
     asset2: Asset
     """Second asset; used as the second member of run_multi_asset."""
+    archived_asset: Asset
+    """Archived asset; used for is_archived filter tests."""
 
     # Events (all attached to `asset` for isolation)
     event_info: Event
@@ -88,6 +90,8 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         properties={"search-tag": tag},
     )
     asset2 = client.create_asset(f"asset2-{tag}")
+    archived_asset = client.create_asset(f"asset-archived-{tag}")
+    archived_asset.archive()
 
     # --- Runs ---
     run = client.create_run(
@@ -145,6 +149,7 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         archived_run=archived_run,
         asset=asset,
         asset2=asset2,
+        archived_asset=archived_asset,
         event_info=event_info,
         event_error=event_error,
         event_flag=event_flag,
@@ -163,6 +168,7 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
     # archived_run is already archived
     asset.archive()
     asset2.archive()
+    # archived_asset is already archived
     event_info.archive()
     event_error.archive()
     event_flag.archive()
@@ -256,6 +262,14 @@ def test_search_assets_by_properties(client: NominalClient, search_context: Sear
     results = client.search_assets(properties={"search-tag": search_context.tag})
     rids = {a.rid for a in results}
     assert rids == {search_context.asset.rid}
+
+
+def test_search_assets_is_archived(client: NominalClient, search_context: SearchContext) -> None:
+    """is_archived=True returns only archived assets."""
+    ctx = search_context
+    results = client.search_assets(is_archived=True, search_text=ctx.tag)
+    rids = {a.rid for a in results}
+    assert rids == {ctx.archived_asset.rid}
 
 
 # ---------------------------------------------------------------------------

@@ -105,6 +105,7 @@ def create_search_assets_query(
     properties: Mapping[str, str] | None = None,
     exact_substring: str | None = None,
     workspace_rid: str | None = None,
+    is_archived: bool | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
     queries = []
     if search_text is not None:
@@ -119,6 +120,8 @@ def create_search_assets_query(
             queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
     if workspace_rid is not None:
         queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
+    if is_archived is not None:
+        queries.append(scout_asset_api.SearchAssetsQuery(archived=is_archived))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
 
