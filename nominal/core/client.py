@@ -224,7 +224,7 @@ class NominalClient:
         out += ">"
         return out
 
-    def _workspace_rid_for_search(self, workspace: WorkspaceSearchT) -> str | None:
+    def _workspace_rid_for_search(self, workspace: WorkspaceSearchT | None) -> str | None:
         """Provide the correct workspace rid to use when searching (potentially using a provided workspace)
 
         Args:
@@ -235,12 +235,12 @@ class NominalClient:
             If a workspace is provided, then return it if authenticated, otherwise, return None.
         """
         search_rid = None
-        if isinstance(workspace, Workspace):
+        if workspace is None or workspace is WorkspaceSearchType.ALL:
+            return None
+        elif isinstance(workspace, Workspace):
             search_rid = workspace.rid
         elif isinstance(workspace, str):
             search_rid = workspace
-        elif workspace is WorkspaceSearchType.ALL:
-            return None
         elif workspace is WorkspaceSearchType.DEFAULT:
             search_rid = None
         else:
@@ -342,7 +342,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         before: str | datetime | IntegralNanosecondsUTC | None = None,
         after: str | datetime | IntegralNanosecondsUTC | None = None,
-        workspace: WorkspaceSearchT = WorkspaceSearchType.ALL,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         archived: bool | None = None,
     ) -> Sequence[Dataset]:
         """Search for datasets the specified filters.
@@ -479,7 +479,7 @@ class NominalClient:
             search_text=search_text,
             labels=labels,
             properties=properties,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_secrets(query))
 
@@ -516,7 +516,7 @@ class NominalClient:
             search_text=search_text,
             labels=labels,
             properties=properties,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_videos(query))
 
@@ -728,7 +728,7 @@ class NominalClient:
                 search_text=search_text,
                 created_after=created_after,
                 created_before=created_before,
-                workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+                workspace_rid=self._workspace_rid_for_search(workspace),
                 asset_rids=[rid_from_instance_or_string(a) for a in asset_rids] if asset_rids else None,
                 has_single_asset=has_single_asset,
                 run_number=run_number,
@@ -881,7 +881,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         author: User | str | None = None,
         assignee: User | str | None = None,
-        workspace: WorkspaceSearchT | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         is_archived: bool | None = None,
         authors: Iterable[User | str] | None = None,
     ) -> Sequence[Checklist]:
@@ -912,7 +912,7 @@ class NominalClient:
             properties=properties,
             author=rid_from_instance_or_string(author) if author else None,
             assignee=rid_from_instance_or_string(assignee) if assignee else None,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace_rid=self._workspace_rid_for_search(workspace),
             is_archived=is_archived,
             author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
         )
@@ -1226,7 +1226,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             exact_substring=exact_substring,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace_rid=self._workspace_rid_for_search(workspace),
             is_archived=is_archived,
         )
         return list(self._iter_search_assets(query))
@@ -1348,10 +1348,10 @@ class NominalClient:
             workspace: Filters search to given workspace.
             is_archived: If True, only returns archived events. If False, only returns non-archived events.
                 If None (default), returns all events regardless of archive status.
-            priorities: Filter events matching ANY of the given priorities.
-            assignees: Filter events assigned to ANY of the given users.
-            event_types: Filter events matching ANY of the given event types.
-            created_by_any_of: Filter events created by ANY of the given users.
+            priorities: Filter events matching ANY of the given priorities. An empty sequence has no effect.
+            assignees: Filter events assigned to ANY of the given users. An empty sequence has no effect.
+            event_types: Filter events matching ANY of the given event types. An empty sequence has no effect.
+            created_by_any_of: Filter events created by ANY of the given users. An empty sequence has no effect.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
@@ -1374,7 +1374,7 @@ class NominalClient:
             data_review_rid=rid_from_instance_or_string(data_review) if data_review else None,
             assignee_rid=rid_from_instance_or_string(assignee) if assignee else None,
             event_type=event_type,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace_rid=self._workspace_rid_for_search(workspace),
             is_archived=is_archived,
             priorities=priorities,
             assignee_rids=[rid_from_instance_or_string(a) for a in assignees] if assignees else None,
@@ -1453,7 +1453,7 @@ class NominalClient:
             search_text=search_text,
             labels=labels,
             properties=properties,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace_rid=self._workspace_rid_for_search(workspace),
         )
         resp = self._clients.containerized_extractors.search_containerized_extractors(
             self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
@@ -1525,7 +1525,7 @@ class NominalClient:
             else [rid_from_instance_or_string(asset) for asset in exact_assets],
             author_rid=None if created_by is None else rid_from_instance_or_string(created_by),
             run_rid=None if run is None else rid_from_instance_or_string(run),
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace_rid=self._workspace_rid_for_search(workspace),
             archived=archived,
             include_drafts=include_drafts,
             author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
@@ -1556,7 +1556,7 @@ class NominalClient:
         created_by: User | str | None = None,
         archived: bool | None = None,
         published: bool | None = None,
-        workspace: WorkspaceSearchT | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         authors: Sequence[User | str] | None = None,
     ) -> Sequence[WorkbookTemplate]:
         """Search for workbook templates meeting the specified filters.
@@ -1589,7 +1589,7 @@ class NominalClient:
             created_by=None if created_by is None else rid_from_instance_or_string(created_by),
             archived=archived,
             published=published,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace_rid=self._workspace_rid_for_search(workspace),
             author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
         )
         return list(self._iter_search_workbook_templates(query))
@@ -1654,7 +1654,7 @@ class NominalClient:
             ),
             content=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
             message=commit_message if commit_message is not None else "Initial blank workbook template",
-            workspace=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace=self._workspace_rid_for_search(workspace),
         )
 
         template = self._clients.template.create(self._clients.auth_header, request)

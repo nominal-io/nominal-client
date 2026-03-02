@@ -44,7 +44,7 @@ class Event(HasRid, RefreshableMixin[event.Event]):
 
     def _get_latest_api(self) -> event.Event:
         resp = self._clients.event.batch_get_events(self._clients.auth_header, [self.rid])
-        if len(resp) != 0:
+        if len(resp) != 1:
             raise ValueError(f"Expected exactly one event with rid {self.rid}, received {len(resp)}")
 
         return resp[0]
