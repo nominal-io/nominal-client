@@ -106,7 +106,7 @@ def create_search_assets_query(
     properties: Mapping[str, str] | None = None,
     exact_substring: str | None = None,
     workspace_rid: str | None = None,
-    is_archived: bool | None = None,
+    archived: bool | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
     queries = []
     if search_text is not None:
@@ -121,8 +121,8 @@ def create_search_assets_query(
             queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
     if workspace_rid is not None:
         queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
-    if is_archived is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(archived=is_archived))
+    if archived is not None:
+        queries.append(scout_asset_api.SearchAssetsQuery(archived=archived))
 
     return scout_asset_api.SearchAssetsQuery(and_=queries)
 
@@ -134,7 +134,7 @@ def create_search_checklists_query(
     author: str | None = None,
     assignee: str | None = None,
     workspace_rid: str | None = None,
-    is_archived: bool | None = None,
+    archived: bool | None = None,
     author_rids: Sequence[str] | None = None,
 ) -> scout_checks_api.ChecklistSearchQuery:
     queries = [scout_checks_api.ChecklistSearchQuery(is_published=True)]
@@ -152,8 +152,8 @@ def create_search_checklists_query(
         queries.append(scout_checks_api.ChecklistSearchQuery(assignee_rid=assignee))
     if workspace_rid is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(workspace=workspace_rid))
-    if is_archived is not None:
-        queries.append(scout_checks_api.ChecklistSearchQuery(is_archived=is_archived))
+    if archived is not None:
+        queries.append(scout_checks_api.ChecklistSearchQuery(is_archived=archived))
     if author_rids is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(author_rids=list(author_rids)))
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
@@ -240,7 +240,7 @@ def create_search_runs_query(  # noqa: PLR0912
     asset_rids: Sequence[str] | None = None,
     has_single_asset: bool | None = None,
     run_number: int | None = None,
-    is_archived: bool | None = None,
+    archived: bool | None = None,
 ) -> scout_run_api.SearchQuery:
     queries = []
     if start is not None:
@@ -303,8 +303,8 @@ def create_search_runs_query(  # noqa: PLR0912
         queries.append(scout_run_api.SearchQuery(is_single_asset=has_single_asset))
     if run_number is not None:
         queries.append(scout_run_api.SearchQuery(run_number=run_number))
-    if is_archived is not None:
-        queries.append(scout_run_api.SearchQuery(archived=is_archived))
+    if archived is not None:
+        queries.append(scout_run_api.SearchQuery(archived=archived))
     return scout_run_api.SearchQuery(and_=queries)
 
 
@@ -315,11 +315,11 @@ def create_search_workbooks_query(  # noqa: PLR0912
     properties: Mapping[str, str] | None = None,
     asset_rid: str | None = None,
     exact_asset_rids: Sequence[str] | None = None,
-    author_rid: str | None = None,
+    created_by_rid: str | None = None,
     run_rid: str | None = None,
     workspace_rid: str | None = None,
     archived: bool | None = None,
-    author_rids: Sequence[str] | None = None,
+    created_by_rids: Sequence[str] | None = None,
     run_rids: Sequence[str] | None = None,
     workbook_types: Sequence[scout_notebook_api.NotebookType] | None = None,
 ) -> scout_notebook_api.SearchNotebooksQuery:
@@ -337,8 +337,8 @@ def create_search_workbooks_query(  # noqa: PLR0912
     if exact_asset_rids is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(exact_asset_rids=[*exact_asset_rids]))
 
-    if author_rid is not None:
-        queries.append(scout_notebook_api.SearchNotebooksQuery(author_rid=author_rid))
+    if created_by_rid is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(author_rid=created_by_rid))
 
     if run_rid is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(run_rid=run_rid))
@@ -357,8 +357,8 @@ def create_search_workbooks_query(  # noqa: PLR0912
     if archived is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(archived=archived))
 
-    if author_rids is not None:
-        queries.append(scout_notebook_api.SearchNotebooksQuery(author_rids=list(author_rids)))
+    if created_by_rids is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(author_rids=list(created_by_rids)))
 
     if run_rids is not None:
         queries.append(
@@ -386,7 +386,7 @@ def create_search_workbook_templates_query(
     archived: bool | None = None,
     published: bool | None = None,
     workspace_rid: str | None = None,
-    author_rids: Sequence[str] | None = None,
+    created_by_rids: Sequence[str] | None = None,
 ) -> scout_template_api.SearchTemplatesQuery:
     queries = []
 
@@ -416,8 +416,8 @@ def create_search_workbook_templates_query(
     if workspace_rid is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(workspace=workspace_rid))
 
-    if author_rids is not None:
-        queries.append(scout_template_api.SearchTemplatesQuery(author_rids=list(author_rids)))
+    if created_by_rids is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(author_rids=list(created_by_rids)))
 
     return scout_template_api.SearchTemplatesQuery(and_=queries)
 
@@ -436,7 +436,7 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
     event_type: event.EventType | None = None,
     origin_types: Iterable[event.SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
-    is_archived: bool | None = None,
+    archived: bool | None = None,
     priorities: Iterable[scout_api.Priority] | None = None,
     assignee_rids: Iterable[str] | None = None,
     event_types: Iterable[event.EventType] | None = None,
@@ -473,8 +473,8 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
         queries.append(event.SearchQuery(origin_types=origin_type_filter))
     if workspace_rid is not None:
         queries.append(event.SearchQuery(workspace=workspace_rid))
-    if is_archived is not None:
-        queries.append(event.SearchQuery(archived=is_archived))
+    if archived is not None:
+        queries.append(event.SearchQuery(archived=archived))
     if priorities is not None:
         queries.append(event.SearchQuery(priorities=list(priorities)))
     if assignee_rids is not None:

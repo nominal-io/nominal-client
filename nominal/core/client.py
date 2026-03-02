@@ -643,7 +643,7 @@ class NominalClient:
         asset_rids: Sequence[str] | None = None,
         has_single_asset: bool | None = None,
         run_number: int | None = None,
-        is_archived: bool | None = None,
+        archived: bool | None = None,
     ) -> Iterable[Run]:
         query = create_search_runs_query(
             start=start,
@@ -659,7 +659,7 @@ class NominalClient:
             asset_rids=asset_rids,
             has_single_asset=has_single_asset,
             run_number=run_number,
-            is_archived=is_archived,
+            archived=archived,
         )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
             yield Run._from_conjure(self._clients, run)
@@ -680,7 +680,7 @@ class NominalClient:
         asset_rids: Sequence[Asset | str] | None = None,
         has_single_asset: bool | None = None,
         run_number: int | None = None,
-        is_archived: bool | None = None,
+        archived: bool | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
@@ -702,7 +702,7 @@ class NominalClient:
             has_single_asset: If True, only returns runs associated with exactly one asset.
                 If False, only returns runs associated with more than one asset.
             run_number: Filter runs by their exact run number.
-            is_archived: If True, only returns archived runs. If False, only returns non-archived runs.
+            archived: If True, only returns archived runs. If False, only returns non-archived runs.
                 If None (default), returns all runs regardless of archive status.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
@@ -728,7 +728,7 @@ class NominalClient:
                 asset_rids=[rid_from_instance_or_string(a) for a in asset_rids] if asset_rids else None,
                 has_single_asset=has_single_asset,
                 run_number=run_number,
-                is_archived=is_archived,
+                archived=archived,
             )
         )
 
@@ -877,8 +877,8 @@ class NominalClient:
         author: User | str | None = None,
         assignee: User | str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
-        is_archived: bool | None = None,
-        authors: Iterable[User | str] | None = None,
+        archived: bool | None = None,
+        author_any_of: Iterable[User | str] | None = None,
     ) -> Sequence[Checklist]:
         """Search for checklists meeting the specified filters.
         Filters are ANDed together, e.g. `(checklist.label == label) AND (checklist.search_text =~ field)`
@@ -890,8 +890,8 @@ class NominalClient:
             author: Author of checklists to search for
             assignee: Assignee of checklists to search for
             workspace: Filters search to given workspace.
-            is_archived: If True, return only archived checklists. If False, return only non-archived checklists.
-            authors: Filter by multiple authors (OR semantics). Each can be a User instance or a user RID string.
+            archived: If True, return only archived checklists. If False, return only non-archived checklists.
+            author_any_of: Filter by multiple authors (OR semantics). Each can be a User instance or a user RID string.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
@@ -908,8 +908,8 @@ class NominalClient:
             author=rid_from_instance_or_string(author) if author else None,
             assignee=rid_from_instance_or_string(assignee) if assignee else None,
             workspace_rid=self._workspace_rid_for_search(workspace),
-            is_archived=is_archived,
-            author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
+            archived=archived,
+            author_rids=None if author_any_of is None else [rid_from_instance_or_string(a) for a in author_any_of],
         )
         return list(self._iter_search_checklists(query))
 
@@ -1194,7 +1194,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         exact_substring: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
-        is_archived: bool | None = None,
+        archived: bool | None = None,
     ) -> Sequence[Asset]:
         """Search for assets meeting the specified filters.
         Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
@@ -1205,7 +1205,7 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
             exact_substring: case-insensitive search for exact string match in all string fields
             workspace: Filters search to given workspace.
-            is_archived: If True, only returns archived assets. If False, only returns non-archived assets.
+            archived: If True, only returns archived assets. If False, only returns non-archived assets.
                 If None (default), returns all assets regardless of archive status.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
@@ -1222,7 +1222,7 @@ class NominalClient:
             properties=properties,
             exact_substring=exact_substring,
             workspace_rid=self._workspace_rid_for_search(workspace),
-            is_archived=is_archived,
+            archived=archived,
         )
         return list(self._iter_search_assets(query))
 
@@ -1319,10 +1319,10 @@ class NominalClient:
         assignee: User | str | None = None,
         event_type: EventType | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
-        is_archived: bool | None = None,
+        archived: bool | None = None,
         priorities: Iterable[Priority] | None = None,
-        assignees: Iterable[User | str] | None = None,
-        event_types: Iterable[EventType] | None = None,
+        assignee_any_of: Iterable[User | str] | None = None,
+        event_type_any_of: Iterable[EventType] | None = None,
         created_by_any_of: Iterable[User | str] | None = None,
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
@@ -1341,11 +1341,11 @@ class NominalClient:
             assignee: Search for events with the given assignee
             event_type: Search for events based on level
             workspace: Filters search to given workspace.
-            is_archived: If True, only returns archived events. If False, only returns non-archived events.
+            archived: If True, only returns archived events. If False, only returns non-archived events.
                 If None (default), returns all events regardless of archive status.
             priorities: Filter events matching ANY of the given priorities. An empty sequence has no effect.
-            assignees: Filter events assigned to ANY of the given users. An empty sequence has no effect.
-            event_types: Filter events matching ANY of the given event types. An empty sequence has no effect.
+            assignee_any_of: Filter events assigned to ANY of the given users. An empty sequence has no effect.
+            event_type_any_of: Filter events matching ANY of the given event types. An empty sequence has no effect.
             created_by_any_of: Filter events created by ANY of the given users. An empty sequence has no effect.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
@@ -1370,10 +1370,10 @@ class NominalClient:
             assignee_rid=rid_from_instance_or_string(assignee) if assignee else None,
             event_type=event_type,
             workspace_rid=self._workspace_rid_for_search(workspace),
-            is_archived=is_archived,
+            archived=archived,
             priorities=priorities,
-            assignee_rids=[rid_from_instance_or_string(a) for a in assignees] if assignees else None,
-            event_types=event_types,
+            assignee_rids=[rid_from_instance_or_string(a) for a in assignee_any_of] if assignee_any_of else None,
+            event_types=event_type_any_of,
             created_by_rids=[rid_from_instance_or_string(u) for u in created_by_any_of] if created_by_any_of else None,
         )
 
@@ -1463,7 +1463,6 @@ class NominalClient:
     def search_workbooks(
         self,
         *,
-        include_archived: bool = False,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -1475,7 +1474,7 @@ class NominalClient:
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         archived: bool | None = None,
         include_drafts: bool = False,
-        authors: Sequence[User | str] | None = None,
+        created_by_any_of: Sequence[User | str] | None = None,
         runs: Sequence[Run | str] | None = None,
         workbook_types: Sequence[WorkbookType] | None = None,
     ) -> Sequence[Workbook]:
@@ -1483,7 +1482,6 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
 
         Args:
-            include_archived: If true, include archived workbooks in results. Defaults to False.
             exact_match: Searches for a string to match exactly in the workbook's metadata
             search_text: Fuzzy-searches for a string in the workbook's metadata
             labels: A list of labels that must ALL be present on an workbook to be included.
@@ -1495,7 +1493,8 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archived: Return workbooks that are either archived or not
             include_drafts: If true, include workbooks in draft state in results. Defaults to false.
-            authors: Filter by multiple authors (OR semantics). Each can be a User instance or a user RID string.
+            created_by_any_of: Filter by multiple authors (OR semantics). Each can be a User instance
+                or a user RID string.
             runs: Filter by multiple runs (OR semantics). Each can be a Run instance or a run RID string.
             workbook_types: Filter by workbook type (e.g. WorkbookType.WORKBOOK, WorkbookType.COMPARISON_WORKBOOK).
 
@@ -1509,7 +1508,6 @@ class NominalClient:
         """
         return _search_workbooks(
             self._clients,
-            include_archived=include_archived,
             exact_match=exact_match,
             search_text=search_text,
             labels=labels,
@@ -1518,12 +1516,14 @@ class NominalClient:
             exact_asset_rids=None
             if exact_assets is None
             else [rid_from_instance_or_string(asset) for asset in exact_assets],
-            author_rid=None if created_by is None else rid_from_instance_or_string(created_by),
+            created_by_rid=None if created_by is None else rid_from_instance_or_string(created_by),
             run_rid=None if run is None else rid_from_instance_or_string(run),
             workspace_rid=self._workspace_rid_for_search(workspace),
             archived=archived,
             include_drafts=include_drafts,
-            author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
+            created_by_rids=None
+            if created_by_any_of is None
+            else [rid_from_instance_or_string(a) for a in created_by_any_of],
             run_rids=None if runs is None else [rid_from_instance_or_string(r) for r in runs],
             workbook_types=workbook_types,
         )
@@ -1552,10 +1552,10 @@ class NominalClient:
         archived: bool | None = None,
         published: bool | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
-        authors: Sequence[User | str] | None = None,
+        created_by_any_of: Sequence[User | str] | None = None,
     ) -> Sequence[WorkbookTemplate]:
         """Search for workbook templates meeting the specified filters.
-        Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
+        Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
 
         Args:
             exact_match: Searches for a string to match exactly in the template's metadata
@@ -1566,7 +1566,8 @@ class NominalClient:
             archived: Searches for workbook templates that are archived if true
             published: Searches for workbook templates that have been published if true
             workspace: Filters search to given workspace.
-            authors: Filter by multiple authors (OR semantics). Each can be a User instance or a user RID string.
+            created_by_any_of: Filter by multiple authors (OR semantics). Each can be a User instance
+                or a user RID string.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
@@ -1585,7 +1586,9 @@ class NominalClient:
             archived=archived,
             published=published,
             workspace_rid=self._workspace_rid_for_search(workspace),
-            author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
+            created_by_rids=None
+            if created_by_any_of is None
+            else [rid_from_instance_or_string(a) for a in created_by_any_of],
         )
         return list(self._iter_search_workbook_templates(query))
 

@@ -515,11 +515,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         assignee_rid: str | None = None,
         event_type: EventType | None = None,
         origin_types: Iterable[SearchEventOriginType] | None = None,
-        is_archived: bool | None = None,
+        archived: bool | None = None,
         priorities: Iterable[Priority] | None = None,
-        assignee_rids: Iterable[str] | None = None,
-        event_types: Iterable[EventType] | None = None,
-        created_by_rids: Iterable[str] | None = None,
+        assignee_rid_any_of: Iterable[str] | None = None,
+        event_type_any_of: Iterable[EventType] | None = None,
+        created_by_rid_any_of: Iterable[str] | None = None,
     ) -> Sequence[Event]:
         """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
         return _search_events(
@@ -536,11 +536,11 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             assignee_rid=assignee_rid,
             event_type=event_type,
             origin_types=origin_types,
-            is_archived=is_archived,
+            archived=archived,
             priorities=priorities,
-            assignee_rids=assignee_rids,
-            event_types=event_types,
-            created_by_rids=created_by_rids,
+            assignee_rids=assignee_rid_any_of,
+            event_types=event_type_any_of,
+            created_by_rids=created_by_rid_any_of,
         )
 
     def search_data_reviews(
@@ -561,32 +561,32 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     def search_workbooks(
         self,
         *,
-        include_archived: bool = False,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         created_by_rid: str | None = None,
         run_rid: str | None = None,
+        archived: bool | None = None,
         include_drafts: bool = False,
-        author_rids: Sequence[str] | None = None,
-        run_rids: Sequence[str] | None = None,
+        created_by_rid_any_of: Sequence[str] | None = None,
+        run_rid_any_of: Sequence[str] | None = None,
         workbook_types: Sequence[WorkbookType] | None = None,
     ) -> Sequence[Workbook]:
         """Search for workbooks associated with this Asset. See nominal.core.workbook._search_workbooks for details."""
         return _search_workbooks(
             self._clients,
-            include_archived=include_archived,
             exact_match=exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
             asset_rid=self.rid,
-            author_rid=created_by_rid,
+            created_by_rid=created_by_rid,
             run_rid=run_rid,
+            archived=archived,
             include_drafts=include_drafts,
-            author_rids=author_rids,
-            run_rids=run_rids,
+            created_by_rids=created_by_rid_any_of,
+            run_rids=run_rid_any_of,
             workbook_types=workbook_types,
         )
 

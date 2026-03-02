@@ -48,7 +48,7 @@ class SearchContext:
     run_multi_asset: Run
     """Run linked to both `asset` and `asset2` (has_single_asset=False)."""
     archived_run: Run
-    """Run that has been pre-archived (tests is_archived=True filtering)."""
+    """Run that has been pre-archived (tests archived=True filtering)."""
 
     # Assets
     asset: Asset
@@ -227,9 +227,9 @@ def test_search_runs_not_single_asset(client: NominalClient, search_context: Sea
     assert rids == {search_context.run_multi_asset.rid}
 
 
-def test_search_runs_is_archived(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering is_archived=True returns archived runs and excludes live ones."""
-    results = client.search_runs(is_archived=True, name_substring=search_context.tag)
+def test_search_runs_archived(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering archived=True returns archived runs and excludes live ones."""
+    results = client.search_runs(archived=True, name_substring=search_context.tag)
     rids = {r.rid for r in results}
     # Only archived_run was pre-archived
     assert rids == {search_context.archived_run.rid}
@@ -264,9 +264,9 @@ def test_search_assets_by_properties(client: NominalClient, search_context: Sear
     assert rids == {search_context.asset.rid}
 
 
-def test_search_assets_is_archived(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering is_archived=True returns archived assets and excludes live ones."""
-    results = client.search_assets(is_archived=True, search_text=search_context.tag)
+def test_search_assets_archived(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering archived=True returns archived assets and excludes live ones."""
+    results = client.search_assets(archived=True, search_text=search_context.tag)
     rids = {a.rid for a in results}
     # Only archived_asset was pre-archived
     assert rids == {search_context.archived_asset.rid}
@@ -293,9 +293,9 @@ def test_search_events_by_event_type(client: NominalClient, search_context: Sear
     assert rids == {search_context.event_info.rid}
 
 
-def test_search_events_by_event_types(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering by event_types (plural) returns events matching any of the specified types."""
-    results = client.search_events(event_types=[EventType.INFO, EventType.ERROR], assets=[search_context.asset])
+def test_search_events_by_event_type_any_of(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering by event_type_any_of returns events matching any of the specified types."""
+    results = client.search_events(event_type_any_of=[EventType.INFO, EventType.ERROR], assets=[search_context.asset])
     rids = {e.rid for e in results}
     # event_info (INFO) and event_error (ERROR) match; event_flag (FLAG) does not
     assert rids == {search_context.event_info.rid, search_context.event_error.rid}
