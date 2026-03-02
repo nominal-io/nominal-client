@@ -43,10 +43,18 @@ class SearchContext:
     # Runs
     run: Run
     """Plain run with search-test label and property."""
+    run_with_asset: Run
+    """Run associated with exactly one asset (asset); used for has_single_asset / asset_rids tests."""
+    run_multi_asset: Run
+    """Run associated with two assets (asset + asset2); used for has_single_asset / asset_rids tests."""
+    archived_run: Run
+    """Archived run; used for is_archived filter tests."""
 
     # Assets
     asset: Asset
     """Asset with search-test label and property; all test events are attached here."""
+    asset2: Asset
+    """Second asset; used as the second member of run_multi_asset."""
 
     # Events (all attached to `asset` for isolation)
     event_info: Event
@@ -79,6 +87,7 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         labels=["search-test"],
         properties={"search-tag": tag},
     )
+    asset2 = client.create_asset(f"asset2-{tag}")
 
     # --- Runs ---
     run = client.create_run(
@@ -88,6 +97,10 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         labels=["search-test"],
         properties={"search-tag": tag},
     )
+    run_with_asset = client.create_run(f"run-single-{tag}", start, end, assets=[asset])
+    run_multi_asset = client.create_run(f"run-multi-{tag}", start, end, assets=[asset, asset2])
+    archived_run = client.create_run(f"run-archived-{tag}", start, end)
+    archived_run.archive()
 
     # --- Events (attached to `asset` for search isolation) ---
     event_info = client.create_event(f"event-info-{tag}", EventType.INFO, start, assets=[asset])
@@ -127,7 +140,11 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
     ctx = SearchContext(
         tag=tag,
         run=run,
+        run_with_asset=run_with_asset,
+        run_multi_asset=run_multi_asset,
+        archived_run=archived_run,
         asset=asset,
+        asset2=asset2,
         event_info=event_info,
         event_error=event_error,
         event_flag=event_flag,
@@ -141,7 +158,11 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
 
     # Teardown: archive all live entities so they don't accumulate in the environment.
     run.archive()
+    run_with_asset.archive()
+    run_multi_asset.archive()
+    # archived_run is already archived
     asset.archive()
+    asset2.archive()
     event_info.archive()
     event_error.archive()
     event_flag.archive()
@@ -155,10 +176,11 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
 
 
 def test_search_runs_by_name_substring(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching runs by name_substring returns only runs whose name contains the session tag."""
+    """Searching runs by name_substring returns all non-archived runs whose name contains the session tag."""
     results = client.search_runs(name_substring=search_context.tag)
     rids = {r.rid for r in results}
-    assert rids == {search_context.run.rid}
+    # archived_run is excluded because archived runs are not returned by default
+    assert rids == {search_context.run.rid, search_context.run_with_asset.rid, search_context.run_multi_asset.rid}
 
 
 def test_search_runs_by_labels(client: NominalClient, search_context: SearchContext) -> None:
@@ -175,16 +197,51 @@ def test_search_runs_by_properties(client: NominalClient, search_context: Search
     assert rids == {search_context.run.rid}
 
 
+def test_search_runs_by_asset_rids(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering by asset_rids returns all runs associated with any of the given assets."""
+    ctx = search_context
+    results = client.search_runs(asset_rids=[ctx.asset], name_substring=ctx.tag)
+    rids = {r.rid for r in results}
+    # Both run_with_asset (1 asset) and run_multi_asset (2 assets) are linked to ctx.asset
+    assert rids == {ctx.run_with_asset.rid, ctx.run_multi_asset.rid}
+
+
+def test_search_runs_has_single_asset(client: NominalClient, search_context: SearchContext) -> None:
+    """has_single_asset=True returns only runs with exactly one associated asset."""
+    ctx = search_context
+    results = client.search_runs(has_single_asset=True, name_substring=ctx.tag)
+    rids = {r.rid for r in results}
+    assert ctx.run_with_asset.rid in rids
+    assert ctx.run_multi_asset.rid not in rids
+
+
+def test_search_runs_not_single_asset(client: NominalClient, search_context: SearchContext) -> None:
+    """has_single_asset=False excludes runs with exactly one associated asset."""
+    ctx = search_context
+    results = client.search_runs(has_single_asset=False, name_substring=ctx.tag)
+    rids = {r.rid for r in results}
+    assert ctx.run_multi_asset.rid in rids
+    assert ctx.run_with_asset.rid not in rids
+
+
+def test_search_runs_is_archived(client: NominalClient, search_context: SearchContext) -> None:
+    """is_archived=True returns only archived runs."""
+    ctx = search_context
+    results = client.search_runs(is_archived=True, name_substring=ctx.tag)
+    rids = {r.rid for r in results}
+    assert rids == {ctx.archived_run.rid}
+
+
 # ---------------------------------------------------------------------------
 # Asset search
 # ---------------------------------------------------------------------------
 
 
 def test_search_assets_by_name(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching assets by name substring returns only the asset whose name contains the session tag."""
+    """Searching assets by name substring returns all assets whose name contains the session tag."""
     results = client.search_assets(search_text=search_context.tag)
     rids = {a.rid for a in results}
-    assert rids == {search_context.asset.rid}
+    assert rids == {search_context.asset.rid, search_context.asset2.rid}
 
 
 def test_search_assets_by_labels(client: NominalClient, search_context: SearchContext) -> None:

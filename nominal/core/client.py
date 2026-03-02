@@ -639,6 +639,11 @@ class NominalClient:
         created_after: str | datetime | IntegralNanosecondsUTC | None = None,
         created_before: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace_rid: str | None = None,
+        asset_rids: Sequence[str] | None = None,
+        has_single_asset: bool | None = None,
+        run_number: int | None = None,
+        run_prefix: str | None = None,
+        is_archived: bool | None = None,
     ) -> Iterable[Run]:
         query = create_search_runs_query(
             start=start,
@@ -651,6 +656,11 @@ class NominalClient:
             created_after=created_after,
             created_before=created_before,
             workspace_rid=workspace_rid,
+            asset_rids=asset_rids,
+            has_single_asset=has_single_asset,
+            run_number=run_number,
+            run_prefix=run_prefix,
+            is_archived=is_archived,
         )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
             yield Run._from_conjure(self._clients, run)
@@ -668,6 +678,11 @@ class NominalClient:
         created_after: str | datetime | IntegralNanosecondsUTC | None = None,
         created_before: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        asset_rids: Sequence[Asset | str] | None = None,
+        has_single_asset: bool | None = None,
+        run_number: int | None = None,
+        run_prefix: str | None = None,
+        is_archived: bool | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
@@ -683,12 +698,20 @@ class NominalClient:
             created_after: Filter runs created after this timestamp (exclusive).
             created_before: Filter runs created before this timestamp (exclusive).
             workspace: Filters search to given workspace.
+            asset_rids: Filter runs associated with any of the given assets.
+                If a single asset is provided, matches runs associated with that asset.
+                If multiple assets are provided, matches runs associated with ANY of them.
+            has_single_asset: If True, only returns runs associated with exactly one asset.
+                If False, only returns runs associated with more than one asset.
+            run_number: Filter runs by their exact run number.
+            run_prefix: Filter runs whose name starts with the given prefix.
+            is_archived: If True, only returns archived runs. If False, only returns non-archived runs.
+                If None (default), returns all runs regardless of archive status.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
             a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
             be constrained to that workspace if the user has access to the workspace.
-
 
         Returns:
             All runs which match all of the provided conditions
@@ -705,6 +728,11 @@ class NominalClient:
                 created_after=created_after,
                 created_before=created_before,
                 workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+                asset_rids=[rid_from_instance_or_string(a) for a in asset_rids] if asset_rids else None,
+                has_single_asset=has_single_asset,
+                run_number=run_number,
+                run_prefix=run_prefix,
+                is_archived=is_archived,
             )
         )
 

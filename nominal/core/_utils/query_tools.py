@@ -216,7 +216,7 @@ def create_search_datasets_query(
     return scout_catalog.SearchDatasetsQuery(and_=queries)
 
 
-def create_search_runs_query(
+def create_search_runs_query(  # noqa: PLR0912
     start: str | datetime | IntegralNanosecondsUTC | None = None,
     end: str | datetime | IntegralNanosecondsUTC | None = None,
     name_substring: str | None = None,
@@ -227,6 +227,11 @@ def create_search_runs_query(
     created_after: str | datetime | IntegralNanosecondsUTC | None = None,
     created_before: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
+    asset_rids: Sequence[str] | None = None,
+    has_single_asset: bool | None = None,
+    run_number: int | None = None,
+    run_prefix: str | None = None,
+    is_archived: bool | None = None,
 ) -> scout_run_api.SearchQuery:
     queries = []
     if start is not None:
@@ -283,6 +288,16 @@ def create_search_runs_query(
         queries.append(scout_run_api.SearchQuery(search_text=search_text))
     if workspace_rid is not None:
         queries.append(scout_run_api.SearchQuery(workspace=workspace_rid))
+    if asset_rids:
+        queries.append(scout_run_api.SearchQuery(assets=scout_run_api.AssetsFilter(assets=list(asset_rids))))
+    if has_single_asset is not None:
+        queries.append(scout_run_api.SearchQuery(is_single_asset=has_single_asset))
+    if run_number is not None:
+        queries.append(scout_run_api.SearchQuery(run_number=run_number))
+    if run_prefix is not None:
+        queries.append(scout_run_api.SearchQuery(run_prefix=run_prefix))
+    if is_archived is not None:
+        queries.append(scout_run_api.SearchQuery(archived=is_archived))
     return scout_run_api.SearchQuery(and_=queries)
 
 
