@@ -882,6 +882,8 @@ class NominalClient:
         author: User | str | None = None,
         assignee: User | str | None = None,
         workspace: WorkspaceSearchT | None = None,
+        is_archived: bool | None = None,
+        authors: Iterable[User | str] | None = None,
     ) -> Sequence[Checklist]:
         """Search for checklists meeting the specified filters.
         Filters are ANDed together, e.g. `(checklist.label == label) AND (checklist.search_text =~ field)`
@@ -893,12 +895,13 @@ class NominalClient:
             author: Author of checklists to search for
             assignee: Assignee of checklists to search for
             workspace: Filters search to given workspace.
+            is_archived: If True, return only archived checklists. If False, return only non-archived checklists.
+            authors: Filter by multiple authors (OR semantics). Each can be a User instance or a user RID string.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
             a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
             be constrained to that workspace if the user has access to the workspace.
-
 
         Returns:
             All checklists which match all of the provided conditions
@@ -910,6 +913,8 @@ class NominalClient:
             author=rid_from_instance_or_string(author) if author else None,
             assignee=rid_from_instance_or_string(assignee) if assignee else None,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            is_archived=is_archived,
+            author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
         )
         return list(self._iter_search_checklists(query))
 

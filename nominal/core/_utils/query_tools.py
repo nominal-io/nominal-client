@@ -134,6 +134,8 @@ def create_search_checklists_query(
     author: str | None = None,
     assignee: str | None = None,
     workspace_rid: str | None = None,
+    is_archived: bool | None = None,
+    author_rids: Sequence[str] | None = None,
 ) -> scout_checks_api.ChecklistSearchQuery:
     queries = [scout_checks_api.ChecklistSearchQuery(is_published=True)]
     if search_text is not None:
@@ -150,6 +152,10 @@ def create_search_checklists_query(
         queries.append(scout_checks_api.ChecklistSearchQuery(assignee_rid=assignee))
     if workspace_rid is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(workspace=workspace_rid))
+    if is_archived is not None:
+        queries.append(scout_checks_api.ChecklistSearchQuery(is_archived=is_archived))
+    if author_rids is not None:
+        queries.append(scout_checks_api.ChecklistSearchQuery(author_rids=list(author_rids)))
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
 
