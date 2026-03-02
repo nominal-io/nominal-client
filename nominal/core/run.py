@@ -413,8 +413,8 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             created_by_rid=created_by_rid,
             archived=archived,
             include_drafts=include_drafts,
-            created_by_rids=created_by_rid_any_of,
-            run_rids=run_rid_any_of,
+            created_by_rid_any_of=created_by_rid_any_of,
+            run_rid_any_of=run_rid_any_of,
             workbook_types=workbook_types,
         )
 

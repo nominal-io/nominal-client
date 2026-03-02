@@ -538,9 +538,9 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             origin_types=origin_types,
             archived=archived,
             priorities=priorities,
-            assignee_rids=assignee_rid_any_of,
-            event_types=event_type_any_of,
-            created_by_rids=created_by_rid_any_of,
+            assignee_rid_any_of=assignee_rid_any_of,
+            event_type_any_of=event_type_any_of,
+            created_by_rid_any_of=created_by_rid_any_of,
         )
 
     def search_data_reviews(
@@ -585,8 +585,8 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             run_rid=run_rid,
             archived=archived,
             include_drafts=include_drafts,
-            created_by_rids=created_by_rid_any_of,
-            run_rids=run_rid_any_of,
+            created_by_rid_any_of=created_by_rid_any_of,
+            run_rid_any_of=run_rid_any_of,
             workbook_types=workbook_types,
         )
 

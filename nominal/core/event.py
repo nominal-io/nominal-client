@@ -177,9 +177,9 @@ def _search_events(
     workspace_rid: str | None = None,
     archived: bool | None = None,
     priorities: Iterable[Priority] | None = None,
-    assignee_rids: Iterable[str] | None = None,
-    event_types: Iterable[EventType] | None = None,
-    created_by_rids: Iterable[str] | None = None,
+    assignee_rid_any_of: Iterable[str] | None = None,
+    event_type_any_of: Iterable[EventType] | None = None,
+    created_by_rid_any_of: Iterable[str] | None = None,
 ) -> Sequence[Event]:
     query = _create_search_events_query(
         asset_rids=asset_rids,
@@ -199,8 +199,8 @@ def _search_events(
         workspace_rid=workspace_rid,
         archived=archived,
         priorities=[p._to_conjure() for p in priorities] if priorities else None,
-        assignee_rids=assignee_rids,
-        event_types=[et._to_api_event_type() for et in event_types] if event_types else None,
-        created_by_rids=created_by_rids,
+        assignee_rid_any_of=assignee_rid_any_of,
+        event_type_any_of=[et._to_api_event_type() for et in event_type_any_of] if event_type_any_of else None,
+        created_by_rid_any_of=created_by_rid_any_of,
     )
     return list(_iter_search_events(clients, query))

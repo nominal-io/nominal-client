@@ -909,7 +909,9 @@ class NominalClient:
             assignee=rid_from_instance_or_string(assignee) if assignee else None,
             workspace_rid=self._workspace_rid_for_search(workspace),
             archived=archived,
-            author_rids=None if author_any_of is None else [rid_from_instance_or_string(a) for a in author_any_of],
+            author_rid_any_of=None
+            if author_any_of is None
+            else [rid_from_instance_or_string(a) for a in author_any_of],
         )
         return list(self._iter_search_checklists(query))
 
@@ -1372,9 +1374,11 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
             archived=archived,
             priorities=priorities,
-            assignee_rids=[rid_from_instance_or_string(a) for a in assignee_any_of] if assignee_any_of else None,
-            event_types=event_type_any_of,
-            created_by_rids=[rid_from_instance_or_string(u) for u in created_by_any_of] if created_by_any_of else None,
+            assignee_rid_any_of=[rid_from_instance_or_string(a) for a in assignee_any_of] if assignee_any_of else None,
+            event_type_any_of=event_type_any_of,
+            created_by_rid_any_of=[rid_from_instance_or_string(u) for u in created_by_any_of]
+            if created_by_any_of
+            else None,
         )
 
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
@@ -1521,10 +1525,10 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
             archived=archived,
             include_drafts=include_drafts,
-            created_by_rids=None
+            created_by_rid_any_of=None
             if created_by_any_of is None
             else [rid_from_instance_or_string(a) for a in created_by_any_of],
-            run_rids=None if run_any_of is None else [rid_from_instance_or_string(r) for r in run_any_of],
+            run_rid_any_of=None if run_any_of is None else [rid_from_instance_or_string(r) for r in run_any_of],
             workbook_types=workbook_types,
         )
 
@@ -1586,7 +1590,7 @@ class NominalClient:
             archived=archived,
             published=published,
             workspace_rid=self._workspace_rid_for_search(workspace),
-            created_by_rids=None
+            created_by_rid_any_of=None
             if created_by_any_of is None
             else [rid_from_instance_or_string(a) for a in created_by_any_of],
         )

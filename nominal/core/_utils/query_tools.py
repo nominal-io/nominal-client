@@ -135,7 +135,7 @@ def create_search_checklists_query(
     assignee: str | None = None,
     workspace_rid: str | None = None,
     archived: bool | None = None,
-    author_rids: Sequence[str] | None = None,
+    author_rid_any_of: Sequence[str] | None = None,
 ) -> scout_checks_api.ChecklistSearchQuery:
     queries = [scout_checks_api.ChecklistSearchQuery(is_published=True)]
     if search_text is not None:
@@ -154,8 +154,8 @@ def create_search_checklists_query(
         queries.append(scout_checks_api.ChecklistSearchQuery(workspace=workspace_rid))
     if archived is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(is_archived=archived))
-    if author_rids is not None:
-        queries.append(scout_checks_api.ChecklistSearchQuery(author_rids=list(author_rids)))
+    if author_rid_any_of is not None:
+        queries.append(scout_checks_api.ChecklistSearchQuery(author_rids=list(author_rid_any_of)))
     return scout_checks_api.ChecklistSearchQuery(and_=queries)
 
 
@@ -319,8 +319,8 @@ def create_search_workbooks_query(  # noqa: PLR0912
     run_rid: str | None = None,
     workspace_rid: str | None = None,
     archived: bool | None = None,
-    created_by_rids: Sequence[str] | None = None,
-    run_rids: Sequence[str] | None = None,
+    created_by_rid_any_of: Sequence[str] | None = None,
+    run_rid_any_of: Sequence[str] | None = None,
     workbook_types: Sequence[scout_notebook_api.NotebookType] | None = None,
 ) -> scout_notebook_api.SearchNotebooksQuery:
     queries = []
@@ -357,13 +357,13 @@ def create_search_workbooks_query(  # noqa: PLR0912
     if archived is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(archived=archived))
 
-    if created_by_rids is not None:
-        queries.append(scout_notebook_api.SearchNotebooksQuery(author_rids=list(created_by_rids)))
+    if created_by_rid_any_of is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(author_rids=list(created_by_rid_any_of)))
 
-    if run_rids is not None:
+    if run_rid_any_of is not None:
         queries.append(
             scout_notebook_api.SearchNotebooksQuery(
-                run_rids=scout_notebook_api.RunsFilter(operator=api.SetOperator.OR, runs=list(run_rids))
+                run_rids=scout_notebook_api.RunsFilter(operator=api.SetOperator.OR, runs=list(run_rid_any_of))
             )
         )
 
@@ -386,7 +386,7 @@ def create_search_workbook_templates_query(
     archived: bool | None = None,
     published: bool | None = None,
     workspace_rid: str | None = None,
-    created_by_rids: Sequence[str] | None = None,
+    created_by_rid_any_of: Sequence[str] | None = None,
 ) -> scout_template_api.SearchTemplatesQuery:
     queries = []
 
@@ -416,8 +416,8 @@ def create_search_workbook_templates_query(
     if workspace_rid is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(workspace=workspace_rid))
 
-    if created_by_rids is not None:
-        queries.append(scout_template_api.SearchTemplatesQuery(author_rids=list(created_by_rids)))
+    if created_by_rid_any_of is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(author_rids=list(created_by_rid_any_of)))
 
     return scout_template_api.SearchTemplatesQuery(and_=queries)
 
@@ -438,9 +438,9 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
     workspace_rid: str | None = None,
     archived: bool | None = None,
     priorities: Iterable[scout_api.Priority] | None = None,
-    assignee_rids: Iterable[str] | None = None,
-    event_types: Iterable[event.EventType] | None = None,
-    created_by_rids: Iterable[str] | None = None,
+    assignee_rid_any_of: Iterable[str] | None = None,
+    event_type_any_of: Iterable[event.EventType] | None = None,
+    created_by_rid_any_of: Iterable[str] | None = None,
 ) -> event.SearchQuery:
     queries = []
     if search_text is not None:
@@ -477,15 +477,15 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
         queries.append(event.SearchQuery(archived=archived))
     if priorities is not None:
         queries.append(event.SearchQuery(priorities=list(priorities)))
-    if assignee_rids is not None:
+    if assignee_rid_any_of is not None:
         queries.append(
             event.SearchQuery(
-                assignees=event.AssigneesFilter(assignees=list(assignee_rids), operator=api.SetOperator.OR)
+                assignees=event.AssigneesFilter(assignees=list(assignee_rid_any_of), operator=api.SetOperator.OR)
             )
         )
-    if event_types is not None:
-        queries.append(event.SearchQuery(event_types=list(event_types)))
-    if created_by_rids is not None:
-        queries.append(event.SearchQuery(created_by_any_of=list(created_by_rids)))
+    if event_type_any_of is not None:
+        queries.append(event.SearchQuery(event_types=list(event_type_any_of)))
+    if created_by_rid_any_of is not None:
+        queries.append(event.SearchQuery(created_by_any_of=list(created_by_rid_any_of)))
 
     return event.SearchQuery(and_=queries)
