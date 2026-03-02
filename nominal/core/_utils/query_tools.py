@@ -388,6 +388,8 @@ def create_search_workbook_templates_query(
     created_by: str | None = None,
     archived: bool | None = None,
     published: bool | None = None,
+    workspace_rid: str | None = None,
+    author_rids: Sequence[str] | None = None,
 ) -> scout_template_api.SearchTemplatesQuery:
     queries = []
 
@@ -413,6 +415,12 @@ def create_search_workbook_templates_query(
 
     if published is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(is_published=published))
+
+    if workspace_rid is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(workspace=workspace_rid))
+
+    if author_rids is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(author_rids=list(author_rids)))
 
     return scout_template_api.SearchTemplatesQuery(and_=queries)
 

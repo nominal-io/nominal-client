@@ -1559,6 +1559,8 @@ class NominalClient:
         created_by: User | str | None = None,
         archived: bool | None = None,
         published: bool | None = None,
+        workspace: WorkspaceSearchT | None = None,
+        authors: Sequence[User | str] | None = None,
     ) -> Sequence[WorkbookTemplate]:
         """Search for workbook templates meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
@@ -1571,6 +1573,13 @@ class NominalClient:
             created_by: Searches for workbook templates with the given creator's rid
             archived: Searches for workbook templates that are archived if true
             published: Searches for workbook templates that have been published if true
+            workspace: Filters search to given workspace.
+            authors: Filter by multiple authors (OR semantics). Each can be a User instance or a user RID string.
+
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
+            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
+            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
+            be constrained to that workspace if the user has access to the workspace.
 
         Returns:
             All workbook templates which match all of the provided conditions
@@ -1583,6 +1592,8 @@ class NominalClient:
             created_by=None if created_by is None else rid_from_instance_or_string(created_by),
             archived=archived,
             published=published,
+            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            author_rids=None if authors is None else [rid_from_instance_or_string(a) for a in authors],
         )
         return list(self._iter_search_workbook_templates(query))
 
