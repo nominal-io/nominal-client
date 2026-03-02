@@ -643,7 +643,6 @@ class NominalClient:
         asset_rids: Sequence[str] | None = None,
         has_single_asset: bool | None = None,
         run_number: int | None = None,
-        run_prefix: str | None = None,
         is_archived: bool | None = None,
     ) -> Iterable[Run]:
         query = create_search_runs_query(
@@ -660,7 +659,6 @@ class NominalClient:
             asset_rids=asset_rids,
             has_single_asset=has_single_asset,
             run_number=run_number,
-            run_prefix=run_prefix,
             is_archived=is_archived,
         )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
@@ -682,7 +680,6 @@ class NominalClient:
         asset_rids: Sequence[Asset | str] | None = None,
         has_single_asset: bool | None = None,
         run_number: int | None = None,
-        run_prefix: str | None = None,
         is_archived: bool | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
@@ -705,7 +702,6 @@ class NominalClient:
             has_single_asset: If True, only returns runs associated with exactly one asset.
                 If False, only returns runs associated with more than one asset.
             run_number: Filter runs by their exact run number.
-            run_prefix: Filter runs whose name starts with the given prefix.
             is_archived: If True, only returns archived runs. If False, only returns non-archived runs.
                 If None (default), returns all runs regardless of archive status.
 
@@ -732,7 +728,6 @@ class NominalClient:
                 asset_rids=[rid_from_instance_or_string(a) for a in asset_rids] if asset_rids else None,
                 has_single_asset=has_single_asset,
                 run_number=run_number,
-                run_prefix=run_prefix,
                 is_archived=is_archived,
             )
         )

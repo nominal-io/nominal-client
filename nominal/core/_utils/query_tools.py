@@ -240,7 +240,6 @@ def create_search_runs_query(  # noqa: PLR0912
     asset_rids: Sequence[str] | None = None,
     has_single_asset: bool | None = None,
     run_number: int | None = None,
-    run_prefix: str | None = None,
     is_archived: bool | None = None,
 ) -> scout_run_api.SearchQuery:
     queries = []
@@ -304,8 +303,6 @@ def create_search_runs_query(  # noqa: PLR0912
         queries.append(scout_run_api.SearchQuery(is_single_asset=has_single_asset))
     if run_number is not None:
         queries.append(scout_run_api.SearchQuery(run_number=run_number))
-    if run_prefix is not None:
-        queries.append(scout_run_api.SearchQuery(run_prefix=run_prefix))
     if is_archived is not None:
         queries.append(scout_run_api.SearchQuery(archived=is_archived))
     return scout_run_api.SearchQuery(and_=queries)
