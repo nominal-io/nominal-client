@@ -273,7 +273,6 @@ def create_search_runs_query(  # noqa: PLR0912
     workspace_rid: str | None = None,
     asset_rids: Sequence[str] | None = None,
     has_single_asset: bool | None = None,
-    run_number: int | None = None,
     archived: bool | None = None,
 ) -> scout_run_api.SearchQuery:
     # TODO(drake): allow searching by datasets, check alert status, and datasources by tags
@@ -299,8 +298,6 @@ def create_search_runs_query(  # noqa: PLR0912
         queries.append(scout_run_api.SearchQuery(assets=scout_run_api.AssetsFilter(assets=list(asset_rids))))
     if has_single_asset is not None:
         queries.append(scout_run_api.SearchQuery(is_single_asset=has_single_asset))
-    if run_number is not None:
-        queries.append(scout_run_api.SearchQuery(run_number=run_number))
     if archived is not None:
         queries.append(scout_run_api.SearchQuery(archived=archived))
     return scout_run_api.SearchQuery(and_=queries)

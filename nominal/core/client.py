@@ -642,7 +642,6 @@ class NominalClient:
         workspace_rid: str | None = None,
         asset_rids: Sequence[str] | None = None,
         has_single_asset: bool | None = None,
-        run_number: int | None = None,
         archived: bool | None = None,
     ) -> Iterable[Run]:
         query = create_search_runs_query(
@@ -658,7 +657,6 @@ class NominalClient:
             workspace_rid=workspace_rid,
             asset_rids=asset_rids,
             has_single_asset=has_single_asset,
-            run_number=run_number,
             archived=archived,
         )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
@@ -679,7 +677,6 @@ class NominalClient:
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         asset_rids: Sequence[Asset | str] | None = None,
         has_single_asset: bool | None = None,
-        run_number: int | None = None,
         archived: bool | None = None,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
@@ -701,7 +698,6 @@ class NominalClient:
                 If multiple assets are provided, matches runs associated with ANY of them.
             has_single_asset: If True, only returns runs associated with exactly one asset.
                 If False, only returns runs associated with more than one asset.
-            run_number: Filter runs by their exact run number.
             archived: If True, only returns archived runs. If False, only returns non-archived runs.
                 If None (default), returns all runs regardless of archive status.
 
@@ -727,7 +723,6 @@ class NominalClient:
                 workspace_rid=self._workspace_rid_for_search(workspace),
                 asset_rids=[rid_from_instance_or_string(a) for a in asset_rids] if asset_rids else None,
                 has_single_asset=has_single_asset,
-                run_number=run_number,
                 archived=archived,
             )
         )
