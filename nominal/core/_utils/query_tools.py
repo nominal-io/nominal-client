@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Iterable, Mapping, Sequence
 
 from nominal_api import (
@@ -20,7 +19,12 @@ from nominal_api import (
     secrets_api,
 )
 
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+from nominal.ts import _InferrableTimestampType, _SecondsNanos
+
+
+def _property_filters(properties: Mapping[str, str]) -> list[scout_rids_api.PropertiesFilter]:
+    """One PropertiesFilter per key-value pair, each with a single-element values list."""
+    return [scout_rids_api.PropertiesFilter(name=name, values=[value]) for name, value in properties.items()]
 
 
 def _labels_filter(
@@ -32,17 +36,33 @@ def _labels_filter(
     return scout_rids_api.LabelsFilter(labels=list(labels), operator=operator)
 
 
+def _to_api_ts(ts: _InferrableTimestampType | None) -> api.Timestamp | None:
+    return None if ts is None else _SecondsNanos.from_flexible(ts).to_api()
+
+
+def _to_run_ts(ts: _InferrableTimestampType | None) -> scout_run_api.UtcTimestamp | None:
+    return None if ts is None else _SecondsNanos.from_flexible(ts).to_scout_run_api()
+
+
+def _to_catalog_ts(ts: _InferrableTimestampType | None) -> scout_catalog.UtcTimestamp | None:
+    return None if ts is None else _SecondsNanos.from_flexible(ts).to_scout_catalog()
+
+
+def _to_iso8601_ts(ts: _InferrableTimestampType | None) -> str | None:
+    return None if ts is None else _SecondsNanos.from_flexible(ts).to_iso8601()
+
+
 def _run_timeframe_filter(
-    start: str | datetime | IntegralNanosecondsUTC | None,
-    end: str | datetime | IntegralNanosecondsUTC | None,
+    start: _InferrableTimestampType | None,
+    end: _InferrableTimestampType | None,
 ) -> scout_run_api.TimeframeFilter | None:
     """Build a run TimeframeFilter from flexible start/end bounds. Returns None when both are absent."""
     if start is None and end is None:
         return None
     return scout_run_api.TimeframeFilter(
         custom=scout_run_api.CustomTimeframeFilter(
-            start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
-            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
+            start_time=_to_run_ts(start),
+            end_time=_to_run_ts(end),
         )
     )
 
@@ -141,8 +161,8 @@ def create_search_assets_query(
     if labels is not None:
         queries.append(scout_asset_api.SearchAssetsQuery(labels=_labels_filter(labels)))
     if properties:
-        for name, value in properties.items():
-            queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
+        for f in _property_filters(properties):
+            queries.append(scout_asset_api.SearchAssetsQuery(properties=f))
     if workspace_rid is not None:
         queries.append(scout_asset_api.SearchAssetsQuery(workspace=workspace_rid))
     if archived is not None:
@@ -167,9 +187,9 @@ def create_search_checklists_query(
         queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
     if labels is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(labels=_labels_filter(labels)))
-    if properties is not None:
-        for prop_key, prop_value in properties.items():
-            queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
+    if properties:
+        for f in _property_filters(properties):
+            queries.append(scout_checks_api.ChecklistSearchQuery(properties=f))
     if author is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(author_rid=author))
     if assignee is not None:
@@ -184,17 +204,15 @@ def create_search_checklists_query(
 
 
 def create_search_dataset_files_query(
-    start: str | datetime | IntegralNanosecondsUTC | None = None,
-    end: str | datetime | IntegralNanosecondsUTC | None = None,
+    start: _InferrableTimestampType | None = None,
+    end: _InferrableTimestampType | None = None,
     file_tags: Mapping[str, str] | None = None,
 ) -> scout_catalog.SearchDatasetFilesQuery:
     queries = []
     if start is not None or end is not None:
-        range_start = None if start is None else _SecondsNanos.from_flexible(start).to_scout_catalog()
-        range_end = None if end is None else _SecondsNanos.from_flexible(end).to_scout_catalog()
         queries.append(
             scout_catalog.SearchDatasetFilesQuery(
-                time_range=scout_catalog.TimeRangeFilter(start=range_start, end=range_end)
+                time_range=scout_catalog.TimeRangeFilter(start=_to_catalog_ts(start), end=_to_catalog_ts(end))
             )
         )
     if file_tags is not None:
@@ -207,8 +225,8 @@ def create_search_datasets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
-    ingested_before_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
-    ingested_after_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
+    ingested_before_inclusive: _InferrableTimestampType | None = None,
+    ingested_after_inclusive: _InferrableTimestampType | None = None,
     workspace_rid: str | None = None,
     archived: bool | None = None,
 ) -> scout_catalog.SearchDatasetsQuery:
@@ -227,19 +245,11 @@ def create_search_datasets_query(
         for prop_key, prop_value in properties.items():
             queries.append(scout_catalog.SearchDatasetsQuery(properties=api.Property(prop_key, prop_value)))
 
-    if ingested_before_inclusive is not None:
-        queries.append(
-            scout_catalog.SearchDatasetsQuery(
-                ingested_before_inclusive=_SecondsNanos.from_flexible(ingested_before_inclusive).to_iso8601()
-            )
-        )
+    if (ts := _to_iso8601_ts(ingested_before_inclusive)) is not None:
+        queries.append(scout_catalog.SearchDatasetsQuery(ingested_before_inclusive=ts))
 
-    if ingested_after_inclusive is not None:
-        queries.append(
-            scout_catalog.SearchDatasetsQuery(
-                ingested_after_inclusive=_SecondsNanos.from_flexible(ingested_after_inclusive).to_iso8601()
-            )
-        )
+    if (ts := _to_iso8601_ts(ingested_after_inclusive)) is not None:
+        queries.append(scout_catalog.SearchDatasetsQuery(ingested_after_inclusive=ts))
 
     if workspace_rid is not None:
         queries.append(scout_catalog.SearchDatasetsQuery(workspace=workspace_rid))
@@ -251,15 +261,15 @@ def create_search_datasets_query(
 
 
 def create_search_runs_query(  # noqa: PLR0912
-    start: str | datetime | IntegralNanosecondsUTC | None = None,
-    end: str | datetime | IntegralNanosecondsUTC | None = None,
+    start: _InferrableTimestampType | None = None,
+    end: _InferrableTimestampType | None = None,
     name_substring: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     exact_match: str | None = None,
     search_text: str | None = None,
-    created_after: str | datetime | IntegralNanosecondsUTC | None = None,
-    created_before: str | datetime | IntegralNanosecondsUTC | None = None,
+    created_after: _InferrableTimestampType | None = None,
+    created_before: _InferrableTimestampType | None = None,
     workspace_rid: str | None = None,
     asset_rids: Sequence[str] | None = None,
     has_single_asset: bool | None = None,
@@ -277,11 +287,8 @@ def create_search_runs_query(  # noqa: PLR0912
     if labels:
         queries.append(scout_run_api.SearchQuery(labels=_labels_filter(labels)))
     if properties:
-        for name, value in properties.items():
-            # original properties is a 1:1 map, so we will never have multiple values for the same name
-            queries.append(
-                scout_run_api.SearchQuery(properties=scout_rids_api.PropertiesFilter(name=name, values=[value]))
-            )
+        for f in _property_filters(properties):
+            queries.append(scout_run_api.SearchQuery(properties=f))
     if exact_match is not None:
         queries.append(scout_run_api.SearchQuery(exact_match=exact_match))
     if search_text is not None:
@@ -339,8 +346,8 @@ def create_search_workbooks_query(  # noqa: PLR0912
         queries.append(scout_notebook_api.SearchNotebooksQuery(labels=_labels_filter(labels)))
 
     if properties:
-        for key, value in properties.items():
-            queries.append(scout_notebook_api.SearchNotebooksQuery(property=api.Property(key, value)))
+        for f in _property_filters(properties):
+            queries.append(scout_notebook_api.SearchNotebooksQuery(properties=f))
 
     if workspace_rid is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(workspace=workspace_rid))
@@ -352,18 +359,12 @@ def create_search_workbooks_query(  # noqa: PLR0912
         queries.append(scout_notebook_api.SearchNotebooksQuery(author_rids=list(created_by_rid_any_of)))
 
     if run_rid_any_of is not None:
-        queries.append(
-            scout_notebook_api.SearchNotebooksQuery(
-                run_rids=scout_notebook_api.RunsFilter(operator=api.SetOperator.OR, runs=list(run_rid_any_of))
-            )
-        )
+        run_filter = scout_notebook_api.RunsFilter(operator=api.SetOperator.OR, runs=list(run_rid_any_of))
+        queries.append(scout_notebook_api.SearchNotebooksQuery(run_rids=run_filter))
 
     if workbook_types is not None:
-        queries.append(
-            scout_notebook_api.SearchNotebooksQuery(
-                notebook_types=scout_notebook_api.NotebookTypesFilter(types=list(workbook_types))
-            )
-        )
+        notebook_type_filter = scout_notebook_api.NotebookTypesFilter(types=list(workbook_types))
+        queries.append(scout_notebook_api.SearchNotebooksQuery(notebook_types=notebook_type_filter))
 
     return scout_notebook_api.SearchNotebooksQuery(and_=queries)
 
@@ -395,8 +396,8 @@ def create_search_workbook_templates_query(
         queries.append(scout_template_api.SearchTemplatesQuery(labels=_labels_filter(labels)))
 
     if properties:
-        for key, value in properties.items():
-            queries.append(scout_template_api.SearchTemplatesQuery(property=api.Property(key, value)))
+        for f in _property_filters(properties):
+            queries.append(scout_template_api.SearchTemplatesQuery(properties=f))
 
     if archived is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(is_archived=archived))
@@ -415,8 +416,8 @@ def create_search_workbook_templates_query(
 
 def _create_search_events_query(  # noqa: PLR0912, PLR0915
     search_text: str | None = None,
-    after: str | datetime | IntegralNanosecondsUTC | None = None,
-    before: str | datetime | IntegralNanosecondsUTC | None = None,
+    after: _InferrableTimestampType | None = None,
+    before: _InferrableTimestampType | None = None,
     asset_rids: Iterable[str] | None = None,
     labels: Iterable[str] | None = None,
     properties: Mapping[str, str] | None = None,
@@ -436,17 +437,17 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
     queries = []
     if search_text is not None:
         queries.append(event.SearchQuery(search_text=search_text))
-    if after is not None:
-        queries.append(event.SearchQuery(after=_SecondsNanos.from_flexible(after).to_api()))
-    if before is not None:
-        queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
+    if (ts := _to_api_ts(after)) is not None:
+        queries.append(event.SearchQuery(after=ts))
+    if (ts := _to_api_ts(before)) is not None:
+        queries.append(event.SearchQuery(before=ts))
     if asset_rids:
         queries.append(event.SearchQuery(assets=event.AssetsFilter([*asset_rids], api.SetOperator.AND)))
     if labels:
         queries.append(event.SearchQuery(labels=_labels_filter(labels)))
     if properties:
-        for name, value in properties.items():
-            queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
+        for f in _property_filters(properties):
+            queries.append(event.SearchQuery(properties=f))
     if created_by_rid:
         queries.append(event.SearchQuery(created_by=created_by_rid))
     if workbook_rid is not None:
@@ -467,11 +468,8 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
     if priorities is not None:
         queries.append(event.SearchQuery(priorities=list(priorities)))
     if assignee_rid_any_of is not None:
-        queries.append(
-            event.SearchQuery(
-                assignees=event.AssigneesFilter(assignees=list(assignee_rid_any_of), operator=api.SetOperator.OR)
-            )
-        )
+        assignees_filter = event.AssigneesFilter(assignees=list(assignee_rid_any_of), operator=api.SetOperator.OR)
+        queries.append(event.SearchQuery(assignees=assignees_filter))
     if event_type_any_of is not None:
         queries.append(event.SearchQuery(event_types=list(event_type_any_of)))
     if created_by_rid_any_of is not None:
