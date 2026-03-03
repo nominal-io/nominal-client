@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.118.0](https://github.com/nominal-io/nominal-client/compare/v1.117.0...v1.118.0) (2026-03-03)
+
+
+### Features
+
+* add tags to mcap ingest api ([#640](https://github.com/nominal-io/nominal-client/issues/640)) ([3892333](https://github.com/nominal-io/nominal-client/commit/38923330ab6fa00240178607a2555ef28319782f))
+
+
+### Bug Fixes
+
+* make existing e2e tests work again ([#635](https://github.com/nominal-io/nominal-client/issues/635)) ([5edb3fd](https://github.com/nominal-io/nominal-client/commit/5edb3fd5d98276d09d1cbe0c4b2ccade5f1918e6))
+
 ## [1.117.0](https://github.com/nominal-io/nominal-client/compare/v1.116.0...v1.117.0) (2026-02-27)
 
 
