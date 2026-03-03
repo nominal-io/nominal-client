@@ -51,6 +51,7 @@ dependencies = [
     "nominal-streaming==0.7.12; platform_python_implementation=='CPython' and python_version>='3.10' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='armv7l' or platform_machine=='aarch64' or platform_machine=='arm64')))",
     # Explicitly specifying urllib3 version to handle CVE present in earlier versions
     "urllib3==2.6.3",
+    "dataclass-wizard>=0.39.1",
 ]
 
 
