@@ -356,6 +356,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         path: PathLike,
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         """Add an MCAP file to an existing dataset.
 
@@ -365,6 +366,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             include_topics: If present, list of topics to restrict ingestion to.
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
             exclude_topics: If present, list of topics to not ingest from the MCAP.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
         """
         path = Path(path)
         with path.open("rb") as data_file:
@@ -373,6 +375,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 include_topics=include_topics,
                 exclude_topics=exclude_topics,
                 file_name=path_upload_name(path, FileTypes.MCAP),
+                tags=tags,
             )
 
     # Backward compatibility
@@ -384,6 +387,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
         file_name: str | None = None,
+        *,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         """Add data to this dataset from an MCAP file-like object.
 
@@ -397,6 +402,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
             exclude_topics: If present, list of topics to not ingest from the MCAP.
             file_name: If present, name to use when uploading file. Otherwise, defaults to dataset name.
+            tags: key-value pairs to apply as tags to all data uniformly in the file.
         """
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"mcap {mcap} must be open in binary mode, rather than text mode")
@@ -418,7 +424,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
 
-        request = _create_mcap_ingest_request(s3_path, channels, target)
+        request = _create_mcap_ingest_request(s3_path, channels, target, tags)
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
         return self._handle_ingest_response(resp)
 
@@ -847,26 +853,23 @@ class _DatasetWrapper(abc.ABC):
         *,
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
+        tags: Mapping[str, str] | None = None,
     ) -> DatasetFile:
         """Add an MCAP file to the dataset selected by `data_scope_name`.
 
-        This method behaves like `nominal.core.Dataset.add_mcap`, with one important difference:
-        MCAP ingestion does not support applying scope tags. If the selected scope requires tags, this method raises
-        `RuntimeError` rather than ingesting untagged data.
+        This method behaves like `nominal.core.Dataset.add_mcap`, except that the data scope's required
+        tags are merged into `tags` before ingest (with user-provided tags taking precedence on key collisions).
 
         For topic-filtering semantics and return value details, see
         `nominal.core.Dataset.add_mcap`.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
-
-        # TODO(drake): remove once MCAP supports ingest with tags
-        if scope_tags:
-            raise RuntimeError(
-                f"Cannot add mcap files to datascope {data_scope_name}-- data would not get "
-                f"tagged with required tags: {scope_tags}"
-            )
-
-        return dataset.add_mcap(path, include_topics=include_topics, exclude_topics=exclude_topics)
+        return dataset.add_mcap(
+            path,
+            include_topics=include_topics,
+            exclude_topics=exclude_topics,
+            tags=_unify_tags(scope_tags, tags),
+        )
 
     def add_ardupilot_dataflash(
         self,
@@ -1095,7 +1098,10 @@ def _create_dataflash_ingest_request(
 
 
 def _create_mcap_ingest_request(
-    s3_path: str, channels: ingest_api.McapChannels, target: ingest_api.DatasetIngestTarget
+    s3_path: str,
+    channels: ingest_api.McapChannels,
+    target: ingest_api.DatasetIngestTarget,
+    tags: Mapping[str, str] | None = None,
 ) -> ingest_api.IngestRequest:
     return ingest_api.IngestRequest(
         ingest_api.IngestOptions(
@@ -1104,6 +1110,7 @@ def _create_mcap_ingest_request(
                 target=target,
                 channel_filter=channels,
                 timestamp_type=ingest_api.McapTimestampType(ingest_api.LogTime()),
+                additional_file_tags={**tags} if tags else None,
             )
         )
     )
