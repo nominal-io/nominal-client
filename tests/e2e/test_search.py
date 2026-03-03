@@ -7,8 +7,18 @@ the test environment.
 
 # TODO(drake): Add workbook and workbook-template search tests once there is a
 # programmatic way to create workbooks without a pre-existing template.
+# This would also enable OR-semantics tests for:
+#   - search_workbooks(created_by_any_of=...): need workbooks by two different users
+#   - search_workbooks(run_any_of=...): need workbooks linked to two different runs
+#   - search_workbook_templates(created_by_any_of=...): need templates by two different users
+#
 # TODO(drake): Add checklist search tests once there is a programmatic way to
-# create checklists.
+# create checklists.  This would also enable an OR-semantics test for:
+#   - search_checklists(author_any_of=...): need checklists by two different authors
+#
+# NOTE: search_events(assignee_any_of=...) cannot be OR-tested because the
+# Event.update() and create_event() APIs do not expose an assignee field; events
+# cannot be assigned to a user through the public client.
 """
 
 from __future__ import annotations
@@ -293,20 +303,29 @@ def test_search_events_by_event_type(client: NominalClient, search_context: Sear
     assert rids == {search_context.event_info.rid}
 
 
-def test_search_events_by_event_type_any_of(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering by event_type_any_of returns events matching any of the specified types."""
+def test_search_events_event_type_any_of_is_or(client: NominalClient, search_context: SearchContext) -> None:
+    """event_type_any_of uses OR semantics: events matching ANY listed type are returned.
+
+    Proof: event_info is INFO, event_error is ERROR — no single event has both types.
+    Passing [INFO, ERROR] returns both events.  With AND semantics the result would be empty.
+    """
     results = client.search_events(event_type_any_of=[EventType.INFO, EventType.ERROR], assets=[search_context.asset])
     rids = {e.rid for e in results}
-    # event_info (INFO) and event_error (ERROR) match; event_flag (FLAG) does not
     assert rids == {search_context.event_info.rid, search_context.event_error.rid}
 
 
-def test_search_events_by_created_by(client: NominalClient, search_context: SearchContext) -> None:
-    """Filtering by created_by_any_of returns all events created by the current user."""
+def test_search_events_created_by_any_of_is_or(client: NominalClient, search_context: SearchContext) -> None:
+    """created_by_any_of uses OR semantics: events by ANY listed user are returned.
+
+    Proof: all test events were created by the current user; no event was created by a
+    nonexistent ghost user.  Passing [me, ghost] still returns all events by me.
+    With AND semantics the result would be empty.
+    """
     me = client.get_user()
-    results = client.search_events(created_by_any_of=[me], assets=[search_context.asset])
+    # Same RID format as the current user but with a fresh UUID suffix — guaranteed nonexistent.
+    ghost_user_rid = f"{me.rid.rsplit('.', 1)[0]}.{uuid4()}"
+    results = client.search_events(created_by_any_of=[me, ghost_user_rid], assets=[search_context.asset])
     rids = {e.rid for e in results}
-    # All three test events were created by the current user on a freshly-created asset
     assert rids == {search_context.event_info.rid, search_context.event_error.rid, search_context.event_flag.rid}
 
 

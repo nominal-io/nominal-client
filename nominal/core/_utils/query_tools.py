@@ -23,6 +23,30 @@ from nominal_api import (
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
+def _labels_filter(
+    labels: Iterable[str],
+    *,
+    operator: api.SetOperator = api.SetOperator.AND,
+) -> scout_rids_api.LabelsFilter:
+    """Build a LabelsFilter. Defaults to AND (entity must have all labels); pass OR for any-of semantics."""
+    return scout_rids_api.LabelsFilter(labels=list(labels), operator=operator)
+
+
+def _run_timeframe_filter(
+    start: str | datetime | IntegralNanosecondsUTC | None,
+    end: str | datetime | IntegralNanosecondsUTC | None,
+) -> scout_run_api.TimeframeFilter | None:
+    """Build a run TimeframeFilter from flexible start/end bounds. Returns None when both are absent."""
+    if start is None and end is None:
+        return None
+    return scout_run_api.TimeframeFilter(
+        custom=scout_run_api.CustomTimeframeFilter(
+            start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
+            end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
+        )
+    )
+
+
 def create_search_secrets_query(
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
@@ -108,14 +132,14 @@ def create_search_assets_query(
     workspace_rid: str | None = None,
     archived: bool | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
+    # TODO (drake): add support for labels_any_of
     queries = []
     if search_text is not None:
         queries.append(scout_asset_api.SearchAssetsQuery(search_text=search_text))
     if exact_substring is not None:
         queries.append(scout_asset_api.SearchAssetsQuery(exact_substring=exact_substring))
     if labels is not None:
-        for label in labels:
-            queries.append(scout_asset_api.SearchAssetsQuery(label=label))
+        queries.append(scout_asset_api.SearchAssetsQuery(labels=_labels_filter(labels)))
     if properties:
         for name, value in properties.items():
             queries.append(scout_asset_api.SearchAssetsQuery(property=api.Property(name=name, value=value)))
@@ -137,12 +161,12 @@ def create_search_checklists_query(
     archived: bool | None = None,
     author_rid_any_of: Sequence[str] | None = None,
 ) -> scout_checks_api.ChecklistSearchQuery:
+    # TODO(drake): add support for labels_any_of
     queries = [scout_checks_api.ChecklistSearchQuery(is_published=True)]
     if search_text is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
     if labels is not None:
-        for label in labels:
-            queries.append(scout_checks_api.ChecklistSearchQuery(label=label))
+        queries.append(scout_checks_api.ChecklistSearchQuery(labels=_labels_filter(labels)))
     if properties is not None:
         for prop_key, prop_value in properties.items():
             queries.append(scout_checks_api.ChecklistSearchQuery(property=api.Property(prop_key, prop_value)))
@@ -242,49 +266,16 @@ def create_search_runs_query(  # noqa: PLR0912
     run_number: int | None = None,
     archived: bool | None = None,
 ) -> scout_run_api.SearchQuery:
+    # TODO(drake): allow searching by datasets, check alert status, and datasources by tags
     queries = []
-    if start is not None:
-        start_time = _SecondsNanos.from_flexible(start).to_scout_run_api()
-        queries.append(
-            scout_run_api.SearchQuery(
-                start_time=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(start_time=start_time, end_time=None)
-                )
-            )
-        )
-    if end is not None:
-        end_time = _SecondsNanos.from_flexible(end).to_scout_run_api()
-        queries.append(
-            scout_run_api.SearchQuery(
-                end_time=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(start_time=None, end_time=end_time)
-                )
-            )
-        )
-    if created_after is not None or created_before is not None:
-        created_after_time = (
-            _SecondsNanos.from_flexible(created_after).to_scout_run_api() if created_after is not None else None
-        )
-        created_before_time = (
-            _SecondsNanos.from_flexible(created_before).to_scout_run_api() if created_before is not None else None
-        )
-        queries.append(
-            scout_run_api.SearchQuery(
-                created_at=scout_run_api.TimeframeFilter(
-                    custom=scout_run_api.CustomTimeframeFilter(
-                        start_time=created_after_time, end_time=created_before_time
-                    )
-                )
-            )
-        )
+    if (tf := _run_timeframe_filter(start, end)) is not None:
+        queries.append(scout_run_api.SearchQuery(end_time=tf))
+    if (tf := _run_timeframe_filter(created_after, created_before)) is not None:
+        queries.append(scout_run_api.SearchQuery(created_at=tf))
     if name_substring is not None:
         queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
     if labels:
-        queries.append(
-            scout_run_api.SearchQuery(
-                labels=scout_rids_api.LabelsFilter(labels=list(labels), operator=api.SetOperator.AND)
-            )
-        )
+        queries.append(scout_run_api.SearchQuery(labels=_labels_filter(labels)))
     if properties:
         for name, value in properties.items():
             # original properties is a 1:1 map, so we will never have multiple values for the same name
@@ -323,6 +314,7 @@ def create_search_workbooks_query(  # noqa: PLR0912
     run_rid_any_of: Sequence[str] | None = None,
     workbook_types: Sequence[scout_notebook_api.NotebookType] | None = None,
 ) -> scout_notebook_api.SearchNotebooksQuery:
+    # TODO(drake): support asset_any_of, consolidate naming of `created_by` vs. `author`, multiple authors
     queries = []
 
     if exact_match is not None:
@@ -344,8 +336,7 @@ def create_search_workbooks_query(  # noqa: PLR0912
         queries.append(scout_notebook_api.SearchNotebooksQuery(run_rid=run_rid))
 
     if labels:
-        for label in labels:
-            queries.append(scout_notebook_api.SearchNotebooksQuery(label=label))
+        queries.append(scout_notebook_api.SearchNotebooksQuery(labels=_labels_filter(labels)))
 
     if properties:
         for key, value in properties.items():
@@ -388,6 +379,7 @@ def create_search_workbook_templates_query(
     workspace_rid: str | None = None,
     created_by_rid_any_of: Sequence[str] | None = None,
 ) -> scout_template_api.SearchTemplatesQuery:
+    # TODO(drake): add support for label_any_of
     queries = []
 
     if exact_match is not None:
@@ -400,8 +392,7 @@ def create_search_workbook_templates_query(
         queries.append(scout_template_api.SearchTemplatesQuery(created_by=created_by))
 
     if labels:
-        for label in labels:
-            queries.append(scout_template_api.SearchTemplatesQuery(label=label))
+        queries.append(scout_template_api.SearchTemplatesQuery(labels=_labels_filter(labels)))
 
     if properties:
         for key, value in properties.items():
@@ -450,11 +441,9 @@ def _create_search_events_query(  # noqa: PLR0912, PLR0915
     if before is not None:
         queries.append(event.SearchQuery(before=_SecondsNanos.from_flexible(before).to_api()))
     if asset_rids:
-        for asset in asset_rids:
-            queries.append(event.SearchQuery(asset=asset))
+        queries.append(event.SearchQuery(assets=event.AssetsFilter([*asset_rids], api.SetOperator.AND)))
     if labels:
-        for label in labels:
-            queries.append(event.SearchQuery(label=label))
+        queries.append(event.SearchQuery(labels=_labels_filter(labels)))
     if properties:
         for name, value in properties.items():
             queries.append(event.SearchQuery(property=api.Property(name=name, value=value)))
