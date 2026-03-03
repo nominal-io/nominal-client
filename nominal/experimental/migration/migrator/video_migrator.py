@@ -31,7 +31,7 @@ class VideoMigrator(Migrator[Video, Video, VideoCopyOptions]):
             ).rid
         }
         logger.debug(
-            "Copying dataset %s (rid: %s)",
+            "Copying video %s (rid: %s)",
             source.name,
             source.rid,
             extra=log_extras,

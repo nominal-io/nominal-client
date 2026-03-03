@@ -26,7 +26,7 @@ class ChecklistCopyOptions(ResourceCopyOptions):
     new_properties: dict[str, str] | None = None
     new_labels: list[str] | None = None
     new_checklist_variables: list[scout_checks_api.UnresolvedChecklistVariable] | None = None
-    new_is_published: bool | None = False
+    new_is_published: bool | None = None
 
 
 class ChecklistMigrator(Migrator[Checklist, Checklist, ChecklistCopyOptions]):
@@ -49,7 +49,9 @@ class ChecklistMigrator(Migrator[Checklist, Checklist, ChecklistCopyOptions]):
             labels=options.new_labels or api_source_checklist.metadata.labels,
             checklist_variables=options.new_checklist_variables
             or _to_unresolved_checklist_variables(api_source_checklist.checklist_variables),
-            is_published=options.new_is_published or api_source_checklist.metadata.is_published,
+            is_published=options.new_is_published
+            if options.new_is_published is not None
+            else api_source_checklist.metadata.is_published,
             workspace=self.ctx.destination_client.get_workspace(self.ctx.destination_client._clients.workspace_rid).rid,
         )
 
