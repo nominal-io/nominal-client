@@ -409,6 +409,7 @@ def _create_compute_request_buckets(
         node=scout_compute_api.ComputableNode(
             series=scout_compute_api.SummarizeSeries(
                 input=_to_generic_series(node),
+                numeric_aggregations={},
                 summarization_strategy=scout_compute_api.SummarizationStrategy(
                     decimate=scout_compute_api.DecimateStrategy(
                         buckets=scout_compute_api.DecimateWithBuckets(buckets=buckets)

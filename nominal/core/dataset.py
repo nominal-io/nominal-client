@@ -357,6 +357,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
         tags: Mapping[str, str] | None = None,
+        ignore_invalid_topics: bool | None = None,
     ) -> DatasetFile:
         """Add an MCAP file to an existing dataset.
 
@@ -367,6 +368,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 If not present, defaults to all protobuf-encoded topics present in the MCAP.
             exclude_topics: If present, list of topics to not ingest from the MCAP.
             tags: key-value pairs to apply as tags to all data uniformly in the file.
+            ignore_invalid_topics: If true, ignore invalid MCAP topics and continue ingesting valid topics.
         """
         path = Path(path)
         with path.open("rb") as data_file:
@@ -376,6 +378,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 exclude_topics=exclude_topics,
                 file_name=path_upload_name(path, FileTypes.MCAP),
                 tags=tags,
+                ignore_invalid_topics=ignore_invalid_topics,
             )
 
     # Backward compatibility
@@ -389,6 +392,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         file_name: str | None = None,
         *,
         tags: Mapping[str, str] | None = None,
+        ignore_invalid_topics: bool | None = None,
     ) -> DatasetFile:
         """Add data to this dataset from an MCAP file-like object.
 
@@ -403,6 +407,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             exclude_topics: If present, list of topics to not ingest from the MCAP.
             file_name: If present, name to use when uploading file. Otherwise, defaults to dataset name.
             tags: key-value pairs to apply as tags to all data uniformly in the file.
+            ignore_invalid_topics: If true, ignore invalid MCAP topics and continue ingesting valid topics.
         """
         if isinstance(mcap, TextIOBase):
             raise TypeError(f"mcap {mcap} must be open in binary mode, rather than text mode")
@@ -424,7 +429,13 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
         )
 
-        request = _create_mcap_ingest_request(s3_path, channels, target, tags)
+        request = _create_mcap_ingest_request(
+            s3_path,
+            channels,
+            target,
+            tags,
+            ignore_invalid_topics=ignore_invalid_topics,
+        )
         resp = self._clients.ingest.ingest(self._clients.auth_header, request)
         return self._handle_ingest_response(resp)
 
@@ -854,6 +865,7 @@ class _DatasetWrapper(abc.ABC):
         include_topics: Iterable[str] | None = None,
         exclude_topics: Iterable[str] | None = None,
         tags: Mapping[str, str] | None = None,
+        ignore_invalid_topics: bool | None = None,
     ) -> DatasetFile:
         """Add an MCAP file to the dataset selected by `data_scope_name`.
 
@@ -869,6 +881,7 @@ class _DatasetWrapper(abc.ABC):
             include_topics=include_topics,
             exclude_topics=exclude_topics,
             tags=_unify_tags(scope_tags, tags),
+            ignore_invalid_topics=ignore_invalid_topics,
         )
 
     def add_ardupilot_dataflash(
@@ -1102,6 +1115,7 @@ def _create_mcap_ingest_request(
     channels: ingest_api.McapChannels,
     target: ingest_api.DatasetIngestTarget,
     tags: Mapping[str, str] | None = None,
+    ignore_invalid_topics: bool | None = None,
 ) -> ingest_api.IngestRequest:
     return ingest_api.IngestRequest(
         ingest_api.IngestOptions(
@@ -1111,6 +1125,7 @@ def _create_mcap_ingest_request(
                 channel_filter=channels,
                 timestamp_type=ingest_api.McapTimestampType(ingest_api.LogTime()),
                 additional_file_tags={**tags} if tags else None,
+                ignore_invalid_topics=ignore_invalid_topics,
             )
         )
     )
