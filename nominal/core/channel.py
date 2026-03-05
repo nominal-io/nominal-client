@@ -201,6 +201,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
                 node=scout_compute_api.ComputableNode(
                     series=scout_compute_api.SummarizeSeries(
                         input=compute_series,
+                        numeric_aggregations={},
                         summarization_strategy=scout_compute_api.SummarizationStrategy(
                             page=scout_compute_api.PageStrategy(
                                 page_info=scout_compute_api.PageInfo(page_size=PAGE_SIZE, page_token=page_token)
@@ -350,6 +351,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             node=scout_compute_api.ComputableNode(
                 series=scout_compute_api.SummarizeSeries(
                     input=self._to_compute_series(tags=tags),
+                    numeric_aggregations={},
                     buckets=buckets,
                     resolution=resolution,
                 )
