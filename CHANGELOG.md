@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.119.0](https://github.com/nominal-io/nominal-client/compare/v1.118.0...v1.119.0) (2026-03-06)
+
+
+### Features
+
+* pipe flag to ignore bad topics in mcaps ([#642](https://github.com/nominal-io/nominal-client/issues/642)) ([1a7ef24](https://github.com/nominal-io/nominal-client/commit/1a7ef248dba0427a2b91abf0c9c091cee186bfb9))
+
+
+### Bug Fixes
+
+* make dataset_file.poll_until_ingestion_completion sleep ([#644](https://github.com/nominal-io/nominal-client/issues/644)) ([434c037](https://github.com/nominal-io/nominal-client/commit/434c03733de2ea7b34a88a1ccecf3cd28fb630bd))
+
 ## [1.118.0](https://github.com/nominal-io/nominal-client/compare/v1.117.0...v1.118.0) (2026-03-03)
 
 
