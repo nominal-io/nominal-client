@@ -92,12 +92,15 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
 
             match self.ingest_status:
                 case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
+                    # ingestion has completed successfully by this point
                     break
-                case IngestStatus.IN_PROGRESS:
-                    continue
                 case IngestStatus.FAILED:
+                    # ingestion failed and will not continue
                     # Get error message to display to user
                     raise self._build_ingest_exception(api_file.ingest_status)
+                case IngestStatus.IN_PROGRESS:
+                    # Ingestion still proceeding
+                    pass
                 case _:
                     raise NominalIngestError(
                         f"Unknown ingest status {self.ingest_status} for file={self.id!r} and "
