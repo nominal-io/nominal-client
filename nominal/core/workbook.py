@@ -315,18 +315,20 @@ def _iter_search_workbooks(
 def _search_workbooks(
     clients: Workbook._Clients,
     *,
-    include_archived: bool = False,
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     asset_rid: str | None = None,
     exact_asset_rids: Sequence[str] | None = None,
-    author_rid: str | None = None,
+    created_by_rid: str | None = None,
     run_rid: str | None = None,
     workspace_rid: str | None = None,
     archived: bool | None = None,
     include_drafts: bool = False,
+    created_by_rid_any_of: Sequence[str] | None = None,
+    run_rid_any_of: Sequence[str] | None = None,
+    workbook_types: Sequence[WorkbookType] | None = None,
 ) -> Sequence[Workbook]:
     query = create_search_workbooks_query(
         exact_match=exact_match,
@@ -335,9 +337,12 @@ def _search_workbooks(
         properties=properties,
         asset_rid=asset_rid,
         exact_asset_rids=exact_asset_rids,
-        author_rid=author_rid,
+        created_by_rid=created_by_rid,
         run_rid=run_rid,
         workspace_rid=workspace_rid,
         archived=archived,
+        created_by_rid_any_of=created_by_rid_any_of,
+        run_rid_any_of=run_rid_any_of,
+        workbook_types=None if workbook_types is None else [t._to_conjure() for t in workbook_types],
     )
-    return list(_iter_search_workbooks(clients, query, include_archived, include_drafts))
+    return list(_iter_search_workbooks(clients, query, archived is True, include_drafts))

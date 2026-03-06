@@ -9,6 +9,7 @@ from nominal_api import event
 from typing_extensions import Self
 
 from nominal.core import asset as core_asset
+from nominal.core._checklist_types import Priority as Priority  # noqa: PLC0414
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
 from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
@@ -43,7 +44,7 @@ class Event(HasRid, RefreshableMixin[event.Event]):
 
     def _get_latest_api(self) -> event.Event:
         resp = self._clients.event.batch_get_events(self._clients.auth_header, [self.rid])
-        if len(resp) != 0:
+        if len(resp) != 1:
             raise ValueError(f"Expected exactly one event with rid {self.rid}, received {len(resp)}")
 
         return resp[0]
@@ -174,6 +175,11 @@ def _search_events(
     event_type: EventType | None = None,
     origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
+    archived: bool | None = None,
+    priorities: Iterable[Priority] | None = None,
+    assignee_rid_any_of: Iterable[str] | None = None,
+    event_type_any_of: Iterable[EventType] | None = None,
+    created_by_rid_any_of: Iterable[str] | None = None,
 ) -> Sequence[Event]:
     query = _create_search_events_query(
         asset_rids=asset_rids,
@@ -191,5 +197,10 @@ def _search_events(
         if origin_types
         else None,
         workspace_rid=workspace_rid,
+        archived=archived,
+        priorities=[p._to_conjure() for p in priorities] if priorities else None,
+        assignee_rid_any_of=assignee_rid_any_of,
+        event_type_any_of=[et._to_api_event_type() for et in event_type_any_of] if event_type_any_of else None,
+        created_by_rid_any_of=created_by_rid_any_of,
     )
     return list(_iter_search_events(clients, query))

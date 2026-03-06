@@ -1,3 +1,4 @@
+from nominal.core._checklist_types import Priority
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import WriteStream
 from nominal.core._utils.api_tools import LinkDict
@@ -52,6 +53,7 @@ __all__ = [
     "DockerImageSource",
     "Event",
     "EventType",
+    "Priority",
     "FileExtractionInput",
     "FileType",
     "FileTypes",

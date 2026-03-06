@@ -30,7 +30,7 @@ from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
 from nominal.core.video import Video, _get_video
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import Workbook, WorkbookType, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 if TYPE_CHECKING:
@@ -389,27 +389,33 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def search_workbooks(
         self,
         *,
-        include_archived: bool = False,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         asset_rid: str | None = None,
         created_by_rid: str | None = None,
+        archived: bool | None = None,
         include_drafts: bool = False,
+        created_by_rid_any_of: Sequence[str] | None = None,
+        run_rid_any_of: Sequence[str] | None = None,
+        workbook_types: Sequence[WorkbookType] | None = None,
     ) -> Sequence[Workbook]:
         """Search for workbooks associated with this Run. See nominal.core.workbook._search_workbooks for details."""
         return _search_workbooks(
             self._clients,
-            include_archived=include_archived,
             exact_match=exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
             run_rid=self.rid,
             asset_rid=asset_rid,
-            author_rid=created_by_rid,
+            created_by_rid=created_by_rid,
+            archived=archived,
             include_drafts=include_drafts,
+            created_by_rid_any_of=created_by_rid_any_of,
+            run_rid_any_of=run_rid_any_of,
+            workbook_types=workbook_types,
         )
 
     def archive(self) -> None:
