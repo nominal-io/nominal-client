@@ -9,6 +9,7 @@ from nominal_api import event
 from typing_extensions import Self
 
 from nominal.core import asset as core_asset
+from nominal.core._checklist_types import Priority as Priority  # noqa: PLC0414
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
 from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
@@ -179,6 +180,10 @@ def _search_events(
     origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+    priorities_any_of: Iterable[Priority] | None = None,
+    assignee_rid_any_of: Iterable[str] | None = None,
+    event_type_any_of: Iterable[EventType] | None = None,
+    created_by_rid_any_of: Iterable[str] | None = None,
 ) -> Sequence[Event]:
     query = _create_search_events_query(
         asset_rids=asset_rids,
@@ -196,5 +201,9 @@ def _search_events(
         if origin_types
         else None,
         workspace_rid=workspace_rid,
+        priorities_any_of=[p._to_conjure() for p in priorities_any_of] if priorities_any_of else None,
+        assignee_rid_any_of=assignee_rid_any_of,
+        event_type_any_of=[et._to_api_event_type() for et in event_type_any_of] if event_type_any_of else None,
+        created_by_rid_any_of=created_by_rid_any_of,
     )
     return list(_iter_search_events(clients, query, archive_status))

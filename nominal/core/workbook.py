@@ -11,7 +11,7 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
-from nominal.core._utils.query_tools import create_search_workbooks_query
+from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
 from nominal.core.exceptions import NominalMethodRemovedError
 
 logger = logging.getLogger(__name__)
@@ -300,11 +300,11 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
 def _iter_search_workbooks(
     clients: Workbook._Clients,
     query: scout_notebook_api.SearchNotebooksQuery,
-    include_archived: bool,
+    archive_status: ArchiveStatusFilter,
     include_drafts: bool,
 ) -> Iterable[Workbook]:
     for raw_workbook in search_workbooks_paginated(
-        clients.notebook, clients.auth_header, query, include_archived, include_drafts
+        clients.notebook, clients.auth_header, query, archive_status, include_drafts
     ):
         try:
             yield Workbook._from_notebook_metadata(clients, raw_workbook)
@@ -315,18 +315,20 @@ def _iter_search_workbooks(
 def _search_workbooks(
     clients: Workbook._Clients,
     *,
-    include_archived: bool = False,
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     asset_rid: str | None = None,
     exact_asset_rids: Sequence[str] | None = None,
-    author_rid: str | None = None,
+    created_by_rid: str | None = None,
     run_rid: str | None = None,
     workspace_rid: str | None = None,
-    archived: bool | None = None,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     include_drafts: bool = False,
+    created_by_rid_any_of: Sequence[str] | None = None,
+    run_rid_any_of: Sequence[str] | None = None,
+    workbook_types: Sequence[WorkbookType] | None = None,
 ) -> Sequence[Workbook]:
     query = create_search_workbooks_query(
         exact_match=exact_match,
@@ -335,9 +337,11 @@ def _search_workbooks(
         properties=properties,
         asset_rid=asset_rid,
         exact_asset_rids=exact_asset_rids,
-        author_rid=author_rid,
+        created_by_rid=created_by_rid,
         run_rid=run_rid,
         workspace_rid=workspace_rid,
-        archived=archived,
+        created_by_rid_any_of=created_by_rid_any_of,
+        run_rid_any_of=run_rid_any_of,
+        workbook_types=None if workbook_types is None else [t._to_conjure() for t in workbook_types],
     )
-    return list(_iter_search_workbooks(clients, query, include_archived, include_drafts))
+    return list(_iter_search_workbooks(clients, query, archive_status, include_drafts))
