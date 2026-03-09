@@ -468,7 +468,7 @@ def _create_run(
         title=name,
         end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
         assets=[] if asset_rids is None else list(asset_rids),
-        workspace=clients.workspace_rid,
+        workspace=clients.resolve_default_workspace_rid(),
     )
     response = clients.run.create_run(clients.auth_header, request)
     return Run._from_conjure(clients, response)

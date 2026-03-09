@@ -1,4 +1,35 @@
-from nominal.core._clientsbunch import api_base_url_to_app_base_url
+from dataclasses import fields
+from typing import cast
+from unittest.mock import MagicMock
+
+import pytest
+
+from nominal.core._clientsbunch import ClientsBunch, api_base_url_to_app_base_url
+from nominal.core.exceptions import NominalConfigError
+
+
+def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
+    workspace = MagicMock()
+    services = {
+        field.name: MagicMock(name=field.name)
+        for field in fields(ClientsBunch)
+        if field.init and field.name not in {"auth_header", "workspace_rid", "app_base_url", "workspace"}
+    }
+    return ClientsBunch(
+        auth_header="Bearer token",
+        workspace_rid=workspace_rid,
+        app_base_url="https://app.nominal.test",
+        workspace=workspace,
+        **services,
+    )
+
+
+def _raw_workspace(rid: str) -> MagicMock:
+    workspace = MagicMock()
+    workspace.rid = rid
+    workspace.id = rid.rsplit(".", 1)[-1]
+    workspace.org = "test-org"
+    return workspace
 
 
 def test_api_app_url_conversion():
@@ -11,3 +42,92 @@ def test_api_app_url_conversion():
     assert c("https://api.nominal.gov.deployment.customer.com/api") == "https://app.nominal.gov.deployment.customer.com"
     assert c("https://api.nominal.customer.internal/api") == "https://app.nominal.customer.internal"
     assert c("https://unknown") == ""
+
+
+def test_resolve_default_workspace_rid_returns_configured_workspace_rid_without_service_lookup():
+    """Configured workspace_rid should short-circuit the default-workspace service lookup."""
+    clients = _make_clients_bunch(workspace_rid="ri.workspace.main.workspace.configured")
+    workspace_service = cast(MagicMock, clients.workspace)
+
+    assert clients.resolve_default_workspace_rid() == clients.workspace_rid
+
+    workspace_service.get_default_workspace.assert_not_called()
+
+
+def test_resolve_default_workspace_rid_uses_workspace_service_once_and_caches_result():
+    """An unconfigured client should resolve through the workspace service and cache the RID."""
+    clients = _make_clients_bunch(workspace_rid=None)
+    workspace_service = cast(MagicMock, clients.workspace)
+    raw_workspace = _raw_workspace("ri.workspace.main.workspace.default")
+    workspace_service.get_default_workspace.return_value = raw_workspace
+
+    assert clients.resolve_default_workspace_rid() == raw_workspace.rid
+    assert clients.resolve_default_workspace_rid() == raw_workspace.rid
+
+    workspace_service.get_default_workspace.assert_called_once_with("Bearer token")
+
+
+def test_resolve_default_workspace_rid_raises_when_workspace_service_cannot_resolve_default():
+    """Missing service-side defaults should raise the same config error the client surfaces."""
+    clients = _make_clients_bunch(workspace_rid=None)
+    workspace_service = cast(MagicMock, clients.workspace)
+    workspace_service.get_default_workspace.return_value = None
+
+    with pytest.raises(NominalConfigError, match="Could not retrieve default workspace"):
+        clients.resolve_default_workspace_rid()
+
+
+def test_resolve_workspace_none_returns_configured_workspace_via_get_workspace():
+    """Resolving the default workspace on a pinned client should fetch that workspace directly."""
+    configured_workspace_rid = "ri.workspace.main.workspace.configured"
+    clients = _make_clients_bunch(workspace_rid=configured_workspace_rid)
+    workspace_service = cast(MagicMock, clients.workspace)
+    raw_workspace = _raw_workspace(configured_workspace_rid)
+    workspace_service.get_workspace.return_value = raw_workspace
+
+    assert clients.resolve_workspace() == raw_workspace
+
+    workspace_service.get_workspace.assert_called_once_with("Bearer token", configured_workspace_rid)
+    workspace_service.get_default_workspace.assert_not_called()
+
+
+def test_resolve_workspace_none_uses_default_workspace_endpoint_and_caches_the_result():
+    """Resolving the default workspace on an unpinned client should reuse the cached workspace object."""
+    clients = _make_clients_bunch(workspace_rid=None)
+    workspace_service = cast(MagicMock, clients.workspace)
+    raw_default_workspace = _raw_workspace("ri.workspace.main.workspace.default")
+    workspace_service.get_default_workspace.return_value = raw_default_workspace
+
+    assert clients.resolve_workspace() == raw_default_workspace
+    assert clients.resolve_workspace() == raw_default_workspace
+
+    workspace_service.get_default_workspace.assert_called_once_with("Bearer token")
+    workspace_service.get_workspace.assert_not_called()
+
+
+def test_resolve_default_workspace_rid_and_resolve_workspace_share_the_same_lazy_default():
+    """RID and workspace-object resolution should share the same lazily initialized default workspace."""
+    clients = _make_clients_bunch(workspace_rid=None)
+    workspace_service = cast(MagicMock, clients.workspace)
+    raw_default_workspace = _raw_workspace("ri.workspace.main.workspace.default")
+    workspace_service.get_default_workspace.return_value = raw_default_workspace
+
+    assert clients.resolve_default_workspace_rid() == raw_default_workspace.rid
+    assert clients.resolve_workspace() == raw_default_workspace
+
+    workspace_service.get_default_workspace.assert_called_once_with("Bearer token")
+    workspace_service.get_workspace.assert_not_called()
+
+
+def test_resolve_workspace_reuses_the_cached_default_workspace_object():
+    """Explicit resolution of the cached default workspace RID should avoid a second workspace fetch."""
+    clients = _make_clients_bunch(workspace_rid=None)
+    workspace_service = cast(MagicMock, clients.workspace)
+    raw_default_workspace = _raw_workspace("ri.workspace.main.workspace.default")
+    workspace_service.get_default_workspace.return_value = raw_default_workspace
+
+    assert clients.resolve_default_workspace_rid() == raw_default_workspace.rid
+    assert clients.resolve_workspace(raw_default_workspace.rid) == raw_default_workspace
+
+    workspace_service.get_default_workspace.assert_called_once_with("Bearer token")
+    workspace_service.get_workspace.assert_not_called()

@@ -237,12 +237,13 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         if start is not None and frame_timestamps is not None:
             raise ValueError("Only one of 'start' or 'frame_timestamps' may be provided")
 
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         timestamp_manifest = _build_video_file_timestamp_manifest(
-            self._clients.auth_header, self._clients.workspace_rid, self._clients.upload, start, frame_timestamps
+            self._clients.auth_header, workspace_rid, self._clients.upload, start, frame_timestamps
         )
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
-            self._clients.auth_header, self._clients.workspace_rid, video, name, file_type, self._clients.upload
+            self._clients.auth_header, workspace_rid, video, name, file_type, self._clients.upload
         )
         request = ingest_api.IngestRequest(
             ingest_api.IngestOptions(
@@ -327,8 +328,14 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             raise TypeError(f"dataset {mcap} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_io(
-            self._clients.auth_header, self._clients.workspace_rid, mcap, name, file_type, self._clients.upload
+            self._clients.auth_header,
+            workspace_rid,
+            mcap,
+            name,
+            file_type,
+            self._clients.upload,
         )
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(

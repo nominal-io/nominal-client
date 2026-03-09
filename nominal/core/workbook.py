@@ -153,7 +153,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
                 layout=raw_workbook.layout,
                 content_v2=raw_workbook.content_v2,
                 event_refs=raw_workbook.event_refs,
-                workspace=self._clients.workspace_rid,
+                workspace=self._clients.resolve_default_workspace_rid(),
             ),
         )
 
@@ -261,9 +261,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
             raise ValueError("Missing content for workbook")
 
         workbook_title = raw_workbook.metadata.title or "workbook"
-        workspace_rid = workspace_rid or self._clients.workspace_rid
-        if workspace_rid is None:
-            raise ValueError("Workspace RID is required to create a workbook template")
+        workspace_rid = workspace_rid or self._clients.resolve_default_workspace_rid()
 
         return _create_workbook_template_with_content_and_layout(
             self._clients,

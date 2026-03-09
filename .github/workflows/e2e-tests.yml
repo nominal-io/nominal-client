@@ -48,20 +48,15 @@ jobs:
           NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
           NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
         run: |
-          mkdir -p ~/.config/nominal
-          cat > ~/.config/nominal/config.yml <<EOF
-          version: 2
-          profiles:
-            staging-e2e:
-              base_url: https://api-staging.gov.nominal.io/api
-              token: ${NOMINAL_E2E_TOKEN}
-              workspace_rid: ${NOMINAL_E2E_WORKSPACE_RID}
-          EOF
+          uv run nom config profile add staging-e2e \
+            --base-url https://api-staging.gov.nominal.io/api \
+            --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
+            --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
+            -vv
 
       - name: Run e2e tests
         run: |
           uv run pytest tests/e2e \
             --profile staging-e2e \
-            -v \
-            --tb=short \
-            --no-cov
+            -v

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from conjure_python_client import Service, ServiceConfiguration
@@ -32,7 +32,9 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.dataclass_tools import LazyField
 from nominal.core._utils.networking import create_conjure_client_factory
+from nominal.core.exceptions import NominalConfigError
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -114,6 +116,13 @@ class ClientsBunch:
     workspace_rid: str | None
     app_base_url: str
 
+    _default_workspace: LazyField[security_api_workspace.Workspace] = field(
+        default_factory=LazyField,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
     authentication: authentication_api.AuthenticationServiceV2
@@ -142,6 +151,78 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
+
+    def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
+        """Fetch the tenant default workspace for the current user.
+
+        Returns:
+            The default workspace object returned by the workspace service.
+
+        Raises:
+            NominalConfigError: If the user has no resolvable default workspace.
+        """
+        raw_workspace = self.workspace.get_default_workspace(self.auth_header)
+        if raw_workspace is None:
+            raise NominalConfigError(
+                "Could not retrieve default workspace! "
+                "Either the user is not authorized to access or there is no default workspace."
+            )
+
+        return raw_workspace
+
+    def resolve_default_workspace_rid(self) -> str:
+        """Resolve the default workspace RID for this client bundle.
+
+        Resolution order:
+        1. Return the explicitly configured `workspace_rid`, if one exists.
+        2. Otherwise lazily fetch and cache the tenant default workspace, then return its RID.
+
+        Note:
+            On unpinned clients, this caches the full default workspace object so later calls to
+            `resolve_workspace()` can reuse it without another workspace-service request.
+
+        Returns:
+            The resolved default workspace RID.
+
+        Raises:
+            NominalConfigError: If no default workspace can be resolved.
+        """
+        if self.workspace_rid is not None:
+            return self.workspace_rid
+
+        return self._default_workspace.get_or_init(self._fetch_default_workspace).rid
+
+    def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace:
+        """Resolve a workspace selector to a workspace object.
+
+        Args:
+            workspace_rid: The workspace RID to fetch and validate. If None, resolves the client's default
+                workspace by preferring an explicitly configured `workspace_rid` and otherwise falling back to the
+                tenant default workspace.
+
+        Returns:
+            The resolved workspace object.
+
+        Note:
+            If the default workspace was already resolved on this client and `workspace_rid` matches that RID, the
+            cached workspace object is returned without another workspace-service request.
+
+        Raises:
+            NominalConfigError: If `workspace_rid` is None and no default workspace can be resolved.
+            conjure_python_client.ConjureHTTPError: If an explicit workspace RID is unavailable to the user.
+        """
+        if workspace_rid is None:
+            if self.workspace_rid is not None:
+                return self.workspace.get_workspace(self.auth_header, self.workspace_rid)
+
+            return self._default_workspace.get_or_init(self._fetch_default_workspace)
+
+        if self._default_workspace.is_initialized():
+            raw_workspace = self._default_workspace.get()
+            if raw_workspace.rid == workspace_rid:
+                return raw_workspace
+
+        return self.workspace.get_workspace(self.auth_header, workspace_rid)
 
     @classmethod
     def from_config(
@@ -192,6 +273,8 @@ class HasScoutParams(Protocol):
     def workspace_rid(self) -> str | None: ...
     @property
     def app_base_url(self) -> str: ...
+    def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace: ...
+    def resolve_default_workspace_rid(self) -> str: ...
 
 
 def api_base_url_to_app_base_url(api_base_url: str, fallback: str = "") -> str:

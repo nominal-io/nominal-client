@@ -4,6 +4,7 @@ import click
 from conjure_python_client import ConjureHTTPError
 
 from nominal.core.client import NominalClient
+from nominal.core.exceptions import NominalConfigError
 
 
 def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> None:
@@ -38,7 +39,7 @@ def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> 
     # most other commands in the client will also fail.
     try:
         client.get_workspace(workspace_rid)
-    except RuntimeError:
+    except NominalConfigError:
         err_msg = "Workspace not provided, but there is no default workspace for the user."
     except ConjureHTTPError as err:
         status_code = err.response.status_code

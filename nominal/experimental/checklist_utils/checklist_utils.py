@@ -9,8 +9,7 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core.checklist import Checklist
-from nominal.core.client import WorkspaceSearchType
-from nominal.core.workspace import Workspace
+from nominal.core.client import WorkspaceSearchT, WorkspaceSearchType
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 
 
@@ -26,7 +25,7 @@ def _create_checklist_with_content(
     labels: list[str] | None = None,
     checklist_variables: list[scout_checks_api.UnresolvedChecklistVariable] | None = None,
     is_published: bool | None = False,
-    workspace: Workspace | str | None = None,
+    workspace: WorkspaceSearchT | None = None,
 ) -> Checklist:
     request = scout_checks_api.CreateChecklistRequest(
         commit_message=commit_message or "",
@@ -38,7 +37,7 @@ def _create_checklist_with_content(
         labels=labels or [],
         checklist_variables=checklist_variables or [],
         is_published=is_published,
-        workspace=client._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+        workspace=client._workspace_rid_for_search(workspace or WorkspaceSearchType.DEFAULT),
     )
 
     template = client._clients.checklist.create(client._clients.auth_header, request)
