@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
+from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast, overload
 
 from nominal_api import (
     event,
@@ -14,6 +14,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
 from nominal.core._event_types import EventType
 from nominal.core._utils.api_tools import (
     HasRid,
@@ -24,13 +25,15 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event
+from nominal.core.user import User
 from nominal.core.video import Video, _get_video
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import Workbook, WorkbookType, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 if TYPE_CHECKING:
@@ -386,30 +389,107 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
+    @overload
     def search_workbooks(
         self,
         *,
-        include_archived: bool = False,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         asset_rid: str | None = None,
         created_by_rid: str | None = None,
+        archive_status: ArchiveStatusFilter = ...,
+        include_drafts: bool = ...,
+        created_by_any_of: Sequence[User | str] | None = None,
+        run_any_of: Sequence[Run | str] | None = None,
+        workbook_types: Sequence[WorkbookType] | None = None,
+    ) -> Sequence[Workbook]: ...
+    @overload
+    def search_workbooks(
+        self,
+        *,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        asset_rid: str | None = None,
+        created_by_rid: str | None = None,
+        include_drafts: bool = ...,
+        created_by_any_of: Sequence[User | str] | None = None,
+        run_any_of: Sequence[Run | str] | None = None,
+        workbook_types: Sequence[WorkbookType] | None = None,
+        include_archived: bool,
+    ) -> Sequence[Workbook]: ...
+    @warn_on_deprecated_argument(
+        "include_archived",
+        "include_archived is deprecated and will be removed in a future release. Use archive_status instead.",
+    )
+    def search_workbooks(
+        self,
+        *,
+        exact_match: str | None = None,
+        search_text: str | None = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        asset_rid: str | None = None,
+        created_by_rid: str | None = None,
+        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
         include_drafts: bool = False,
+        created_by_any_of: Sequence[User | str] | None = None,
+        run_any_of: Sequence[Run | str] | None = None,
+        workbook_types: Sequence[WorkbookType] | None = None,
+        include_archived: bool | _NotProvided = _NotProvided(),
     ) -> Sequence[Workbook]:
-        """Search for workbooks associated with this Run. See nominal.core.workbook._search_workbooks for details."""
+        """Search for workbooks associated with this Run.
+        Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
+
+        Args:
+            exact_match: Searches for a string to match exactly in the workbook's metadata.
+            search_text: Fuzzy-searches for a string in the workbook's metadata.
+            labels: A list of labels that must ALL be present on a workbook to be included.
+            properties: A mapping of key-value pairs that must ALL be present on a workbook to be included.
+            asset_rid: Searches for workbooks associated with the given asset RID.
+            created_by_rid: Searches for workbooks with the given author's RID.
+            archive_status: Filters results by archive status. Defaults to NOT_ARCHIVED.
+            include_drafts: If true, include workbooks in draft state in results. Defaults to false.
+            created_by_any_of: Filter by multiple authors (OR semantics). Each can be a User instance
+                or a user RID string.
+            run_any_of: Filter by multiple runs (OR semantics). Each can be a Run instance or a run RID string.
+            workbook_types: Filter by workbook type (e.g. WorkbookType.WORKBOOK, WorkbookType.COMPARISON_WORKBOOK).
+            include_archived: If true, include archived workbooks in results.
+                NOTE: deprecated-- use ``archive_status=ArchiveStatusFilter.ANY`` instead.
+
+        Returns:
+            All workbooks associated with this Run which match all of the provided conditions.
+
+        Raises:
+            ValueError: if ``include_archived`` is provided alongside ``archive_status``.
+        """
+        if not isinstance(include_archived, _NotProvided) and not isinstance(archive_status, _NotProvided):
+            raise ValueError("Cannot use deprecated 'include_archived' together with 'archive_status'")
+        if isinstance(archive_status, _NotProvided):
+            effective_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED
+        else:
+            effective_status = archive_status
+        if not isinstance(include_archived, _NotProvided):
+            effective_status = ArchiveStatusFilter.ANY if include_archived else ArchiveStatusFilter.NOT_ARCHIVED
         return _search_workbooks(
             self._clients,
-            include_archived=include_archived,
             exact_match=exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
             run_rid=self.rid,
             asset_rid=asset_rid,
-            author_rid=created_by_rid,
+            created_by_rid=created_by_rid,
+            archive_status=effective_status,
             include_drafts=include_drafts,
+            created_by_rid_any_of=None
+            if created_by_any_of is None
+            else [rid_from_instance_or_string(u) for u in created_by_any_of],
+            run_rid_any_of=None if run_any_of is None else [rid_from_instance_or_string(r) for r in run_any_of],
+            workbook_types=workbook_types,
         )
 
     def archive(self) -> None:

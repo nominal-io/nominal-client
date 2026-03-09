@@ -8,8 +8,13 @@ from typing import Callable, ParamSpec, TypeVar
 
 logger = logging.getLogger(__name__)
 
+
 Param = ParamSpec("Param")
 T = TypeVar("T")
+
+
+class _NotProvided:
+    """Sentinel class for detecting when a deprecated keyword argument was not passed by the caller."""
 
 
 def warn_on_deprecated_argument(

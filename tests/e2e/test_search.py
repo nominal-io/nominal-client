@@ -7,8 +7,18 @@ the test environment.
 
 # TODO(drake): Add workbook and workbook-template search tests once there is a
 # programmatic way to create workbooks without a pre-existing template.
+# This would also enable OR-semantics tests for:
+#   - search_workbooks(created_by_any_of=...): need workbooks by two different users
+#   - search_workbooks(run_any_of=...): need workbooks linked to two different runs
+#   - search_workbook_templates(created_by_any_of=...): need templates by two different users
+#
 # TODO(drake): Add checklist search tests once there is a programmatic way to
-# create checklists.
+# create checklists.  This would also enable an OR-semantics test for:
+#   - search_checklists(author_any_of=...): need checklists by two different authors
+#
+# NOTE: search_events(assignee_any_of=...) cannot be OR-tested because the
+# Event.update() and create_event() APIs do not expose an assignee field; events
+# cannot be assigned to a user through the public client.
 """
 
 from __future__ import annotations
@@ -21,13 +31,15 @@ from uuid import uuid4
 
 import pytest
 
-from nominal.core import EventType, NominalClient
+from nominal.core import ArchiveStatusFilter, EventType, NominalClient
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile, wait_for_files_to_ingest
 from nominal.core.event import Event
 from nominal.core.run import Run
 from nominal.core.video import Video
+from nominal.core.workbook import Workbook
+from nominal.core.workbook_template import WorkbookTemplate
 from tests.e2e import _create_random_start_end
 
 _DATASET_HEADER = b"timestamp,temperature,pressure\n"
@@ -43,10 +55,20 @@ class SearchContext:
     # Runs
     run: Run
     """Plain run with search-test label and property."""
+    run_with_asset: Run
+    """Run linked to `asset` only (has_single_asset=True)."""
+    run_multi_asset: Run
+    """Run linked to both `asset` and `asset2` (has_single_asset=False)."""
+    archived_run: Run
+    """Run that has been pre-archived (tests archived=True filtering)."""
 
     # Assets
     asset: Asset
     """Asset with search-test label and property; all test events are attached here."""
+    asset2: Asset
+    """Second asset used only for multi-asset run testing."""
+    archived_asset: Asset
+    """Asset that has been pre-archived."""
 
     # Events (all attached to `asset` for isolation)
     event_info: Event
@@ -79,6 +101,9 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         labels=["search-test"],
         properties={"search-tag": tag},
     )
+    asset2 = client.create_asset(f"asset2-{tag}")
+    archived_asset = client.create_asset(f"archived-asset-{tag}")
+    archived_asset.archive()
 
     # --- Runs ---
     run = client.create_run(
@@ -88,6 +113,10 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
         labels=["search-test"],
         properties={"search-tag": tag},
     )
+    run_with_asset = client.create_run(f"run-with-asset-{tag}", start, end, assets=[asset])
+    run_multi_asset = client.create_run(f"run-multi-asset-{tag}", start, end, assets=[asset, asset2])
+    archived_run = client.create_run(f"archived-run-{tag}", start, end)
+    archived_run.archive()
 
     # --- Events (attached to `asset` for search isolation) ---
     event_info = client.create_event(f"event-info-{tag}", EventType.INFO, start, assets=[asset])
@@ -127,7 +156,12 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
     ctx = SearchContext(
         tag=tag,
         run=run,
+        run_with_asset=run_with_asset,
+        run_multi_asset=run_multi_asset,
+        archived_run=archived_run,
         asset=asset,
+        asset2=asset2,
+        archived_asset=archived_asset,
         event_info=event_info,
         event_error=event_error,
         event_flag=event_flag,
@@ -141,7 +175,10 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
 
     # Teardown: archive all live entities so they don't accumulate in the environment.
     run.archive()
+    run_with_asset.archive()
+    run_multi_asset.archive()
     asset.archive()
+    asset2.archive()
     event_info.archive()
     event_error.archive()
     event_flag.archive()
@@ -155,16 +192,18 @@ def search_context(client: NominalClient, mp4_data: bytes) -> Iterator[SearchCon
 
 
 def test_search_runs_by_name_substring(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching runs by name_substring returns only runs whose name contains the session tag."""
+    """Searching runs by name_substring returns all non-archived session runs; archived ones are excluded."""
     results = client.search_runs(name_substring=search_context.tag)
     rids = {r.rid for r in results}
-    assert rids == {search_context.run.rid}
+    # All three non-archived runs contain the tag; archived_run must not appear
+    assert rids == {search_context.run.rid, search_context.run_with_asset.rid, search_context.run_multi_asset.rid}
 
 
 def test_search_runs_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a label narrows results to only the run created with that label."""
     results = client.search_runs(labels=["search-test"], name_substring=search_context.tag)
     rids = {r.rid for r in results}
+    # Only `run` was created with the search-test label
     assert rids == {search_context.run.rid}
 
 
@@ -172,7 +211,40 @@ def test_search_runs_by_properties(client: NominalClient, search_context: Search
     """Filtering by a key-value property returns only the run that carries that property."""
     results = client.search_runs(properties={"search-tag": search_context.tag})
     rids = {r.rid for r in results}
+    # Only `run` was created with the search-tag property
     assert rids == {search_context.run.rid}
+
+
+def test_search_runs_by_asset_rids(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering by asset RID returns only runs linked to that asset."""
+    results = client.search_runs(assets_any_of=[search_context.asset])
+    rids = {r.rid for r in results}
+    # Both run_with_asset (asset only) and run_multi_asset (asset + asset2) are linked to asset
+    assert rids == {search_context.run_with_asset.rid, search_context.run_multi_asset.rid}
+
+
+def test_search_runs_has_single_asset(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering has_single_asset=True returns only runs linked to exactly one asset."""
+    results = client.search_runs(has_single_asset=True, name_substring=search_context.tag)
+    rids = {r.rid for r in results}
+    # run (auto-staged asset counts as single) and run_with_asset; run_multi_asset excluded
+    assert rids == {search_context.run.rid, search_context.run_with_asset.rid}
+
+
+def test_search_runs_not_single_asset(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering has_single_asset=False returns only runs linked to more than one asset."""
+    results = client.search_runs(has_single_asset=False, name_substring=search_context.tag)
+    rids = {r.rid for r in results}
+    # Only run_multi_asset has more than one asset
+    assert rids == {search_context.run_multi_asset.rid}
+
+
+def test_search_runs_archived(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering ARCHIVED returns archived runs and excludes live ones."""
+    results = client.search_runs(archive_status=ArchiveStatusFilter.ARCHIVED, name_substring=search_context.tag)
+    rids = {r.rid for r in results}
+    # Only archived_run was pre-archived
+    assert rids == {search_context.archived_run.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -181,16 +253,18 @@ def test_search_runs_by_properties(client: NominalClient, search_context: Search
 
 
 def test_search_assets_by_name(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching assets by name substring returns only the asset whose name contains the session tag."""
+    """Searching assets by name substring returns live assets matching the tag; archived ones are excluded."""
     results = client.search_assets(search_text=search_context.tag)
     rids = {a.rid for a in results}
-    assert rids == {search_context.asset.rid}
+    # asset and asset2 both have the tag in their name; archived_asset is filtered out
+    assert rids == {search_context.asset.rid, search_context.asset2.rid}
 
 
 def test_search_assets_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a label narrows results to only the asset created with that label."""
     results = client.search_assets(labels=["search-test"], search_text=search_context.tag)
     rids = {a.rid for a in results}
+    # Only `asset` was created with the search-test label
     assert rids == {search_context.asset.rid}
 
 
@@ -198,7 +272,16 @@ def test_search_assets_by_properties(client: NominalClient, search_context: Sear
     """Filtering by a key-value property returns only the asset that carries that property."""
     results = client.search_assets(properties={"search-tag": search_context.tag})
     rids = {a.rid for a in results}
+    # Only `asset` was created with the search-tag property
     assert rids == {search_context.asset.rid}
+
+
+def test_search_assets_archived(client: NominalClient, search_context: SearchContext) -> None:
+    """Filtering ARCHIVED returns archived assets and excludes live ones."""
+    results = client.search_assets(archive_status=ArchiveStatusFilter.ARCHIVED, search_text=search_context.tag)
+    rids = {a.rid for a in results}
+    # Only archived_asset was pre-archived
+    assert rids == {search_context.archived_asset.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +293,7 @@ def test_search_events_by_asset(client: NominalClient, search_context: SearchCon
     """Searching events scoped to an asset returns all events attached to that asset."""
     results = client.search_events(assets=[search_context.asset])
     rids = {e.rid for e in results}
+    # All three test events are attached to search_context.asset (which was freshly created)
     assert rids == {search_context.event_info.rid, search_context.event_error.rid, search_context.event_flag.rid}
 
 
@@ -217,7 +301,34 @@ def test_search_events_by_event_type(client: NominalClient, search_context: Sear
     """Filtering by event_type returns only events whose type matches."""
     results = client.search_events(event_type=EventType.INFO, assets=[search_context.asset])
     rids = {e.rid for e in results}
+    # Only event_info has type INFO
     assert rids == {search_context.event_info.rid}
+
+
+def test_search_events_event_type_any_of_is_or(client: NominalClient, search_context: SearchContext) -> None:
+    """event_type_any_of uses OR semantics: events matching ANY listed type are returned.
+
+    Proof: event_info is INFO, event_error is ERROR — no single event has both types.
+    Passing [INFO, ERROR] returns both events.  With AND semantics the result would be empty.
+    """
+    results = client.search_events(event_type_any_of=[EventType.INFO, EventType.ERROR], assets=[search_context.asset])
+    rids = {e.rid for e in results}
+    assert rids == {search_context.event_info.rid, search_context.event_error.rid}
+
+
+def test_search_events_created_by_any_of_is_or(client: NominalClient, search_context: SearchContext) -> None:
+    """created_by_any_of uses OR semantics: events by ANY listed user are returned.
+
+    Proof: all test events were created by the current user; no event was created by a
+    nonexistent ghost user.  Passing [me, ghost] still returns all events by me.
+    With AND semantics the result would be empty.
+    """
+    me = client.get_user()
+    # Same RID format as the current user but with a fresh UUID suffix — guaranteed nonexistent.
+    ghost_user_rid = f"{me.rid.rsplit('.', 1)[0]}.{uuid4()}"
+    results = client.search_events(created_by_any_of=[me, ghost_user_rid], assets=[search_context.asset])
+    rids = {e.rid for e in results}
+    assert rids == {search_context.event_info.rid, search_context.event_error.rid, search_context.event_flag.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +340,7 @@ def test_search_videos_by_name(client: NominalClient, search_context: SearchCont
     """Searching videos by name substring returns only the video whose name contains the session tag."""
     results = client.search_videos(search_text=search_context.tag)
     rids = {v.rid for v in results}
+    # Only one video was created with the tag in its name
     assert rids == {search_context.video.rid}
 
 
@@ -253,6 +365,7 @@ def test_search_dataset_files_by_tags(client: NominalClient, search_context: Sea
 
 def test_search_dataset_files_by_time_range(client: NominalClient, search_context: SearchContext) -> None:
     """A time range that fully contains only Jun 2024 returns only that file."""
+    # Mar–Sep 2024 window fully contains jun_2024 and nothing else
     results = client.search_dataset_files(search_context.dataset, start="2024-03-01", end="2024-09-01")
     ids = {f.id for f in results}
     assert ids == {search_context.file_jun.id}
@@ -260,9 +373,47 @@ def test_search_dataset_files_by_time_range(client: NominalClient, search_contex
 
 def test_search_dataset_files_combined_tag_and_time(client: NominalClient, search_context: SearchContext) -> None:
     """A tag filter and a start time are AND-ed: source=alpha after Jun 2024 returns only the Dec file."""
+    # source=alpha AND file starts on or after Jun 2024 → dec_2024 only
     results = client.search_dataset_files(search_context.dataset, start="2024-06-01", file_tags={"source": "alpha"})
     ids = {f.id for f in results}
     assert ids == {search_context.file_dec.id}
+
+
+# ---------------------------------------------------------------------------
+# Dataset file search — boundary / overlap semantics
+#
+# file_jan spans [2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z]
+# file_dec spans [2024-12-01T00:00:00Z, 2024-12-01T01:00:00Z]
+#
+# The server uses OVERLAP semantics:
+#   `start` → file included if file.end   >= search.start  (not entirely before the window)
+#   `end`   → file included if file.start <= search.end    (not entirely after the window)
+#
+# A file that straddles the boundary IS included.
+# A file that ends before `start`, or starts after `end`, is excluded.
+# ---------------------------------------------------------------------------
+
+
+def test_search_dataset_files_start_exact_boundary_is_inclusive(
+    client: NominalClient, search_context: SearchContext
+) -> None:
+    """search.start == file_jan.start: the boundary is inclusive, so file_jan is included."""
+    # search start == file_jan's own start → file_jan is included (inclusive lower bound).
+    # All three files end on or after Jan 1 00:00, so all three are returned.
+    results = client.search_dataset_files(search_context.dataset, start="2024-01-01T00:00:00Z")
+    ids = {f.id for f in results}
+    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
+
+
+def test_search_dataset_files_end_exact_boundary_is_inclusive(
+    client: NominalClient, search_context: SearchContext
+) -> None:
+    """search.end == file_dec.end: the boundary is inclusive, so file_dec is included."""
+    # search end == file_dec's own end → file_dec is included (inclusive upper bound).
+    # All three files start on or before Dec 1 01:00, so all three are returned.
+    results = client.search_dataset_files(search_context.dataset, end="2024-12-01T01:00:00Z")
+    ids = {f.id for f in results}
+    assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
 
 
 def test_search_dataset_files_start_uses_overlap_semantics(
@@ -271,6 +422,7 @@ def test_search_dataset_files_start_uses_overlap_semantics(
     """A file whose range starts before the search window but overlaps it is still included."""
     # file_jan spans [00:00, 01:00] on Jan 1. Search start is the midpoint (00:30).
     # file_jan starts BEFORE the search start but its range still overlaps → IS included.
+    # file_jun and file_dec both end well after 00:30 Jan 1, so all three are returned.
     results = client.search_dataset_files(search_context.dataset, start="2024-01-01T00:30:00Z")
     ids = {f.id for f in results}
     assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
@@ -280,6 +432,7 @@ def test_search_dataset_files_end_uses_overlap_semantics(client: NominalClient, 
     """A file whose range ends after the search window but overlaps it is still included."""
     # file_dec spans [00:00, 01:00] on Dec 1. Search end is the midpoint (00:30).
     # file_dec ends AFTER the search end but its range still overlaps → IS included.
+    # file_jan and file_jun both start well before 00:30 Dec 1, so all three are returned.
     results = client.search_dataset_files(search_context.dataset, end="2024-12-01T00:30:00Z")
     ids = {f.id for f in results}
     assert ids == {search_context.file_jan.id, search_context.file_jun.id, search_context.file_dec.id}
@@ -289,3 +442,203 @@ def test_search_dataset_files_no_match(client: NominalClient, search_context: Se
     """A search window entirely beyond all file ranges returns an empty result."""
     results = client.search_dataset_files(search_context.dataset, start="2030-01-01")
     assert list(results) == []
+
+
+# ---------------------------------------------------------------------------
+# Archive status filtering — backfill codepaths
+#
+# Tests the three resource types that lack a first-class `archived_statuses`
+# field on their conjure request and therefore use resource-specific backfill
+# mechanisms:
+#
+#   datasets  → SearchDatasetsQuery(archive_status=bool) embedded in query
+#   workbooks → SearchNotebooksRequest(show_archived=bool) + optional
+#               SearchNotebooksQuery(archived=True) for ARCHIVED-only
+#   templates → SearchTemplatesQuery(is_archived=bool) embedded in query
+#
+# Each test creates one live and one archived entity with a unique session tag,
+# then asserts that NOT_ARCHIVED / ARCHIVED / ANY each return exactly the
+# expected subset.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ArchiveStatusContext:
+    tag: str
+
+    dataset: Dataset
+    archived_dataset: Dataset
+
+    workbook: Workbook
+    archived_workbook: Workbook
+
+    template: WorkbookTemplate
+    archived_template: WorkbookTemplate
+
+    # Kept for teardown only
+    _factory_template: WorkbookTemplate
+    _run: Run
+
+
+@pytest.fixture(scope="session")
+def archive_status_context(client: NominalClient) -> Iterator[ArchiveStatusContext]:
+    tag = uuid4().hex
+    start, end = _create_random_start_end()
+
+    # --- Datasets ---
+    dataset = client.create_dataset(f"live-dataset-{tag}")
+    archived_dataset = client.create_dataset(f"archived-dataset-{tag}")
+    archived_dataset.archive()
+
+    # --- Workbook templates (search targets) ---
+    template = client.create_workbook_template(f"live-template-{tag}")
+    archived_template = client.create_workbook_template(f"archived-template-{tag}")
+    archived_template.archive()
+
+    # --- Workbooks (created via a factory template + run) ---
+    factory_template = client.create_workbook_template(f"factory-template-{tag}")
+    run = client.create_run(f"run-{tag}", start, end)
+    workbook = factory_template.create_workbook(title=f"live-workbook-{tag}", run=run)
+    archived_workbook = factory_template.create_workbook(title=f"archived-workbook-{tag}", run=run)
+    archived_workbook.archive()
+
+    ctx = ArchiveStatusContext(
+        tag=tag,
+        dataset=dataset,
+        archived_dataset=archived_dataset,
+        workbook=workbook,
+        archived_workbook=archived_workbook,
+        template=template,
+        archived_template=archived_template,
+        _factory_template=factory_template,
+        _run=run,
+    )
+    yield ctx
+
+    dataset.archive()
+    workbook.archive()
+    template.archive()
+    factory_template.archive()
+    run.archive()
+
+
+# --- Dataset archive status ---
+
+
+def test_search_datasets_not_archived_excludes_archived(
+    client: NominalClient, archive_status_context: ArchiveStatusContext
+) -> None:
+    """NOT_ARCHIVED (default) returns live datasets and excludes archived ones."""
+    results = client.search_datasets(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.NOT_ARCHIVED,
+    )
+    rids = {d.rid for d in results}
+    assert archive_status_context.dataset.rid in rids
+    assert archive_status_context.archived_dataset.rid not in rids
+
+
+def test_search_datasets_archived_excludes_live(
+    client: NominalClient, archive_status_context: ArchiveStatusContext
+) -> None:
+    """ARCHIVED returns archived datasets and excludes live ones."""
+    results = client.search_datasets(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.ARCHIVED,
+    )
+    rids = {d.rid for d in results}
+    assert archive_status_context.archived_dataset.rid in rids
+    assert archive_status_context.dataset.rid not in rids
+
+
+def test_search_datasets_any_returns_both(client: NominalClient, archive_status_context: ArchiveStatusContext) -> None:
+    """ANY returns both live and archived datasets."""
+    results = client.search_datasets(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.ANY,
+    )
+    rids = {d.rid for d in results}
+    assert archive_status_context.dataset.rid in rids
+    assert archive_status_context.archived_dataset.rid in rids
+
+
+# --- Workbook archive status ---
+
+
+def test_search_workbooks_not_archived_excludes_archived(
+    client: NominalClient, archive_status_context: ArchiveStatusContext
+) -> None:
+    """NOT_ARCHIVED (default) returns live workbooks and excludes archived ones."""
+    results = client.search_workbooks(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.NOT_ARCHIVED,
+    )
+    rids = {w.rid for w in results}
+    assert archive_status_context.workbook.rid in rids
+    assert archive_status_context.archived_workbook.rid not in rids
+
+
+def test_search_workbooks_archived_excludes_live(
+    client: NominalClient, archive_status_context: ArchiveStatusContext
+) -> None:
+    """ARCHIVED returns archived workbooks and excludes live ones."""
+    results = client.search_workbooks(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.ARCHIVED,
+    )
+    rids = {w.rid for w in results}
+    assert archive_status_context.archived_workbook.rid in rids
+    assert archive_status_context.workbook.rid not in rids
+
+
+def test_search_workbooks_any_returns_both(client: NominalClient, archive_status_context: ArchiveStatusContext) -> None:
+    """ANY returns both live and archived workbooks."""
+    results = client.search_workbooks(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.ANY,
+    )
+    rids = {w.rid for w in results}
+    assert archive_status_context.workbook.rid in rids
+    assert archive_status_context.archived_workbook.rid in rids
+
+
+# --- Workbook template archive status ---
+
+
+def test_search_workbook_templates_not_archived_excludes_archived(
+    client: NominalClient, archive_status_context: ArchiveStatusContext
+) -> None:
+    """NOT_ARCHIVED (default) returns live templates and excludes archived ones."""
+    results = client.search_workbook_templates(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.NOT_ARCHIVED,
+    )
+    rids = {t.rid for t in results}
+    assert archive_status_context.template.rid in rids
+    assert archive_status_context.archived_template.rid not in rids
+
+
+def test_search_workbook_templates_archived_excludes_live(
+    client: NominalClient, archive_status_context: ArchiveStatusContext
+) -> None:
+    """ARCHIVED returns archived templates and excludes live ones."""
+    results = client.search_workbook_templates(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.ARCHIVED,
+    )
+    rids = {t.rid for t in results}
+    assert archive_status_context.archived_template.rid in rids
+    assert archive_status_context.template.rid not in rids
+
+
+def test_search_workbook_templates_any_returns_both(
+    client: NominalClient, archive_status_context: ArchiveStatusContext
+) -> None:
+    """ANY returns both live and archived templates."""
+    results = client.search_workbook_templates(
+        search_text=archive_status_context.tag,
+        archive_status=ArchiveStatusFilter.ANY,
+    )
+    rids = {t.rid for t in results}
+    assert archive_status_context.template.rid in rids
+    assert archive_status_context.archived_template.rid in rids
