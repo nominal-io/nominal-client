@@ -652,12 +652,22 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         file_tags: Mapping[str, str] | None = None,
     ) -> Sequence[DatasetFile]:
         """Search for files within this dataset.
+        Filters are ANDed together. Time range uses overlap semantics: a file is included if its
+        time range overlaps with [start, end], i.e. `file.end >= start AND file.start <= end`.
 
-        `start` and `end` filter on the file's OWN start/end time, not on overlap:
-        a file starting before `start` is excluded even if it overlaps the window.
-        Both bounds are inclusive and truncated to whole seconds.
+        Args:
+            start: Inclusive lower bound of the search window. Files whose time range ends at or
+                after this timestamp are returned — including files that started before `start`
+                but still overlap the window. Files ending entirely before `start` are excluded.
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+            end: Inclusive upper bound of the search window. Files whose time range starts at or
+                before this timestamp are returned — including files that end after `end` but
+                still overlap the window. Files starting entirely after `end` are excluded.
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+            file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
-        See NominalClient.search_dataset_files for full parameter documentation.
+        Returns:
+            All dataset files within this dataset which match all of the provided conditions
         """
         return _search_dataset_files(self._clients, self.rid, start=start, end=end, file_tags=file_tags)
 
