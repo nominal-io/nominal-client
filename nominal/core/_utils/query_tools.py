@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable, Mapping, Sequence
+from enum import Enum
+from typing import Iterable, Mapping, Sequence, cast
 
 from nominal_api import (
     api,
@@ -19,7 +20,136 @@ from nominal_api import (
     secrets_api,
 )
 
+from nominal._utils.deprecation_tools import _NotProvided
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+
+class ArchiveStatusFilter(Enum):
+    """Filter for archive status in search methods.
+
+    Use ARCHIVED to return only archived items, NOT_ARCHIVED for only non-archived items,
+    or ANY to return items regardless of archive status.
+    """
+
+    ARCHIVED = "ARCHIVED"
+    NOT_ARCHIVED = "NOT_ARCHIVED"
+    ANY = "ANY"
+
+    def to_api_archived_statuses(self) -> list[api.ArchivedStatus]:
+        """Convert to a list of ArchivedStatus values for use in search requests."""
+        if self == ArchiveStatusFilter.ARCHIVED:
+            return [api.ArchivedStatus.ARCHIVED]
+        elif self == ArchiveStatusFilter.NOT_ARCHIVED:
+            return [api.ArchivedStatus.NOT_ARCHIVED]
+        else:  # ANY
+            return [api.ArchivedStatus.ARCHIVED, api.ArchivedStatus.NOT_ARCHIVED]
+
+
+def resolve_effective_archive_status(
+    archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
+    *,
+    archived: bool | None | _NotProvided = _NotProvided(),
+    include_archived: bool | _NotProvided = _NotProvided(),
+) -> ArchiveStatusFilter:
+    """Resolve deprecated archive filter arguments into a single ArchiveStatusFilter."""
+    has_archive_status = isinstance(archive_status, ArchiveStatusFilter)
+    has_archived = isinstance(archived, bool)
+    has_include_archived = isinstance(include_archived, bool)
+
+    if has_archive_status and (has_archived or has_include_archived):
+        legacy_args = []
+        if has_archived:
+            legacy_args.append("`archived`")
+        if has_include_archived:
+            legacy_args.append("`include_archived`")
+
+        raise ValueError(
+            f"Cannot provide `archive_status` alongside deprecated {' or '.join(legacy_args)}. "
+            "Use only `archive_status`."
+        )
+
+    if has_include_archived and include_archived:
+        return ArchiveStatusFilter.ANY
+    elif has_archived and archived:
+        return ArchiveStatusFilter.ARCHIVED
+    elif has_archive_status:
+        return cast(ArchiveStatusFilter, archive_status)
+    else:
+        return ArchiveStatusFilter.NOT_ARCHIVED
+
+
+def _backfill_dataset_archive_query_clause(archive_status: ArchiveStatusFilter) -> scout_catalog.SearchDatasetsQuery:
+    # TODO(drake): remove once search datasets endpoint takes modern archive status flag
+    # SearchDatasetsRequest has no archived_statuses field; filter via query.
+    # ANY uses an explicit OR to avoid relying on server defaults when no clause is present.
+    match archive_status:
+        case ArchiveStatusFilter.NOT_ARCHIVED:
+            return scout_catalog.SearchDatasetsQuery(archive_status=False)
+        case ArchiveStatusFilter.ARCHIVED:
+            return scout_catalog.SearchDatasetsQuery(archive_status=True)
+        case ArchiveStatusFilter.ANY:
+            return scout_catalog.SearchDatasetsQuery(
+                or_=[
+                    scout_catalog.SearchDatasetsQuery(archive_status=True),
+                    scout_catalog.SearchDatasetsQuery(archive_status=False),
+                ]
+            )
+
+    raise ValueError(f"Unexpected archive status for dataset search: {archive_status}")
+
+
+def _backfill_workbook_draft_query_clause(include_drafts: bool) -> scout_notebook_api.SearchNotebooksQuery:
+    if include_drafts:
+        return scout_notebook_api.SearchNotebooksQuery(
+            or_=[
+                scout_notebook_api.SearchNotebooksQuery(draft_state=True),
+                scout_notebook_api.SearchNotebooksQuery(draft_state=False),
+            ]
+        )
+    else:
+        return scout_notebook_api.SearchNotebooksQuery(draft_state=False)
+
+
+def _backfill_workbook_archive_query_clause(
+    archive_status: ArchiveStatusFilter,
+) -> scout_notebook_api.SearchNotebooksQuery:
+    # TODO(drake): remove once search workbooks endpoint takes modern archive status flag
+    match archive_status:
+        case ArchiveStatusFilter.NOT_ARCHIVED:
+            return scout_notebook_api.SearchNotebooksQuery(archived=False)
+        case ArchiveStatusFilter.ARCHIVED:
+            return scout_notebook_api.SearchNotebooksQuery(archived=True)
+        case ArchiveStatusFilter.ANY:  # explicit OR to avoid relying on server defaults
+            return scout_notebook_api.SearchNotebooksQuery(
+                or_=[
+                    scout_notebook_api.SearchNotebooksQuery(archived=True),
+                    scout_notebook_api.SearchNotebooksQuery(archived=False),
+                ]
+            )
+
+    raise ValueError(f"Unexpected archive_status for workbook search: {archive_status}")
+
+
+def _backfill_workbook_template_archive_query_clause(
+    archive_status: ArchiveStatusFilter,
+) -> scout_template_api.SearchTemplatesQuery:
+    # TODO(drake): remove once search templates endpoint takes modern archive status flag
+    # SearchTemplatesRequest has no archived_statuses field; filter via query.
+    # ANY uses an explicit OR to avoid relying on server defaults when no clause is present.
+    match archive_status:
+        case ArchiveStatusFilter.NOT_ARCHIVED:
+            return scout_template_api.SearchTemplatesQuery(is_archived=False)
+        case ArchiveStatusFilter.ARCHIVED:
+            return scout_template_api.SearchTemplatesQuery(is_archived=True)
+        case ArchiveStatusFilter.ANY:
+            return scout_template_api.SearchTemplatesQuery(
+                or_=[
+                    scout_template_api.SearchTemplatesQuery(is_archived=True),
+                    scout_template_api.SearchTemplatesQuery(is_archived=False),
+                ]
+            )
+
+    raise ValueError(f"Unexpected archive_status for workbook template search: {archive_status}")
 
 
 def create_search_secrets_query(
@@ -176,9 +306,9 @@ def create_search_datasets_query(
     ingested_before_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     ingested_after_inclusive: str | datetime | IntegralNanosecondsUTC | None = None,
     workspace_rid: str | None = None,
-    archived: bool | None = None,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> scout_catalog.SearchDatasetsQuery:
-    queries = []
+    queries = [_backfill_dataset_archive_query_clause(archive_status)]
     if search_text is not None:
         queries.append(scout_catalog.SearchDatasetsQuery(search_text=search_text))
 
@@ -209,9 +339,6 @@ def create_search_datasets_query(
 
     if workspace_rid is not None:
         queries.append(scout_catalog.SearchDatasetsQuery(workspace=workspace_rid))
-
-    if archived is not None:
-        queries.append(scout_catalog.SearchDatasetsQuery(archive_status=archived))
 
     return scout_catalog.SearchDatasetsQuery(and_=queries)
 
@@ -296,9 +423,13 @@ def create_search_workbooks_query(
     author_rid: str | None = None,
     run_rid: str | None = None,
     workspace_rid: str | None = None,
-    archived: bool | None = None,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+    include_drafts: bool = False,
 ) -> scout_notebook_api.SearchNotebooksQuery:
-    queries = []
+    queries = [
+        _backfill_workbook_archive_query_clause(archive_status),
+        _backfill_workbook_draft_query_clause(include_drafts),
+    ]
 
     if exact_match is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(exact_match=exact_match))
@@ -329,9 +460,6 @@ def create_search_workbooks_query(
     if workspace_rid is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(workspace=workspace_rid))
 
-    if archived is not None:
-        queries.append(scout_notebook_api.SearchNotebooksQuery(archived=archived))
-
     return scout_notebook_api.SearchNotebooksQuery(and_=queries)
 
 
@@ -341,10 +469,10 @@ def create_search_workbook_templates_query(
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     created_by: str | None = None,
-    archived: bool | None = None,
     published: bool | None = None,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> scout_template_api.SearchTemplatesQuery:
-    queries = []
+    queries = [_backfill_workbook_template_archive_query_clause(archive_status)]
 
     if exact_match is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(exact_match=exact_match))
@@ -363,16 +491,13 @@ def create_search_workbook_templates_query(
         for key, value in properties.items():
             queries.append(scout_template_api.SearchTemplatesQuery(property=api.Property(key, value)))
 
-    if archived is not None:
-        queries.append(scout_template_api.SearchTemplatesQuery(is_archived=archived))
-
     if published is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(is_published=published))
 
     return scout_template_api.SearchTemplatesQuery(and_=queries)
 
 
-def _create_search_events_query(  # noqa: PLR0912
+def create_search_events_query(  # noqa: PLR0912
     search_text: str | None = None,
     after: str | datetime | IntegralNanosecondsUTC | None = None,
     before: str | datetime | IntegralNanosecondsUTC | None = None,

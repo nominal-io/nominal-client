@@ -12,6 +12,10 @@ Param = ParamSpec("Param")
 T = TypeVar("T")
 
 
+class _NotProvided:
+    """Sentinel class for detecting when a deprecated keyword argument was not provided by the caller"""
+
+
 def warn_on_deprecated_argument(
     argument_name: str, warning_message: str
 ) -> Callable[[Callable[Param, T]], Callable[Param, T]]:
@@ -34,6 +38,7 @@ def warn_on_deprecated_argument(
             if argument_name in kwargs:
                 warnings.warn(warning_message, UserWarning, stacklevel=2)
             elif len(args) > len(param_names) - 1:
+                # TODO(drake): validate that this actually resolves to the deprecated kwarg
                 warnings.warn(warning_message, UserWarning, stacklevel=2)
 
             return func(*args, **kwargs)

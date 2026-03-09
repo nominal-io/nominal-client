@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,10 +10,12 @@ from nominal_api_protos.nominal_write_pb2 import (
 )
 
 from nominal.core._stream.batch_processor_proto import process_batch
-from nominal.core._stream.write_stream import BatchItem, PointType, WriteStream, infer_point_type
+from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, WriteStream, infer_point_type
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+DataBatch = list[DataItem]
 
 
 def dt_to_nano(dt: datetime) -> IntegralNanosecondsUTC:
@@ -63,7 +66,7 @@ def mock_dataset(mock_clients):
 def test_process_batch_double_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42.0),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
     ]
@@ -123,7 +126,7 @@ def test_process_batch_double_points(mock_connection):
 def test_process_batch_string_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), "value1"),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
     ]
@@ -168,7 +171,7 @@ def test_process_batch_string_points(mock_connection):
 def test_process_batch_with_tags(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42.0, {"tag1": "value1"}),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0, {"tag1": "value1"}),
     ]
@@ -204,9 +207,7 @@ def test_process_batch_invalid_type(mock_connection):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     # Arbitrary objects with no known serialization are not supported
-    batch = [
-        BatchItem("test_channel", dt_to_nano(timestamp), object()),  # type: ignore[arg-type]
-    ]
+    batch = cast(DataBatch, [BatchItem("test_channel", dt_to_nano(timestamp), object())])
 
     with pytest.raises(ValueError, match="Unsupported value type"):
         process_batch(
@@ -220,7 +221,7 @@ def test_process_batch_invalid_type(mock_connection):
 def test_process_batch_int_points(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43),
     ]
@@ -264,7 +265,7 @@ def test_process_batch_int_points(mock_connection):
 def test_process_batch_multiple_channels(mock_connection):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("channel1", dt_to_nano(timestamp), 42.0),
         BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
         BatchItem("channel2", dt_to_nano(timestamp), "value1"),
@@ -385,7 +386,7 @@ def test_multiple_write_streams(mock_connection):
 def test_process_batch_double_points_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42.0),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
     ]
@@ -445,7 +446,7 @@ def test_process_batch_double_points_dataset(mock_dataset):
 def test_process_batch_string_points_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), "value1"),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), "value2"),
     ]
@@ -490,7 +491,7 @@ def test_process_batch_string_points_dataset(mock_dataset):
 def test_process_batch_with_tags_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42.0, {"tag1": "value1"}),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0, {"tag1": "value1"}),
     ]
@@ -526,9 +527,7 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
     # Arbitrary objects with no known serialization are not supported
-    batch = [
-        BatchItem("test_channel", dt_to_nano(timestamp), object()),  # type: ignore[arg-type]
-    ]
+    batch = cast(DataBatch, [BatchItem("test_channel", dt_to_nano(timestamp), object())])
 
     with pytest.raises(ValueError, match="Unsupported value type"):
         process_batch(
@@ -542,7 +541,7 @@ def test_process_batch_invalid_type_dataset(mock_dataset):
 def test_process_batch_int_points_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), 42),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), 43),
     ]
@@ -586,7 +585,7 @@ def test_process_batch_int_points_dataset(mock_dataset):
 def test_process_batch_multiple_channels_dataset(mock_dataset):
     # Create test data with fixed timestamp
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("channel1", dt_to_nano(timestamp), 42.0),
         BatchItem("channel1", dt_to_nano(timestamp + timedelta(seconds=1)), 43.0),
         BatchItem("channel2", dt_to_nano(timestamp), "value1"),
@@ -706,7 +705,7 @@ def test_multiple_write_streams_dataset(mock_dataset):
 def test_process_batch_float_arrays(mock_connection):
     """Test processing a batch of float array items using unified BatchItem."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0, 3.0]),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [4.0, 5.0, 6.0]),
     ]
@@ -757,7 +756,7 @@ def test_process_batch_float_arrays(mock_connection):
 def test_process_batch_string_arrays(mock_connection):
     """Test processing a batch of string array items using unified BatchItem."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), ["a", "b", "c"]),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), ["d", "e", "f"]),
     ]
@@ -798,7 +797,7 @@ def test_process_batch_string_arrays(mock_connection):
 def test_process_batch_arrays_with_tags(mock_connection):
     """Test processing array items with tags using unified BatchItem."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    batch = [
+    batch: DataBatch = [
         BatchItem("test_channel", dt_to_nano(timestamp), [1.0, 2.0], {"tag1": "value1"}),
         BatchItem("test_channel", dt_to_nano(timestamp + timedelta(seconds=1)), [3.0, 4.0], {"tag1": "value1"}),
     ]
@@ -899,7 +898,7 @@ def test_empty_array_without_explicit_type_raises_error():
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
 
     # Empty array without explicit type should raise an error when getting point type
-    item = BatchItem("channel1", timestamp, [])
+    item: BatchItem[list[object]] = BatchItem("channel1", timestamp, [])
 
     with pytest.raises(ValueError, match="Cannot infer type from empty array"):
         item.get_point_type()
@@ -914,20 +913,30 @@ def test_empty_array_with_explicit_type_works():
     timestamp = dt_to_nano(datetime(2024, 1, 1, 12, 0, 0))
 
     # Empty float array with explicit type should work
-    float_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.DOUBLE_ARRAY)
+    float_item: BatchItem[list[float]] = BatchItem(
+        "channel1",
+        timestamp,
+        [],
+        point_type_override=PointType.DOUBLE_ARRAY,
+    )
     assert float_item.get_point_type() == PointType.DOUBLE_ARRAY
 
     # Empty string array with explicit type should work
-    string_item = BatchItem("channel1", timestamp, [], point_type_override=PointType.STRING_ARRAY)
+    string_item: BatchItem[list[str]] = BatchItem(
+        "channel1",
+        timestamp,
+        [],
+        point_type_override=PointType.STRING_ARRAY,
+    )
     assert string_item.get_point_type() == PointType.STRING_ARRAY
 
 
 def test_process_batch_struct_points(mock_dataset):
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    struct_value = {"x": 1.0, "label": "test"}
+    struct_value: dict[str, object] = {"x": 1.0, "label": "test"}
 
     # Dicts are inferred as STRUCT — no explicit point_type_override needed
-    batch = [
+    batch: DataBatch = [
         BatchItem("struct_channel", dt_to_nano(timestamp), struct_value),
         BatchItem("struct_channel", dt_to_nano(timestamp + timedelta(seconds=1)), struct_value),
     ]
@@ -955,10 +964,10 @@ def test_process_batch_struct_points(mock_dataset):
 def test_enqueue_batch_with_structs():
     """enqueue_batch with dict values should create STRUCT BatchItems via type inference."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
-    struct_value = {"x": 1.0, "label": "test"}
+    struct_value: dict[str, object] = {"x": 1.0, "label": "test"}
 
-    captured: list = []
-    stream = WriteStream.create(
+    captured: list[BatchItem[dict[str, object]]] = []
+    stream: WriteStream[dict[str, object]] = WriteStream.create(
         batch_size=100,
         max_wait=timedelta(seconds=10),
         process_batch=lambda batch: captured.extend(batch),
@@ -980,8 +989,8 @@ def test_enqueue_from_dict_with_struct():
     """enqueue_from_dict with a dict value should create a STRUCT BatchItem via type inference."""
     timestamp = datetime(2024, 1, 1, 12, 0, 0)
 
-    captured: list = []
-    stream = WriteStream.create(
+    captured: list[BatchItem[dict[str, object]]] = []
+    stream: WriteStream[dict[str, object]] = WriteStream.create(
         batch_size=100,
         max_wait=timedelta(seconds=10),
         process_batch=lambda batch: captured.extend(batch),
