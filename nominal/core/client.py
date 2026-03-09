@@ -58,6 +58,7 @@ from nominal.core._utils.pagination_tools import (
     search_workbook_templates_paginated,
 )
 from nominal.core._utils.query_tools import (
+    ArchiveStatusFilter,
     create_search_assets_query,
     create_search_checklists_query,
     create_search_containerized_extractors_query,
@@ -328,8 +329,17 @@ class NominalClient:
         query = create_search_users_query(exact_match=exact_match, search_text=search_text)
         return list(self._iter_search_users(query))
 
-    def _iter_search_datasets(self, query: scout_catalog.SearchDatasetsQuery) -> Iterable[Dataset]:
-        for raw_dataset in search_datasets_paginated(self._clients.catalog, self._clients.auth_header, query):
+    def _iter_search_datasets(
+        self,
+        query: scout_catalog.SearchDatasetsQuery,
+        archive_status: ArchiveStatusFilter,
+    ) -> Iterable[Dataset]:
+        for raw_dataset in search_datasets_paginated(
+            self._clients.catalog,
+            self._clients.auth_header,
+            query,
+            archive_status,
+        ):
             yield Dataset._from_conjure(self._clients, raw_dataset)
 
     def search_datasets(
@@ -445,8 +455,12 @@ class NominalClient:
         resp = self._clients.secrets.get(self._clients.auth_header, rid)
         return Secret._from_conjure(self._clients, resp)
 
-    def _iter_search_secrets(self, query: secrets_api.SearchSecretsQuery) -> Iterable[Secret]:
-        for secret in search_secrets_paginated(self._clients.secrets, self._clients.auth_header, query):
+    def _iter_search_secrets(
+        self,
+        query: secrets_api.SearchSecretsQuery,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+    ) -> Iterable[Secret]:
+        for secret in search_secrets_paginated(self._clients.secrets, self._clients.auth_header, query, archive_status):
             yield Secret._from_conjure(self._clients, secret)
 
     def search_secrets(
@@ -455,6 +469,7 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Secret]:
         """Search for secrets meeting the specified filters.
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
@@ -464,6 +479,7 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a secret to be included.
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
             workspace: Filters search to given workspace.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
@@ -480,10 +496,14 @@ class NominalClient:
             properties=properties,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return list(self._iter_search_secrets(query))
+        return list(self._iter_search_secrets(query, archive_status))
 
-    def _iter_search_videos(self, query: scout_video_api.SearchVideosQuery) -> Iterable[Video]:
-        for video in search_videos_paginated(self._clients.video, self._clients.auth_header, query):
+    def _iter_search_videos(
+        self,
+        query: scout_video_api.SearchVideosQuery,
+        archive_status: ArchiveStatusFilter,
+    ) -> Iterable[Video]:
+        for video in search_videos_paginated(self._clients.video, self._clients.auth_header, query, archive_status):
             yield Video._from_conjure(self._clients, video)
 
     def search_videos(
@@ -492,6 +512,7 @@ class NominalClient:
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Video]:
         """Search for videos meeting the specified filters.
         Filters are ANDed together, e.g. `(video.label == label) AND (video.property == property)`
@@ -501,6 +522,7 @@ class NominalClient:
             labels: A sequence of labels that must ALL be present on a video to be included.
             properties: A mapping of key-value pairs that must ALL be present on a video to be included.
             workspace: Filters search to given workspace.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
@@ -517,7 +539,7 @@ class NominalClient:
             properties=properties,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return list(self._iter_search_videos(query))
+        return list(self._iter_search_videos(query, archive_status))
 
     @overload
     def create_run(
@@ -629,16 +651,17 @@ class NominalClient:
 
     def _iter_search_runs(
         self,
-        start: str | datetime | IntegralNanosecondsUTC | None = None,
-        end: str | datetime | IntegralNanosecondsUTC | None = None,
-        name_substring: str | None = None,
-        labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
-        exact_match: str | None = None,
-        search_text: str | None = None,
-        created_after: str | datetime | IntegralNanosecondsUTC | None = None,
-        created_before: str | datetime | IntegralNanosecondsUTC | None = None,
-        workspace_rid: str | None = None,
+        start: str | datetime | IntegralNanosecondsUTC | None,
+        end: str | datetime | IntegralNanosecondsUTC | None,
+        name_substring: str | None,
+        labels: Sequence[str] | None,
+        properties: Mapping[str, str] | None,
+        exact_match: str | None,
+        search_text: str | None,
+        created_after: str | datetime | IntegralNanosecondsUTC | None,
+        created_before: str | datetime | IntegralNanosecondsUTC | None,
+        workspace_rid: str | None,
+        archive_status: ArchiveStatusFilter,
     ) -> Iterable[Run]:
         query = create_search_runs_query(
             start=start,
@@ -652,7 +675,7 @@ class NominalClient:
             created_before=created_before,
             workspace_rid=workspace_rid,
         )
-        for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query):
+        for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query, archive_status):
             yield Run._from_conjure(self._clients, run)
 
     def search_runs(
@@ -668,6 +691,7 @@ class NominalClient:
         created_after: str | datetime | IntegralNanosecondsUTC | None = None,
         created_before: str | datetime | IntegralNanosecondsUTC | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Run]:
         """Search for runs meeting the specified filters.
         Filters are ANDed together, e.g. `(run.label == label) AND (run.end <= end)`
@@ -683,6 +707,7 @@ class NominalClient:
             created_after: Filter runs created after this timestamp (exclusive).
             created_before: Filter runs created before this timestamp (exclusive).
             workspace: Filters search to given workspace.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
@@ -704,7 +729,7 @@ class NominalClient:
                 search_text=search_text,
                 created_after=created_after,
                 created_before=created_before,
-                workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+                archive_status=archive_status,
             )
         )
 
@@ -841,8 +866,14 @@ class NominalClient:
         response = self._clients.checklist.get(self._clients.auth_header, rid)
         return Checklist._from_conjure(self._clients, response)
 
-    def _iter_search_checklists(self, query: scout_checks_api.ChecklistSearchQuery) -> Iterable[Checklist]:
-        for checklist in search_checklists_paginated(self._clients.checklist, self._clients.auth_header, query):
+    def _iter_search_checklists(
+        self,
+        query: scout_checks_api.ChecklistSearchQuery,
+        archive_status: ArchiveStatusFilter,
+    ) -> Iterable[Checklist]:
+        for checklist in search_checklists_paginated(
+            self._clients.checklist, self._clients.auth_header, query, archive_status
+        ):
             yield Checklist._from_conjure(self._clients, checklist)
 
     def search_checklists(
@@ -852,7 +883,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         author: User | str | None = None,
         assignee: User | str | None = None,
-        workspace: WorkspaceSearchT | None = None,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Checklist]:
         """Search for checklists meeting the specified filters.
         Filters are ANDed together, e.g. `(checklist.label == label) AND (checklist.search_text =~ field)`
@@ -864,6 +895,7 @@ class NominalClient:
             author: Author of checklists to search for
             assignee: Assignee of checklists to search for
             workspace: Filters search to given workspace.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
@@ -1153,8 +1185,12 @@ class NominalClient:
 
         return self.create_asset(name=name, description=description, properties=properties, labels=labels)
 
-    def _iter_search_assets(self, query: scout_asset_api.SearchAssetsQuery) -> Iterable[Asset]:
-        for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query):
+    def _iter_search_assets(
+        self,
+        query: scout_asset_api.SearchAssetsQuery,
+        archive_status: ArchiveStatusFilter,
+    ) -> Iterable[Asset]:
+        for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query, archive_status):
             yield Asset._from_conjure(self._clients, asset)
 
     def search_assets(
@@ -1165,6 +1201,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         exact_substring: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Asset]:
         """Search for assets meeting the specified filters.
         Filters are ANDed together, e.g. `(asset.label == label) AND (asset.search_text =~ field)`
@@ -1175,12 +1212,12 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
             exact_substring: case-insensitive search for exact string match in all string fields
             workspace: Filters search to given workspace.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
             a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
             be constrained to that workspace if the user has access to the workspace.
-
 
         Returns:
             All assets which match all of the provided conditions
@@ -1192,7 +1229,7 @@ class NominalClient:
             exact_substring=exact_substring,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return list(self._iter_search_assets(query))
+        return list(self._iter_search_assets(query, archive_status))
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Sequence[str]:
         """List all Streaming Checklists.
@@ -1287,6 +1324,7 @@ class NominalClient:
         assignee: User | str | None = None,
         event_type: EventType | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
         """Search for events meeting the specified filters.
         Filters are ANDed together, e.g. `(event.label == label) AND (event.start > before)`
@@ -1304,12 +1342,12 @@ class NominalClient:
             assignee: Search for events with the given assignee
             event_type: Search for events based on level
             workspace: Filters search to given workspace.
+            archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
         NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
             access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
             a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
             be constrained to that workspace if the user has access to the workspace.
-
 
         Returns:
             All events which match all of the provided conditions
@@ -1327,7 +1365,7 @@ class NominalClient:
             data_review_rid=rid_from_instance_or_string(data_review) if data_review else None,
             assignee_rid=rid_from_instance_or_string(assignee) if assignee else None,
             event_type=event_type,
-            workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            archive_status=archive_status,
         )
 
     def get_containerized_extractor(self, rid: str) -> ContainerizedExtractor:
@@ -1428,6 +1466,8 @@ class NominalClient:
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         archived: bool | None = None,
         include_drafts: bool = False,
+        archived: bool | None | _NotProvided = _NotProvided(),
+        include_archived: bool | _NotProvided = _NotProvided(),
     ) -> Sequence[Workbook]:
         """Search for workbooks meeting the specified filters.
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
@@ -1479,10 +1519,12 @@ class NominalClient:
         return WorkbookTemplate._from_conjure(self._clients, raw_template)
 
     def _iter_search_workbook_templates(
-        self, query: scout_template_api.SearchTemplatesQuery
+        self,
+        query: scout_template_api.SearchTemplatesQuery,
+        archive_status: ArchiveStatusFilter,
     ) -> Iterable[WorkbookTemplate]:
         for raw_template in search_workbook_templates_paginated(
-            self._clients.template, self._clients.auth_header, query
+            self._clients.template, self._clients.auth_header, query, archive_status
         ):
             yield WorkbookTemplate._from_template_summary(self._clients, raw_template)
 

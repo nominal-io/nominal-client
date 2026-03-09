@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Iterable, Mapping, Sequence
 
 from nominal_api import (
@@ -19,7 +20,27 @@ from nominal_api import (
     secrets_api,
 )
 
-from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
+
+class ArchiveStatusFilter(Enum):
+    """Filter for archive status in search methods.
+
+    Use ARCHIVED to return only archived items, NOT_ARCHIVED for only non-archived items,
+    or ANY to return items regardless of archive status.
+    """
+
+    ARCHIVED = "ARCHIVED"
+    NOT_ARCHIVED = "NOT_ARCHIVED"
+    ANY = "ANY"
+
+    def to_api_archived_statuses(self) -> list[api.ArchivedStatus]:
+        """Convert to a list of ArchivedStatus values for use in search requests."""
+        if self == ArchiveStatusFilter.ARCHIVED:
+            return [api.ArchivedStatus.ARCHIVED]
+        elif self == ArchiveStatusFilter.NOT_ARCHIVED:
+            return [api.ArchivedStatus.NOT_ARCHIVED]
+        else:  # ANY
+            return [api.ArchivedStatus.ARCHIVED, api.ArchivedStatus.NOT_ARCHIVED]
+
 
 
 def create_search_secrets_query(

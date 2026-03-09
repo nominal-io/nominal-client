@@ -24,6 +24,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
