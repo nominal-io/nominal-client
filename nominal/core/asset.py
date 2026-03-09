@@ -15,6 +15,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -30,6 +31,7 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
+from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
@@ -554,6 +556,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         assignee_rid: str | None = None,
         event_type: EventType | None = None,
         origin_types: Iterable[SearchEventOriginType] | None = None,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
         """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
         return _search_events(
@@ -570,11 +573,14 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             assignee_rid=assignee_rid,
             event_type=event_type,
             origin_types=origin_types,
+            archive_status=archive_status,
         )
 
     def search_data_reviews(
         self,
         runs: Sequence[Run | str] | None = None,
+        *,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[data_review.DataReview]:
         """Search for data reviews associated with this Asset. See nominal.core.client.search_data_reviews
         for details.
@@ -584,13 +590,18 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
                 self._clients,
                 assets=[self.rid],
                 runs=[rid_from_instance_or_string(run) for run in (runs or [])],
+                archive_status=archive_status,
             )
         )
 
+    @warn_on_deprecated_argument(
+        "include_archived",
+        "The 'include_archived' parameter for asset.search_workbooks is deprecated and will be removed in a future "
+        "version of Nominal. Please use 'archive_status' instead!",
+    )
     def search_workbooks(
         self,
         *,
-        include_archived: bool = False,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -598,11 +609,20 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         created_by_rid: str | None = None,
         run_rid: str | None = None,
         include_drafts: bool = False,
+        include_archived: bool | _NotProvided = _NotProvided(),
+        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
     ) -> Sequence[Workbook]:
-        """Search for workbooks associated with this Asset. See nominal.core.workbook._search_workbooks for details."""
+        """Search for workbooks associated with this Asset.
+
+        See ``nominal.core.NominalClient.search_workbooks`` for details.
+        """
+        effective_archive_status = resolve_effective_archive_status(
+            archive_status,
+            include_archived=include_archived,
+        )
+
         return _search_workbooks(
             self._clients,
-            include_archived=include_archived,
             exact_match=exact_match,
             search_text=search_text,
             labels=labels,
@@ -611,6 +631,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             author_rid=created_by_rid,
             run_rid=run_rid,
             include_drafts=include_drafts,
+            archive_status=effective_archive_status,
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:

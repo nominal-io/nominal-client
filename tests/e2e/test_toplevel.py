@@ -22,15 +22,17 @@ import pandas as pd
 import polars as pl
 import pytest
 
-import nominal as nm
+import nominal.nominal as nm
 from nominal.core import NominalClient
 from nominal.core.filetype import FileTypes
 from nominal.thirdparty.pandas import upload_dataframe
 from nominal.ts import ISO_8601, Relative, _SecondsNanos
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
+ArchiveFn = Callable[[object], None]
 
-def test_upload_csv(client: NominalClient, csv_data, archive: Callable):
+
+def test_upload_csv(client: NominalClient, csv_data, archive: ArchiveFn):
     """Creating a dataset and uploading a plain CSV file succeeds with correct metadata."""
     name = f"dataset-{uuid4()}"
     desc = f"top-level test to create a dataset {uuid4()}"
@@ -46,7 +48,7 @@ def test_upload_csv(client: NominalClient, csv_data, archive: Callable):
     assert len(ds.labels) == 0
 
 
-def test_upload_csv_gz(client: NominalClient, csv_gz_data, archive: Callable):
+def test_upload_csv_gz(client: NominalClient, csv_gz_data, archive: ArchiveFn):
     """Uploading a gzip-compressed CSV file succeeds when the FileType is explicitly specified."""
     name = f"dataset-{uuid4()}"
     desc = f"top-level test to create a dataset from a gzipped csv {uuid4()}"
@@ -64,7 +66,7 @@ def test_upload_csv_gz(client: NominalClient, csv_gz_data, archive: Callable):
     assert len(ds.labels) == 0
 
 
-def test_upload_csv_relative_timestamp(client: NominalClient, csv_data, archive: Callable):
+def test_upload_csv_relative_timestamp(client: NominalClient, csv_data, archive: ArchiveFn):
     """Uploading a CSV whose timestamp column contains integer minute offsets from an epoch succeeds."""
     name = f"dataset-{uuid4()}"
     desc = f"top-level test to create a dataset with relative timestamps {uuid4()}"
@@ -84,7 +86,7 @@ def test_upload_csv_relative_timestamp(client: NominalClient, csv_data, archive:
     assert len(ds.labels) == 0
 
 
-def test_upload_pandas(client: NominalClient, csv_data, archive: Callable):
+def test_upload_pandas(client: NominalClient, csv_data, archive: ArchiveFn):
     """Uploading a pandas DataFrame via the `upload_dataframe` helper creates a dataset with correct metadata."""
     name = f"dataset-{uuid4()}"
     desc = f"top-level test to create a dataset from pandas {uuid4()}"
@@ -100,7 +102,7 @@ def test_upload_pandas(client: NominalClient, csv_data, archive: Callable):
     assert len(ds.labels) == 0
 
 
-def test_upload_polars(client: NominalClient, csv_data, archive: Callable):
+def test_upload_polars(client: NominalClient, csv_data, archive: ArchiveFn):
     """Uploading CSV bytes produced by polars succeeds without requiring a pyarrow dependency."""
     name = f"dataset-{uuid4()}"
     desc = f"top-level test to create a dataset from polars {uuid4()}"
@@ -119,7 +121,7 @@ def test_upload_polars(client: NominalClient, csv_data, archive: Callable):
     assert len(ds.labels) == 0
 
 
-def test_get_dataset(client: NominalClient, csv_data, archive: Callable):
+def test_get_dataset(client: NominalClient, csv_data, archive: ArchiveFn):
     """Fetching a dataset by RID returns an object with metadata identical to the original."""
     name = f"dataset-{uuid4()}"
     desc = f"top-level test to create & get a dataset from csv {uuid4()}"
@@ -136,7 +138,7 @@ def test_get_dataset(client: NominalClient, csv_data, archive: Callable):
     assert ds2.labels == ds.labels == ()
 
 
-def test_create_run(client: NominalClient, archive: Callable):
+def test_create_run(client: NominalClient, archive: ArchiveFn):
     """Creating a run stores the name, description, and exact start/end timestamps in nanoseconds UTC."""
     name = f"run-{uuid4()}"
     desc = f"top-level test to create a run {uuid4()}"
@@ -153,7 +155,7 @@ def test_create_run(client: NominalClient, archive: Callable):
     assert len(run.labels) == 0
 
 
-def test_create_run_csv(client: NominalClient, csv_data, archive: Callable):
+def test_create_run_csv(client: NominalClient, csv_data, archive: ArchiveFn):
     """Creating a run whose bounds derive from an ingested dataset, then linking the dataset, round-trips correctly."""
     name = f"run-{uuid4()}"
     desc = f"top-level test to create a run and dataset {uuid4()}"
@@ -192,7 +194,7 @@ def test_create_run_csv(client: NominalClient, csv_data, archive: Callable):
     assert len(dataset.labels) == 0
 
 
-def test_get_run(client: NominalClient, archive: Callable):
+def test_get_run(client: NominalClient, archive: ArchiveFn):
     """Fetching a run by RID returns an object with metadata and timestamps identical to the original."""
     name = f"run-{uuid4()}"
     desc = f"top-level test to get a run {uuid4()}"
@@ -225,8 +227,8 @@ def test_search_runs():
     assert run2.rid == run.rid != ""
     assert run2.name == run.name == name
     assert run2.description == run.description == desc
-    assert run2.start == run.start == nm.ts._SecondsNanos.from_datetime(start).to_nanoseconds()
-    assert run2.end == run.end == nm.ts._SecondsNanos.from_datetime(end).to_nanoseconds()
+    assert run2.start == run.start == _SecondsNanos.from_datetime(start).to_nanoseconds()
+    assert run2.end == run.end == _SecondsNanos.from_datetime(end).to_nanoseconds()
     assert run2.properties == run.properties == {}
     assert run2.labels == run.labels == ()
 
@@ -246,7 +248,7 @@ def test_search_runs_substring():
     assert run2.name == run.name == name
 
 
-def test_upload_attachment(client: NominalClient, csv_data, archive: Callable):
+def test_upload_attachment(client: NominalClient, csv_data, archive: ArchiveFn):
     """Creating an attachment from an in-memory buffer stores the correct name and description."""
     at_title = f"attachment-{uuid4()}"
     at_desc = f"top-level test to upload an attachment {uuid4()}"
@@ -261,7 +263,7 @@ def test_upload_attachment(client: NominalClient, csv_data, archive: Callable):
     assert len(at.labels) == 0
 
 
-def test_get_attachment(client: NominalClient, csv_data, archive: Callable):
+def test_get_attachment(client: NominalClient, csv_data, archive: ArchiveFn):
     """Fetching an attachment by RID returns an object with metadata identical to the original."""
     at_title = f"attachment-{uuid4()}"
     at_desc = f"top-level test to get an attachment {uuid4()}"
@@ -277,7 +279,7 @@ def test_get_attachment(client: NominalClient, csv_data, archive: Callable):
     assert a2.labels == at.labels == ()
 
 
-def test_download_attachment(client: NominalClient, csv_data, archive: Callable):
+def test_download_attachment(client: NominalClient, csv_data, archive: ArchiveFn):
     """Downloading an attachment's contents returns the exact bytes that were originally uploaded."""
     at_title = f"attachment-{uuid4()}"
     at_desc = f"top-level test to download an attachment {uuid4()}"
@@ -287,7 +289,7 @@ def test_download_attachment(client: NominalClient, csv_data, archive: Callable)
     assert at.get_contents().read() == csv_data
 
 
-def test_upload_video(client: NominalClient, mp4_data, archive: Callable):
+def test_upload_video(client: NominalClient, mp4_data, archive: ArchiveFn):
     """Creating a video and uploading an MP4 file succeeds with correct metadata."""
     title = f"video-{uuid4()}"
     desc = f"top-level test to ingest a video {uuid4()}"
@@ -305,7 +307,7 @@ def test_upload_video(client: NominalClient, mp4_data, archive: Callable):
     assert len(v.labels) == 0
 
 
-def test_get_video(client: NominalClient, mp4_data, archive: Callable):
+def test_get_video(client: NominalClient, mp4_data, archive: ArchiveFn):
     """Fetching a video by RID returns an object with metadata identical to the original."""
     title = f"video-{uuid4()}"
     desc = f"top-level test to get a video {uuid4()}"

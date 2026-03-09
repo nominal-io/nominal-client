@@ -11,6 +11,32 @@ logger = logging.getLogger(__name__)
 Param = ParamSpec("Param")
 T = TypeVar("T")
 
+_WARN_ON_DEPRECATED_MARKER = "__warn_on_deprecated_argument_wrapper__"
+_WARN_ON_DEPRECATED_STACKLEVEL_OFFSET = "__warn_on_deprecated_argument_stacklevel_offset__"
+
+
+class _NotProvided:
+    """Sentinel class for detecting when a deprecated keyword argument was not provided by the caller"""
+
+
+def _stacklevel_for_wrapper(func: Callable[..., object]) -> int:
+    return 2 + getattr(func, _WARN_ON_DEPRECATED_STACKLEVEL_OFFSET, 0)
+
+
+def _increment_inner_warn_wrapper_offsets(func: Callable[..., object]) -> None:
+    """Account for outer warn_on_deprecated_argument decorators stacked on top of inner ones."""
+    seen: set[int] = set()
+    current: object | None = func
+
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+
+        if getattr(current, _WARN_ON_DEPRECATED_MARKER, False):
+            current_offset = getattr(current, _WARN_ON_DEPRECATED_STACKLEVEL_OFFSET, 0)
+            setattr(current, _WARN_ON_DEPRECATED_STACKLEVEL_OFFSET, current_offset + 1)
+
+        current = getattr(current, "__wrapped__", None)
+
 
 def warn_on_deprecated_argument(
     argument_name: str, warning_message: str
@@ -26,18 +52,22 @@ def warn_on_deprecated_argument(
     """
 
     def decorator(func: Callable[Param, T]) -> Callable[Param, T]:
+        _increment_inner_warn_wrapper_offsets(func)
         sig = inspect.signature(func)
         param_names = list(sig.parameters.keys())
 
         @wraps(func)
         def wrapper(*args: Param.args, **kwargs: Param.kwargs) -> T:
             if argument_name in kwargs:
-                warnings.warn(warning_message, UserWarning, stacklevel=2)
+                warnings.warn(warning_message, UserWarning, stacklevel=_stacklevel_for_wrapper(wrapper))
             elif len(args) > len(param_names) - 1:
-                warnings.warn(warning_message, UserWarning, stacklevel=2)
+                # TODO(drake): validate that this actually resolves to the deprecated kwarg
+                warnings.warn(warning_message, UserWarning, stacklevel=_stacklevel_for_wrapper(wrapper))
 
             return func(*args, **kwargs)
 
+        setattr(wrapper, _WARN_ON_DEPRECATED_MARKER, True)
+        setattr(wrapper, _WARN_ON_DEPRECATED_STACKLEVEL_OFFSET, 0)
         return wrapper
 
     return decorator

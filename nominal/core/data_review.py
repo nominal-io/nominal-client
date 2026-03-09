@@ -22,6 +22,7 @@ from nominal.core._checklist_types import Priority, _conjure_priority_to_priorit
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_data_reviews_paginated
+from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.event import Event
 from nominal.core.exceptions import NominalMethodRemovedError
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -286,11 +287,13 @@ def _iter_search_data_reviews(
     clients: DataReview._Clients,
     assets: Sequence[str] | None = None,
     runs: Sequence[str] | None = None,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Iterable[DataReview]:
     for review in search_data_reviews_paginated(
         clients.datareview,
         clients.auth_header,
         assets=assets,
         runs=runs,
+        archive_status=archive_status,
     ):
         yield DataReview._from_conjure(clients, review)
