@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.119.1](https://github.com/nominal-io/nominal-client/compare/v1.119.0...v1.119.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* add e2e test workflow against staging ([#638](https://github.com/nominal-io/nominal-client/issues/638)) ([880a501](https://github.com/nominal-io/nominal-client/commit/880a5014cf69e79b34d12c10835a77d284d6955a))
+* correct documentation for searching for dataset files ([#646](https://github.com/nominal-io/nominal-client/issues/646)) ([4ceeede](https://github.com/nominal-io/nominal-client/commit/4ceeede054fb86c582fdd12455215a49e2c4443a))
+* fix refresh() for event objects ([#645](https://github.com/nominal-io/nominal-client/issues/645)) ([63fe39e](https://github.com/nominal-io/nominal-client/commit/63fe39e4620b8f172174c06f1206764325a620f2))
+* refreshing an event was broken ([63fe39e](https://github.com/nominal-io/nominal-client/commit/63fe39e4620b8f172174c06f1206764325a620f2))
+
 ## [1.119.0](https://github.com/nominal-io/nominal-client/compare/v1.118.0...v1.119.0) (2026-03-06)
 
 
