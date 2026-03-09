@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+from typing import Any, cast
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -32,22 +34,22 @@ def mock_dataset(mock_clients):
         _clients=mock_clients,
     )
 
-    spy = MagicMock(wraps=ds.refresh)
+    spy: MagicMock = MagicMock(wraps=ds.refresh)
     object.__setattr__(ds, "refresh", spy)
-    ds.refresh.return_value = ds
+    spy.return_value = ds
 
     return ds
 
 
 def test_write_logs_more_than_batch(mock_dataset: Dataset):
     endpoint = Mock()
-    mock_dataset._clients.storage_writer.write_logs = endpoint
+    cast(Any, mock_dataset._clients.storage_writer).write_logs = endpoint
 
     log_0 = LogPoint(0, "a", {})
     log_1 = LogPoint(1, "b", {})
     log_2 = LogPoint(2, "c", {})
 
-    def log_generator():
+    def log_generator() -> Iterator[LogPoint]:
         yield log_0
         yield log_1
         yield log_2
@@ -65,13 +67,13 @@ def test_write_logs_more_than_batch(mock_dataset: Dataset):
 
 def test_write_logs_less_than_batch(mock_dataset: Dataset):
     endpoint = Mock()
-    mock_dataset._clients.storage_writer.write_logs = endpoint
+    cast(Any, mock_dataset._clients.storage_writer).write_logs = endpoint
 
     log_0 = LogPoint(0, "a", {})
     log_1 = LogPoint(1, "b", {})
     log_2 = LogPoint(2, "c", {})
 
-    def log_generator():
+    def log_generator() -> Iterator[LogPoint]:
         yield log_0
         yield log_1
         yield log_2

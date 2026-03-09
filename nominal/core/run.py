@@ -14,6 +14,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
 from nominal.core._event_types import EventType
 from nominal.core._utils.api_tools import (
     HasRid,
@@ -24,6 +25,7 @@ from nominal.core._utils.api_tools import (
     filter_scopes,
     rid_from_instance_or_string,
 )
+from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
@@ -386,10 +388,14 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
 
+    @warn_on_deprecated_argument(
+        "include_archived",
+        "The 'include_archived' parameter for run.search_workbooks is deprecated and will be removed in a future "
+        "version of Nominal. Please use 'archive_status' instead!",
+    )
     def search_workbooks(
         self,
         *,
-        include_archived: bool = False,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -397,11 +403,17 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         asset_rid: str | None = None,
         created_by_rid: str | None = None,
         include_drafts: bool = False,
+        include_archived: bool | _NotProvided = _NotProvided(),
+        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
     ) -> Sequence[Workbook]:
-        """Search for workbooks associated with this Run. See nominal.core.workbook._search_workbooks for details."""
+        """Search for workbooks associated with this Run. See nominal.core.NominalClient.search_workbooks for details"""
+        effective_archive_status = resolve_effective_archive_status(
+            archive_status,
+            include_archived=include_archived,
+        )
+
         return _search_workbooks(
             self._clients,
-            include_archived=include_archived,
             exact_match=exact_match,
             search_text=search_text,
             labels=labels,
@@ -410,6 +422,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             asset_rid=asset_rid,
             author_rid=created_by_rid,
             include_drafts=include_drafts,
+            archive_status=effective_archive_status,
         )
 
     def archive(self) -> None:

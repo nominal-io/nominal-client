@@ -2,10 +2,27 @@
 
 from datetime import datetime, timedelta, timezone
 
-from nominal_api import api
+from nominal_api import api, scout_run_api
 
 from nominal.core._utils.query_tools import create_search_runs_query
 from nominal.ts import _SecondsNanos
+
+
+def _and_queries(query: scout_run_api.SearchQuery) -> list[scout_run_api.SearchQuery]:
+    assert query.and_ is not None
+    return query.and_
+
+
+def _only_sub_query(query: scout_run_api.SearchQuery) -> scout_run_api.SearchQuery:
+    sub_queries = _and_queries(query)
+    assert len(sub_queries) == 1
+    return sub_queries[0]
+
+
+def _custom_timeframe(filter_value: scout_run_api.TimeframeFilter | None) -> scout_run_api.CustomTimeframeFilter:
+    assert filter_value is not None
+    assert filter_value.custom is not None
+    return filter_value.custom
 
 
 def test_create_search_runs_query_basic():
@@ -14,7 +31,7 @@ def test_create_search_runs_query_basic():
 
     # Should return an empty AND query
     assert hasattr(query, "and_")
-    assert len(query.and_) == 0
+    assert len(_and_queries(query)) == 0
 
 
 def test_create_search_runs_query_with_start_time():
@@ -22,16 +39,13 @@ def test_create_search_runs_query_with_start_time():
     start_time = datetime(2024, 1, 1, 12, 0, 0)
     query = create_search_runs_query(start=start_time)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     # Should use startTime with CustomTimeframeFilter(start_time=...)
     assert hasattr(sub_query, "start_time")
-    assert sub_query.start_time is not None
-    assert hasattr(sub_query.start_time, "custom")
-    assert sub_query.start_time.custom is not None
-    assert sub_query.start_time.custom.start_time == _SecondsNanos.from_datetime(start_time).to_scout_run_api()
-    assert sub_query.start_time.custom.end_time is None
+    start_time_filter = _custom_timeframe(sub_query.start_time)
+    assert start_time_filter.start_time == _SecondsNanos.from_datetime(start_time).to_scout_run_api()
+    assert start_time_filter.end_time is None
 
 
 def test_create_search_runs_query_with_end_time():
@@ -39,16 +53,13 @@ def test_create_search_runs_query_with_end_time():
     end_time = datetime(2024, 12, 31, 23, 59, 59)
     query = create_search_runs_query(end=end_time)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     # Should use endTime with CustomTimeframeFilter(end_time=...)
     assert hasattr(sub_query, "end_time")
-    assert sub_query.end_time is not None
-    assert hasattr(sub_query.end_time, "custom")
-    assert sub_query.end_time.custom is not None
-    assert sub_query.end_time.custom.start_time is None
-    assert sub_query.end_time.custom.end_time == _SecondsNanos.from_datetime(end_time).to_scout_run_api()
+    end_time_filter = _custom_timeframe(sub_query.end_time)
+    assert end_time_filter.start_time is None
+    assert end_time_filter.end_time == _SecondsNanos.from_datetime(end_time).to_scout_run_api()
 
 
 def test_create_search_runs_query_with_created_after():
@@ -56,16 +67,13 @@ def test_create_search_runs_query_with_created_after():
     created_after = datetime(2024, 6, 1, 0, 0, 0)
     query = create_search_runs_query(created_after=created_after)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     # Should use createdAt with CustomTimeframeFilter(start_time=...)
     assert hasattr(sub_query, "created_at")
-    assert sub_query.created_at is not None
-    assert hasattr(sub_query.created_at, "custom")
-    assert sub_query.created_at.custom is not None
-    assert sub_query.created_at.custom.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
-    assert sub_query.created_at.custom.end_time is None
+    created_at_filter = _custom_timeframe(sub_query.created_at)
+    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
+    assert created_at_filter.end_time is None
 
 
 def test_create_search_runs_query_with_created_before():
@@ -73,16 +81,13 @@ def test_create_search_runs_query_with_created_before():
     created_before = datetime(2024, 6, 30, 23, 59, 59)
     query = create_search_runs_query(created_before=created_before)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     # Should use createdAt with CustomTimeframeFilter(end_time=...)
     assert hasattr(sub_query, "created_at")
-    assert sub_query.created_at is not None
-    assert hasattr(sub_query.created_at, "custom")
-    assert sub_query.created_at.custom is not None
-    assert sub_query.created_at.custom.start_time is None
-    assert sub_query.created_at.custom.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
+    created_at_filter = _custom_timeframe(sub_query.created_at)
+    assert created_at_filter.start_time is None
+    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
 
 
 def test_create_search_runs_query_with_both_created_filters():
@@ -92,16 +97,13 @@ def test_create_search_runs_query_with_both_created_filters():
 
     query = create_search_runs_query(created_after=created_after, created_before=created_before)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     # Should have one createdAt filter with both after and before
     assert hasattr(sub_query, "created_at")
-    assert sub_query.created_at is not None
-    assert hasattr(sub_query.created_at, "custom")
-    assert sub_query.created_at.custom is not None
-    assert sub_query.created_at.custom.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
-    assert sub_query.created_at.custom.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
+    created_at_filter = _custom_timeframe(sub_query.created_at)
+    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
+    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
 
 
 def test_create_search_runs_query_with_string_timestamps():
@@ -116,7 +118,7 @@ def test_create_search_runs_query_with_string_timestamps():
     )
 
     # Should have 3 filters: start_time, end_time, created_at
-    assert len(query.and_) == 3
+    assert len(_and_queries(query)) == 3
 
 
 def test_create_search_runs_query_with_nanosecond_timestamps():
@@ -129,7 +131,7 @@ def test_create_search_runs_query_with_nanosecond_timestamps():
     query = create_search_runs_query(start=start_ns, end=end_ns, created_after=created_after_ns)
 
     # Should have 3 filters
-    assert len(query.and_) == 3
+    assert len(_and_queries(query)) == 3
 
 
 def test_create_search_runs_query_with_labels():
@@ -137,8 +139,7 @@ def test_create_search_runs_query_with_labels():
     labels = ["test", "automated", "production"]
     query = create_search_runs_query(labels=labels)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     # Should use LabelsFilter with labels wrapped in a list
     assert hasattr(sub_query, "labels")
@@ -155,12 +156,12 @@ def test_create_search_runs_query_with_properties():
     query = create_search_runs_query(properties=properties)
 
     # Should create one PropertiesFilter per property (3 properties = 3 filters)
-    assert len(query.and_) == 3
+    assert len(_and_queries(query)) == 3
 
     # Collect all property filters
     prop_filters = {}
 
-    for sub_query in query.and_:
+    for sub_query in _and_queries(query):
         assert hasattr(sub_query, "properties")
         assert sub_query.properties is not None
         assert hasattr(sub_query.properties, "name")
@@ -178,8 +179,7 @@ def test_create_search_runs_query_with_name_substring():
     name_substring = "test-run"
     query = create_search_runs_query(name_substring=name_substring)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     # Should use exact_match for name_substring
     assert hasattr(sub_query, "exact_match")
@@ -191,8 +191,7 @@ def test_create_search_runs_query_with_exact_match():
     exact_match = "Run 12345"
     query = create_search_runs_query(exact_match=exact_match)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     assert hasattr(sub_query, "exact_match")
     assert sub_query.exact_match == exact_match
@@ -203,8 +202,7 @@ def test_create_search_runs_query_with_search_text():
     search_text = "important test data"
     query = create_search_runs_query(search_text=search_text)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     assert hasattr(sub_query, "search_text")
     assert sub_query.search_text == search_text
@@ -215,8 +213,7 @@ def test_create_search_runs_query_with_workspace_rid():
     workspace_rid = "ri.workspace.main.workspace.12345"
     query = create_search_runs_query(workspace_rid=workspace_rid)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
 
     assert hasattr(sub_query, "workspace")
     assert sub_query.workspace == workspace_rid
@@ -252,7 +249,7 @@ def test_create_search_runs_query_with_all_filters():
     # start_time, end_time, created_at, name_substring, labels,
     # properties (1 per property = 1), exact_match, search_text, workspace
     # Total: 9 filters
-    assert len(query.and_) == 9
+    assert len(_and_queries(query)) == 9
 
 
 def test_create_search_runs_query_empty_labels():
@@ -260,7 +257,7 @@ def test_create_search_runs_query_empty_labels():
     query = create_search_runs_query(labels=[])
 
     # Empty labels should not add a filter
-    assert len(query.and_) == 0
+    assert len(_and_queries(query)) == 0
 
 
 def test_create_search_runs_query_empty_properties():
@@ -268,7 +265,7 @@ def test_create_search_runs_query_empty_properties():
     query = create_search_runs_query(properties={})
 
     # Empty properties should not add a filter
-    assert len(query.and_) == 0
+    assert len(_and_queries(query)) == 0
 
 
 def test_create_search_runs_query_none_values():
@@ -287,7 +284,7 @@ def test_create_search_runs_query_none_values():
     )
 
     # Should return empty AND query
-    assert len(query.and_) == 0
+    assert len(_and_queries(query)) == 0
 
 
 def test_create_search_runs_query_created_at_only_after():
@@ -295,14 +292,11 @@ def test_create_search_runs_query_created_at_only_after():
     created_after = datetime(2024, 6, 1)
     query = create_search_runs_query(created_after=created_after, created_before=None)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
     assert hasattr(sub_query, "created_at")
-    assert sub_query.created_at.custom is not None
-    assert sub_query.created_at.custom.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
-    assert sub_query.created_at.custom.end_time is None
-    # end_time should be None or not set
-    assert not hasattr(sub_query.created_at, "custom") or sub_query.created_at.custom.end_time is None
+    created_at_filter = _custom_timeframe(sub_query.created_at)
+    assert created_at_filter.start_time == _SecondsNanos.from_datetime(created_after).to_scout_run_api()
+    assert created_at_filter.end_time is None
 
 
 def test_create_search_runs_query_created_at_only_before():
@@ -310,11 +304,8 @@ def test_create_search_runs_query_created_at_only_before():
     created_before = datetime(2024, 6, 30)
     query = create_search_runs_query(created_after=None, created_before=created_before)
 
-    assert len(query.and_) == 1
-    sub_query = query.and_[0]
+    sub_query = _only_sub_query(query)
     assert hasattr(sub_query, "created_at")
-    assert sub_query.created_at.custom is not None
-    assert sub_query.created_at.custom.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
-    assert sub_query.created_at.custom.start_time is None
-    # start_time should be None or not set
-    assert not hasattr(sub_query.created_at, "custom") or sub_query.created_at.custom.start_time is None
+    created_at_filter = _custom_timeframe(sub_query.created_at)
+    assert created_at_filter.end_time == _SecondsNanos.from_datetime(created_before).to_scout_run_api()
+    assert created_at_filter.start_time is None

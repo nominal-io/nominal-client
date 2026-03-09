@@ -29,8 +29,10 @@ from nominal.thirdparty.pandas import channel_to_series, datasource_to_dataframe
 from nominal.ts import ISO_8601, _SecondsNanos
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
+ArchiveFn = Callable[[object], None]
 
-def test_update_dataset(client: NominalClient, csv_data, archive: Callable):
+
+def test_update_dataset(client: NominalClient, csv_data, archive: ArchiveFn):
     """Calling `dataset.update()` mutates name, description, properties, and labels in-place."""
     name = f"dataset-{uuid4()}"
     desc = f"core test to update a dataset {uuid4()}"
@@ -51,7 +53,7 @@ def test_update_dataset(client: NominalClient, csv_data, archive: Callable):
     assert ds.labels == tuple(new_labels)
 
 
-def test_update_run(client: NominalClient, archive: Callable):
+def test_update_run(client: NominalClient, archive: ArchiveFn):
     """Calling `run.update()` mutates all mutable fields, including the start/end time window."""
     title = f"run-{uuid4()}"
     desc = f"core test to update a run {uuid4()}"
@@ -92,7 +94,7 @@ def test_update_run(client: NominalClient, archive: Callable):
     assert run.end == _SecondsNanos.from_datetime(new_end).to_nanoseconds()
 
 
-def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: Callable):
+def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: ArchiveFn):
     """Linking a dataset to a run with a custom ref-name is reflected in `run.list_datasets()`."""
     ds = client.create_dataset(f"dataset-{uuid4()}")
     archive(ds)
@@ -111,7 +113,7 @@ def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, a
     assert ds2.rid == ds.rid
 
 
-def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive: Callable):
+def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive: ArchiveFn):
     """Uploading two separate CSV files to the same dataset both ingest successfully."""
     name = f"dataset-{uuid4()}"
     desc = f"core test to add more data to a dataset {uuid4()}"
@@ -130,7 +132,7 @@ def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive:
     assert len(ds.labels) == 0
 
 
-def test_update_attachment(client: NominalClient, csv_data, archive: Callable):
+def test_update_attachment(client: NominalClient, csv_data, archive: ArchiveFn):
     """Calling `attachment.update()` mutates name, description, properties, and labels in-place."""
     at_name = f"attachment-{uuid4()}"
     at_desc = f"core test to update an attachment {uuid4()}"
@@ -150,7 +152,7 @@ def test_update_attachment(client: NominalClient, csv_data, archive: Callable):
     assert at.labels == tuple(new_labels)
 
 
-def test_add_attachment_to_run_and_list_attachments(client: NominalClient, csv_data, archive: Callable):
+def test_add_attachment_to_run_and_list_attachments(client: NominalClient, csv_data, archive: ArchiveFn):
     """Attaching a file to a run is reflected in `run.list_attachments()`; byte contents are preserved."""
     at = client.create_attachment_from_io(BytesIO(csv_data), f"attachment-{uuid4()}")
     archive(at)
