@@ -6,7 +6,7 @@ from nominal.core._clientsbunch import (
     api_base_url_to_app_base_url,
 )
 from nominal.core.client import NominalClient
-from nominal.experimental import DatasetImpersonationClient, as_user
+from nominal.experimental import as_user
 
 
 class _FakeSession:
@@ -50,7 +50,7 @@ def test_with_catalog_request_headers_clones_only_catalog_session():
     assert cloned.catalog._requests_session.headers["User-Agent"] == "test-agent"
 
 
-def test_experimental_as_user_returns_dataset_impersonation_client():
+def test_experimental_as_user_returns_derived_nominal_client():
     catalog = _FakeCatalogService()
     kwargs = {field.name: object() for field in fields(ClientsBunch)}
     kwargs["auth_header"] = "Bearer token"
@@ -61,9 +61,9 @@ def test_experimental_as_user_returns_dataset_impersonation_client():
 
     impersonated = as_user(client, "ri.authn.dev.user.target")
 
-    assert isinstance(impersonated, DatasetImpersonationClient)
-    assert impersonated.user_rid == "ri.authn.dev.user.target"
+    assert isinstance(impersonated, NominalClient)
+    assert impersonated is not client
     assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.catalog._requests_session.headers
-    assert impersonated._derived_client()._clients.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
+    assert impersonated._clients.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
