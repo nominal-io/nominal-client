@@ -27,9 +27,7 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
     def default_copy_options(self) -> WorkbookTemplateCopyOptions:
         return WorkbookTemplateCopyOptions(include_content_and_layout=True)
 
-    def _copy_from_impl(
-        self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions
-    ) -> WorkbookTemplate:
+    def _copy_from_impl(self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions) -> WorkbookTemplate:
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
 
         if options.include_content_and_layout:
