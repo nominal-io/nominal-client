@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Mapping, Protocol
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -34,6 +34,8 @@ from typing_extensions import Self
 
 from nominal.core._utils.networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
+
+ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
 
 
 @dataclass(frozen=True)
@@ -113,6 +115,10 @@ class ClientsBunch:
     auth_header: str
     workspace_rid: str | None
     app_base_url: str
+    _api_base_url: str = field(repr=False)
+    _user_agent: str = field(repr=False)
+    _token: str = field(repr=False)
+    _service_config: ServiceConfiguration = field(repr=False)
 
     assets: scout_assets.AssetService
     attachment: attachments_api.AttachmentService
@@ -143,21 +149,47 @@ class ClientsBunch:
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
 
+    def with_catalog_request_headers(self, headers: Mapping[str, str]) -> Self:
+        return type(self).from_config(
+            self._service_config,
+            self._api_base_url,
+            self._user_agent,
+            self._token,
+            self.workspace_rid,
+            catalog_default_headers=headers,
+        )
+
     @classmethod
     def from_config(
-        cls, cfg: ServiceConfiguration, base_url: str, agent: str, token: str, workspace_rid: str | None
+        cls,
+        cfg: ServiceConfiguration,
+        base_url: str,
+        agent: str,
+        token: str,
+        workspace_rid: str | None,
+        *,
+        catalog_default_headers: Mapping[str, str] | None = None,
     ) -> Self:
         app_base_url = api_base_url_to_app_base_url(base_url)
         client_factory = create_conjure_client_factory(user_agent=agent, service_config=cfg)
+        catalog_client_factory = create_conjure_client_factory(
+            user_agent=agent,
+            service_config=cfg,
+            default_headers=catalog_default_headers,
+        )
 
         return cls(
             auth_header=f"Bearer {token}",
             workspace_rid=workspace_rid,
             app_base_url=app_base_url,
+            _api_base_url=base_url,
+            _user_agent=agent,
+            _token=token,
+            _service_config=cfg,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
-            catalog=client_factory(scout_catalog.CatalogService),
+            catalog=catalog_client_factory(scout_catalog.CatalogService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             connection=client_factory(scout_datasource_connection.ConnectionService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),

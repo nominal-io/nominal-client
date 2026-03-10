@@ -145,6 +145,7 @@ def create_conjure_service_client(
     user_agent: str,
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
+    default_headers: Mapping[str, str] | None = None,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
@@ -161,6 +162,7 @@ def create_conjure_service_client(
             settings, and timeout settings.
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
+        default_headers: Additional default headers to attach to the service session.
         enable_keep_alive: If true, enable keep alive in connections with the service.
 
     Returns:
@@ -179,7 +181,7 @@ def create_conjure_service_client(
     # required since this session is shared across threads via ClientsBunch.
     transport_adapter = NominalRequestsAdapter(max_retries=retry)
     session = requests.Session()
-    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
+    session.headers = CaseInsensitiveDict({"User-Agent": user_agent, **(default_headers or {})})
     if service_config.security is not None:
         verify = service_config.security.trust_store_path
     else:
@@ -200,6 +202,7 @@ def create_conjure_client_factory(
     user_agent: str,
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
+    default_headers: Mapping[str, str] | None = None,
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
@@ -212,6 +215,7 @@ def create_conjure_client_factory(
             user_agent=user_agent,
             service_config=service_config,
             return_none_for_unknown_union_types=return_none_for_unknown_union_types,
+            default_headers=default_headers,
         )
 
     return factory
