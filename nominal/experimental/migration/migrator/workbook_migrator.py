@@ -55,8 +55,6 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                 title=source.title,
                 is_draft=source.is_draft(),
             )
-        else:
-            raise ValueError("Exactly one of destination_asset or destination_run must be provided.")
 
         new_template.archive()
         source_template.archive()

@@ -17,11 +17,11 @@ class EventCopyOptions(ResourceCopyOptions):
     new_name: str | None = None
     new_type: EventType | None = None
     new_start: datetime | IntegralNanosecondsUTC | None = None
-    new_duration: timedelta | IntegralNanosecondsDuration = timedelta()
+    new_duration: timedelta | IntegralNanosecondsDuration | None = None
     new_description: str | None = None
-    new_assets: Iterable[Asset | str] = ()
+    new_assets: Iterable[Asset | str] | None = None
     new_properties: Mapping[str, str] | None = None
-    new_labels: Iterable[str] = ()
+    new_labels: Iterable[str] | None = None
 
 
 class EventMigrator(Migrator[Event, EventCopyOptions]):
@@ -35,11 +35,11 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
             name=options.new_name or source.name,
             type=options.new_type or source.type,
             start=options.new_start or source.start,
-            duration=options.new_duration or source.duration,
+            duration=options.new_duration if options.new_duration is not None else source.duration,
             description=options.new_description or source.description,
-            assets=options.new_assets or source.asset_rids,
+            assets=options.new_assets if options.new_assets is not None else source.asset_rids,
             properties=options.new_properties or source.properties,
-            labels=options.new_labels or source.labels,
+            labels=options.new_labels if options.new_labels is not None else source.labels,
         )
 
     def _get_resource_name(self, resource: Event) -> str:

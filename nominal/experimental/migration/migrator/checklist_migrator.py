@@ -43,11 +43,16 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
             commit_message=options.new_commit_message or api_source_checklist.commit.message,
             title=options.new_title or source.name,
             description=options.new_description or source.description,
-            checks=options.new_checks or _to_create_checklist_entries(api_source_checklist.checks),
-            properties=options.new_properties or api_source_checklist.metadata.properties,
-            labels=options.new_labels or api_source_checklist.metadata.labels,
+            checks=options.new_checks
+            if options.new_checks is not None
+            else _to_create_checklist_entries(api_source_checklist.checks),
+            properties=options.new_properties
+            if options.new_properties is not None
+            else api_source_checklist.metadata.properties,
+            labels=options.new_labels if options.new_labels is not None else api_source_checklist.metadata.labels,
             checklist_variables=options.new_checklist_variables
-            or _to_unresolved_checklist_variables(api_source_checklist.checklist_variables),
+            if options.new_checklist_variables is not None
+            else _to_unresolved_checklist_variables(api_source_checklist.checklist_variables),
             is_published=options.new_is_published
             if options.new_is_published is not None
             else api_source_checklist.metadata.is_published,
