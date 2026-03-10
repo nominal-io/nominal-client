@@ -53,10 +53,18 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
 
         new_workbook_template = _create_workbook_template_with_content_and_layout(
             clients=self.ctx.destination_client._clients,
-            title=options.new_template_title or raw_source_template.metadata.title,
-            description=options.new_template_description or raw_source_template.metadata.description,
-            labels=options.new_template_labels or raw_source_template.metadata.labels,
-            properties=options.new_template_properties or raw_source_template.metadata.properties,
+            title=options.new_template_title
+            if options.new_template_title is not None
+            else raw_source_template.metadata.title,
+            description=options.new_template_description
+            if options.new_template_description is not None
+            else raw_source_template.metadata.description,
+            labels=options.new_template_labels
+            if options.new_template_labels is not None
+            else raw_source_template.metadata.labels,
+            properties=options.new_template_properties
+            if options.new_template_properties is not None
+            else raw_source_template.metadata.properties,
             layout=new_template_layout,
             content=new_workbook_content,
             commit_message="Cloned from template",
@@ -68,6 +76,3 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
 
     def _get_resource_name(self, resource: WorkbookTemplate) -> str:
         return resource.title
-
-    def _get_resource_rid(self, resource: WorkbookTemplate) -> str:
-        return resource.rid

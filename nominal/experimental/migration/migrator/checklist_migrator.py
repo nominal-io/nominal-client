@@ -40,9 +40,11 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
         api_source_checklist = source._get_latest_api()
         return _create_checklist_with_content(
             client=self.ctx.destination_client,
-            commit_message=options.new_commit_message or api_source_checklist.commit.message,
-            title=options.new_title or source.name,
-            description=options.new_description or source.description,
+            commit_message=options.new_commit_message
+            if options.new_commit_message is not None
+            else api_source_checklist.commit.message,
+            title=options.new_title if options.new_title is not None else source.name,
+            description=options.new_description if options.new_description is not None else source.description,
             checks=options.new_checks
             if options.new_checks is not None
             else _to_create_checklist_entries(api_source_checklist.checks),
@@ -61,6 +63,3 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
 
     def _get_resource_name(self, resource: Checklist) -> str:
         return resource.name
-
-    def _get_resource_rid(self, resource: Checklist) -> str:
-        return resource.rid

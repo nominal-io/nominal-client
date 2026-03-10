@@ -107,9 +107,6 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _get_resource_name(self, resource: Asset) -> str:
         return resource.name
 
-    def _get_resource_rid(self, resource: Asset) -> str:
-        return resource.rid
-
     def _copy_asset_events(self, source_asset: Asset, new_asset: Asset) -> None:
         event_migrator = EventMigrator(
             MigrationContext(

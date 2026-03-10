@@ -40,6 +40,3 @@ class VideoMigrator(Migrator[Video, VideoCopyOptions]):
 
     def _get_resource_name(self, resource: Video) -> str:
         return resource.name
-
-    def _get_resource_rid(self, resource: Video) -> str:
-        return resource.rid

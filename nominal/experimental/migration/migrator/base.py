@@ -5,10 +5,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import ClassVar, Generic, TypeVar
 
+from nominal.core._utils.api_tools import HasRid
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
 
-Resource = TypeVar("Resource")
+Resource = TypeVar("Resource", bound=HasRid)
 CopyOptions = TypeVar("CopyOptions", bound="ResourceCopyOptions", default="ResourceCopyOptions")
 
 
@@ -41,7 +42,7 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
         resolved_options = self.default_copy_options() if options is None else options
         if resolved_options is None:
             raise NotImplementedError(f"{type(self).__name__} requires explicit copy options.")
-        source_rid = self._get_resource_rid(source)
+        source_rid = source.rid
 
         logger = logging.getLogger(type(self).__module__)
         log_extras = {
@@ -57,7 +58,7 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
             extra=log_extras,
         )
         result = self._copy_from_impl(source, resolved_options)
-        result_rid = self._get_resource_rid(result)
+        result_rid = result.rid
         logger.debug(
             "New %s created: %s (rid: %s)",
             self.resource_label,
@@ -100,12 +101,4 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
 
         Args:
             resource: The resource to get the name of.
-        """
-
-    @abstractmethod
-    def _get_resource_rid(self, resource: Resource) -> str:
-        """Gets the RID of the given resource. Used for logging and mapping.
-
-        Args:
-            resource: The resource to get the RID of.
         """

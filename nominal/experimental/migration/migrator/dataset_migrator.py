@@ -94,6 +94,3 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
 
     def _get_resource_name(self, resource: Dataset) -> str:
         return resource.name
-
-    def _get_resource_rid(self, resource: Dataset) -> str:
-        return resource.rid

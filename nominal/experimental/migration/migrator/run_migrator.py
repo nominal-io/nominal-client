@@ -34,11 +34,11 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
 
     def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
         return self.ctx.destination_client.create_run(
-            name=options.new_name or source.name,
-            start=options.new_start or source.start,
-            end=options.new_end or source.end,
-            description=options.new_description or source.description,
-            properties=options.new_properties or source.properties,
+            name=options.new_name if options.new_name is not None else source.name,
+            start=options.new_start if options.new_start is not None else source.start,
+            end=options.new_end if options.new_end is not None else source.end,
+            description=options.new_description if options.new_description is not None else source.description,
+            properties=options.new_properties if options.new_properties is not None else source.properties,
             labels=options.new_labels if options.new_labels is not None else source.labels,
             assets=options.new_assets if options.new_assets is not None else source.assets,
             links=options.new_links if options.new_links is not None else source.links,
@@ -47,6 +47,3 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
 
     def _get_resource_name(self, resource: Run) -> str:
         return resource.name
-
-    def _get_resource_rid(self, resource: Run) -> str:
-        return resource.rid

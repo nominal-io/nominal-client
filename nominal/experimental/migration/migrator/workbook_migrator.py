@@ -62,6 +62,3 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
 
     def _get_resource_name(self, resource: Workbook) -> str:
         return resource.title
-
-    def _get_resource_rid(self, resource: Workbook) -> str:
-        return resource.rid

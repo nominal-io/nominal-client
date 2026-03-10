@@ -45,7 +45,9 @@ class MigrationRunner:
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
         self.destination_client = destination_client
-        self.migration_state_path = Path(migration_state_path) if migration_state_path else Path("migration_state.json")
+        self.migration_state_path = (
+            Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
+        )
 
         self.migration_state = MigrationState(rid_mapping={})
 
@@ -58,9 +60,6 @@ class MigrationRunner:
         destination_client (NominalClient): client of the tenant/workspace to copy resources to.
         migration_resources (MigrationResources): resources to copy.
         dataset_config (MigrationDataConfig | None): Configuration for dataset migration.
-
-        Returns:
-        All of the created resources.
         """
         try:
             log_extras = {
@@ -68,10 +67,6 @@ class MigrationRunner:
                     self.destination_client._clients.workspace_rid
                 ).rid,
             }
-
-            new_assets = []
-            new_templates = []
-            new_workbooks = []
 
             new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
             old_to_new_dataset_rid_mapping: dict[str, str] = {}
@@ -94,12 +89,10 @@ class MigrationRunner:
                         include_checklists=True,
                     ),
                 )
-                new_assets.append(new_asset)
                 new_data_scopes_and_datasets.extend(new_asset.list_datasets())
 
                 for source_workbook_template in asset_resources.source_workbook_templates:
                     new_template = template_migrator.clone(source_workbook_template)
-                    new_templates.append(new_template)
                     new_workbook = new_template.create_workbook(
                         title=new_template.title, description=new_template.description, asset=new_asset
                     )
@@ -111,11 +104,9 @@ class MigrationRunner:
                         new_template.rid,
                         extra=log_extras,
                     )
-                    new_workbooks.append(new_workbook)
 
             for source_template in self.migration_resources.source_standalone_templates:
                 new_template = template_migrator.clone(source_template)
-                new_templates.append(new_template)
         finally:
             self.save_state()
         logger.info("Completed migration")

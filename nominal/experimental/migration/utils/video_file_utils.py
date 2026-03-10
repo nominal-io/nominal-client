@@ -13,14 +13,6 @@ from nominal.core.video_file import VideoFile
 logger = logging.getLogger(__name__)
 
 
-def clone_video_file_to_video_dataset(
-    source_video_file: VideoFile,
-    destination_video_dataset: Video,
-) -> VideoFile | None:
-    """Clone a video file into a destination video dataset."""
-    return copy_video_file_to_video_dataset(source_video_file, destination_video_dataset)
-
-
 def copy_video_file_to_video_dataset(
     source_video_file: VideoFile,
     destination_video_dataset: Video,
