@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import logging
 import uuid
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
@@ -33,7 +33,7 @@ from typing_extensions import Self, deprecated
 from nominal import ts
 from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.config import NominalConfig, _config
-from nominal.core._clientsbunch import ON_BEHALF_OF_USER_RID_HEADER, ClientsBunch
+from nominal.core._clientsbunch import ClientsBunch
 from nominal.core._constants import DEFAULT_API_BASE_URL
 from nominal.core._event_types import EventType
 from nominal.core._types import PathLike
@@ -124,7 +124,6 @@ WorkspaceSearchT = WorkspaceSearchType | Workspace | str
 class NominalClient:
     _clients: ClientsBunch = field(repr=False)
     _profile: str | None = None
-    _acting_user_rid: str | None = None
 
     @classmethod
     def from_profile(
@@ -221,18 +220,8 @@ class NominalClient:
         out = "<NominalClient"
         if self._profile:
             out += f' profile="{self._profile}"'
-        if self._acting_user_rid:
-            out += f' acting_user_rid="{self._acting_user_rid}"'
         out += ">"
         return out
-
-    def as_user(self, user_rid: str) -> Self:
-        """Return a derived client that creates datasets on behalf of the given user.
-
-        This currently applies only to dataset creation.
-        """
-        clients = self._clients.with_catalog_request_headers({ON_BEHALF_OF_USER_RID_HEADER: user_rid})
-        return replace(self, _clients=clients, _acting_user_rid=user_rid)
 
     def _workspace_rid_for_search(self, workspace: WorkspaceSearchT) -> str | None:
         """Provide the correct workspace rid to use when searching (potentially using a provided workspace)
