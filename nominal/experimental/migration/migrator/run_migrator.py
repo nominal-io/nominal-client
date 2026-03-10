@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Mapping, Sequence
@@ -10,9 +9,8 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.run import Run
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
+from nominal.experimental.migration.resource_type import ResourceType
 from nominal.ts import IntegralNanosecondsUTC
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,24 +26,14 @@ class RunCopyOptions(ResourceCopyOptions):
     new_assets: Sequence[Asset | str] = ()
 
 
-class RunMigrator(Migrator[Run, Run, RunCopyOptions]):
-    def clone(self, source: Run) -> Run:
-        return self.copy_from(source, RunCopyOptions())
+class RunMigrator(Migrator[Run, RunCopyOptions]):
+    resource_type = ResourceType.RUN
 
-    def copy_from(self, source: Run, options: RunCopyOptions) -> Run:
-        log_extras = {
-            "destination_client_workspace": self.ctx.destination_client.get_workspace(
-                self.ctx.destination_client._clients.workspace_rid
-            ).rid
-        }
-        logger.debug(
-            "Copying run %s (rid: %s)",
-            source.name,
-            source.rid,
-            extra=log_extras,
-        )
+    def default_copy_options(self) -> RunCopyOptions:
+        return RunCopyOptions()
 
-        result = self.ctx.destination_client.create_run(
+    def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
+        return self.ctx.destination_client.create_run(
             name=options.new_name or source.name,
             start=options.new_start or source.start,
             end=options.new_end or source.end,
@@ -56,6 +44,9 @@ class RunMigrator(Migrator[Run, Run, RunCopyOptions]):
             links=options.new_links or source.links,
             attachments=options.new_attachments or source.list_attachments(),
         )
-        logger.debug("New run created: %s (rid: %s)", result.name, result.rid, extra=log_extras)
-        self.record_mapping("RUN", source.rid, result.rid)
-        return result
+
+    def _get_resource_name(self, resource: Run) -> str:
+        return resource.name
+
+    def _get_resource_rid(self, resource: Run) -> str:
+        return resource.rid

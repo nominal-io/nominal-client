@@ -8,6 +8,7 @@ from nominal.core.dataset import Dataset
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
+from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.file_utils import copy_file_to_dataset
 
 logger = logging.getLogger(__name__)
@@ -23,24 +24,18 @@ class DatasetCopyOptions(ResourceCopyOptions):
     preserve_uuid: bool = False
 
 
-class DatasetMigrator(Migrator[Dataset, Dataset, DatasetCopyOptions]):
-    def clone(self, source: Dataset) -> Dataset:
-        return self.copy_from(source, DatasetCopyOptions(include_files=True))
+class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
+    resource_type = ResourceType.DATASET
 
-    def copy_from(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
-        """Copy a dataset from the source to the destination client."""
+    def default_copy_options(self) -> DatasetCopyOptions:
+        return DatasetCopyOptions(include_files=True)
+
+    def _copy_from_impl(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
         log_extras = {
             "destination_client_workspace": self.ctx.destination_client.get_workspace(
                 self.ctx.destination_client._clients.workspace_rid
             ).rid
         }
-        logger.debug(
-            "Copying dataset %s (rid: %s)",
-            source.name,
-            source.rid,
-            extra=log_extras,
-        )
-
         dataset_name = options.new_dataset_name if options.new_dataset_name is not None else source.name
         dataset_description = (
             options.new_dataset_description if options.new_dataset_description is not None else source.description
@@ -95,12 +90,10 @@ class DatasetMigrator(Migrator[Dataset, Dataset, DatasetCopyOptions]):
                 start=source.bounds.start,
                 end=source.bounds.end,
             )
-
-        logger.debug(
-            "New dataset created: %s (rid: %s)",
-            new_dataset.name,
-            new_dataset.rid,
-            extra=log_extras,
-        )
-        self.record_mapping("DATASET", source.rid, new_dataset.rid)
         return new_dataset
+
+    def _get_resource_name(self, resource: Dataset) -> str:
+        return resource.name
+
+    def _get_resource_rid(self, resource: Dataset) -> str:
+        return resource.rid

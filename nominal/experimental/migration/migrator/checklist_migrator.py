@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 
 from nominal_api import scout_checks_api
@@ -12,8 +11,7 @@ from nominal.experimental.checklist_utils.checklist_utils import (
     _to_unresolved_checklist_variables,
 )
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
-
-logger = logging.getLogger(__name__)
+from nominal.experimental.migration.resource_type import ResourceType
 
 
 @dataclass(frozen=True)
@@ -29,17 +27,18 @@ class ChecklistCopyOptions(ResourceCopyOptions):
     new_is_published: bool | None = None
 
 
-class ChecklistMigrator(Migrator[Checklist, Checklist, ChecklistCopyOptions]):
+class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
+    resource_type = ResourceType.CHECKLIST
+
     def clone(self, source: Checklist) -> Checklist:
         raise NotImplementedError("Checklist does not support clone(); use copy_from().")
 
-    def copy_from(self, source: Checklist, options: ChecklistCopyOptions) -> Checklist:
-        log_extras = {"destination_client_workspace": self.ctx.destination_client._clients.workspace_rid}
-        logger.debug("Copying checklist: %s", source.name, extra=log_extras)
+    def default_copy_options(self) -> ChecklistCopyOptions:
+        return ChecklistCopyOptions()
 
+    def _copy_from_impl(self, source: Checklist, options: ChecklistCopyOptions) -> Checklist:
         api_source_checklist = source._get_latest_api()
-
-        new_checklist = _create_checklist_with_content(
+        return _create_checklist_with_content(
             client=self.ctx.destination_client,
             commit_message=options.new_commit_message or api_source_checklist.commit.message,
             title=options.new_title or source.name,
@@ -55,11 +54,8 @@ class ChecklistMigrator(Migrator[Checklist, Checklist, ChecklistCopyOptions]):
             workspace=self.ctx.destination_client.get_workspace(self.ctx.destination_client._clients.workspace_rid).rid,
         )
 
-        logger.debug(
-            "New checklist created %s: (rid: %s)",
-            new_checklist.name,
-            new_checklist.rid,
-        )
+    def _get_resource_name(self, resource: Checklist) -> str:
+        return resource.name
 
-        self.record_mapping("CHECKLIST", source.rid, new_checklist.rid)
-        return new_checklist
+    def _get_resource_rid(self, resource: Checklist) -> str:
+        return resource.rid

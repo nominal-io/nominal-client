@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from dataclasses import dataclass
 from typing import Mapping, Sequence
@@ -9,9 +8,8 @@ from nominal_api import scout_layout_api, scout_workbookcommon_api
 
 from nominal.core.workbook_template import WorkbookTemplate, _create_workbook_template_with_content_and_layout
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
+from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.conjure_clone_utils import clone_conjure_objects_with_new_uuids
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -23,22 +21,15 @@ class WorkbookTemplateCopyOptions(ResourceCopyOptions):
     include_content_and_layout: bool = False
 
 
-class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplate, WorkbookTemplateCopyOptions]):
-    def clone(self, source: WorkbookTemplate) -> WorkbookTemplate:
-        return self.copy_from(source, WorkbookTemplateCopyOptions(include_content_and_layout=True))
+class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOptions]):
+    resource_type = ResourceType.WORKBOOK_TEMPLATE
 
-    def copy_from(self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions) -> WorkbookTemplate:
-        log_extras = {
-            "destination_client_workspace": self.ctx.destination_client.get_workspace(
-                self.ctx.destination_client._clients.workspace_rid
-            ).rid
-        }
-        logger.debug(
-            "Cloning workbook template: %s (rid: %s)",
-            source.title,
-            source.rid,
-            extra=log_extras,
-        )
+    def default_copy_options(self) -> WorkbookTemplateCopyOptions:
+        return WorkbookTemplateCopyOptions(include_content_and_layout=True)
+
+    def _copy_from_impl(
+        self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions
+    ) -> WorkbookTemplate:
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
 
         if options.include_content_and_layout:
@@ -75,12 +66,10 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplate, Work
                 self.ctx.destination_client._clients.workspace_rid
             ).rid,
         )
-        logger.debug(
-            "New workbook template created %s from %s (rid: %s)",
-            new_workbook_template.title,
-            source.title,
-            source.rid,
-            extra=log_extras,
-        )
-        self.record_mapping("WORKBOOK_TEMPLATE", source.rid, new_workbook_template.rid)
         return new_workbook_template
+
+    def _get_resource_name(self, resource: WorkbookTemplate) -> str:
+        return resource.title
+
+    def _get_resource_rid(self, resource: WorkbookTemplate) -> str:
+        return resource.rid

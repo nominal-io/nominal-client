@@ -14,7 +14,8 @@ from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.event_migrator import EventCopyOptions, EventMigrator
 from nominal.experimental.migration.migrator.run_migrator import RunCopyOptions, RunMigrator
-from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
+from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions, WorkbookMigrator
+from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.video_file_utils import copy_video_file_to_video_dataset
 
 logger = logging.getLogger(__name__)
@@ -34,33 +35,20 @@ class AssetCopyOptions(ResourceCopyOptions):
     include_checklists: bool = False
 
 
-class AssetMigrator(Migrator[Asset, Asset, AssetCopyOptions]):
-    def clone(self, source: Asset) -> Asset:
-        return self.copy_from(
-            source,
-            AssetCopyOptions(
-                dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=True, include_dataset_files=True),
-                include_events=True,
-                include_runs=True,
-                include_video=True,
-            ),
+class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
+    resource_type = ResourceType.ASSET
+
+    def default_copy_options(self) -> AssetCopyOptions:
+        return AssetCopyOptions(
+            dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=True, include_dataset_files=True),
+            include_events=True,
+            include_runs=True,
+            include_video=True,
         )
 
-    def copy_from(self, source: Asset, options: AssetCopyOptions) -> Asset:
+    def _copy_from_impl(self, source: Asset, options: AssetCopyOptions) -> Asset:
         if options.include_checklists and not options.include_runs:
             raise ValueError("include_checklists set to True requires include_runs to be set to True.")
-
-        log_extras = {
-            "destination_client_workspace": self.ctx.destination_client.get_workspace(
-                self.ctx.destination_client._clients.workspace_rid
-            ).rid
-        }
-        logger.debug(
-            "Copying asset %s (rid: %s)",
-            source.name,
-            source.rid,
-            extra=log_extras,
-        )
         new_asset = self.ctx.destination_client.create_asset(
             name=options.new_asset_name if options.new_asset_name is not None else source.name,
             description=options.new_asset_description
@@ -98,22 +86,29 @@ class AssetMigrator(Migrator[Asset, Asset, AssetCopyOptions]):
         run_mapping: Dict[str, str] = {}
 
         if options.include_events:
+            logging.info("Copying events for asset %s (rid: %s)", source.name, source.rid)
             self._copy_asset_events(source, new_asset)
 
         if options.include_runs:
+            logging.info("Copying runs for asset %s (rid: %s)", source.name, source.rid)
             run_mapping = self._copy_asset_runs(source, new_asset)
 
         if options.include_checklists:
+            logging.info("Copying checklists for asset %s (rid: %s)", source.name, source.rid)
             self._copy_asset_checklists(source, run_mapping)
 
         if options.include_video:
+            logging.info("Copying videos for asset %s (rid: %s)", source.name, source.rid)
             self._copy_asset_videos(source, new_asset)
 
         self._copy_asset_and_run_workbooks(source, new_asset, run_mapping)
-
-        logger.debug("New asset created: %s (rid: %s)", new_asset, new_asset.rid, extra=log_extras)
-        self.record_mapping("ASSET", source.rid, new_asset.rid)
         return new_asset
+
+    def _get_resource_name(self, resource: Asset) -> str:
+        return resource.name
+
+    def _get_resource_rid(self, resource: Asset) -> str:
+        return resource.rid
 
     def _copy_asset_events(self, source_asset: Asset, new_asset: Asset) -> None:
         event_migrator = EventMigrator(
@@ -182,4 +177,17 @@ class AssetMigrator(Migrator[Asset, Asset, AssetCopyOptions]):
                 migration_state=self.ctx.migration_state,
             )
         )
-        workbook_migrator.copy_asset_and_run_workbooks(source_asset, new_asset, run_mapping)
+        asset_workbooks = source_asset.search_workbooks(include_drafts=True)
+        for workbook in asset_workbooks:
+            if workbook.asset_rids and len(workbook.asset_rids) == 1:
+                workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_asset=new_asset))
+
+        if run_mapping:
+            for source_run in source_asset.list_runs():
+                if source_run.rid not in run_mapping:
+                    logger.warning("Run %s not found in run mapping", source_run.rid)
+                    continue
+                destination_run = self.ctx.destination_client.get_run(run_mapping[source_run.rid])
+                for workbook in source_run.search_workbooks(include_drafts=True):
+                    if workbook.run_rids and len(workbook.run_rids) == 1:
+                        workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_run=destination_run))
