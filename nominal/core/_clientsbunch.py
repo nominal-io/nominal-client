@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import copy
 import re
 import time
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, replace
+from typing import Any, Mapping, Protocol
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -34,6 +35,8 @@ from typing_extensions import Self
 
 from nominal.core._utils.networking import create_conjure_client_factory
 from nominal.ts import IntegralNanosecondsUTC
+
+ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
 
 
 @dataclass(frozen=True)
@@ -143,6 +146,10 @@ class ClientsBunch:
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
 
+    def with_catalog_request_headers(self, headers: Mapping[str, str]) -> Self:
+        catalog = _clone_service_with_default_headers(self.catalog, headers)
+        return replace(self, catalog=catalog)
+
     @classmethod
     def from_config(
         cls, cfg: ServiceConfiguration, base_url: str, agent: str, token: str, workspace_rid: str | None
@@ -211,3 +218,12 @@ def api_base_url_to_app_base_url(api_base_url: str, fallback: str = "") -> str:
     if match:
         return f"{match.group(1)}app{match.group(2)}"
     return fallback
+
+
+def _clone_service_with_default_headers(service: Any, headers: Mapping[str, str]) -> Any:
+    cloned_service = copy.copy(service)
+    cloned_session = copy.copy(service._requests_session)
+    cloned_session.headers = copy.copy(service._requests_session.headers)
+    cloned_session.headers.update(headers)
+    cloned_service._requests_session = cloned_session
+    return cloned_service
