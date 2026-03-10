@@ -14,9 +14,9 @@ from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.event_migrator import EventCopyOptions, EventMigrator
 from nominal.experimental.migration.migrator.run_migrator import RunCopyOptions, RunMigrator
+from nominal.experimental.migration.migrator.video_migrator import VideoCopyOptions, VideoMigrator
 from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions, WorkbookMigrator
 from nominal.experimental.migration.resource_type import ResourceType
-from nominal.experimental.migration.utils.video_file_utils import copy_video_file_to_video_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -86,19 +86,19 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         run_mapping: Dict[str, str] = {}
 
         if options.include_events:
-            logging.info("Copying events for asset %s (rid: %s)", source.name, source.rid)
+            logger.info("Copying events for asset %s (rid: %s)", source.name, source.rid)
             self._copy_asset_events(source, new_asset)
 
         if options.include_runs:
-            logging.info("Copying runs for asset %s (rid: %s)", source.name, source.rid)
+            logger.info("Copying runs for asset %s (rid: %s)", source.name, source.rid)
             run_mapping = self._copy_asset_runs(source, new_asset)
 
         if options.include_checklists:
-            logging.info("Copying checklists for asset %s (rid: %s)", source.name, source.rid)
+            logger.info("Copying checklists for asset %s (rid: %s)", source.name, source.rid)
             self._copy_asset_checklists(source, run_mapping)
 
         if options.include_video:
-            logging.info("Copying videos for asset %s (rid: %s)", source.name, source.rid)
+            logger.info("Copying videos for asset %s (rid: %s)", source.name, source.rid)
             self._copy_asset_videos(source, new_asset)
 
         self._copy_asset_and_run_workbooks(source, new_asset, run_mapping)
@@ -154,16 +154,20 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             destination_checklist.execute(run_mapping[source_data_review.run_rid])
 
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
+        video_migrator = VideoMigrator(
+            MigrationContext(
+                destination_client=self.ctx.destination_client,
+                migration_state=self.ctx.migration_state,
+            )
+        )
         for data_scope, video_dataset in source_asset.list_videos():
-            new_video_dataset = self.ctx.destination_client.create_video(
-                name=video_dataset.name,
-                description=video_dataset.description,
-                properties=video_dataset.properties,
-                labels=video_dataset.labels,
+            new_video_dataset = video_migrator.copy_from(
+                video_dataset,
+                VideoCopyOptions(
+                    include_files=True,
+                ),
             )
             new_asset.add_video(data_scope, new_video_dataset)
-            for source_video_file in video_dataset.list_files():
-                copy_video_file_to_video_dataset(source_video_file, new_video_dataset)
 
     def _copy_asset_and_run_workbooks(
         self,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 
 from dataclass_wizard import JSONWizard
@@ -11,7 +10,7 @@ from nominal.experimental.migration.resource_type import ResourceType
 @dataclass
 class MigrationState(JSONWizard):
     # resource_type -> old_rid -> new_rid
-    rid_mapping: dict[str, dict[str, str]] = field(default_factory=defaultdict)
+    rid_mapping: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         self.rid_mapping.setdefault(resource_type.value, {})[old_rid] = new_rid
