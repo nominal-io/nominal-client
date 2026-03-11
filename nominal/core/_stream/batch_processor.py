@@ -1,7 +1,15 @@
+"""Legacy JSON batch processor.
+
+.. deprecated::
+    The JSON serialization path is deprecated. Use ``data_format='rust'`` (default)
+    or ``data_format='protobuf'`` instead when calling ``get_write_stream()``.
+"""
+
 from __future__ import annotations
 
 import itertools
 import json
+import warnings
 from typing import Any, Sequence, cast
 
 from nominal_api import storage_writer_api
@@ -94,7 +102,11 @@ def process_batch_legacy(
     auth_header: str,
     storage_writer: storage_writer_api.NominalChannelWriterService,
 ) -> None:
-    """Process a batch of data items (scalars or arrays) using the legacy JSON API."""
+    """Process a batch of data items (scalars or arrays) using the legacy JSON API.
+
+    .. deprecated::
+        Use ``data_format='rust'`` or ``data_format='protobuf'`` instead.
+    """
     api_batched = itertools.groupby(sorted(batch, key=BatchItem.sort_key), key=BatchItem.sort_key)
 
     api_batches = [list(api_batch) for _, api_batch in api_batched]

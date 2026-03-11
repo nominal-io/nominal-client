@@ -70,7 +70,7 @@ class StreamingConnection(Connection):
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["rust_experimental"] | None = None,
+        data_format: Literal["rust", "rust_experimental"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
@@ -79,34 +79,42 @@ class StreamingConnection(Connection):
         self,
         batch_size: int = 50_000,
         max_wait: timedelta = timedelta(seconds=1),
-        data_format: Literal["json", "protobuf", "experimental", "rust_experimental"] | None = None,
+        data_format: Literal["json", "protobuf", "experimental", "rust", "rust_experimental"] | None = None,
         file_fallback: PathLike | None = None,
         log_level: str | None = None,
         num_workers: int | None = None,
     ) -> DataStream:
         """Stream to write non-blocking messages to a datasource.
 
+        When ``data_format`` is ``None`` (the default), the Rust streaming backend
+        (``nominal_streaming``) is used if available, otherwise falls back to ``"protobuf"``.
+
         Args:
         ----
             batch_size: How big the batch can get before writing to Nominal.
             max_wait: How long a batch can exist before being flushed to Nominal.
             data_format: Serialized data format to use during upload.
-                NOTE: selecting 'protobuf' requires that `nominal` was installed with `protos` extras.
-            file_fallback: Filepath to write failed batches to during streaming
-                NOTE: expects a .avro filename
-                NOTE: only works with `data_format='rust_experimental'`
-            log_level: Log level to use in underlying rust streaming code.
-                NOTE: Should be a rust log level e.g. 'debug', 'trace', 'info', etc.
-                NOTE: only works with `data_format='rust_experimental'`
-            num_workers: Number of worker threads to use in underlying rust streaming code.
-                NOTE: use with care-- this may have large impacts on streaming performance.
-                NOTE: only works with `data_format='rust_experimental'`
+                - ``None`` (default): auto-selects 'rust' if available, else 'protobuf'.
+                - ``'rust'``: High-performance Rust streaming backend (recommended).
+                - ``'protobuf'``: Python protobuf serialization (requires ``nominal[protos]``).
+                - ``'json'``: Legacy JSON serialization (deprecated).
+                - ``'experimental'``: Deprecated.
+                - ``'rust_experimental'``: Deprecated alias for ``'rust'``.
+            file_fallback: Filepath to write failed batches to during streaming.
+                NOTE: expects a .avro filename.
+                NOTE: only works with ``data_format='rust'``.
+            log_level: Log level to use in underlying Rust streaming code.
+                NOTE: Should be a Rust log level e.g. 'debug', 'trace', 'info', etc.
+                NOTE: only works with ``data_format='rust'``.
+            num_workers: Number of worker threads to use in underlying Rust streaming code.
+                NOTE: use with care -- this may have large impacts on streaming performance.
+                NOTE: only works with ``data_format='rust'``.
 
         Returns:
         --------
             Write stream object configured to send data to nominal. This may be used as a context manager
             (so that resources are automatically released upon exiting the context), or if not used as a context
-            manager, should be explicitly `close()`-ed once no longer needed.
+            manager, should be explicitly ``close()``-ed once no longer needed.
         """
         return _get_write_stream(
             batch_size=batch_size,
