@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Iterable, Mapping, Protocol, Sequence
 
+from conjure_python_client import ConjureHTTPError
 from nominal_api import event
 from typing_extensions import Self
 
@@ -15,6 +16,7 @@ from nominal.core._event_types import SearchEventOriginType as SearchEventOrigin
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_events_paginated
 from nominal.core._utils.query_tools import _create_search_events_query
+from nominal.core.exceptions import NominalAPIError
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
@@ -149,7 +151,10 @@ def _create_event(
         labels=list(labels or []),
         type=type._to_api_event_type(),
     )
-    response = clients.event.create_event(clients.auth_header, request)
+    try:
+        response = clients.event.create_event(clients.auth_header, request)
+    except ConjureHTTPError as e:
+        raise NominalAPIError._from_conjure_error(e) from None
     return Event._from_conjure(clients, response)
 
 
