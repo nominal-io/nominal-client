@@ -272,7 +272,7 @@ class NominalClient:
         Raises:
             NominalConfigError: Raises a NominalConfigError if no workspace provided and there is no configured
                 default workspace for the user.
-            conjure_python_client.ConjureHTTPError: Requested workspace is unavailable to the user.
+            NominalAPIError: Requested workspace is unavailable to the user.
         """
         if workspace_rid is None:
             raw_workspace = self._clients.workspace.get_default_workspace(self._clients.auth_header)
@@ -599,7 +599,7 @@ class NominalClient:
 
         Raises:
             ValueError: both `asset` and `assets` provided
-            ConjureHTTPError: error making request
+            NominalAPIError: error making request
 
         """
         if asset and assets:
