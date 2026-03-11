@@ -89,7 +89,7 @@ from nominal.core.dataset import (
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
-from nominal.core.exceptions import NominalConfigError, NominalError, NominalMethodRemovedError
+from nominal.core.exceptions import NominalAPIError, NominalConfigError, NominalError, NominalMethodRemovedError
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.run import Run, _create_run
 from nominal.core.secret import Secret
@@ -976,7 +976,7 @@ class NominalClient:
         try:
             api_unit = self._clients.units.get_unit(self._clients.auth_header, unit_symbol)
             return None if api_unit is None else Unit._from_conjure(api_unit)
-        except conjure_python_client.ConjureHTTPError as ex:
+        except NominalAPIError as ex:
             logger.debug("Error getting unit '%s': '%s'", unit_symbol, ex)
             return None
 
