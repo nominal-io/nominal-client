@@ -148,7 +148,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
             layout=raw_template.layout,
             content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=raw_template.content),
             event_refs=[],
-            workspace=self._clients.workspace_rid,
+            workspace=self._clients.resolve_default_workspace_rid(),
         )
         raw_notebook = self._clients.notebook.create(self._clients.auth_header, request)
         return Workbook._from_conjure(self._clients, raw_notebook)

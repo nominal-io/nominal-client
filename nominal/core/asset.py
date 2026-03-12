@@ -305,7 +305,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
                 description=description,
                 properties=properties,
                 labels=labels,
-                workspace_rid=self._clients.workspace_rid,
+                workspace_rid=self._clients.resolve_default_workspace_rid(),
             )
             dataset = Dataset._from_conjure(self._clients, enriched_dataset)
 
@@ -335,7 +335,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
                 description=description,
                 properties=properties,
                 labels=labels,
-                workspace_rid=self._clients.workspace_rid,
+                workspace_rid=self._clients.resolve_default_workspace_rid(),
             )
             video = Video._from_conjure(self._clients, response)
             self.add_video(data_scope_name, video)

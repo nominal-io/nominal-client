@@ -169,8 +169,8 @@ class NominalClient:
         Args:
             token: Authentication token to use for the connection.
             base_url: The URL of the Nominal API platform.
-            workspace_rid: The workspace RID to use for all API calls that require it. If not provided, the default
-                workspace will be used (if one is configured for the tenant).
+            workspace_rid: Optional workspace RID to pin the client to for operations that require a single
+                workspace. If not provided, those operations lazily resolve a default workspace when required.
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
@@ -202,8 +202,8 @@ class NominalClient:
         trust_store_path: path to a trust store CA root file to initiate SSL connections. If not provided,
             certifi's trust store is used.
         connect_timeout: Timeout for any single request to the Nominal API.
-        workspace_rid: The workspace RID to use for all API calls that require it. If not provided, the default
-            workspace will be used (if one is configured for the tenant).
+        workspace_rid: Optional workspace RID to pin the client to for operations that require a single
+            workspace. If not provided, those operations resolve a default workspace client-side when needed.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -224,68 +224,53 @@ class NominalClient:
         return out
 
     def _workspace_rid_for_search(self, workspace: WorkspaceSearchT) -> str | None:
-        """Provide the correct workspace rid to use when searching (potentially using a provided workspace)
+        """Resolve a workspace argument for search-like methods.
 
         Args:
-            workspace: Workspace (or None) that user wants to search with
+            workspace: Workspace selector for the request.
 
         Returns:
-            If no workspace is provided, then return the default workspace (or none if none is configured).
-            If a workspace is provided, then return it if authenticated, otherwise, return None.
+            The workspace RID to send with the request, or None if `WorkspaceSearchType.ALL` was requested.
         """
-        search_rid = None
-        if isinstance(workspace, Workspace):
-            search_rid = workspace.rid
-        elif isinstance(workspace, str):
-            search_rid = workspace
-        elif workspace is WorkspaceSearchType.ALL:
-            return None
-        elif workspace is WorkspaceSearchType.DEFAULT:
-            search_rid = None
-        else:
-            raise ValueError(f"Unexpected workspace: {workspace}")
-
-        try:
-            # NOTE: raises a conjure exception if the given rid is not visible to the user (or doesn't exist period)
-            resolved_workspace = self.get_workspace(search_rid)
-            return resolved_workspace.rid
-        except NominalConfigError:
-            # re-raising with a more specific exception message
-            raise NominalConfigError(
-                "WorkspaceSearchType.DEFAULT provided for workspace rid, but no default configured. "
-                "Specify a workspace RID within your config profile (see `nom config profile --help`), "
-                "specify a workspace RID manually, or contact your Nominal representative to set a default "
-                "workspace for your tenant."
-            )
+        match workspace:
+            case Workspace(rid=search_rid):
+                return search_rid
+            case str() as search_rid:
+                # NOTE: raises a conjure exception if the given rid is not visible to the user (or doesn't exist period)
+                return self._clients.resolve_workspace(search_rid).rid
+            case WorkspaceSearchType.ALL:
+                return None
+            case WorkspaceSearchType.DEFAULT:
+                try:
+                    return self._clients.resolve_default_workspace_rid()
+                except NominalConfigError as exc:
+                    raise NominalConfigError(
+                        "WorkspaceSearchType.DEFAULT provided for workspace rid, but no default configured. "
+                        "Specify a workspace RID within your config profile (see `nom config profile --help`), "
+                        "specify a workspace RID manually, or contact your Nominal representative to set a default "
+                        "workspace for your tenant."
+                    ) from exc
+            case _:
+                raise ValueError(f"Unexpected workspace: {workspace}")
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
         """Get workspace via given RID, or the default workspace if no RID is provided.
 
         Args:
-            workspace_rid: If provided, the RID of the workspace to retrieve. If None, retrieves the
-                default workspace (deferring first to any workspace rid stored in the Nominal config, and attempting
-                to fall back to the tenant-wide default workspace).
+            workspace_rid: If provided, the RID of the workspace to retrieve and validate. If None, resolves the
+                client's default workspace by first using the configured `workspace_rid` (for example from
+                `config.yml`) and then falling back to a client-side default-workspace lookup.
 
         Returns:
             Returns details about the requested workspace.
 
         Raises:
-            NominalConfigError: Raises a NominalConfigError if no workspace provided and there is no configured
-                default workspace for the user.
+            NominalConfigError: Raises a NominalConfigError if no workspace provided and no default workspace can
+                be resolved.
             conjure_python_client.ConjureHTTPError: Requested workspace is unavailable to the user.
         """
-        if workspace_rid is None:
-            raw_workspace = self._clients.workspace.get_default_workspace(self._clients.auth_header)
-            if raw_workspace is None:
-                raise NominalConfigError(
-                    "Could not retrieve default workspace! "
-                    "Either the user is not authorized to access or there is no default workspace."
-                )
-
-            return Workspace._from_conjure(raw_workspace)
-        else:
-            raw_workspace = self._clients.workspace.get_workspace(self._clients.auth_header, workspace_rid)
-            return Workspace._from_conjure(raw_workspace)
+        raw_workspace = self._clients.resolve_workspace(workspace_rid)
+        return Workspace._from_conjure(raw_workspace)
 
     def list_workspaces(self) -> Sequence[Workspace]:
         """Return all workspaces visible to the current user"""
@@ -357,10 +342,11 @@ class NominalClient:
             workspace: Filters search to given workspace.
             archived: Filters results to either archived or unarchived datasets.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
         Returns:
             All datasets which match all of the provided conditions
@@ -433,7 +419,7 @@ class NominalClient:
             name=name,
             description=description or "",
             decrypted_value=decrypted_value,
-            workspace=self._clients.workspace_rid,
+            workspace=self._clients.resolve_default_workspace_rid(),
             labels=list(labels),
             properties={} if properties is None else dict(properties),
         )
@@ -465,10 +451,11 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
 
         Returns:
@@ -502,10 +489,11 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on a video to be included.
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
 
         Returns:
@@ -684,10 +672,11 @@ class NominalClient:
             created_before: Filter runs created before this timestamp (exclusive).
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
 
         Returns:
@@ -756,7 +745,7 @@ class NominalClient:
             description=description,
             labels=labels,
             properties=properties,
-            workspace_rid=self._clients.workspace_rid,
+            workspace_rid=self._clients.resolve_default_workspace_rid(),
         )
         dataset = Dataset._from_conjure(self._clients, response)
 
@@ -791,7 +780,7 @@ class NominalClient:
             description=description,
             labels=labels,
             properties=properties,
-            workspace_rid=self._clients.workspace_rid,
+            workspace_rid=self._clients.resolve_default_workspace_rid(),
         )
         return Video._from_conjure(self._clients, response)
 
@@ -865,10 +854,11 @@ class NominalClient:
             assignee: Assignee of checklists to search for
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
 
         Returns:
@@ -924,9 +914,10 @@ class NominalClient:
             raise TypeError(f"attachment {attachment} must be open in binary mode, rather than text mode")
 
         file_type = FileType(*file_type)
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_io(
             self._clients.auth_header,
-            self._clients.workspace_rid,
+            workspace_rid,
             attachment,
             name,
             file_type,
@@ -938,7 +929,7 @@ class NominalClient:
             properties={} if properties is None else dict(properties),
             s3_path=s3_path,
             title=name,
-            workspace=self._clients.workspace_rid,
+            workspace=workspace_rid,
         )
         response = self._clients.attachment.create(self._clients.auth_header, request)
         return Attachment._from_conjure(self._clients, response)
@@ -1054,12 +1045,13 @@ class NominalClient:
         *,
         required_tag_names: list[str] | None = None,
     ) -> StreamingConnection:
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         datasource_response = self._clients.storage.create(
             self._clients.auth_header,
             storage_datasource_api.CreateNominalDataSourceRequest(
                 id=datasource_id,
                 description=datasource_description,
-                workspace=self._clients.workspace_rid,
+                workspace=workspace_rid,
             ),
         )
         connection_response = self._clients.connection.create_connection(
@@ -1083,7 +1075,7 @@ class NominalClient:
                 required_tag_names=required_tag_names or [],
                 available_tag_values={},
                 should_scrape=True,
-                workspace=self._clients.workspace_rid,
+                workspace=workspace_rid,
                 marking_rids=[],
             ),
         )
@@ -1109,7 +1101,7 @@ class NominalClient:
             attachments=[],
             data_scopes=[],
             links=[],
-            workspace=self._clients.workspace_rid,
+            workspace=self._clients.resolve_default_workspace_rid(),
         )
         response = self._clients.assets.create_asset(self._clients.auth_header, request)
         return Asset._from_conjure(self._clients, response)
@@ -1138,7 +1130,7 @@ class NominalClient:
         Returns:
             The existing or newly created asset.
         """
-        assets = self.search_assets(properties=properties, workspace=self._clients.workspace_rid)
+        assets = self.search_assets(properties=properties, workspace=WorkspaceSearchType.DEFAULT)
 
         logger.info("Found %d assets searching by properties.", len(assets))
 
@@ -1176,10 +1168,11 @@ class NominalClient:
             exact_substring: case-insensitive search for exact string match in all string fields
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
 
         Returns:
@@ -1305,10 +1298,11 @@ class NominalClient:
             event_type: Search for events based on level
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
 
         Returns:
@@ -1349,9 +1343,7 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         description: str | None = None,
     ) -> ContainerizedExtractor:
-        workspace_rid = self._clients.workspace_rid
-        if workspace_rid is None:  # TODO: Remove this once workspace_rid is required on the client
-            workspace_rid = self.get_workspace().rid
+        workspace_rid = self._clients.resolve_default_workspace_rid()
 
         req = ingest_api.RegisterContainerizedExtractorRequest(
             image=docker_image._to_conjure(),
@@ -1388,10 +1380,11 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on an extractor te be included.
             workspace: Filters search to given workspace.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
 
         Returns:
@@ -1446,10 +1439,11 @@ class NominalClient:
             archived: Return workbooks that are either archived or not
             include_drafts: If true, include workbooks in draft state in results. Defaults to false.
 
-        NOTE: If WorkspaceSearchType.ALL is given for `workspace`(default), searches within all workspaces the user can
-            access. If WorkspaceSearchType.DEFAULT, searches within the default workspace if configured, or raises
-            a NominalConfigError if one is not configured. If a Workspace or a workspace rid is given, searches will
-            be constrained to that workspace if the user has access to the workspace.
+        NOTE: If WorkspaceSearchType.ALL is given for `workspace` (default), the workspace filter is omitted and the
+            search spans all workspaces the user can access. If WorkspaceSearchType.DEFAULT, the client prefers its
+            configured `workspace_rid` (for example from `config.yml`) and otherwise falls back to a client-side
+            default-workspace lookup; if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace
+            RID is given, that value is used directly.
 
 
         Returns:
@@ -1548,7 +1542,7 @@ class NominalClient:
         labels: list[str] | None = None,
         properties: dict[str, str] | None = None,
         commit_message: str | None = None,
-        workspace: Workspace | str | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> WorkbookTemplate:
         """Create an empty workbook template.
 
@@ -1558,11 +1552,19 @@ class NominalClient:
             labels: Labels to attach to the workbook template
             properties: Properties to attach to the workbook template
             commit_message: An optional message to include with the creation of the template
-            workspace: Workspace to create the workbook template in.
+            workspace: Workspace to create the workbook template in. Pass `WorkspaceSearchType.DEFAULT` (or None)
+                to resolve a single workspace by preferring the client's configured `workspace_rid` and then falling
+                back to a client-side default-workspace lookup.
 
         Returns:
             The created WorkbookTemplate
         """
+        if workspace is WorkspaceSearchType.ALL:
+            raise ValueError(
+                "Cannot create workbook template using WorkspaceSearchType.ALL! "
+                "Specify either WorkspaceSearchType.DEFAULT, or provide a specific workspace!"
+            )
+
         request = scout_template_api.CreateTemplateRequest(
             title=title,
             description=description if description is not None else "",
@@ -1583,7 +1585,7 @@ class NominalClient:
             ),
             content=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
             message=commit_message if commit_message is not None else "Initial blank workbook template",
-            workspace=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
+            workspace=self._workspace_rid_for_search(workspace or WorkspaceSearchType.DEFAULT),
         )
 
         template = self._clients.template.create(self._clients.auth_header, request)
