@@ -44,13 +44,18 @@ def test_api_app_url_conversion():
     assert c("https://unknown") == ""
 
 
-def test_resolve_default_workspace_rid_returns_configured_workspace_rid_without_service_lookup():
-    """Configured workspace_rid should short-circuit the default-workspace service lookup."""
-    clients = _make_clients_bunch(workspace_rid="ri.workspace.main.workspace.configured")
+def test_resolve_default_workspace_rid_returns_configured_workspace_rid_via_cached_workspace_lookup():
+    """Pinned clients should resolve and cache their configured workspace before returning its RID."""
+    configured_workspace_rid = "ri.workspace.main.workspace.configured"
+    clients = _make_clients_bunch(workspace_rid=configured_workspace_rid)
     workspace_service = cast(MagicMock, clients.workspace)
+    raw_workspace = _raw_workspace(configured_workspace_rid)
+    workspace_service.get_workspace.return_value = raw_workspace
 
-    assert clients.resolve_default_workspace_rid() == clients.workspace_rid
+    assert clients.resolve_default_workspace_rid() == configured_workspace_rid
+    assert clients.resolve_default_workspace_rid() == configured_workspace_rid
 
+    workspace_service.get_workspace.assert_called_once_with("Bearer token", configured_workspace_rid)
     workspace_service.get_default_workspace.assert_not_called()
 
 
@@ -77,14 +82,15 @@ def test_resolve_default_workspace_rid_raises_when_workspace_service_cannot_reso
         clients.resolve_default_workspace_rid()
 
 
-def test_resolve_workspace_none_returns_configured_workspace_via_get_workspace():
-    """Resolving the default workspace on a pinned client should fetch that workspace directly."""
+def test_resolve_workspace_none_returns_configured_workspace_via_get_workspace_once():
+    """Resolving the default workspace on a pinned client should fetch and cache that workspace object."""
     configured_workspace_rid = "ri.workspace.main.workspace.configured"
     clients = _make_clients_bunch(workspace_rid=configured_workspace_rid)
     workspace_service = cast(MagicMock, clients.workspace)
     raw_workspace = _raw_workspace(configured_workspace_rid)
     workspace_service.get_workspace.return_value = raw_workspace
 
+    assert clients.resolve_workspace() == raw_workspace
     assert clients.resolve_workspace() == raw_workspace
 
     workspace_service.get_workspace.assert_called_once_with("Bearer token", configured_workspace_rid)
@@ -131,3 +137,18 @@ def test_resolve_workspace_reuses_the_cached_default_workspace_object():
 
     workspace_service.get_default_workspace.assert_called_once_with("Bearer token")
     workspace_service.get_workspace.assert_not_called()
+
+
+def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object():
+    """Pinned clients should also reuse their cached default workspace for later explicit RID lookups."""
+    configured_workspace_rid = "ri.workspace.main.workspace.configured"
+    clients = _make_clients_bunch(workspace_rid=configured_workspace_rid)
+    workspace_service = cast(MagicMock, clients.workspace)
+    raw_workspace = _raw_workspace(configured_workspace_rid)
+    workspace_service.get_workspace.return_value = raw_workspace
+
+    assert clients.resolve_workspace() == raw_workspace
+    assert clients.resolve_workspace(configured_workspace_rid) == raw_workspace
+
+    workspace_service.get_workspace.assert_called_once_with("Bearer token", configured_workspace_rid)
+    workspace_service.get_default_workspace.assert_not_called()

@@ -153,33 +153,36 @@ class ClientsBunch:
     secrets: secrets_api.SecretService
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
-        """Fetch the tenant default workspace for the current user.
+        """Fetch the workspace object this client should treat as its default.
 
-        Returns:
-            The default workspace object returned by the workspace service.
-
-        Raises:
-            NominalConfigError: If the user has no resolvable default workspace.
+        Pinned clients resolve their configured workspace RID as the default. Unpinned clients fall back to the
+        tenant-wide default workspace endpoint.
         """
-        raw_workspace = self.workspace.get_default_workspace(self.auth_header)
-        if raw_workspace is None:
-            raise NominalConfigError(
-                "Could not retrieve default workspace! "
-                "Either the user is not authorized to access or there is no default workspace."
-            )
+        # User has explicitly configured a default workspace in the config profile -> retrieve that workspace
+        if self.workspace_rid is not None:
+            return self.workspace.get_workspace(self.auth_header, self.workspace_rid)
 
-        return raw_workspace
+        # User has not explicitly confiured a default workspace in the config profile -> get tenant-wide default
+        raw_workspace = self.workspace.get_default_workspace(self.auth_header)
+        if raw_workspace is not None:
+            return raw_workspace
+
+        raise NominalConfigError(
+            "Could not retrieve default workspace! "
+            "Either the user is not authorized to access or there is no default workspace."
+        )
 
     def resolve_default_workspace_rid(self) -> str:
         """Resolve the default workspace RID for this client bundle.
 
-        Resolution order:
-        1. Return the explicitly configured `workspace_rid`, if one exists.
-        2. Otherwise lazily fetch and cache the tenant default workspace, then return its RID.
+        Resolution flow:
+        1. Lazily resolve and cache the workspace object this client treats as its default.
+        2. Return the resolved workspace RID.
 
         Note:
-            On unpinned clients, this caches the full default workspace object so later calls to
-            `resolve_workspace()` can reuse it without another workspace-service request.
+            Pinned clients validate the configured `workspace_rid` by fetching that workspace on first use. Unpinned
+            clients resolve through the tenant default workspace endpoint. In both cases, the cached workspace object
+            is reused by later calls to `resolve_workspace()`.
 
         Returns:
             The resolved default workspace RID.
@@ -187,13 +190,10 @@ class ClientsBunch:
         Raises:
             NominalConfigError: If no default workspace can be resolved.
         """
-        if self.workspace_rid is not None:
-            return self.workspace_rid
-
         return self._default_workspace.get_or_init(self._fetch_default_workspace).rid
 
     def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace:
-        """Resolve a workspace selector to a workspace object.
+        """Resolve an optionally provided workspace rid to the correct RID to use in requests.
 
         Args:
             workspace_rid: The workspace RID to fetch and validate. If None, resolves the client's default
@@ -212,16 +212,18 @@ class ClientsBunch:
             conjure_python_client.ConjureHTTPError: If an explicit workspace RID is unavailable to the user.
         """
         if workspace_rid is None:
-            if self.workspace_rid is not None:
-                return self.workspace.get_workspace(self.auth_header, self.workspace_rid)
-
+            # `_default_workspace` caches the single workspace object this client resolves as "default", whether that
+            # came from a configured workspace RID or the tenant default endpoint.
             return self._default_workspace.get_or_init(self._fetch_default_workspace)
 
+        # If the default workspace has been initialized, and we are explicitly fetching that workspace,
+        # short-circuit and return the cached workspace object
         if self._default_workspace.is_initialized():
             raw_workspace = self._default_workspace.get()
             if raw_workspace.rid == workspace_rid:
                 return raw_workspace
 
+        # Retrieve the workspace by rid
         return self.workspace.get_workspace(self.auth_header, workspace_rid)
 
     @classmethod
