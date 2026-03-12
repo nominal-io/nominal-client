@@ -49,35 +49,42 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             include_video=True,
         )
 
-    def _copy_from_impl(self, source: Asset, options: AssetCopyOptions) -> Asset:
+    def _copy_from_impl(self, source_asset: Asset, options: AssetCopyOptions) -> Asset:
         if options.include_checklists and not options.include_runs:
             raise ValueError("include_checklists set to True requires include_runs to be set to True.")
         new_asset = self.ctx.destination_client.create_asset(
-            name=options.new_asset_name if options.new_asset_name is not None else source.name,
+            name=options.new_asset_name if options.new_asset_name is not None else source_asset.name,
             description=options.new_asset_description
             if options.new_asset_description is not None
-            else source.description,
-            properties=options.new_asset_properties if options.new_asset_properties is not None else source.properties,
-            labels=options.new_asset_labels if options.new_asset_labels is not None else source.labels,
+            else source_asset.description,
+            properties=options.new_asset_properties
+            if options.new_asset_properties is not None
+            else source_asset.properties,
+            labels=options.new_asset_labels if options.new_asset_labels is not None else source_asset.labels,
         )
 
-        self._copy_asset_datasets(source, new_asset, options)
+        if options.dataset_config is not None:
+            self._copy_asset_datasets(source_asset, new_asset, options)
+
+        run_mapping: Dict[str, str] = {}
 
         if options.include_events:
-            logger.info("Copying events for asset %s (rid: %s)", source.name, source.rid)
-            self._copy_asset_events(source, new_asset)
+            logger.info("Copying events for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            self._copy_asset_events(source_asset, new_asset)
 
-        run_mapping = self._copy_optional_runs(source, new_asset, options)
+        if options.include_runs:
+            logger.info("Copying runs for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            run_mapping = self._copy_asset_runs(source_asset, new_asset)
 
         if options.include_checklists:
-            logger.info("Copying checklists for asset %s (rid: %s)", source.name, source.rid)
-            self._copy_asset_checklists(source, run_mapping)
+            logger.info("Copying checklists for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            self._copy_asset_checklists(source_asset, run_mapping)
 
         if options.include_video:
-            logger.info("Copying videos for asset %s (rid: %s)", source.name, source.rid)
-            self._copy_asset_videos(source, new_asset)
+            logger.info("Copying videos for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            self._copy_asset_videos(source_asset, new_asset)
 
-        self._copy_asset_and_run_workbooks(source, new_asset, run_mapping)
+        self._copy_asset_and_run_workbooks(source_asset, new_asset, run_mapping)
         return new_asset
 
     def _get_resource_name(self, resource: Asset) -> str:
@@ -120,6 +127,47 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 preserve_uuid=dataset_config.preserve_dataset_uuid,
             ),
         )
+
+    def _copy_asset_datasets(self, source_asset: Asset, new_asset: Asset, options: AssetCopyOptions) -> None:
+        if options.dataset_config is None:
+            return
+
+        dataset_migrator = DatasetMigrator(
+            MigrationContext(
+                destination_client=self.ctx.destination_client,
+                migration_state=self.ctx.migration_state,
+            )
+        )
+
+        dataset_mapping = options.old_to_new_dataset_rid_mapping
+
+        source_data_scopes = source_asset._list_dataset_scopes()
+        source_datasets = {data_scope[1].rid: data_scope[1] for data_scope in source_asset.list_datasets()}
+
+        for source_data_scope in source_data_scopes:
+            source_data_scope_name = source_data_scope.data_scope_name
+            source_dataset_rid = source_data_scope.data_source.dataset
+            if source_dataset_rid is None or source_dataset_rid not in source_datasets:
+                raise ValueError(
+                    f"Data scope {source_data_scope_name} on asset {source_asset.rid} does not have a dataset"
+                )
+
+            source_dataset = source_datasets[source_dataset_rid]
+            source_series_tags = source_data_scope.series_tags
+            if source_dataset_rid in dataset_mapping:
+                new_dataset_rid = dataset_mapping[source_dataset_rid]
+                new_dataset = self.ctx.destination_client.get_dataset(new_dataset_rid)
+            else:
+                new_dataset = dataset_migrator.copy_from(
+                    source_dataset,
+                    DatasetCopyOptions(
+                        include_files=options.dataset_config.include_dataset_files,
+                        preserve_uuid=options.dataset_config.preserve_dataset_uuid,
+                    ),
+                )
+
+            dataset_mapping[source_dataset.rid] = new_dataset.rid
+            new_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
 
     def _copy_asset_events(self, source_asset: Asset, new_asset: Asset) -> None:
         event_migrator = EventMigrator(
