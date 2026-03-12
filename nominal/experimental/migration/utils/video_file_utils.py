@@ -6,6 +6,7 @@ from typing import BinaryIO, cast
 
 import requests
 
+from nominal.core._video_types import McapVideoDetails, TimestampOptions
 from nominal.core.filetype import FileTypes
 from nominal.core.video import Video
 from nominal.core.video_file import VideoFile
@@ -28,11 +29,33 @@ def copy_video_file_to_video_dataset(
     response = requests.get(old_file_uri, stream=True)
     response.raise_for_status()
 
-    file_name = source_video_file.name
-    file_stem = Path(file_name).stem
+    new_file = _create_destination_video_file(
+        source_video_file,
+        destination_video_dataset,
+        cast(BinaryIO, response.raw),
+        mcap_video_details,
+        timestamp_options,
+    )
+    logger.debug(
+        "New video file created %s in video dataset: %s (rid: %s)",
+        new_file.name,
+        destination_video_dataset.name,
+        destination_video_dataset.rid,
+    )
+    return new_file
+
+
+def _create_destination_video_file(
+    source_video_file: VideoFile,
+    destination_video_dataset: Video,
+    raw_video_stream: BinaryIO,
+    mcap_video_details: McapVideoDetails | None,
+    timestamp_options: TimestampOptions | None,
+) -> VideoFile:
+    file_stem = _resolve_destination_file_stem(source_video_file.name)
     if timestamp_options is not None:
         new_file = destination_video_dataset.add_from_io(
-            video=cast(BinaryIO, response.raw),
+            video=raw_video_stream,
             name=file_stem,
             start=timestamp_options.starting_timestamp,
             description=source_video_file.description,
@@ -41,23 +64,24 @@ def copy_video_file_to_video_dataset(
             starting_timestamp=timestamp_options.starting_timestamp,
             ending_timestamp=timestamp_options.ending_timestamp,
         )
-    elif mcap_video_details is not None:
-        new_file = destination_video_dataset.add_mcap_from_io(
-            mcap=cast(BinaryIO, response.raw),
+        return new_file
+
+    if mcap_video_details is not None:
+        return destination_video_dataset.add_mcap_from_io(
+            mcap=raw_video_stream,
             name=file_stem,
             topic=mcap_video_details.mcap_channel_locator_topic,
             description=source_video_file.description,
             file_type=FileTypes.MCAP,
         )
-    else:
-        raise ValueError(
-            "Unsupported video file ingest options for copying video file. "
-            "Expected either _mcap_video_details or _timestamp_options to be set."
-        )
-    logger.debug(
-        "New video file created %s in video dataset: %s (rid: %s)",
-        new_file.name,
-        destination_video_dataset.name,
-        destination_video_dataset.rid,
+
+    raise ValueError(
+        "Unsupported video file ingest options for copying video file. "
+        "Expected either _mcap_video_details or _timestamp_options to be set."
     )
-    return new_file
+
+
+def _resolve_destination_file_stem(file_name: str) -> str:
+    file_stem = Path(file_name).stem
+    _, separator, suffix = file_stem.partition("Z_")
+    return suffix if separator else file_stem

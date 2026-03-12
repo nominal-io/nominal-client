@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from nominal.core.dataset import Dataset
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
@@ -25,7 +26,9 @@ class DatasetCopyOptions(ResourceCopyOptions):
 
 
 class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
-    resource_type = ResourceType.DATASET
+    @property
+    def resource_type(self) -> ResourceType:
+        return ResourceType.DATASET
 
     def default_copy_options(self) -> DatasetCopyOptions:
         return DatasetCopyOptions(include_files=True)
@@ -45,26 +48,14 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         )
         dataset_labels = options.new_dataset_labels if options.new_dataset_labels is not None else source.labels
 
-        if options.preserve_uuid:
-            match = UUID_PATTERN.search(source.rid)
-            if not match:
-                raise ValueError(f"Could not extract UUID from dataset rid: {source.rid}")
-            source_uuid = match.group(2)
-            new_dataset = create_dataset_with_uuid(
-                client=self.ctx.destination_client,
-                dataset_uuid=source_uuid,
-                name=dataset_name,
-                description=dataset_description,
-                labels=dataset_labels,
-                properties=dataset_properties,
-            )
-        else:
-            new_dataset = self.ctx.destination_client.create_dataset(
-                name=dataset_name,
-                description=dataset_description,
-                properties=dataset_properties,
-                labels=dataset_labels,
-            )
+        new_dataset = self._create_destination_dataset(
+            source,
+            options,
+            dataset_name,
+            dataset_description,
+            dataset_properties,
+            dataset_labels,
+        )
 
         if options.preserve_uuid:
             channels_copied_count = 0
@@ -91,6 +82,36 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                 end=source.bounds.end,
             )
         return new_dataset
+
+    def _create_destination_dataset(
+        self,
+        source: Dataset,
+        options: DatasetCopyOptions,
+        dataset_name: str,
+        dataset_description: str | None,
+        dataset_properties: Mapping[str, str] | dict[str, Any],
+        dataset_labels: Sequence[str],
+    ) -> Dataset:
+        if options.preserve_uuid:
+            match = UUID_PATTERN.search(source.rid)
+            if not match:
+                raise ValueError(f"Could not extract UUID from dataset rid: {source.rid}")
+            source_uuid = match.group(2)
+            return create_dataset_with_uuid(
+                client=self.ctx.destination_client,
+                dataset_uuid=source_uuid,
+                name=dataset_name,
+                description=dataset_description,
+                labels=dataset_labels,
+                properties=dataset_properties,
+            )
+
+        return self.ctx.destination_client.create_dataset(
+            name=dataset_name,
+            description=dataset_description,
+            properties=dataset_properties,
+            labels=dataset_labels,
+        )
 
     def _get_resource_name(self, resource: Dataset) -> str:
         return resource.name

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
 from nominal.core import NominalClient
@@ -16,7 +15,6 @@ from nominal.experimental.migration.migrator.workbook_template_migrator import W
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class MigrationRunner:
     migration_state_path: Path
     migration_state: MigrationState

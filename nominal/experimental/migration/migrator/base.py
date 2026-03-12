@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import ClassVar, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from nominal.core._utils.api_tools import HasRid
 from nominal.experimental.migration.migrator.context import MigrationContext
@@ -25,7 +25,10 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
     operations should raise `NotImplementedError`.
     """
 
-    resource_type: ClassVar[ResourceType]
+    @property
+    @abstractmethod
+    def resource_type(self) -> ResourceType:
+        """The resource type handled by this migrator."""
 
     def __init__(self, ctx: MigrationContext) -> None:
         """Constructs a Migrator with the given MigrationContext.

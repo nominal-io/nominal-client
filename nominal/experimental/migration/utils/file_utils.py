@@ -32,7 +32,7 @@ def copy_file_to_dataset(
 
         file_name = source_api_file.handle.s3.key.split("/")[-1]
         file_type = FileType.from_path(file_name)
-        file_stem = Path(file_name).stem
+        file_stem = _resolve_destination_file_stem(file_name)
 
         new_file = destination_dataset.add_from_io(
             dataset=cast(BinaryIO, response.raw),
@@ -51,3 +51,9 @@ def copy_file_to_dataset(
         )
         return new_file
     raise ValueError("Unsupported file handle type or missing timestamp information.")
+
+
+def _resolve_destination_file_stem(file_name: str) -> str:
+    file_stem = Path(file_name).stem
+    _, separator, suffix = file_stem.partition("Z_")
+    return suffix if separator else file_stem

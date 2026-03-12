@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from nominal_api import scout_layout_api, scout_workbookcommon_api
+from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
 
 from nominal.core.workbook_template import WorkbookTemplate, _create_workbook_template_with_content_and_layout
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
@@ -22,34 +22,19 @@ class WorkbookTemplateCopyOptions(ResourceCopyOptions):
 
 
 class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOptions]):
-    resource_type = ResourceType.WORKBOOK_TEMPLATE
+    @property
+    def resource_type(self) -> ResourceType:
+        return ResourceType.WORKBOOK_TEMPLATE
 
     def default_copy_options(self) -> WorkbookTemplateCopyOptions:
         return WorkbookTemplateCopyOptions(include_content_and_layout=True)
 
     def _copy_from_impl(self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions) -> WorkbookTemplate:
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
-
-        if options.include_content_and_layout:
-            template_layout = raw_source_template.layout
-            template_content = raw_source_template.content
-            (new_template_layout, new_workbook_content) = clone_conjure_objects_with_new_uuids(
-                (template_layout, template_content)
-            )
-        else:
-            new_template_layout = scout_layout_api.WorkbookLayout(
-                v1=scout_layout_api.WorkbookLayoutV1(
-                    root_panel=scout_layout_api.Panel(
-                        tabbed=scout_layout_api.TabbedPanel(
-                            v1=scout_layout_api.TabbedPanelV1(
-                                id=str(uuid.uuid4()),
-                                tabs=[],
-                            )
-                        )
-                    )
-                )
-            )
-            new_workbook_content = scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={})
+        new_template_layout, new_workbook_content = self._resolve_template_content_and_layout(
+            raw_source_template,
+            options,
+        )
 
         new_workbook_template = _create_workbook_template_with_content_and_layout(
             clients=self.ctx.destination_client._clients,
@@ -73,6 +58,30 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
             ).rid,
         )
         return new_workbook_template
+
+    def _resolve_template_content_and_layout(
+        self,
+        raw_source_template: scout_template_api.Template,
+        options: WorkbookTemplateCopyOptions,
+    ) -> tuple[scout_layout_api.WorkbookLayout, scout_workbookcommon_api.WorkbookContent]:
+        if options.include_content_and_layout:
+            return clone_conjure_objects_with_new_uuids((raw_source_template.layout, raw_source_template.content))
+
+        return (
+            scout_layout_api.WorkbookLayout(
+                v1=scout_layout_api.WorkbookLayoutV1(
+                    root_panel=scout_layout_api.Panel(
+                        tabbed=scout_layout_api.TabbedPanel(
+                            v1=scout_layout_api.TabbedPanelV1(
+                                id=str(uuid.uuid4()),
+                                tabs=[],
+                            )
+                        )
+                    )
+                )
+            ),
+            scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
+        )
 
     def _get_resource_name(self, resource: WorkbookTemplate) -> str:
         return resource.title

@@ -25,7 +25,9 @@ class EventCopyOptions(ResourceCopyOptions):
 
 
 class EventMigrator(Migrator[Event, EventCopyOptions]):
-    resource_type = ResourceType.EVENT
+    @property
+    def resource_type(self) -> ResourceType:
+        return ResourceType.EVENT
 
     def default_copy_options(self) -> EventCopyOptions:
         return EventCopyOptions()

@@ -7,6 +7,7 @@ from typing import Any, Dict, Sequence
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
 from nominal.core.checklist import Checklist
+from nominal.core.dataset import Dataset
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
@@ -36,7 +37,9 @@ class AssetCopyOptions(ResourceCopyOptions):
 
 
 class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
-    resource_type = ResourceType.ASSET
+    @property
+    def resource_type(self) -> ResourceType:
+        return ResourceType.ASSET
 
     def default_copy_options(self) -> AssetCopyOptions:
         return AssetCopyOptions(
@@ -58,40 +61,13 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             labels=options.new_asset_labels if options.new_asset_labels is not None else source.labels,
         )
 
-        resolved_dataset_config = options.dataset_config
-        if resolved_dataset_config is not None:
-            dataset_migrator = DatasetMigrator(
-                MigrationContext(
-                    destination_client=self.ctx.destination_client,
-                    migration_state=self.ctx.migration_state,
-                )
-            )
-            source_datasets = source.list_datasets()
-            dataset_mapping = options.old_to_new_dataset_rid_mapping
-            for data_scope, source_dataset in source_datasets:
-                if source_dataset.rid in dataset_mapping:
-                    new_dataset_rid = dataset_mapping[source_dataset.rid]
-                    new_dataset = self.ctx.destination_client.get_dataset(new_dataset_rid)
-                else:
-                    new_dataset = dataset_migrator.copy_from(
-                        source_dataset,
-                        DatasetCopyOptions(
-                            include_files=resolved_dataset_config.include_dataset_files,
-                            preserve_uuid=resolved_dataset_config.preserve_dataset_uuid,
-                        ),
-                    )
-                dataset_mapping[source_dataset.rid] = new_dataset.rid
-                new_asset.add_dataset(data_scope, new_dataset)
-
-        run_mapping: Dict[str, str] = {}
+        self._copy_asset_datasets(source, new_asset, options)
 
         if options.include_events:
             logger.info("Copying events for asset %s (rid: %s)", source.name, source.rid)
             self._copy_asset_events(source, new_asset)
 
-        if options.include_runs:
-            logger.info("Copying runs for asset %s (rid: %s)", source.name, source.rid)
-            run_mapping = self._copy_asset_runs(source, new_asset)
+        run_mapping = self._copy_optional_runs(source, new_asset, options)
 
         if options.include_checklists:
             logger.info("Copying checklists for asset %s (rid: %s)", source.name, source.rid)
@@ -107,6 +83,44 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _get_resource_name(self, resource: Asset) -> str:
         return resource.name
 
+    def _copy_asset_datasets(self, source_asset: Asset, new_asset: Asset, options: AssetCopyOptions) -> None:
+        dataset_config = options.dataset_config
+        if dataset_config is None:
+            return
+
+        dataset_migrator = DatasetMigrator(
+            MigrationContext(
+                destination_client=self.ctx.destination_client,
+                migration_state=self.ctx.migration_state,
+            )
+        )
+        dataset_mapping = options.old_to_new_dataset_rid_mapping
+        for data_scope, source_dataset in source_asset.list_datasets():
+            new_dataset = self._resolve_destination_dataset(
+                source_dataset, dataset_config, dataset_mapping, dataset_migrator
+            )
+            dataset_mapping[source_dataset.rid] = new_dataset.rid
+            new_asset.add_dataset(data_scope, new_dataset)
+
+    def _resolve_destination_dataset(
+        self,
+        source_dataset: Dataset,
+        dataset_config: MigrationDatasetConfig,
+        dataset_mapping: dict[str, str],
+        dataset_migrator: DatasetMigrator,
+    ) -> Dataset:
+        if source_dataset.rid in dataset_mapping:
+            new_dataset_rid = dataset_mapping[source_dataset.rid]
+            return self.ctx.destination_client.get_dataset(new_dataset_rid)
+
+        return dataset_migrator.copy_from(
+            source_dataset,
+            DatasetCopyOptions(
+                include_files=dataset_config.include_dataset_files,
+                preserve_uuid=dataset_config.preserve_dataset_uuid,
+            ),
+        )
+
     def _copy_asset_events(self, source_asset: Asset, new_asset: Asset) -> None:
         event_migrator = EventMigrator(
             MigrationContext(
@@ -117,6 +131,13 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
         for source_event in source_events:
             event_migrator.copy_from(source_event, EventCopyOptions(new_assets=[new_asset]))
+
+    def _copy_optional_runs(self, source_asset: Asset, new_asset: Asset, options: AssetCopyOptions) -> Dict[str, str]:
+        if not options.include_runs:
+            return {}
+
+        logger.info("Copying runs for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+        return self._copy_asset_runs(source_asset, new_asset)
 
     def _copy_asset_runs(self, source_asset: Asset, new_asset: Asset) -> Dict[str, str]:
         run_mapping: Dict[str, str] = {}
@@ -143,12 +164,25 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         for source_data_review in source_asset.search_data_reviews():
             source_checklist = source_data_review.get_checklist()
             logger.debug("Found Data Review %s", source_checklist.rid)
-            if source_checklist.rid not in source_checklist_rid_to_destination_checklist_map:
-                destination_checklist = checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
-                source_checklist_rid_to_destination_checklist_map[source_checklist.rid] = destination_checklist
-            else:
-                destination_checklist = source_checklist_rid_to_destination_checklist_map[source_checklist.rid]
+            destination_checklist = self._resolve_destination_checklist(
+                source_checklist,
+                source_checklist_rid_to_destination_checklist_map,
+                checklist_migrator,
+            )
             destination_checklist.execute(run_mapping[source_data_review.run_rid])
+
+    def _resolve_destination_checklist(
+        self,
+        source_checklist: Checklist,
+        checklist_mapping: Dict[str, Checklist],
+        checklist_migrator: ChecklistMigrator,
+    ) -> Checklist:
+        if source_checklist.rid in checklist_mapping:
+            return checklist_mapping[source_checklist.rid]
+
+        destination_checklist = checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
+        checklist_mapping[source_checklist.rid] = destination_checklist
+        return destination_checklist
 
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
         video_migrator = VideoMigrator(

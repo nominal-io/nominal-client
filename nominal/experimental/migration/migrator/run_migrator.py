@@ -27,7 +27,9 @@ class RunCopyOptions(ResourceCopyOptions):
 
 
 class RunMigrator(Migrator[Run, RunCopyOptions]):
-    resource_type = ResourceType.RUN
+    @property
+    def resource_type(self) -> ResourceType:
+        return ResourceType.RUN
 
     def default_copy_options(self) -> RunCopyOptions:
         return RunCopyOptions()

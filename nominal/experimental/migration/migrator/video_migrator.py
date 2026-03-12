@@ -19,7 +19,9 @@ class VideoCopyOptions(ResourceCopyOptions):
 
 
 class VideoMigrator(Migrator[Video, VideoCopyOptions]):
-    resource_type = ResourceType.VIDEO
+    @property
+    def resource_type(self) -> ResourceType:
+        return ResourceType.VIDEO
 
     def default_copy_options(self) -> VideoCopyOptions:
         return VideoCopyOptions(include_files=True)

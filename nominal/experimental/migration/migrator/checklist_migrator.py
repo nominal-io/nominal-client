@@ -28,7 +28,9 @@ class ChecklistCopyOptions(ResourceCopyOptions):
 
 
 class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
-    resource_type = ResourceType.CHECKLIST
+    @property
+    def resource_type(self) -> ResourceType:
+        return ResourceType.CHECKLIST
 
     def clone(self, source: Checklist) -> Checklist:
         raise NotImplementedError("Checklist does not support clone(); use copy_from().")
@@ -38,27 +40,47 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
 
     def _copy_from_impl(self, source: Checklist, options: ChecklistCopyOptions) -> Checklist:
         api_source_checklist = source._get_latest_api()
+        commit_message = (
+            options.new_commit_message
+            if options.new_commit_message is not None
+            else api_source_checklist.commit.message
+        )
+        title = options.new_title if options.new_title is not None else source.name
+        description = options.new_description if options.new_description is not None else source.description
+        checks = (
+            options.new_checks
+            if options.new_checks is not None
+            else _to_create_checklist_entries(api_source_checklist.checks)
+        )
+        properties = (
+            options.new_properties if options.new_properties is not None else api_source_checklist.metadata.properties
+        )
+        labels = options.new_labels if options.new_labels is not None else api_source_checklist.metadata.labels
+        checklist_variables = (
+            options.new_checklist_variables
+            if options.new_checklist_variables is not None
+            else _to_unresolved_checklist_variables(api_source_checklist.checklist_variables)
+        )
+        is_published = (
+            options.new_is_published
+            if options.new_is_published is not None
+            else api_source_checklist.metadata.is_published
+        )
+        workspace_rid = self.ctx.destination_client.get_workspace(
+            self.ctx.destination_client._clients.workspace_rid
+        ).rid
+
         return _create_checklist_with_content(
             client=self.ctx.destination_client,
-            commit_message=options.new_commit_message
-            if options.new_commit_message is not None
-            else api_source_checklist.commit.message,
-            title=options.new_title if options.new_title is not None else source.name,
-            description=options.new_description if options.new_description is not None else source.description,
-            checks=options.new_checks
-            if options.new_checks is not None
-            else _to_create_checklist_entries(api_source_checklist.checks),
-            properties=options.new_properties
-            if options.new_properties is not None
-            else api_source_checklist.metadata.properties,
-            labels=options.new_labels if options.new_labels is not None else api_source_checklist.metadata.labels,
-            checklist_variables=options.new_checklist_variables
-            if options.new_checklist_variables is not None
-            else _to_unresolved_checklist_variables(api_source_checklist.checklist_variables),
-            is_published=options.new_is_published
-            if options.new_is_published is not None
-            else api_source_checklist.metadata.is_published,
-            workspace=self.ctx.destination_client.get_workspace(self.ctx.destination_client._clients.workspace_rid).rid,
+            commit_message=commit_message,
+            title=title,
+            description=description,
+            checks=checks,
+            properties=properties,
+            labels=labels,
+            checklist_variables=checklist_variables,
+            is_published=is_published,
+            workspace=workspace_rid,
         )
 
     def _get_resource_name(self, resource: Checklist) -> str:
