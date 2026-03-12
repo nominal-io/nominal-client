@@ -1542,7 +1542,7 @@ class NominalClient:
         labels: list[str] | None = None,
         properties: dict[str, str] | None = None,
         commit_message: str | None = None,
-        workspace: WorkspaceSearchT | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
     ) -> WorkbookTemplate:
         """Create an empty workbook template.
 
@@ -1554,11 +1554,17 @@ class NominalClient:
             commit_message: An optional message to include with the creation of the template
             workspace: Workspace to create the workbook template in. Pass `WorkspaceSearchType.DEFAULT` (or None)
                 to resolve a single workspace by preferring the client's configured `workspace_rid` and then falling
-                back to a client-side default-workspace lookup. Pass `WorkspaceSearchType.ALL` to send `None`.
+                back to a client-side default-workspace lookup.
 
         Returns:
             The created WorkbookTemplate
         """
+        if workspace is WorkspaceSearchType.ALL:
+            raise ValueError(
+                "Cannot create workbook template using WorkspaceSearchType.ALL! "
+                "Specify either WorkspaceSearchType.DEFAULT, or provide a specific workspace!"
+            )
+
         request = scout_template_api.CreateTemplateRequest(
             title=title,
             description=description if description is not None else "",
