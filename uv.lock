@@ -405,6 +405,18 @@ toml = [
 ]
 
 [[package]]
+name = "dataclass-wizard"
+version = "0.39.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/36/ea/6b2811092feecbe9d672e3641196ac5fcbec6664074da5dec8b9fd9b9059/dataclass_wizard-0.39.1.tar.gz", hash = "sha256:1679948ed7c62103f40b34df97d03b35e6b2ad50f58173fdbe30074e2e4730f2", size = 361190, upload-time = "2026-01-06T03:30:57.054Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/a0/a221942b3fbbafaea4e211744d298366b6a9712c1aa336b05fc1c865ac0c/dataclass_wizard-0.39.1-py3-none-any.whl", hash = "sha256:3324e59eca705882eb34e2b3989b2beadd8c2b523e6269d4002cf1a4a5bf703b", size = 215344, upload-time = "2026-01-06T03:30:54.915Z" },
+]
+
+[[package]]
 name = "debugpy"
 version = "1.8.17"
 source = { registry = "https://pypi.org/simple" }
@@ -1148,6 +1160,7 @@ dependencies = [
     { name = "cachetools" },
     { name = "click" },
     { name = "conjure-python-client" },
+    { name = "dataclass-wizard" },
     { name = "ffmpeg-python" },
     { name = "nominal-api" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
@@ -1201,6 +1214,7 @@ requires-dist = [
     { name = "cachetools", specifier = ">=6.1.0" },
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
+    { name = "dataclass-wizard", specifier = ">=0.39.1" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "nominal-api", specifier = "==0.1149.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1090.0" },
