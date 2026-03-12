@@ -169,6 +169,13 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 source_checklist_rid_to_destination_checklist_map,
                 checklist_migrator,
             )
+            if source_data_review.run_rid not in run_mapping:
+                logger.warning(
+                    "Run %s not found in run mapping for data review checklist %s — skipping",
+                    source_data_review.run_rid,
+                    source_checklist.rid,
+                )
+                continue
             destination_checklist.execute(run_mapping[source_data_review.run_rid])
 
     def _resolve_destination_checklist(
