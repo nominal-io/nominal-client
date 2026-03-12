@@ -90,25 +90,6 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _get_resource_name(self, resource: Asset) -> str:
         return resource.name
 
-    def _copy_asset_datasets(self, source_asset: Asset, new_asset: Asset, options: AssetCopyOptions) -> None:
-        dataset_config = options.dataset_config
-        if dataset_config is None:
-            return
-
-        dataset_migrator = DatasetMigrator(
-            MigrationContext(
-                destination_client=self.ctx.destination_client,
-                migration_state=self.ctx.migration_state,
-            )
-        )
-        dataset_mapping = options.old_to_new_dataset_rid_mapping
-        for data_scope, source_dataset in source_asset.list_datasets():
-            new_dataset = self._resolve_destination_dataset(
-                source_dataset, dataset_config, dataset_mapping, dataset_migrator
-            )
-            dataset_mapping[source_dataset.rid] = new_dataset.rid
-            new_asset.add_dataset(data_scope, new_dataset)
-
     def _resolve_destination_dataset(
         self,
         source_dataset: Dataset,
@@ -179,13 +160,6 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
         for source_event in source_events:
             event_migrator.copy_from(source_event, EventCopyOptions(new_assets=[new_asset]))
-
-    def _copy_optional_runs(self, source_asset: Asset, new_asset: Asset, options: AssetCopyOptions) -> Dict[str, str]:
-        if not options.include_runs:
-            return {}
-
-        logger.info("Copying runs for asset %s (rid: %s)", source_asset.name, source_asset.rid)
-        return self._copy_asset_runs(source_asset, new_asset)
 
     def _copy_asset_runs(self, source_asset: Asset, new_asset: Asset) -> Dict[str, str]:
         run_mapping: Dict[str, str] = {}
