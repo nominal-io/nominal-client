@@ -26,7 +26,7 @@ class LazyField(Generic[T]):
         return cast(T, self._value)
 
     def get_or_init(self, factory: Callable[[], T]) -> T:
-        """Return the cached value, initializing it exactly once on first access."""
+        """Return the cached value, initializing it exactly once on first successful access."""
         with self._lock:
             if self._value is _UNSET:
                 self._value = factory()

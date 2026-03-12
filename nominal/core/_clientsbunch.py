@@ -162,7 +162,7 @@ class ClientsBunch:
         if self.workspace_rid is not None:
             return self.workspace.get_workspace(self.auth_header, self.workspace_rid)
 
-        # User has not explicitly confiured a default workspace in the config profile -> get tenant-wide default
+        # User has not explicitly configured a default workspace in the config profile -> get tenant-wide default
         raw_workspace = self.workspace.get_default_workspace(self.auth_header)
         if raw_workspace is not None:
             return raw_workspace

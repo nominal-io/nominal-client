@@ -59,4 +59,5 @@ jobs:
         run: |
           uv run pytest tests/e2e \
             --profile staging-e2e \
+            --no-cov \
             -v

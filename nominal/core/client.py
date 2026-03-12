@@ -236,7 +236,8 @@ class NominalClient:
             case Workspace(rid=search_rid):
                 return search_rid
             case str() as search_rid:
-                pass
+                # NOTE: raises a conjure exception if the given rid is not visible to the user (or doesn't exist period)
+                return self._clients.resolve_workspace(search_rid).rid
             case WorkspaceSearchType.ALL:
                 return None
             case WorkspaceSearchType.DEFAULT:
@@ -251,9 +252,6 @@ class NominalClient:
                     ) from exc
             case _:
                 raise ValueError(f"Unexpected workspace: {workspace}")
-
-        # NOTE: raises a conjure exception if the given rid is not visible to the user (or doesn't exist period)
-        return self._clients.resolve_workspace(search_rid).rid
 
     def get_workspace(self, workspace_rid: str | None = None) -> Workspace:
         """Get workspace via given RID, or the default workspace if no RID is provided.
