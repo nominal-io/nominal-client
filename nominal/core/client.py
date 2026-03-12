@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import BinaryIO, Iterable, Mapping, Sequence, overload
 
 import certifi
-import conjure_python_client
 from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
