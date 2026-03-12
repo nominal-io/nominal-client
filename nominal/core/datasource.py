@@ -245,7 +245,7 @@ class DataSource(HasRid):
         Raises:
         ------
             ValueError: Unsupported unit symbol provided
-            conjure_python_client.ConjureHTTPError: Error completing requests.
+            NominalAPIError: Error completing requests.
         """
         channel_names = set(channel.name for channel in self.get_channels())
 
@@ -312,7 +312,7 @@ class DataSource(HasRid):
             The created Channel object.
 
         Raises:
-            conjure_python_client.ConjureHTTPError: If a channel with this name already exists
+            NominalAPIError: If a channel with this name already exists
                 or if there's an error creating the channel.
         """
         nominal_data_type = data_type._to_nominal_data_type()

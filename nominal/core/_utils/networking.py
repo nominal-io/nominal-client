@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import gzip
 import logging
 import os
@@ -10,15 +11,17 @@ from typing import Any, Callable, Mapping, Type, TypeVar
 import requests
 import truststore
 import typing_extensions
-from conjure_python_client import ServiceConfiguration
+from conjure_python_client import ConjureHTTPError, Service, ServiceConfiguration
 from conjure_python_client._http.requests_client import KEEP_ALIVE_SOCKET_OPTIONS, RetryWithJitter
 from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
 from urllib3.connection import HTTPConnection
 from urllib3.util.retry import Retry
 
+from nominal.core.exceptions import NominalAPIError
+
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
+T = TypeVar("T", bound=Service)
 
 GZIP_COMPRESSION_LEVEL = 1
 
@@ -186,14 +189,28 @@ def create_conjure_service_client(
         verify = None
     for uri in service_config.uris:
         session.mount(uri, transport_adapter)
-    return service_class(  # type: ignore
+    service = service_class(
         session,
         service_config.uris,
         service_config.connect_timeout,
         service_config.read_timeout,
-        verify,
+        verify,  # type: ignore[arg-type]
         return_none_for_unknown_union_types,
     )
+
+    # Wrap _request to convert ConjureHTTPError -> NominalAPIError
+    # This avoids propagating nested exceptions to the caller
+    original_request = service._request
+
+    @functools.wraps(original_request)
+    def wrapped_request(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return original_request(*args, **kwargs)
+        except ConjureHTTPError as e:
+            raise NominalAPIError._from_conjure_error(e) from None
+
+    service._request = wrapped_request  # type: ignore[method-assign]
+    return service
 
 
 def create_conjure_client_factory(

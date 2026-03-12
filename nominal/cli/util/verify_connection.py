@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import click
-from conjure_python_client import ConjureHTTPError
 
 from nominal.core.client import NominalClient
+from nominal.core.exceptions import NominalAPIError
 
 
 def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> None:
@@ -17,8 +17,8 @@ def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> 
     # current user using the api key
     try:
         client.get_user()
-    except ConjureHTTPError as err:
-        status_code = err.response.status_code
+    except NominalAPIError as err:
+        status_code = err.status_code
         if status_code == 401:
             err_msg = f"The authorization token may be invalid. Read the docs on how to get a new token: {docs_link}"
         elif status_code == 404:
@@ -40,8 +40,8 @@ def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> 
         client.get_workspace(workspace_rid)
     except RuntimeError:
         err_msg = "Workspace not provided, but there is no default workspace for the user."
-    except ConjureHTTPError as err:
-        status_code = err.response.status_code
+    except NominalAPIError as err:
+        status_code = err.status_code
         if status_code == 404:
             err_msg = "The base_url may be incorrect. Ensure the url subdomain begins with 'api' (not 'app')."
         elif status_code != 200:

@@ -1,8 +1,36 @@
 from typing import Mapping
 
+from conjure_python_client import ConjureHTTPError
+from typing_extensions import Self
+
 
 class NominalError(Exception):
     """Base class for Nominal exceptions."""
+
+
+class NominalAPIError(NominalError):
+    """A Conjure HTTP error occurred.
+
+    Attributes:
+        status_code: HTTP status code of the response.
+        error_name: The Conjure error name (e.g. 'Scout:MissingAssetRid').
+        error_code: The Conjure error code (e.g. 'INVALID_ARGUMENT').
+    """
+
+    def __init__(self, message: str, *, status_code: int, error_name: str, error_code: str) -> None:
+        """Initialize error with HTTP status and Conjure error details."""
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_name = error_name
+        self.error_code = error_code
+
+    @classmethod
+    def _from_conjure_error(cls, e: ConjureHTTPError) -> Self:
+        status_code = e.response.status_code if e.response is not None else 0
+        error_name = getattr(e, "error_name", "Unknown")
+        error_code = getattr(e, "error_code", "Unknown")
+        message = f"{error_name}: {e}" if error_name else str(e)
+        return cls(message, status_code=status_code, error_name=error_name, error_code=error_code)
 
 
 class NominalIngestError(NominalError):
