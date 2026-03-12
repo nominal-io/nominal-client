@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 
 from nominal.core import NominalClient
-from nominal.core.dataset import Dataset
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
 from nominal.experimental.migration.migration_state import MigrationState
@@ -66,7 +65,6 @@ class MigrationRunner:
                 ).rid,
             }
 
-            new_data_scopes_and_datasets: list[tuple[str, Dataset]] = []
             old_to_new_dataset_rid_mapping: dict[str, str] = {}
             asset_migrator = AssetMigrator(
                 MigrationContext(destination_client=self.destination_client, migration_state=self.migration_state)
@@ -87,7 +85,6 @@ class MigrationRunner:
                         include_checklists=True,
                     ),
                 )
-                new_data_scopes_and_datasets.extend(new_asset.list_datasets())
 
                 for source_workbook_template in asset_resources.source_workbook_templates:
                     new_template = template_migrator.clone(source_workbook_template)
