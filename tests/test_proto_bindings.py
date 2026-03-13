@@ -220,10 +220,7 @@ def test_search_groups_response_roundtrip() -> None:
     """Construct a SearchGroupsResponse with multiple Group results and round-trip it."""
     from nominal_api_protos.nominal.authentication.groups.v1 import groups_pb2
 
-    groups = [
-        groups_pb2.Group(rid=f"ri.groups.0.group.{i}", display_name=f"Team {i}")
-        for i in range(3)
-    ]
+    groups = [groups_pb2.Group(rid=f"ri.groups.0.group.{i}", display_name=f"Team {i}") for i in range(3)]
     response = groups_pb2.SearchGroupsResponse(results=groups, next_page_token="tok_xyz")
 
     serialised = response.SerializeToString()
@@ -240,9 +237,7 @@ def test_update_group_metadata_request_roundtrip() -> None:
     from nominal_api_protos.nominal.authentication.groups.v1 import groups_pb2
     from nominal_api_protos.nominal.scout.elements.v1.elements_pb2 import Symbol
 
-    symbol_wrapper = groups_pb2.UpdateGroupMetadataRequest.UpdateGroupSymbolWrapper(
-        value=Symbol(icon="star")
-    )
+    symbol_wrapper = groups_pb2.UpdateGroupMetadataRequest.UpdateGroupSymbolWrapper(value=Symbol(icon="star"))
     inner = groups_pb2.UpdateGroupMetadataRequest(
         display_name="Renamed Team",
         description="Updated description",
