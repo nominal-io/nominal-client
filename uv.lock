@@ -518,6 +518,18 @@ wheels = [
 ]
 
 [[package]]
+name = "googleapis-common-protos"
+version = "1.73.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/99/96/a0205167fa0154f4a542fd6925bdc63d039d88dab3588b875078107e6f06/googleapis_common_protos-1.73.0.tar.gz", hash = "sha256:778d07cd4fbeff84c6f7c72102f0daf98fa2bfd3fa8bea426edc545588da0b5a", size = 147323, upload-time = "2026-03-06T21:53:09.727Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/28/23eea8acd65972bbfe295ce3666b28ac510dfcb115fac089d3edb0feb00a/googleapis_common_protos-1.73.0-py3-none-any.whl", hash = "sha256:dfdaaa2e860f242046be561e6d6cb5c5f1541ae02cfbcb034371aadb2942b4e8", size = 297578, upload-time = "2026-03-06T21:52:33.933Z" },
+]
+
+[[package]]
 name = "griffe"
 version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1246,7 +1258,7 @@ dev = [
     { name = "mkdocstrings", specifier = ">=0.29.1,<1" },
     { name = "mkdocstrings-python", specifier = ">=1.16.10,<2" },
     { name = "mypy", specifier = ">=1.18.2,<2" },
-    { name = "nominal-api-protos", specifier = ">=0.1142.0" },
+    { name = "nominal-api-protos", specifier = ">=0.1157.0" },
     { name = "pandas-stubs", specifier = "~=2.0" },
     { name = "pytest", specifier = ">=8.3.2,<9" },
     { name = "pytest-cov", specifier = ">=5.0.0,<6" },
@@ -1274,16 +1286,17 @@ wheels = [
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.1142.0"
+version = "0.1157.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "googleapis-common-protos" },
     { name = "grpcio" },
     { name = "grpcio-tools" },
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/01/76d8bac2f9476afda86a5dad5acb31328349f34e45cc66ee793701ab283e/nominal_api_protos-0.1142.0.tar.gz", hash = "sha256:929f27eebb2ea1fd413bef8ac3613718b3d0308f5463d82394770cccdd0f3ec7", size = 165356, upload-time = "2026-02-27T21:00:27.634Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/28/79/9d6f284149aa534499a63e0948c46aef330faf37ab278800d030253509d3/nominal_api_protos-0.1157.0.tar.gz", hash = "sha256:83b9da962a66abe5486219b3c20c05fa0f6010fb6219f9eec6c89d6731019078", size = 184669, upload-time = "2026-03-13T18:08:29.032Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/cd/0aaf4adc9d78e7ef7e0c372030d59e3d8430a9f933fecc79cf0fbfa30001/nominal_api_protos-0.1142.0-py3-none-any.whl", hash = "sha256:af31dc2135414b8d78fa571ac4d93b34fd34506e600900051c0711bcc598a007", size = 234669, upload-time = "2026-02-27T21:00:26.214Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/a0/b657a8fc1bb3ca6a6fc9c6c3528084b26309ff0fda7caba12563b8f09a25/nominal_api_protos-0.1157.0-py3-none-any.whl", hash = "sha256:8e7114f5c42e600e9d10dc8b4d864b1a7290e1b027a71e709178ac30f49f79bb", size = 262980, upload-time = "2026-03-13T18:08:27.392Z" },
 ]
 
 [[package]]
