@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.120.0](https://github.com/nominal-io/nominal-client/compare/v1.119.1...v1.120.0) (2026-03-13)
+
+
+### Features
+
+* add tags to asset migration ([#653](https://github.com/nominal-io/nominal-client/issues/653)) ([591e567](https://github.com/nominal-io/nominal-client/commit/591e5672eb08ef40bc5ad9bfdf005d66ccb65600))
+* refactor migration library and introduce statefulness ([#641](https://github.com/nominal-io/nominal-client/issues/641)) ([c75b3f3](https://github.com/nominal-io/nominal-client/commit/c75b3f30d1e907e707e5a8de15d021b146ca9798))
+
+
+### Bug Fixes
+
+* correctly resolve default workspace consistently ([#649](https://github.com/nominal-io/nominal-client/issues/649)) ([f846cf0](https://github.com/nominal-io/nominal-client/commit/f846cf022b6b35a8bff91784be8d8002589cf097))
+
+
+### Documentation
+
+* fix typo, remove non-breaking space in CONTRIBUTING.md ([#651](https://github.com/nominal-io/nominal-client/issues/651)) ([f3eedf8](https://github.com/nominal-io/nominal-client/commit/f3eedf828d2f83ea32a9326d43376bd1381cb148))
+
 ## [1.119.1](https://github.com/nominal-io/nominal-client/compare/v1.119.0...v1.119.1) (2026-03-09)
 
 
