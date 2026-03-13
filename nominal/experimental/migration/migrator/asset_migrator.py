@@ -109,7 +109,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             ),
         )
 
-    def _copy_asset_datasets(self, source_asset: Asset, new_asset: Asset, options: AssetCopyOptions) -> None:
+    def _copy_asset_datasets(self, source_asset: Asset, destination_asset: Asset, options: AssetCopyOptions) -> None:
         if options.dataset_config is None:
             return
 
@@ -123,7 +123,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         dataset_mapping = options.old_to_new_dataset_rid_mapping
 
         source_data_scopes = source_asset._list_dataset_scopes()
-        source_datasets = {data_scope[1].rid: data_scope[1] for data_scope in source_asset.list_datasets()}
+        source_datasets = {ds.rid: ds for _, ds in source_asset.list_datasets()}
 
         for source_data_scope in source_data_scopes:
             source_data_scope_name = source_data_scope.data_scope_name
@@ -135,22 +135,17 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
             source_dataset = source_datasets[source_dataset_rid]
             source_series_tags = source_data_scope.series_tags
-            if source_dataset_rid in dataset_mapping:
-                new_dataset_rid = dataset_mapping[source_dataset_rid]
-                new_dataset = self.ctx.destination_client.get_dataset(new_dataset_rid)
-            else:
-                new_dataset = dataset_migrator.copy_from(
-                    source_dataset,
-                    DatasetCopyOptions(
-                        include_files=options.dataset_config.include_dataset_files,
-                        preserve_uuid=options.dataset_config.preserve_dataset_uuid,
-                    ),
-                )
+            new_dataset = self._resolve_destination_dataset(
+                source_dataset,
+                options.dataset_config,
+                dataset_mapping,
+                dataset_migrator,
+            )
 
             dataset_mapping[source_dataset.rid] = new_dataset.rid
-            new_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
+            destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
 
-    def _copy_asset_events(self, source_asset: Asset, new_asset: Asset) -> None:
+    def _copy_asset_events(self, source_asset: Asset, destination_asset: Asset) -> None:
         event_migrator = EventMigrator(
             MigrationContext(
                 destination_client=self.ctx.destination_client,
@@ -159,9 +154,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         )
         source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
         for source_event in source_events:
-            event_migrator.copy_from(source_event, EventCopyOptions(new_assets=[new_asset]))
+            event_migrator.copy_from(source_event, EventCopyOptions(new_assets=[destination_asset]))
 
-    def _copy_asset_runs(self, source_asset: Asset, new_asset: Asset) -> Dict[str, str]:
+    def _copy_asset_runs(self, source_asset: Asset, destination_asset: Asset) -> Dict[str, str]:
         run_mapping: Dict[str, str] = {}
         run_migrator = RunMigrator(
             MigrationContext(
@@ -171,7 +166,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         )
         source_runs = source_asset.list_runs()
         for source_run in source_runs:
-            new_run = run_migrator.copy_from(source_run, RunCopyOptions(new_assets=[new_asset]))
+            new_run = run_migrator.copy_from(source_run, RunCopyOptions(new_assets=[destination_asset]))
             run_mapping[source_run.rid] = new_run.rid
         return run_mapping
 
