@@ -8,7 +8,6 @@ Covers the three classes of breakage fixed in the PR:
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Import smoke tests — each import exercises a different fix in the PR
 # ---------------------------------------------------------------------------
@@ -37,7 +36,8 @@ def test_nominal_events_pb2_import_rewriting() -> None:
 
 def test_nominal_gen_v1_alias_pb2_dependency_proto() -> None:
     """nominal.gen.v1.alias_pb2 comes from a dependency proto (grpc-conjure-protos).
-    Previously missing from sourceProtos, so Python stubs were not generated."""
+    Previously missing from sourceProtos, so Python stubs were not generated.
+    """
     from nominal_api_protos.nominal.gen.v1 import alias_pb2  # noqa: F401
 
     assert alias_pb2.DESCRIPTOR is not None
@@ -52,7 +52,8 @@ def test_nominal_gen_v1_error_pb2_dependency_proto() -> None:
 
 def test_nominal_conjure_v1_compat_pb2_dependency_proto() -> None:
     """nominal.conjure.v1.compat_pb2 comes from protoc-gen-java-protos.
-    Previously missing from sourceProtos."""
+    Previously missing from sourceProtos.
+    """
     from nominal_api_protos.nominal.conjure.v1 import compat_pb2  # noqa: F401
 
     assert compat_pb2.DESCRIPTOR is not None
@@ -60,7 +61,8 @@ def test_nominal_conjure_v1_compat_pb2_dependency_proto() -> None:
 
 def test_buf_validate_pb2_relocated() -> None:
     """buf/validate stubs are relocated outside nominal_api_protos/ so they are
-    importable as top-level 'buf.validate' (matches protovalidate's expected path)."""
+    importable as top-level 'buf.validate' (matches protovalidate's expected path).
+    """
     from buf.validate import validate_pb2  # noqa: F401
 
     assert validate_pb2.DESCRIPTOR is not None
@@ -68,7 +70,8 @@ def test_buf_validate_pb2_relocated() -> None:
 
 def test_google_api_annotations_import() -> None:
     """google.api.* imports require the googleapis-common-protos runtime dep.
-    The PR adds this to install_requires; without it this raises ImportError."""
+    The PR adds this to install_requires; without it this raises ImportError.
+    """
     from google.api import annotations_pb2  # noqa: F401
 
     assert annotations_pb2.DESCRIPTOR is not None
@@ -81,6 +84,7 @@ def test_google_api_annotations_import() -> None:
 
 def test_write_request_nominal_roundtrip() -> None:
     """Construct a WriteRequestNominal protobuf, serialise, and deserialise it."""
+    from google.protobuf.timestamp_pb2 import Timestamp
     from nominal_api_protos.nominal_write_pb2 import (
         Channel,
         DoublePoint,
@@ -89,8 +93,6 @@ def test_write_request_nominal_roundtrip() -> None:
         Series,
         WriteRequestNominal,
     )
-
-    from google.protobuf.timestamp_pb2 import Timestamp
 
     timestamp_ns = 1_700_000_000_000_000_000  # arbitrary fixed nanosecond timestamp
     value = 42.0
@@ -119,7 +121,8 @@ def test_write_request_nominal_roundtrip() -> None:
 
 def test_types_pb2_handle_roundtrip() -> None:
     """Construct a Handle message from nominal.types and round-trip it.
-    This exercises that the import-rewriting produces functional, not just importable, code."""
+    This exercises that the import-rewriting produces functional, not just importable, code.
+    """
     from nominal_api_protos.nominal.types import types_pb2
 
     handle = types_pb2.Handle()
@@ -177,7 +180,8 @@ def test_group_message_roundtrip() -> None:
 
     This exercises cross-package references — Group.symbol is typed as
     nominal.scout.elements.v1.Symbol, which requires correct import rewriting in
-    both the groups and elements proto modules."""
+    both the groups and elements proto modules.
+    """
     from nominal_api_protos.nominal.authentication.groups.v1 import groups_pb2
     from nominal_api_protos.nominal.scout.elements.v1.elements_pb2 import Symbol
 
