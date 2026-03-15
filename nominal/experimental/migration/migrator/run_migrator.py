@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Mapping, Sequence
@@ -11,6 +12,8 @@ from nominal.core.run import Run
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.ts import IntegralNanosecondsUTC
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,11 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
         return RunCopyOptions()
 
     def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
+        if mapped_rid is not None:
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+            return self.ctx.destination_client.get_run(mapped_rid)
+
         return self.ctx.destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
             start=options.new_start if options.new_start is not None else source.start,

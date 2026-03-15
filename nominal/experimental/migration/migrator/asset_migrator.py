@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Dict, Sequence
+from dataclasses import dataclass
+from typing import Any, Sequence
 
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
-from nominal.core.checklist import Checklist
 from nominal.core.dataset import Dataset
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
@@ -29,7 +28,6 @@ class AssetCopyOptions(ResourceCopyOptions):
     new_asset_properties: dict[str, Any] | None = None
     new_asset_labels: Sequence[str] | None = None
     dataset_config: MigrationDatasetConfig | None = None
-    old_to_new_dataset_rid_mapping: dict[str, str] = field(default_factory=dict)
     include_events: bool = False
     include_runs: bool = False
     include_video: bool = False
@@ -52,7 +50,40 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _copy_from_impl(self, source_asset: Asset, options: AssetCopyOptions) -> Asset:
         if options.include_checklists and not options.include_runs:
             raise ValueError("include_checklists set to True requires include_runs to be set to True.")
-        new_asset = self.ctx.destination_client.create_asset(
+
+        new_asset = self._resolve_destination_asset(source_asset, options)
+
+        if options.dataset_config is not None:
+            self._copy_asset_datasets(source_asset, new_asset, options)
+
+        if options.include_events:
+            logger.info("Copying events for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            self._copy_asset_events(source_asset, new_asset)
+
+        if options.include_runs:
+            logger.info("Copying runs for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            self._copy_asset_runs(source_asset, new_asset)
+
+        if options.include_checklists:
+            logger.info("Copying checklists for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            self._copy_asset_checklists(source_asset)
+
+        if options.include_video:
+            logger.info("Copying videos for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            self._copy_asset_videos(source_asset, new_asset)
+
+        self._copy_asset_and_run_workbooks(source_asset, new_asset)
+        return new_asset
+
+    def _get_resource_name(self, resource: Asset) -> str:
+        return resource.name
+
+    def _resolve_destination_asset(self, source_asset: Asset, options: AssetCopyOptions) -> Asset:
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source_asset.rid)
+        if mapped_rid is not None:
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source_asset.rid)
+            return self.ctx.destination_client.get_asset(mapped_rid)
+        return self.ctx.destination_client.create_asset(
             name=options.new_asset_name if options.new_asset_name is not None else source_asset.name,
             description=options.new_asset_description
             if options.new_asset_description is not None
@@ -63,43 +94,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             labels=options.new_asset_labels if options.new_asset_labels is not None else source_asset.labels,
         )
 
-        if options.dataset_config is not None:
-            self._copy_asset_datasets(source_asset, new_asset, options)
-
-        run_mapping: Dict[str, str] = {}
-
-        if options.include_events:
-            logger.info("Copying events for asset %s (rid: %s)", source_asset.name, source_asset.rid)
-            self._copy_asset_events(source_asset, new_asset)
-
-        if options.include_runs:
-            logger.info("Copying runs for asset %s (rid: %s)", source_asset.name, source_asset.rid)
-            run_mapping = self._copy_asset_runs(source_asset, new_asset)
-
-        if options.include_checklists:
-            logger.info("Copying checklists for asset %s (rid: %s)", source_asset.name, source_asset.rid)
-            self._copy_asset_checklists(source_asset, run_mapping)
-
-        if options.include_video:
-            logger.info("Copying videos for asset %s (rid: %s)", source_asset.name, source_asset.rid)
-            self._copy_asset_videos(source_asset, new_asset)
-
-        self._copy_asset_and_run_workbooks(source_asset, new_asset, run_mapping)
-        return new_asset
-
-    def _get_resource_name(self, resource: Asset) -> str:
-        return resource.name
-
     def _resolve_destination_dataset(
         self,
         source_dataset: Dataset,
         dataset_config: MigrationDatasetConfig,
-        dataset_mapping: dict[str, str],
         dataset_migrator: DatasetMigrator,
     ) -> Dataset:
-        if source_dataset.rid in dataset_mapping:
-            new_dataset_rid = dataset_mapping[source_dataset.rid]
-            return self.ctx.destination_client.get_dataset(new_dataset_rid)
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET, source_dataset.rid)
+        if mapped_rid is not None:
+            return self.ctx.destination_client.get_dataset(mapped_rid)
 
         return dataset_migrator.copy_from(
             source_dataset,
@@ -120,8 +123,6 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             )
         )
 
-        dataset_mapping = options.old_to_new_dataset_rid_mapping
-
         source_data_scopes = source_asset._list_dataset_scopes()
         source_datasets = {ds.rid: ds for _, ds in source_asset.list_datasets()}
 
@@ -135,15 +136,17 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
             source_dataset = source_datasets[source_dataset_rid]
             source_series_tags = source_data_scope.series_tags
+            already_migrated = (
+                self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET, source_dataset.rid) is not None
+            )
             new_dataset = self._resolve_destination_dataset(
                 source_dataset,
                 options.dataset_config,
-                dataset_mapping,
                 dataset_migrator,
             )
 
-            dataset_mapping[source_dataset.rid] = new_dataset.rid
-            destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
+            if not already_migrated:
+                destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
 
     def _copy_asset_events(self, source_asset: Asset, destination_asset: Asset) -> None:
         event_migrator = EventMigrator(
@@ -156,57 +159,36 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         for source_event in source_events:
             event_migrator.copy_from(source_event, EventCopyOptions(new_assets=[destination_asset]))
 
-    def _copy_asset_runs(self, source_asset: Asset, destination_asset: Asset) -> Dict[str, str]:
-        run_mapping: Dict[str, str] = {}
+    def _copy_asset_runs(self, source_asset: Asset, destination_asset: Asset) -> None:
         run_migrator = RunMigrator(
             MigrationContext(
                 destination_client=self.ctx.destination_client,
                 migration_state=self.ctx.migration_state,
             )
         )
-        source_runs = source_asset.list_runs()
-        for source_run in source_runs:
-            new_run = run_migrator.copy_from(source_run, RunCopyOptions(new_assets=[destination_asset]))
-            run_mapping[source_run.rid] = new_run.rid
-        return run_mapping
+        for source_run in source_asset.list_runs():
+            run_migrator.copy_from(source_run, RunCopyOptions(new_assets=[destination_asset]))
 
-    def _copy_asset_checklists(self, source_asset: Asset, run_mapping: Dict[str, str]) -> None:
+    def _copy_asset_checklists(self, source_asset: Asset) -> None:
         checklist_migrator = ChecklistMigrator(
             MigrationContext(
                 destination_client=self.ctx.destination_client,
                 migration_state=self.ctx.migration_state,
             )
         )
-        source_checklist_rid_to_destination_checklist_map: Dict[str, Checklist] = {}
         for source_data_review in source_asset.search_data_reviews():
             source_checklist = source_data_review.get_checklist()
             logger.debug("Found Data Review %s", source_checklist.rid)
-            destination_checklist = self._resolve_destination_checklist(
-                source_checklist,
-                source_checklist_rid_to_destination_checklist_map,
-                checklist_migrator,
-            )
-            if source_data_review.run_rid not in run_mapping:
+            destination_checklist = checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
+            destination_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_data_review.run_rid)
+            if destination_run_rid is None:
                 logger.warning(
-                    "Run %s not found in run mapping for data review checklist %s — skipping",
+                    "Run %s not found in migration state for data review checklist %s — skipping",
                     source_data_review.run_rid,
                     source_checklist.rid,
                 )
                 continue
-            destination_checklist.execute(run_mapping[source_data_review.run_rid])
-
-    def _resolve_destination_checklist(
-        self,
-        source_checklist: Checklist,
-        checklist_mapping: Dict[str, Checklist],
-        checklist_migrator: ChecklistMigrator,
-    ) -> Checklist:
-        if source_checklist.rid in checklist_mapping:
-            return checklist_mapping[source_checklist.rid]
-
-        destination_checklist = checklist_migrator.copy_from(source_checklist, ChecklistCopyOptions())
-        checklist_mapping[source_checklist.rid] = destination_checklist
-        return destination_checklist
+            destination_checklist.execute(destination_run_rid)
 
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
         video_migrator = VideoMigrator(
@@ -216,20 +198,19 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             )
         )
         for data_scope, video_dataset in source_asset.list_videos():
+            already_migrated = (
+                self.ctx.migration_state.get_mapped_rid(ResourceType.VIDEO, video_dataset.rid) is not None
+            )
             new_video_dataset = video_migrator.copy_from(
                 video_dataset,
                 VideoCopyOptions(
                     include_files=True,
                 ),
             )
-            new_asset.add_video(data_scope, new_video_dataset)
+            if not already_migrated:
+                new_asset.add_video(data_scope, new_video_dataset)
 
-    def _copy_asset_and_run_workbooks(
-        self,
-        source_asset: Asset,
-        new_asset: Asset,
-        run_mapping: Dict[str, str] | None = None,
-    ) -> None:
+    def _copy_asset_and_run_workbooks(self, source_asset: Asset, new_asset: Asset) -> None:
         workbook_migrator = WorkbookMigrator(
             MigrationContext(
                 destination_client=self.ctx.destination_client,
@@ -241,12 +222,12 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             if workbook.asset_rids and len(workbook.asset_rids) == 1:
                 workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_asset=new_asset))
 
-        if run_mapping:
-            for source_run in source_asset.list_runs():
-                if source_run.rid not in run_mapping:
-                    logger.warning("Run %s not found in run mapping", source_run.rid)
-                    continue
-                destination_run = self.ctx.destination_client.get_run(run_mapping[source_run.rid])
-                for workbook in source_run.search_workbooks(include_drafts=True):
-                    if workbook.run_rids and len(workbook.run_rids) == 1:
-                        workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_run=destination_run))
+        for source_run in source_asset.list_runs():
+            destination_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+            if destination_run_rid is None:
+                logger.warning("Run %s not found in migration state", source_run.rid)
+                continue
+            destination_run = self.ctx.destination_client.get_run(destination_run_rid)
+            for workbook in source_run.search_workbooks(include_drafts=True):
+                if workbook.run_rids and len(workbook.run_rids) == 1:
+                    workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_run=destination_run))

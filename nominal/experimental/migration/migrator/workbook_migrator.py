@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from nominal.core.asset import Asset
@@ -12,6 +13,8 @@ from nominal.experimental.migration.migrator.workbook_template_migrator import (
     WorkbookTemplateMigrator,
 )
 from nominal.experimental.migration.resource_type import ResourceType
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,11 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         client, copying the template to the destination client, creating a new workbook from the template in the
         destination client, and then archiving the template in both clients.
         """
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
+        if mapped_rid is not None:
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+            return self.ctx.destination_client.get_workbook(mapped_rid)
+
         if (options.destination_asset is None) == (options.destination_run is None):
             raise ValueError("Exactly one of destination_asset or destination_run must be provided.")
 

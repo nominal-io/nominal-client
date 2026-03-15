@@ -9,8 +9,8 @@ from nominal.core.dataset import Dataset
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
+from nominal.experimental.migration.migrator.dataset_file_migrator import DatasetFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
-from nominal.experimental.migration.utils.file_utils import copy_file_to_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,21 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         return DatasetCopyOptions(include_files=True)
 
     def _copy_from_impl(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
+        new_dataset = self._resolve_destination_dataset(source, options)
+
+        if options.include_files:
+            file_migrator = DatasetFileMigrator(self.ctx)
+            for source_file in source.list_files():
+                file_migrator.copy_from(source_file, new_dataset)
+
+        return new_dataset
+
+    def _resolve_destination_dataset(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
+        if mapped_rid is not None:
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+            return self.ctx.destination_client.get_dataset(mapped_rid)
+
         log_extras = {
             "destination_client_workspace": self.ctx.destination_client.get_workspace(
                 self.ctx.destination_client._clients.workspace_rid
@@ -72,15 +87,12 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                 channels_copied_count += 1
             logger.info("Copied %d channels from dataset %s", channels_copied_count, source.name, extra=log_extras)
 
-        if options.include_files:
-            for source_file in source.list_files():
-                copy_file_to_dataset(source_file, new_dataset)
-
         if source.bounds is not None:
             new_dataset = new_dataset.update_bounds(
                 start=source.bounds.start,
                 end=source.bounds.end,
             )
+
         return new_dataset
 
     def _create_destination_dataset(
