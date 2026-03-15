@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -55,7 +56,7 @@ class MigrationRunner:
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
 
         if migration_state_path is not None and resolved_path.exists():
-            self.migration_state = MigrationState.from_json(resolved_path.read_text(encoding="utf-8"))
+            self.migration_state = MigrationState.from_dict(json.loads(resolved_path.read_text(encoding="utf-8")))
             if self.migration_state.rid_mapping:
                 self.migration_state_path = _next_state_path(resolved_path)
             else:
