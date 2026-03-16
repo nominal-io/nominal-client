@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.121.0](https://github.com/nominal-io/nominal-client/compare/v1.120.0...v1.121.0) (2026-03-16)
+
+
+### Features
+
+* allow continue migration and skip already migrated resources ([#656](https://github.com/nominal-io/nominal-client/issues/656)) ([df6a297](https://github.com/nominal-io/nominal-client/commit/df6a297522ca5a73c403f8d49e34ee176a997108))
+
 ## [1.120.0](https://github.com/nominal-io/nominal-client/compare/v1.119.1...v1.120.0) (2026-03-13)
 
 
