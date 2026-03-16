@@ -293,27 +293,67 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        series_tags: Mapping[str, str] | None = None,
     ) -> Dataset:
-        """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
+        """Retrieve a dataset by data scope name, or create a new one if it does not exist.
+
+        Args:
+            data_scope_name: Datascope name to use when looking up or adding a dataset to an asset.
+            name: Name of the dataset to create, if one is not found.
+            description: Human readable description of the dataset to create, if one is not found.
+            labels: Labels of the dataset to create, if one is not found.
+            properties: Key-value properties of the dataset to create, if one is not found.
+            prefix_tree_delimiter: The prefix tree delimiter to use with the created dataset, if one is not found.
+            series_tags: Tags to filter the created dataset by in the datascope, if one is not found.
+
+        Returns:
+            The retrieved or created dataset.
+        """
+        # Attempt to retrieve and validate any existing dataset scope
+        found_ds, found_tags = None, None
         try:
-            return self.get_dataset(data_scope_name)
+            logger.debug("Attempting to retrieve dataset scope named '%s'", data_scope_name)
+            found_ds, found_tags = self._get_dataset_scope(data_scope_name)
         except ValueError:
-            enriched_dataset = _create_dataset(
-                self._clients.auth_header,
-                self._clients.catalog,
-                name or data_scope_name,
-                description=description,
-                properties=properties,
-                labels=labels,
-                workspace_rid=self._clients.resolve_default_workspace_rid(),
-            )
-            dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+            pass
 
-            if prefix_tree_delimiter is not None:
-                dataset.set_channel_prefix_tree(prefix_tree_delimiter)
+        # If we found a dataset with the same datascope name, validate that the
+        # series tags match
+        if found_ds is not None and found_tags is not None:
+            # symmetric difference to find tags found in one but not the other
+            mismatching_tags = found_tags.items() ^ (series_tags or {}).items()
+            if mismatching_tags:
+                raise ValueError(
+                    f"Cannot get_or_create_dataset '{data_scope_name}' with tags {series_tags}: "
+                    f"datascope already exists with {found_tags} (difference={mismatching_tags})"
+                )
+            else:
+                return found_ds
 
-            self.add_dataset(data_scope_name, dataset)
-            return dataset
+        # No such dataset exists! Create dataset
+        enriched_dataset = _create_dataset(
+            self._clients.auth_header,
+            self._clients.catalog,
+            name or data_scope_name,
+            description=description,
+            properties=properties,
+            labels=labels,
+            workspace_rid=self._clients.resolve_default_workspace_rid(),
+        )
+        dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+        if prefix_tree_delimiter is not None:
+            dataset.set_channel_prefix_tree(prefix_tree_delimiter)
+
+        # Add dataset to asset
+        self.add_dataset(data_scope_name, dataset, series_tags=series_tags)
+
+        logger.info(
+            "No such dataset named '%s' found on asset '%s': created '%s",
+            data_scope_name,
+            self.rid,
+            dataset.rid,
+        )
+        return dataset
 
     def get_or_create_video(
         self,

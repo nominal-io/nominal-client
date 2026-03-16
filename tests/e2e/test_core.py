@@ -20,6 +20,7 @@ from typing import Callable
 from uuid import uuid4
 
 import pandas as pd
+import pytest
 
 from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType
@@ -209,3 +210,49 @@ def test_get_dataset_pandas(ingested_dataset: Dataset, csv_data):
     # "relative" AND "minutes" matches only "relative_minutes"
     df2 = datasource_to_dataframe(ingested_dataset, channel_exact_match=["relative", "minutes"])
     pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])
+
+
+def test_get_or_create_dataset_creates_and_returns_idempotently(client: NominalClient, archive: Callable[..., None]):
+    """get_or_create_dataset creates a dataset on first call and returns the same one on subsequent calls."""
+    asset = client.create_asset(f"asset-{uuid4()}")
+    archive(asset)
+
+    scope_name = "primary"
+    ds1 = asset.get_or_create_dataset(scope_name, name=f"dataset-{uuid4()}")
+    archive(ds1)
+
+    ds2 = asset.get_or_create_dataset(scope_name)
+    assert ds1.rid == ds2.rid
+
+
+def test_get_or_create_dataset_with_series_tags_creates_and_returns_idempotently(
+    client: NominalClient,
+    archive: Callable[..., None],
+):
+    """get_or_create_dataset with series_tags creates a scoped dataset and returns it on repeated calls
+    with matching tags.
+    """
+    asset = client.create_asset(f"asset-{uuid4()}")
+    archive(asset)
+
+    scope_name = "tagged-scope"
+    tags = {"vehicle": "test-car", "run_type": "nominal"}
+
+    ds1 = asset.get_or_create_dataset(scope_name, name=f"dataset-{uuid4()}", series_tags=tags)
+    archive(ds1)
+
+    ds2 = asset.get_or_create_dataset(scope_name, series_tags=tags)
+    assert ds1.rid == ds2.rid
+
+
+def test_get_or_create_dataset_raises_on_tag_mismatch(client: NominalClient, archive: Callable[..., None]):
+    """get_or_create_dataset raises ValueError if the existing datascope has different series_tags."""
+    asset = client.create_asset(f"asset-{uuid4()}")
+    archive(asset)
+
+    scope_name = "tagged-scope"
+    ds = asset.get_or_create_dataset(scope_name, name=f"dataset-{uuid4()}", series_tags={"env": "prod"})
+    archive(ds)
+
+    with pytest.raises(ValueError, match="datascope already exists"):
+        asset.get_or_create_dataset(scope_name, series_tags={"env": "staging"})
