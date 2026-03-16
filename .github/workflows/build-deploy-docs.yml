@@ -5,6 +5,7 @@ on:
     branches: ["main"]
 
   pull_request:
+    types: [edited, opened, reopened, synchronize]
     branches: ["main"]
 
   # Allows you to run this workflow manually from the Actions tab

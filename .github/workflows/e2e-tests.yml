@@ -7,6 +7,8 @@ on:
   push:
     branches: ["main"]
   pull_request:
+    types: [edited, opened, reopened, synchronize]
+    branches: ["main"]
   workflow_dispatch:
 
 # Serialize e2e runs per-ref so we don't overwhelm staging with concurrent
