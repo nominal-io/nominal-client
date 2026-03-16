@@ -69,6 +69,10 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
             result_rid,
             extra=log_extras,
         )
+        # Safety net: each _copy_from_impl should already call record_mapping immediately after
+        # creating the resource (so a crash mid-migration doesn't cause duplicates on resume).
+        # This call is always idempotent — it writes the same old→new mapping that _copy_from_impl
+        # already wrote, so there is no risk of overwriting with a different value.
         self.record_mapping(self.resource_type, source_rid, result_rid)
         return result
 

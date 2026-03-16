@@ -55,6 +55,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             WorkbookTemplateCopyOptions(include_content_and_layout=True),
         )
         new_workbook = self._create_destination_workbook(source, new_template, options)
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_workbook.rid)
 
         new_template.archive()
         source_template.archive()

@@ -78,7 +78,7 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
             self.ctx.destination_client._clients.workspace_rid
         ).rid
 
-        return _create_checklist_with_content(
+        new_checklist = _create_checklist_with_content(
             client=self.ctx.destination_client,
             commit_message=commit_message,
             title=title,
@@ -90,6 +90,8 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
             is_published=is_published,
             workspace=workspace_rid,
         )
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_checklist.rid)
+        return new_checklist
 
     def _get_resource_name(self, resource: Checklist) -> str:
         return resource.name

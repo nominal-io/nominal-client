@@ -52,6 +52,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             raise ValueError("include_checklists set to True requires include_runs to be set to True.")
 
         new_asset = self._resolve_destination_asset(source_asset, options)
+        # Record immediately so a crash during child migrations doesn't duplicate the asset on resume.
+        # base.copy_from will call record_mapping again after this returns, which is idempotent.
+        self.ctx.migration_state.record_mapping(self.resource_type, source_asset.rid, new_asset.rid)
 
         if options.dataset_config is not None:
             self._copy_asset_datasets(source_asset, new_asset, options)
@@ -136,17 +139,22 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
             source_dataset = source_datasets[source_dataset_rid]
             source_series_tags = source_data_scope.series_tags
-            already_migrated = (
-                self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET, source_dataset.rid) is not None
-            )
             new_dataset = self._resolve_destination_dataset(
                 source_dataset,
                 options.dataset_config,
                 dataset_migrator,
             )
 
-            if not already_migrated:
+            scope_key = f"{source_asset.rid}:{source_data_scope_name}"
+            if self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) is None:
                 destination_asset.add_dataset(source_data_scope_name, new_dataset, series_tags=source_series_tags)
+                self.ctx.migration_state.record_mapping(ResourceType.ASSET_DATA_SCOPE, scope_key, new_dataset.rid)
+            else:
+                logger.debug(
+                    "Skipping add_dataset for scope %s on asset %s: already in migration state",
+                    source_data_scope_name,
+                    source_asset.rid,
+                )
 
     def _copy_asset_events(self, source_asset: Asset, destination_asset: Asset) -> None:
         event_migrator = EventMigrator(
@@ -198,17 +206,22 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             )
         )
         for data_scope, video_dataset in source_asset.list_videos():
-            already_migrated = (
-                self.ctx.migration_state.get_mapped_rid(ResourceType.VIDEO, video_dataset.rid) is not None
-            )
             new_video_dataset = video_migrator.copy_from(
                 video_dataset,
                 VideoCopyOptions(
                     include_files=True,
                 ),
             )
-            if not already_migrated:
+            scope_key = f"{source_asset.rid}:{data_scope}"
+            if self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET_DATA_SCOPE, scope_key) is None:
                 new_asset.add_video(data_scope, new_video_dataset)
+                self.ctx.migration_state.record_mapping(ResourceType.ASSET_DATA_SCOPE, scope_key, new_video_dataset.rid)
+            else:
+                logger.debug(
+                    "Skipping add_video for scope %s on asset %s: already in migration state",
+                    data_scope,
+                    source_asset.rid,
+                )
 
     def _copy_asset_and_run_workbooks(self, source_asset: Asset, new_asset: Asset) -> None:
         workbook_migrator = WorkbookMigrator(

@@ -71,6 +71,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
             dataset_properties,
             dataset_labels,
         )
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_dataset.rid)
 
         if options.preserve_uuid:
             channels_copied_count = 0

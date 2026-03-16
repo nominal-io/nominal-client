@@ -65,6 +65,7 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
                 self.ctx.destination_client._clients.workspace_rid
             ).rid,
         )
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_workbook_template.rid)
         return new_workbook_template
 
     def _resolve_template_content_and_layout(

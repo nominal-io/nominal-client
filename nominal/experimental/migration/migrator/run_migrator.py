@@ -43,7 +43,7 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
             return self.ctx.destination_client.get_run(mapped_rid)
 
-        return self.ctx.destination_client.create_run(
+        new_run = self.ctx.destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
             start=options.new_start if options.new_start is not None else source.start,
             end=options.new_end if options.new_end is not None else source.end,
@@ -54,6 +54,8 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
             links=options.new_links if options.new_links is not None else source.links,
             attachments=options.new_attachments if options.new_attachments is not None else source.list_attachments(),
         )
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_run.rid)
+        return new_run
 
     def _get_resource_name(self, resource: Run) -> str:
         return resource.name
