@@ -1,0 +1,7 @@
+{
+  "dataset_rid": "ri.catalog.cerulean-staging.dataset.ea35515a-bf7b-4e22-8192-1ed75c043694",
+  "ref_run_rid": "ri.scout.cerulean-staging.run.fbe409d0-9bd3-4631-ae65-b78416e0f2d6",
+  "ref_asset_rid": "ri.scout.cerulean-staging.asset.6e5f0be9-c8aa-4315-a557-f3ad4a242ba9",
+  "test_run_rid": "ri.scout.cerulean-staging.run.69f49f2b-28ec-49aa-b7ef-b47d82d56ee2",
+  "test_asset_rid": "ri.scout.cerulean-staging.asset.eec82098-fed7-4d1c-8952-5fc645aa109f"
+}

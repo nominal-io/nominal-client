@@ -93,6 +93,11 @@ nominal = { workspace = true }
 [project.optional-dependencies]
 protos = ["nominal-api-protos>=0.1090.0"]
 tdms = ["nptdms>=1.9.0,<2"]
+websockets = [
+    "pycrdt>=0.12.50",
+    "pyperclip>=1.9.0",
+    "websockets>=16.0",
+]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
