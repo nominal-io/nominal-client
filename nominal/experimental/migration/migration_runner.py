@@ -76,12 +76,6 @@ class MigrationRunner:
         dataset_config (MigrationDataConfig | None): Configuration for dataset migration.
         """
         try:
-            log_extras = {
-                "destination_client_workspace": self.destination_client.get_workspace(
-                    self.destination_client._clients.workspace_rid
-                ).rid,
-            }
-
             asset_migrator = AssetMigrator(
                 MigrationContext(destination_client=self.destination_client, migration_state=self.migration_state)
             )
@@ -90,7 +84,7 @@ class MigrationRunner:
             )
             for asset_resources in self.migration_resources.source_assets.values():
                 source_asset = asset_resources.asset
-                new_asset = asset_migrator.copy_from(
+                asset_migrator.copy_from(
                     source_asset,
                     AssetCopyOptions(
                         dataset_config=self.dataset_config,
@@ -101,22 +95,8 @@ class MigrationRunner:
                     ),
                 )
 
-                for source_workbook_template in asset_resources.source_workbook_templates:
-                    new_template = template_migrator.clone(source_workbook_template)
-                    new_workbook = new_template.create_workbook(
-                        title=new_template.title, description=new_template.description, asset=new_asset
-                    )
-                    logger.debug(
-                        "Created new workbook %s (rid: %s) from template %s (rid: %s)",
-                        new_workbook.title,
-                        new_workbook.rid,
-                        new_template.title,
-                        new_template.rid,
-                        extra=log_extras,
-                    )
-
             for source_template in self.migration_resources.source_standalone_templates:
-                new_template = template_migrator.clone(source_template)
+                template_migrator.clone(source_template)
         finally:
             self.save_state()
         logger.info("Completed migration")

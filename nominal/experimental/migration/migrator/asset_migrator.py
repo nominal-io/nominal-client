@@ -75,7 +75,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             logger.info("Copying videos for asset %s (rid: %s)", source_asset.name, source_asset.rid)
             self._copy_asset_videos(source_asset, new_asset)
 
-        self._copy_asset_and_run_workbooks(source_asset, new_asset)
+        self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs)
         return new_asset
 
     def _get_resource_name(self, resource: Asset) -> str:
@@ -196,7 +196,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     source_checklist.rid,
                 )
                 continue
-            destination_checklist.execute(destination_run_rid)
+            if self.ctx.migration_state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is None:
+                new_data_review = destination_checklist.execute(destination_run_rid)
+                self.ctx.migration_state.record_mapping(
+                    ResourceType.DATA_REVIEW, source_data_review.rid, new_data_review.rid
+                )
+            else:
+                logger.debug(
+                    "Skipping data review execution for %s: already in migration state", source_data_review.rid
+                )
 
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
         video_migrator = VideoMigrator(
@@ -223,7 +231,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     source_asset.rid,
                 )
 
-    def _copy_asset_and_run_workbooks(self, source_asset: Asset, new_asset: Asset) -> None:
+    def _copy_asset_and_run_workbooks(self, source_asset: Asset, new_asset: Asset, include_runs: bool) -> None:
         workbook_migrator = WorkbookMigrator(
             MigrationContext(
                 destination_client=self.ctx.destination_client,
@@ -235,12 +243,13 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             if workbook.asset_rids and len(workbook.asset_rids) == 1:
                 workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_asset=new_asset))
 
-        for source_run in source_asset.list_runs():
-            destination_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
-            if destination_run_rid is None:
-                logger.warning("Run %s not found in migration state", source_run.rid)
-                continue
-            destination_run = self.ctx.destination_client.get_run(destination_run_rid)
-            for workbook in source_run.search_workbooks(include_drafts=True):
-                if workbook.run_rids and len(workbook.run_rids) == 1:
-                    workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_run=destination_run))
+        if include_runs:
+            for source_run in source_asset.list_runs():
+                destination_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+                if destination_run_rid is None:
+                    logger.warning("Run %s not found in migration state", source_run.rid)
+                    continue
+                destination_run = self.ctx.destination_client.get_run(destination_run_rid)
+                for workbook in source_run.search_workbooks(include_drafts=True):
+                    if workbook.run_rids and len(workbook.run_rids) == 1:
+                        workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_run=destination_run))
