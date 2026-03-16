@@ -48,6 +48,13 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         if (options.destination_asset is None) == (options.destination_run is None):
             raise ValueError("Exactly one of destination_asset or destination_run must be provided.")
 
+        # NOTE: source_template is ephemeral — _create_template_from_workbook() assigns it a new rid
+        # on every call. If the process crashes after new_template is created but before new_workbook
+        # is recorded below, the destination template from the previous run becomes orphaned (not
+        # archived) and a fresh one is created on resume. This does not cause duplicate workbooks
+        # (the early-return above handles that), but orphaned templates may accumulate. Fixing this
+        # properly requires a stable dedup key derived from source.rid rather than the ephemeral
+        # source_template.rid.
         source_template = source._create_template_from_workbook()
         template_migrator = WorkbookTemplateMigrator(self.ctx)
         new_template = template_migrator.copy_from(

@@ -6,7 +6,6 @@ from typing import Any, Sequence
 
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
-from nominal.core.dataset import Dataset
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
@@ -97,24 +96,6 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             labels=options.new_asset_labels if options.new_asset_labels is not None else source_asset.labels,
         )
 
-    def _resolve_destination_dataset(
-        self,
-        source_dataset: Dataset,
-        dataset_config: MigrationDatasetConfig,
-        dataset_migrator: DatasetMigrator,
-    ) -> Dataset:
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET, source_dataset.rid)
-        if mapped_rid is not None:
-            return self.ctx.destination_client.get_dataset(mapped_rid)
-
-        return dataset_migrator.copy_from(
-            source_dataset,
-            DatasetCopyOptions(
-                include_files=dataset_config.include_dataset_files,
-                preserve_uuid=dataset_config.preserve_dataset_uuid,
-            ),
-        )
-
     def _copy_asset_datasets(self, source_asset: Asset, destination_asset: Asset, options: AssetCopyOptions) -> None:
         if options.dataset_config is None:
             return
@@ -139,10 +120,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
 
             source_dataset = source_datasets[source_dataset_rid]
             source_series_tags = source_data_scope.series_tags
-            new_dataset = self._resolve_destination_dataset(
+            # Always delegate to dataset_migrator.copy_from so that file migrations are
+            # never skipped on resume. DatasetMigrator._copy_from_impl handles fetch-or-create
+            # internally and always proceeds to file copies regardless.
+            new_dataset = dataset_migrator.copy_from(
                 source_dataset,
-                options.dataset_config,
-                dataset_migrator,
+                DatasetCopyOptions(
+                    include_files=options.dataset_config.include_dataset_files,
+                    preserve_uuid=options.dataset_config.preserve_dataset_uuid,
+                ),
             )
 
             scope_key = f"{source_asset.rid}:{source_data_scope_name}"
