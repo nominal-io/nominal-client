@@ -27,8 +27,6 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Force tag mode with tracking comments
-          track_progress: "true"
           # Include links to "fix" the issue in claude code web ui
           include_fix_links: "true"
           # Force commits from claude to be signed, but limits ability to e.g. rebase
