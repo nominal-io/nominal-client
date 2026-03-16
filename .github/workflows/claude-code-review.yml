@@ -1,0 +1,74 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened]
+    branches: ["main"]
+
+  # User tags @claude
+  issue_comment:
+    types: [created]
+
+# Serialize reviews per PR so concurrent triggers don't overlap.
+concurrency:
+  group: claude-code-review-${{ github.event.pull_request.number || github.event.issue.number }}
+
+jobs:
+  claude-review:
+    # Skip forks that won't have access to the secret (for PR events only)
+    # Trigger reviews if user tags @claude, but not if they push a commit and don't
+    # re-trigger review via comment.
+    if: |
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != '' &&
+        contains(github.event.comment.body, '@claude')
+      ) || (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - if: github.event_name == 'issue_comment'
+        run: gh pr checkout ${{ github.event.issue.number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Automatic review on PR open/reopen
+      - if: github.event_name == 'pull_request'
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          mode: "experimental-review"
+          use_commit_signing: "true"
+          direct_prompt: |
+            Please review this pull request. Focus on:
+            - Correctness and potential bugs. We should not allow bugs or flaky/inconsistent behavior into the repository.
+            - Usability and ergonomics of code. Python experts and newcomers alike should feel at home and comfortable within our library.
+            - Ensure a professional and terse tone within documentation and docstrings. Don't use unnecessary language while at the same time ensuring that novice users aren't left in the dust.
+            - Type safety (this project uses strict mypy)
+            - API consistency with the existing nominal client patterns. Make sure to point out if new code isn't following conventions and patterns existing within other parts of the repository.
+            - Any missing edge case handling
+            - Point out any and all breaking changes, API or behavioral. Users should not have different experiences using the same code on different versions of this repository unless we are fixing bugs or explicitly buy-in to the change.
+            - Don't duplicate comments made by other bot users or human users.
+            - If a human user makes a comment that we would have made, simply add a thumbs up emoji to the existing comment without creating a new one.
+            - Untested code is fragile code. Nudge developers to add tests when adding complex or large amounts of business logic. If a new method is not a thin wrapper around an existing API endpoint, they should be adding unit or e2e tests.
+            - Ensure correct spelling and point out obvious typos, especially in documentation
+
+            Be concise. Only flag real issues, not style preferences already enforced by ruff.
+
+      # Respond to @claude mentions in PR comments
+      - if: github.event_name == 'issue_comment'
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
