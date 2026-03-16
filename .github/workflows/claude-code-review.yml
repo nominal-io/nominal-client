@@ -37,6 +37,11 @@ jobs:
         with:
           fetch-depth: 1
 
+      - if: github.event_name == 'issue_comment'
+        run: gh pr checkout ${{ github.event.issue.number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # Automatic review on PR open/reopen
       - if: github.event_name == 'pull_request'
         uses: anthropics/claude-code-action@beta
@@ -67,4 +72,3 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          use_commit_signing: "true"
