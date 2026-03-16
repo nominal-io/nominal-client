@@ -43,7 +43,7 @@ jobs:
             Please review this pull request. Focus on:
             - Correctness and potential bugs. We should not allow bugs or flaky/inconsistent behavior into the repository.
             - Usability and ergonomics of code. Python experts and newcomers alike should feel at home and comfortable within our library.
-            - Ensure a professional and terse tone within documentation and docstrings. Don't use unecessary language while at the same time ensuring that novice users aren't left in the dust.
+            - Ensure a professional and terse tone within documentation and docstrings. Don't use unnecessary language while at the same time ensuring that novice users aren't left in the dust.
             - Type safety (this project uses strict mypy and ruff)
             - API consistency with the existing nominal client patterns. Make sure to point out if new code isn't following conventions and patterns existing within other parts of the repository.
             - Any missing edge case handling
@@ -51,5 +51,6 @@ jobs:
             - Don't duplicate comments made by other bot users or human users.
             - If a human user makes a comment that we would have made, simply add a thumbs up emoji to the existing comment without creating a new one.
             - Untested code is fragile code. Nudge developers to add tests when adding complex or large amounts of business logic. If a new method is not a thin wrapper around an existing API endpoint, they should be adding unit or e2e tests.
+            - Ensure correct spelling and point out obvious typos, especially in documentation
 
             Be concise. Only flag real issues, not style preferences already enforced by ruff.
