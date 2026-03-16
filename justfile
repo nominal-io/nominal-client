@@ -22,11 +22,11 @@ test:
 
 # run e2e tests using a named Nominal profile (preferred)
 test-e2e profile:
-    uv run pytest tests/e2e --profile {{profile}}
+    uv run pytest tests/e2e --profile {{profile}} --no-cov -v
 
 # run e2e tests using a raw auth token
 test-e2e-token token:
-    uv run pytest tests/e2e --auth-token {{token}}
+    uv run pytest tests/e2e --auth-token {{token}} --no-cov -v
 
 # check static typing
 check-types:
