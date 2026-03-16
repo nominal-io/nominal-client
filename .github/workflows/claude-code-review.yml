@@ -2,8 +2,12 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [edited, opened, reopened, synchronize]
+    types: [opened, reopened]
     branches: ["main"]
+
+  # User tags @claude
+  issue_comment:
+    types: [created]
 
 # Serialize e2e runs per-ref so we don't overwhelm staging with concurrent
 # test suites from the same branch.  A new push cancels the in-flight run.
@@ -12,8 +16,18 @@ concurrency:
 
 jobs:
   claude-review:
-    # Skip forks that won't have access to the secret
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Skip forks that won't have access to the secret (for PR events only)
+    # Trigger reviews if user tags @claude, but not if they push a commit and don't
+    # re-trigger review via comment.
+    if: |
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != '' &&
+        contains(github.event.comment.body, '@claude')
+      ) || (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
