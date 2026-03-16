@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from nominal_api import scout_checks_api
@@ -12,6 +13,8 @@ from nominal.experimental.checklist_utils.checklist_utils import (
 )
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,11 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
         return ChecklistCopyOptions()
 
     def _copy_from_impl(self, source: Checklist, options: ChecklistCopyOptions) -> Checklist:
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
+        if mapped_rid is not None:
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+            return self.ctx.destination_client.get_checklist(mapped_rid)
+
         api_source_checklist = source._get_latest_api()
         commit_message = (
             options.new_commit_message
@@ -70,7 +78,7 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
             self.ctx.destination_client._clients.workspace_rid
         ).rid
 
-        return _create_checklist_with_content(
+        new_checklist = _create_checklist_with_content(
             client=self.ctx.destination_client,
             commit_message=commit_message,
             title=title,
@@ -82,6 +90,8 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
             is_published=is_published,
             workspace=workspace_rid,
         )
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_checklist.rid)
+        return new_checklist
 
     def _get_resource_name(self, resource: Checklist) -> str:
         return resource.name

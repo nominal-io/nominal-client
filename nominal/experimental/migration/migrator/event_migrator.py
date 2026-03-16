@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Iterable, Mapping
@@ -10,6 +11,8 @@ from nominal.core.event import Event
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -33,7 +36,12 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
         return EventCopyOptions()
 
     def _copy_from_impl(self, source: Event, options: EventCopyOptions) -> Event:
-        return self.ctx.destination_client.create_event(
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
+        if mapped_rid is not None:
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+            return self.ctx.destination_client.get_event(mapped_rid)
+
+        new_event = self.ctx.destination_client.create_event(
             name=options.new_name if options.new_name is not None else source.name,
             type=options.new_type if options.new_type is not None else source.type,
             start=options.new_start if options.new_start is not None else source.start,
@@ -43,6 +51,8 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
             properties=options.new_properties if options.new_properties is not None else source.properties,
             labels=options.new_labels if options.new_labels is not None else source.labels,
         )
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_event.rid)
+        return new_event
 
     def _get_resource_name(self, resource: Event) -> str:
         return resource.name

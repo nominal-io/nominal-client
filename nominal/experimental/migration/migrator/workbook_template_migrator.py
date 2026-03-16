@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Mapping, Sequence
@@ -10,6 +11,8 @@ from nominal.core.workbook_template import WorkbookTemplate, _create_workbook_te
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.conjure_clone_utils import clone_conjure_objects_with_new_uuids
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,11 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
         return WorkbookTemplateCopyOptions(include_content_and_layout=True)
 
     def _copy_from_impl(self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions) -> WorkbookTemplate:
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
+        if mapped_rid is not None:
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+            return self.ctx.destination_client.get_workbook_template(mapped_rid)
+
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
         new_template_layout, new_workbook_content = self._resolve_template_content_and_layout(
             raw_source_template,
@@ -57,6 +65,7 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
                 self.ctx.destination_client._clients.workspace_rid
             ).rid,
         )
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_workbook_template.rid)
         return new_workbook_template
 
     def _resolve_template_content_and_layout(

@@ -9,8 +9,8 @@ from nominal.core.dataset import Dataset
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
+from nominal.experimental.migration.migrator.dataset_file_migrator import DatasetFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
-from nominal.experimental.migration.utils.file_utils import copy_file_to_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,21 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         return DatasetCopyOptions(include_files=True)
 
     def _copy_from_impl(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
+        new_dataset = self._resolve_destination_dataset(source, options)
+
+        if options.include_files:
+            file_migrator = DatasetFileMigrator(self.ctx)
+            for source_file in source.list_files():
+                file_migrator.copy_from(source_file, new_dataset)
+
+        return new_dataset
+
+    def _resolve_destination_dataset(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
+        if mapped_rid is not None:
+            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+            return self.ctx.destination_client.get_dataset(mapped_rid)
+
         log_extras = {
             "destination_client_workspace": self.ctx.destination_client.get_workspace(
                 self.ctx.destination_client._clients.workspace_rid
@@ -56,6 +71,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
             dataset_properties,
             dataset_labels,
         )
+        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_dataset.rid)
 
         if options.preserve_uuid:
             channels_copied_count = 0
@@ -63,24 +79,36 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                 if source_channel.data_type is None:
                     logger.warning("Skipping channel %s: unknown data type", source_channel.name, extra=log_extras)
                     continue
-                new_dataset.add_channel(
-                    name=source_channel.name,
-                    data_type=source_channel.data_type,
-                    description=source_channel.description,
-                    unit=source_channel.unit,
-                )
-                channels_copied_count += 1
+                channel_key = f"{source.rid}:{source_channel.name}"
+                if self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET_CHANNEL, channel_key) is None:
+                    new_dataset.add_channel(
+                        name=source_channel.name,
+                        data_type=source_channel.data_type,
+                        description=source_channel.description,
+                        unit=source_channel.unit,
+                    )
+                    self.ctx.migration_state.record_mapping(
+                        ResourceType.DATASET_CHANNEL, channel_key, source_channel.name
+                    )
+                    channels_copied_count += 1
+                else:
+                    logger.debug(
+                        "Skipping channel %s on dataset %s: already in migration state",
+                        source_channel.name,
+                        source.rid,
+                    )
             logger.info("Copied %d channels from dataset %s", channels_copied_count, source.name, extra=log_extras)
 
-        if options.include_files:
-            for source_file in source.list_files():
-                copy_file_to_dataset(source_file, new_dataset)
-
         if source.bounds is not None:
-            new_dataset = new_dataset.update_bounds(
-                start=source.bounds.start,
-                end=source.bounds.end,
-            )
+            if self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET_BOUNDS, source.rid) is None:
+                new_dataset = new_dataset.update_bounds(
+                    start=source.bounds.start,
+                    end=source.bounds.end,
+                )
+                self.ctx.migration_state.record_mapping(ResourceType.DATASET_BOUNDS, source.rid, new_dataset.rid)
+            else:
+                logger.debug("Skipping bounds update for dataset %s: already in migration state", source.rid)
+
         return new_dataset
 
     def _create_destination_dataset(
