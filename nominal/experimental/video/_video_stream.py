@@ -145,6 +145,8 @@ class VideoStream:
             self._stream.run(seconds)
         except RuntimeError as e:
             raise NominalVideoError(f"video stream error: {e}") from e
+        finally:
+            self.close()
 
     def restart(self) -> None:
         """Stop and restart the pipeline.
@@ -170,7 +172,7 @@ class VideoStream:
         """
         if self._stream is None:
             return False
-        return self._stream.send_frame(data, timestamp_ns)
+        return bool(self._stream.send_frame(data, timestamp_ns))
 
     def recv_frame(self, timeout_ms: int | None = None) -> Frame | None:
         """Pull a decoded video frame from the pipeline. Only valid when using ``Sink.app()``.
