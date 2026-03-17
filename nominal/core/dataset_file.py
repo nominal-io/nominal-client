@@ -360,7 +360,7 @@ def wait_for_files_to_ingest(
             latest_api = file._get_latest_api()
             latest_file = file._refresh_from_api(latest_api)
             match file.ingest_status:
-                case IngestStatus.SUCCESS:
+                case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
                     done.append(latest_file)
                 case IngestStatus.FAILED:
                     logger.warning(
@@ -383,12 +383,12 @@ def wait_for_files_to_ingest(
         elif not not_done:
             break
 
-        if timeout is not None and datetime.datetime.now() - start_time < timeout:
+        if timeout is None or datetime.datetime.now() - start_time < timeout:
             logger.info(
                 "Sleeping for %f seconds while awaiting ingestion for %d files (%d total)... ",
+                poll_interval.total_seconds(),
                 len(not_done),
                 len(files),
-                poll_interval.total_seconds(),
             )
             time.sleep(poll_interval.total_seconds())
 
