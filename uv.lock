@@ -1185,6 +1185,9 @@ protos = [
 tdms = [
     { name = "nptdms" },
 ]
+video = [
+    { name = "nominal-video" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1219,6 +1222,7 @@ requires-dist = [
     { name = "nominal-api", specifier = "==0.1149.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1090.0" },
     { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.7.12" },
+    { name = "nominal-video", marker = "extra == 'video'", specifier = ">=0.1.5" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "openpyxl", specifier = ">=0.0.0" },
     { name = "pandas", specifier = ">=0.0.0" },
@@ -1233,7 +1237,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4,<5" },
     { name = "urllib3", specifier = "==2.6.3" },
 ]
-provides-extras = ["protos", "tdms"]
+provides-extras = ["protos", "tdms", "video"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1303,6 +1307,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e8/fe/b202667acfebb09123b1b5a63a4cd2b01e0df45fcf443407c5f46cfb1744/nominal_streaming-0.7.12-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:9b9508b89862b8c9d23514662ad7d32838438d147d97bbc463032602c93cd83e", size = 3206626, upload-time = "2026-02-02T17:11:48.982Z" },
     { url = "https://files.pythonhosted.org/packages/5d/cb/46c0fd44ba3f33f2b8303b3425d275021e6559b990fd9dd8b7c3b58fc23b/nominal_streaming-0.7.12-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a4963c3e49671f8aea08fe5e3cc5f770744ad73dbf6e5f2ff05f31e998923a1a", size = 3658668, upload-time = "2026-02-02T17:11:55.585Z" },
     { url = "https://files.pythonhosted.org/packages/00/ed/fad20c542f307e6d59c92c5df809a2f63bbc32976189e884439a9e5a98a5/nominal_streaming-0.7.12-cp310-abi3-win_amd64.whl", hash = "sha256:5f9882cf6fd82d46956b70f435b16734fcb845214fc4fd2a823d05fa81f3621a", size = 3150372, upload-time = "2026-02-02T17:18:34.856Z" },
+]
+
+[[package]]
+name = "nominal-video"
+version = "0.1.5"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ff/c5/68fc5f83e64b187cd06c1ea92c89193aef0ff16e81ab7d46f2267e71c0b3/nominal_video-0.1.5-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:92b27e462a918908782fac339ef7e37ac32aa8dfecae426e93e0c03b4d20e3e7", size = 1346028, upload-time = "2026-03-16T19:42:32.873Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/c1/a6c454245674d5363d3272eafac412865f0eda4d01aa1a098849d1abfab2/nominal_video-0.1.5-cp310-abi3-manylinux_2_35_aarch64.whl", hash = "sha256:cabbe872bf85550cf8e7f499f4288897edd6e69ba9145e8b020bb15058196b4d", size = 1410195, upload-time = "2026-03-16T19:42:34.18Z" },
+    { url = "https://files.pythonhosted.org/packages/63/b3/291558caa2603f5dbda845e0a34395eb37319f43db916a4cc7d6f6978ee2/nominal_video-0.1.5-cp310-abi3-manylinux_2_35_x86_64.whl", hash = "sha256:49db9f48a441384942aefe054c469c3b8a418723f7f7b82232f0d4592af8185a", size = 1446617, upload-time = "2026-03-16T19:42:35.436Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/4b/14914da50c474b9ec3361588898b6d0030e55c3718d4b7675b3a2fbd0b87/nominal_video-0.1.5-cp310-abi3-win_amd64.whl", hash = "sha256:12d734bd0d1d783b14e8fc901188ffa92dcf80e647714449555530ba2633d301", size = 1459242, upload-time = "2026-03-16T19:42:37.066Z" },
 ]
 
 [[package]]

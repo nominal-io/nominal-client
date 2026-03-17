@@ -93,6 +93,7 @@ nominal = { workspace = true }
 [project.optional-dependencies]
 protos = ["nominal-api-protos>=0.1090.0"]
 tdms = ["nptdms>=1.9.0,<2"]
+video = ["nominal-video>=0.1.5"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
@@ -166,6 +167,10 @@ disable_error_code = ["no-any-return", "no-untyped-def"]
 
 [[tool.mypy.overrides]]
 module = "nptdms"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "nominal_video"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
