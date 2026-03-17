@@ -105,7 +105,7 @@ class VideoStream:
         """Build and start the GStreamer pipeline. Idempotent — safe to call multiple times.
 
         Raises:
-            RuntimeError: if the pipeline fails to start (e.g. device not found, bad source URL).
+            NominalVideoError: if the pipeline fails to start (e.g. device not found, bad source URL).
         """
         if self._stream is not None:
             return
@@ -135,8 +135,8 @@ class VideoStream:
                 ends naturally (e.g. end of file) or until interrupted with Ctrl+C.
 
         Raises:
-            RuntimeError: if the stream is not open — call open() first or use as a context manager.
-            RuntimeError: if the pipeline encounters an unrecoverable error.
+            NominalVideoStreamNotOpenError: if the stream is not open — call open() first or use as a context manager.
+            NominalVideoError: if the pipeline encounters an unrecoverable error.
             KeyboardInterrupt: if interrupted with Ctrl+C.
         """
         if self._stream is None:
@@ -188,7 +188,7 @@ class VideoStream:
             or if the stream has ended.
 
         Raises:
-            RuntimeError: if the stream is not open.
+            NominalVideoStreamNotOpenError: if the stream is not open.
         """
         if self._stream is None:
             raise NominalVideoStreamNotOpenError()
