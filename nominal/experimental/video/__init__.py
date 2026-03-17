@@ -19,8 +19,7 @@ try:
 except ImportError as e:
     if "nominal_video" in str(e):
         raise ImportError(
-            "nominal[video] is required for live video streaming. "
-            "Install it with: pip install 'nominal[video]'"
+            "nominal[video] is required for live video streaming. Install it with: pip install 'nominal[video]'"
         ) from e
     if sys.platform == "darwin":
         _gst_instructions = (
@@ -36,9 +35,7 @@ except ImportError as e:
             "      gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \\\n"
             "      gstreamer1.0-libav gstreamer1.0-nice libssl3"
         )
-    raise ImportError(
-        f"GStreamer 1.20+ is required for live video streaming.\n{_gst_instructions}"
-    ) from e
+    raise ImportError(f"GStreamer 1.20+ is required for live video streaming.\n{_gst_instructions}") from e
 
 __all__ = [
     "Codec",
