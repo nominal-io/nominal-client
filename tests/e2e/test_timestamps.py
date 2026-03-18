@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from typing import Callable
 
 import pytest
 
@@ -27,6 +28,8 @@ from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.ts import Custom, Relative, _SecondsNanos
 from tests.e2e import POLL_INTERVAL
+
+Formatter = Callable[[int, datetime], str]
 
 
 @pytest.fixture(scope="module")
@@ -44,7 +47,7 @@ def temperature_data() -> list[tuple[int, datetime]]:
     ]
 
 
-def _create_csv_data(data: list[tuple[int, datetime]], formatter) -> bytes:
+def _create_csv_data(data: list[tuple[int, datetime]], formatter: Formatter) -> bytes:
     """Render `data` as a two-column CSV (temperature, timestamp) using `formatter` for the timestamp."""
     return ("temperature,timestamp\n" + "\n".join(formatter(temp, ts) for temp, ts in data)).encode()
 
@@ -124,7 +127,7 @@ def _upload_and_assert(
         ds.archive()
 
 
-def test_iso_8601(request, client: NominalClient, temperature_data):
+def test_iso_8601(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
     """ISO 8601 timestamps ingest correctly; file bounds are truncated to millisecond precision."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
@@ -144,7 +147,7 @@ def test_iso_8601(request, client: NominalClient, temperature_data):
     )
 
 
-def test_epoch_seconds(request, client: NominalClient, temperature_data):
+def test_epoch_seconds(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
     """Epoch-seconds timestamps ingest correctly; float64 CSV values have sub-microsecond rounding."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
@@ -161,7 +164,7 @@ def test_epoch_seconds(request, client: NominalClient, temperature_data):
     )
 
 
-def test_epoch_milliseconds(request, client: NominalClient, temperature_data):
+def test_epoch_milliseconds(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
     """Epoch-milliseconds timestamps ingest correctly; sub-millisecond precision is truncated."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
@@ -177,7 +180,7 @@ def test_epoch_milliseconds(request, client: NominalClient, temperature_data):
     )
 
 
-def test_relative_microseconds(request, client: NominalClient, temperature_data):
+def test_relative_microseconds(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
     """Relative(microseconds, epoch) translates integer offsets into absolute timestamps and ingests successfully."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
@@ -199,7 +202,7 @@ def test_relative_microseconds(request, client: NominalClient, temperature_data)
     _upload_and_assert(client, name, desc, csv_bytes, Relative("microseconds", start), expected_start, expected_end)
 
 
-def test_custom_ctime(request, client: NominalClient, temperature_data):
+def test_custom_ctime(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
     """A Custom format matching ctime output (e.g. "Mon Sep 30 16:37:36.891349 2024") ingests successfully."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
@@ -222,7 +225,7 @@ def test_custom_ctime(request, client: NominalClient, temperature_data):
     )
 
 
-def test_custom_irig(request, client: NominalClient, temperature_data):
+def test_custom_irig(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
     """A Custom format using IRIG day-of-year notation (e.g. "274:16:37:36.891349") ingests successfully."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
@@ -243,7 +246,7 @@ def test_custom_irig(request, client: NominalClient, temperature_data):
     )
 
 
-def test_custom_day_of_year(request, client: NominalClient, temperature_data):
+def test_custom_day_of_year(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
     """A Custom format with only HH:MM:SS uses default_year and default_day_of_year to fill in the date."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
