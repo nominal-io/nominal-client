@@ -324,11 +324,12 @@ class IngestWaitType(Enum):
     ALL_COMPLETED = "ALL_COMPLETED"
 
 
-def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> None:
+def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> set[str]:
     """Batch-fetches the latest API state for all files and refreshes them in-place.
 
-    Files absent from the response are left unchanged.
+    Returns the set of file IDs that were absent from the batch response (i.e. not found on the server).
     """
+    absent_ids: set[str] = set()
     by_dataset: dict[str, list[DatasetFile]] = defaultdict(list)
     for file in files:
         by_dataset[file.dataset_rid].append(file)
@@ -343,6 +344,9 @@ def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> 
             for file in chunk:
                 if (latest_api := results.get(file.id)) is not None:
                     file._refresh_from_api(latest_api)
+                else:
+                    absent_ids.add(file.id)
+    return absent_ids
 
 
 def wait_for_files_to_ingest(
@@ -378,10 +382,20 @@ def wait_for_files_to_ingest(
     while not_done and (timeout is None or datetime.datetime.now() - start_time < timeout):
         logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
 
-        _batch_refresh_files(not_done)
+        absent_ids = _batch_refresh_files(not_done)
 
         next_not_done = []
         for file in not_done:
+            if file.id in absent_ids:
+                logger.warning(
+                    "Dataset file %s from dataset %s was absent from the batch response "
+                    "— it may have been deleted or never created successfully.",
+                    file.id,
+                    file.dataset_rid,
+                )
+                done.append(file)
+                has_failed = True
+                continue
             match file.ingest_status:
                 case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
                     done.append(file)
