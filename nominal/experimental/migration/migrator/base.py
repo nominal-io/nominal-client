@@ -60,14 +60,11 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
             source_rid,
             extra=log_extras,
         )
+        already_mapped = self.ctx.migration_state.get_mapped_rid(self.resource_type, source_rid) is not None
         result = self._copy_from_impl(source, resolved_options)
         result_rid = result.rid
         logger.debug(
-            (
-                "Found %s: %s (rid: %s)"
-                if self.ctx.migration_state.get_mapped_rid(self.resource_type, source_rid)
-                else "New %s created: %s (rid: %s)"
-            ),
+            "Found %s: %s (rid: %s)" if already_mapped else "New %s created: %s (rid: %s)",
             self.resource_label,
             self._get_resource_name(result),
             result_rid,

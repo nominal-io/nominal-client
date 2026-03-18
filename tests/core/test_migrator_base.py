@@ -76,8 +76,8 @@ def test_copy_from_logs_new_created_for_new_resource(caplog: pytest.LogCaptureFi
     assert any("New asset created" in record.message for record in caplog.records)
 
 
-def test_copy_from_skips_log_for_already_mapped_resource(caplog: pytest.LogCaptureFixture) -> None:
-    """When a resource was already migrated (mapped), 'New * created' should NOT be logged."""
+def test_copy_from_logs_found_for_already_mapped_resource(caplog: pytest.LogCaptureFixture) -> None:
+    """When a resource was already migrated (mapped), 'Found' should be logged instead of 'New * created'."""
     ctx = _make_context()
     # Pre-populate migration state to simulate a previously migrated resource
     ctx.migration_state.record_mapping(ResourceType.ASSET, "src-1", "existing-rid")
@@ -88,3 +88,4 @@ def test_copy_from_skips_log_for_already_mapped_resource(caplog: pytest.LogCaptu
         migrator.copy_from(source)
 
     assert not any("New asset created" in record.message for record in caplog.records)
+    assert any("Found asset" in record.message for record in caplog.records)
