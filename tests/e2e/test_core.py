@@ -6,6 +6,7 @@ Covers:
   - Uploading multiple CSV files to a single dataset
   - Linking datasets and attachments to a run, then listing them back
   - Reading channel data via the pandas integration (single-channel and full-dataset retrieval)
+  - Downloading a dataset file to disk via MultipartFileDownloader and verifying byte-identical content
 
 The `ingested_dataset` fixture is session-scoped (defined in conftest.py): one shared dataset is
 created at the start of the session and reused by all read-only channel/pandas tests, avoiding
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from io import BytesIO
+from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
@@ -256,3 +258,19 @@ def test_get_or_create_dataset_raises_on_tag_mismatch(client: NominalClient, arc
 
     with pytest.raises(ValueError, match="datascope already exists"):
         asset.get_or_create_dataset(scope_name, series_tags={"env": "staging"})
+
+
+def test_download_dataset_file_roundtrips_to_disk(
+    client: NominalClient, csv_data: bytes, tmp_path: Path, archive: Callable[..., None]
+) -> None:
+    """Uploading a CSV and downloading it via MultipartFileDownloader produces byte-identical content on disk."""
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+
+    dataset_file = ds.add_from_io(BytesIO(csv_data), "timestamp", ISO_8601)
+    dataset_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
+
+    output_path = dataset_file.download(tmp_path)
+
+    assert output_path.exists()
+    assert output_path.read_bytes() == csv_data
