@@ -165,7 +165,7 @@ class MultipartFileDownloader:
 
     def download_files(self, items: Sequence[DownloadItem]) -> DownloadResults:
         """Download many files using a shared thread pool."""
-        failed: dict[pathlib.Path, Exception] = {}
+        plan_failures: dict[pathlib.Path, Exception] = {}
 
         # Ensure destination directories exist
         logger.info("Validating destinations for download")
@@ -175,7 +175,7 @@ class MultipartFileDownloader:
         # Probe & preallocate files to generate a plan
         plans: list[_PlannedDownload] = []
         for it in items:
-            if it.destination in failed:
+            if it.destination in plan_failures:
                 continue
 
             try:
@@ -183,34 +183,36 @@ class MultipartFileDownloader:
                 self._preallocate(it.destination, plan.total_size)
                 plans.append(plan)
             except Exception as ex:
-                failed[it.destination] = ex
+                plan_failures[it.destination] = ex
                 logger.error("Planning failed for %s: %s", it.destination, ex, exc_info=ex)
 
-        if failed:
-            logger.warning("Failed to plan downloads for %d files!", len(failed))
+        if plan_failures:
+            logger.warning("Failed to plan downloads for %d files!", len(plan_failures))
 
         # Execute plans with error collection
         logger.info("Starting downloads for %d files", len(plans))
-        exec_failed = self._run_downloads(plans, collect_errors=True)
-        succeeded = [p.item.destination for p in plans if p.item.destination not in failed]
+        exec_failures = self._run_downloads(plans, collect_errors=True)
+
+        # Partition items broadly into failures vs. successes
+        all_failures = {**plan_failures, **exec_failures}
+        all_successes = [p.item.destination for p in plans if p.item.destination not in all_failures]
         logger.info(
             "Successfully downloaded %d files (%d total, %d failed to plan, %d failed)",
-            len(succeeded),
+            len(all_successes),
             len(items),
-            len(failed),
-            len(exec_failed),
+            len(plan_failures),
+            len(exec_failures),
         )
-        failed.update(exec_failed)
 
         # Delete any failed file downloads
-        if failed:
-            logger.warning("Clearing out artifacts from %d failed file downloads", len(failed))
-            for file in failed:
+        if all_failures:
+            logger.warning("Clearing out artifacts from %d failed file downloads", len(all_failures))
+            for file in all_failures:
                 if file.exists():
                     logger.info("Removing failed artifact %s", file)
                     file.unlink()
 
-        return DownloadResults(succeeded, failed)
+        return DownloadResults(all_successes, all_failures)
 
     def _run_downloads(
         self, plans: Sequence[_PlannedDownload], *, collect_errors: bool
