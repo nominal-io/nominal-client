@@ -4,13 +4,16 @@ import pytest
 
 import nominal.config as config_module
 from nominal.config import ConfigProfile, NominalConfig
-from nominal.config._config import NominalConfigV1
 from nominal.core.exceptions import NominalConfigError
 
 
-def test_nominal_config_round_trips_profiles(tmp_path: Path) -> None:
+@pytest.fixture
+def config_path(tmp_path: Path) -> Path:
+    return tmp_path / "config.yml"
+
+
+def test_nominal_config_round_trips_profiles(config_path: Path) -> None:
     """Writing and reading the v2 config should preserve profiles exactly."""
-    config_path = tmp_path / "config.yml"
     config = NominalConfig(
         version=2,
         profiles={
@@ -31,12 +34,36 @@ def test_nominal_config_round_trips_profiles(tmp_path: Path) -> None:
     assert NominalConfig.from_yaml(config_path) == config
 
 
+def test_nominal_config_get_profile_returns_matching_profile() -> None:
+    """get_profile should return the ConfigProfile for the given name."""
+    profile = ConfigProfile(base_url="https://api.gov.nominal.io/api", token="tok")
+    config = NominalConfig(version=2, profiles={"default": profile})
+
+    assert config.get_profile("default") == profile
+
+
+def test_nominal_config_get_profile_raises_when_not_found() -> None:
+    """get_profile should raise NominalConfigError when the profile name is absent."""
+    config = NominalConfig(version=2, profiles={})
+
+    with pytest.raises(NominalConfigError, match="'missing' not found"):
+        config.get_profile("missing")
+
+
+def test_nominal_config_raises_when_no_config_exists(
+    config_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing v2 config with no deprecated fallback should raise a FileNotFoundError."""
+    monkeypatch.setattr(config_module, "DEPRECATED_NOMINAL_CONFIG_PATH", tmp_path / "deprecated.yml")
+
+    with pytest.raises(FileNotFoundError, match="create with `nom config profile add`"):
+        NominalConfig.from_yaml(config_path)
+
+
 def test_nominal_config_guides_migration_when_only_deprecated_config_exists(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    config_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A missing v2 config should point users at migration if the deprecated config still exists."""
-    config_path = tmp_path / "config.yml"
     deprecated_path = tmp_path / "deprecated.yml"
     deprecated_path.write_text("environments:\n  api.gov.nominal.io/api: token\n")
     monkeypatch.setattr(config_module, "DEPRECATED_NOMINAL_CONFIG_PATH", deprecated_path)
@@ -45,30 +72,25 @@ def test_nominal_config_guides_migration_when_only_deprecated_config_exists(
         NominalConfig.from_yaml(config_path)
 
 
-def test_nominal_config_rejects_empty_files(tmp_path: Path) -> None:
+def test_nominal_config_rejects_empty_files(config_path: Path) -> None:
     """An empty v2 config file should raise the same user-facing error as a missing version key."""
-    config_path = tmp_path / "empty.yml"
     config_path.write_text("")
 
     with pytest.raises(NominalConfigError, match="missing 'version' key"):
         NominalConfig.from_yaml(config_path)
 
 
-def test_deprecated_nominal_config_rejects_empty_files(tmp_path: Path) -> None:
-    """An empty deprecated config should raise a NominalConfigError instead of an internal TypeError."""
-    config_path = tmp_path / "empty.yml"
-    config_path.write_text("")
+def test_nominal_config_rejects_missing_profiles_key(config_path: Path) -> None:
+    """A config file with a version but no profiles key should raise a NominalConfigError."""
+    config_path.write_text("version: 2\n")
 
-    with pytest.raises(NominalConfigError, match="missing 'environments' key"):
-        NominalConfigV1.from_yaml(config_path)
+    with pytest.raises(NominalConfigError, match="missing 'profiles' key"):
+        NominalConfig.from_yaml(config_path)
 
 
-def test_deprecated_nominal_config_includes_the_invalid_url_in_errors() -> None:
-    """Scheme validation should show the offending URL instead of a literal format placeholder."""
-    config = NominalConfigV1(environments={})
+def test_nominal_config_rejects_unsupported_version(config_path: Path) -> None:
+    """A config file with an unrecognised version number should raise a NominalConfigError."""
+    config_path.write_text("version: 1\nprofiles: {}\n")
 
-    with pytest.raises(ValueError, match=r"url 'https://api\.nominal\.test/api' must not include"):
-        config.set_token("https://api.nominal.test/api", "token")
-
-    with pytest.raises(ValueError, match=r"url 'https://api\.nominal\.test/api' must not include"):
-        config.get_token("https://api.nominal.test/api")
+    with pytest.raises(NominalConfigError, match="unsupported config version"):
+        NominalConfig.from_yaml(config_path)

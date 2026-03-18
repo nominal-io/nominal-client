@@ -15,16 +15,9 @@ def _conjure_error(status_code: int) -> ConjureHTTPError:
     return ConjureHTTPError(HTTPError(response=response))
 
 
-def _make_client() -> MagicMock:
-    client = MagicMock()
-    client.get_user.return_value = MagicMock()
-    client.get_workspace.return_value = MagicMock()
-    return client
-
-
 def test_validate_token_url_accepts_valid_credentials() -> None:
     """Successful auth and workspace resolution should not emit user-facing errors."""
-    client = _make_client()
+    client = MagicMock()
 
     with (
         patch("nominal.cli.util.verify_connection.NominalClient.create", return_value=client) as create_client,
@@ -48,7 +41,7 @@ def test_validate_token_url_accepts_valid_credentials() -> None:
 )
 def test_validate_token_url_surfaces_user_lookup_failures(status_code: int, expected_message: str) -> None:
     """User lookup failures should be translated into actionable click errors."""
-    client = _make_client()
+    client = MagicMock()
     client.get_user.side_effect = _conjure_error(status_code)
 
     with (
@@ -64,7 +57,7 @@ def test_validate_token_url_surfaces_user_lookup_failures(status_code: int, expe
 
 def test_validate_token_url_surfaces_missing_default_workspace() -> None:
     """Missing default workspace resolution should be rewritten into a user-facing config error."""
-    client = _make_client()
+    client = MagicMock()
     client.get_workspace.side_effect = NominalConfigError("no default workspace")
 
     with (
@@ -87,7 +80,7 @@ def test_validate_token_url_surfaces_missing_default_workspace() -> None:
 )
 def test_validate_token_url_surfaces_workspace_lookup_http_failures(status_code: int, expected_message: str) -> None:
     """Workspace lookup HTTP failures should be translated into actionable click errors."""
-    client = _make_client()
+    client = MagicMock()
     client.get_workspace.side_effect = _conjure_error(status_code)
 
     with (
