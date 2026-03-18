@@ -60,17 +60,19 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
             source_rid,
             extra=log_extras,
         )
-        already_mapped = self.ctx.migration_state.get_mapped_rid(self.resource_type, source_rid) is not None
         result = self._copy_from_impl(source, resolved_options)
         result_rid = result.rid
-        if not already_mapped:
-            logger.debug(
-                "New %s created: %s (rid: %s)",
-                self.resource_label,
-                self._get_resource_name(result),
-                result_rid,
-                extra=log_extras,
-            )
+        logger.debug(
+            (
+                "Found %s: %s (rid: %s)"
+                if self.ctx.migration_state.get_mapped_rid(self.resource_type, source_rid)
+                else "New %s created: %s (rid: %s)"
+            ),
+            self.resource_label,
+            self._get_resource_name(result),
+            result_rid,
+            extra=log_extras,
+        )
         # Safety net: each _copy_from_impl should already call record_mapping immediately after
         # creating the resource (so a crash mid-migration doesn't cause duplicates on resume).
         # This call is always idempotent — it writes the same old→new mapping that _copy_from_impl
