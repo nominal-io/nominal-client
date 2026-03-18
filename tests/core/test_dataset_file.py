@@ -34,6 +34,7 @@ def _make_file(file_id: str, statuses: list[IngestStatus]) -> DatasetFile:
     mock._ingest_error_message = f"{file_id} failed"
     return cast(DatasetFile, mock)
 
+
 def _make_batch_file(file_id: str, dataset_rid: str, status: IngestStatus, clients: MagicMock) -> DatasetFile:
     """Create a mock DatasetFile for _batch_refresh_files tests with a shared API clients mock."""
     mock = MagicMock()
@@ -149,7 +150,6 @@ def test_wait_for_files_to_ingest_returns_not_done_when_timeout_expires():
     assert not done
     assert not_done == [file]
     mock_sleep.assert_not_called()
-
 
 
 def test_batch_refresh_reports_files_missing_from_response():
