@@ -164,7 +164,12 @@ class MultipartFileDownloader:
             raise RuntimeError(f"Unknown error downloading to {item.destination}")
 
     def download_files(self, items: Sequence[DownloadItem]) -> DownloadResults:
-        """Download many files using a shared thread pool."""
+        """Download many files using a shared thread pool.
+
+        Files that fail (either during planning or execution) are recorded in DownloadResults.failed
+        and any partially-written artifacts are deleted from disk. Successfully downloaded files are
+        recorded in DownloadResults.succeeded.
+        """
         plan_failures: dict[pathlib.Path, Exception] = {}
 
         # Ensure destination directories exist
@@ -184,7 +189,7 @@ class MultipartFileDownloader:
                 plans.append(plan)
             except Exception as ex:
                 plan_failures[it.destination] = ex
-                logger.error("Planning failed for %s: %s", it.destination, ex, exc_info=ex)
+                logger.error("Planning failed for %s", it.destination, exc_info=ex)
 
         if plan_failures:
             logger.warning("Failed to plan downloads for %d files!", len(plan_failures))
@@ -244,7 +249,7 @@ class MultipartFileDownloader:
             try:
                 _ = fut.result()
             except Exception as ex:
-                logger.error("Failed part for %s @%d: %s", dest, start, ex, exc_info=ex)
+                logger.error("Failed part for %s @%d", dest, start, exc_info=ex)
 
                 # Cancel remaining futures for this destination to avoid wasted work
                 for f, (d, _) in fut_map.items():
@@ -324,7 +329,12 @@ class MultipartFileDownloader:
         # Not creating the file with `wb` as it is already pre-allocated before downloads begin
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(data)
+            written = f.write(data)
+            if written != len(data):
+                raise OSError(
+                    f"Short write to {path} at offset {start}: wrote {written}/{len(data)} bytes. "
+                    f"This may indicate disk full, permission issues, or filesystem errors."
+                )
 
     # ---- HTTP helpers ----
 
@@ -365,7 +375,12 @@ class MultipartFileDownloader:
 
             except Exception as ex:
                 last_ex = ex
-                if isinstance(ex, requests.HTTPError) and 400 <= r.status_code < 500 and not self._is_expired_status(r):
+                if (
+                    isinstance(ex, requests.HTTPError)
+                    and ex.response is not None
+                    and 400 <= ex.response.status_code < 500
+                    and not self._is_expired_status(ex.response)
+                ):
                     break
 
         raise last_ex if last_ex else RuntimeError("Unknown error downloading range")
