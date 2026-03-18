@@ -31,7 +31,7 @@ def _make_file(file_id: str, statuses: list[IngestStatus]) -> DatasetFile:
         return cast(DatasetFile, mock)
 
     mock._refresh_from_api.side_effect = refresh
-    mock._build_ingest_exception.return_value = NominalIngestError(f"{file_id} failed")
+    mock._ingest_error_message = f"{file_id} failed"
     return cast(DatasetFile, mock)
 
 def _make_batch_file(file_id: str, dataset_rid: str, status: IngestStatus, clients: MagicMock) -> DatasetFile:

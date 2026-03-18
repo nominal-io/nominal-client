@@ -56,6 +56,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
     tag_columns: Mapping[str, str] | None
 
     _clients: _Clients = field(repr=False)
+    _ingest_error_message: str | None = field(repr=False, default=None)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -74,13 +75,18 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         self._clients.ingest.delete_file(self._clients.auth_header, self.dataset_rid, self.id)
 
     def get_ingest_error(self) -> NominalIngestError | None:
-        """Returns the ingest exception if the file FAILED, or None if there is no error"""
-        api_file = self._get_latest_api()
-        self._refresh_from_api(api_file)
-        if self.ingest_status is IngestStatus.FAILED:
-            return self._build_ingest_exception(api_file.ingest_status)
-        else:
+        """Returns the ingest exception if the file FAILED, or None if there is no error.
+
+        Refreshes the file from the API before checking.
+        """
+        self.refresh()
+        if self._ingest_error_message is None:
             return None
+        else:
+            return NominalIngestError(
+                f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset '{self.dataset_rid!r}': "
+                f"{self._ingest_error_message}"
+            )
 
     def poll_until_ingestion_completed(self, interval: datetime.timedelta = datetime.timedelta(seconds=1)) -> Self:
         """Block until dataset file ingestion has completed
@@ -97,9 +103,10 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
                     # ingestion has completed successfully by this point
                     break
                 case IngestStatus.FAILED:
-                    # ingestion failed and will not continue
-                    # Get error message to display to user
-                    raise self._build_ingest_exception(api_file.ingest_status)
+                    raise NominalIngestError(
+                        f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset "
+                        f"'{self.dataset_rid!r}': {self._ingest_error_message or 'no error details available'}"
+                    )
                 case IngestStatus.IN_PROGRESS:
                     # Ingestion still proceeding
                     pass
@@ -114,20 +121,6 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
             time.sleep(interval.total_seconds())
 
         return self
-
-    def _build_ingest_exception(self, ingest_status: api.IngestStatusV2) -> NominalIngestError:
-        """Build ingest exception for a given error ingest status
-
-        Raises:
-            Raises ValueError if the ingest_status does not indicate an error occurred.
-        """
-        if ingest_status.error is None:
-            raise ValueError(f"Cannot build ingest error for status {ingest_status}-- not an error status!")
-
-        return NominalIngestError(
-            f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset '{self.dataset_rid!r}': "
-            f"{ingest_status.error.message} ({ingest_status.error.error_type})"
-        )
 
     def _presigned_url_provider(self, ttl_secs: float = 60.0, skew_secs: float = 15.0) -> PresignedURLProvider:
         def fetch() -> str:
@@ -278,6 +271,9 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
                 dataset_file.timestamp_metadata.timestamp_type
             )
 
+        ingest_error = dataset_file.ingest_status.error
+        ingest_error_message = None if ingest_error is None else f"{ingest_error.message} ({ingest_error.error_type})"
+
         return cls(
             id=dataset_file.id,
             dataset_rid=dataset_file.dataset_rid,
@@ -292,6 +288,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
             file_tags=file_tags,
             tag_columns=tag_columns,
             _clients=clients,
+            _ingest_error_message=ingest_error_message,
         )
 
 
@@ -404,7 +401,7 @@ def wait_for_files_to_ingest(
                         "Dataset file %s from dataset %s failed to ingest! Error: %s",
                         file.id,
                         file.dataset_rid,
-                        file.get_ingest_error(),
+                        file._ingest_error_message,
                     )
                     done.append(file)
                     has_failed = True
