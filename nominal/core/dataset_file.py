@@ -4,6 +4,7 @@ import datetime
 import logging
 import pathlib
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
@@ -12,6 +13,7 @@ from urllib.parse import unquote, urlparse
 from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
+from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableMixin
@@ -322,6 +324,27 @@ class IngestWaitType(Enum):
     ALL_COMPLETED = "ALL_COMPLETED"
 
 
+def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> None:
+    """Batch-fetches the latest API state for all files and refreshes them in-place.
+
+    Files absent from the response are left unchanged.
+    """
+    by_dataset: dict[str, list[DatasetFile]] = defaultdict(list)
+    for file in files:
+        by_dataset[file.dataset_rid].append(file)
+    for dataset_rid, dataset_files in by_dataset.items():
+        clients = dataset_files[0]._clients
+        for chunk in batched(dataset_files, batch_size):
+            request = scout_catalog.BatchGetDatasetFilesRequest(
+                dataset_rid=dataset_rid,
+                file_ids=[f.id for f in chunk],
+            )
+            results = clients.catalog.batch_get_dataset_files(clients.auth_header, request)
+            for file in chunk:
+                if (latest_api := results.get(file.id)) is not None:
+                    file._refresh_from_api(latest_api)
+
+
 def wait_for_files_to_ingest(
     files: Sequence[DatasetFile],
     *,
@@ -355,24 +378,24 @@ def wait_for_files_to_ingest(
     while not_done and (timeout is None or datetime.datetime.now() - start_time < timeout):
         logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
 
+        _batch_refresh_files(not_done)
+
         next_not_done = []
         for file in not_done:
-            latest_api = file._get_latest_api()
-            latest_file = file._refresh_from_api(latest_api)
             match file.ingest_status:
                 case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
-                    done.append(latest_file)
+                    done.append(file)
                 case IngestStatus.FAILED:
                     logger.warning(
-                        "Dataset file %s from dataset %s failed to ingest! Error message: %s",
-                        latest_file.id,
-                        latest_file.dataset_rid,
-                        latest_api.ingest_status.error.message if latest_api.ingest_status.error else "",
+                        "Dataset file %s from dataset %s failed to ingest! Error: %s",
+                        file.id,
+                        file.dataset_rid,
+                        file.get_ingest_error(),
                     )
-                    done.append(latest_file)
+                    done.append(file)
                     has_failed = True
                 case IngestStatus.IN_PROGRESS:
-                    next_not_done.append(latest_file)
+                    next_not_done.append(file)
 
         not_done = next_not_done
 
