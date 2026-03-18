@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import fields
 from typing import cast
 from unittest.mock import MagicMock

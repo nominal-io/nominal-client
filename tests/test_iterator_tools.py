@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from nominal._utils import iterator_tools
 
 
