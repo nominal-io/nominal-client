@@ -72,29 +72,20 @@ def test_batch_add_channels_request_fields(mock_datasource: DataSource, mock_cli
 
 
 @pytest.mark.parametrize("batch_size", [0, -1])
-def test_batch_add_channels_invalid_batch_size(
-    mock_datasource: DataSource, batch_size: int
-):
+def test_batch_add_channels_invalid_batch_size(mock_datasource: DataSource, batch_size: int):
     with pytest.raises(ValueError):
         mock_datasource.batch_add_channels(_make_channels(3), batch_size=batch_size)
 
 
-def test_batch_add_channels_api_failure_propagates(
-    mock_datasource: DataSource, mock_clients: MagicMock
-):
+def test_batch_add_channels_api_failure_propagates(mock_datasource: DataSource, mock_clients: MagicMock):
     mock_clients.series_metadata.batch_create.side_effect = RuntimeError("API error")
     with pytest.raises(RuntimeError, match="API error"):
         mock_datasource.batch_add_channels(_make_channels(1))
 
 
-def test_batch_add_channels_large_dataset(
-    mock_datasource: DataSource, mock_clients: MagicMock
-):
+def test_batch_add_channels_large_dataset(mock_datasource: DataSource, mock_clients: MagicMock):
     mock_datasource.batch_add_channels(_make_channels(250), batch_size=100)
 
     assert mock_clients.series_metadata.batch_create.call_count == 3
-    batch_sizes = [
-        len(mock_clients.series_metadata.batch_create.call_args_list[i][0][1].requests)
-        for i in range(3)
-    ]
+    batch_sizes = [len(mock_clients.series_metadata.batch_create.call_args_list[i][0][1].requests) for i in range(3)]
     assert batch_sizes == [100, 100, 50]
