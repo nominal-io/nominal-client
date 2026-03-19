@@ -69,6 +69,12 @@ def _normalize_duration_text(s: str) -> str:
     return " ".join(s.split())
 
 
+def _sanitize_dataset_prefix(dataset_rid: str) -> str:
+    """Return a filesystem-safe filename prefix derived from a dataset RID."""
+    prefix = pathlib.Path(dataset_rid.split(".")[-1]).name
+    return prefix or "dataset"
+
+
 class DataDownloader(abc.ABC):
     def __init__(self, client: NominalClient, console: Console):
         """Base class for downloading data to disks from the Nominal API
@@ -457,7 +463,7 @@ class DataDownloader(abc.ABC):
             return
 
         # 7) Download
-        dataset_prefix = dataset.rid.split(".")[-1]
+        dataset_prefix = _sanitize_dataset_prefix(dataset.rid)
         exporter = PolarsExportHandler(
             self._client, points_per_dataframe=points_per_file, channels_per_request=channels_per_request
         )
