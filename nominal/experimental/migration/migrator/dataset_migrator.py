@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from nominal.core.dataset import Dataset
+from nominal.core.datasource import CreateChannelRequest
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
@@ -58,19 +59,16 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         )
 
         if options.preserve_uuid:
-            channels_copied_count = 0
-            for source_channel in source.search_channels():
-                if source_channel.data_type is None:
-                    logger.warning("Skipping channel %s: unknown data type", source_channel.name, extra=log_extras)
+            channels_to_add = []
+            for ch in source.search_channels():
+                if ch.data_type is None:
+                    logger.warning("Skipping channel %s: unknown data type", ch.name, extra=log_extras)
                     continue
-                new_dataset.add_channel(
-                    name=source_channel.name,
-                    data_type=source_channel.data_type,
-                    description=source_channel.description,
-                    unit=source_channel.unit,
+                channels_to_add.append(
+                    CreateChannelRequest(name=ch.name, data_type=ch.data_type, description=ch.description, unit=ch.unit)
                 )
-                channels_copied_count += 1
-            logger.info("Copied %d channels from dataset %s", channels_copied_count, source.name, extra=log_extras)
+            new_dataset.batch_add_channels(channels_to_add)
+            logger.info("Copied %d channels from dataset %s", len(channels_to_add), source.name, extra=log_extras)
 
         if options.include_files:
             for source_file in source.list_files():
