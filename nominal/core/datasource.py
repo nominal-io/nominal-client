@@ -40,6 +40,14 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class CreateChannelRequest:
+    name: str
+    data_type: ChannelDataType
+    description: str | None = None
+    unit: str | None = None
+
+
+@dataclass(frozen=True)
 class DataSource(HasRid):
     rid: str
     _clients: _Clients = field(repr=False)
@@ -315,26 +323,47 @@ class DataSource(HasRid):
             conjure_python_client.ConjureHTTPError: If a channel with this name already exists
                 or if there's an error creating the channel.
         """
-        nominal_data_type = data_type._to_nominal_data_type()
+        spec = CreateChannelRequest(name=name, data_type=data_type, description=description, unit=unit)
+        request = _build_series_metadata_request(self.rid, spec)
+        self._clients.series_metadata.create(self._clients.auth_header, request)
+        return self.get_channel(name)
 
-        nominal_locator = timeseries_metadata_api.NominalLocatorTemplate(
-            channel=name,
+    def batch_add_channels(
+        self,
+        channels: Iterable[CreateChannelRequest],
+        *,
+        batch_size: int = 100,
+    ) -> None:
+        """Create multiple channels (series metadata) for this data source in batches.
+
+        Args:
+            channels: Iterable of CreateChannelRequest objects.
+            batch_size: Number of channels per API call. Defaults to 100.
+        """
+        for batch in batched(channels, batch_size):
+            requests = [_build_series_metadata_request(self.rid, spec) for spec in batch]
+            batch_request = timeseries_metadata_api.BatchCreateSeriesMetadataRequest(requests=requests)
+            self._clients.series_metadata.batch_create(self._clients.auth_header, batch_request)
+
+
+def _build_series_metadata_request(
+    data_source_rid: str, spec: CreateChannelRequest
+) -> timeseries_metadata_api.CreateSeriesMetadataRequest:
+    nominal_data_type = spec.data_type._to_nominal_data_type()
+    locator = timeseries_metadata_api.LocatorTemplate(
+        nominal=timeseries_metadata_api.NominalLocatorTemplate(
+            channel=spec.name,
             type=nominal_data_type,
         )
-
-        locator = timeseries_metadata_api.LocatorTemplate(nominal=nominal_locator)
-
-        create_request = timeseries_metadata_api.CreateSeriesMetadataRequest(
-            channel=name,
-            data_source_rid=self.rid,
-            locator=locator,
-            tags={},
-            description=description,
-            unit=unit,
-        )
-        self._clients.series_metadata.create(self._clients.auth_header, create_request)
-
-        return self.get_channel(name)
+    )
+    return timeseries_metadata_api.CreateSeriesMetadataRequest(
+        channel=spec.name,
+        data_source_rid=data_source_rid,
+        locator=locator,
+        tags={},
+        description=spec.description,
+        unit=spec.unit,
+    )
 
 
 def _construct_export_request(
