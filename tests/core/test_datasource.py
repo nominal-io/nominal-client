@@ -34,7 +34,7 @@ def test_batch_add_channels_single_batch(mock_datasource: DataSource, mock_clien
 
     assert mock_clients.series_metadata.batch_create.call_count == 1
     _, batch_req = mock_clients.series_metadata.batch_create.call_args[0]
-    assert len(batch_req.requests) == 3
+    assert [r.channel for r in batch_req.requests] == ["ch1", "ch2", "ch3"]
 
 
 def test_batch_add_channels_multiple_batches(mock_datasource: DataSource, mock_clients: MagicMock):
@@ -47,9 +47,9 @@ def test_batch_add_channels_multiple_batches(mock_datasource: DataSource, mock_c
 
     assert mock_clients.series_metadata.batch_create.call_count == 2
     _, first_req = mock_clients.series_metadata.batch_create.call_args_list[0][0]
-    assert len(first_req.requests) == 2
+    assert [r.channel for r in first_req.requests] == ["ch1", "ch2"]
     _, second_req = mock_clients.series_metadata.batch_create.call_args_list[1][0]
-    assert len(second_req.requests) == 1
+    assert [r.channel for r in second_req.requests] == ["ch3"]
 
 
 def test_batch_add_channels_empty(mock_datasource: DataSource, mock_clients: MagicMock):
@@ -86,6 +86,8 @@ def test_batch_add_channels_api_failure_propagates(mock_datasource: DataSource, 
 def test_batch_add_channels_large_dataset(mock_datasource: DataSource, mock_clients: MagicMock):
     mock_datasource.batch_add_channels(_make_channels(250), batch_size=100)
 
-    assert mock_clients.series_metadata.batch_create.call_count == 3
-    batch_sizes = [len(mock_clients.series_metadata.batch_create.call_args_list[i][0][1].requests) for i in range(3)]
-    assert batch_sizes == [100, 100, 50]
+    calls = mock_clients.series_metadata.batch_create.call_args_list
+    assert len(calls) == 3
+    assert [r.channel for r in calls[0][0][1].requests] == [f"ch{i}" for i in range(100)]
+    assert [r.channel for r in calls[1][0][1].requests] == [f"ch{i}" for i in range(100, 200)]
+    assert [r.channel for r in calls[2][0][1].requests] == [f"ch{i}" for i in range(200, 250)]
