@@ -196,6 +196,7 @@ def _create_workbook_template_with_content_and_layout(
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     commit_message: str | None = None,
+    is_published: bool = False,
 ) -> WorkbookTemplate:
     """Create a workbook template with specified content and layout.
 
@@ -213,6 +214,7 @@ def _create_workbook_template_with_content_and_layout(
         labels: List of labels to apply to the template.
         properties: Dictionary of properties for the template.
         commit_message: The commit message for the template creation.
+        is_published: If True, the template will show up as published.
 
     Returns:
         The newly created WorkbookTemplate.
@@ -222,7 +224,7 @@ def _create_workbook_template_with_content_and_layout(
         description=description if description is not None else "",
         labels=list(labels) if labels is not None else [],
         properties=dict(properties) if properties is not None else {},
-        is_published=False,
+        is_published=is_published,
         layout=layout,
         content=content,
         message=commit_message if commit_message is not None else "",
