@@ -331,14 +331,14 @@ class DataSource(HasRid):
 
     def batch_add_channels(
         self,
-        channels: Iterable[CreateChannelRequest],
+        channels: Sequence[CreateChannelRequest],
         *,
         batch_size: int = 100,
     ) -> None:
         """Create multiple channels (series metadata) for this data source in batches.
 
         Args:
-            channels: Iterable of CreateChannelRequest objects.
+            channels: Sequence of CreateChannelRequest objects.
             batch_size: Number of channels per API call. Defaults to 100.
 
         Note:
@@ -347,6 +347,8 @@ class DataSource(HasRid):
             single batch, the entire batch will fail. Callers are responsible for deduplicating
             channel names before passing them to this method.
         """
+        if not channels:
+            return
         for batch in batched(channels, batch_size):
             requests = [_build_series_metadata_request(self.rid, req) for req in batch]
             batch_request = timeseries_metadata_api.BatchCreateSeriesMetadataRequest(requests=requests)
