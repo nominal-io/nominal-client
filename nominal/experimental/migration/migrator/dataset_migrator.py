@@ -6,12 +6,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from nominal.core.dataset import Dataset
-from nominal.core.datasource import CreateChannelRequest
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
 from nominal.experimental.id_utils.id_utils import UUID_PATTERN
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
-from nominal.experimental.migration.migrator.dataset_file_migrator import DatasetFileMigrator
 from nominal.experimental.migration.resource_type import ResourceType
+from nominal.experimental.migration.utils.file_utils import copy_file_to_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -35,21 +34,6 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         return DatasetCopyOptions(include_files=True)
 
     def _copy_from_impl(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
-        new_dataset = self._resolve_destination_dataset(source, options)
-
-        if options.include_files:
-            file_migrator = DatasetFileMigrator(self.ctx)
-            for source_file in source.list_files():
-                file_migrator.copy_from(source_file, new_dataset)
-
-        return new_dataset
-
-    def _resolve_destination_dataset(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
-        if mapped_rid is not None:
-            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_dataset(mapped_rid)
-
         log_extras = {
             "destination_client_workspace": self.ctx.destination_client.get_workspace(
                 self.ctx.destination_client._clients.workspace_rid
@@ -72,50 +56,31 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
             dataset_properties,
             dataset_labels,
         )
-        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_dataset.rid)
 
         if options.preserve_uuid:
-            channels_to_add = []
+            channels_copied_count = 0
             for source_channel in source.search_channels():
                 if source_channel.data_type is None:
                     logger.warning("Skipping channel %s: unknown data type", source_channel.name, extra=log_extras)
                     continue
-                channel_key = f"{source.rid}:{source_channel.name}"
-                if self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET_CHANNEL, channel_key) is None:
-                    channels_to_add.append(source_channel)
-                else:
-                    logger.debug(
-                        "Skipping channel %s on dataset %s: already in migration state",
-                        source_channel.name,
-                        source.rid,
-                    )
-            if channels_to_add:
-                new_dataset.batch_add_channels(
-                    CreateChannelRequest(
-                        name=ch.name,
-                        data_type=ch.data_type,
-                        description=ch.description,
-                        unit=ch.unit,
-                    )
-                    for ch in channels_to_add
+                new_dataset.add_channel(
+                    name=source_channel.name,
+                    data_type=source_channel.data_type,
+                    description=source_channel.description,
+                    unit=source_channel.unit,
                 )
-                for source_channel in channels_to_add:
-                    channel_key = f"{source.rid}:{source_channel.name}"
-                    self.ctx.migration_state.record_mapping(
-                        ResourceType.DATASET_CHANNEL, channel_key, source_channel.name
-                    )
-            logger.info("Copied %d channels from dataset %s", len(channels_to_add), source.name, extra=log_extras)
+                channels_copied_count += 1
+            logger.info("Copied %d channels from dataset %s", channels_copied_count, source.name, extra=log_extras)
+
+        if options.include_files:
+            for source_file in source.list_files():
+                copy_file_to_dataset(source_file, new_dataset)
 
         if source.bounds is not None:
-            if self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET_BOUNDS, source.rid) is None:
-                new_dataset = new_dataset.update_bounds(
-                    start=source.bounds.start,
-                    end=source.bounds.end,
-                )
-                self.ctx.migration_state.record_mapping(ResourceType.DATASET_BOUNDS, source.rid, new_dataset.rid)
-            else:
-                logger.debug("Skipping bounds update for dataset %s: already in migration state", source.rid)
-
+            new_dataset = new_dataset.update_bounds(
+                start=source.bounds.start,
+                end=source.bounds.end,
+            )
         return new_dataset
 
     def _create_destination_dataset(
@@ -127,7 +92,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         dataset_properties: Mapping[str, str] | dict[str, Any],
         dataset_labels: Sequence[str],
     ) -> Dataset:
-        if False:
+        if options.preserve_uuid:
             match = UUID_PATTERN.search(source.rid)
             if not match:
                 raise ValueError(f"Could not extract UUID from dataset rid: {source.rid}")
