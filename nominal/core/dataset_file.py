@@ -34,7 +34,14 @@ logger = logging.getLogger(__name__)
 
 
 def filename_from_uri(uri: str) -> str:
-    return unquote(pathlib.Path(urlparse(uri).path).name).replace(":", "_")
+    encoded_name = pathlib.PurePosixPath(urlparse(uri).path).name
+    decoded_name = unquote(encoded_name).replace(":", "_").replace("\\", "/")
+    safe_name = pathlib.PurePosixPath(decoded_name).name
+
+    if safe_name in {"", ".", ".."}:
+        raise ValueError(f"Could not derive a safe filename from URI: {uri!r}")
+
+    return safe_name
 
 
 @dataclass(frozen=True)
