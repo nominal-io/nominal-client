@@ -7,14 +7,25 @@ from nominal_api import event
 
 
 class EventType(Enum):
+    """Categorization for Nominal Core events."""
+
     INFO = "INFO"
+    """Informational event."""
     FLAG = "FLAG"
+    """Event indicating attention is required."""
     ERROR = "ERROR"
+    """Event indicating an error occurred."""
     SUCCESS = "SUCCESS"
+    """Event indicating a successful outcome."""
     UNKNOWN = "UNKNOWN"
+    """Unknown or unrecognized event type.
+
+    Events with this type are invalid and will not be accepted by Nominal Core.
+    """
 
     @classmethod
     def from_api_event_type(cls, event: event.EventType) -> EventType:
+        """Convert a `nominal-api` event type to a `nominal-core` event type."""
         if event.name == "INFO":
             return cls.INFO
         elif event.name == "FLAG":
