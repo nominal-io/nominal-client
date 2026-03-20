@@ -38,7 +38,7 @@ from nominal.ts import (
 
 logger = logging.getLogger(__name__)
 
-_BATCH_SIZE = 500
+_DEFAULT_CHANNEL_BATCH_SIZE = 500
 
 
 @dataclass(frozen=True)
@@ -51,8 +51,8 @@ class CreateChannelRequest:
 
 @dataclass(frozen=True)
 class BatchAddChannelsResult:
-    channels: list[Channel]
-    missing: list[CreateChannelRequest]
+    channels: Sequence[Channel]
+    missing: Sequence[CreateChannelRequest]
 
 
 @dataclass(frozen=True)
@@ -111,7 +111,7 @@ class DataSource(HasRid):
         if not names:
             names = [channel.name for channel in self.search_channels()]
 
-        for batch_channel_names in batched(names, _BATCH_SIZE):
+        for batch_channel_names in batched(names, _DEFAULT_CHANNEL_BATCH_SIZE):
             requests = [
                 timeseries_channelmetadata_api.GetChannelMetadataRequest(
                     channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
@@ -356,7 +356,7 @@ class DataSource(HasRid):
         """
         if not channels:
             return BatchAddChannelsResult(channels=[], missing=[])
-        for batch in batched(channels, _BATCH_SIZE):
+        for batch in batched(channels, _DEFAULT_CHANNEL_BATCH_SIZE):
             requests = [_build_series_metadata_request(self.rid, req) for req in batch]
             batch_request = timeseries_metadata_api.BatchCreateSeriesMetadataRequest(requests=requests)
             self._clients.series_metadata.batch_create(self._clients.auth_header, batch_request)
