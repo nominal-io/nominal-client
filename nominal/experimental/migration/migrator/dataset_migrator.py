@@ -123,7 +123,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         dataset_properties: Mapping[str, str] | dict[str, Any],
         dataset_labels: Sequence[str],
     ) -> Dataset:
-        if options.preserve_uuid:
+        if False:
             match = UUID_PATTERN.search(source.rid)
             if not match:
                 raise ValueError(f"Could not extract UUID from dataset rid: {source.rid}")

@@ -40,7 +40,6 @@ def test_batch_add_channels_single_batch(mock_datasource: DataSource, mock_clien
     assert [r.channel for r in batch_req.requests] == ["ch1", "ch2", "ch3"]
 
 
-
 def test_batch_add_channels_empty(mock_datasource: DataSource, mock_clients: MagicMock):
     """An empty channel list results in no API calls."""
     mock_datasource.batch_add_channels([])
@@ -62,13 +61,11 @@ def test_batch_add_channels_request_fields(mock_datasource: DataSource, mock_cli
     assert req.unit == "m/s"
 
 
-
 def test_batch_add_channels_api_failure_propagates(mock_datasource: DataSource, mock_clients: MagicMock):
     """An exception raised by the API propagates to the caller unchanged."""
     mock_clients.series_metadata.batch_create.side_effect = RuntimeError("API error")
     with pytest.raises(RuntimeError, match="API error"):
         mock_datasource.batch_add_channels(_make_channels(1))
-
 
 
 def test_batch_add_channels_returns_channels_and_no_missing(mock_datasource: DataSource):
