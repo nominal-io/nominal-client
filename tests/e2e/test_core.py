@@ -294,7 +294,7 @@ def test_add_channel(client: NominalClient, archive: ArchiveFn) -> None:
 
 
 def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
-    """batch_add_channels creates all channels on the datasource, retrievable via search_channels."""
+    """batch_add_channels creates all channels and returns them with no missing entries."""
     ds = client.create_dataset(f"dataset-{uuid4()}")
     archive(ds)
 
@@ -303,9 +303,10 @@ def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
         CreateChannelRequest(name="temperature", data_type=ChannelDataType.DOUBLE, unit="degC"),
         CreateChannelRequest(name="status", data_type=ChannelDataType.STRING, description="system status"),
     ]
-    ds.batch_add_channels(requests)
+    result = ds.batch_add_channels(requests)
 
-    channels = {ch.name: ch for ch in ds.search_channels()}
+    assert result.missing == []
+    channels = {ch.name: ch for ch in result.channels}
     assert set(channels) == {"velocity", "temperature", "status"}
     assert channels["velocity"].unit == "m/s"
     assert channels["temperature"].unit == "degC"
