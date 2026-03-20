@@ -138,6 +138,9 @@ def _create_event(
     properties: Mapping[str, str] | None,
     labels: Iterable[str] | None,
 ) -> Event:
+    if type == EventType.UNKNOWN:
+        raise ValueError("Unknown event type can not be created")
+
     request = event.CreateEvent(
         name=name,
         description=description,
