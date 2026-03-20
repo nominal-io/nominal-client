@@ -75,3 +75,7 @@ clean:
 # build docs
 build-docs:
     uv run mkdocs build --config-file docs/mkdocs.yml
+
+# serve docs locally
+serve-docs:
+    uv run mkdocs serve --config-file docs/mkdocs.yml
