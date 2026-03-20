@@ -17,6 +17,8 @@ CopyOptions = TypeVar("CopyOptions", bound="ResourceCopyOptions", default="Resou
 class ResourceCopyOptions:
     """Base type for resource-specific copy options."""
 
+    skip_mapping_record: bool = False
+
 
 class Migrator(ABC, Generic[Resource, CopyOptions]):
     """Abstract base class for migration operations.
@@ -74,7 +76,8 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
         # creating the resource (so a crash mid-migration doesn't cause duplicates on resume).
         # This call is always idempotent — it writes the same old→new mapping that _copy_from_impl
         # already wrote, so there is no risk of overwriting with a different value.
-        self.record_mapping(self.resource_type, source_rid, result_rid)
+        if not resolved_options.skip_mapping_record:
+            self.record_mapping(self.resource_type, source_rid, result_rid)
         return result
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
