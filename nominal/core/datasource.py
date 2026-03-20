@@ -38,6 +38,8 @@ from nominal.ts import (
 
 logger = logging.getLogger(__name__)
 
+_BATCH_SIZE = 500
+
 
 @dataclass(frozen=True)
 class CreateChannelRequest:
@@ -45,6 +47,12 @@ class CreateChannelRequest:
     data_type: ChannelDataType
     description: str | None = None
     unit: str | None = None
+
+
+@dataclass(frozen=True)
+class BatchAddChannelsResult:
+    channels: list[Channel]
+    missing: list[CreateChannelRequest]
 
 
 @dataclass(frozen=True)
@@ -103,9 +111,7 @@ class DataSource(HasRid):
         if not names:
             names = [channel.name for channel in self.search_channels()]
 
-        # Process in batches of 500
-        batch_size = 500
-        for batch_channel_names in batched(names, batch_size):
+        for batch_channel_names in batched(names, _BATCH_SIZE):
             requests = [
                 timeseries_channelmetadata_api.GetChannelMetadataRequest(
                     channel_identifier=timeseries_channelmetadata_api.ChannelIdentifier(
@@ -332,14 +338,15 @@ class DataSource(HasRid):
     def batch_add_channels(
         self,
         channels: Sequence[CreateChannelRequest],
-        *,
-        batch_size: int = 100,
-    ) -> None:
+    ) -> BatchAddChannelsResult:
         """Create multiple channels (series metadata) for this data source in batches.
 
         Args:
             channels: Sequence of CreateChannelRequest objects.
-            batch_size: Number of channels per API call. Defaults to 100.
+
+        Returns:
+            A BatchAddChannelsResult with the created channels and any requests that were
+            not found after creation (i.e. silently dropped by the server).
 
         Note:
             This operation is idempotent with respect to channels that already exist — they are
@@ -348,11 +355,16 @@ class DataSource(HasRid):
             channel names before passing them to this method.
         """
         if not channels:
-            return
-        for batch in batched(channels, batch_size):
+            return BatchAddChannelsResult(channels=[], missing=[])
+        for batch in batched(channels, _BATCH_SIZE):
             requests = [_build_series_metadata_request(self.rid, req) for req in batch]
             batch_request = timeseries_metadata_api.BatchCreateSeriesMetadataRequest(requests=requests)
             self._clients.series_metadata.batch_create(self._clients.auth_header, batch_request)
+        created = {ch.name: ch for ch in self.get_channels(names=[req.name for req in channels])}
+        return BatchAddChannelsResult(
+            channels=list(created.values()),
+            missing=[req for req in channels if req.name not in created],
+        )
 
 
 def _build_series_metadata_request(
