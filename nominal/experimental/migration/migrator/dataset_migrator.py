@@ -96,11 +96,18 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                         source_channel.name,
                         source.rid,
                     )
-            new_dataset.batch_add_channels(channels_to_add)
-            for req in channels_to_add:
-                channel_key = f"{source.rid}:{req.name}"
-                self.ctx.migration_state.record_mapping(ResourceType.DATASET_CHANNEL, channel_key, req.name)
-            logger.info("Copied %d channels from dataset %s", len(channels_to_add), source.name, extra=log_extras)
+            result = new_dataset.batch_add_channels(channels_to_add)
+            for req in result.missing:
+                logger.warning(
+                    "Channel %s on dataset %s was not found after creation and will not be recorded in migration state",
+                    req.name,
+                    source.rid,
+                    extra=log_extras,
+                )
+            for channel in result.channels:
+                channel_key = f"{source.rid}:{channel.name}"
+                self.ctx.migration_state.record_mapping(ResourceType.DATASET_CHANNEL, channel_key, channel.name)
+            logger.info("Copied %d channels from dataset %s", len(result.channels), source.name, extra=log_extras)
 
         if source.bounds is not None:
             if self.ctx.migration_state.get_mapped_rid(ResourceType.DATASET_BOUNDS, source.rid) is None:
