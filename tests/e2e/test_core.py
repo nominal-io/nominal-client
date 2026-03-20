@@ -7,6 +7,7 @@ Covers:
   - Linking datasets and attachments to a run, then listing them back
   - Reading channel data via the pandas integration (single-channel and full-dataset retrieval)
   - Downloading a dataset file to disk via MultipartFileDownloader and verifying byte-identical content
+  - Creating channels on a datasource via add_channel and batch_add_channels
 
 The `ingested_dataset` fixture is session-scoped (defined in conftest.py): one shared dataset is
 created at the start of the session and reused by all read-only channel/pandas tests, avoiding
@@ -28,6 +29,7 @@ from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
+from nominal.core.datasource import CreateChannelRequest
 from nominal.thirdparty.pandas import channel_to_series, datasource_to_dataframe
 from nominal.ts import ISO_8601, _SecondsNanos
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
@@ -276,3 +278,36 @@ def test_download_dataset_file_roundtrips_to_disk(
 
     assert output_path.exists()
     assert output_path.read_bytes() == csv_data
+
+
+def test_add_channel(client: NominalClient, archive: ArchiveFn) -> None:
+    """add_channel creates a channel on the datasource that is retrievable by name."""
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+
+    channel = ds.add_channel(name="velocity", data_type=ChannelDataType.DOUBLE, description="speed", unit="m/s")
+
+    assert channel.name == "velocity"
+    assert channel.data_type == ChannelDataType.DOUBLE
+    assert channel.description == "speed"
+    assert channel.unit == "m/s"
+
+
+def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
+    """batch_add_channels creates all channels and returns them with no missing entries."""
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+
+    requests = [
+        CreateChannelRequest(name="velocity", data_type=ChannelDataType.DOUBLE, unit="m/s"),
+        CreateChannelRequest(name="temperature", data_type=ChannelDataType.DOUBLE, unit="degC"),
+        CreateChannelRequest(name="status", data_type=ChannelDataType.STRING, description="system status"),
+    ]
+    result = ds.batch_add_channels(requests)
+
+    assert result.missing == []
+    channels = {ch.name: ch for ch in result.channels}
+    assert set(channels) == {"velocity", "temperature", "status"}
+    assert channels["velocity"].unit == "m/s"
+    assert channels["temperature"].unit == "degC"
+    assert channels["status"].description == "system status"
