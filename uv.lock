@@ -1186,7 +1186,7 @@ tdms = [
     { name = "nptdms" },
 ]
 video = [
-    { name = "nominal-video" },
+    { name = "nominal-video", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
 ]
 
 [package.dev-dependencies]
@@ -1222,7 +1222,7 @@ requires-dist = [
     { name = "nominal-api", specifier = "==0.1149.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1090.0" },
     { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.7.12" },
-    { name = "nominal-video", marker = "extra == 'video'", specifier = ">=0.1.5" },
+    { name = "nominal-video", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.6" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "openpyxl", specifier = ">=0.0.0" },
     { name = "pandas", specifier = ">=0.0.0" },
@@ -1311,13 +1311,13 @@ wheels = [
 
 [[package]]
 name = "nominal-video"
-version = "0.1.5"
+version = "0.1.6"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ff/c5/68fc5f83e64b187cd06c1ea92c89193aef0ff16e81ab7d46f2267e71c0b3/nominal_video-0.1.5-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:92b27e462a918908782fac339ef7e37ac32aa8dfecae426e93e0c03b4d20e3e7", size = 1346028, upload-time = "2026-03-16T19:42:32.873Z" },
-    { url = "https://files.pythonhosted.org/packages/6b/c1/a6c454245674d5363d3272eafac412865f0eda4d01aa1a098849d1abfab2/nominal_video-0.1.5-cp310-abi3-manylinux_2_35_aarch64.whl", hash = "sha256:cabbe872bf85550cf8e7f499f4288897edd6e69ba9145e8b020bb15058196b4d", size = 1410195, upload-time = "2026-03-16T19:42:34.18Z" },
-    { url = "https://files.pythonhosted.org/packages/63/b3/291558caa2603f5dbda845e0a34395eb37319f43db916a4cc7d6f6978ee2/nominal_video-0.1.5-cp310-abi3-manylinux_2_35_x86_64.whl", hash = "sha256:49db9f48a441384942aefe054c469c3b8a418723f7f7b82232f0d4592af8185a", size = 1446617, upload-time = "2026-03-16T19:42:35.436Z" },
-    { url = "https://files.pythonhosted.org/packages/ef/4b/14914da50c474b9ec3361588898b6d0030e55c3718d4b7675b3a2fbd0b87/nominal_video-0.1.5-cp310-abi3-win_amd64.whl", hash = "sha256:12d734bd0d1d783b14e8fc901188ffa92dcf80e647714449555530ba2633d301", size = 1459242, upload-time = "2026-03-16T19:42:37.066Z" },
+    { url = "https://files.pythonhosted.org/packages/80/a8/eaa6d60c6c89db595a645570616857848f8957598bec52bb84dc4c778f06/nominal_video-0.1.6-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:a7c8035c609adb39e7e79ff7edecd81edf5f8918f0b7aca3879664ce42e7f94f", size = 1350039, upload-time = "2026-03-20T16:32:43.907Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/b1/fc6fa42499097696843754c32c8ae08b209c3bc29436fb807aa8cf54825c/nominal_video-0.1.6-cp310-abi3-manylinux_2_35_aarch64.whl", hash = "sha256:3f5b3047c513f2a6bddafe5daf8b49386c5a4f61c06167832f26f9de6ceb5ef0", size = 1419931, upload-time = "2026-03-20T16:32:45.302Z" },
+    { url = "https://files.pythonhosted.org/packages/76/28/14f1c853815dfa6929c5e0c41cd03d345cdca06108a8295818c9413d3c63/nominal_video-0.1.6-cp310-abi3-manylinux_2_35_x86_64.whl", hash = "sha256:8d8c5f1ee67e8a0db288661e92418fc7e8b6bd66c50ee2efc09036463cd6ea0c", size = 1457060, upload-time = "2026-03-20T16:32:46.94Z" },
+    { url = "https://files.pythonhosted.org/packages/87/ec/86f3437327cbb054f7aa06f44b3177a6dd3e8c47fc5fd483836122cf5231/nominal_video-0.1.6-cp310-abi3-win_amd64.whl", hash = "sha256:5bd68f8e2b8ffcc1e026fa9a266e019d511e8428476f5ed02cf909fbd84d4b21", size = 1465460, upload-time = "2026-03-20T16:32:48.579Z" },
 ]
 
 [[package]]

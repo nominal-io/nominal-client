@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from datetime import timedelta
+from types import TracebackType
+from typing import TYPE_CHECKING, Type
 
-from nominal_video import Frame, Sink, Src, Stream, StreamOptions
+from nominal_video import Sink, Src, Stream, StreamOptions
+
+from conjure_python_client import ConjureHTTPError
 
 from nominal.core.exceptions import NominalVideoError, NominalVideoStreamNotOpenError
 
@@ -32,22 +36,29 @@ class VideoStream:
         with VideoStream.create(video, Src.camera()) as stream:
             stream.run()
 
-        # Timed stream — run for N seconds then exit:
+        # Timed stream — run for a fixed timeout then exit:
         with VideoStream.create(video, Src.udp_rtp(5000)) as stream:
-            stream.run(30)
+            stream.run(timedelta(seconds=30))
 
-        # Manual lifecycle — useful when you need the stream object outside a with block:
+        # Manual lifecycle — useful when you need the stream object outside a with block,
+        # or to restart after a NominalVideoError (e.g. source disconnected):
         stream = VideoStream.create(video, Src.rtsp("rtsp://192.168.1.10/live"))
         stream.open()
         try:
             stream.run()
+        except NominalVideoError:
+            stream.restart()  # re-opens the pipeline with the same WHIP endpoint
+            stream.run()
         finally:
             stream.close()
 
-        # Push frames manually from your own source:
+        # Push frames manually from your own source.
+        # frame_bytes must be raw RGB bytes: width * height * 3 bytes per frame.
+        # Use Src.app(width, height, format=ImageFormat.Bgr) if your source is BGR (e.g. OpenCV).
         with VideoStream.create(video, Src.app(1280, 720)) as stream:
             while capturing:
-                stream.send_frame(frame_bytes, timestamp_ns=timestamp)
+                frame_bytes: bytes = capture_rgb_frame()  # 1280 * 720 * 3 bytes
+                stream.send_frame(frame_bytes, timestamp_ns=time.time_ns())
     """
 
     rid: str
@@ -85,9 +96,12 @@ class VideoStream:
         Returns:
             A configured VideoStream, ready to open.
         """
-        resp = video._clients.video.generate_whip_stream(video._clients.auth_header, video.rid)
+        try:
+            resp = video._clients.video.generate_whip_stream(video._clients.auth_header, video.rid)
+        except ConjureHTTPError as e:
+            raise NominalVideoError(f"failed to create WHIP stream for video {video.rid!r}: {e}") from e
 
-        whip_url: str = resp.whip_url
+        whip_url = resp.whip_url
         parsed = urllib.parse.urlparse(whip_url)
         endpoint = urllib.parse.urlunparse(parsed._replace(query=""))
         query_params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
@@ -114,7 +128,7 @@ class VideoStream:
             self._stream.open()
         except RuntimeError as e:
             self._stream = None
-            raise NominalVideoError(f"failed to start video stream: {e}") from e
+            raise NominalVideoError("failed to start video stream") from e
 
     def close(self) -> None:
         """Stop the pipeline and release all resources. Idempotent — safe to call multiple times.
@@ -125,14 +139,14 @@ class VideoStream:
             self._stream.close()
             self._stream = None
 
-    def run(self, seconds: float | None = None) -> None:
+    def run(self, timeout: timedelta | float | None = None) -> None:
         """Block until the stream ends, errors, or Ctrl+C is pressed.
 
         Calls close() internally when done, so no explicit cleanup is needed after run().
 
         Args:
-            seconds: How long to stream before stopping. If None, runs until the source
-                ends naturally (e.g. end of file) or until interrupted with Ctrl+C.
+            timeout: How long to stream before stopping — either a timedelta or a number of seconds.
+                If None, runs until the source ends naturally (e.g. end of file) or until interrupted with Ctrl+C.
 
         Raises:
             NominalVideoStreamNotOpenError: if the stream is not open — call open() first or use as a context manager.
@@ -142,6 +156,7 @@ class VideoStream:
         if self._stream is None:
             raise NominalVideoStreamNotOpenError()
         try:
+            seconds = timeout.total_seconds() if isinstance(timeout, timedelta) else timeout
             self._stream.run(seconds)
         except RuntimeError as e:
             raise NominalVideoError(f"video stream error: {e}") from e
@@ -167,36 +182,20 @@ class VideoStream:
                 the pipeline assigns a timestamp automatically.
 
         Returns:
-            True if the frame was accepted, False if the pipeline is not open or the
-            internal buffer is full.
-        """
-        if self._stream is None:
-            return False
-        return bool(self._stream.send_frame(data, timestamp_ns))
-
-    def recv_frame(self, timeout_ms: int | None = None) -> Frame | None:
-        """Pull a decoded video frame from the pipeline. Only valid when using ``Sink.app()``.
-
-        Note: VideoStream always streams to Nominal via WHIP — this method is not useful
-        in typical usage. It is included for completeness and testing.
-
-        Args:
-            timeout_ms: How long to wait for a frame in milliseconds. If None, blocks indefinitely.
-
-        Returns:
-            A Frame with width, height, format, data, and timestamp_ns — or None on timeout
-            or if the stream has ended.
+            True if the frame was accepted, False if the internal buffer is full.
 
         Raises:
             NominalVideoStreamNotOpenError: if the stream is not open.
         """
         if self._stream is None:
             raise NominalVideoStreamNotOpenError()
-        return self._stream.recv_frame(timeout_ms)
+        return bool(self._stream.send_frame(data, timestamp_ns))
 
     def __enter__(self) -> VideoStream:
         self.open()
         return self
 
-    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+    def __exit__(
+        self, exc_type: Type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
+    ) -> None:
         self.close()
