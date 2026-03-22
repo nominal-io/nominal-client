@@ -40,6 +40,8 @@ jobs:
           track_progress: true
           classify_inline_comments: 'false'
           allowed_bots: "devin-ai-integration[bot]"
+          additional_permissions: |
+            actions: read
 
           prompt: |
             REPO: ${{ github.repository }}
