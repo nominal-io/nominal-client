@@ -57,8 +57,6 @@ jobs:
             - Pay attention to directories like docs/ for references potential guidance of best practices.
             - Ensure you always pay attention to AGENTS.md too.
 
-            Note: The PR branch is already checked out in the current working directory.
-
             Before responding to review requests on PRs, first read existing PR comments
             and review comments using `gh pr view` and `gh api` to understand what feedback
             has already been given. Do NOT duplicate or re-raise issues that have already
