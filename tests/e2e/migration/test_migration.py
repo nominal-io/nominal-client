@@ -25,6 +25,11 @@ from uuid import uuid4
 from nominal.core import NominalClient
 from nominal.core._event_types import EventType
 from nominal.core.asset import Asset
+from nominal.core.checklist import Checklist
+from nominal.core.dataset import Dataset
+from nominal.core.event import Event
+from nominal.core.run import Run
+from nominal.core.video import Video
 from nominal.experimental.checklist_utils.checklist_utils import _create_checklist_with_content
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -78,33 +83,72 @@ def _dest_asset(runner: MigrationRunner, source_asset: Asset, dest_client: Nomin
 
 
 def _setup_source_resources(source_client: NominalClient, source_archive: ArchiveFn, mp4_data: bytes):
-    """Create a source asset with one of every resource type (dataset, events, run, checklist, video)."""
+    """Create a source asset with one of every resource type, each populated with labels,
+    properties, and descriptions to exercise full metadata migration fidelity.
+    """
     start, end = _create_random_start_end()
     tag = uuid4()
 
-    source_asset = source_client.create_asset(f"migration-e2e-asset-{tag}")
+    source_asset = source_client.create_asset(
+        f"migration-e2e-asset-{tag}",
+        description=f"asset-description-{tag}",
+        properties={"asset-prop": "asset-val"},
+        labels=["migration-e2e"],
+    )
     source_archive(source_asset)
 
-    source_ds = source_client.create_dataset(f"migration-e2e-ds-{tag}")
+    source_ds = source_client.create_dataset(
+        f"migration-e2e-ds-{tag}",
+        description=f"ds-description-{tag}",
+        properties={"ds-prop": "ds-val"},
+        labels=["migration-e2e"],
+    )
     source_archive(source_ds)
     source_asset.add_dataset("primary", source_ds)
 
-    event_a = source_client.create_event(f"migration-e2e-event-a-{tag}", EventType.FLAG, start, assets=[source_asset])
+    event_a = source_client.create_event(
+        f"migration-e2e-event-a-{tag}",
+        EventType.FLAG,
+        start,
+        assets=[source_asset],
+        description=f"event-a-description-{tag}",
+        properties={"event-prop": "flag"},
+        labels=["migration-e2e"],
+    )
     source_archive(event_a)
-    event_b = source_client.create_event(f"migration-e2e-event-b-{tag}", EventType.INFO, start, assets=[source_asset])
+    event_b = source_client.create_event(
+        f"migration-e2e-event-b-{tag}",
+        EventType.INFO,
+        start,
+        assets=[source_asset],
+        description=f"event-b-description-{tag}",
+        properties={"event-prop": "info"},
+        labels=["migration-e2e"],
+    )
     source_archive(event_b)
 
-    source_run = source_client.create_run(f"migration-e2e-run-{tag}", start, end, assets=[source_asset])
+    source_run = source_client.create_run(
+        f"migration-e2e-run-{tag}",
+        start,
+        end,
+        assets=[source_asset],
+        description=f"run-description-{tag}",
+        properties={"run-prop": "run-val"},
+        labels=["migration-e2e"],
+    )
     source_archive(source_run)
 
-    source_checklist = _create_checklist_with_content(
-        source_client, title=f"migration-e2e-checklist-{tag}", is_published=True
-    )
+    source_checklist = _create_checklist_with_content(source_client, title=f"migration-e2e-checklist-{tag}")
     source_archive(source_checklist)
     source_data_review = source_checklist.execute(source_run)
     source_archive(source_data_review)
 
-    source_video = source_client.create_video(f"migration-e2e-video-{tag}")
+    source_video = source_client.create_video(
+        f"migration-e2e-video-{tag}",
+        description=f"video-description-{tag}",
+        properties={"video-prop": "video-val"},
+        labels=["migration-e2e"],
+    )
     source_archive(source_video)
     source_video.add_from_io(BytesIO(mp4_data), "test.mp4", start=start).poll_until_ingestion_completed(
         interval=POLL_INTERVAL
@@ -112,6 +156,68 @@ def _setup_source_resources(source_client: NominalClient, source_archive: Archiv
     source_asset.add_video("camera", source_video)
 
     return source_asset, source_ds, event_a, event_b, source_run, source_checklist, source_data_review, source_video
+
+
+# ---------------------------------------------------------------------------
+# Per-resource assertion helpers
+# ---------------------------------------------------------------------------
+
+
+def _assert_asset_fields(source: Asset, dest: Asset) -> None:
+    assert dest.name == source.name
+    assert dest.description == source.description
+    assert set(dest.labels) == set(source.labels)
+    assert dest.properties == source.properties
+
+
+def _assert_dataset_fields(source: Dataset, dest: Dataset, scope_name: str, dest_asset: Asset) -> None:
+    assert dest.name == source.name
+    assert dest.description == source.description
+    assert set(dest.labels) == set(source.labels)
+    assert dest.properties == source.properties
+    # Linkage: dataset is accessible under the expected scope on the destination asset.
+    dest_datasets = dict(dest_asset.list_datasets())
+    assert scope_name in dest_datasets
+    assert dest_datasets[scope_name].rid == dest.rid
+
+
+def _assert_event_fields(source: Event, dest: Event, dest_asset: Asset) -> None:
+    assert dest.name == source.name
+    assert dest.type == source.type
+    assert dest.description == source.description
+    assert set(dest.labels) == set(source.labels)
+    assert dest.properties == source.properties
+    # Linkage: event is associated with the destination asset.
+    assert dest.rid in {e.rid for e in dest_asset.search_events()}
+
+
+def _assert_run_fields(source: Run, dest: Run, dest_asset: Asset) -> None:
+    assert dest.name == source.name
+    assert dest.description == source.description
+    assert set(dest.labels) == set(source.labels)
+    assert dest.properties == source.properties
+    assert dest.start == source.start
+    assert dest.end == source.end
+    # Linkage: run appears on the destination asset.
+    assert dest.rid in {r.rid for r in dest_asset.list_runs()}
+
+
+def _assert_checklist_fields(source: Checklist, dest: Checklist) -> None:
+    assert dest.name == source.name
+    assert dest.description == source.description
+    assert set(dest.labels) == set(source.labels)
+    assert dest.properties == source.properties
+
+
+def _assert_video_fields(source: Video, dest: Video, scope_name: str, dest_asset: Asset) -> None:
+    assert dest.name == source.name
+    assert dest.description == source.description
+    assert set(dest.labels) == set(source.labels)
+    assert dest.properties == source.properties
+    # Linkage: video is accessible under the expected scope on the destination asset.
+    dest_videos = dict(dest_asset.list_videos())
+    assert scope_name in dest_videos
+    assert dest_videos[scope_name].rid == dest.rid
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +235,10 @@ def test_migrate_asset(
 ):
     """Full migration of an asset covering all resource types: dataset, events, run, checklist, and video.
 
-    Verifies that all child resources are present on the destination and that the migration
-    state records a RID mapping for each one.
+    Verifies:
+    - All child resources exist on the destination with RID mappings in state
+    - Metadata (name, description, labels, properties) is preserved for each resource
+    - Resources are correctly linked to the migrated destination asset
     """
     # --- source setup ---
     source_asset, source_ds, event_a, event_b, source_run, source_checklist, source_data_review, source_video = (
@@ -145,40 +253,47 @@ def test_migrate_asset(
     dest_asset = _dest_asset(runner, source_asset, dest_client)
     dest_archive(dest_asset)
 
+    # --- asset ---
+    _assert_asset_fields(source_asset, dest_asset)
+
     # --- dataset ---
     dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
     assert dest_ds_rid is not None
-    dest_archive(dest_client.get_dataset(dest_ds_rid))
-    assert "primary" in dict(dest_asset.list_datasets())
+    dest_ds = dest_client.get_dataset(dest_ds_rid)
+    dest_archive(dest_ds)
+    _assert_dataset_fields(source_ds, dest_ds, "primary", dest_asset)
 
     # --- events ---
-    dest_event_names = {e.name for e in dest_asset.search_events()}
-    assert event_a.name in dest_event_names
-    assert event_b.name in dest_event_names
-    assert state.get_mapped_rid(ResourceType.EVENT, event_a.rid) is not None
-    assert state.get_mapped_rid(ResourceType.EVENT, event_b.rid) is not None
+    dest_event_a_rid = state.get_mapped_rid(ResourceType.EVENT, event_a.rid)
+    dest_event_b_rid = state.get_mapped_rid(ResourceType.EVENT, event_b.rid)
+    assert dest_event_a_rid is not None
+    assert dest_event_b_rid is not None
+    dest_event_a = dest_client.get_event(dest_event_a_rid)
+    dest_event_b = dest_client.get_event(dest_event_b_rid)
+    _assert_event_fields(event_a, dest_event_a, dest_asset)
+    _assert_event_fields(event_b, dest_event_b, dest_asset)
 
     # --- run ---
     dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
     assert dest_run_rid is not None
     dest_run = dest_client.get_run(dest_run_rid)
     dest_archive(dest_run)
-    assert dest_run.name == source_run.name
-    assert source_run.name in {r.name for r in dest_asset.list_runs()}
+    _assert_run_fields(source_run, dest_run, dest_asset)
 
     # --- checklist + data review ---
     dest_checklist_rid = state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
     assert dest_checklist_rid is not None
-    dest_archive(dest_client.get_checklist(dest_checklist_rid))
+    dest_checklist = dest_client.get_checklist(dest_checklist_rid)
+    dest_archive(dest_checklist)
+    _assert_checklist_fields(source_checklist, dest_checklist)
     assert state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is not None
 
     # --- video ---
     dest_video_rid = state.get_mapped_rid(ResourceType.VIDEO, source_video.rid)
     assert dest_video_rid is not None
-    dest_archive(dest_client.get_video(dest_video_rid))
-    dest_videos = dict(dest_asset.list_videos())
-    assert "camera" in dest_videos
-    assert dest_videos["camera"].rid == dest_video_rid
+    dest_video = dest_client.get_video(dest_video_rid)
+    dest_archive(dest_video)
+    _assert_video_fields(source_video, dest_video, "camera", dest_asset)
 
 
 def test_migrate_asset_with_dataset_files(
