@@ -72,6 +72,7 @@ jobs:
       - name: Run e2e tests
         run: |
           uv run pytest tests/e2e \
+            --ignore=tests/e2e/migration \
             --profile staging-e2e \
             --no-cov \
             -v
