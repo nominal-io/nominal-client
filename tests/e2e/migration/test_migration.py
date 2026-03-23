@@ -138,7 +138,9 @@ def _setup_source_resources(source_client: NominalClient, source_archive: Archiv
     )
     source_archive(source_run)
 
-    source_checklist = _create_checklist_with_content(source_client, title=f"migration-e2e-checklist-{tag}")
+    source_checklist = _create_checklist_with_content(
+        source_client, title=f"migration-e2e-checklist-{tag}", is_published=True
+    )
     source_archive(source_checklist)
     source_data_review = source_checklist.execute(source_run)
     source_archive(source_data_review)
@@ -198,8 +200,9 @@ def _assert_run_fields(source: Run, dest: Run, dest_asset: Asset) -> None:
     assert dest.properties == source.properties
     assert dest.start == source.start
     assert dest.end == source.end
-    # Linkage: run appears on the destination asset.
+    # Linkage: bidirectional — run appears on the destination asset and the run references it.
     assert dest.rid in {r.rid for r in dest_asset.list_runs()}
+    assert dest_asset.rid in dest.assets
 
 
 def _assert_checklist_fields(source: Checklist, dest: Checklist) -> None:
