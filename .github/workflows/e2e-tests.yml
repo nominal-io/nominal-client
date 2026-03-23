@@ -63,9 +63,10 @@ jobs:
           NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_PRODUCTION_WORKSPACE_RID }}
         run: |
           uv run nom config profile add production-e2e \
-            --base-url https://api.nominal.io/api \
+            --base-url https://api.gov.nominal.io/api \
             --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
             --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
             -vv
 
       - name: Run e2e tests

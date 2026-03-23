@@ -37,7 +37,7 @@ def pytest_addoption(parser):
     parser.addoption("--source-profile", default=None, help="Source Nominal profile name (e.g. production)")
     parser.addoption("--source-auth-token", default=None, help="Source auth token (used with --source-base-url)")
     parser.addoption(
-        "--source-base-url", default="https://api.nominal.io", help="Source base URL (default: production)"
+        "--source-base-url", default="https://api.gov.nominal.io", help="Source base URL (default: production)"
     )
 
 
