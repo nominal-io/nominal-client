@@ -16,7 +16,7 @@
 ### Bug Fixes
 
 * correct gzip request length handling ([#665](https://github.com/nominal-io/nominal-client/issues/665)) ([aad3ba1](https://github.com/nominal-io/nominal-client/commit/aad3ba1c6337defa5ba5bcea91a57189a440378a))
-* differentiate "New * created" vs "Found *" log in migrations (MDEV-86) ([#671](https://github.com/nominal-io/nominal-client/issues/671)) ([d717b06](https://github.com/nominal-io/nominal-client/commit/d717b06cc67c997de4d84aebee55a534e8b93c04))
+* differentiate "New * created" vs "Found *" log in migrations ([#671](https://github.com/nominal-io/nominal-client/issues/671)) ([d717b06](https://github.com/nominal-io/nominal-client/commit/d717b06cc67c997de4d84aebee55a534e8b93c04))
 * execution failures incorrectly included in download_files succeeded list ([#666](https://github.com/nominal-io/nominal-client/issues/666)) ([4ccb22c](https://github.com/nominal-io/nominal-client/commit/4ccb22c84019f6e554048aa2a0b3bbb83bda3145))
 * pass down publish status to create templates ([#673](https://github.com/nominal-io/nominal-client/issues/673)) ([e19057f](https://github.com/nominal-io/nominal-client/commit/e19057fa99fa1f2c2ddefa66bff90327aae76eaa))
 * prevent files that failed to download from showing as successful ([4ccb22c](https://github.com/nominal-io/nominal-client/commit/4ccb22c84019f6e554048aa2a0b3bbb83bda3145))
