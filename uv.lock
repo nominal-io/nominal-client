@@ -1216,7 +1216,7 @@ requires-dist = [
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
     { name = "dataclass-wizard", specifier = ">=0.39.1" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1159.0" },
+    { name = "nominal-api", specifier = "==0.1168.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1090.0" },
     { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.7.12" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
@@ -1261,15 +1261,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1159.0"
+version = "0.1168.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/17/18/b02858371a368f058bf68daa257cb01a9ab121dec6d529dabc5805367112/nominal_api-0.1159.0.tar.gz", hash = "sha256:f60fea71533dbfc5856852c21e45dd619ceddded7ac9e864cb42cd0017a3dd2a", size = 704676, upload-time = "2026-03-13T20:54:01.873Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/42/5bee36405332e4bc6dc231dcdc96011c2a003d00ec8a703fa9cab66f17c7/nominal_api-0.1168.0.tar.gz", hash = "sha256:88bc76f79874b6f9a7bd3e894f1325efb45eedce99b7930d4c074d6377953ab1", size = 710427, upload-time = "2026-03-18T22:06:17.337Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/d0/d4e690eeefd5205788c700a297fbcaa1796877a4c7d8133e0981d63f4ba5/nominal_api-0.1159.0-py3-none-any.whl", hash = "sha256:c9b0ad0bb07a08068d02eaaa729ca60aadbd1336eb90e6b5ca7004afec41d09a", size = 738732, upload-time = "2026-03-13T20:54:00.487Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/50/a53f293be6ebdaf1d8dc443e55d3cb9105c2521d1d76bfe53e94c6cb4025/nominal_api-0.1168.0-py3-none-any.whl", hash = "sha256:8129ac1fbe4b2e464220dcb4c72e32f89c92b8312b0ab1363aaabf087710da45", size = 744504, upload-time = "2026-03-18T22:06:15.473Z" },
 ]
 
 [[package]]
