@@ -6,9 +6,8 @@ from datetime import timedelta
 from types import TracebackType
 from typing import TYPE_CHECKING, Type
 
-from nominal_video import Sink, Src, Stream, StreamOptions
-
 from conjure_python_client import ConjureHTTPError
+from nominal_video import Sink, Src, Stream, StreamOptions
 
 from nominal.core.exceptions import NominalVideoError, NominalVideoStreamNotOpenError
 
