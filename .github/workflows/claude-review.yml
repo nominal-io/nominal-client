@@ -34,6 +34,7 @@ jobs:
           track_progress: true
           classify_inline_comments: 'false'
           allowed_bots: "devin-ai-integration[bot]"
+          plugin_marketplaces: "https://github.com/anthropics/claude-plugins-official.git"
           plugins: "code-review@claude-plugins-official"
           additional_permissions: |
             actions: read
