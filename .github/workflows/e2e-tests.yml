@@ -45,7 +45,7 @@ jobs:
       - name: Install dependencies
         run: just install
 
-      - name: Write Nominal profile
+      - name: Write staging profile
         env:
           NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
           NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
@@ -57,9 +57,29 @@ jobs:
             --validate \
             -vv
 
+      - name: Write production profile
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_PRODUCTION_API_KEY }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_PRODUCTION_WORKSPACE_RID }}
+        run: |
+          uv run nom config profile add production-e2e \
+            --base-url https://api.nominal.io/api \
+            --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
+            --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
+            -vv
+
       - name: Run e2e tests
         run: |
           uv run pytest tests/e2e \
             --profile staging-e2e \
+            --no-cov \
+            -v
+
+      - name: Run migration e2e tests
+        run: |
+          uv run pytest tests/e2e/migration \
+            --profile staging-e2e \
+            --source-profile production-e2e \
             --no-cov \
             -v
