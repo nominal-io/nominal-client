@@ -189,8 +189,9 @@ def _assert_event_fields(source: Event, dest: Event, dest_asset: Asset) -> None:
     assert dest.description == source.description
     assert set(dest.labels) == set(source.labels)
     assert dest.properties == source.properties
-    # Linkage: event is associated with the destination asset.
+    # Linkage: event is associated with exactly the destination asset (no others).
     assert dest.rid in {e.rid for e in dest_asset.search_events()}
+    assert set(dest.asset_rids) == {dest_asset.rid}
 
 
 def _assert_run_fields(source: Run, dest: Run, dest_asset: Asset) -> None:
@@ -200,9 +201,9 @@ def _assert_run_fields(source: Run, dest: Run, dest_asset: Asset) -> None:
     assert dest.properties == source.properties
     assert dest.start == source.start
     assert dest.end == source.end
-    # Linkage: bidirectional — run appears on the destination asset and the run references it.
+    # Linkage: bidirectional — run appears on the destination asset and references exactly it.
     assert dest.rid in {r.rid for r in dest_asset.list_runs()}
-    assert dest_asset.rid in dest.assets
+    assert set(dest.assets) == {dest_asset.rid}
 
 
 def _assert_checklist_fields(source: Checklist, dest: Checklist) -> None:
@@ -333,7 +334,9 @@ def test_migrate_asset_with_dataset_files(
 
     source_channels = {ch.name for ch in source_ds.search_channels()}
     dest_channels = {ch.name for ch in dest_ds.search_channels()}
-    assert source_channels.issubset(dest_channels)
+    assert source_channels.issubset(dest_channels), (
+        f"Missing channels in destination dataset. Source channels: {source_channels}, Dest channels: {dest_channels}"
+    )
 
 
 def test_migration_idempotency(

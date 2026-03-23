@@ -50,6 +50,10 @@ jobs:
           NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
           NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
         run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::E2E_NOMINAL_STAGING_API_KEY secret is not configured"
+            exit 1
+          fi
           uv run nom config profile add staging-e2e \
             --base-url https://api-staging.gov.nominal.io/api \
             --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
@@ -62,6 +66,10 @@ jobs:
           NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_PRODUCTION_API_KEY }}
           NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_PRODUCTION_WORKSPACE_RID }}
         run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::E2E_NOMINAL_PRODUCTION_API_KEY secret is not configured"
+            exit 1
+          fi
           uv run nom config profile add production-e2e \
             --base-url https://api.gov.nominal.io/api \
             --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \

@@ -50,7 +50,9 @@ def source_client(pytestconfig) -> NominalClient:
         return NominalClient.from_profile(profile)
     auth_token = pytestconfig.getoption("source_auth_token")
     if auth_token is None:
-        raise pytest.UsageError("Either --source-profile or --source-auth-token must be provided")
+        raise pytest.UsageError(
+            "Either --source-profile or --source-auth-token must be provided for migration source environment"
+        )
     base_url = pytestconfig.getoption("source_base_url")
     print(f"Using source NominalClient.create(base_url={base_url!r})")
     return NominalClient.create(base_url=base_url, token=auth_token)
@@ -69,7 +71,9 @@ def dest_client(pytestconfig) -> NominalClient:
         return NominalClient.from_profile(profile)
     auth_token = pytestconfig.getoption("auth_token")
     if auth_token is None:
-        raise pytest.UsageError("Either --profile or --auth-token must be provided")
+        raise pytest.UsageError(
+            "Either --profile or --auth-token must be provided for migration destination environment"
+        )
     base_url = pytestconfig.getoption("base_url")
     print(f"Using dest NominalClient.create(base_url={base_url!r})")
     return NominalClient.create(base_url=base_url, token=auth_token)
