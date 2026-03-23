@@ -97,7 +97,9 @@ def _setup_source_resources(source_client: NominalClient, source_archive: Archiv
     source_run = source_client.create_run(f"migration-e2e-run-{tag}", start, end, assets=[source_asset])
     source_archive(source_run)
 
-    source_checklist = _create_checklist_with_content(source_client, title=f"migration-e2e-checklist-{tag}")
+    source_checklist = _create_checklist_with_content(
+        source_client, title=f"migration-e2e-checklist-{tag}", is_published=True
+    )
     source_archive(source_checklist)
     source_data_review = source_checklist.execute(source_run)
     source_archive(source_data_review)
