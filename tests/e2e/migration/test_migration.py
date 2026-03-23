@@ -17,15 +17,17 @@ Run with:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 from uuid import uuid4
 
 from nominal.core import NominalClient
 from nominal.core._event_types import EventType
 from nominal.core.asset import Asset
 from nominal.core.checklist import Checklist
+from nominal.core.data_review import DataReview
 from nominal.core.dataset import Dataset
 from nominal.core.event import Event
 from nominal.core.run import Run
@@ -82,81 +84,128 @@ def _dest_asset(runner: MigrationRunner, source_asset: Asset, dest_client: Nomin
     return dest_client.get_asset(rid)
 
 
-def _setup_source_resources(source_client: NominalClient, source_archive: ArchiveFn, mp4_data: bytes):
-    """Create a source asset with one of every resource type, each populated with labels,
-    properties, and descriptions to exercise full metadata migration fidelity.
-    """
-    start, end = _create_random_start_end()
-    tag = uuid4()
-
-    source_asset = source_client.create_asset(
-        f"migration-e2e-asset-{tag}",
-        description=f"asset-description-{tag}",
+def _create_source_asset(source_client: NominalClient, source_archive: ArchiveFn) -> Asset:
+    asset = source_client.create_asset(
+        f"migration-e2e-asset-{uuid4()}",
+        description="asset description",
         properties={"asset-prop": "asset-val"},
         labels=["migration-e2e"],
     )
-    source_archive(source_asset)
+    source_archive(asset)
+    return asset
 
-    source_ds = source_client.create_dataset(
-        f"migration-e2e-ds-{tag}",
-        description=f"ds-description-{tag}",
+
+def _create_source_dataset(source_client: NominalClient, source_archive: ArchiveFn, source_asset: Asset) -> Dataset:
+    ds = source_client.create_dataset(
+        f"migration-e2e-ds-{uuid4()}",
+        description="dataset description",
         properties={"ds-prop": "ds-val"},
         labels=["migration-e2e"],
     )
-    source_archive(source_ds)
-    source_asset.add_dataset("primary", source_ds)
+    source_archive(ds)
+    source_asset.add_dataset("primary", ds, series_tags={"scope-tag": "scope-val"})
+    return ds
 
+
+def _create_source_events(
+    source_client: NominalClient,
+    source_archive: ArchiveFn,
+    source_asset: Asset,
+    start: datetime,
+) -> tuple[Event, Event]:
     event_a = source_client.create_event(
-        f"migration-e2e-event-a-{tag}",
+        f"migration-e2e-event-a-{uuid4()}",
         EventType.FLAG,
         start,
+        duration=timedelta(minutes=5),
         assets=[source_asset],
-        description=f"event-a-description-{tag}",
+        description="event a description",
         properties={"event-prop": "flag"},
         labels=["migration-e2e"],
     )
     source_archive(event_a)
     event_b = source_client.create_event(
-        f"migration-e2e-event-b-{tag}",
+        f"migration-e2e-event-b-{uuid4()}",
         EventType.INFO,
         start,
+        duration=timedelta(minutes=10),
         assets=[source_asset],
-        description=f"event-b-description-{tag}",
+        description="event b description",
         properties={"event-prop": "info"},
         labels=["migration-e2e"],
     )
     source_archive(event_b)
+    return event_a, event_b
 
-    source_run = source_client.create_run(
-        f"migration-e2e-run-{tag}",
+
+def _create_source_run(
+    source_client: NominalClient,
+    source_archive: ArchiveFn,
+    source_asset: Asset,
+    start: datetime,
+    end: datetime,
+) -> Run:
+    run = source_client.create_run(
+        f"migration-e2e-run-{uuid4()}",
         start,
         end,
         assets=[source_asset],
-        description=f"run-description-{tag}",
+        description="run description",
         properties={"run-prop": "run-val"},
         labels=["migration-e2e"],
     )
-    source_archive(source_run)
+    source_archive(run)
+    return run
 
-    source_checklist = _create_checklist_with_content(
-        source_client, title=f"migration-e2e-checklist-{tag}", is_published=True
+
+def _create_source_checklist_and_review(
+    source_client: NominalClient,
+    source_archive: ArchiveFn,
+    source_run: Run,
+) -> tuple[Checklist, DataReview]:
+    checklist = _create_checklist_with_content(
+        source_client, title=f"migration-e2e-checklist-{uuid4()}", is_published=True
     )
-    source_archive(source_checklist)
-    source_data_review = source_checklist.execute(source_run)
-    source_archive(source_data_review)
+    source_archive(checklist)
+    data_review = checklist.execute(source_run)
+    source_archive(data_review)
+    return checklist, data_review
 
-    source_video = source_client.create_video(
-        f"migration-e2e-video-{tag}",
-        description=f"video-description-{tag}",
+
+def _create_source_video(
+    source_client: NominalClient,
+    source_archive: ArchiveFn,
+    source_asset: Asset,
+    mp4_data: bytes,
+    start: datetime,
+) -> Video:
+    video = source_client.create_video(
+        f"migration-e2e-video-{uuid4()}",
+        description="video description",
         properties={"video-prop": "video-val"},
         labels=["migration-e2e"],
     )
-    source_archive(source_video)
-    source_video.add_from_io(BytesIO(mp4_data), "test.mp4", start=start).poll_until_ingestion_completed(
-        interval=POLL_INTERVAL
-    )
-    source_asset.add_video("camera", source_video)
+    source_archive(video)
+    video.add_from_io(BytesIO(mp4_data), "test.mp4", start=start).poll_until_ingestion_completed(interval=POLL_INTERVAL)
+    source_asset.add_video("camera", video)
+    return video
 
+
+def _setup_source_resources(
+    source_client: NominalClient, source_archive: ArchiveFn, mp4_data: bytes
+) -> tuple[Asset, Dataset, Event, Event, Run, Checklist, DataReview, Video]:
+    """Create a source asset with one of every resource type, each populated with labels,
+    properties, and descriptions to exercise full metadata migration fidelity.
+    """
+    start, end = _create_random_start_end()
+    source_asset = _create_source_asset(source_client, source_archive)
+    source_ds = _create_source_dataset(source_client, source_archive, source_asset)
+    event_a, event_b = _create_source_events(source_client, source_archive, source_asset, start)
+    source_run = _create_source_run(source_client, source_archive, source_asset, start, end)
+    source_checklist, source_data_review = _create_source_checklist_and_review(
+        source_client, source_archive, source_run
+    )
+    source_video = _create_source_video(source_client, source_archive, source_asset, mp4_data, start)
     return source_asset, source_ds, event_a, event_b, source_run, source_checklist, source_data_review, source_video
 
 
@@ -172,7 +221,13 @@ def _assert_asset_fields(source: Asset, dest: Asset) -> None:
     assert dest.properties == source.properties
 
 
-def _assert_dataset_fields(source: Dataset, dest: Dataset, scope_name: str, dest_asset: Asset) -> None:
+def _assert_dataset_fields(
+    source: Dataset,
+    dest: Dataset,
+    scope_name: str,
+    dest_asset: Asset,
+    series_tags: Mapping[str, str] | None = None,
+) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
     assert set(dest.labels) == set(source.labels)
@@ -181,11 +236,17 @@ def _assert_dataset_fields(source: Dataset, dest: Dataset, scope_name: str, dest
     dest_datasets = dict(dest_asset.list_datasets())
     assert scope_name in dest_datasets
     assert dest_datasets[scope_name].rid == dest.rid
+    # series_tags on the scope are preserved — get_or_create_dataset raises on tag mismatch.
+    if series_tags is not None:
+        matched = dest_asset.get_or_create_dataset(scope_name, series_tags=series_tags)
+        assert matched.rid == dest.rid
 
 
 def _assert_event_fields(source: Event, dest: Event, dest_asset: Asset) -> None:
     assert dest.name == source.name
     assert dest.type == source.type
+    assert dest.start == source.start
+    assert dest.duration == source.duration
     assert dest.description == source.description
     assert set(dest.labels) == set(source.labels)
     assert dest.properties == source.properties
@@ -265,7 +326,7 @@ def test_migrate_asset(
     assert dest_ds_rid is not None
     dest_ds = dest_client.get_dataset(dest_ds_rid)
     dest_archive(dest_ds)
-    _assert_dataset_fields(source_ds, dest_ds, "primary", dest_asset)
+    _assert_dataset_fields(source_ds, dest_ds, "primary", dest_asset, series_tags={"scope-tag": "scope-val"})
 
     # --- events ---
     dest_event_a_rid = state.get_mapped_rid(ResourceType.EVENT, event_a.rid)
@@ -298,6 +359,9 @@ def test_migrate_asset(
     dest_video = dest_client.get_video(dest_video_rid)
     dest_archive(dest_video)
     _assert_video_fields(source_video, dest_video, "camera", dest_asset)
+    dest_video_files = list(dest_video.list_files())
+    assert len(dest_video_files) == 1
+    dest_video_files[0].poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
 
 def test_migrate_asset_with_dataset_files(
@@ -358,6 +422,8 @@ def test_migration_idempotency(
     runner.run_migration()
     dest_asset_rid_1 = runner.migration_state.get_mapped_rid(ResourceType.ASSET, source_asset.rid)
     dest_ds_rid_1 = runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
+    assert dest_asset_rid_1 is not None
+    assert dest_ds_rid_1 is not None
     dest_archive(dest_client.get_asset(dest_asset_rid_1))
     dest_archive(dest_client.get_dataset(dest_ds_rid_1))
 
