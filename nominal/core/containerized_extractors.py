@@ -157,6 +157,7 @@ class FileOutputFormat(Enum):
     PARQUET_TAR = "PARQUET_TAR"
     CSV = "CSV"
     PARQUET = "PARQUET"
+    MAINFEST = "MANIFEST"
 
     @classmethod
     def _from_conjure(cls, raw_source: ingest_api.FileOutputFormat) -> Self:
