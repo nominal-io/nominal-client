@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Sequence
 
 from nominal.core.asset import Asset
 from nominal.core.run import Run
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 class WorkbookCopyOptions(ResourceCopyOptions):
     destination_asset: Asset | None = None
     destination_run: Run | None = None
+    new_labels: Sequence[str] | None = None
 
 
 class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
@@ -62,6 +64,10 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             WorkbookTemplateCopyOptions(include_content_and_layout=True),
         )
         new_workbook = self._create_destination_workbook(source, new_template, options)
+
+        labels = options.new_labels if options.new_labels is not None else source._get_latest_api().metadata.labels
+        new_workbook.update(labels=labels)
+
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_workbook.rid)
 
         new_template.archive()
