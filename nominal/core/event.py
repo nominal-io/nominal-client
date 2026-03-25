@@ -139,7 +139,7 @@ def _create_event(
     labels: Iterable[str] | None,
 ) -> Event:
     if type == EventType.UNKNOWN:
-        raise ValueError("Unknown event type can not be created")
+        raise ValueError("Events with EventType.UNKNOWN cannot be created")
 
     request = event.CreateEvent(
         name=name,
