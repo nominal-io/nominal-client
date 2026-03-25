@@ -8,7 +8,9 @@ from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
 from nominal.core.workbook_template import WorkbookTemplate
+from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
+from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.workbook_template_migrator import (
     WorkbookTemplateCopyOptions,
     WorkbookTemplateMigrator,
@@ -58,7 +60,12 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         # properly requires a stable dedup key derived from source.rid rather than the ephemeral
         # source_template.rid.
         source_template = source._create_template_from_workbook()
-        template_migrator = WorkbookTemplateMigrator(self.ctx)
+        template_migrator = WorkbookTemplateMigrator(
+            MigrationContext(
+                destination_client=self.ctx.destination_client,
+                migration_state=MigrationState(),  # ephemeral — not shared with the main state
+            )
+        )
         new_template = template_migrator.copy_from(
             source_template,
             WorkbookTemplateCopyOptions(include_content_and_layout=True),
