@@ -65,7 +65,9 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         )
         new_workbook = self._create_destination_workbook(source, new_template, options)
 
-        new_workbook.update(labels=options.new_labels or source._get_latest_api().metadata.labels)
+        labels = options.new_labels if options.new_labels is not None else source._get_latest_api().metadata.labels
+        new_workbook.update(labels=labels)
+
 
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_workbook.rid)
 
