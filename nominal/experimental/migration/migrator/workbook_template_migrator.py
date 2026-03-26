@@ -1,18 +1,27 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from typing import Mapping, Sequence, cast
 
+from conjure_python_client._serde.decoder import ConjureDecoder
+from conjure_python_client._serde.encoder import ConjureEncoder
 from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
 
+from nominal.core._clientsbunch import ClientsBunch
 from nominal.core.workbook_template import WorkbookTemplate, _create_workbook_template_with_content_and_layout
+from nominal.experimental.id_utils.id_utils import UUID_RE
+from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.conjure_clone_utils import clone_conjure_objects_with_new_uuids
 
 logger = logging.getLogger(__name__)
+
+ATTACHMENT_RID_PATTERN = re.compile(rf"ri\.attachments\.[^.]+\.attachment\.{UUID_RE}")
 
 
 @dataclass(frozen=True)
@@ -44,6 +53,10 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
             options,
         )
 
+        new_template_layout, new_workbook_content = self._migrate_content_attachments(
+            source, new_template_layout, new_workbook_content
+        )
+
         new_workbook_template = _create_workbook_template_with_content_and_layout(
             clients=self.ctx.destination_client._clients,
             title=options.new_template_title
@@ -68,6 +81,42 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
         )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_workbook_template.rid)
         return new_workbook_template
+
+    def _migrate_content_attachments(
+        self,
+        source: WorkbookTemplate,
+        layout: scout_layout_api.WorkbookLayout,
+        content: scout_workbookcommon_api.WorkbookContent,
+    ) -> tuple[scout_layout_api.WorkbookLayout, scout_workbookcommon_api.WorkbookContent]:
+        """Find and migrate attachment RIDs in template content.
+
+        Serializes the content to JSON, finds all attachment RIDs, migrates each
+        attachment from the source to the destination, and replaces old RIDs with
+        new ones in the content.
+        """
+        content_json = json.dumps(ConjureEncoder.do_encode(content))
+        content_rids = set(ATTACHMENT_RID_PATTERN.findall(content_json))
+
+        if not content_rids:
+            return layout, content
+
+        source_clients = cast(ClientsBunch, source._clients)
+        attachment_migrator = AttachmentMigrator(self.ctx)
+        rid_map: dict[str, str] = {}
+        for old_rid in content_rids:
+            new_attachment = attachment_migrator.migrate_by_rid(source_clients, old_rid)
+            rid_map[old_rid] = new_attachment.rid
+            logger.debug("Migrated template attachment %s -> %s", old_rid, new_attachment.rid)
+
+        def _replace_rid(match: re.Match[str]) -> str:
+            return rid_map.get(match.group(0), match.group(0))
+
+        content_json = ATTACHMENT_RID_PATTERN.sub(_replace_rid, content_json)
+        decoder = ConjureDecoder()
+        new_content = decoder.do_decode(json.loads(content_json), scout_workbookcommon_api.WorkbookContent)
+
+        logger.info("Migrated %d attachment(s) in template content", len(rid_map))
+        return layout, new_content
 
     def _resolve_template_content_and_layout(
         self,
