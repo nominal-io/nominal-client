@@ -4,6 +4,7 @@ import datetime
 import logging
 import pathlib
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable, Mapping, Protocol, Sequence
@@ -12,6 +13,7 @@ from urllib.parse import unquote, urlparse
 from nominal_api import api, ingest_api, scout_catalog
 from typing_extensions import Self
 
+from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import RefreshableMixin
@@ -54,6 +56,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
     tag_columns: Mapping[str, str] | None
 
     _clients: _Clients = field(repr=False)
+    _ingest_error_message: str | None = field(repr=False, default=None)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -72,13 +75,18 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         self._clients.ingest.delete_file(self._clients.auth_header, self.dataset_rid, self.id)
 
     def get_ingest_error(self) -> NominalIngestError | None:
-        """Returns the ingest exception if the file FAILED, or None if there is no error"""
-        api_file = self._get_latest_api()
-        self._refresh_from_api(api_file)
-        if self.ingest_status is IngestStatus.FAILED:
-            return self._build_ingest_exception(api_file.ingest_status)
-        else:
+        """Returns the ingest exception if the file FAILED, or None if there is no error.
+
+        Refreshes the file from the API before checking.
+        """
+        self.refresh()
+        if self._ingest_error_message is None:
             return None
+        else:
+            return NominalIngestError(
+                f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset '{self.dataset_rid!r}': "
+                f"{self._ingest_error_message}"
+            )
 
     def poll_until_ingestion_completed(self, interval: datetime.timedelta = datetime.timedelta(seconds=1)) -> Self:
         """Block until dataset file ingestion has completed
@@ -95,9 +103,10 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
                     # ingestion has completed successfully by this point
                     break
                 case IngestStatus.FAILED:
-                    # ingestion failed and will not continue
-                    # Get error message to display to user
-                    raise self._build_ingest_exception(api_file.ingest_status)
+                    raise NominalIngestError(
+                        f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset "
+                        f"'{self.dataset_rid!r}': {self._ingest_error_message or 'no error details available'}"
+                    )
                 case IngestStatus.IN_PROGRESS:
                     # Ingestion still proceeding
                     pass
@@ -112,20 +121,6 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
             time.sleep(interval.total_seconds())
 
         return self
-
-    def _build_ingest_exception(self, ingest_status: api.IngestStatusV2) -> NominalIngestError:
-        """Build ingest exception for a given error ingest status
-
-        Raises:
-            Raises ValueError if the ingest_status does not indicate an error occurred.
-        """
-        if ingest_status.error is None:
-            raise ValueError(f"Cannot build ingest error for status {ingest_status}-- not an error status!")
-
-        return NominalIngestError(
-            f"Ingest failed for file '{self.name}' with id '{self.id!r}' on dataset '{self.dataset_rid!r}': "
-            f"{ingest_status.error.message} ({ingest_status.error.error_type})"
-        )
 
     def _presigned_url_provider(self, ttl_secs: float = 60.0, skew_secs: float = 15.0) -> PresignedURLProvider:
         def fetch() -> str:
@@ -276,6 +271,9 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
                 dataset_file.timestamp_metadata.timestamp_type
             )
 
+        ingest_error = dataset_file.ingest_status.error
+        ingest_error_message = None if ingest_error is None else f"{ingest_error.message} ({ingest_error.error_type})"
+
         return cls(
             id=dataset_file.id,
             dataset_rid=dataset_file.dataset_rid,
@@ -290,6 +288,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
             file_tags=file_tags,
             tag_columns=tag_columns,
             _clients=clients,
+            _ingest_error_message=ingest_error_message,
         )
 
 
@@ -320,6 +319,31 @@ class IngestWaitType(Enum):
     FIRST_COMPLETED = "FIRST_COMPLETED"
     FIRST_EXCEPTION = "FIRST_EXCEPTION"
     ALL_COMPLETED = "ALL_COMPLETED"
+
+
+def _batch_refresh_files(files: list[DatasetFile], *, batch_size: int = 100) -> set[str]:
+    """Batch-fetches the latest API state for all files and refreshes them in-place.
+
+    Returns the set of file IDs that were absent from the batch response (i.e. not found on the server).
+    """
+    absent_ids: set[str] = set()
+    by_dataset: dict[str, list[DatasetFile]] = defaultdict(list)
+    for file in files:
+        by_dataset[file.dataset_rid].append(file)
+    for dataset_rid, dataset_files in by_dataset.items():
+        clients = dataset_files[0]._clients
+        for chunk in batched(dataset_files, batch_size):
+            request = scout_catalog.BatchGetDatasetFilesRequest(
+                dataset_rid=dataset_rid,
+                file_ids=[f.id for f in chunk],
+            )
+            results = clients.catalog.batch_get_dataset_files(clients.auth_header, request)
+            for file in chunk:
+                if (latest_api := results.get(file.id)) is not None:
+                    file._refresh_from_api(latest_api)
+                else:
+                    absent_ids.add(file.id)
+    return absent_ids
 
 
 def wait_for_files_to_ingest(
@@ -355,24 +379,34 @@ def wait_for_files_to_ingest(
     while not_done and (timeout is None or datetime.datetime.now() - start_time < timeout):
         logger.info("Polling for ingestion completion for %d files (%d total)", len(not_done), len(files))
 
+        absent_ids = _batch_refresh_files(not_done)
+
         next_not_done = []
         for file in not_done:
-            latest_api = file._get_latest_api()
-            latest_file = file._refresh_from_api(latest_api)
+            if file.id in absent_ids:
+                logger.warning(
+                    "Dataset file %s from dataset %s was absent from the batch response "
+                    "— it may have been deleted or never created successfully.",
+                    file.id,
+                    file.dataset_rid,
+                )
+                done.append(file)
+                has_failed = True
+                continue
             match file.ingest_status:
-                case IngestStatus.SUCCESS:
-                    done.append(latest_file)
+                case IngestStatus.SUCCESS | IngestStatus.DELETION_IN_PROGRESS | IngestStatus.DELETED:
+                    done.append(file)
                 case IngestStatus.FAILED:
                     logger.warning(
-                        "Dataset file %s from dataset %s failed to ingest! Error message: %s",
-                        latest_file.id,
-                        latest_file.dataset_rid,
-                        latest_api.ingest_status.error.message if latest_api.ingest_status.error else "",
+                        "Dataset file %s from dataset %s failed to ingest! Error: %s",
+                        file.id,
+                        file.dataset_rid,
+                        file._ingest_error_message,
                     )
-                    done.append(latest_file)
+                    done.append(file)
                     has_failed = True
                 case IngestStatus.IN_PROGRESS:
-                    next_not_done.append(latest_file)
+                    next_not_done.append(file)
 
         not_done = next_not_done
 
@@ -383,12 +417,12 @@ def wait_for_files_to_ingest(
         elif not not_done:
             break
 
-        if timeout is not None and datetime.datetime.now() - start_time < timeout:
+        if timeout is None or datetime.datetime.now() - start_time < timeout:
             logger.info(
                 "Sleeping for %f seconds while awaiting ingestion for %d files (%d total)... ",
+                poll_interval.total_seconds(),
                 len(not_done),
                 len(files),
-                poll_interval.total_seconds(),
             )
             time.sleep(poll_interval.total_seconds())
 

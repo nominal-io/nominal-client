@@ -6,6 +6,8 @@ Covers:
   - Uploading multiple CSV files to a single dataset
   - Linking datasets and attachments to a run, then listing them back
   - Reading channel data via the pandas integration (single-channel and full-dataset retrieval)
+  - Downloading a dataset file to disk via MultipartFileDownloader and verifying byte-identical content
+  - Creating channels on a datasource via add_channel and batch_add_channels
 
 The `ingested_dataset` fixture is session-scoped (defined in conftest.py): one shared dataset is
 created at the start of the session and reused by all read-only channel/pandas tests, avoiding
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from io import BytesIO
+from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
@@ -26,12 +29,15 @@ from nominal.core import NominalClient
 from nominal.core.channel import ChannelDataType
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
+from nominal.core.datasource import CreateChannelRequest
 from nominal.thirdparty.pandas import channel_to_series, datasource_to_dataframe
 from nominal.ts import ISO_8601, _SecondsNanos
 from tests.e2e import POLL_INTERVAL, _create_random_start_end
 
+ArchiveFn = Callable[[object], None]
 
-def test_update_dataset(client: NominalClient, csv_data, archive: Callable):
+
+def test_update_dataset(client: NominalClient, csv_data, archive: ArchiveFn):
     """Calling `dataset.update()` mutates name, description, properties, and labels in-place."""
     name = f"dataset-{uuid4()}"
     desc = f"core test to update a dataset {uuid4()}"
@@ -52,7 +58,7 @@ def test_update_dataset(client: NominalClient, csv_data, archive: Callable):
     assert ds.labels == tuple(new_labels)
 
 
-def test_update_run(client: NominalClient, archive: Callable):
+def test_update_run(client: NominalClient, archive: ArchiveFn):
     """Calling `run.update()` mutates all mutable fields, including the start/end time window."""
     title = f"run-{uuid4()}"
     desc = f"core test to update a run {uuid4()}"
@@ -93,7 +99,7 @@ def test_update_run(client: NominalClient, archive: Callable):
     assert run.end == _SecondsNanos.from_datetime(new_end).to_nanoseconds()
 
 
-def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: Callable):
+def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: ArchiveFn):
     """Linking a dataset to a run with a custom ref-name is reflected in `run.list_datasets()`."""
     ds = client.create_dataset(f"dataset-{uuid4()}")
     archive(ds)
@@ -112,7 +118,7 @@ def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, a
     assert ds2.rid == ds.rid
 
 
-def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive: Callable):
+def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive: ArchiveFn):
     """Uploading two separate CSV files to the same dataset both ingest successfully."""
     name = f"dataset-{uuid4()}"
     desc = f"core test to add more data to a dataset {uuid4()}"
@@ -131,7 +137,7 @@ def test_add_csv_to_dataset(client: NominalClient, csv_data, csv_data2, archive:
     assert len(ds.labels) == 0
 
 
-def test_update_attachment(client: NominalClient, csv_data, archive: Callable):
+def test_update_attachment(client: NominalClient, csv_data, archive: ArchiveFn):
     """Calling `attachment.update()` mutates name, description, properties, and labels in-place."""
     at_name = f"attachment-{uuid4()}"
     at_desc = f"core test to update an attachment {uuid4()}"
@@ -151,7 +157,7 @@ def test_update_attachment(client: NominalClient, csv_data, archive: Callable):
     assert at.labels == tuple(new_labels)
 
 
-def test_add_attachment_to_run_and_list_attachments(client: NominalClient, csv_data, archive: Callable):
+def test_add_attachment_to_run_and_list_attachments(client: NominalClient, csv_data, archive: ArchiveFn):
     """Attaching a file to a run is reflected in `run.list_attachments()`; byte contents are preserved."""
     at = client.create_attachment_from_io(BytesIO(csv_data), f"attachment-{uuid4()}")
     archive(at)
@@ -256,3 +262,52 @@ def test_get_or_create_dataset_raises_on_tag_mismatch(client: NominalClient, arc
 
     with pytest.raises(ValueError, match="datascope already exists"):
         asset.get_or_create_dataset(scope_name, series_tags={"env": "staging"})
+
+
+def test_download_dataset_file_roundtrips_to_disk(
+    client: NominalClient, csv_data: bytes, tmp_path: Path, archive: Callable[..., None]
+) -> None:
+    """Uploading a CSV and downloading it via MultipartFileDownloader produces byte-identical content on disk."""
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+
+    dataset_file = ds.add_from_io(BytesIO(csv_data), "timestamp", ISO_8601)
+    dataset_file.poll_until_ingestion_completed(interval=POLL_INTERVAL)
+
+    output_path = dataset_file.download(tmp_path)
+
+    assert output_path.exists()
+    assert output_path.read_bytes() == csv_data
+
+
+def test_add_channel(client: NominalClient, archive: ArchiveFn) -> None:
+    """add_channel creates a channel on the datasource that is retrievable by name."""
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+
+    channel = ds.add_channel(name="velocity", data_type=ChannelDataType.DOUBLE, description="speed", unit="m/s")
+
+    assert channel.name == "velocity"
+    assert channel.data_type == ChannelDataType.DOUBLE
+    assert channel.description == "speed"
+    assert channel.unit == "m/s"
+
+
+def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
+    """batch_add_channels creates all channels and returns them with no missing entries."""
+    ds = client.create_dataset(f"dataset-{uuid4()}")
+    archive(ds)
+
+    requests = [
+        CreateChannelRequest(name="velocity", data_type=ChannelDataType.DOUBLE, unit="m/s"),
+        CreateChannelRequest(name="temperature", data_type=ChannelDataType.DOUBLE, unit="degC"),
+        CreateChannelRequest(name="status", data_type=ChannelDataType.STRING, description="system status"),
+    ]
+    result = ds.batch_add_channels(requests)
+
+    assert result.missing == []
+    channels = {ch.name: ch for ch in result.channels}
+    assert set(channels) == {"velocity", "temperature", "status"}
+    assert channels["velocity"].unit == "m/s"
+    assert channels["temperature"].unit == "degC"
+    assert channels["status"].description == "system status"

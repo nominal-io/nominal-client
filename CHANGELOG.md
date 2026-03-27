@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.122.0](https://github.com/nominal-io/nominal-client/compare/v1.121.0...v1.122.0) (2026-03-23)
+
+
+### Features
+
+* add advanced filtering options for archive status across client ([8b77944](https://github.com/nominal-io/nominal-client/commit/8b77944c80cfa8993228fd459de896775ff33f70))
+* add batch_add_channels and update migrators ([#675](https://github.com/nominal-io/nominal-client/issues/675)) ([5adee62](https://github.com/nominal-io/nominal-client/commit/5adee62b617c2455904e1053bca65ca63682f24a))
+* add detection for partial writes in multipart downloader, add additional testing ([#668](https://github.com/nominal-io/nominal-client/issues/668)) ([99cd465](https://github.com/nominal-io/nominal-client/commit/99cd465efc47e44664e108d7e8b065b1f0c6abb1))
+* add multipart downloader unit tests and short write detection ([99cd465](https://github.com/nominal-io/nominal-client/commit/99cd465efc47e44664e108d7e8b065b1f0c6abb1))
+* allow specifying and validating series_tags with get_or_create_dataset ([#658](https://github.com/nominal-io/nominal-client/issues/658)) ([7ebfab4](https://github.com/nominal-io/nominal-client/commit/7ebfab449509cff299ff85799b1f68e83b92b897))
+* overhaul `archive` search logic across client ([#648](https://github.com/nominal-io/nominal-client/issues/648)) ([8b77944](https://github.com/nominal-io/nominal-client/commit/8b77944c80cfa8993228fd459de896775ff33f70))
+
+
+### Bug Fixes
+
+* correct gzip request length handling ([#665](https://github.com/nominal-io/nominal-client/issues/665)) ([aad3ba1](https://github.com/nominal-io/nominal-client/commit/aad3ba1c6337defa5ba5bcea91a57189a440378a))
+* differentiate "New * created" vs "Found *" log in migrations ([#671](https://github.com/nominal-io/nominal-client/issues/671)) ([d717b06](https://github.com/nominal-io/nominal-client/commit/d717b06cc67c997de4d84aebee55a534e8b93c04))
+* execution failures incorrectly included in download_files succeeded list ([#666](https://github.com/nominal-io/nominal-client/issues/666)) ([4ccb22c](https://github.com/nominal-io/nominal-client/commit/4ccb22c84019f6e554048aa2a0b3bbb83bda3145))
+* pass down publish status to create templates ([#673](https://github.com/nominal-io/nominal-client/issues/673)) ([e19057f](https://github.com/nominal-io/nominal-client/commit/e19057fa99fa1f2c2ddefa66bff90327aae76eaa))
+* prevent files that failed to download from showing as successful ([4ccb22c](https://github.com/nominal-io/nominal-client/commit/4ccb22c84019f6e554048aa2a0b3bbb83bda3145))
+* use batch endpoint for retrieving dataset files to reduce rate limit exceedence ([#670](https://github.com/nominal-io/nominal-client/issues/670)) ([38efdb2](https://github.com/nominal-io/nominal-client/commit/38efdb24aed1e8c82940db4b88c6ea4027a0b738))
+
+
+### Documentation
+
+* add docs to EventType ([#678](https://github.com/nominal-io/nominal-client/issues/678)) ([2ebdd9d](https://github.com/nominal-io/nominal-client/commit/2ebdd9d44e12f8fd35a7ead3789625469a0bfb74))
+
 ## [1.121.0](https://github.com/nominal-io/nominal-client/compare/v1.120.0...v1.121.0) (2026-03-16)
 
 

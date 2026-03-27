@@ -68,7 +68,7 @@ class NominalConfig:
                 )
             raise FileNotFoundError(f"no config file found at {path}: create with `nom config profile add`")
         with open(path) as f:
-            obj = yaml.safe_load(f)
+            obj = yaml.safe_load(f) or {}
         if "version" not in obj:
             raise NominalConfigError(f"missing 'version' key in config file: {path}")
         if "profiles" not in obj:

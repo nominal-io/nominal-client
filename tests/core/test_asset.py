@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset, DatasetBounds
 
@@ -113,3 +116,25 @@ def test_get_or_create_dataset_creates_without_tags(mock_asset, mock_dataset, mo
 
     assert result == mock_dataset
     mock_add.assert_called_once_with(SCOPE_NAME, mock_dataset, series_tags=None)
+
+
+def test_search_events_passes_archive_status(mock_asset):
+    """Asset.search_events forwards archive_status to the shared event search helper."""
+    with patch("nominal.core.asset._search_events", return_value=[]) as mock_search_events:
+        result = mock_asset.search_events(archive_status=ArchiveStatusFilter.ANY)
+
+    assert result == []
+    mock_search_events.assert_called_once()
+    assert mock_search_events.call_args.kwargs["asset_rids"] == [mock_asset.rid]
+    assert mock_search_events.call_args.kwargs["archive_status"] == ArchiveStatusFilter.ANY
+
+
+def test_search_data_reviews_passes_archive_status(mock_asset):
+    """Asset.search_data_reviews forwards archive_status to the shared data-review iterator."""
+    with patch("nominal.core.asset.data_review._iter_search_data_reviews", return_value=iter(())) as mock_reviews:
+        result = mock_asset.search_data_reviews(archive_status=ArchiveStatusFilter.ARCHIVED)
+
+    assert result == []
+    mock_reviews.assert_called_once()
+    assert mock_reviews.call_args.kwargs["assets"] == [mock_asset.rid]
+    assert mock_reviews.call_args.kwargs["archive_status"] == ArchiveStatusFilter.ARCHIVED
