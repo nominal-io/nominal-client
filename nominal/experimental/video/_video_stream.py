@@ -114,7 +114,11 @@ class VideoStream:
         stun_url: str | None = None
         if resp.ice_servers:
             if len(resp.ice_servers) > 1:
-                logger.warning("Received %d ICE servers, using only the first one with urls: %s", len(resp.ice_servers), resp.ice_servers[0].urls)
+                logger.warning(
+                    "Received %d ICE servers, using only the first one with urls: %s",
+                    len(resp.ice_servers),
+                    resp.ice_servers[0].urls,
+                )
             if resp.ice_servers[0].urls:
                 stun_url = resp.ice_servers[0].urls[0].replace("stun:", "stun://", 1)
 
