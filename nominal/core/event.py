@@ -72,7 +72,6 @@ class Event(HasRid, RefreshableMixin[event.Event]):
                 new_labels.append(old_label)
             event = event.update(labels=new_labels)
         """
-
         if type == EventType.UNKNOWN:
             raise ValueError("Events with EventType.UNKNOWN cannot be updated")
         request = event.BatchUpdateEventRequest(
