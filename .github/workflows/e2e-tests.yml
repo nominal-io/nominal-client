@@ -37,7 +37,7 @@ jobs:
           version: "0.8.x"
           enable-cache: false
           cache-dependency-glob: "uv.lock"
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install just
         uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
@@ -45,13 +45,33 @@ jobs:
       - name: Install dependencies
         run: just install
 
-      - name: Write Nominal profile
+      - name: Write staging profile
         env:
           NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_STAGING_API_KEY }}
           NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_STAGING_WORKSPACE_RID }}
         run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::E2E_NOMINAL_STAGING_API_KEY secret is not configured"
+            exit 1
+          fi
           uv run nom config profile add staging-e2e \
             --base-url https://api-staging.gov.nominal.io/api \
+            --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
+            --token ${NOMINAL_E2E_TOKEN} \
+            --validate \
+            -vv
+
+      - name: Write production profile
+        env:
+          NOMINAL_E2E_TOKEN: ${{ secrets.E2E_NOMINAL_PRODUCTION_API_KEY }}
+          NOMINAL_E2E_WORKSPACE_RID: ${{ secrets.E2E_NOMINAL_PRODUCTION_WORKSPACE_RID }}
+        run: |
+          if [[ -z "${NOMINAL_E2E_TOKEN}" ]]; then
+            echo "::error::E2E_NOMINAL_PRODUCTION_API_KEY secret is not configured"
+            exit 1
+          fi
+          uv run nom config profile add production-e2e \
+            --base-url https://api.gov.nominal.io/api \
             --workspace-rid ${NOMINAL_E2E_WORKSPACE_RID} \
             --token ${NOMINAL_E2E_TOKEN} \
             --validate \
@@ -60,6 +80,15 @@ jobs:
       - name: Run e2e tests
         run: |
           uv run pytest tests/e2e \
+            --ignore=tests/e2e/migration \
             --profile staging-e2e \
+            --no-cov \
+            -v
+
+      - name: Run migration e2e tests
+        run: |
+          uv run pytest tests/e2e/migration \
+            --profile staging-e2e \
+            --source-profile production-e2e \
             --no-cov \
             -v
