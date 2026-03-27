@@ -58,6 +58,18 @@ class NominalMethodRemovedError(NominalError):
             return f"{base_msg} To fix: {self._instructions}"
 
 
+class NominalVideoStreamError(NominalError):
+    """An error occurred during live video streaming."""
+
+
+class NominalVideoStreamNotOpenError(NominalVideoStreamError):
+    """The video stream is not open. Call open() first or use as a context manager."""
+
+    def __init__(self) -> None:
+        """Initialize error."""
+        super().__init__("VideoStream is not open — call open() first or use as a context manager")
+
+
 class NominalParameterRemovedError(NominalError):
     """An error raised when an parameter has been deprecated and now removed."""
 
