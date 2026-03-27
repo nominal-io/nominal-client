@@ -21,8 +21,9 @@ except ImportError as e:
             "nominal[video] is required for live video streaming. Install it with: pip install 'nominal[video]'"
         ) from e
     raise ImportError(
-        "GStreamer 1.20+ is required for live video streaming. "
-        "See https://gstreamer.freedesktop.org/download/ for installation instructions."
+        "Error loading rust bindings for live video streaming. "
+        "This can be caused by missing GStreamer 1.20+, incompatible Rust bindings for your architecture, "
+        "or other platform issues. See https://gstreamer.freedesktop.org/download/ for GStreamer installation."
     ) from e
 
 __all__ = [

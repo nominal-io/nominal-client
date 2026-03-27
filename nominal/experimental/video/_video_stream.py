@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -9,10 +10,13 @@ from typing import TYPE_CHECKING, Type
 from conjure_python_client import ConjureHTTPError
 from nominal_video import Sink, Src, Stream, StreamOptions
 
-from nominal.core.exceptions import NominalVideoError, NominalVideoStreamNotOpenError
+from nominal.core.exceptions import NominalVideoStreamError, NominalVideoStreamNotOpenError
+from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
     from nominal.core.video import Video
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -40,12 +44,12 @@ class VideoStream:
             stream.run(timedelta(seconds=30))
 
         # Manual lifecycle — useful when you need the stream object outside a with block,
-        # or to restart after a NominalVideoError (e.g. source disconnected):
+        # or to restart after a NominalVideoStreamError (e.g. source disconnected):
         stream = VideoStream.create(video, Src.rtsp("rtsp://192.168.1.10/live"))
         stream.open()
         try:
             stream.run()
-        except NominalVideoError:
+        except NominalVideoStreamError:
             stream.restart()  # re-opens the pipeline with the same WHIP endpoint
             stream.run()
         finally:
@@ -98,7 +102,7 @@ class VideoStream:
         try:
             resp = video._clients.video.generate_whip_stream(video._clients.auth_header, video.rid)
         except ConjureHTTPError as e:
-            raise NominalVideoError(f"failed to create WHIP stream for video {video.rid!r}: {e}") from e
+            raise NominalVideoStreamError(f"failed to create WHIP stream for video {video.rid!r}: {e}") from e
 
         whip_url = resp.whip_url
         parsed = urllib.parse.urlparse(whip_url)
@@ -108,8 +112,12 @@ class VideoStream:
         token = token_list[0] if token_list else None
 
         stun_url: str | None = None
-        if resp.ice_servers and resp.ice_servers[0].urls:
-            stun_url = resp.ice_servers[0].urls[0].replace("stun:", "stun://", 1)
+        if resp.ice_servers:
+            if len(resp.ice_servers) > 1:
+                server_urls = [url for server in resp.ice_servers for url in (server.urls or [])]
+                logger.warning(f"Received {len(resp.ice_servers)} ICE servers, using only the first one. Ignored servers: {server_urls[1:]}")
+            if resp.ice_servers[0].urls:
+                stun_url = resp.ice_servers[0].urls[0].replace("stun:", "stun://", 1)
 
         whip_sink = Sink.whip(endpoint=endpoint, token=token, stun_server=stun_url)
         return cls(rid=video.rid, src=src, options=options, whip_sink=whip_sink)
@@ -118,16 +126,16 @@ class VideoStream:
         """Build and start the GStreamer pipeline. Idempotent — safe to call multiple times.
 
         Raises:
-            NominalVideoError: if the pipeline fails to start (e.g. device not found, bad source URL).
+            NominalVideoStreamError: if the pipeline fails to start (e.g. device not found, bad source URL).
         """
         if self._stream is not None:
             return
         try:
             self._stream = Stream(self.src, self.whip_sink, options=self.options)
             self._stream.open()
-        except RuntimeError as e:
+        except Exception as e:
             self._stream = None
-            raise NominalVideoError("failed to start video stream") from e
+            raise NominalVideoStreamError("failed to start video stream") from e
 
     def close(self) -> None:
         """Stop the pipeline and release all resources. Idempotent — safe to call multiple times.
@@ -149,8 +157,7 @@ class VideoStream:
 
         Raises:
             NominalVideoStreamNotOpenError: if the stream is not open — call open() first or use as a context manager.
-            NominalVideoError: if the pipeline encounters an unrecoverable error.
-            KeyboardInterrupt: if interrupted with Ctrl+C.
+            NominalVideoStreamError: if the pipeline encounters an unrecoverable error.
         """
         if self._stream is None:
             raise NominalVideoStreamNotOpenError()
@@ -158,7 +165,7 @@ class VideoStream:
             seconds = timeout.total_seconds() if isinstance(timeout, timedelta) else timeout
             self._stream.run(seconds)
         except RuntimeError as e:
-            raise NominalVideoError(f"video stream error: {e}") from e
+            raise NominalVideoStreamError(f"video stream error: {e}") from e
         finally:
             self.close()
 
@@ -171,7 +178,7 @@ class VideoStream:
         self.close()
         self.open()
 
-    def send_frame(self, data: bytes, timestamp_ns: int | None = None) -> bool:
+    def send_frame(self, data: bytes, timestamp_ns: IntegralNanosecondsUTC | None = None) -> bool:
         """Push a raw video frame into the pipeline. Only valid when using ``Src.app()``.
 
         Args:
@@ -191,10 +198,12 @@ class VideoStream:
         return bool(self._stream.send_frame(data, timestamp_ns))
 
     def __enter__(self) -> VideoStream:
+        """Enter context manager, opening the pipeline."""
         self.open()
         return self
 
     def __exit__(
         self, exc_type: Type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
     ) -> None:
+        """Exit context manager, closing the pipeline."""
         self.close()

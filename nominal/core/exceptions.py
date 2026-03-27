@@ -58,11 +58,11 @@ class NominalMethodRemovedError(NominalError):
             return f"{base_msg} To fix: {self._instructions}"
 
 
-class NominalVideoError(NominalError):
+class NominalVideoStreamError(NominalError):
     """An error occurred during live video streaming."""
 
 
-class NominalVideoStreamNotOpenError(NominalVideoError):
+class NominalVideoStreamNotOpenError(NominalVideoStreamError):
     """The video stream is not open. Call open() first or use as a context manager."""
 
     def __init__(self) -> None:
