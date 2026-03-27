@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.123.0](https://github.com/nominal-io/nominal-client/compare/v1.122.0...v1.123.0) (2026-03-27)
+
+
+### Features
+
+* added nominal-video and hooks in place for live streaming video ([#662](https://github.com/nominal-io/nominal-client/issues/662)) ([9de08b6](https://github.com/nominal-io/nominal-client/commit/9de08b63e631bb92e17c19c058d70274e31f4d8b))
+* migrate attachments in the workbook migrator ([#685](https://github.com/nominal-io/nominal-client/issues/685)) ([b9129d0](https://github.com/nominal-io/nominal-client/commit/b9129d0c15d8a23fa561c2082a4b6cafd7f8fe3a))
+* update labels in workbook after migration ([#686](https://github.com/nominal-io/nominal-client/issues/686)) ([d4e8cdf](https://github.com/nominal-io/nominal-client/commit/d4e8cdfa1d15c63786ae7a40d35bfef7f1cab9ea))
+
 ## [1.122.0](https://github.com/nominal-io/nominal-client/compare/v1.121.0...v1.122.0) (2026-03-23)
 
 
