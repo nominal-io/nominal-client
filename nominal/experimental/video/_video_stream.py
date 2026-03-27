@@ -114,8 +114,7 @@ class VideoStream:
         stun_url: str | None = None
         if resp.ice_servers:
             if len(resp.ice_servers) > 1:
-                server_urls = [url for server in resp.ice_servers for url in (server.urls or [])]
-                logger.warning(f"Received {len(resp.ice_servers)} ICE servers, using only the first one. Ignored servers: {server_urls[1:]}")
+                logger.warning("Received %d ICE servers, using only the first one with urls: %s", len(resp.ice_servers), resp.ice_servers[0].urls)
             if resp.ice_servers[0].urls:
                 stun_url = resp.ice_servers[0].urls[0].replace("stun:", "stun://", 1)
 
@@ -165,7 +164,7 @@ class VideoStream:
             seconds = timeout.total_seconds() if isinstance(timeout, timedelta) else timeout
             self._stream.run(seconds)
         except RuntimeError as e:
-            raise NominalVideoStreamError(f"video stream error: {e}") from e
+            raise NominalVideoStreamError("Error running video stream") from e
         finally:
             self.close()
 
