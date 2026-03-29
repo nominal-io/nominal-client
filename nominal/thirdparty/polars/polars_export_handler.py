@@ -250,6 +250,14 @@ def _channel_points_per_second(
         return results
 
 
+def _add_missing_columns(df: pl.DataFrame, missing_cols: Sequence[str]) -> pl.DataFrame:
+    """Add all-null Float64 columns for channel names not present in the DataFrame."""
+    to_add = [col for col in missing_cols if col not in df.columns]
+    if not to_add:
+        return df
+    return df.with_columns([pl.lit(None).cast(pl.Float64).alias(col) for col in to_add])
+
+
 def _build_channel_groups(
     points_per_second: Mapping[str, float],
     channels_by_name: Mapping[str, Channel],
@@ -539,7 +547,13 @@ class PolarsExportHandler:
 
     def _compute_channel_points_per_second(
         self, numeric_channels: Sequence[Channel], time_range: _TimeRange, tags: Mapping[str, str] | None = None
-    ) -> dict[str, float]:
+    ) -> tuple[dict[str, float], set[str]]:
+        """Compute points-per-second for numeric channels.
+
+        Returns:
+            Tuple of (points_per_second dict with positive rates only, set of channel names confirmed empty).
+            Channels with unknown rates (e.g. INT channels) appear in neither.
+        """
         all_points_per_second = _channel_points_per_second(
             client=self._client,
             channels=numeric_channels,
@@ -547,7 +561,9 @@ class PolarsExportHandler:
             end=time_range.end_time,
             tags=tags,
         )
-        return {channel: rate for channel, rate in all_points_per_second.items() if rate}
+        confirmed_empty = {name for name, rate in all_points_per_second.items() if rate == 0}
+        positive_rates = {name: rate for name, rate in all_points_per_second.items() if rate is not None and rate > 0}
+        return positive_rates, confirmed_empty
 
     def _compute_batch_duration(
         self,
@@ -588,8 +604,12 @@ class PolarsExportHandler:
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
         batch_duration: datetime.timedelta | None = None,
-    ) -> Mapping[_TimeRange, Sequence[_ExportJob]]:
-        """Compute the mapping of export time slices to the sequence of export jobs to produce data for that range."""
+    ) -> tuple[Mapping[_TimeRange, Sequence[_ExportJob]], list[str]]:
+        """Compute the mapping of export time slices to the sequence of export jobs to produce data for that range.
+
+        Returns:
+            Tuple of (export_jobs, empty_channel_names).
+        """
         if buckets is not None and resolution is not None:
             raise ValueError("Cannot provide `buckets` and `resolution`")
 
@@ -608,7 +628,14 @@ class PolarsExportHandler:
             logger.warning("Could not determine datatypes of %d channels-- ignoring for export", len(unknown_channels))
 
         channels_by_name = {channel.name: channel for channel in channels}
-        points_per_second = self._compute_channel_points_per_second(numeric_channels, time_range, tags)
+        points_per_second, confirmed_empty = self._compute_channel_points_per_second(numeric_channels, time_range, tags)
+
+        # Skip channels confirmed to have no data — channels with unknown rates (e.g. INT) are kept
+        empty_channel_names = sorted(confirmed_empty)
+        if empty_channel_names:
+            logger.info("Skipping %d numeric channels with no data in time range", len(empty_channel_names))
+            numeric_channels = [ch for ch in numeric_channels if ch.name not in confirmed_empty]
+
         batch_duration_ns = self._compute_batch_duration(batch_duration, enum_channels, time_range, points_per_second)
 
         # group channels by datasource
@@ -663,7 +690,7 @@ class PolarsExportHandler:
                             )
                         )
 
-        return jobs
+        return jobs, empty_channel_names
 
     def export(
         self,
@@ -676,6 +703,7 @@ class PolarsExportHandler:
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
         join_batches: bool = True,
+        ignore_missing: bool = False,
     ) -> Iterator[pl.DataFrame]:
         """Yield DataFrame slices"""
         # Ensure user has selected channels to export
@@ -708,12 +736,14 @@ class PolarsExportHandler:
                 )
                 batch_duration = computed_batch_duration
 
-        # Determine download schedule
-        export_jobs = self._compute_export_jobs(
+        # Determine download schedule — empty channels are excluded from export jobs
+        export_jobs, empty_channel_names = self._compute_export_jobs(
             channels, _TimeRange(start, end), timestamp_type, tags or {}, buckets, resolution, batch_duration
         )
         time_column = _get_exported_timestamp_channel([ch.name for ch in channels])
-        yield from self._export_dataframes(export_jobs, time_column, join_batches)
+        missing = empty_channel_names if not ignore_missing else []
+        for batch_df in self._export_dataframes(export_jobs, time_column, join_batches):
+            yield _add_missing_columns(batch_df, missing)
 
     def _export_dataframes(
         self, export_jobs: Mapping[_TimeRange, Sequence[_ExportJob]], time_column: str, join_batches: bool
