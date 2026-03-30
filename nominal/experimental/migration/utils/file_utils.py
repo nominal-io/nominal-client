@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import tempfile
 from pathlib import Path
 from typing import BinaryIO, cast
 
@@ -18,11 +20,7 @@ def copy_file_to_dataset(
     log_extras = {"destination_client_workspace": destination_dataset._clients.workspace_rid}
     logger.debug("Copying dataset file: %s", source_file.name, extra=log_extras)
     source_api_file = source_file._get_latest_api()
-    if (
-        source_api_file.handle.s3 is not None
-        and source_file.timestamp_channel is not None
-        and source_file.timestamp_type is not None
-    ):
+    if source_api_file.handle.s3 is not None:
         old_file_uri = source_file._clients.catalog.get_dataset_file_uri(
             source_file._clients.auth_header, source_file.dataset_rid, source_file.id
         ).uri
@@ -34,15 +32,23 @@ def copy_file_to_dataset(
         file_type = FileType.from_path(file_name)
         file_stem = _resolve_destination_file_stem(file_name)
 
-        new_file = destination_dataset.add_from_io(
-            dataset=cast(BinaryIO, response.raw),
-            timestamp_column=source_file.timestamp_channel,
-            timestamp_type=source_file.timestamp_type,
-            file_type=file_type,
-            file_name=file_stem,
-            tag_columns=source_file.tag_columns,
-            tags=source_file.file_tags,
-        )
+        if file_type.is_journal():
+            with tempfile.NamedTemporaryFile(suffix=file_type.extension) as tmp:
+                shutil.copyfileobj(response.raw, tmp)
+                tmp.flush()
+                new_file = destination_dataset.add_journal_json(tmp.name)
+        elif source_file.timestamp_channel is not None and source_file.timestamp_type is not None:
+            new_file = destination_dataset.add_from_io(
+                dataset=cast(BinaryIO, response.raw),
+                timestamp_column=source_file.timestamp_channel,
+                timestamp_type=source_file.timestamp_type,
+                file_type=file_type,
+                file_name=file_stem,
+                tag_columns=source_file.tag_columns,
+                tags=source_file.file_tags,
+            )
+        else:
+            raise ValueError("Unsupported file handle type or missing timestamp information.")
         logger.debug(
             "New file created %s in dataset: %s (rid: %s)",
             new_file.name,
