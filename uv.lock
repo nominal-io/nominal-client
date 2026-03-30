@@ -1154,7 +1154,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.122.0"
+version = "1.123.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },

@@ -10,7 +10,7 @@ from nominal_api import api, scout_compute_api, scout_dataexport_api
 from typing_extensions import Self
 
 from nominal._utils import LogTiming
-from nominal.core.channel import Channel, ChannelDataType
+from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
 from nominal.core.datasource import DataSource
 from nominal.experimental.compute import batch_compute_buckets
@@ -68,26 +68,8 @@ def _group_channels_by_datatype(channels: Sequence[Channel]) -> Mapping[ChannelD
     return {**channel_groups}
 
 
-def _has_data_with_tags(channel: Channel, tags: Mapping[str, str], start_ns: int, end_ns: int) -> bool:
-    available_tags = channel.get_available_tags(start_ns, end_ns, tags)
-
-    # No data matches the given tags
-    if not available_tags:
-        return False
-
-    bad_tag_items = {name: values for name, values in available_tags.items() if len(values) > 1}
-    if bad_tag_items:
-        logger.warning(
-            "Channel %s has underconstrained tags-- results may have duplicate rows: %s", channel.name, bad_tag_items
-        )
-
-    return True
-
-
 def _build_point_rate_expressions(
     channels: Sequence[Channel],
-    start_ns: IntegralNanosecondsUTC,
-    end_ns: IntegralNanosecondsUTC,
     tags: Mapping[str, str],
 ) -> Sequence[tuple[Channel, exprs.NumericExpr | None]]:
     expressions: list[tuple[Channel, exprs.NumericExpr | None]] = []
@@ -98,9 +80,6 @@ def _build_point_rate_expressions(
                 channel.name,
                 channel.data_type,
             )
-            expressions.append((channel, None))
-        elif tags and not _has_data_with_tags(channel, tags, start_ns, end_ns):
-            logger.warning("No points found in range for channel '%s'", channel.name)
             expressions.append((channel, None))
         else:
             expressions.append((channel, exprs.NumericExpr.datasource_channel(channel.data_source, channel.name, tags)))
@@ -145,7 +124,7 @@ def _batch_channel_points_per_second(
     results: dict[str, float | None] = {}
     expressions = []
     channels_in_expressions = []
-    for channel, expression in _build_point_rate_expressions(list(channels), start_ns, end_ns, tags):
+    for channel, expression in _build_point_rate_expressions(list(channels), tags):
         if expression is None:
             results[channel.name] = None
         else:
@@ -606,6 +585,20 @@ class PolarsExportHandler:
         unknown_channels = partitioned_channels.get(ChannelDataType.UNKNOWN, [])
         if unknown_channels:
             logger.warning("Could not determine datatypes of %d channels-- ignoring for export", len(unknown_channels))
+
+        # Fast server-side filter: identify which channels have data in the time range.
+        # Applies uniformly to all channel types (numeric, enum, etc.)
+        channels_with_data = {
+            (ch.data_source, ch.name)
+            for ch in filter_channels_with_data(
+                [*numeric_channels, *enum_channels],
+                tags=tags,
+                start_time=time_range.start_time,
+                end_time=time_range.end_time,
+            )
+        }
+        numeric_channels = [ch for ch in numeric_channels if (ch.data_source, ch.name) in channels_with_data]
+        enum_channels = [ch for ch in enum_channels if (ch.data_source, ch.name) in channels_with_data]
 
         channels_by_name = {channel.name: channel for channel in channels}
         points_per_second = self._compute_channel_points_per_second(numeric_channels, time_range, tags)
