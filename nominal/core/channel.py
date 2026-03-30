@@ -19,6 +19,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import RefreshableMixin, create_api_tags
 from nominal.core._utils.pagination_tools import paginate_rpc
@@ -546,7 +547,7 @@ def filter_channels_with_data(
     tag_filters = _build_tag_filters(tags)
 
     # Split channels into batches for parallel API calls
-    batches = [channels[i : i + batch_size] for i in range(0, len(channels), batch_size)]
+    batches = list(batched(channels, batch_size))
 
     all_underconstrained: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:

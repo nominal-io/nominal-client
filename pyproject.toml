@@ -68,6 +68,7 @@ dev = [
     "black>=24.8.0,<25",
     "coverage[toml]>=7.0.0",
     "ipykernel>=6.30.0",
+    "marimo>=0.21.1",
     "mkdocs-click>=0.9.0",
     "mkdocs-material>=9.5.34,<10",
     "mkdocs>=1.6.1,<2",
