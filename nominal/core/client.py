@@ -1085,7 +1085,7 @@ class NominalClient:
 
     @deprecated(
         "NominalClient.create_streaming_connection is deprecated and will be removed in a future version. "
-        "Create the datasource and connection separately instead."
+        "Use NominalClient.create_dataset instead."
     )
     def create_streaming_connection(
         self,
