@@ -252,3 +252,86 @@ def test_fetch_range_bytes_invalidates_url_on_expired_response(
 
     mock_invalidate.assert_called_once()
     assert mock_downloader.get.call_count == 2
+
+
+# ---- _plan_item tests ----
+
+
+def test_plan_item_skips_probe_when_file_size_provided(downloader: MultipartFileDownloader) -> None:
+    """When DownloadItem has file_size set, _plan_item skips the HEAD probe."""
+    provider = _provider()
+    item = DownloadItem(provider=provider, destination=Path("/tmp/file.bin"), part_size=10, file_size=42)
+
+    with patch.object(downloader, "_head_or_probe") as mock_probe:
+        plan = downloader._plan_item(item)
+
+    mock_probe.assert_not_called()
+    assert plan.total_size == 42
+    assert plan.etag is None
+
+
+def test_plan_item_probes_when_file_size_not_provided(downloader: MultipartFileDownloader) -> None:
+    """When DownloadItem has no file_size, _plan_item probes via HEAD request."""
+    provider = _provider()
+    item = DownloadItem(provider=provider, destination=Path("/tmp/file.bin"), part_size=10)
+
+    with patch.object(downloader, "_head_or_probe", return_value=(100, "some-etag")) as mock_probe:
+        plan = downloader._plan_item(item)
+
+    mock_probe.assert_called_once_with(provider)
+    assert plan.total_size == 100
+    assert plan.etag == "some-etag"
+
+
+# ---- from_static tests ----
+
+
+def test_from_static_always_returns_same_url() -> None:
+    """PresignedURLProvider.from_static returns a provider that always yields the same URL."""
+    provider = PresignedURLProvider.from_static("https://example.com/static-file")
+
+    assert provider.get_url() == "https://example.com/static-file"
+    assert provider.get_url() == "https://example.com/static-file"
+    # After invalidation it still returns the same URL
+    provider.invalidate()
+    assert provider.get_url() == "https://example.com/static-file"
+
+
+# ---- submit_download tests ----
+
+
+def test_submit_download_returns_futures_without_blocking(downloader: MultipartFileDownloader) -> None:
+    """submit_download returns part futures immediately without waiting for completion."""
+    mock_pool = cast(MagicMock, downloader._pool)
+    mock_future = MagicMock()
+    mock_pool.submit.return_value = mock_future
+
+    item = DownloadItem(provider=_provider(), destination=Path("/tmp/sd.bin"), part_size=5, file_size=12)
+
+    with (
+        patch.object(downloader, "_check_destination"),
+        patch.object(downloader, "_preallocate"),
+    ):
+        futures = downloader.submit_download(item)
+
+    # 12 bytes / 5-byte parts = 3 chunks
+    assert len(futures) == 3
+    assert all(f is mock_future for f in futures)
+    # Pool.submit was called once per chunk, but no future.result() was called
+    assert mock_pool.submit.call_count == 3
+    mock_future.result.assert_not_called()
+
+
+def test_submit_download_preallocates_file(downloader: MultipartFileDownloader, tmp_path: Path) -> None:
+    """submit_download creates and preallocates the destination file before returning."""
+    mock_pool = cast(MagicMock, downloader._pool)
+    mock_pool.submit.return_value = MagicMock()
+
+    dest = tmp_path / "preallocated.bin"
+    item = DownloadItem(provider=_provider(), destination=dest, part_size=10, file_size=20)
+
+    with patch.object(downloader, "_check_destination"):
+        downloader.submit_download(item)
+
+    assert dest.exists()
+    assert dest.stat().st_size == 20

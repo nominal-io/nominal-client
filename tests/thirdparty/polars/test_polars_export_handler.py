@@ -1,16 +1,141 @@
 from __future__ import annotations
 
+import pathlib
+from typing import Callable
 from unittest.mock import MagicMock
 
+import polars as pl
 import pytest
 from nominal_api import api, scout_compute_api
 
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.thirdparty.polars.polars_export_handler import (
+    _INTERNAL_TS_COL,
+    PolarsExportHandler,
     _batch_channel_points_per_second,
+    _ExportJob,
     _extract_bucket_counts,
     _max_points_per_second,
+    _TimeRange,
 )
+
+
+def _make_export_job(
+    channel_names: list[str],
+    channel_types: dict[str, ChannelDataType | None],
+    timestamp_type: str = "epoch_seconds",
+) -> _ExportJob:
+    """Create a minimal _ExportJob for testing _parse_export_file."""
+    return _ExportJob(
+        datasource_rid="ri.datasource.0.0.test",
+        channel_names=channel_names,
+        channel_types=channel_types,
+        time_slice=_TimeRange(start_time=0, end_time=1_000_000_000),
+        tags={},
+        timestamp_type=timestamp_type,
+    )
+
+
+def _make_handler() -> PolarsExportHandler:
+    """Create a PolarsExportHandler with a mocked client."""
+    return PolarsExportHandler(client=MagicMock())
+
+
+@pytest.fixture
+def tmp_csv(tmp_path: pathlib.Path) -> Callable[[str, str], pathlib.Path]:
+    """Factory fixture that writes a CSV file with given content."""
+
+    def _make(filename: str, content: str) -> pathlib.Path:
+        path = tmp_path / filename
+        path.write_text(content)
+        return path
+
+    return _make
+
+
+def test_parse_export_file_reads_csv_with_schema(tmp_csv: Callable[[str, str], pathlib.Path]) -> None:
+    """Downloaded CSV files are parsed with correct schema overrides."""
+    content = "timestamp,temperature,status\n1.0,25.5,ok\n2.0,30.1,warn\n3.0,28.0,ok\n"
+    path = tmp_csv("test.csv", content)
+    job = _make_export_job(
+        channel_names=["temperature", "status"],
+        channel_types={"temperature": ChannelDataType.DOUBLE, "status": ChannelDataType.STRING},
+    )
+    handler = _make_handler()
+    df = handler._parse_export_file(path, job)
+
+    assert _INTERNAL_TS_COL in df.columns
+    assert "temperature" in df.columns
+    assert "status" in df.columns
+    assert df["temperature"].dtype == pl.Float64
+    assert df["status"].dtype == pl.String
+    assert len(df) == 3
+
+
+def test_parse_export_file_handles_empty_csv(tmp_csv: Callable[[str, str], pathlib.Path]) -> None:
+    """An empty CSV produces a DataFrame with correct columns but no rows."""
+    content = "timestamp,temperature\n"
+    path = tmp_csv("empty.csv", content)
+    job = _make_export_job(
+        channel_names=["temperature"],
+        channel_types={"temperature": ChannelDataType.DOUBLE},
+    )
+    handler = _make_handler()
+    df = handler._parse_export_file(path, job)
+
+    assert len(df) == 0
+    assert "temperature" in df.columns
+    assert _INTERNAL_TS_COL in df.columns
+
+
+def test_parse_export_file_adds_missing_channels(tmp_csv: Callable[[str, str], pathlib.Path]) -> None:
+    """Channels missing from the CSV get null columns with the correct type."""
+    content = "timestamp,temperature\n1.0,25.5\n2.0,30.1\n"
+    path = tmp_csv("missing.csv", content)
+    job = _make_export_job(
+        channel_names=["temperature", "pressure"],
+        channel_types={"temperature": ChannelDataType.DOUBLE, "pressure": ChannelDataType.DOUBLE},
+    )
+    handler = _make_handler()
+    df = handler._parse_export_file(path, job)
+
+    assert "pressure" in df.columns
+    assert df["pressure"].dtype == pl.Float64
+    assert df["pressure"].null_count() == 2
+    assert len(df) == 2
+
+
+def test_parse_export_file_sorts_by_timestamp(tmp_csv: Callable[[str, str], pathlib.Path]) -> None:
+    """Rows are sorted by timestamp regardless of input order."""
+    content = "timestamp,value\n3.0,30\n1.0,10\n2.0,20\n"
+    path = tmp_csv("unsorted.csv", content)
+    job = _make_export_job(
+        channel_names=["value"],
+        channel_types={"value": ChannelDataType.DOUBLE},
+    )
+    handler = _make_handler()
+    df = handler._parse_export_file(path, job)
+
+    assert df[_INTERNAL_TS_COL].to_list() == [1.0, 2.0, 3.0]
+    assert df["value"].to_list() == [10.0, 20.0, 30.0]
+
+
+def test_parse_export_file_int_schema(tmp_csv: Callable[[str, str], pathlib.Path]) -> None:
+    """Integer channels get Int64 schema override."""
+    content = "timestamp,count\n1.0,100\n2.0,200\n"
+    path = tmp_csv("ints.csv", content)
+    job = _make_export_job(
+        channel_names=["count"],
+        channel_types={"count": ChannelDataType.INT},
+    )
+    handler = _make_handler()
+    df = handler._parse_export_file(path, job)
+
+    assert df["count"].dtype == pl.Int64
+    assert df["count"].to_list() == [100, 200]
+
+
+# -- PPS estimation helpers --
 
 
 @pytest.fixture
@@ -113,7 +238,6 @@ def test_extract_numeric_undecimated():
     response.enum = None
 
     result = _extract_bucket_counts(response)
-
     assert len(result) == 3
     assert all(count == 1 for _, count in result)
 
@@ -180,9 +304,9 @@ def test_max_pps_single_bucket():
 def test_max_pps_returns_peak_across_buckets():
     """With multiple buckets, returns the maximum PPS across consecutive pairs."""
     buckets = [
-        (1_000_000_000, 10),   # 1s
-        (2_000_000_000, 100),  # 2s — 100 pts in 1s = 100 PPS (peak)
-        (3_000_000_000, 20),   # 3s — 20 pts in 1s = 20 PPS
+        (1_000_000_000, 10),
+        (2_000_000_000, 100),
+        (3_000_000_000, 20),
     ]
     assert _max_points_per_second(buckets, start_ns=0, end_ns=3_000_000_000) == pytest.approx(100.0)
 

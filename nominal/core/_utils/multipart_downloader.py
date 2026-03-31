@@ -37,6 +37,14 @@ class PresignedURLProvider:
     _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock, repr=False)
 
     def get_url(self, *, force: bool = False) -> str:
+        """Return a valid presigned URL, refreshing if expired.
+
+        Args:
+            force: If True, refresh the URL regardless of TTL.
+
+        Returns:
+            A presigned URL string.
+        """
         now = time.monotonic()
         with self._lock:
             if force or self._stamped_url is None or now >= self._stamped_url[1]:
@@ -48,9 +56,19 @@ class PresignedURLProvider:
             return self._stamped_url[0]
 
     def invalidate(self) -> None:
+        """Clear the cached URL, forcing a refresh on the next get_url call."""
         with self._lock:
             logger.info("Invalidating presigned URL")
             self._stamped_url = None
+
+    @classmethod
+    def from_static(cls, url: str, ttl_secs: float = float("inf")) -> Self:
+        """Create a provider for a static URL that doesn't need refreshing.
+
+        Useful for presigned URLs where the caller already has the final URL
+        and no refresh is needed. The fetch_fn simply returns the same URL.
+        """
+        return cls(fetch_fn=lambda: url, ttl_secs=ttl_secs, skew_secs=0.0)
 
 
 @dataclass(frozen=True)
@@ -60,6 +78,7 @@ class DownloadItem:
     provider: PresignedURLProvider
     destination: pathlib.Path
     part_size: int = DEFAULT_CHUNK_SIZE
+    file_size: int | None = None  # skip probe when provided
 
 
 @dataclass
@@ -88,9 +107,12 @@ class _PlannedDownload:
     etag: str | None
 
     def ranges(self) -> Iterable[_DataChunkBounds]:
+        if self.total_size == 0:
+            return
         parts = max(1, math.ceil(self.total_size / self.item.part_size))
         for i in range(parts):
             start = i * self.item.part_size
+            # HTTP Range header uses inclusive byte ranges: [start, end]
             end = min(self.total_size - 1, start + self.item.part_size - 1)
             yield _DataChunkBounds(index=i, start_bytes=start, end_bytes=end)
 
@@ -115,7 +137,7 @@ class MultipartFileDownloader:
         """Factor for MultipartFileDownloader
 
         Args:
-            max_workers: Maxmimum number of parallel threads to use.
+            max_workers: Maximum number of parallel threads to use.
                 NOTE: defaults to the number of CPU cores
             timeout: Maximum amount of time before considering a connection dead
             max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
@@ -137,7 +159,7 @@ class MultipartFileDownloader:
     def close(self) -> None:
         if not self._closed:
             try:
-                self._pool.shutdown(wait=True)
+                self._pool.shutdown(wait=False, cancel_futures=True)
             finally:
                 self._session.close()
                 self._closed = True
@@ -219,6 +241,35 @@ class MultipartFileDownloader:
 
         return DownloadResults(all_successes, all_failures)
 
+    def submit_download(self, item: DownloadItem) -> list[Future[None]]:
+        """Submit a single file's range-request parts to the pool without blocking.
+
+        Plans the download (probes file size if not provided), preallocates the
+        destination file, and submits each range-request part to the thread pool.
+        Returns the list of part futures — the caller is responsible for tracking
+        completion and handling errors.
+
+        Unlike download_file(), this does NOT wait for parts to complete.
+        Parts from multiple submit_download() calls naturally interleave in the
+        pool's FIFO queue, so earlier submissions are processed first.
+        """
+        self._check_destination(item.destination)
+        plan = self._plan_item(item)
+        self._preallocate(item.destination, plan.total_size)
+
+        futures: list[Future[None]] = []
+        for chunk in plan.ranges():
+            fut = self._pool.submit(
+                self._fetch_range_bytes,
+                plan.item.provider,
+                chunk.start_bytes,
+                chunk.end_bytes,
+                plan.etag,
+                plan.item.destination,
+            )
+            futures.append(fut)
+        return futures
+
     def _run_downloads(
         self, plans: Sequence[_PlannedDownload], *, collect_errors: bool
     ) -> dict[pathlib.Path, Exception]:
@@ -298,6 +349,10 @@ class MultipartFileDownloader:
         raise RuntimeError("Could not determine object size/ETag (presigned URL kept failing)")
 
     def _plan_item(self, item: DownloadItem) -> _PlannedDownload:
+        if item.file_size is not None:
+            # Caller already knows the size — skip the HEAD/probe request.
+            return _PlannedDownload(item=item, total_size=item.file_size, etag=None)
+
         total_size, etag = self._head_or_probe(item.provider)
         return _PlannedDownload(
             item=item,

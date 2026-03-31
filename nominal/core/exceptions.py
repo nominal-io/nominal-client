@@ -1,3 +1,4 @@
+import pathlib
 from typing import Mapping
 
 
@@ -68,6 +69,24 @@ class NominalVideoStreamNotOpenError(NominalVideoStreamError):
     def __init__(self) -> None:
         """Initialize error."""
         super().__init__("VideoStream is not open — call open() first or use as a context manager")
+
+
+class NominalExportError(NominalError):
+    """Some export downloads or conversions failed.
+
+    Partial results (the successful paths) are available on the exception
+    so callers can decide whether to use them or abort.
+    """
+
+    def __init__(self, paths: list[pathlib.Path], errors: list[Exception]) -> None:
+        """Initialize with successful paths and the collected errors."""
+        super().__init__(f"{len(errors)} export(s) failed ({len(paths)} succeeded)")
+        self.paths = paths
+        self.errors = errors
+
+    def __str__(self) -> str:
+        """String repr."""
+        return f"{len(self.errors)} export(s) failed ({len(self.paths)} succeeded): {self.errors}"
 
 
 class NominalParameterRemovedError(NominalError):

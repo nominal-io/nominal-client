@@ -455,6 +455,9 @@ def _build_tag_filters(tags: Mapping[str, str] | None) -> scout_compute_api.TagF
     if not tags:
         return None
 
+    # The compute API's TagFilters is a union type: either a single TagFilter
+    # or an AND-composition of TagFilters. Each single filter wraps a key + values + operator.
+    # For multiple tags, we wrap each in TagFilters(single=...) then compose with TagFilters(and_=...).
     single_filters = [
         scout_compute_api.TagFilters(
             single=scout_compute_api.TagFilter(
@@ -500,7 +503,7 @@ def _batch_check_channels_have_data(
 
     channels_with_data: list[Channel] = []
     underconstrained: list[str] = []
-    for channel, result in zip(channels, response.responses):
+    for channel, result in zip(channels, response.responses, strict=True):
         count = result.series_count
         if count is not None and count > 0:
             channels_with_data.append(channel)
@@ -549,6 +552,8 @@ def filter_channels_with_data(
     # Split channels into batches for parallel API calls
     batches = list(batched(channels, batch_size))
 
+    # Collect results from all batches
+    matched_keys: set[tuple[str, str]] = set()
     all_underconstrained: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
         futures = {
@@ -564,8 +569,14 @@ def filter_channels_with_data(
                 logger.exception("Failed to check data presence for %d channels", len(batch))
                 continue
 
-            yield from matched
+            for ch in matched:
+                matched_keys.add((ch.data_source, ch.name))
             all_underconstrained.extend(underconstrained)
+
+    # Yield in original input order
+    for channel in channels:
+        if (channel.data_source, channel.name) in matched_keys:
+            yield channel
 
     if all_underconstrained:
         sample = all_underconstrained[:10]
