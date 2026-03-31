@@ -33,15 +33,16 @@ def copy_file_to_dataset(
         file_stem = _resolve_destination_file_stem(file_name)
 
         if file_type.is_journal():
-            tmp = tempfile.NamedTemporaryFile(suffix=file_type.extension, delete=False)
+            tmp_path = None
             try:
-                with response:
-                    shutil.copyfileobj(response.raw, tmp)
-                tmp.flush()
-                tmp.close()
-                new_file = destination_dataset.add_journal_json(tmp.name)
+                with tempfile.NamedTemporaryFile(suffix=file_type.extension, delete=False) as tmp:
+                    tmp_path = Path(tmp.name)
+                    with response:
+                        shutil.copyfileobj(response.raw, tmp)
+                new_file = destination_dataset.add_journal_json(tmp_path)
             finally:
-                Path(tmp.name).unlink(missing_ok=True)
+                if tmp_path is not None:
+                    tmp_path.unlink(missing_ok=True)
         elif source_file.timestamp_channel is not None and source_file.timestamp_type is not None:
             new_file = destination_dataset.add_from_io(
                 dataset=cast(BinaryIO, response.raw),
