@@ -41,7 +41,7 @@ def create_dataset_with_uuid(
         is_v2_dataset=True,
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
-        workspace=client._clients.workspace_rid,
+        workspace=client._clients.resolve_default_workspace_rid(),
         marking_rids=[],
     )
     request = scout_catalog.CreateDatasetWithUuidRequest(

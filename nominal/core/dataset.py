@@ -210,9 +210,10 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_name = self.name
 
         file_type = FileType(*file_type)
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_io(
             self._clients.auth_header,
-            self._clients.workspace_rid,
+            workspace_rid,
             dataset,
             file_name,
             file_type,
@@ -296,9 +297,10 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
         """
         avro_path = Path(path)
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_file(
             self._clients.auth_header,
-            self._clients.workspace_rid,
+            workspace_rid,
             avro_path,
             self._clients.upload,
             file_type=FileTypes.AVRO_STREAM,
@@ -326,9 +328,10 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         """Add a journald jsonl file to an existing dataset."""
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_file(
             self._clients.auth_header,
-            self._clients.workspace_rid,
+            workspace_rid,
             log_path,
             self._clients.upload,
             file_type=file_type,
@@ -415,9 +418,10 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         if file_name is None:
             file_name = self.name
 
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_io(
             self._clients.auth_header,
-            self._clients.workspace_rid,
+            workspace_rid,
             mcap,
             file_name,
             file_type=FileTypes.MCAP,
@@ -454,9 +458,10 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             tags: key-value pairs to apply as tags to all data uniformly in the file.
         """
         dataflash_path = Path(path)
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         s3_path = upload_multipart_file(
             self._clients.auth_header,
-            self._clients.workspace_rid,
+            workspace_rid,
             dataflash_path,
             self._clients.upload,
             file_type=FileTypes.DATAFLASH,
@@ -546,11 +551,12 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
         # Upload all inputs to s3 before ingestion
         s3_inputs = {}
+        workspace_rid = self._clients.resolve_default_workspace_rid()
         for source, source_path in sources.items():
             logger.info("Uploading %s (%s) to s3", source_path, source)
             s3_path = upload_multipart_file(
                 self._clients.auth_header,
-                self._clients.workspace_rid,
+                workspace_rid,
                 Path(source_path),
                 self._clients.upload,
             )
@@ -652,12 +658,22 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         file_tags: Mapping[str, str] | None = None,
     ) -> Sequence[DatasetFile]:
         """Search for files within this dataset.
+        Filters are ANDed together. Time range uses overlap semantics: a file is included if its
+        time range overlaps with [start, end], i.e. `file.end >= start AND file.start <= end`.
 
-        `start` and `end` filter on the file's OWN start/end time, not on overlap:
-        a file starting before `start` is excluded even if it overlaps the window.
-        Both bounds are inclusive and truncated to whole seconds.
+        Args:
+            start: Inclusive lower bound of the search window. Files whose time range ends at or
+                after this timestamp are returned — including files that started before `start`
+                but still overlap the window. Files ending entirely before `start` are excluded.
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+            end: Inclusive upper bound of the search window. Files whose time range starts at or
+                before this timestamp are returned — including files that end after `end` but
+                still overlap the window. Files starting entirely after `end` are excluded.
+                NOTE: Truncated to whole seconds — sub-second precision is dropped.
+            file_tags: A mapping of key-value tag pairs that must ALL be present on a dataset file to be included.
 
-        See NominalClient.search_dataset_files for full parameter documentation.
+        Returns:
+            All dataset files within this dataset which match all of the provided conditions
         """
         return _search_dataset_files(self._clients, self.rid, start=start, end=end, file_tags=file_tags)
 

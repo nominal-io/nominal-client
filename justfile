@@ -22,11 +22,11 @@ test:
 
 # run e2e tests using a named Nominal profile (preferred)
 test-e2e profile:
-    uv run pytest tests/e2e --profile {{profile}}
+    uv run pytest tests/e2e --profile {{profile}} --no-cov -v
 
 # run e2e tests using a raw auth token
 test-e2e-token token:
-    uv run pytest tests/e2e --auth-token {{token}}
+    uv run pytest tests/e2e --auth-token {{token}} --no-cov -v
 
 # check static typing
 check-types:
@@ -75,3 +75,7 @@ clean:
 # build docs
 build-docs:
     uv run mkdocs build --config-file docs/mkdocs.yml
+
+# serve docs locally
+serve-docs:
+    uv run mkdocs serve --config-file docs/mkdocs.yml

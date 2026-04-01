@@ -1,6 +1,7 @@
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import WriteStream
 from nominal.core._utils.api_tools import LinkDict
+from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
@@ -34,6 +35,7 @@ from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
 
 __all__ = [
+    "ArchiveStatusFilter",
     "as_files_ingested",
     "Asset",
     "Attachment",

@@ -405,6 +405,18 @@ toml = [
 ]
 
 [[package]]
+name = "dataclass-wizard"
+version = "0.39.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/36/ea/6b2811092feecbe9d672e3641196ac5fcbec6664074da5dec8b9fd9b9059/dataclass_wizard-0.39.1.tar.gz", hash = "sha256:1679948ed7c62103f40b34df97d03b35e6b2ad50f58173fdbe30074e2e4730f2", size = 361190, upload-time = "2026-01-06T03:30:57.054Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/a0/a221942b3fbbafaea4e211744d298366b6a9712c1aa336b05fc1c865ac0c/dataclass_wizard-0.39.1-py3-none-any.whl", hash = "sha256:3324e59eca705882eb34e2b3989b2beadd8c2b523e6269d4002cf1a4a5bf703b", size = 215344, upload-time = "2026-01-06T03:30:54.915Z" },
+]
+
+[[package]]
 name = "debugpy"
 version = "1.8.17"
 source = { registry = "https://pypi.org/simple" }
@@ -1142,12 +1154,13 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.118.0"
+version = "1.122.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
     { name = "click" },
     { name = "conjure-python-client" },
+    { name = "dataclass-wizard" },
     { name = "ffmpeg-python" },
     { name = "nominal-api" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
@@ -1171,6 +1184,9 @@ protos = [
 ]
 tdms = [
     { name = "nptdms" },
+]
+video = [
+    { name = "nominal-video", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
 ]
 
 [package.dev-dependencies]
@@ -1201,10 +1217,12 @@ requires-dist = [
     { name = "cachetools", specifier = ">=6.1.0" },
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
+    { name = "dataclass-wizard", specifier = ">=0.39.1" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1149.0" },
+    { name = "nominal-api", specifier = "==0.1168.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1090.0" },
     { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.7.12" },
+    { name = "nominal-video", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.7" },
     { name = "nptdms", marker = "extra == 'tdms'", specifier = ">=1.9.0,<2" },
     { name = "openpyxl", specifier = ">=0.0.0" },
     { name = "pandas", specifier = ">=0.0.0" },
@@ -1219,7 +1237,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4,<5" },
     { name = "urllib3", specifier = "==2.6.3" },
 ]
-provides-extras = ["protos", "tdms"]
+provides-extras = ["protos", "tdms", "video"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1247,15 +1265,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1149.0"
+version = "0.1168.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/67/0c88b22556d5a255d2398c1879325660165000dd0f0642aab9b983bcb3c0/nominal_api-0.1149.0.tar.gz", hash = "sha256:f4b494808c22ba1ae587c140a3c0b345992ca438d7134bab15a32f51740ab067", size = 678365, upload-time = "2026-03-05T15:08:24.523Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/42/5bee36405332e4bc6dc231dcdc96011c2a003d00ec8a703fa9cab66f17c7/nominal_api-0.1168.0.tar.gz", hash = "sha256:88bc76f79874b6f9a7bd3e894f1325efb45eedce99b7930d4c074d6377953ab1", size = 710427, upload-time = "2026-03-18T22:06:17.337Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/6d/24a4d0c44243097a2e1ac127882c84cdaa70553a829ea0910f53675cd52f/nominal_api-0.1149.0-py3-none-any.whl", hash = "sha256:ed6e4f6ecd0dd5ad4eb23144ead0d43ca8b37c23e9f6a4c973fe1280bef8283f", size = 711562, upload-time = "2026-03-05T15:08:23.144Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/50/a53f293be6ebdaf1d8dc443e55d3cb9105c2521d1d76bfe53e94c6cb4025/nominal_api-0.1168.0-py3-none-any.whl", hash = "sha256:8129ac1fbe4b2e464220dcb4c72e32f89c92b8312b0ab1363aaabf087710da45", size = 744504, upload-time = "2026-03-18T22:06:15.473Z" },
 ]
 
 [[package]]
@@ -1289,6 +1307,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e8/fe/b202667acfebb09123b1b5a63a4cd2b01e0df45fcf443407c5f46cfb1744/nominal_streaming-0.7.12-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:9b9508b89862b8c9d23514662ad7d32838438d147d97bbc463032602c93cd83e", size = 3206626, upload-time = "2026-02-02T17:11:48.982Z" },
     { url = "https://files.pythonhosted.org/packages/5d/cb/46c0fd44ba3f33f2b8303b3425d275021e6559b990fd9dd8b7c3b58fc23b/nominal_streaming-0.7.12-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a4963c3e49671f8aea08fe5e3cc5f770744ad73dbf6e5f2ff05f31e998923a1a", size = 3658668, upload-time = "2026-02-02T17:11:55.585Z" },
     { url = "https://files.pythonhosted.org/packages/00/ed/fad20c542f307e6d59c92c5df809a2f63bbc32976189e884439a9e5a98a5/nominal_streaming-0.7.12-cp310-abi3-win_amd64.whl", hash = "sha256:5f9882cf6fd82d46956b70f435b16734fcb845214fc4fd2a823d05fa81f3621a", size = 3150372, upload-time = "2026-02-02T17:18:34.856Z" },
+]
+
+[[package]]
+name = "nominal-video"
+version = "0.1.7"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/31/b367861d75429662c2975152d7fc47210c2e93fe2b0b788a76de660a4cea/nominal_video-0.1.7-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:0097eaa4973d0b44eebd5d90d7078dfd5727486cb3c2b9fb5520f3442e215fc0", size = 1350180, upload-time = "2026-03-21T01:24:05.908Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/3e/eeca2be615bd9a9f83a8ceed81ceed4eeaf9177ef7f9d1250b77416683c8/nominal_video-0.1.7-cp310-abi3-manylinux_2_35_aarch64.whl", hash = "sha256:9d76e710dfba084ade67f446c2f9e67b4c79a98d5ea39322cab8c5dcc14acc93", size = 1420119, upload-time = "2026-03-21T01:24:07.376Z" },
+    { url = "https://files.pythonhosted.org/packages/80/7d/0dc0872b29a964cc9d88690bfdaad613cb871586c6248f9e972a1611f0b3/nominal_video-0.1.7-cp310-abi3-manylinux_2_35_x86_64.whl", hash = "sha256:aa505cbc734ba825aed0a4188cfa6325bcc3da8678cb33218e9796ca1237de66", size = 1457246, upload-time = "2026-03-21T01:24:08.819Z" },
+    { url = "https://files.pythonhosted.org/packages/77/52/92f936be92a1ba5e60f7d7a51e2480b896b1ae9968732fc7de915464f28b/nominal_video-0.1.7-cp310-abi3-win_amd64.whl", hash = "sha256:e3d24ccd3974e7b5b98d97de6606bcbf830ed16092b88dc87faef1d08f2a68e6", size = 1465712, upload-time = "2026-03-21T01:24:10.016Z" },
 ]
 
 [[package]]

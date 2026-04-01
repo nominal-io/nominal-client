@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.119.0"
+version = "1.123.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -27,8 +27,9 @@ dependencies = [
     "cachetools>=6.1.0",
     "click>=8,<9",
     "conjure-python-client>=3.1.0,<4",
+    "dataclass-wizard>=0.39.1",
     "ffmpeg-python>=0.2.0",
-    "nominal-api==0.1149.0",
+    "nominal-api==0.1168.0",
     "rich>=14.1.0",
     "tabulate>=0.9.0,<0.10",
     "truststore>=0.10.4",
@@ -92,6 +93,12 @@ nominal = { workspace = true }
 [project.optional-dependencies]
 protos = ["nominal-api-protos>=0.1090.0"]
 tdms = ["nptdms>=1.9.0,<2"]
+# nominal-video wheels exist for:
+# - Windows x86_64 (AMD64)
+# - macOS arm64
+# - Linux x86_64 and aarch64
+# To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
+video = ["nominal-video==0.1.7; platform_python_implementation=='CPython' and python_version>='3.10' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
@@ -169,6 +176,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "ffmpeg"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "nominal_video"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

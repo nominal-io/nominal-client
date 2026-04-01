@@ -21,7 +21,9 @@ class NominalConfigV1:
         if not path.exists():
             return cls(environments={})
         with open(path) as f:
-            obj = yaml.safe_load(f)
+            obj = yaml.safe_load(f) or {}
+        if "environments" not in obj:
+            raise NominalConfigError(f"missing 'environments' key in config file: {path}")
         return cls(**obj)
 
     def to_yaml(self, path: Path = _DEFAULT_NOMINAL_CONFIG_PATH, create: bool = True) -> None:
@@ -32,14 +34,14 @@ class NominalConfigV1:
 
     def set_token(self, url: str, token: str, save: bool = True) -> None:
         if url.startswith("http"):
-            raise ValueError("url {url!r} must not include the http:// or https:// scheme")
+            raise ValueError(f"url {url!r} must not include the http:// or https:// scheme")
         self.environments[url] = token
         if save:
             self.to_yaml()
 
     def get_token(self, url: str) -> str:
         if url.startswith("http"):
-            raise ValueError("url {url!r} must not include the http:// or https:// scheme")
+            raise ValueError(f"url {url!r} must not include the http:// or https:// scheme")
         if url in self.environments:
             return self.environments[url]
         raise NominalConfigError(f"url {url!r} not found in config: set a token with `nom auth set-token`")

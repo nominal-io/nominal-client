@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ConfigProfile:
+    """Connection settings for a named Nominal profile.
+
+    If `workspace_rid` is set, methods that resolve `WorkspaceSearchType.DEFAULT` use it before falling back to a
+    default-workspace lookup.
+    """
+
     base_url: str
     token: str
     workspace_rid: str | None = None
@@ -62,7 +68,7 @@ class NominalConfig:
                 )
             raise FileNotFoundError(f"no config file found at {path}: create with `nom config profile add`")
         with open(path) as f:
-            obj = yaml.safe_load(f)
+            obj = yaml.safe_load(f) or {}
         if "version" not in obj:
             raise NominalConfigError(f"missing 'version' key in config file: {path}")
         if "profiles" not in obj:

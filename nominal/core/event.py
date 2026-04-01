@@ -14,7 +14,7 @@ from nominal.core._event_types import EventType as EventType  # noqa: PLC0414
 from nominal.core._event_types import SearchEventOriginType as SearchEventOriginType  # noqa: PLC0414
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
 from nominal.core._utils.pagination_tools import search_events_paginated
-from nominal.core._utils.query_tools import _create_search_events_query
+from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_events_query
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 
@@ -43,7 +43,7 @@ class Event(HasRid, RefreshableMixin[event.Event]):
 
     def _get_latest_api(self) -> event.Event:
         resp = self._clients.event.batch_get_events(self._clients.auth_header, [self.rid])
-        if len(resp) != 0:
+        if len(resp) != 1:
             raise ValueError(f"Expected exactly one event with rid {self.rid}, received {len(resp)}")
 
         return resp[0]
@@ -153,8 +153,12 @@ def _create_event(
     return Event._from_conjure(clients, response)
 
 
-def _iter_search_events(clients: Event._Clients, query: event.SearchQuery) -> Iterable[Event]:
-    for e in search_events_paginated(clients.event, clients.auth_header, query):
+def _iter_search_events(
+    clients: Event._Clients,
+    query: event.SearchQuery,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
+) -> Iterable[Event]:
+    for e in search_events_paginated(clients.event, clients.auth_header, query, archive_status):
         yield Event._from_conjure(clients, e)
 
 
@@ -174,8 +178,9 @@ def _search_events(
     event_type: EventType | None = None,
     origin_types: Iterable[SearchEventOriginType] | None = None,
     workspace_rid: str | None = None,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Sequence[Event]:
-    query = _create_search_events_query(
+    query = create_search_events_query(
         asset_rids=asset_rids,
         search_text=search_text,
         after=after,
@@ -192,4 +197,4 @@ def _search_events(
         else None,
         workspace_rid=workspace_rid,
     )
-    return list(_iter_search_events(clients, query))
+    return list(_iter_search_events(clients, query, archive_status))

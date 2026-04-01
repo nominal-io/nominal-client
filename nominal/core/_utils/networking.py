@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import gzip
 import logging
-import os
 import ssl
 import threading
 from typing import Any, Callable, Mapping, Type, TypeVar
@@ -109,12 +108,7 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         elif kwargs.get("stream", False):
             return
 
-        if isinstance(body, (bytes, str)):
-            content_length = len(body)
-        else:
-            content_length = body.seek(0, os.SEEK_END)
-            body.seek(0, os.SEEK_SET)
-
+        content_length = len(body)
         headers = {
             self.ACCEPT_ENCODING: "gzip",
             self.CONTENT_ENCODING: "gzip",
@@ -134,8 +128,10 @@ class NominalRequestsAdapter(SslBypassRequestsAdapter):
         if stream:
             return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
         elif request.body is not None:
-            body = request.body if isinstance(request.body, bytes) else request.body.encode("utf-8")
-            request.body = gzip.compress(body, compresslevel=GZIP_COMPRESSION_LEVEL)
+            body = request.body
+            raw_body = body if isinstance(body, bytes) else body.encode("utf-8")
+            request.body = gzip.compress(raw_body, compresslevel=GZIP_COMPRESSION_LEVEL)
+            request.headers[self.CONTENT_LENGTH] = str(len(request.body))
 
         return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
 

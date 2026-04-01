@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Iterable, Protocol, Sequence, TypeVar, overload
 
 from nominal_api import (
-    api,
     authentication_api,
     event,
     scout,
@@ -21,6 +20,8 @@ from nominal_api import (
     secrets_api,
 )
 
+from nominal.core._utils.query_tools import ArchiveStatusFilter
+
 DEFAULT_PAGE_SIZE = 100
 
 T = TypeVar("T")
@@ -32,6 +33,7 @@ def search_events_paginated(
     client: event.EventService,
     auth_header: str,
     query: event.SearchQuery,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Iterable[event.Event]:
     def factory(page_token: str | None) -> event.SearchEventsRequest:
         return event.SearchEventsRequest(
@@ -41,6 +43,7 @@ def search_events_paginated(
                 field=event.SortField.START_TIME,
                 is_descending=True,
             ),
+            archived_statuses=archive_status.to_api_archived_statuses(),
             next_page_token=page_token,
         )
 
@@ -49,7 +52,9 @@ def search_events_paginated(
 
 
 def search_datasets_paginated(
-    client: scout_catalog.CatalogService, auth_header: str, query: scout_catalog.SearchDatasetsQuery
+    client: scout_catalog.CatalogService,
+    auth_header: str,
+    query: scout_catalog.SearchDatasetsQuery,
 ) -> Iterable[scout_catalog.EnrichedDataset]:
     def factory(page_token: str | None) -> scout_catalog.SearchDatasetsRequest:
         return scout_catalog.SearchDatasetsRequest(
@@ -92,6 +97,7 @@ def search_assets_paginated(
     client: scout_assets.AssetService,
     auth_header: str,
     query: scout_asset_api.SearchAssetsQuery,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Iterable[scout_asset_api.Asset]:
     def factory(page_token: str | None) -> scout_asset_api.SearchAssetsRequest:
         return scout_asset_api.SearchAssetsRequest(
@@ -101,6 +107,7 @@ def search_assets_paginated(
                 field=scout_asset_api.AssetSortField.CREATED_AT,
                 is_descending=True,
             ),
+            archived_statuses=archive_status.to_api_archived_statuses(),
             next_page_token=page_token,
         )
 
@@ -113,6 +120,7 @@ def search_data_reviews_paginated(
     auth_header: str,
     assets: Sequence[str] | None = None,
     runs: Sequence[str] | None = None,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Iterable[scout_datareview_api.DataReview]:
     """Search for any data reviews present within a collection of runs and assets."""
 
@@ -121,7 +129,7 @@ def search_data_reviews_paginated(
             asset_rids=[] if assets is None else list(assets),
             checklist_refs=[],
             run_rids=[] if runs is None else list(runs),
-            archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
+            archived_statuses=archive_status.to_api_archived_statuses(),
             page_size=DEFAULT_PAGE_SIZE,
             next_page_token=page_token,
         )
@@ -161,14 +169,15 @@ def list_streaming_checklists_for_asset_paginated(
 
 
 def search_checklists_paginated(
-    checklist: scout_checks_api.ChecklistService, auth_header: str, query: scout_checks_api.ChecklistSearchQuery
+    checklist: scout_checks_api.ChecklistService,
+    auth_header: str,
+    query: scout_checks_api.ChecklistSearchQuery,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Iterable[scout_checks_api.VersionedChecklist]:
-    archived_statuses = [api.ArchivedStatus.NOT_ARCHIVED]
-
     def factory(page_token: str | None) -> scout_checks_api.SearchChecklistsRequest:
         return scout_checks_api.SearchChecklistsRequest(
             query=query,
-            archived_statuses=archived_statuses,
+            archived_statuses=archive_status.to_api_archived_statuses(),
             page_size=DEFAULT_PAGE_SIZE,
             next_page_token=page_token,
         )
@@ -178,7 +187,10 @@ def search_checklists_paginated(
 
 
 def search_runs_paginated(
-    run: scout.RunService, auth_header: str, query: scout_run_api.SearchQuery
+    run: scout.RunService,
+    auth_header: str,
+    query: scout_run_api.SearchQuery,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Iterable[scout_run_api.Run]:
     def factory(page_token: str | None) -> scout_run_api.SearchRunsRequest:
         return scout_run_api.SearchRunsRequest(
@@ -188,6 +200,7 @@ def search_runs_paginated(
                 field=scout_run_api.SortField.START_TIME,
                 is_descending=True,
             ),
+            archived_statuses=archive_status.to_api_archived_statuses(),
             next_page_token=page_token,
         )
 
@@ -208,14 +221,17 @@ def search_runs_by_asset_paginated(
 
 
 def search_secrets_paginated(
-    secrets: secrets_api.SecretService, auth_header: str, query: secrets_api.SearchSecretsQuery
+    secrets: secrets_api.SecretService,
+    auth_header: str,
+    query: secrets_api.SearchSecretsQuery,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Iterable[secrets_api.Secret]:
     def factory(page_token: str | None) -> secrets_api.SearchSecretsRequest:
         return secrets_api.SearchSecretsRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
             sort=secrets_api.SortOptions(field=secrets_api.SortField.CREATED_AT, is_descending=True),
-            archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
+            archived_statuses=archive_status.to_api_archived_statuses(),
             token=page_token,
         )
 
@@ -224,14 +240,17 @@ def search_secrets_paginated(
 
 
 def search_videos_paginated(
-    videos: scout_video.VideoService, auth_header: str, query: scout_video_api.SearchVideosQuery
+    videos: scout_video.VideoService,
+    auth_header: str,
+    query: scout_video_api.SearchVideosQuery,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Iterable[scout_video_api.Video]:
     def factory(page_token: str | None) -> scout_video_api.SearchVideosRequest:
         return scout_video_api.SearchVideosRequest(
             page_size=DEFAULT_PAGE_SIZE,
             query=query,
             sort_options=scout_video_api.SortOptions(field=scout_video_api.SortField.CREATED_AT, is_descending=True),
-            archived_statuses=[api.ArchivedStatus.NOT_ARCHIVED],
+            archived_statuses=archive_status.to_api_archived_statuses(),
             token=page_token,
         )
 
@@ -260,14 +279,15 @@ def search_workbooks_paginated(
     workbook: scout.NotebookService,
     auth_header: str,
     query: scout_notebook_api.SearchNotebooksQuery,
-    include_archived: bool,
-    show_drafts: bool,
 ) -> Iterable[scout_notebook_api.NotebookMetadataWithRid]:
+    """NOTE: relies upon the query correctly filtering out drafts / archived if not desired"""
+
     def factory(page_token: str | None) -> scout_notebook_api.SearchNotebooksRequest:
+        # TODO(drake): show_drafts and show_archived will soon be archived. Remove in the future.
         return scout_notebook_api.SearchNotebooksRequest(
             query=query,
-            show_drafts=show_drafts,
-            show_archived=include_archived,
+            show_drafts=True,
+            show_archived=True,
             next_page_token=page_token,
         )
 
@@ -286,6 +306,10 @@ def search_workbook_templates_paginated(
     for response in paginate_rpc(template.search_templates, auth_header, request_factory=factory):
         yield from response.results
 
+
+#########################
+# Paging infrastructure #
+#########################
 
 _TokenT = TypeVar("_TokenT")
 _TokenT_co = TypeVar("_TokenT_co", covariant=True)

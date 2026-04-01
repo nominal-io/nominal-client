@@ -15,6 +15,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.deprecation_tools import _NotProvided, warn_on_deprecated_argument
 from nominal.core import data_review, streaming_checklist
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -30,6 +31,7 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.pagination_tools import search_runs_by_asset_paginated
+from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get_datasets
@@ -293,27 +295,67 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        series_tags: Mapping[str, str] | None = None,
     ) -> Dataset:
-        """Retrieve a dataset by data scope name, or create a new one if it does not exist."""
+        """Retrieve a dataset by data scope name, or create a new one if it does not exist.
+
+        Args:
+            data_scope_name: Datascope name to use when looking up or adding a dataset to an asset.
+            name: Name of the dataset to create, if one is not found.
+            description: Human readable description of the dataset to create, if one is not found.
+            labels: Labels of the dataset to create, if one is not found.
+            properties: Key-value properties of the dataset to create, if one is not found.
+            prefix_tree_delimiter: The prefix tree delimiter to use with the created dataset, if one is not found.
+            series_tags: Tags to filter the created dataset by in the datascope, if one is not found.
+
+        Returns:
+            The retrieved or created dataset.
+        """
+        # Attempt to retrieve and validate any existing dataset scope
+        found_ds, found_tags = None, None
         try:
-            return self.get_dataset(data_scope_name)
+            logger.debug("Attempting to retrieve dataset scope named '%s'", data_scope_name)
+            found_ds, found_tags = self._get_dataset_scope(data_scope_name)
         except ValueError:
-            enriched_dataset = _create_dataset(
-                self._clients.auth_header,
-                self._clients.catalog,
-                name or data_scope_name,
-                description=description,
-                properties=properties,
-                labels=labels,
-                workspace_rid=self._clients.workspace_rid,
-            )
-            dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+            pass
 
-            if prefix_tree_delimiter is not None:
-                dataset.set_channel_prefix_tree(prefix_tree_delimiter)
+        # If we found a dataset with the same datascope name, validate that the
+        # series tags match
+        if found_ds is not None and found_tags is not None:
+            # symmetric difference to find tags found in one but not the other
+            mismatching_tags = found_tags.items() ^ (series_tags or {}).items()
+            if mismatching_tags:
+                raise ValueError(
+                    f"Cannot get_or_create_dataset '{data_scope_name}' with tags {series_tags}: "
+                    f"datascope already exists with {found_tags} (difference={mismatching_tags})"
+                )
+            else:
+                return found_ds
 
-            self.add_dataset(data_scope_name, dataset)
-            return dataset
+        # No such dataset exists! Create dataset
+        enriched_dataset = _create_dataset(
+            self._clients.auth_header,
+            self._clients.catalog,
+            name or data_scope_name,
+            description=description,
+            properties=properties,
+            labels=labels,
+            workspace_rid=self._clients.resolve_default_workspace_rid(),
+        )
+        dataset = Dataset._from_conjure(self._clients, enriched_dataset)
+        if prefix_tree_delimiter is not None:
+            dataset.set_channel_prefix_tree(prefix_tree_delimiter)
+
+        # Add dataset to asset
+        self.add_dataset(data_scope_name, dataset, series_tags=series_tags)
+
+        logger.info(
+            "No such dataset named '%s' found on asset '%s': created '%s",
+            data_scope_name,
+            self.rid,
+            dataset.rid,
+        )
+        return dataset
 
     def get_or_create_video(
         self,
@@ -335,7 +377,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
                 description=description,
                 properties=properties,
                 labels=labels,
-                workspace_rid=self._clients.workspace_rid,
+                workspace_rid=self._clients.resolve_default_workspace_rid(),
             )
             video = Video._from_conjure(self._clients, response)
             self.add_video(data_scope_name, video)
@@ -514,6 +556,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         assignee_rid: str | None = None,
         event_type: EventType | None = None,
         origin_types: Iterable[SearchEventOriginType] | None = None,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Event]:
         """Search for events associated with this Asset. See nominal.core.event._search_events for details."""
         return _search_events(
@@ -530,11 +573,14 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             assignee_rid=assignee_rid,
             event_type=event_type,
             origin_types=origin_types,
+            archive_status=archive_status,
         )
 
     def search_data_reviews(
         self,
         runs: Sequence[Run | str] | None = None,
+        *,
+        archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[data_review.DataReview]:
         """Search for data reviews associated with this Asset. See nominal.core.client.search_data_reviews
         for details.
@@ -544,13 +590,18 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
                 self._clients,
                 assets=[self.rid],
                 runs=[rid_from_instance_or_string(run) for run in (runs or [])],
+                archive_status=archive_status,
             )
         )
 
+    @warn_on_deprecated_argument(
+        "include_archived",
+        "The 'include_archived' parameter for asset.search_workbooks is deprecated and will be removed in a future "
+        "version of Nominal. Please use 'archive_status' instead!",
+    )
     def search_workbooks(
         self,
         *,
-        include_archived: bool = False,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -558,11 +609,20 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         created_by_rid: str | None = None,
         run_rid: str | None = None,
         include_drafts: bool = False,
+        include_archived: bool | _NotProvided = _NotProvided(),
+        archive_status: ArchiveStatusFilter | _NotProvided = _NotProvided(),
     ) -> Sequence[Workbook]:
-        """Search for workbooks associated with this Asset. See nominal.core.workbook._search_workbooks for details."""
+        """Search for workbooks associated with this Asset.
+
+        See ``nominal.core.NominalClient.search_workbooks`` for details.
+        """
+        effective_archive_status = resolve_effective_archive_status(
+            archive_status,
+            include_archived=include_archived,
+        )
+
         return _search_workbooks(
             self._clients,
-            include_archived=include_archived,
             exact_match=exact_match,
             search_text=search_text,
             labels=labels,
@@ -571,6 +631,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
             author_rid=created_by_rid,
             run_rid=run_rid,
             include_drafts=include_drafts,
+            archive_status=effective_archive_status,
         )
 
     def list_streaming_checklists(self) -> Sequence[str]:

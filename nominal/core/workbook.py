@@ -11,7 +11,7 @@ from typing_extensions import Self, deprecated
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.pagination_tools import search_workbooks_paginated
-from nominal.core._utils.query_tools import create_search_workbooks_query
+from nominal.core._utils.query_tools import ArchiveStatusFilter, create_search_workbooks_query
 from nominal.core.exceptions import NominalMethodRemovedError
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
                 layout=raw_workbook.layout,
                 content_v2=raw_workbook.content_v2,
                 event_refs=raw_workbook.event_refs,
-                workspace=self._clients.workspace_rid,
+                workspace=self._clients.resolve_default_workspace_rid(),
             ),
         )
 
@@ -261,9 +261,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
             raise ValueError("Missing content for workbook")
 
         workbook_title = raw_workbook.metadata.title or "workbook"
-        workspace_rid = workspace_rid or self._clients.workspace_rid
-        if workspace_rid is None:
-            raise ValueError("Workspace RID is required to create a workbook template")
+        workspace_rid = workspace_rid or self._clients.resolve_default_workspace_rid()
 
         return _create_workbook_template_with_content_and_layout(
             self._clients,
@@ -300,11 +298,11 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
 def _iter_search_workbooks(
     clients: Workbook._Clients,
     query: scout_notebook_api.SearchNotebooksQuery,
-    include_archived: bool,
-    include_drafts: bool,
 ) -> Iterable[Workbook]:
     for raw_workbook in search_workbooks_paginated(
-        clients.notebook, clients.auth_header, query, include_archived, include_drafts
+        clients.notebook,
+        clients.auth_header,
+        query,
     ):
         try:
             yield Workbook._from_notebook_metadata(clients, raw_workbook)
@@ -315,7 +313,6 @@ def _iter_search_workbooks(
 def _search_workbooks(
     clients: Workbook._Clients,
     *,
-    include_archived: bool = False,
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
@@ -325,8 +322,8 @@ def _search_workbooks(
     author_rid: str | None = None,
     run_rid: str | None = None,
     workspace_rid: str | None = None,
-    archived: bool | None = None,
     include_drafts: bool = False,
+    archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Sequence[Workbook]:
     query = create_search_workbooks_query(
         exact_match=exact_match,
@@ -338,6 +335,7 @@ def _search_workbooks(
         author_rid=author_rid,
         run_rid=run_rid,
         workspace_rid=workspace_rid,
-        archived=archived,
+        include_drafts=include_drafts,
+        archive_status=archive_status,
     )
-    return list(_iter_search_workbooks(clients, query, include_archived, include_drafts))
+    return list(_iter_search_workbooks(clients, query))
