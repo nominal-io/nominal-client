@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.124.0](https://github.com/nominal-io/nominal-client/compare/v1.123.0...v1.124.0) (2026-04-01)
+
+
+### Features
+
+* add dataset as_user client helper ([#650](https://github.com/nominal-io/nominal-client/issues/650)) ([9ed46ca](https://github.com/nominal-io/nominal-client/commit/9ed46cab9da79e794730690a721719b16f3c15e1))
+
+
+### Bug Fixes
+
+* update dataset migrator util to handle jsonl ([#689](https://github.com/nominal-io/nominal-client/issues/689)) ([3f9e53d](https://github.com/nominal-io/nominal-client/commit/3f9e53d4b152a3566d2b265f819e90c02791b261))
+
 ## [1.123.0](https://github.com/nominal-io/nominal-client/compare/v1.122.0...v1.123.0) (2026-03-27)
 
 
