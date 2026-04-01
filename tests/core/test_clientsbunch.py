@@ -66,24 +66,26 @@ class _FakeCatalogService:
         self._requests_session = _FakeSession(headers)
 
 
-class _FakeAssetService:
-    def __init__(self, headers: dict[str, str] | None = None) -> None:
-        self._requests_session = _FakeSession(headers)
-
-
-class _FakeRunService:
-    def __init__(self, headers: dict[str, str] | None = None) -> None:
-        self._requests_session = _FakeSession(headers)
-
-
-class _FakeNotebookService:
-    def __init__(self, headers: dict[str, str] | None = None) -> None:
-        self._requests_session = _FakeSession(headers)
-
-
 class _FakeService:
     def __init__(self, headers: dict[str, str] | None = None) -> None:
         self._requests_session = _FakeSession(headers)
+
+
+def _fake_create_conjure_client_factory(
+    *,
+    user_agent,
+    service_config,
+    return_none_for_unknown_union_types=False,
+    default_headers=None,
+):
+    del user_agent, service_config, return_none_for_unknown_union_types
+
+    def factory(service_class):
+        if service_class.__name__ == "CatalogService":
+            return _FakeCatalogService(default_headers)
+        return _FakeService(default_headers)
+
+    return factory
 
 
 def test_api_app_url_conversion():
@@ -209,29 +211,7 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
 
 
 def test_with_default_request_headers_recreates_clients_from_config(monkeypatch):
-    def fake_create_conjure_client_factory(
-        *,
-        user_agent,
-        service_config,
-        return_none_for_unknown_union_types=False,
-        default_headers=None,
-    ):
-        del user_agent, service_config, return_none_for_unknown_union_types
-
-        def factory(service_class):
-            if service_class.__name__ == "CatalogService":
-                return _FakeCatalogService(default_headers)
-            if service_class.__name__ == "AssetService":
-                return _FakeAssetService(default_headers)
-            if service_class.__name__ == "RunService":
-                return _FakeRunService(default_headers)
-            if service_class.__name__ == "NotebookService":
-                return _FakeNotebookService(default_headers)
-            return _FakeService(default_headers)
-
-        return factory
-
-    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", fake_create_conjure_client_factory)
+    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
 
     clients = ClientsBunch.from_config(
         ServiceConfiguration(uris=["https://api.nominal.test"]),
@@ -245,44 +225,14 @@ def test_with_default_request_headers_recreates_clients_from_config(monkeypatch)
 
     assert cloned is not clients
     assert cloned.catalog is not clients.catalog
-    assert cloned.assets is not clients.assets
-    assert cloned.run is not clients.run
-    assert cloned.notebook is not clients.notebook
     assert ON_BEHALF_OF_USER_RID_HEADER not in clients.catalog._requests_session.headers
-    assert ON_BEHALF_OF_USER_RID_HEADER not in clients.assets._requests_session.headers
-    assert ON_BEHALF_OF_USER_RID_HEADER not in clients.run._requests_session.headers
-    assert ON_BEHALF_OF_USER_RID_HEADER not in clients.notebook._requests_session.headers
     assert cloned.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
     assert cloned.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
-    assert cloned.run._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
-    assert cloned.notebook._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
     assert cloned.attachment._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
 
 
 def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
-    def fake_create_conjure_client_factory(
-        *,
-        user_agent,
-        service_config,
-        return_none_for_unknown_union_types=False,
-        default_headers=None,
-    ):
-        del user_agent, service_config, return_none_for_unknown_union_types
-
-        def factory(service_class):
-            if service_class.__name__ == "CatalogService":
-                return _FakeCatalogService(default_headers)
-            if service_class.__name__ == "AssetService":
-                return _FakeAssetService(default_headers)
-            if service_class.__name__ == "RunService":
-                return _FakeRunService(default_headers)
-            if service_class.__name__ == "NotebookService":
-                return _FakeNotebookService(default_headers)
-            return _FakeService(default_headers)
-
-        return factory
-
-    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", fake_create_conjure_client_factory)
+    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
 
     client = NominalClient(
         _clients=ClientsBunch.from_config(
@@ -299,18 +249,9 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert isinstance(impersonated, NominalClient)
     assert impersonated is not client
     assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.catalog._requests_session.headers
-    assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.assets._requests_session.headers
-    assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.run._requests_session.headers
-    assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.notebook._requests_session.headers
     assert impersonated._clients.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
     assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
-        "ri.authn.dev.user.target"
-    )
-    assert impersonated._clients.run._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
-        "ri.authn.dev.user.target"
-    )
-    assert impersonated._clients.notebook._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
