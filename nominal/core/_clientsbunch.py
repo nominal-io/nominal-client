@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Mapping, Protocol
+from typing import Mapping, Protocol, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -38,6 +38,7 @@ from nominal.core.exceptions import NominalConfigError
 from nominal.ts import IntegralNanosecondsUTC
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
+TService = TypeVar("TService", bound=Service)
 
 
 @dataclass(frozen=True)
@@ -255,7 +256,7 @@ class ClientsBunch:
     ) -> Self:
         app_base_url = api_base_url_to_app_base_url(base_url)
 
-        def client_factory(service_class: type[Service]) -> Service:
+        def client_factory(service_class: type[TService]) -> TService:
             return create_conjure_client_factory(
                 user_agent=agent,
                 service_config=cfg,
