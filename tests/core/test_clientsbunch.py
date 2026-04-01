@@ -208,7 +208,7 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
     workspace_service.get_default_workspace.assert_not_called()
 
 
-def test_with_service_request_headers_recreates_clients_from_config(monkeypatch):
+def test_with_default_request_headers_recreates_clients_from_config(monkeypatch):
     def fake_create_conjure_client_factory(
         *,
         user_agent,
@@ -241,15 +241,7 @@ def test_with_service_request_headers_recreates_clients_from_config(monkeypatch)
         None,
     )
 
-    header = {ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"}
-    cloned = clients.with_service_request_headers(
-        {
-            "CatalogService": header,
-            "AssetService": header,
-            "RunService": header,
-            "NotebookService": header,
-        }
-    )
+    cloned = clients.with_default_request_headers({ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"})
 
     assert cloned is not clients
     assert cloned.catalog is not clients.catalog
@@ -264,7 +256,7 @@ def test_with_service_request_headers_recreates_clients_from_config(monkeypatch)
     assert cloned.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
     assert cloned.run._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
     assert cloned.notebook._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
-    assert ON_BEHALF_OF_USER_RID_HEADER not in cloned.attachment._requests_session.headers
+    assert cloned.attachment._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
 
 
 def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):

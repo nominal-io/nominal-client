@@ -159,14 +159,14 @@ class ClientsBunch:
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
 
-    def with_service_request_headers(self, service_headers: Mapping[str, Mapping[str, str]]) -> Self:
+    def with_default_request_headers(self, headers: Mapping[str, str]) -> Self:
         return type(self).from_config(
             self._service_config,
             self._api_base_url,
             self._user_agent,
             self._token,
             self.workspace_rid,
-            service_default_headers=service_headers,
+            default_headers=headers,
         )
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
@@ -252,7 +252,7 @@ class ClientsBunch:
         token: str,
         workspace_rid: str | None,
         *,
-        service_default_headers: Mapping[str, Mapping[str, str]] | None = None,
+        default_headers: Mapping[str, str] | None = None,
     ) -> Self:
         app_base_url = api_base_url_to_app_base_url(base_url)
 
@@ -260,9 +260,7 @@ class ClientsBunch:
             return create_conjure_client_factory(
                 user_agent=agent,
                 service_config=cfg,
-                default_headers=service_default_headers.get(service_class.__name__, {})
-                if service_default_headers is not None
-                else None,
+                default_headers=default_headers,
             )(service_class)
 
         return cls(
