@@ -158,14 +158,14 @@ class ClientsBunch:
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
 
-    def with_catalog_request_headers(self, headers: Mapping[str, str]) -> Self:
+    def with_service_request_headers(self, service_headers: Mapping[str, Mapping[str, str]]) -> Self:
         return type(self).from_config(
             self._service_config,
             self._api_base_url,
             self._user_agent,
             self._token,
             self.workspace_rid,
-            catalog_default_headers=headers,
+            service_default_headers=service_headers,
         )
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
@@ -251,15 +251,18 @@ class ClientsBunch:
         token: str,
         workspace_rid: str | None,
         *,
-        catalog_default_headers: Mapping[str, str] | None = None,
+        service_default_headers: Mapping[str, Mapping[str, str]] | None = None,
     ) -> Self:
         app_base_url = api_base_url_to_app_base_url(base_url)
-        client_factory = create_conjure_client_factory(user_agent=agent, service_config=cfg)
-        catalog_client_factory = create_conjure_client_factory(
-            user_agent=agent,
-            service_config=cfg,
-            default_headers=catalog_default_headers,
-        )
+
+        def client_factory(service_class: type[Service]) -> Service:
+            return create_conjure_client_factory(
+                user_agent=agent,
+                service_config=cfg,
+                default_headers=service_default_headers.get(service_class.__name__, {})
+                if service_default_headers is not None
+                else None,
+            )(service_class)
 
         return cls(
             auth_header=f"Bearer {token}",
@@ -272,7 +275,7 @@ class ClientsBunch:
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
-            catalog=catalog_client_factory(scout_catalog.CatalogService),
+            catalog=client_factory(scout_catalog.CatalogService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             connection=client_factory(scout_datasource_connection.ConnectionService),
             dataexport=client_factory(scout_dataexport_api.DataExportService),

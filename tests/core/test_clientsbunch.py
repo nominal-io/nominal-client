@@ -66,6 +66,21 @@ class _FakeCatalogService:
         self._requests_session = _FakeSession(headers)
 
 
+class _FakeAssetService:
+    def __init__(self, headers: dict[str, str] | None = None) -> None:
+        self._requests_session = _FakeSession(headers)
+
+
+class _FakeRunService:
+    def __init__(self, headers: dict[str, str] | None = None) -> None:
+        self._requests_session = _FakeSession(headers)
+
+
+class _FakeNotebookService:
+    def __init__(self, headers: dict[str, str] | None = None) -> None:
+        self._requests_session = _FakeSession(headers)
+
+
 class _FakeService:
     def __init__(self, headers: dict[str, str] | None = None) -> None:
         self._requests_session = _FakeSession(headers)
@@ -193,7 +208,7 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
     workspace_service.get_default_workspace.assert_not_called()
 
 
-def test_with_catalog_request_headers_recreates_clients_from_config(monkeypatch):
+def test_with_service_request_headers_recreates_clients_from_config(monkeypatch):
     def fake_create_conjure_client_factory(
         *,
         user_agent,
@@ -206,6 +221,12 @@ def test_with_catalog_request_headers_recreates_clients_from_config(monkeypatch)
         def factory(service_class):
             if service_class.__name__ == "CatalogService":
                 return _FakeCatalogService(default_headers)
+            if service_class.__name__ == "AssetService":
+                return _FakeAssetService(default_headers)
+            if service_class.__name__ == "RunService":
+                return _FakeRunService(default_headers)
+            if service_class.__name__ == "NotebookService":
+                return _FakeNotebookService(default_headers)
             return _FakeService(default_headers)
 
         return factory
@@ -220,14 +241,30 @@ def test_with_catalog_request_headers_recreates_clients_from_config(monkeypatch)
         None,
     )
 
-    cloned = clients.with_catalog_request_headers({ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"})
+    header = {ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"}
+    cloned = clients.with_service_request_headers(
+        {
+            "CatalogService": header,
+            "AssetService": header,
+            "RunService": header,
+            "NotebookService": header,
+        }
+    )
 
     assert cloned is not clients
     assert cloned.catalog is not clients.catalog
+    assert cloned.assets is not clients.assets
+    assert cloned.run is not clients.run
+    assert cloned.notebook is not clients.notebook
     assert ON_BEHALF_OF_USER_RID_HEADER not in clients.catalog._requests_session.headers
+    assert ON_BEHALF_OF_USER_RID_HEADER not in clients.assets._requests_session.headers
+    assert ON_BEHALF_OF_USER_RID_HEADER not in clients.run._requests_session.headers
+    assert ON_BEHALF_OF_USER_RID_HEADER not in clients.notebook._requests_session.headers
     assert cloned.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
-    assert cloned.catalog._requests_session.headers["User-Agent"] == "test-agent"
-    assert ON_BEHALF_OF_USER_RID_HEADER not in cloned.assets._requests_session.headers
+    assert cloned.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
+    assert cloned.run._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
+    assert cloned.notebook._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
+    assert ON_BEHALF_OF_USER_RID_HEADER not in cloned.attachment._requests_session.headers
 
 
 def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
@@ -243,6 +280,12 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
         def factory(service_class):
             if service_class.__name__ == "CatalogService":
                 return _FakeCatalogService(default_headers)
+            if service_class.__name__ == "AssetService":
+                return _FakeAssetService(default_headers)
+            if service_class.__name__ == "RunService":
+                return _FakeRunService(default_headers)
+            if service_class.__name__ == "NotebookService":
+                return _FakeNotebookService(default_headers)
             return _FakeService(default_headers)
 
         return factory
@@ -264,6 +307,18 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert isinstance(impersonated, NominalClient)
     assert impersonated is not client
     assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.catalog._requests_session.headers
+    assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.assets._requests_session.headers
+    assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.run._requests_session.headers
+    assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.notebook._requests_session.headers
     assert impersonated._clients.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
+        "ri.authn.dev.user.target"
+    )
+    assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
+        "ri.authn.dev.user.target"
+    )
+    assert impersonated._clients.run._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
+        "ri.authn.dev.user.target"
+    )
+    assert impersonated._clients.notebook._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
