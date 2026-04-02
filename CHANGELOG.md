@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.124.1](https://github.com/nominal-io/nominal-client/compare/v1.124.0...v1.124.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* remove irrelevant docstring ([#693](https://github.com/nominal-io/nominal-client/issues/693)) ([12fe51b](https://github.com/nominal-io/nominal-client/commit/12fe51b5f603d228d11628089f883c97a37f9eff))
+
 ## [1.124.0](https://github.com/nominal-io/nominal-client/compare/v1.123.0...v1.124.0) (2026-04-01)
 
 
