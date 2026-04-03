@@ -191,9 +191,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
         template_content = raw_template.content
 
         # Re-bind video panel datasources that were stripped when the template was saved.
-        has_video = any(
-            viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values()
-        )
+        has_video = any(viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values())
         if has_video:
             run_rid = rid_from_instance_or_string(run) if run is not None else None
             video_asset_rid = None
@@ -205,7 +203,9 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
                 raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
                 video_asset_rid = raw_run.assets[0] if raw_run.assets else None
             else:
-                raise ValueError("Could not resolve asset RID for video panel datasource re-binding")
+                raise ValueError(
+                    f"Could not resolve asset RID for video panel datasource re-binding. run={run!r}, asset={asset!r}"
+                )
             if video_asset_rid is not None:
                 template_content = _rebind_video_datasources(template_content, video_asset_rid, run_rid)
 
