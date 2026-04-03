@@ -5,7 +5,7 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
-from nominal.core.channel import Channel, ChannelDataType
+from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.connection import Connection
@@ -42,6 +42,7 @@ __all__ = [
     "Bounds",
     "Channel",
     "ChannelDataType",
+    "filter_channels_with_data",
     "Checklist",
     "CheckViolation",
     "Connection",

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import concurrent.futures
 import enum
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Iterable, Mapping, Protocol, cast, overload
+from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Sequence, cast, overload
 
 from nominal_api import (
     api,
@@ -18,6 +19,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import RefreshableMixin, create_api_tags
 from nominal.core._utils.pagination_tools import paginate_rpc
@@ -442,3 +444,143 @@ def _create_series_from_channel(
         return scout_compute_api.Series(log=scout_compute_api.LogSeries(channel=channel_series))
     else:
         raise ValueError(f"Unsupported channel data type: {data_type}")
+
+
+def _build_tag_filters(tags: Mapping[str, str] | None) -> scout_compute_api.TagFilters | None:
+    """Convert a simple tag mapping into the TagFilters union type for the compute API.
+
+    Each {key: value} pair becomes a TagFilter with operator=IN and a single-element value list.
+    Multiple tags are composed with AND semantics.
+    """
+    if not tags:
+        return None
+
+    single_filters = [
+        scout_compute_api.TagFilters(
+            single=scout_compute_api.TagFilter(
+                key=scout_compute_api.StringConstant(literal=key),
+                values=[scout_compute_api.StringConstant(literal=value)],
+                operator=scout_compute_api.TagFilterOperator.IN,
+            )
+        )
+        for key, value in tags.items()
+    ]
+
+    if len(single_filters) == 1:
+        return single_filters[0]
+    return scout_compute_api.TagFilters(and_=single_filters)
+
+
+def _batch_check_channels_have_data(
+    clients: Channel._Clients,
+    channels: Sequence[Channel],
+    tag_filters: scout_compute_api.TagFilters | None,
+    start: api.Timestamp,
+    end: api.Timestamp,
+) -> tuple[list[Channel], list[str]]:
+    """Check a batch of channels for data presence via a single batchGetSeriesCount call.
+
+    Returns a tuple of:
+        - channels confirmed to have data (series_count > 0)
+        - names of channels with underconstrained tags (series_count > 1)
+    """
+    time_range = api.Range(start=start, end=end)
+    request = datasource_api.BatchGetSeriesCountRequest(
+        requests=[
+            datasource_api.GetSeriesCountRequest(
+                data_source_rid=channel.data_source,
+                channel=channel.name,
+                range=time_range,
+                tag_filters=tag_filters,
+            )
+            for channel in channels
+        ]
+    )
+    response = clients.datasource.batch_get_series_count(clients.auth_header, request)
+
+    channels_with_data: list[Channel] = []
+    underconstrained: list[str] = []
+    for channel, result in zip(channels, response.responses, strict=True):
+        count = result.series_count
+        if count is not None and count > 0:
+            channels_with_data.append(channel)
+            # Multiple series for a single channel+tags means the tags don't fully
+            # constrain the data — results may contain duplicate timestamps.
+            if count > 1:
+                underconstrained.append(channel.name)
+
+    return channels_with_data, underconstrained
+
+
+def filter_channels_with_data(
+    channels: Sequence[Channel],
+    *,
+    tags: Mapping[str, str] | None = None,
+    start_time: datetime | IntegralNanosecondsUTC,
+    end_time: datetime | IntegralNanosecondsUTC,
+    num_workers: int = 8,
+    batch_size: int = 200,
+) -> Iterator[Channel]:
+    """Yield channels that have data in the given time range, optionally filtered by tags.
+
+    Uses batchGetSeriesCount for fast server-side filtering — each channel is checked
+    via a lightweight COUNT(DISTINCT series) query in ClickHouse, batched into single
+    API calls for efficiency.
+
+    Args:
+        channels: Channels to check for data presence.
+        tags: If provided, only yield channels matching these tag key-value pairs.
+        start_time: Start of the time range to check for data.
+        end_time: End of the time range to check for data.
+        num_workers: Number of concurrent API requests.
+        batch_size: Max channels per API call.
+
+    Yields:
+        Channel objects for each input channel confirmed to have data in the range.
+    """
+    if not channels:
+        return
+
+    clients = channels[0]._clients
+    start = _SecondsNanos.from_flexible(start_time).to_api()
+    end = _SecondsNanos.from_flexible(end_time).to_api()
+    tag_filters = _build_tag_filters(tags)
+
+    # Split channels into batches for parallel API calls
+    batches = list(batched(channels, batch_size))
+
+    # Collect results from all batches
+    matched_keys: set[tuple[str, str]] = set()
+    all_underconstrained: list[str] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
+        futures = {
+            pool.submit(_batch_check_channels_have_data, clients, batch, tag_filters, start, end): batch
+            for batch in batches
+        }
+
+        for future in concurrent.futures.as_completed(futures):
+            batch = futures[future]
+            try:
+                matched, underconstrained = future.result()
+            except Exception:
+                logger.exception("Failed to check data presence for %d channels", len(batch))
+                continue
+
+            for ch in matched:
+                matched_keys.add((ch.data_source, ch.name))
+            all_underconstrained.extend(underconstrained)
+
+    # Yield in original input order
+    for channel in channels:
+        if (channel.data_source, channel.name) in matched_keys:
+            yield channel
+
+    if all_underconstrained:
+        sample = all_underconstrained[:10]
+        suffix = f", ... ({len(all_underconstrained) - 10} more)" if len(all_underconstrained) > 10 else ""
+        logger.warning(
+            "%d channels have underconstrained tags (multiple series matched): %s%s",
+            len(all_underconstrained),
+            sample,
+            suffix,
+        )
