@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.125.0](https://github.com/nominal-io/nominal-client/compare/v1.124.1...v1.125.0) (2026-04-03)
+
+
+### Features
+
+* updated nominal-video to 0.1.9 ([#695](https://github.com/nominal-io/nominal-client/issues/695)) ([22c8089](https://github.com/nominal-io/nominal-client/commit/22c8089bd6146e177c013fab87ec8b889c62e9ed))
+
 ## [1.124.1](https://github.com/nominal-io/nominal-client/compare/v1.124.0...v1.124.1) (2026-04-02)
 
 
