@@ -118,6 +118,7 @@ class SchedulingDownloader:
             file_size=file_size_bytes,
         )
         part_futures = self._downloader.submit_download(item)
+        logger.debug("Submitted download: %s (%d bytes, %d parts)", filename, file_size_bytes, len(part_futures))
         return DownloadTicket(
             destination=destination,
             file_size_bytes=file_size_bytes,

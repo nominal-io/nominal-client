@@ -33,13 +33,13 @@ from nominal.ts import (
 )
 
 # Number of workers to use across thread / processes pools when hitting the api
-DEFAULT_NUM_WORKERS = 4
+DEFAULT_NUM_WORKERS = 10
 
 # Number of points to export at once in a single request to the data export service.
-DEFAULT_POINTS_PER_REQUEST = 25_000_000
+DEFAULT_POINTS_PER_REQUEST = 10_000_000
 
 # Number of points to export within each dataframe exported at a time
-DEFAULT_POINTS_PER_DATAFRAME = 250_000_000
+DEFAULT_POINTS_PER_DATAFRAME = 100_000_000
 
 # Maximum number of channels to get data for within a single request to Nominal
 DEFAULT_CHANNELS_PER_REQUEST = 25
@@ -353,6 +353,14 @@ def _build_channel_groups(
         else:
             string_pps[name] = rate
 
+    logger.debug(
+        "Partitioned %d channels: %d numeric, %d string (allowed PPS per group: %.0f)",
+        len(points_per_second),
+        len(numeric_pps),
+        len(string_pps),
+        allowed_rate_per_group,
+    )
+
     for partition_pps in (numeric_pps, string_pps):
         curr_group: list[Channel] = []
         curr_rate = 0.0
@@ -375,6 +383,14 @@ def _build_channel_groups(
 
         if curr_group:
             channel_groups.append(curr_group)
+
+    logger.info(
+        "Built %d channel groups + %d large channels requiring subdivision",
+        len(channel_groups),
+        len(large_channels),
+    )
+    for idx, group in enumerate(channel_groups):
+        logger.debug("  Group %d: %d channels", idx, len(group))
 
     return channel_groups, large_channels
 
@@ -589,7 +605,7 @@ class PolarsExportHandler:
         points_per_dataframe: int = DEFAULT_POINTS_PER_DATAFRAME,
         channels_per_request: int = DEFAULT_CHANNELS_PER_REQUEST,
         num_workers: int = DEFAULT_NUM_WORKERS,
-        download_workers: int = 8,
+        download_workers: int = 24,
     ):
         """Initialize export handler"""
         self._client = client
@@ -672,6 +688,7 @@ class PolarsExportHandler:
             logger.warning("Could not determine datatypes of %d channels -- ignoring for export", unsupported)
 
         # Fast server-side filter: identify which channels have data in the time range
+        logger.info("Filtering %d channels for data presence in time range", len(supported_channels))
         supported_channels = list(
             filter_channels_with_data(
                 supported_channels,
@@ -680,6 +697,7 @@ class PolarsExportHandler:
                 end_time=time_range.end_time,
             )
         )
+        logger.info("%d channels have data in the requested time range", len(supported_channels))
 
         # Compute point rates for all channel types (DOUBLE, INT, STRING)
         channels_by_name = {channel.name: channel for channel in supported_channels}
@@ -692,6 +710,12 @@ class PolarsExportHandler:
         )
         points_per_second = {name: rate for name, rate in all_pps.items() if rate}
         batch_duration_ns = self._compute_batch_duration(batch_duration, time_range, points_per_second)
+        logger.info(
+            "Computed batch duration: %.1fs (total PPS: %.0f across %d channels)",
+            batch_duration_ns / 1e9,
+            sum(points_per_second.values()),
+            len(points_per_second),
+        )
 
         # Group channels by datasource for export job creation
         channel_names_by_datasource: dict[str, set[str]] = collections.defaultdict(set)
@@ -743,6 +767,13 @@ class PolarsExportHandler:
                             )
                         )
 
+        total_jobs = sum(len(j) for j in jobs.values())
+        logger.info(
+            "Export plan: %d time slices, %d total jobs across %d datasources",
+            len(jobs),
+            total_jobs,
+            len(channel_names_by_datasource),
+        )
         return jobs
 
     def export(
@@ -833,13 +864,15 @@ class PolarsExportHandler:
 
         time_col = _get_exported_timestamp_channel(job.channel_names)
 
-        # Read CSV once, then cast columns to known types.
-        df = pl.read_csv(path)
-        castable = {k: v for k, v in schema.items() if k in df.columns}
-        if castable:
-            df = df.cast(castable)  # type: ignore[arg-type]  # Polars typing is overly strict here
+        # Filter schema to columns actually present in the CSV to avoid Polars
+        # erroring on overrides for columns not in the file header.
+        csv_columns = set(pl.read_csv(path, n_rows=0).columns)
+        filtered_schema = {k: v for k, v in schema.items() if k in csv_columns}
+        df = pl.read_csv(path, schema_overrides=filtered_schema)
+        logger.debug("Parsed %s: %d rows x %d columns", path.name, len(df), len(df.columns))
 
         if df.is_empty():
+            logger.debug("Empty CSV for channels %s", job.channel_names)
             return pl.DataFrame({col: [] for col in [_INTERNAL_TS_COL, *job.channel_names]})
         elif df[time_col].is_duplicated().any():
             logger.error("Dataframe has duplicate timestamps! %s", df.head())
@@ -889,30 +922,41 @@ class PolarsExportHandler:
                 all slices are processed so partial DataFrames are still yielded.
         """
         slices = sorted(export_jobs.items(), key=lambda kv: kv[0])
+        total_slices = len(slices)
         presigner = ExportPresigner(create_export_signer(self._client), max_ahead=self._num_workers)
         all_errors: list[Exception] = []
 
+        logger.info("Starting export: %d time slices", total_slices)
         with tempfile.TemporaryDirectory(prefix="nominal_export_") as tmpdir:
             with SchedulingDownloader.create(
                 output_dir=pathlib.Path(tmpdir),
                 max_workers=self._download_workers,
             ) as dl:
-                file_counter = 0
+                # Flatten all jobs across slices, tracking which slice each belongs to.
+                # Stream them all through the presigner in one pass — signing and
+                # download submission happen continuously while we process earlier slices.
+                jobs_with_slice: list[tuple[int, _ExportJob]] = [
+                    (i, job) for i, (_, jobs) in enumerate(slices) for job in jobs
+                ]
+                all_jobs = [job for _, job in jobs_with_slice]
+                logger.info("Signing and submitting %d jobs across %d slices", len(all_jobs), total_slices)
 
-                for time_range, jobs in slices:
-                    # Sign jobs for this slice and immediately submit downloads.
-                    # Presigner yields in order, submit() sends parts to the pool's
-                    # FIFO queue — so this slice's parts are always ahead of the next.
-                    tickets: list[tuple[_ExportJob, DownloadTicket]] = []
-                    for signed in presigner.sign_all(jobs):
-                        filename = f"export_{file_counter:06d}.csv"
-                        file_counter += 1
-                        ticket = dl.submit(signed.url, signed.file_size_bytes, filename)
-                        tickets.append((signed.job, ticket))
+                slice_tickets: list[list[tuple[_ExportJob, DownloadTicket]]] = [[] for _ in slices]
+                for file_idx, ((slice_idx, _), signed) in enumerate(
+                    zip(jobs_with_slice, presigner.sign_all(all_jobs))
+                ):
+                    ticket = dl.submit(signed.url, signed.file_size_bytes, f"export_{file_idx:06d}.csv")
+                    slice_tickets[slice_idx].append((signed.job, ticket))
 
-                    # Wait for all downloads in this slice to complete, parse each file
+                # Process each slice in order — downloads for later slices are
+                # already in-flight in the pool, so there's no pipeline stall.
+                for slice_idx in range(total_slices):
+                    logger.info(
+                        "Processing slice %d/%d (%d files)",
+                        slice_idx + 1, total_slices, len(slice_tickets[slice_idx]),
+                    )
                     dfs: list[pl.DataFrame] = []
-                    for job, ticket in tickets:
+                    for job, ticket in slice_tickets[slice_idx]:
                         try:
                             path = ticket.result()
                             df = self._parse_export_file(path, job)
@@ -982,6 +1026,7 @@ class PolarsExportHandler:
         if not output_dir.is_dir():
             raise ValueError(f"output_dir must be an existing directory: {output_dir}")
 
+        logger.info("dump_to_csv: %d channels to %s", len(channels), output_dir)
         export_jobs = self._compute_export_jobs(
             channels, _TimeRange(start, end), timestamp_type, tags or {}, buckets, resolution, batch_duration
         )
@@ -989,6 +1034,7 @@ class PolarsExportHandler:
 
         with SchedulingDownloader.create(output_dir=output_dir, max_workers=self._download_workers) as dl:
             all_jobs = [job for jobs in export_jobs.values() for job in jobs]
+            logger.info("Signing and downloading %d export files", len(all_jobs))
             tickets = []
             for i, signed in enumerate(presigner.sign_all(all_jobs)):
                 ticket = dl.submit(signed.url, signed.file_size_bytes, f"export_{i:06d}.csv")
@@ -1006,6 +1052,7 @@ class PolarsExportHandler:
 
             if errors:
                 raise NominalExportError(paths, errors)
+            logger.info("dump_to_csv complete: %d files downloaded", len(paths))
             return paths
 
     def dump_to_parquet(
@@ -1051,6 +1098,8 @@ class PolarsExportHandler:
         if not output_dir.is_dir():
             raise ValueError(f"output_dir must be an existing directory: {output_dir}")
 
+        logger.info("dump_to_parquet: %d channels to %s", len(channels), output_dir)
+
         # Build schema from known channel types so parquet files get correct dtypes
         schema: dict[str, pl.DataType] = {}
         for ch in channels:
@@ -1071,6 +1120,7 @@ class PolarsExportHandler:
                 resolution=resolution,
             )
 
+            logger.info("Converting %d CSVs to parquet", len(csv_paths))
             parquet_paths: list[pathlib.Path] = []
             errors: list[Exception] = []
             for csv_path in csv_paths:
@@ -1083,6 +1133,7 @@ class PolarsExportHandler:
                         lf = lf.cast(castable)  # type: ignore[arg-type]
                     lf.sink_parquet(parquet_path)
                     parquet_paths.append(parquet_path)
+                    logger.debug("Converted %s -> %s", csv_path.name, parquet_name)
                 except Exception as exc:
                     logger.exception("Failed to convert %s to parquet", csv_path)
                     errors.append(exc)

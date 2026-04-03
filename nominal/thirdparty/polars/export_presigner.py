@@ -61,6 +61,7 @@ class ExportPresigner:
                 window are cancelled and the exception propagates immediately.
                 Already-running signings complete in the background.
         """
+        signed_count = 0
         with ThreadPoolExecutor(max_workers=self._max_ahead) as pool:
             window: deque[Future[SignedExport]] = deque()
             job_iter = iter(jobs)
@@ -69,10 +70,14 @@ class ExportPresigner:
                 # Fill initial window
                 for job in islice(job_iter, self._max_ahead):
                     window.append(pool.submit(self._sign_fn, job))
+                logger.debug("Presigner window filled with %d initial jobs", len(window))
 
                 # Drain front, refill back
                 while window:
-                    yield window.popleft().result()
+                    result = window.popleft().result()
+                    signed_count += 1
+                    logger.debug("Signed job %d: %d bytes", signed_count, result.file_size_bytes)
+                    yield result
                     next_job = next(job_iter, None)
                     if next_job is not None:
                         window.append(pool.submit(self._sign_fn, next_job))
@@ -80,6 +85,10 @@ class ExportPresigner:
                 # Cancel pending futures so pool.shutdown() doesn't block
                 for fut in window:
                     fut.cancel()
+                logger.debug(
+                    "Presigner interrupted after %d signed jobs, cancelled %d pending",
+                    signed_count, len(window),
+                )
                 raise
 
 
@@ -100,6 +109,7 @@ def create_export_signer(client: NominalClient) -> Callable[[_ExportJob], Signed
     ds_lock = threading.Lock()
 
     def sign(job: _ExportJob) -> SignedExport:
+        logger.debug("Signing export for datasource=%s, %d channels", job.datasource_rid, len(job.channel_names))
         # Fast path: check cache without lock
         datasource = ds_cache.get(job.datasource_rid)
         if datasource is None:
