@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
-from nominal_api import scout, scout_notebook_api, scout_workbookcommon_api
+from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
 from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
@@ -18,6 +18,49 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nominal.core.workbook_template import WorkbookTemplate
+
+
+def _strip_video_datasources(
+    content: scout_workbookcommon_api.WorkbookContent,
+) -> scout_workbookcommon_api.WorkbookContent:
+    """Strip asset/run RIDs from video panel v1 datasources before storing as a template.
+
+    Preserves ref_name at the panel level (v1.ref_name) so it can be re-bound
+    on instantiation. The datasource is nulled out entirely to avoid a partial
+    object (ref_name only, no asset_rid) that would crash on load.
+
+    # TODO(@seanmreidy): Remove once videos are migrated to channels.
+    """
+    new_charts: dict[str, scout_chartdefinition_api.VizDefinition] = {}
+    changed = False
+    for chart_id, viz in content.charts.items():
+        if viz.video is not None and viz.video.v1 is not None and viz.video.v1.datasource is not None:
+            v1 = viz.video.v1
+            ref_name = viz.video.v1.datasource.ref_name or v1.ref_name
+            new_v1 = scout_chartdefinition_api.VideoVizDefinitionV1(
+                comparison_run_groups=v1.comparison_run_groups,
+                datasource=None,
+                events=v1.events,
+                ref_name=ref_name,
+                title=v1.title,
+            )
+            new_charts[chart_id] = scout_chartdefinition_api.VizDefinition(
+                video=scout_chartdefinition_api.VideoVizDefinition(v1=new_v1)
+            )
+            changed = True
+        else:
+            new_charts[chart_id] = viz
+
+    if not changed:
+        return content
+
+    return scout_workbookcommon_api.WorkbookContent(
+        channel_variables=content.channel_variables,
+        charts=new_charts,
+        data_scope_inputs=content.data_scope_inputs,
+        inputs=content.inputs,
+        settings=content.settings,
+    )
 
 
 class WorkbookType(Enum):
@@ -64,6 +107,8 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
     class _Clients(HasScoutParams, Protocol):
         @property
         def notebook(self) -> scout.NotebookService: ...
+        @property
+        def run(self) -> scout.RunService: ...
         @property
         def template(self) -> scout.TemplateService: ...
 
@@ -267,7 +312,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
             self._clients,
             title=title or f"Template from {workbook_title}",
             layout=raw_workbook.layout,
-            content=content,
+            content=_strip_video_datasources(content),
             workspace_rid=workspace_rid,
             description=description or raw_workbook.metadata.description,
             labels=raw_workbook.metadata.labels if labels is None else [*labels],
