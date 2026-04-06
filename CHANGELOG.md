@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.126.0](https://github.com/nominal-io/nominal-client/compare/v1.125.0...v1.126.0) (2026-04-05)
+
+
+### Features
+
+* strip and re-bind video panel datasource RIDs on template save/instantiation ([#697](https://github.com/nominal-io/nominal-client/issues/697)) ([ca816ef](https://github.com/nominal-io/nominal-client/commit/ca816ef77136c91a5c1f642a578aa88bb7bd60a3))
+
 ## [1.125.0](https://github.com/nominal-io/nominal-client/compare/v1.124.1...v1.125.0) (2026-04-03)
 
 
