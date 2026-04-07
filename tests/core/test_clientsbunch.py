@@ -71,6 +71,23 @@ class _FakeService:
         self._requests_session = _FakeSession(headers)
 
 
+def _fake_create_conjure_client_factory(
+    *,
+    user_agent,
+    service_config,
+    return_none_for_unknown_union_types=False,
+    default_headers=None,
+):
+    del user_agent, service_config, return_none_for_unknown_union_types
+
+    def factory(service_class):
+        if service_class.__name__ == "CatalogService":
+            return _FakeCatalogService(default_headers)
+        return _FakeService(default_headers)
+
+    return factory
+
+
 def test_api_app_url_conversion():
     c = api_base_url_to_app_base_url
     assert c("https://api.gov.nominal.io/api") == "https://app.gov.nominal.io"
@@ -193,24 +210,8 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
     workspace_service.get_default_workspace.assert_not_called()
 
 
-def test_with_catalog_request_headers_recreates_clients_from_config(monkeypatch):
-    def fake_create_conjure_client_factory(
-        *,
-        user_agent,
-        service_config,
-        return_none_for_unknown_union_types=False,
-        default_headers=None,
-    ):
-        del user_agent, service_config, return_none_for_unknown_union_types
-
-        def factory(service_class):
-            if service_class.__name__ == "CatalogService":
-                return _FakeCatalogService(default_headers)
-            return _FakeService(default_headers)
-
-        return factory
-
-    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", fake_create_conjure_client_factory)
+def test_with_default_request_headers_recreates_clients_from_config(monkeypatch):
+    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
 
     clients = ClientsBunch.from_config(
         ServiceConfiguration(uris=["https://api.nominal.test"]),
@@ -220,34 +221,18 @@ def test_with_catalog_request_headers_recreates_clients_from_config(monkeypatch)
         None,
     )
 
-    cloned = clients.with_catalog_request_headers({ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"})
+    cloned = clients.with_default_request_headers({ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"})
 
     assert cloned is not clients
     assert cloned.catalog is not clients.catalog
     assert ON_BEHALF_OF_USER_RID_HEADER not in clients.catalog._requests_session.headers
     assert cloned.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
-    assert cloned.catalog._requests_session.headers["User-Agent"] == "test-agent"
-    assert ON_BEHALF_OF_USER_RID_HEADER not in cloned.assets._requests_session.headers
+    assert cloned.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
+    assert cloned.attachment._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
 
 
 def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
-    def fake_create_conjure_client_factory(
-        *,
-        user_agent,
-        service_config,
-        return_none_for_unknown_union_types=False,
-        default_headers=None,
-    ):
-        del user_agent, service_config, return_none_for_unknown_union_types
-
-        def factory(service_class):
-            if service_class.__name__ == "CatalogService":
-                return _FakeCatalogService(default_headers)
-            return _FakeService(default_headers)
-
-        return factory
-
-    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", fake_create_conjure_client_factory)
+    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
 
     client = NominalClient(
         _clients=ClientsBunch.from_config(
@@ -265,5 +250,8 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert impersonated is not client
     assert ON_BEHALF_OF_USER_RID_HEADER not in client._clients.catalog._requests_session.headers
     assert impersonated._clients.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
+        "ri.authn.dev.user.target"
+    )
+    assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
