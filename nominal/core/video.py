@@ -385,8 +385,21 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
     add_mcap_to_video_from_io = add_mcap_from_io
 
     def _archive_overlapping_files(self, new_file: VideoFile) -> None:
-        """Poll until new_file is ingested, then archive any existing files whose time ranges overlap with it."""
-        new_file.poll_until_ingestion_completed()
+        """Poll until new_file is ingested, then archive any existing files whose time ranges overlap with it.
+
+        The video file has already been uploaded successfully before this is called. If polling or archival
+        fails, a warning is logged and the new file is left intact.
+        """
+        try:
+            new_file.poll_until_ingestion_completed()
+        except Exception as e:
+            logger.warning(
+                "Video file %r was uploaded successfully but overlap archival was skipped: "
+                "failed to poll ingestion status: %s",
+                new_file.rid,
+                e,
+            )
+            return
         raw_new_file = new_file._get_latest_api()
         if raw_new_file.segment_metadata is None:
             logger.warning(
