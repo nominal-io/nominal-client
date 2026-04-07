@@ -280,7 +280,29 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
         )
         if overwrite_overlapping:
-            self._archive_overlapping_files(new_file)
+            new_file.poll_until_ingestion_completed()
+            raw_new_file = new_file._get_latest_api()
+            if raw_new_file.segment_metadata is None:
+                logger.warning(
+                    "Cannot determine time range for new video file %r; skipping overlap archival", new_file.rid
+                )
+            else:
+                new_start = _SecondsNanos.from_api(raw_new_file.segment_metadata.min_absolute_timestamp).to_nanoseconds()
+                new_end = _SecondsNanos.from_api(raw_new_file.segment_metadata.max_absolute_timestamp).to_nanoseconds()
+                for existing_file in self.list_files():
+                    if existing_file.rid == new_file.rid:
+                        continue
+                    raw_existing = existing_file._get_latest_api()
+                    if raw_existing.segment_metadata is None:
+                        continue
+                    existing_start = _SecondsNanos.from_api(
+                        raw_existing.segment_metadata.min_absolute_timestamp
+                    ).to_nanoseconds()
+                    existing_end = _SecondsNanos.from_api(
+                        raw_existing.segment_metadata.max_absolute_timestamp
+                    ).to_nanoseconds()
+                    if new_start <= existing_end and new_end >= existing_start:
+                        existing_file.archive()
         return new_file
 
     add_to_video_from_io = add_from_io
@@ -382,32 +404,6 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         )
 
     add_mcap_to_video_from_io = add_mcap_from_io
-
-    def _archive_overlapping_files(self, new_file: VideoFile) -> None:
-        """Poll until new_file is ingested, then archive any existing files whose time ranges overlap with it."""
-        new_file.poll_until_ingestion_completed()
-        raw_new_file = new_file._get_latest_api()
-        if raw_new_file.segment_metadata is None:
-            logger.warning(
-                "Cannot determine time range for new video file %r; skipping overlap archival", new_file.rid
-            )
-            return
-        new_start = _SecondsNanos.from_api(raw_new_file.segment_metadata.min_absolute_timestamp).to_nanoseconds()
-        new_end = _SecondsNanos.from_api(raw_new_file.segment_metadata.max_absolute_timestamp).to_nanoseconds()
-        for existing_file in self.list_files():
-            if existing_file.rid == new_file.rid:
-                continue
-            raw_existing = existing_file._get_latest_api()
-            if raw_existing.segment_metadata is None:
-                continue
-            existing_start = _SecondsNanos.from_api(
-                raw_existing.segment_metadata.min_absolute_timestamp
-            ).to_nanoseconds()
-            existing_end = _SecondsNanos.from_api(
-                raw_existing.segment_metadata.max_absolute_timestamp
-            ).to_nanoseconds()
-            if new_start <= existing_end and new_end >= existing_start:
-                existing_file.archive()
 
     def list_files(self) -> Sequence[VideoFile]:
         """List all video files associated with the video."""
