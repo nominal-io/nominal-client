@@ -126,6 +126,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         *,
         start: datetime | IntegralNanosecondsUTC,
         description: str | None = None,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
     @overload
@@ -135,6 +136,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         *,
         frame_timestamps: Sequence[IntegralNanosecondsUTC],
         description: str | None = None,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
     def add_file(
@@ -144,6 +146,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile:
         """Append to a video from a file-path to H264-encoded video data. Only one of start or frame_timestamps
         is allowed.
@@ -155,6 +158,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
+            overwrite_overlapping: If True, after ingestion completes, any existing video files whose time ranges
+                overlap with the newly added file will be archived. This requires polling until ingestion is done.
 
         Returns:
             Reference to the created video file.
@@ -170,6 +175,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                     start=start,
                     description=description,
                     file_type=file_type,
+                    overwrite_overlapping=overwrite_overlapping,
                 )
             elif frame_timestamps is not None:
                 return self.add_from_io(
@@ -178,6 +184,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                     frame_timestamps=frame_timestamps,
                     description=description,
                     file_type=file_type,
+                    overwrite_overlapping=overwrite_overlapping,
                 )
             else:  # This should never be reached due to the validation above
                 raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
@@ -191,6 +198,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         start: datetime | IntegralNanosecondsUTC,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
     @overload
@@ -202,6 +210,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         frame_timestamps: Sequence[IntegralNanosecondsUTC],
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
     def add_from_io(
@@ -212,6 +221,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile:
         """Append to a video from a file-like object containing video data encoded in H264 or H265.
 
@@ -224,6 +234,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
+            overwrite_overlapping: If True, after ingestion completes, any existing video files whose time ranges
+                overlap with the newly added file will be archived. This requires polling until ingestion is done.
 
         Returns:
             Reference to the created video file.
@@ -263,10 +275,13 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         if response.details.video is None:
             raise NominalIngestError("error ingesting video: no video created")
 
-        return VideoFile._from_conjure(
+        new_file = VideoFile._from_conjure(
             self._clients,
             self._clients.video_file.get(self._clients.auth_header, response.details.video.video_file_rid),
         )
+        if overwrite_overlapping:
+            self._archive_overlapping_files(new_file)
+        return new_file
 
     add_to_video_from_io = add_from_io
 
@@ -367,6 +382,32 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         )
 
     add_mcap_to_video_from_io = add_mcap_from_io
+
+    def _archive_overlapping_files(self, new_file: VideoFile) -> None:
+        """Poll until new_file is ingested, then archive any existing files whose time ranges overlap with it."""
+        new_file.poll_until_ingestion_completed()
+        raw_new_file = new_file._get_latest_api()
+        if raw_new_file.segment_metadata is None:
+            logger.warning(
+                "Cannot determine time range for new video file %r; skipping overlap archival", new_file.rid
+            )
+            return
+        new_start = _SecondsNanos.from_api(raw_new_file.segment_metadata.min_absolute_timestamp).to_nanoseconds()
+        new_end = _SecondsNanos.from_api(raw_new_file.segment_metadata.max_absolute_timestamp).to_nanoseconds()
+        for existing_file in self.list_files():
+            if existing_file.rid == new_file.rid:
+                continue
+            raw_existing = existing_file._get_latest_api()
+            if raw_existing.segment_metadata is None:
+                continue
+            existing_start = _SecondsNanos.from_api(
+                raw_existing.segment_metadata.min_absolute_timestamp
+            ).to_nanoseconds()
+            existing_end = _SecondsNanos.from_api(
+                raw_existing.segment_metadata.max_absolute_timestamp
+            ).to_nanoseconds()
+            if new_start <= existing_end and new_end >= existing_start:
+                existing_file.archive()
 
     def list_files(self) -> Sequence[VideoFile]:
         """List all video files associated with the video."""
