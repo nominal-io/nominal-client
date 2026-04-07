@@ -408,9 +408,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         raw_new_file = new_file._get_latest_api()
         seg = raw_new_file.segment_metadata
         if seg is None or seg.min_absolute_timestamp is None or seg.max_absolute_timestamp is None:
-            logger.warning(
-                "Cannot determine time range for new video file %r; skipping overlap archival", new_file.rid
-            )
+            logger.warning("Cannot determine time range for new video file %r; skipping overlap archival", new_file.rid)
             return
         new_start = _SecondsNanos.from_api(seg.min_absolute_timestamp).to_nanoseconds()
         new_end = _SecondsNanos.from_api(seg.max_absolute_timestamp).to_nanoseconds()
