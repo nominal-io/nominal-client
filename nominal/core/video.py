@@ -235,8 +235,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
             overwrite_overlapping: If True, any segments from other video files within this video that overlap
-                with the newly added file will be deleted before inserting the new segments. For videos with many
-                existing files this may be slow, as metadata is fetched per file.
+                with the newly added file will be deleted before inserting the new segments.
 
         Returns:
             Reference to the created video file.
