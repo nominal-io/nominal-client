@@ -6,8 +6,9 @@ Migration tests require two Nominal clients:
 - ``source_client``: the environment to migrate *from* (e.g. production).
   Configured via ``--source-profile`` or ``--source-auth-token`` + ``--source-base-url``.
 - ``dest_client``: the environment to migrate *to* (e.g. staging).
-  Reuses the existing ``--profile`` / ``--auth-token`` + ``--base-url`` options from
-  ``tests/e2e/conftest.py`` — same environment as the rest of the e2e suite.
+  Configured via ``--dest-profile`` or ``--dest-auth-token`` + ``--dest-base-url``.
+  Falls back to the global ``--profile`` / ``--auth-token`` + ``--base-url`` options for
+  backwards compatibility.
 
 Teardown helpers
 ----------------
@@ -33,11 +34,18 @@ ArchiveFn = Callable[[object], None]
 
 
 def pytest_addoption(parser):
-    """Register source-environment CLI options (dest reuses the existing e2e options)."""
+    """Register source and destination environment CLI options."""
     parser.addoption("--source-profile", default=None, help="Source Nominal profile name (e.g. production)")
     parser.addoption("--source-auth-token", default=None, help="Source auth token (used with --source-base-url)")
     parser.addoption(
         "--source-base-url", default="https://api.gov.nominal.io", help="Source base URL (default: production)"
+    )
+    parser.addoption("--dest-profile", default=None, help="Destination Nominal profile name (e.g. staging)")
+    parser.addoption("--dest-auth-token", default=None, help="Destination auth token (used with --dest-base-url)")
+    parser.addoption(
+        "--dest-base-url",
+        default="https://api-staging.gov.nominal.io",
+        help="Destination base URL (default: staging)",
     )
 
 
@@ -62,19 +70,19 @@ def source_client(pytestconfig) -> NominalClient:
 def dest_client(pytestconfig) -> NominalClient:
     """Build a NominalClient for the migration destination environment (e.g. staging).
 
-    Reuses the same ``--profile`` / ``--auth-token`` / ``--base-url`` options as the
-    rest of the e2e suite (registered in ``tests/e2e/conftest.py``).
+    ``--dest-profile`` takes precedence; falls back to the global ``--profile`` for
+    backwards compatibility with existing invocations.
     """
-    profile = pytestconfig.getoption("profile")
+    profile = pytestconfig.getoption("dest_profile") or pytestconfig.getoption("profile")
     if profile is not None:
         print(f"Using dest NominalClient.from_profile({profile!r})")
         return NominalClient.from_profile(profile)
-    auth_token = pytestconfig.getoption("auth_token")
+    auth_token = pytestconfig.getoption("dest_auth_token") or pytestconfig.getoption("auth_token")
     if auth_token is None:
         raise pytest.UsageError(
-            "Either --profile or --auth-token must be provided for migration destination environment"
+            "Either --dest-profile or --dest-auth-token must be provided for migration destination environment"
         )
-    base_url = pytestconfig.getoption("base_url")
+    base_url = pytestconfig.getoption("dest_base_url") or pytestconfig.getoption("base_url")
     print(f"Using dest NominalClient.create(base_url={base_url!r})")
     return NominalClient.create(base_url=base_url, token=auth_token)
 

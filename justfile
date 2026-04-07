@@ -28,6 +28,13 @@ test-e2e profile:
 test-e2e-token token:
     uv run pytest tests/e2e --auth-token {{token}} --no-cov -v
 
+# run migration e2e tests using named Nominal profiles (source is prod, dest is staging)
+test-e2e-migration source-profile dest-profile:
+    uv run pytest tests/e2e/migration \
+        --source-profile {{source-profile}} \
+        --dest-profile {{dest-profile}} \
+        --no-cov -v
+
 # check static typing
 check-types:
     uv run mypy

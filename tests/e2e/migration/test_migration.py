@@ -4,15 +4,16 @@ All tests go through MigrationRunner (the top-level entry point), mirroring
 real-world usage. Direct use of AssetMigrator/DatasetMigrator belongs in unit tests.
 
 Tests cover:
-  - Full migration of an asset with datasets, events, a run, a checklist, and a video
+  - Full migration of an asset with datasets, events, a run, a checklist, a video, and a workbook
   - Dataset file upload and channel verification
+  - Standalone workbook template migration
   - Idempotency: running the same runner twice produces no duplicates
   - Resumption from a partial state: missing resources are created, existing ones reused
   - Resumption from a complete state: a fully-recorded state causes the runner to do nothing
 
 Run with:
     uv run pytest tests/e2e/migration/ \
-        --source-profile=<prod> --profile=<staging> -v
+        --source-profile=<prod> --dest-profile=<staging> -v
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from nominal.core.dataset import Dataset
 from nominal.core.event import Event
 from nominal.core.run import Run
 from nominal.core.video import Video
+from nominal.core.workbook import Workbook
 from nominal.experimental.checklist_utils.checklist_utils import _create_checklist_with_content
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -191,9 +193,31 @@ def _create_source_video(
     return video
 
 
+def _create_source_workbook(
+    source_client: NominalClient,
+    source_archive: ArchiveFn,
+    source_asset: Asset,
+) -> Workbook:
+    """Create a workbook on the source asset.
+
+    Creates an ephemeral template to instantiate the workbook, then archives the template
+    immediately since it is only needed for setup.
+    """
+    template = source_client.create_workbook_template(
+        f"migration-e2e-wb-template-{uuid4()}",
+        description="workbook template description",
+        labels=["migration-e2e"],
+        properties={"wbt-prop": "wbt-val"},
+    )
+    workbook = template.create_workbook(asset=source_asset, title=f"migration-e2e-workbook-{uuid4()}")
+    source_archive(workbook)
+    template.archive()
+    return workbook
+
+
 def _setup_source_resources(
     source_client: NominalClient, source_archive: ArchiveFn, mp4_data: bytes
-) -> tuple[Asset, Dataset, Event, Event, Run, Checklist, DataReview, Video]:
+) -> tuple[Asset, Dataset, Event, Event, Run, Checklist, DataReview, Video, Workbook]:
     """Create a source asset with one of every resource type, each populated with labels,
     properties, and descriptions to exercise full metadata migration fidelity.
     """
@@ -206,7 +230,18 @@ def _setup_source_resources(
         source_client, source_archive, source_run
     )
     source_video = _create_source_video(source_client, source_archive, source_asset, mp4_data, start)
-    return source_asset, source_ds, event_a, event_b, source_run, source_checklist, source_data_review, source_video
+    source_workbook = _create_source_workbook(source_client, source_archive, source_asset)
+    return (
+        source_asset,
+        source_ds,
+        event_a,
+        event_b,
+        source_run,
+        source_checklist,
+        source_data_review,
+        source_video,
+        source_workbook,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -214,14 +249,14 @@ def _setup_source_resources(
 # ---------------------------------------------------------------------------
 
 
-def _assert_asset_fields(source: Asset, dest: Asset) -> None:
+def _assert_asset_migrated(source: Asset, dest: Asset) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
     assert set(dest.labels) == set(source.labels)
     assert dest.properties == source.properties
 
 
-def _assert_dataset_fields(
+def _assert_dataset_migrated(
     source: Dataset,
     dest: Dataset,
     scope_name: str,
@@ -242,7 +277,7 @@ def _assert_dataset_fields(
         assert matched.rid == dest.rid
 
 
-def _assert_event_fields(source: Event, dest: Event, dest_asset: Asset) -> None:
+def _assert_event_migrated(source: Event, dest: Event, dest_asset: Asset) -> None:
     assert dest.name == source.name
     assert dest.type == source.type
     assert dest.start == source.start
@@ -255,7 +290,7 @@ def _assert_event_fields(source: Event, dest: Event, dest_asset: Asset) -> None:
     assert set(dest.asset_rids) == {dest_asset.rid}
 
 
-def _assert_run_fields(source: Run, dest: Run, dest_asset: Asset) -> None:
+def _assert_run_migrated(source: Run, dest: Run, dest_asset: Asset) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
     assert set(dest.labels) == set(source.labels)
@@ -267,14 +302,14 @@ def _assert_run_fields(source: Run, dest: Run, dest_asset: Asset) -> None:
     assert set(dest.assets) == {dest_asset.rid}
 
 
-def _assert_checklist_fields(source: Checklist, dest: Checklist) -> None:
+def _assert_checklist_migrated(source: Checklist, dest: Checklist) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
     assert set(dest.labels) == set(source.labels)
     assert dest.properties == source.properties
 
 
-def _assert_video_fields(source: Video, dest: Video, scope_name: str, dest_asset: Asset) -> None:
+def _assert_video_migrated(source: Video, dest: Video, scope_name: str, dest_asset: Asset) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
     assert set(dest.labels) == set(source.labels)
@@ -283,6 +318,14 @@ def _assert_video_fields(source: Video, dest: Video, scope_name: str, dest_asset
     dest_videos = dict(dest_asset.list_videos())
     assert scope_name in dest_videos
     assert dest_videos[scope_name].rid == dest.rid
+
+
+def _assert_workbook_migrated(source: Workbook, dest: Workbook, dest_asset: Asset) -> None:
+    assert dest.title == source.title
+    # Linkage: workbook appears on the destination asset and references exactly it.
+    assert dest.rid in {w.rid for w in dest_asset.search_workbooks(include_drafts=True)}
+    assert dest.asset_rids is not None
+    assert set(dest.asset_rids) == {dest_asset.rid}
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +341,7 @@ def test_migrate_asset(
     mp4_data: bytes,
     tmp_path: Path,
 ):
-    """Full migration of an asset covering all resource types: dataset, events, run, checklist, and video.
+    """Full migration of an asset covering all resource types: dataset, events, run, checklist, video, and workbook.
 
     Verifies:
     - All child resources exist on the destination with RID mappings in state
@@ -306,9 +349,17 @@ def test_migrate_asset(
     - Resources are correctly linked to the migrated destination asset
     """
     # --- source setup ---
-    source_asset, source_ds, event_a, event_b, source_run, source_checklist, source_data_review, source_video = (
-        _setup_source_resources(source_client, source_archive, mp4_data)
-    )
+    (
+        source_asset,
+        source_ds,
+        event_a,
+        event_b,
+        source_run,
+        source_checklist,
+        source_data_review,
+        source_video,
+        source_workbook,
+    ) = _setup_source_resources(source_client, source_archive, mp4_data)
 
     # --- migrate ---
     runner = _make_runner(_make_resources(source_asset), _no_files_config(), dest_client, tmp_path / "state.json")
@@ -319,14 +370,14 @@ def test_migrate_asset(
     dest_archive(dest_asset)
 
     # --- asset ---
-    _assert_asset_fields(source_asset, dest_asset)
+    _assert_asset_migrated(source_asset, dest_asset)
 
     # --- dataset ---
     dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
     assert dest_ds_rid is not None
     dest_ds = dest_client.get_dataset(dest_ds_rid)
     dest_archive(dest_ds)
-    _assert_dataset_fields(source_ds, dest_ds, "primary", dest_asset, series_tags={"scope-tag": "scope-val"})
+    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset, series_tags={"scope-tag": "scope-val"})
 
     # --- events ---
     dest_event_a_rid = state.get_mapped_rid(ResourceType.EVENT, event_a.rid)
@@ -335,22 +386,22 @@ def test_migrate_asset(
     assert dest_event_b_rid is not None
     dest_event_a = dest_client.get_event(dest_event_a_rid)
     dest_event_b = dest_client.get_event(dest_event_b_rid)
-    _assert_event_fields(event_a, dest_event_a, dest_asset)
-    _assert_event_fields(event_b, dest_event_b, dest_asset)
+    _assert_event_migrated(event_a, dest_event_a, dest_asset)
+    _assert_event_migrated(event_b, dest_event_b, dest_asset)
 
     # --- run ---
     dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
     assert dest_run_rid is not None
     dest_run = dest_client.get_run(dest_run_rid)
     dest_archive(dest_run)
-    _assert_run_fields(source_run, dest_run, dest_asset)
+    _assert_run_migrated(source_run, dest_run, dest_asset)
 
     # --- checklist + data review ---
     dest_checklist_rid = state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
     assert dest_checklist_rid is not None
     dest_checklist = dest_client.get_checklist(dest_checklist_rid)
     dest_archive(dest_checklist)
-    _assert_checklist_fields(source_checklist, dest_checklist)
+    _assert_checklist_migrated(source_checklist, dest_checklist)
     assert state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is not None
 
     # --- video ---
@@ -358,10 +409,17 @@ def test_migrate_asset(
     assert dest_video_rid is not None
     dest_video = dest_client.get_video(dest_video_rid)
     dest_archive(dest_video)
-    _assert_video_fields(source_video, dest_video, "camera", dest_asset)
+    _assert_video_migrated(source_video, dest_video, "camera", dest_asset)
     dest_video_files = list(dest_video.list_files())
     assert len(dest_video_files) == 1
     dest_video_files[0].poll_until_ingestion_completed(interval=POLL_INTERVAL)
+
+    # --- workbook ---
+    dest_workbook_rid = state.get_mapped_rid(ResourceType.WORKBOOK, source_workbook.rid)
+    assert dest_workbook_rid is not None
+    dest_workbook = dest_client.get_workbook(dest_workbook_rid)
+    dest_archive(dest_workbook)
+    _assert_workbook_migrated(source_workbook, dest_workbook, dest_asset)
 
 
 def test_migrate_asset_with_dataset_files(
@@ -401,6 +459,39 @@ def test_migrate_asset_with_dataset_files(
     assert source_channels.issubset(dest_channels), (
         f"Missing channels in destination dataset. Source channels: {source_channels}, Dest channels: {dest_channels}"
     )
+
+
+def test_migrate_standalone_template(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    source_archive: ArchiveFn,
+    dest_archive: ArchiveFn,
+    tmp_path: Path,
+):
+    """Standalone workbook templates are cloned to the destination client."""
+    source_template = source_client.create_workbook_template(
+        f"migration-e2e-standalone-template-{uuid4()}",
+        description="standalone template description",
+        labels=["migration-e2e"],
+        properties={"wbt-prop": "wbt-val"},
+    )
+    source_archive(source_template)
+
+    resources = MigrationResources(
+        source_assets={},
+        source_standalone_templates=[source_template],
+    )
+    runner = _make_runner(resources, _no_files_config(), dest_client, tmp_path / "state.json")
+    runner.run_migration()
+
+    dest_template_rid = runner.migration_state.get_mapped_rid(ResourceType.WORKBOOK_TEMPLATE, source_template.rid)
+    assert dest_template_rid is not None
+    dest_template = dest_client.get_workbook_template(dest_template_rid)
+    dest_archive(dest_template)
+    assert dest_template.title == source_template.title
+    assert dest_template.description == source_template.description
+    assert set(dest_template.labels) == set(source_template.labels)
+    assert dest_template.properties == source_template.properties
 
 
 def test_migration_idempotency(
