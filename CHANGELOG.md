@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.127.0](https://github.com/nominal-io/nominal-client/compare/v1.126.0...v1.127.0) (2026-04-07)
+
+
+### Features
+
+* add overwrite_overlapping param to Video.add_file / add_from_io ([#700](https://github.com/nominal-io/nominal-client/issues/700)) ([8cccc69](https://github.com/nominal-io/nominal-client/commit/8cccc69da028554b98ecc98c8234d686757b8650))
+
 ## [1.126.0](https://github.com/nominal-io/nominal-client/compare/v1.125.0...v1.126.0) (2026-04-05)
 
 
