@@ -236,7 +236,9 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
             overwrite_overlapping: If True, after ingestion completes, any existing video files whose time ranges
-                overlap with the newly added file will be archived. This requires polling until ingestion is done.
+                overlap with the newly added file will be archived (files are considered overlapping if their time
+                ranges have any intersection). This requires polling until ingestion is done. For videos with many
+                existing files this may be slow, as metadata is fetched per file.
 
         Returns:
             Reference to the created video file.
@@ -389,6 +391,9 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
 
         The video file has already been uploaded successfully before this is called. If polling or archival
         fails, a warning is logged and the new file is left intact.
+
+        Note: this fetches all files in the video and then makes an individual API call per file to retrieve
+        segment metadata. For videos with many files this may be slow.
         """
         try:
             new_file.poll_until_ingestion_completed()
@@ -401,27 +406,32 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             )
             return
         raw_new_file = new_file._get_latest_api()
-        if raw_new_file.segment_metadata is None:
+        seg = raw_new_file.segment_metadata
+        if seg is None or seg.min_absolute_timestamp is None or seg.max_absolute_timestamp is None:
             logger.warning(
                 "Cannot determine time range for new video file %r; skipping overlap archival", new_file.rid
             )
             return
-        new_start = _SecondsNanos.from_api(raw_new_file.segment_metadata.min_absolute_timestamp).to_nanoseconds()
-        new_end = _SecondsNanos.from_api(raw_new_file.segment_metadata.max_absolute_timestamp).to_nanoseconds()
-        for existing_file in self.list_files():
-            if existing_file.rid == new_file.rid:
-                continue
+        new_start = _SecondsNanos.from_api(seg.min_absolute_timestamp).to_nanoseconds()
+        new_end = _SecondsNanos.from_api(seg.max_absolute_timestamp).to_nanoseconds()
+        existing_files = [f for f in self.list_files() if f.rid != new_file.rid]
+        logger.debug("Checking %d existing video files for overlap with %r", len(existing_files), new_file.rid)
+        for existing_file in existing_files:
             raw_existing = existing_file._get_latest_api()
-            if raw_existing.segment_metadata is None:
+            existing_seg = raw_existing.segment_metadata
+            if (
+                existing_seg is None
+                or existing_seg.min_absolute_timestamp is None
+                or existing_seg.max_absolute_timestamp is None
+            ):
                 continue
-            existing_start = _SecondsNanos.from_api(
-                raw_existing.segment_metadata.min_absolute_timestamp
-            ).to_nanoseconds()
-            existing_end = _SecondsNanos.from_api(
-                raw_existing.segment_metadata.max_absolute_timestamp
-            ).to_nanoseconds()
+            existing_start = _SecondsNanos.from_api(existing_seg.min_absolute_timestamp).to_nanoseconds()
+            existing_end = _SecondsNanos.from_api(existing_seg.max_absolute_timestamp).to_nanoseconds()
             if new_start <= existing_end and new_end >= existing_start:
-                existing_file.archive()
+                try:
+                    existing_file.archive()
+                except Exception as e:
+                    logger.warning("Failed to archive overlapping video file %r: %s", existing_file.rid, e)
 
     def list_files(self) -> Sequence[VideoFile]:
         """List all video files associated with the video."""
