@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.128.0](https://github.com/nominal-io/nominal-client/compare/v1.127.0...v1.128.0) (2026-04-07)
+
+
+### Features
+
+* extend as_user impersonation to more create endpoints ([#692](https://github.com/nominal-io/nominal-client/issues/692)) ([c46cd4c](https://github.com/nominal-io/nominal-client/commit/c46cd4c3fea4588add4505ca25ad30a5f28d56fb))
+
 ## [1.127.0](https://github.com/nominal-io/nominal-client/compare/v1.126.0...v1.127.0) (2026-04-07)
 
 
