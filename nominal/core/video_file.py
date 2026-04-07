@@ -126,6 +126,10 @@ class VideoFile(HasRid, RefreshableMixin[scout_video_api.VideoFile]):
                     raise NominalIngestFailed(
                         f"ingest failed for video {self.rid!r}: {error.message} ({error.error_type})"
                     )
+                else:
+                    raise NominalIngestError(
+                        f"ingest status type marked as 'error' but with no error details for video file {self.rid!r}"
+                    )
             else:
                 raise NominalIngestError(f"Unhandled ingest status {status.type!r} for video {self.rid!r}")
 
