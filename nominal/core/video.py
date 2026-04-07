@@ -159,7 +159,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
             overwrite_overlapping: If True, after ingestion completes, any existing video files whose time ranges
-                overlap with the newly added file will be archived. This requires polling until ingestion is done.
+                overlap with the newly added file will be archived (files are considered overlapping if their time
+                ranges have any intersection). This requires polling until ingestion is done.
 
         Returns:
             Reference to the created video file.
