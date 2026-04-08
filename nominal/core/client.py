@@ -1083,6 +1083,10 @@ class NominalClient:
         video.add_mcap_from_io(mcap, file_name or name, topic, description, file_type)
         return video
 
+    @deprecated(
+        "NominalClient.create_streaming_connection is deprecated and will be removed in a future version. "
+        "Use NominalClient.create_dataset instead."
+    )
     def create_streaming_connection(
         self,
         datasource_id: str,
