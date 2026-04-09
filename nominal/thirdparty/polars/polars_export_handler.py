@@ -412,7 +412,7 @@ def _get_exported_timestamp_channel(channel_names: list[str]) -> str:
     return renamed_timestamp_col
 
 
-def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
+def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:  # noqa: PLR0912
     if not job.channel_names:
         raise ValueError("No channels to extract")
 
@@ -422,11 +422,12 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
     datasource = client.get_datasource(job.datasource_rid)
     req = job.export_request(datasource)
     link = client._clients.dataexport.generate_export_channel_data_presigned_link(client._clients.auth_header, req)
-    http_resp = requests.get(link.presigned_url.url)
-    try:
-        http_resp.raise_for_status()
-    except requests.HTTPError as e:
-        raise RuntimeError(f"Failed to fetch export data from presigned URL for channels {job.channel_names}: {e}") from e
+    http_resp = requests.get(link.presigned_url.url, timeout=60)
+    if not http_resp.ok:
+        raise RuntimeError(
+            f"Failed to fetch export data from presigned URL for channels {job.channel_names}: "
+            f"{http_resp.status_code} {http_resp.reason}"
+        )
 
     # force schema for export based on known channel types (helps if columns are all nan for a given part to prevent
     # that channel from loading as strings)
