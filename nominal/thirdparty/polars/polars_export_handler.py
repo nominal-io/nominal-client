@@ -2,8 +2,11 @@ import collections
 import concurrent.futures
 import dataclasses
 import datetime
+import io
 import logging
 from typing import Iterator, Mapping, Sequence
+
+import requests
 
 import polars as pl
 from nominal_api import api, scout_compute_api, scout_dataexport_api
@@ -419,7 +422,9 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
 
     datasource = client.get_datasource(job.datasource_rid)
     req = job.export_request(datasource)
-    resp = client._clients.dataexport.export_channel_data(client._clients.auth_header, req)
+    link = client._clients.dataexport.generate_export_channel_data_presigned_link(client._clients.auth_header, req)
+    http_resp = requests.get(link.presigned_url.url)
+    http_resp.raise_for_status()
 
     # force schema for export based on known channel types (helps if columns are all nan for a given part to prevent
     # that channel from loading as strings)
@@ -436,8 +441,8 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
                 logger.warning("Can't add missing channel %s to dataframe-- no known datatype!", channel_name)
                 continue
 
-    # Read CSV via Polars
-    df = pl.read_csv(resp, schema_overrides=schema)
+    # Read CSV via Polars; gzip magic bytes are detected automatically from the BytesIO
+    df = pl.read_csv(io.BytesIO(http_resp.content), schema_overrides=schema)
     if df.is_empty():
         logger.warning("No data found for export for channels %s", job.channel_names)
         return pl.DataFrame({col: [] for col in [*job.channel_names, time_col]})
