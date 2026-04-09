@@ -7,7 +7,7 @@ from nominal.core.client import NominalClient
 def as_user(client: NominalClient, user_rid: str) -> NominalClient:
     """Return an experimental derived client for user impersonation.
 
-    The returned client currently injects the on-behalf-of header only for catalog-backed operations.
+    The returned client injects the on-behalf-of header for all service requests.
     """
-    clients = client._clients.with_catalog_request_headers({ON_BEHALF_OF_USER_RID_HEADER: user_rid})
+    clients = client._clients.with_default_request_headers({ON_BEHALF_OF_USER_RID_HEADER: user_rid})
     return NominalClient(_clients=clients, _profile=client._profile)
