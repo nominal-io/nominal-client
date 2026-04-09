@@ -6,9 +6,8 @@ import io
 import logging
 from typing import Iterator, Mapping, Sequence
 
-import requests
-
 import polars as pl
+import requests
 from nominal_api import api, scout_compute_api, scout_dataexport_api
 from typing_extensions import Self
 
