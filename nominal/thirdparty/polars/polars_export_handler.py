@@ -423,7 +423,10 @@ def _export_job(job: _ExportJob, client: NominalClient) -> pl.DataFrame:
     req = job.export_request(datasource)
     link = client._clients.dataexport.generate_export_channel_data_presigned_link(client._clients.auth_header, req)
     http_resp = requests.get(link.presigned_url.url)
-    http_resp.raise_for_status()
+    try:
+        http_resp.raise_for_status()
+    except requests.HTTPError as e:
+        raise RuntimeError(f"Failed to fetch export data from presigned URL for channels {job.channel_names}: {e}") from e
 
     # force schema for export based on known channel types (helps if columns are all nan for a given part to prevent
     # that channel from loading as strings)
