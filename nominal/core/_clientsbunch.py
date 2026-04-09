@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Mapping, Protocol, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -36,6 +36,9 @@ from nominal._utils.dataclass_tools import LazyField
 from nominal.core._utils.networking import create_conjure_client_factory
 from nominal.core.exceptions import NominalConfigError
 from nominal.ts import IntegralNanosecondsUTC
+
+ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
+TService = TypeVar("TService", bound=Service)
 
 
 @dataclass(frozen=True)
@@ -115,6 +118,10 @@ class ClientsBunch:
     auth_header: str
     workspace_rid: str | None
     app_base_url: str
+    _api_base_url: str = field(repr=False)
+    _user_agent: str = field(repr=False)
+    _token: str = field(repr=False)
+    _service_config: ServiceConfiguration = field(repr=False)
 
     _default_workspace: LazyField[security_api_workspace.Workspace] = field(
         default_factory=LazyField,
@@ -151,6 +158,16 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
+
+    def with_default_request_headers(self, headers: Mapping[str, str]) -> Self:
+        return type(self).from_config(
+            self._service_config,
+            self._api_base_url,
+            self._user_agent,
+            self._token,
+            self.workspace_rid,
+            default_headers=headers,
+        )
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
         """Fetch the workspace object this client should treat as its default.
@@ -228,15 +245,32 @@ class ClientsBunch:
 
     @classmethod
     def from_config(
-        cls, cfg: ServiceConfiguration, base_url: str, agent: str, token: str, workspace_rid: str | None
+        cls,
+        cfg: ServiceConfiguration,
+        base_url: str,
+        agent: str,
+        token: str,
+        workspace_rid: str | None,
+        *,
+        default_headers: Mapping[str, str] | None = None,
     ) -> Self:
         app_base_url = api_base_url_to_app_base_url(base_url)
-        client_factory = create_conjure_client_factory(user_agent=agent, service_config=cfg)
+
+        def client_factory(service_class: type[TService]) -> TService:
+            return create_conjure_client_factory(
+                user_agent=agent,
+                service_config=cfg,
+                default_headers=default_headers,
+            )(service_class)
 
         return cls(
             auth_header=f"Bearer {token}",
             workspace_rid=workspace_rid,
             app_base_url=app_base_url,
+            _api_base_url=base_url,
+            _user_agent=agent,
+            _token=token,
+            _service_config=cfg,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),

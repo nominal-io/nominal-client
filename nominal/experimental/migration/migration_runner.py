@@ -46,9 +46,6 @@ class MigrationRunner:
             dataset_config (MigrationDatasetConfig): _description_
             destination_client (NominalClient): _description_
             migration_state_path (Path | str | None, optional): _description_. Defaults to None.
-
-        Raises:
-            ValueError: _description_
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config

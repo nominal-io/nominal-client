@@ -126,6 +126,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         *,
         start: datetime | IntegralNanosecondsUTC,
         description: str | None = None,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
     @overload
@@ -135,6 +136,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         *,
         frame_timestamps: Sequence[IntegralNanosecondsUTC],
         description: str | None = None,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
     def add_file(
@@ -144,6 +146,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         start: datetime | IntegralNanosecondsUTC | None = None,
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile:
         """Append to a video from a file-path to H264-encoded video data. Only one of start or frame_timestamps
         is allowed.
@@ -155,6 +158,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                 parameter, unless precise per-frame metadata is available and desired.
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
+            overwrite_overlapping: If True, any segments from other video files within this video that overlap
+                with the newly added file will be deleted before inserting the new segments.
 
         Returns:
             Reference to the created video file.
@@ -170,6 +175,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                     start=start,
                     description=description,
                     file_type=file_type,
+                    overwrite_overlapping=overwrite_overlapping,
                 )
             elif frame_timestamps is not None:
                 return self.add_from_io(
@@ -178,6 +184,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                     frame_timestamps=frame_timestamps,
                     description=description,
                     file_type=file_type,
+                    overwrite_overlapping=overwrite_overlapping,
                 )
             else:  # This should never be reached due to the validation above
                 raise ValueError("Either 'start' or 'frame_timestamps' must be provided")
@@ -191,6 +198,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         start: datetime | IntegralNanosecondsUTC,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
     @overload
@@ -202,6 +210,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         frame_timestamps: Sequence[IntegralNanosecondsUTC],
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile: ...
 
     def add_from_io(
@@ -212,6 +221,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MP4,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile:
         """Append to a video from a file-like object containing video data encoded in H264 or H265.
 
@@ -224,6 +234,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video file, e.g., MP4 vs. MKV.
+            overwrite_overlapping: If True, any segments from other video files within this video that overlap
+                with the newly added file will be deleted before inserting the new segments.
 
         Returns:
             Reference to the created video file.
@@ -256,6 +268,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                         )
                     ),
                     timestamp_manifest=timestamp_manifest,
+                    over_write_segments=overwrite_overlapping or None,
                 )
             )
         )
@@ -275,6 +288,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         path: PathLike,
         topic: str,
         description: str | None = None,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile:
         """Append to a video from a file-path to an MCAP file containing video data.
 
@@ -283,6 +297,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             topic: Topic pointing to video data within the MCAP file.
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
+            overwrite_overlapping: If True, any segments from other video files within this video that overlap
+                with the newly added file will be deleted before inserting the new segments.
 
         Returns:
             Reference to the created video file.
@@ -299,6 +315,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                 topic=topic,
                 description=description,
                 file_type=file_type,
+                overwrite_overlapping=overwrite_overlapping,
             )
 
     add_mcap_to_video = add_mcap
@@ -310,6 +327,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
         topic: str,
         description: str | None = None,
         file_type: tuple[str, str] | FileType = FileTypes.MCAP,
+        overwrite_overlapping: bool = False,
     ) -> VideoFile:
         """Append to a video from a file-like binary stream with MCAP data containing video data.
 
@@ -320,6 +338,8 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             description: Description of the video file.
                 NOTE: this is currently not displayed to users and may be removed in the future.
             file_type: Metadata about the type of video (e.g. MCAP).
+            overwrite_overlapping: If True, any segments from other video files within this video that overlap
+                with the newly added file will be deleted before inserting the new segments.
 
         Returns:
             Reference to the created video file.
@@ -354,6 +374,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
                     timestamp_manifest=scout_video_api.VideoFileTimestampManifest(
                         mcap=scout_video_api.McapTimestampManifest(api.McapChannelLocator(topic=topic))
                     ),
+                    over_write_segments=overwrite_overlapping or None,
                 )
             )
         )

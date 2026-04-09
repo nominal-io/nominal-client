@@ -1,5 +1,61 @@
 # Changelog
 
+## [1.128.0](https://github.com/nominal-io/nominal-client/compare/v1.127.0...v1.128.0) (2026-04-07)
+
+
+### Features
+
+* extend as_user impersonation to more create endpoints ([#692](https://github.com/nominal-io/nominal-client/issues/692)) ([c46cd4c](https://github.com/nominal-io/nominal-client/commit/c46cd4c3fea4588add4505ca25ad30a5f28d56fb))
+
+## [1.127.0](https://github.com/nominal-io/nominal-client/compare/v1.126.0...v1.127.0) (2026-04-07)
+
+
+### Features
+
+* add overwrite_overlapping param to Video.add_file / add_from_io ([#700](https://github.com/nominal-io/nominal-client/issues/700)) ([8cccc69](https://github.com/nominal-io/nominal-client/commit/8cccc69da028554b98ecc98c8234d686757b8650))
+
+## [1.126.0](https://github.com/nominal-io/nominal-client/compare/v1.125.0...v1.126.0) (2026-04-05)
+
+
+### Features
+
+* strip and re-bind video panel datasource RIDs on template save/instantiation ([#697](https://github.com/nominal-io/nominal-client/issues/697)) ([ca816ef](https://github.com/nominal-io/nominal-client/commit/ca816ef77136c91a5c1f642a578aa88bb7bd60a3))
+
+## [1.125.0](https://github.com/nominal-io/nominal-client/compare/v1.124.1...v1.125.0) (2026-04-03)
+
+
+### Features
+
+* updated nominal-video to 0.1.9 ([#695](https://github.com/nominal-io/nominal-client/issues/695)) ([22c8089](https://github.com/nominal-io/nominal-client/commit/22c8089bd6146e177c013fab87ec8b889c62e9ed))
+
+## [1.124.1](https://github.com/nominal-io/nominal-client/compare/v1.124.0...v1.124.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* remove irrelevant docstring ([#693](https://github.com/nominal-io/nominal-client/issues/693)) ([12fe51b](https://github.com/nominal-io/nominal-client/commit/12fe51b5f603d228d11628089f883c97a37f9eff))
+
+## [1.124.0](https://github.com/nominal-io/nominal-client/compare/v1.123.0...v1.124.0) (2026-04-01)
+
+
+### Features
+
+* add dataset as_user client helper ([#650](https://github.com/nominal-io/nominal-client/issues/650)) ([9ed46ca](https://github.com/nominal-io/nominal-client/commit/9ed46cab9da79e794730690a721719b16f3c15e1))
+
+
+### Bug Fixes
+
+* update dataset migrator util to handle jsonl ([#689](https://github.com/nominal-io/nominal-client/issues/689)) ([3f9e53d](https://github.com/nominal-io/nominal-client/commit/3f9e53d4b152a3566d2b265f819e90c02791b261))
+
+## [1.123.0](https://github.com/nominal-io/nominal-client/compare/v1.122.0...v1.123.0) (2026-03-27)
+
+
+### Features
+
+* added nominal-video and hooks in place for live streaming video ([#662](https://github.com/nominal-io/nominal-client/issues/662)) ([9de08b6](https://github.com/nominal-io/nominal-client/commit/9de08b63e631bb92e17c19c058d70274e31f4d8b))
+* migrate attachments in the workbook migrator ([#685](https://github.com/nominal-io/nominal-client/issues/685)) ([b9129d0](https://github.com/nominal-io/nominal-client/commit/b9129d0c15d8a23fa561c2082a4b6cafd7f8fe3a))
+* update labels in workbook after migration ([#686](https://github.com/nominal-io/nominal-client/issues/686)) ([d4e8cdf](https://github.com/nominal-io/nominal-client/commit/d4e8cdfa1d15c63786ae7a40d35bfef7f1cab9ea))
+
 ## [1.122.0](https://github.com/nominal-io/nominal-client/compare/v1.121.0...v1.122.0) (2026-03-23)
 
 
