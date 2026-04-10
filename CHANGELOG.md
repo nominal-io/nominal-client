@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.129.0](https://github.com/nominal-io/nominal-client/compare/v1.128.0...v1.129.0) (2026-04-10)
+
+
+### Features
+
+* Added manifest output file type for containerized extractor ([#684](https://github.com/nominal-io/nominal-client/issues/684)) ([d1a5d9e](https://github.com/nominal-io/nominal-client/commit/d1a5d9e7073ed850fe72a4f79720d312f1891b88))
+
 ## [1.128.0](https://github.com/nominal-io/nominal-client/compare/v1.127.0...v1.128.0) (2026-04-07)
 
 
