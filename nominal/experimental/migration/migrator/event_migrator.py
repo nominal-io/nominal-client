@@ -36,12 +36,13 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
         return EventCopyOptions()
 
     def _copy_from_impl(self, source: Event, options: EventCopyOptions) -> Event:
+        destination_client = self.ctx.destination_client_for(source)
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_event(mapped_rid)
+            return destination_client.get_event(mapped_rid)
 
-        new_event = self.ctx.destination_client.create_event(
+        new_event = destination_client.create_event(
             name=options.new_name if options.new_name is not None else source.name,
             type=options.new_type if options.new_type is not None else source.type,
             start=options.new_start if options.new_start is not None else source.start,

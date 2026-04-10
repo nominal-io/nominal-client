@@ -36,16 +36,17 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
         return self.copy_from(source_attachment)
 
     def _copy_from_impl(self, source: Attachment, options: ResourceCopyOptions) -> Attachment:
+        destination_client = self.ctx.destination_client_for(source)
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_attachment(mapped_rid)
+            return destination_client.get_attachment(mapped_rid)
 
         source_clients = cast(ClientsBunch, source._clients)
         raw = source_clients.attachment.get(source_clients.auth_header, source.rid)
         content = source_clients.attachment.get_content(source_clients.auth_header, source.rid)
         file_type = FileType("", raw.file_type) if raw.file_type else FileTypes.BINARY
-        new_attachment = self.ctx.destination_client.create_attachment_from_io(
+        new_attachment = destination_client.create_attachment_from_io(
             content,
             raw.title,
             file_type,

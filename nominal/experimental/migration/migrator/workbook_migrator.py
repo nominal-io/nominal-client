@@ -55,7 +55,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_workbook(mapped_rid)
+            return self.ctx.destination_client_for(source).get_workbook(mapped_rid)
 
         if (options.destination_asset is None) == (options.destination_run is None):
             raise ValueError("Exactly one of destination_asset or destination_run must be provided.")
@@ -139,7 +139,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             rid_map[old_rid] = new_attachment.rid
             logger.debug("Migrated preview image attachment %s -> %s", old_rid, new_attachment.rid)
 
-        dest_clients = self.ctx.destination_client._clients
+        dest_clients = self.ctx.destination_client_for(source)._clients
         dest_clients.notebook.update_metadata(
             dest_clients.auth_header,
             scout_notebook_api.UpdateNotebookMetadataRequest(

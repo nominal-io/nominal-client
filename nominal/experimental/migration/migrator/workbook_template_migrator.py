@@ -42,10 +42,11 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
         return WorkbookTemplateCopyOptions(include_content_and_layout=True)
 
     def _copy_from_impl(self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions) -> WorkbookTemplate:
+        destination_client = self.ctx.destination_client_for(source)
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_workbook_template(mapped_rid)
+            return destination_client.get_workbook_template(mapped_rid)
 
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
         new_template_layout, new_workbook_content = self._resolve_template_content_and_layout(
@@ -58,7 +59,7 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
         )
 
         new_workbook_template = _create_workbook_template_with_content_and_layout(
-            clients=self.ctx.destination_client._clients,
+            clients=destination_client._clients,
             title=options.new_template_title
             if options.new_template_title is not None
             else raw_source_template.metadata.title,
@@ -74,9 +75,7 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
             layout=new_template_layout,
             content=new_workbook_content,
             commit_message="Cloned from template",
-            workspace_rid=self.ctx.destination_client.get_workspace(
-                self.ctx.destination_client._clients.workspace_rid
-            ).rid,
+            workspace_rid=destination_client.get_workspace(destination_client._clients.workspace_rid).rid,
             is_published=raw_source_template.metadata.is_published,
         )
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_workbook_template.rid)

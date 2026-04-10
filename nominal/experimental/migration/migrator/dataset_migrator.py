@@ -45,14 +45,15 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
         return new_dataset
 
     def _resolve_destination_dataset(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
+        destination_client = self.ctx.destination_client_for(source)
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_dataset(mapped_rid)
+            return destination_client.get_dataset(mapped_rid)
 
         log_extras = {
-            "destination_client_workspace": self.ctx.destination_client.get_workspace(
-                self.ctx.destination_client._clients.workspace_rid
+            "destination_client_workspace": destination_client.get_workspace(
+                destination_client._clients.workspace_rid
             ).rid
         }
         dataset_name = options.new_dataset_name if options.new_dataset_name is not None else source.name
@@ -136,7 +137,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                 raise ValueError(f"Could not extract UUID from dataset rid: {source.rid}")
             source_uuid = match.group(2)
             return create_dataset_with_uuid(
-                client=self.ctx.destination_client,
+                client=self.ctx.destination_client_for(source),
                 dataset_uuid=source_uuid,
                 name=dataset_name,
                 description=dataset_description,
@@ -144,7 +145,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                 properties=dataset_properties,
             )
 
-        return self.ctx.destination_client.create_dataset(
+        return self.ctx.destination_client_for(source).create_dataset(
             name=dataset_name,
             description=dataset_description,
             properties=dataset_properties,

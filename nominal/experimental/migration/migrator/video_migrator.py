@@ -40,11 +40,12 @@ class VideoMigrator(Migrator[Video, VideoCopyOptions]):
         return result
 
     def _resolve_destination_video(self, source: Video, options: VideoCopyOptions) -> Video:
+        destination_client = self.ctx.destination_client_for(source)
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_video(mapped_rid)
-        new_video = self.ctx.destination_client.create_video(
+            return destination_client.get_video(mapped_rid)
+        new_video = destination_client.create_video(
             name=options.new_video_name if options.new_video_name is not None else source.name,
             description=options.new_video_description
             if options.new_video_description is not None

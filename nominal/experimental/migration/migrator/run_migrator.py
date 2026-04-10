@@ -38,12 +38,13 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
         return RunCopyOptions()
 
     def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
+        destination_client = self.ctx.destination_client_for(source)
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_run(mapped_rid)
+            return destination_client.get_run(mapped_rid)
 
-        new_run = self.ctx.destination_client.create_run(
+        new_run = destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
             start=options.new_start if options.new_start is not None else source.start,
             end=options.new_end if options.new_end is not None else source.end,
