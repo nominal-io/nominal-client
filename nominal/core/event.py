@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Iterable, Mapping, Protocol, Sequence
@@ -103,13 +102,6 @@ class Event(HasRid, RefreshableMixin[event.Event]):
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, event: event.Event) -> Self:
-        if event.duration.picos:
-            warnings.warn(
-                f"event '{event.name}' ({event.rid}) has a duration specified in picoseconds: "
-                "currently, any sub-nanosecond precision will be truncated in nominal-client",
-                UserWarning,
-                stacklevel=2,
-            )
         return cls(
             rid=event.rid,
             asset_rids=tuple(event.asset_rids),
