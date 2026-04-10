@@ -5,6 +5,7 @@ from enum import Enum
 
 class ResourceType(Enum):
     ASSET = "ASSET"
+    ATTACHMENT = "ATTACHMENT"
     DATASET = "DATASET"
     WORKBOOK_TEMPLATE = "WORKBOOK_TEMPLATE"
     RUN = "RUN"

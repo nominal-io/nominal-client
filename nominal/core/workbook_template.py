@@ -3,7 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol, Sequence, overload
 
-from nominal_api import scout, scout_layout_api, scout_notebook_api, scout_template_api, scout_workbookcommon_api
+from nominal_api import (
+    scout,
+    scout_chartdefinition_api,
+    scout_layout_api,
+    scout_notebook_api,
+    scout_template_api,
+    scout_workbookcommon_api,
+)
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
@@ -11,6 +18,49 @@ from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_ins
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook, WorkbookType
+
+
+def _rebind_video_datasources(
+    content: scout_workbookcommon_api.WorkbookContent,
+    asset_rid: str,
+    run_rid: str | None,
+) -> scout_workbookcommon_api.WorkbookContent:
+    """Re-bind video panel v1 datasources with the new asset/run RIDs on template instantiation.
+
+    Templates strip datasource RIDs on save; this restores them so the video panel
+    can load the correct asset.
+
+    # TODO(@seanmreidy): Remove once videos are migrated to channels.
+    """
+    new_charts: dict[str, scout_chartdefinition_api.VizDefinition] = {}
+    for chart_id, viz in content.charts.items():
+        if viz.video is not None and viz.video.v1 is not None:
+            v1 = viz.video.v1
+            ref_name = (v1.datasource.ref_name if v1.datasource is not None else None) or v1.ref_name or "default"
+            new_v1 = scout_chartdefinition_api.VideoVizDefinitionV1(
+                comparison_run_groups=v1.comparison_run_groups,
+                datasource=scout_chartdefinition_api.VideoPanelDataSource(
+                    asset_rid=asset_rid,
+                    ref_name=ref_name,
+                    run_rid=run_rid,
+                ),
+                events=v1.events,
+                ref_name=v1.ref_name,
+                title=v1.title,
+            )
+            new_charts[chart_id] = scout_chartdefinition_api.VizDefinition(
+                video=scout_chartdefinition_api.VideoVizDefinition(v1=new_v1)
+            )
+        else:
+            new_charts[chart_id] = viz
+
+    return scout_workbookcommon_api.WorkbookContent(
+        channel_variables=content.channel_variables,
+        charts=new_charts,
+        data_scope_inputs=content.data_scope_inputs,
+        inputs=content.inputs,
+        settings=content.settings,
+    )
 
 
 @dataclass(frozen=True)
@@ -26,6 +76,8 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
     class _Clients(HasScoutParams, Protocol):
         @property
         def notebook(self) -> scout.NotebookService: ...
+        @property
+        def run(self) -> scout.RunService: ...
         @property
         def template(self) -> scout.TemplateService: ...
 
@@ -136,6 +188,27 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
             raise ValueError("One of `run` or `asset` must be provided to create a workbook from a template")
 
         raw_template = self._clients.template.get(self._clients.auth_header, self.rid)
+        template_content = raw_template.content
+
+        # Re-bind video panel datasources that were stripped when the template was saved.
+        has_video = any(viz.video is not None and viz.video.v1 is not None for viz in template_content.charts.values())
+        if has_video:
+            run_rid = rid_from_instance_or_string(run) if run is not None else None
+            video_asset_rid = None
+            if asset is not None:
+                video_asset_rid = rid_from_instance_or_string(asset)
+            elif isinstance(run, Run) and run.assets:
+                video_asset_rid = run.assets[0]
+            elif run_rid is not None:
+                raw_run = self._clients.run.get_run(self._clients.auth_header, run_rid)
+                video_asset_rid = raw_run.assets[0] if raw_run.assets else None
+            else:
+                raise ValueError(
+                    f"Could not resolve asset RID for video panel datasource re-binding. run={run!r}, asset={asset!r}"
+                )
+            if video_asset_rid is not None:
+                template_content = _rebind_video_datasources(template_content, video_asset_rid, run_rid)
+
         request = scout_notebook_api.CreateNotebookRequest(
             title=f"Workbook from '{self.title}'" if title is None else title,
             description=self.description if description is None else description,
@@ -146,7 +219,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
                 asset_rids=None if asset is None else [rid_from_instance_or_string(asset)],
             ),
             layout=raw_template.layout,
-            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=raw_template.content),
+            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=template_content),
             event_refs=[],
             workspace=self._clients.resolve_default_workspace_rid(),
         )
