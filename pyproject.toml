@@ -29,7 +29,7 @@ dependencies = [
     "conjure-python-client>=3.1.0,<4",
     "dataclass-wizard>=0.39.1",
     "ffmpeg-python>=0.2.0",
-    "nominal-api==0.1168.0",
+    "nominal-api==0.1192.0",
     "rich>=14.1.0",
     "tabulate>=0.9.0,<0.10",
     "truststore>=0.10.4",
