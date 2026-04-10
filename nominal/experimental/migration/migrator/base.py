@@ -46,11 +46,12 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
         if resolved_options is None:
             raise NotImplementedError(f"{type(self).__name__} requires explicit copy options.")
         source_rid = source.rid
+        destination_client = self.ctx.destination_client_for(source)
 
         logger = logging.getLogger(type(self).__module__)
         log_extras = {
-            "destination_client_workspace": self.ctx.destination_client.get_workspace(
-                self.ctx.destination_client._clients.workspace_rid
+            "destination_client_workspace": destination_client.get_workspace(
+                destination_client._clients.workspace_rid
             ).rid
         }
         logger.debug(

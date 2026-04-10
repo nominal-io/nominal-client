@@ -10,7 +10,7 @@ from nominal.experimental.migration.config.migration_data_config import Migratio
 from nominal.experimental.migration.config.migration_resources import MigrationResources
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
-from nominal.experimental.migration.migrator.context import MigrationContext
+from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 
 logger = logging.getLogger(__name__)
@@ -31,12 +31,14 @@ class MigrationRunner:
     migration_resources: MigrationResources
     dataset_config: MigrationDatasetConfig
     destination_client: NominalClient
+    destination_client_resolver: DestinationClientResolver | None
 
     def __init__(
         self,
         migration_resources: MigrationResources,
         dataset_config: MigrationDatasetConfig,
         destination_client: NominalClient,
+        destination_client_resolver: DestinationClientResolver | None = None,
         migration_state_path: Path | str | None = None,
     ) -> None:
         """Create a migration runner state.
@@ -45,11 +47,14 @@ class MigrationRunner:
             migration_resources (MigrationResources): _description_
             dataset_config (MigrationDatasetConfig): _description_
             destination_client (NominalClient): _description_
+            destination_client_resolver (DestinationClientResolver | None): Optional callback that resolves the
+                destination client for each source resource. Defaults to None.
             migration_state_path (Path | str | None, optional): _description_. Defaults to None.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
         self.destination_client = destination_client
+        self.destination_client_resolver = destination_client_resolver
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
 
         if migration_state_path is not None and resolved_path.exists():
@@ -73,12 +78,13 @@ class MigrationRunner:
         dataset_config (MigrationDataConfig | None): Configuration for dataset migration.
         """
         try:
-            asset_migrator = AssetMigrator(
-                MigrationContext(destination_client=self.destination_client, migration_state=self.migration_state)
+            migration_context = MigrationContext(
+                destination_client=self.destination_client,
+                migration_state=self.migration_state,
+                destination_client_resolver=self.destination_client_resolver,
             )
-            template_migrator = WorkbookTemplateMigrator(
-                MigrationContext(destination_client=self.destination_client, migration_state=self.migration_state)
-            )
+            asset_migrator = AssetMigrator(migration_context)
+            template_migrator = WorkbookTemplateMigrator(migration_context)
             for asset_resources in self.migration_resources.source_assets.values():
                 source_asset = asset_resources.asset
                 asset_migrator.copy_from(

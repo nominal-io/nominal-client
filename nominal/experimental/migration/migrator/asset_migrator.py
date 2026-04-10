@@ -9,7 +9,6 @@ from nominal.core.asset import Asset
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
-from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.event_migrator import EventCopyOptions, EventMigrator
 from nominal.experimental.migration.migrator.run_migrator import RunCopyOptions, RunMigrator
@@ -81,11 +80,12 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         return resource.name
 
     def _resolve_destination_asset(self, source_asset: Asset, options: AssetCopyOptions) -> Asset:
+        destination_client = self.ctx.destination_client_for(source_asset)
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source_asset.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source_asset.rid)
-            return self.ctx.destination_client.get_asset(mapped_rid)
-        return self.ctx.destination_client.create_asset(
+            return destination_client.get_asset(mapped_rid)
+        return destination_client.create_asset(
             name=options.new_asset_name if options.new_asset_name is not None else source_asset.name,
             description=options.new_asset_description
             if options.new_asset_description is not None
@@ -100,12 +100,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         if options.dataset_config is None:
             return
 
-        dataset_migrator = DatasetMigrator(
-            MigrationContext(
-                destination_client=self.ctx.destination_client,
-                migration_state=self.ctx.migration_state,
-            )
-        )
+        dataset_migrator = DatasetMigrator(self.ctx)
 
         source_data_scopes = source_asset._list_dataset_scopes()
         source_datasets = {ds.rid: ds for _, ds in source_asset.list_datasets()}
@@ -143,33 +138,18 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
 
     def _copy_asset_events(self, source_asset: Asset, destination_asset: Asset) -> None:
-        event_migrator = EventMigrator(
-            MigrationContext(
-                destination_client=self.ctx.destination_client,
-                migration_state=self.ctx.migration_state,
-            )
-        )
+        event_migrator = EventMigrator(self.ctx)
         source_events = source_asset.search_events(origin_types=SearchEventOriginType.get_manual_origin_types())
         for source_event in source_events:
             event_migrator.copy_from(source_event, EventCopyOptions(new_assets=[destination_asset]))
 
     def _copy_asset_runs(self, source_asset: Asset, destination_asset: Asset) -> None:
-        run_migrator = RunMigrator(
-            MigrationContext(
-                destination_client=self.ctx.destination_client,
-                migration_state=self.ctx.migration_state,
-            )
-        )
+        run_migrator = RunMigrator(self.ctx)
         for source_run in source_asset.list_runs():
             run_migrator.copy_from(source_run, RunCopyOptions(new_assets=[destination_asset]))
 
     def _copy_asset_checklists(self, source_asset: Asset) -> None:
-        checklist_migrator = ChecklistMigrator(
-            MigrationContext(
-                destination_client=self.ctx.destination_client,
-                migration_state=self.ctx.migration_state,
-            )
-        )
+        checklist_migrator = ChecklistMigrator(self.ctx)
         for source_data_review in source_asset.search_data_reviews():
             source_checklist = source_data_review.get_checklist()
             logger.debug("Found Data Review %s", source_checklist.rid)
@@ -193,12 +173,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
 
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
-        video_migrator = VideoMigrator(
-            MigrationContext(
-                destination_client=self.ctx.destination_client,
-                migration_state=self.ctx.migration_state,
-            )
-        )
+        video_migrator = VideoMigrator(self.ctx)
         for data_scope, video_dataset in source_asset.list_videos():
             new_video_dataset = video_migrator.copy_from(
                 video_dataset,
@@ -218,12 +193,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 )
 
     def _copy_asset_and_run_workbooks(self, source_asset: Asset, new_asset: Asset, include_runs: bool) -> None:
-        workbook_migrator = WorkbookMigrator(
-            MigrationContext(
-                destination_client=self.ctx.destination_client,
-                migration_state=self.ctx.migration_state,
-            )
-        )
+        workbook_migrator = WorkbookMigrator(self.ctx)
         asset_workbooks = source_asset.search_workbooks(include_drafts=True)
         for workbook in asset_workbooks:
             if workbook.asset_rids and len(workbook.asset_rids) == 1:
@@ -235,7 +205,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 if destination_run_rid is None:
                     logger.warning("Run %s not found in migration state", source_run.rid)
                     continue
-                destination_run = self.ctx.destination_client.get_run(destination_run_rid)
+                destination_run = self.ctx.destination_client_for(source_run).get_run(destination_run_rid)
                 for workbook in source_run.search_workbooks(include_drafts=True):
                     if workbook.run_rids and len(workbook.run_rids) == 1:
                         workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_run=destination_run))

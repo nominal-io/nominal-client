@@ -42,10 +42,11 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
         return ChecklistCopyOptions()
 
     def _copy_from_impl(self, source: Checklist, options: ChecklistCopyOptions) -> Checklist:
+        destination_client = self.ctx.destination_client_for(source)
         mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
         if mapped_rid is not None:
             logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_checklist(mapped_rid)
+            return destination_client.get_checklist(mapped_rid)
 
         api_source_checklist = source._get_latest_api()
         commit_message = (
@@ -74,12 +75,10 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
             if options.new_is_published is not None
             else api_source_checklist.metadata.is_published
         )
-        workspace_rid = self.ctx.destination_client.get_workspace(
-            self.ctx.destination_client._clients.workspace_rid
-        ).rid
+        workspace_rid = destination_client.get_workspace(destination_client._clients.workspace_rid).rid
 
         new_checklist = _create_checklist_with_content(
-            client=self.ctx.destination_client,
+            client=destination_client,
             commit_message=commit_message,
             title=title,
             description=description,
