@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.129.1](https://github.com/nominal-io/nominal-client/compare/v1.129.0...v1.129.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* export DataStream type from nominal.core ([#708](https://github.com/nominal-io/nominal-client/issues/708)) ([65b1972](https://github.com/nominal-io/nominal-client/commit/65b1972d23e00baba0cf7a5eef426f204c308b81))
+
 ## [1.129.0](https://github.com/nominal-io/nominal-client/compare/v1.128.0...v1.129.0) (2026-04-10)
 
 
