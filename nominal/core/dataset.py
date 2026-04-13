@@ -870,6 +870,8 @@ class _DatasetWrapper(abc.ABC):
         self,
         data_scope_name: str,
         path: PathLike,
+        *,
+        channel: str | None = None,
     ) -> DatasetFile:
         """Add a journald json file to the dataset selected by `data_scope_name`.
 
@@ -890,7 +892,7 @@ class _DatasetWrapper(abc.ABC):
                 f"tagged with required arguments: {scope_tags}"
             )
 
-        return dataset.add_journal_json(path)
+        return dataset.add_journal_json(path, channel=channel)
 
     def add_mcap(
         self,
