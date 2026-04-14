@@ -324,8 +324,25 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     def add_journal_json(
         self,
         path: PathLike,
+        *,
+        channel: str | None = None,
     ) -> DatasetFile:
-        """Add a journald jsonl file to an existing dataset."""
+        """Add a journald jsonl file to an existing dataset.
+
+        Designed to support any valid journald-style jsonl files, there are a few key expectations for journal
+        json files:
+            - They must be .jsonl or .jsonl.gz files, and each line should contain a json payload
+            - Each json line *must* contain an epoch microsecond timestamp (__REALTIME_TIMESTAMP), which is treated
+              as an integer, and a `MESSAGE` field containing the primary log message. All other JSON key value pairs
+              are converted to args, though, except string literals.
+
+        Args:
+            path: Path to journal json file to ingest
+            channel: Optionally, a channel name to use for ingested logs (defaults to 'logs')
+
+        Returns:
+            DatasetFile object which can be used to poll for ingestion completion
+        """
         log_path = Path(path)
         file_type = FileType.from_path_journal_json(log_path)
         workspace_rid = self._clients.resolve_default_workspace_rid()
@@ -344,7 +361,9 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             ingest_api.IngestRequest(
                 options=ingest_api.IngestOptions(
                     journal_json=ingest_api.JournalJsonOpts(
-                        source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)), target=target
+                        source=ingest_api.IngestSource(s3=ingest_api.S3IngestSource(s3_path)),
+                        target=target,
+                        channel=channel,
                     )
                 )
             ),
@@ -851,6 +870,8 @@ class _DatasetWrapper(abc.ABC):
         self,
         data_scope_name: str,
         path: PathLike,
+        *,
+        channel: str | None = None,
     ) -> DatasetFile:
         """Add a journald json file to the dataset selected by `data_scope_name`.
 
@@ -871,7 +892,7 @@ class _DatasetWrapper(abc.ABC):
                 f"tagged with required arguments: {scope_tags}"
             )
 
-        return dataset.add_journal_json(path)
+        return dataset.add_journal_json(path, channel=channel)
 
     def add_mcap(
         self,
