@@ -1,5 +1,5 @@
 from nominal.core._event_types import EventType, SearchEventOriginType
-from nominal.core._stream.write_stream import DataStream, WriteStream
+from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
@@ -61,6 +61,7 @@ __all__ = [
     "IngestWaitType",
     "LinkDict",
     "LogPoint",
+    "LogStream",
     "NominalClient",
     "poll_until_ingestion_completed",
     "Run",
