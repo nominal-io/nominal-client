@@ -334,7 +334,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             - They must be .jsonl or .jsonl.gz files, and each line should contain a json payload
             - Each json line *must* contain an epoch microsecond timestamp (__REALTIME_TIMESTAMP), which is treated
               as an integer, and a `MESSAGE` field containing the primary log message. All other JSON key value pairs
-              are converted to args, though, expect string literals.
+              are converted to args, though, except string literals.
 
         Args:
             path: Path to journal json file to ingest
