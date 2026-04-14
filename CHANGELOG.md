@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.130.0](https://github.com/nominal-io/nominal-client/compare/v1.129.1...v1.130.0) (2026-04-14)
+
+
+### Features
+
+* allow writing journal json logs to a specific channel ([#710](https://github.com/nominal-io/nominal-client/issues/710)) ([7947c70](https://github.com/nominal-io/nominal-client/commit/7947c70fed5b68f31a2ae25c2d0740ec4323381c))
+
+
+### Bug Fixes
+
+* export LogStream type from nominal.core ([#711](https://github.com/nominal-io/nominal-client/issues/711)) ([0215c2d](https://github.com/nominal-io/nominal-client/commit/0215c2d562da689093498d5231f5051b4bf96d50))
+
 ## [1.129.1](https://github.com/nominal-io/nominal-client/compare/v1.129.0...v1.129.1) (2026-04-13)
 
 
