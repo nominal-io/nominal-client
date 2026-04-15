@@ -11,6 +11,7 @@ from conjure_python_client._serde.decoder import ConjureDecoder
 from conjure_python_client._serde.encoder import ConjureEncoder
 from nominal_api import scout_layout_api, scout_template_api, scout_workbookcommon_api
 
+from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core.workbook_template import WorkbookTemplate, _create_workbook_template_with_content_and_layout
 from nominal.experimental.id_utils.id_utils import UUID_RE
@@ -41,13 +42,17 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
     def default_copy_options(self) -> WorkbookTemplateCopyOptions:
         return WorkbookTemplateCopyOptions(include_content_and_layout=True)
 
-    def _copy_from_impl(self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions) -> WorkbookTemplate:
-        destination_client = self.ctx.destination_client_for(source)
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
-        if mapped_rid is not None:
-            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return destination_client.get_workbook_template(mapped_rid)
+    def _get_existing_destination_resource(
+        self, destination_client: NominalClient, mapped_rid: str
+    ) -> WorkbookTemplate:
+        return destination_client.get_workbook_template(mapped_rid)
 
+    def _copy_from_impl(self, source: WorkbookTemplate, options: WorkbookTemplateCopyOptions) -> WorkbookTemplate:
+        existing_template = self.get_existing_destination_resource(source)
+        if existing_template is not None:
+            return existing_template
+
+        destination_client = self.destination_client_for(source)
         raw_source_template = source._clients.template.get(source._clients.auth_header, source.rid)
         new_template_layout, new_workbook_content = self._resolve_template_content_and_layout(
             raw_source_template,

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Mapping, Sequence
 
+from nominal.core import NominalClient
 from nominal.core._utils.api_tools import Link, LinkDict
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
@@ -37,13 +38,15 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
     def default_copy_options(self) -> RunCopyOptions:
         return RunCopyOptions()
 
-    def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
-        destination_client = self.ctx.destination_client_for(source)
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
-        if mapped_rid is not None:
-            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return destination_client.get_run(mapped_rid)
+    def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Run:
+        return destination_client.get_run(mapped_rid)
 
+    def _copy_from_impl(self, source: Run, options: RunCopyOptions) -> Run:
+        existing_run = self.get_existing_destination_resource(source)
+        if existing_run is not None:
+            return existing_run
+
+        destination_client = self.destination_client_for(source)
         new_run = destination_client.create_run(
             name=options.new_name if options.new_name is not None else source.name,
             start=options.new_start if options.new_start is not None else source.start,

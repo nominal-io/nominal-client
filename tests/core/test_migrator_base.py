@@ -43,10 +43,13 @@ class _FakeMigrator(Migrator["_FakeResource", "_FakeCopyOptions"]):
     def default_copy_options(self) -> _FakeCopyOptions:
         return _FakeCopyOptions()
 
+    def _get_existing_destination_resource(self, destination_client: MagicMock, mapped_rid: str) -> _FakeResource:
+        return _FakeResource(rid=mapped_rid, name="MyAsset")
+
     def _copy_from_impl(self, source: _FakeResource, options: _FakeCopyOptions) -> _FakeResource:
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
-        if mapped_rid is not None:
-            return _FakeResource(rid=mapped_rid, name=source.name)
+        existing = self.get_existing_destination_resource(source)
+        if existing is not None:
+            return _FakeResource(rid=existing.rid, name=source.name)
         new = _FakeResource(rid=f"new-{source.rid}", name=source.name)
         self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new.rid)
         return new

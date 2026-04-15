@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from nominal_api import scout_checks_api
 
+from nominal.core import NominalClient
 from nominal.core.checklist import Checklist
 from nominal.experimental.checklist_utils.checklist_utils import (
     _create_checklist_with_content,
@@ -41,13 +42,15 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
     def default_copy_options(self) -> ChecklistCopyOptions:
         return ChecklistCopyOptions()
 
-    def _copy_from_impl(self, source: Checklist, options: ChecklistCopyOptions) -> Checklist:
-        destination_client = self.ctx.destination_client_for(source)
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
-        if mapped_rid is not None:
-            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return destination_client.get_checklist(mapped_rid)
+    def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Checklist:
+        return destination_client.get_checklist(mapped_rid)
 
+    def _copy_from_impl(self, source: Checklist, options: ChecklistCopyOptions) -> Checklist:
+        existing_checklist = self.get_existing_destination_resource(source)
+        if existing_checklist is not None:
+            return existing_checklist
+
+        destination_client = self.destination_client_for(source)
         api_source_checklist = source._get_latest_api()
         commit_message = (
             options.new_commit_message

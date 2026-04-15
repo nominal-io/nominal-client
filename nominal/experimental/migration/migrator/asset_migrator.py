@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
@@ -79,13 +80,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def _get_resource_name(self, resource: Asset) -> str:
         return resource.name
 
+    def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Asset:
+        return destination_client.get_asset(mapped_rid)
+
     def _resolve_destination_asset(self, source_asset: Asset, options: AssetCopyOptions) -> Asset:
-        destination_client = self.ctx.destination_client_for(source_asset)
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source_asset.rid)
-        if mapped_rid is not None:
-            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source_asset.rid)
-            return destination_client.get_asset(mapped_rid)
-        return destination_client.create_asset(
+        existing_asset = self.get_existing_destination_resource(source_asset)
+        if existing_asset is not None:
+            return existing_asset
+
+        return self.destination_client_for(source_asset).create_asset(
             name=options.new_asset_name if options.new_asset_name is not None else source_asset.name,
             description=options.new_asset_description
             if options.new_asset_description is not None

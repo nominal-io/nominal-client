@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.datasource import CreateChannelRequest
 from nominal.experimental.dataset_utils import create_dataset_with_uuid
@@ -44,13 +45,15 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
 
         return new_dataset
 
-    def _resolve_destination_dataset(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
-        destination_client = self.ctx.destination_client_for(source)
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
-        if mapped_rid is not None:
-            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return destination_client.get_dataset(mapped_rid)
+    def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Dataset:
+        return destination_client.get_dataset(mapped_rid)
 
+    def _resolve_destination_dataset(self, source: Dataset, options: DatasetCopyOptions) -> Dataset:
+        existing_dataset = self.get_existing_destination_resource(source)
+        if existing_dataset is not None:
+            return existing_dataset
+
+        destination_client = self.destination_client_for(source)
         log_extras = {
             "destination_client_workspace": destination_client.get_workspace(
                 destination_client._clients.workspace_rid
@@ -137,7 +140,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                 raise ValueError(f"Could not extract UUID from dataset rid: {source.rid}")
             source_uuid = match.group(2)
             return create_dataset_with_uuid(
-                client=self.ctx.destination_client_for(source),
+                client=self.destination_client_for(source),
                 dataset_uuid=source_uuid,
                 name=dataset_name,
                 description=dataset_description,
@@ -145,7 +148,7 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
                 properties=dataset_properties,
             )
 
-        return self.ctx.destination_client_for(source).create_dataset(
+        return self.destination_client_for(source).create_dataset(
             name=dataset_name,
             description=dataset_description,
             properties=dataset_properties,
