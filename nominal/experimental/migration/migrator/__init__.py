@@ -2,7 +2,7 @@ from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOpti
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
-from nominal.experimental.migration.migrator.context import MigrationContext
+from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.event_migrator import EventCopyOptions, EventMigrator
 from nominal.experimental.migration.migrator.run_migrator import RunCopyOptions, RunMigrator
@@ -21,6 +21,7 @@ __all__ = [
     "ChecklistMigrator",
     "DatasetCopyOptions",
     "DatasetMigrator",
+    "DestinationClientResolver",
     "EventCopyOptions",
     "EventMigrator",
     "MigrationContext",

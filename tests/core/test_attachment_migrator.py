@@ -130,6 +130,7 @@ class TestAttachmentMigrator:
 
         old_rid = _rid(1)
         new_rid = _rid(100)
+        raw = _make_raw_attachment(old_rid)
 
         # Pre-populate migration state
         ctx.migration_state.record_mapping(ResourceType.ATTACHMENT, old_rid, new_rid)
@@ -139,15 +140,51 @@ class TestAttachmentMigrator:
         existing_att.rid = new_rid
         ctx.destination_client.get_attachment.return_value = existing_att
 
-        source_clients = MagicMock()
+        source_clients = _make_source_clients(raw)
         result = migrator.migrate_by_rid(source_clients, old_rid)
 
-        # No source fetch occurred
-        source_clients.attachment.get.assert_not_called()
+        source_clients.attachment.get.assert_called_once_with("Bearer source", old_rid)
 
         # Returned the existing destination attachment
         assert result.rid == new_rid
         ctx.destination_client.get_attachment.assert_called_once_with(new_rid)
+
+    @patch("nominal.experimental.migration.migrator.attachment_migrator.Attachment")
+    def test_migrate_by_rid_already_mapped_uses_resolved_destination_client(
+        self, mock_attachment_cls: MagicMock
+    ) -> None:
+        """migrate_by_rid honors the resolver when an attachment was already migrated."""
+        migrator, ctx = self._make_migrator()
+
+        old_rid = _rid(1)
+        new_rid = _rid(100)
+        raw = _make_raw_attachment(old_rid)
+        source_clients = _make_source_clients(raw)
+
+        source_attachment = MagicMock()
+        source_attachment.rid = old_rid
+        source_attachment.name = "image.png"
+        mock_attachment_cls._from_conjure.return_value = source_attachment
+
+        resolved_client = MagicMock()
+        resolved_client._clients.workspace_rid = "resolved-ws-rid"
+        resolved_workspace = MagicMock()
+        resolved_workspace.rid = "resolved-ws-rid"
+        resolved_client.get_workspace.return_value = resolved_workspace
+        resolved_attachment = MagicMock()
+        resolved_attachment.rid = new_rid
+        resolved_client.get_attachment.return_value = resolved_attachment
+
+        ctx.destination_client_resolver = lambda resource: resolved_client if resource is source_attachment else None
+        ctx.migration_state.record_mapping(ResourceType.ATTACHMENT, old_rid, new_rid)
+
+        result = migrator.migrate_by_rid(source_clients, old_rid)
+
+        source_clients.attachment.get.assert_called_once_with("Bearer source", old_rid)
+        mock_attachment_cls._from_conjure.assert_called_once_with(source_clients, raw)
+        resolved_client.get_attachment.assert_called_once_with(new_rid)
+        ctx.destination_client.get_attachment.assert_not_called()
+        assert result is resolved_attachment
 
     @patch("nominal.experimental.migration.migrator.attachment_migrator.Attachment")
     def test_copy_from_records_mapping(self, mock_attachment_cls: MagicMock) -> None:

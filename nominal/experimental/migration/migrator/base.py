@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
+from nominal.core import NominalClient
 from nominal.core._utils.api_tools import HasRid
 from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
@@ -41,16 +42,29 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
     def clone(self, source: Resource) -> Resource:
         return self.copy_from(source)
 
+    def destination_client_for(self, source: Resource) -> NominalClient:
+        return self.ctx.destination_client_for(source)
+
+    def get_existing_destination_resource(self, source: Resource) -> Resource | None:
+        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
+        if mapped_rid is None:
+            return None
+
+        logger = logging.getLogger(type(self).__module__)
+        logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
+        return self._get_existing_destination_resource(self.destination_client_for(source), mapped_rid)
+
     def copy_from(self, source: Resource, options: CopyOptions | None = None) -> Resource:
         resolved_options = self.default_copy_options() if options is None else options
         if resolved_options is None:
             raise NotImplementedError(f"{type(self).__name__} requires explicit copy options.")
         source_rid = source.rid
+        destination_client = self.destination_client_for(source)
 
         logger = logging.getLogger(type(self).__module__)
         log_extras = {
-            "destination_client_workspace": self.ctx.destination_client.get_workspace(
-                self.ctx.destination_client._clients.workspace_rid
+            "destination_client_workspace": destination_client.get_workspace(
+                destination_client._clients.workspace_rid
             ).rid
         }
         logger.debug(
@@ -102,6 +116,10 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
         Returns:
             Resource: The new resource.
         """
+
+    @abstractmethod
+    def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Resource:
+        """Fetches an already-migrated resource from the destination client."""
 
     @abstractmethod
     def _get_resource_name(self, resource: Resource) -> str:

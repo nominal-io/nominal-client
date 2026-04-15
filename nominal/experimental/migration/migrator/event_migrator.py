@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Iterable, Mapping
 
+from nominal.core import NominalClient
 from nominal.core._event_types import EventType
 from nominal.core.asset import Asset
 from nominal.core.event import Event
@@ -35,13 +36,16 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
     def default_copy_options(self) -> EventCopyOptions:
         return EventCopyOptions()
 
-    def _copy_from_impl(self, source: Event, options: EventCopyOptions) -> Event:
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
-        if mapped_rid is not None:
-            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_event(mapped_rid)
+    def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Event:
+        return destination_client.get_event(mapped_rid)
 
-        new_event = self.ctx.destination_client.create_event(
+    def _copy_from_impl(self, source: Event, options: EventCopyOptions) -> Event:
+        existing_event = self.get_existing_destination_resource(source)
+        if existing_event is not None:
+            return existing_event
+
+        destination_client = self.destination_client_for(source)
+        new_event = destination_client.create_event(
             name=options.new_name if options.new_name is not None else source.name,
             type=options.new_type if options.new_type is not None else source.type,
             start=options.new_start if options.new_start is not None else source.start,

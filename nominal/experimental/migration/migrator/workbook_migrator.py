@@ -8,6 +8,7 @@ from typing import Mapping, Sequence, cast
 from nominal_api import api as nominal_api
 from nominal_api import scout_notebook_api
 
+from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
 from nominal.core.asset import Asset
 from nominal.core.run import Run
@@ -46,16 +47,18 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
     def default_copy_options(self) -> WorkbookCopyOptions | None:
         return None
 
+    def _get_existing_destination_resource(self, destination_client: NominalClient, mapped_rid: str) -> Workbook:
+        return destination_client.get_workbook(mapped_rid)
+
     def _copy_from_impl(self, source: Workbook, options: WorkbookCopyOptions) -> Workbook:
         """This method copies content from an old workbook to a new workbook by use of templates, in order to
         modify hardcoded variables in workbook content. We do this by creating a template in the source
         client, copying the template to the destination client, creating a new workbook from the template in the
         destination client, and then archiving the template in both clients.
         """
-        mapped_rid = self.ctx.migration_state.get_mapped_rid(self.resource_type, source.rid)
-        if mapped_rid is not None:
-            logger.debug("Skipping %s (rid: %s): already in migration state", self.resource_label, source.rid)
-            return self.ctx.destination_client.get_workbook(mapped_rid)
+        existing_workbook = self.get_existing_destination_resource(source)
+        if existing_workbook is not None:
+            return existing_workbook
 
         if (options.destination_asset is None) == (options.destination_run is None):
             raise ValueError("Exactly one of destination_asset or destination_run must be provided.")
@@ -139,7 +142,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             rid_map[old_rid] = new_attachment.rid
             logger.debug("Migrated preview image attachment %s -> %s", old_rid, new_attachment.rid)
 
-        dest_clients = self.ctx.destination_client._clients
+        dest_clients = self.destination_client_for(source)._clients
         dest_clients.notebook.update_metadata(
             dest_clients.auth_header,
             scout_notebook_api.UpdateNotebookMetadataRequest(
