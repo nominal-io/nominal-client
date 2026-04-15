@@ -237,6 +237,12 @@ def create_multipart_request_session(
         status_forcelist=(429, 500, 502, 503, 504),
     )
     session = requests.Session()
-    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size)
+    adapter = SslBypassRequestsAdapter(
+        max_retries=retries,
+        # Match the number of cached host pools to the thread count to avoid LRU eviction.
+        pool_connections=pool_size,
+        # Double the per-host connection limit so retries/redirects don't discard connections.
+        pool_maxsize=pool_size * 2,
+    )
     session.mount("https://", adapter)
     return session
