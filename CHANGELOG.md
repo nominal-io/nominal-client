@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.131.0](https://github.com/nominal-io/nominal-client/compare/v1.130.0...v1.131.0) (2026-04-15)
+
+
+### Features
+
+* add destination client resolver to migration runner ([#707](https://github.com/nominal-io/nominal-client/issues/707)) ([99ec09b](https://github.com/nominal-io/nominal-client/commit/99ec09b6694ed64ee6591b5ddff0ddce82f9dd96))
+
 ## [1.130.0](https://github.com/nominal-io/nominal-client/compare/v1.129.1...v1.130.0) (2026-04-14)
 
 
