@@ -228,9 +228,13 @@ def create_multipart_request_session(
     and connection pool, safe for concurrent use across threads.
 
     Args:
-        pool_size: Maximum number of connections to keep in the pool.
+        pool_size: Number of concurrent workers. Controls the number of cached host pools
+            and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
     """
+    if pool_size <= 0:
+        raise ValueError(f"pool_size must be positive, got {pool_size}")
+
     retries = Retry(
         total=num_retries,
         backoff_factor=0.5,
