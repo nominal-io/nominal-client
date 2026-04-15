@@ -228,15 +228,25 @@ def create_multipart_request_session(
     and connection pool, safe for concurrent use across threads.
 
     Args:
-        pool_size: Maximum number of connections to keep in the pool.
+        pool_size: Number of concurrent workers. Controls the number of cached host pools
+            and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
     """
+    if pool_size <= 0:
+        raise ValueError(f"pool_size must be positive, got {pool_size}")
+
     retries = Retry(
         total=num_retries,
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
     session = requests.Session()
-    adapter = SslBypassRequestsAdapter(max_retries=retries, pool_maxsize=pool_size)
+    adapter = SslBypassRequestsAdapter(
+        max_retries=retries,
+        # Match the number of cached host pools to the thread count to avoid LRU eviction.
+        pool_connections=pool_size,
+        # Double the per-host connection limit so retries/redirects don't discard connections.
+        pool_maxsize=pool_size * 2,
+    )
     session.mount("https://", adapter)
     return session
