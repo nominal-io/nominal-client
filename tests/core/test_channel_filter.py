@@ -146,7 +146,7 @@ def test_all_results_collected_across_concurrent_batches(mock_clients, make_chan
 
 
 def test_api_error_in_one_batch_does_not_block_others(mock_clients, make_channel, make_series_count_response, caplog):
-    """If one batch fails, other batches still return their results."""
+    """If one batch fails, channels from that batch are included as a safe default."""
     mock_clients.datasource.batch_get_series_count.side_effect = [
         make_series_count_response([1]),
         RuntimeError("API error"),
@@ -162,5 +162,6 @@ def test_api_error_in_one_batch_does_not_block_others(mock_clients, make_channel
             batch_size=1,
         ))
 
-    assert len(result) == 2
+    # All 3 channels returned: 2 confirmed by API + 1 from failed batch (safe default)
+    assert len(result) == 3
     assert "Failed to check data presence" in caplog.text

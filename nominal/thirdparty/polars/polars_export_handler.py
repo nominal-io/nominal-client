@@ -329,7 +329,10 @@ def _build_channel_groups(
     # Channels that wouldn't fit in a single export request for a batch
     large_channels: list[Channel] = []
 
-    allowed_rate_per_group = points_per_request / batch_duration.total_seconds()
+    batch_seconds = batch_duration.total_seconds()
+    if batch_seconds <= 0:
+        raise ValueError(f"batch_duration must be positive, got {batch_duration}")
+    allowed_rate_per_group = points_per_request / batch_seconds
 
     # Partition channels by type compatibility: numeric (DOUBLE/INT) can share
     # requests, but STRING channels must be in separate requests.

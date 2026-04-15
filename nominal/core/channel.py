@@ -564,6 +564,10 @@ def filter_channels_with_data(
                 matched, underconstrained = future.result()
             except Exception:
                 logger.exception("Failed to check data presence for %d channels", len(batch))
+                # Treat channels from failed batches as having data — the safe default
+                # is to include them rather than silently dropping them from export.
+                for ch in batch:
+                    matched_keys.add((ch.data_source, ch.name))
                 continue
 
             for ch in matched:
