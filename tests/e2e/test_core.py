@@ -25,7 +25,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
-from nominal.core import NominalClient
+from nominal.core import EventType, NominalClient
 from nominal.core.channel import ChannelDataType
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import wait_for_files_to_ingest
@@ -155,6 +155,29 @@ def test_update_attachment(client: NominalClient, csv_data, archive: ArchiveFn):
     assert at.description == new_desc
     assert at.properties == new_props
     assert at.labels == tuple(new_labels)
+
+
+def test_create_event_rejects_unknown_type(client: NominalClient):
+    """Creating an event with event type EventType.UNKNOWN raises"""
+    start, _ = _create_random_start_end()
+    with pytest.raises(ValueError, match="EventType.UNKNOWN cannot be created"):
+        client.create_event(f"event-{uuid4()}", EventType.UNKNOWN, start)
+
+
+def test_update_event_rejects_unknown_type(client: NominalClient, archive: ArchiveFn):
+    """Updating an event to have event type EventType.UNKNOWN raises"""
+    asset = client.create_asset(f"asset-{uuid4()}")
+    archive(asset)
+
+    start, _ = _create_random_start_end()
+    event = client.create_event(f"event-{uuid4()}", EventType.INFO, start, assets=[asset])
+    archive(event)
+
+    event.update(type=EventType.ERROR)
+    assert event.type == EventType.ERROR
+
+    with pytest.raises(ValueError, match="EventType.UNKNOWN cannot be updated"):
+        event.update(type=EventType.UNKNOWN)
 
 
 def test_add_attachment_to_run_and_list_attachments(client: NominalClient, csv_data, archive: ArchiveFn):
