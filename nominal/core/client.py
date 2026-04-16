@@ -315,23 +315,6 @@ class NominalClient:
         query = create_search_users_query(exact_match=exact_match, search_text=search_text)
         return list(self._iter_search_users(query))
 
-    def batch_preregister_users(self, emails: Sequence[str]) -> dict[str, User]:
-        """Preregister users by email for the caller's organization.
-
-        This endpoint is intended for org admins who need to provision user accounts ahead of first login, such as
-        during migrations between Nominal instances.
-
-        Args:
-            emails: Email addresses to preregister. The backend currently accepts at most 1000 emails per request.
-
-        Returns:
-            A mapping from email address to newly created user details. Emails that already belong to existing
-            accounts are omitted from the response.
-        """
-        request = authentication_api.BatchPreregisterUsersRequest(emails=list(emails))
-        response = self._clients.authentication.batch_preregister_users(self._clients.auth_header, request)
-        return {email: User._from_conjure(raw_user) for email, raw_user in response.users.items()}
-
     def _iter_search_datasets(
         self,
         query: scout_catalog.SearchDatasetsQuery,
