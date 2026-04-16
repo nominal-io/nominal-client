@@ -111,7 +111,7 @@ class Migrator(ABC, Generic[Resource, CopyOptions]):
 
     def use_singleflight(self) -> bool:
         """Whether concurrent callers should be deduped for a given source RID."""
-        return False
+        return True
 
     @abstractmethod
     def default_copy_options(self) -> CopyOptions | None:

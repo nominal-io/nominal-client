@@ -33,9 +33,6 @@ class EventMigrator(Migrator[Event, EventCopyOptions]):
     def resource_type(self) -> ResourceType:
         return ResourceType.EVENT
 
-    def use_singleflight(self) -> bool:
-        return True
-
     def default_copy_options(self) -> EventCopyOptions:
         return EventCopyOptions()
 

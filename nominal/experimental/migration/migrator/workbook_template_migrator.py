@@ -39,9 +39,6 @@ class WorkbookTemplateMigrator(Migrator[WorkbookTemplate, WorkbookTemplateCopyOp
     def resource_type(self) -> ResourceType:
         return ResourceType.WORKBOOK_TEMPLATE
 
-    def use_singleflight(self) -> bool:
-        return True
-
     def default_copy_options(self) -> WorkbookTemplateCopyOptions:
         return WorkbookTemplateCopyOptions(include_content_and_layout=True)
 

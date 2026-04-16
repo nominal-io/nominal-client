@@ -27,9 +27,6 @@ class VideoMigrator(Migrator[Video, VideoCopyOptions]):
     def resource_type(self) -> ResourceType:
         return ResourceType.VIDEO
 
-    def use_singleflight(self) -> bool:
-        return True
-
     def default_copy_options(self) -> VideoCopyOptions:
         return VideoCopyOptions(include_files=True)
 

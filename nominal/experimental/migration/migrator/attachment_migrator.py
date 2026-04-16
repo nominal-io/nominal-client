@@ -18,9 +18,6 @@ class AttachmentMigrator(Migrator[Attachment, ResourceCopyOptions]):
     def resource_type(self) -> ResourceType:
         return ResourceType.ATTACHMENT
 
-    def use_singleflight(self) -> bool:
-        return True
-
     def default_copy_options(self) -> ResourceCopyOptions:
         return ResourceCopyOptions()
 

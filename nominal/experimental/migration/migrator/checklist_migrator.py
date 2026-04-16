@@ -36,9 +36,6 @@ class ChecklistMigrator(Migrator[Checklist, ChecklistCopyOptions]):
     def resource_type(self) -> ResourceType:
         return ResourceType.CHECKLIST
 
-    def use_singleflight(self) -> bool:
-        return True
-
     def clone(self, source: Checklist) -> Checklist:
         raise NotImplementedError("Checklist does not support clone(); use copy_from().")
 
