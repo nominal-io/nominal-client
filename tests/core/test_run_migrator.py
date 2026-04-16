@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -144,7 +144,7 @@ class TestRunMigratorExistingRun:
         assert result is existing_dest_run
 
     def test_no_update_when_no_new_assets_in_options(self) -> None:
-        """When new_assets is None (default options), _ensure_assets_added is skipped and the existing run is returned as-is."""
+        """When new_assets is None (default options), _ensure_assets_added is skipped, the existing run is returned."""
         ctx = _make_context()
         migrator = RunMigrator(ctx)
 
