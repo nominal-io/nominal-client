@@ -87,6 +87,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
         links: Sequence[str | Link | LinkDict] | None = None,
+        assets: Sequence[Asset | str] | None = None,
     ) -> Self:
         """Replace run metadata.
         Updates the current instance, and returns it.
@@ -101,6 +102,11 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             for old_label in run.labels:
                 new_labels.append(old_label)
             run = run.update(labels=new_labels)
+
+        Note: When `assets` is provided it fully replaces the run's asset list. To append an asset, merge with
+        the existing list first:
+
+            run = run.update(assets=[*run.assets, new_asset])
         """
         request = scout_run_api.UpdateRunRequest(
             description=description,
@@ -109,7 +115,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             start_time=None if start is None else _SecondsNanos.from_flexible(start).to_scout_run_api(),
             end_time=None if end is None else _SecondsNanos.from_flexible(end).to_scout_run_api(),
             title=name,
-            assets=[],
+            assets=[] if assets is None else [rid_from_instance_or_string(a) for a in assets],
             links=None if links is None else create_links(links),
         )
         updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
