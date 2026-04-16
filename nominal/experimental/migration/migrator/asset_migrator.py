@@ -183,12 +183,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     "Skipping data review execution for %s: already in migration state", source_data_review.rid
                 )
 
-    def _copy_asset_attachments(self, source_asset: Asset, destination_asset: Asset) -> None:
-        attachment_migrator = AttachmentMigrator(
-            MigrationContext(
-                destination_client=self.ctx.destination_client,
-                migration_state=self.ctx.migration_state,
-            )
+        attachment_migrator = AttachmentMigrator(self.ctx)
         )
         new_attachments = [attachment_migrator.copy_from(a) for a in source_asset.list_attachments()]
         if new_attachments:
