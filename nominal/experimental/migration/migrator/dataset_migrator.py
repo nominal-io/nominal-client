@@ -32,6 +32,9 @@ class DatasetMigrator(Migrator[Dataset, DatasetCopyOptions]):
     def resource_type(self) -> ResourceType:
         return ResourceType.DATASET
 
+    def use_singleflight(self) -> bool:
+        return True
+
     def default_copy_options(self) -> DatasetCopyOptions:
         return DatasetCopyOptions(include_files=True)
 

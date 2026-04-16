@@ -35,6 +35,9 @@ class RunMigrator(Migrator[Run, RunCopyOptions]):
     def resource_type(self) -> ResourceType:
         return ResourceType.RUN
 
+    def use_singleflight(self) -> bool:
+        return True
+
     def default_copy_options(self) -> RunCopyOptions:
         return RunCopyOptions()
 

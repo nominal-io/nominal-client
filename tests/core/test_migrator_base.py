@@ -6,8 +6,10 @@ These tests are skipped on older Python versions.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import sys
+import threading
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
@@ -58,6 +60,38 @@ class _FakeMigrator(Migrator["_FakeResource", "_FakeCopyOptions"]):
         return resource.name
 
 
+class _SingleflightFakeMigrator(_FakeMigrator):
+    def __init__(
+        self,
+        ctx: MigrationContext,
+        *,
+        started: threading.Event | None = None,
+        release: threading.Event | None = None,
+        fail_once: threading.Event | None = None,
+    ) -> None:
+        super().__init__(ctx)
+        self.started = started
+        self.release = release
+        self.fail_once = fail_once
+        self.copy_count = 0
+        self._copy_lock = threading.Lock()
+
+    def use_singleflight(self) -> bool:
+        return True
+
+    def _copy_from_impl(self, source: _FakeResource, options: _FakeCopyOptions) -> _FakeResource:
+        with self._copy_lock:
+            self.copy_count += 1
+        if self.started is not None:
+            self.started.set()
+        if self.release is not None:
+            self.release.wait(timeout=5)
+        if self.fail_once is not None and self.fail_once.is_set():
+            self.fail_once.clear()
+            raise RuntimeError("boom")
+        return super()._copy_from_impl(source, options)
+
+
 def _make_context() -> MigrationContext:
     mock_client = MagicMock()
     mock_client._clients.workspace_rid = "ws-rid"
@@ -92,3 +126,53 @@ def test_copy_from_logs_found_for_already_mapped_resource(caplog: pytest.LogCapt
 
     assert not any("New asset created" in record.message for record in caplog.records)
     assert any("Found asset" in record.message for record in caplog.records)
+
+
+def test_copy_from_singleflight_deduplicates_concurrent_calls() -> None:
+    ctx = _make_context()
+    source = _FakeResource(rid="src-1", name="MyAsset")
+    started = threading.Event()
+    release = threading.Event()
+    migrator = _SingleflightFakeMigrator(ctx, started=started, release=release)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_a = executor.submit(migrator.copy_from, source)
+        assert started.wait(timeout=5)
+        future_b = executor.submit(migrator.copy_from, source)
+        release.set()
+        result_a = future_a.result(timeout=5)
+        result_b = future_b.result(timeout=5)
+
+    assert result_a.rid == "new-src-1"
+    assert result_b.rid == "new-src-1"
+    assert migrator.copy_count == 1
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, "src-1") == "new-src-1"
+
+
+def test_copy_from_singleflight_retries_after_failure() -> None:
+    ctx = _make_context()
+    source = _FakeResource(rid="src-1", name="MyAsset")
+    started = threading.Event()
+    release = threading.Event()
+    fail_once = threading.Event()
+    fail_once.set()
+    migrator = _SingleflightFakeMigrator(ctx, started=started, release=release, fail_once=fail_once)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_a = executor.submit(migrator.copy_from, source)
+        assert started.wait(timeout=5)
+        future_b = executor.submit(migrator.copy_from, source)
+        release.set()
+        with pytest.raises(RuntimeError, match="boom"):
+            future_a.result(timeout=5)
+        with pytest.raises(RuntimeError, match="boom"):
+            future_b.result(timeout=5)
+
+    release = threading.Event()
+    retry_migrator = _SingleflightFakeMigrator(ctx, release=release)
+    release.set()
+    result = retry_migrator.copy_from(source)
+
+    assert result.rid == "new-src-1"
+    assert retry_migrator.copy_count == 1
+    assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, "src-1") == "new-src-1"
