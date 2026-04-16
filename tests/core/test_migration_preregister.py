@@ -4,10 +4,10 @@ from nominal_api import authentication_api
 
 from nominal.core.client import NominalClient
 from nominal.core.user import User
-from nominal.experimental.migration import batch_preregister_users
+from nominal.experimental.migration import preregister_users
 
 
-def test_batch_preregister_users_forwards_emails_and_maps_users() -> None:
+def test_preregister_users_forwards_emails_and_maps_users() -> None:
     """Migration preregistration should preserve request order and map API users into SDK users."""
     clients = MagicMock()
     clients.auth_header = "Bearer token"
@@ -24,7 +24,7 @@ def test_batch_preregister_users_forwards_emails_and_maps_users() -> None:
     )
     client = NominalClient(_clients=clients)
 
-    result = batch_preregister_users(client, ["new@example.com", "existing@example.com"])
+    result = preregister_users(client, ["new@example.com", "existing@example.com"])
 
     clients.authentication.batch_preregister_users.assert_called_once()
     request = clients.authentication.batch_preregister_users.call_args.args[1]

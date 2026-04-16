@@ -1,1 +1,1 @@
-from nominal.experimental.migration.preregister import batch_preregister_users as batch_preregister_users
+from nominal.experimental.migration.preregister import preregister_users as preregister_users
