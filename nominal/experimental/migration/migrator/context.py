@@ -3,7 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, TypeVar, cast
 
 from nominal.core import NominalClient
 from nominal.experimental.migration.migration_state import MigrationState
@@ -49,7 +49,10 @@ class MigrationContext:
         the first in-flight migration and reuse its result.
         """
         destination_client = self.destination_client_for(source_resource)
-        key = (resource_type.value, source_rid, destination_client._clients.workspace_rid)
+        workspace_rid = destination_client._clients.workspace_rid
+        if workspace_rid is None:
+            raise ValueError("Destination client workspace RID is required for singleflight migrations.")
+        key: tuple[str, str, str] = (resource_type.value, source_rid, workspace_rid)
 
         with self._singleflight_lock:
             future = self._singleflight_futures.get(key)
@@ -61,7 +64,7 @@ class MigrationContext:
                 is_owner = False
 
         if not is_owner:
-            return future.result()
+            return cast(Resource, future.result())
 
         try:
             result = fn()
