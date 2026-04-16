@@ -173,6 +173,9 @@ def test_update_event_rejects_unknown_type(client: NominalClient, archive: Archi
     event = client.create_event(f"event-{uuid4()}", EventType.INFO, start, assets=[asset])
     archive(event)
 
+    event.update(type=EventType.ERROR)
+    assert event.type == EventType.ERROR
+
     with pytest.raises(ValueError, match="EventType.UNKNOWN cannot be updated"):
         event.update(type=EventType.UNKNOWN)
 
