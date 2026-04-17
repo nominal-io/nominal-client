@@ -21,7 +21,7 @@ class MigrationContext:
     migration_state: MigrationState
     destination_client_resolver: DestinationClientResolver | None = None
     _singleflight_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
-    _singleflight_futures: dict[tuple[str, str, str], concurrent.futures.Future[Any]] = field(
+    _singleflight_futures: dict[tuple[str, str], concurrent.futures.Future[Any]] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -38,7 +38,6 @@ class MigrationContext:
     def run_singleflight(
         self,
         *,
-        resource_type: ResourceType,
         source_resource: Any,
         source_rid: str,
         fn: Callable[[], Resource],
@@ -52,7 +51,7 @@ class MigrationContext:
         workspace_rid = destination_client._clients.workspace_rid
         if workspace_rid is None:
             raise ValueError("Destination client workspace RID is required for singleflight migrations.")
-        key: tuple[str, str, str] = (resource_type.value, source_rid, workspace_rid)
+        key: tuple[str, str] = (source_rid, workspace_rid)
 
         with self._singleflight_lock:
             future = self._singleflight_futures.get(key)
@@ -68,7 +67,7 @@ class MigrationContext:
 
         try:
             result = fn()
-        except Exception as exc:
+        except BaseException as exc:
             future.set_exception(exc)
             raise
         else:

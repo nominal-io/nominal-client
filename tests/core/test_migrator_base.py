@@ -176,3 +176,30 @@ def test_copy_from_singleflight_retries_after_failure() -> None:
     assert result.rid == "new-src-1"
     assert retry_migrator.copy_count == 1
     assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, "src-1") == "new-src-1"
+
+
+def test_copy_from_singleflight_propagates_base_exception_to_waiters() -> None:
+    ctx = _make_context()
+    source = _FakeResource(rid="src-1", name="MyAsset")
+    started = threading.Event()
+    release = threading.Event()
+
+    class _KeyboardInterruptMigrator(_SingleflightFakeMigrator):
+        def _copy_from_impl(self, source: _FakeResource, options: _FakeCopyOptions) -> _FakeResource:
+            if self.started is not None:
+                self.started.set()
+            if self.release is not None:
+                self.release.wait(timeout=5)
+            raise KeyboardInterrupt("stop")
+
+    migrator = _KeyboardInterruptMigrator(ctx, started=started, release=release)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_a = executor.submit(migrator.copy_from, source)
+        assert started.wait(timeout=5)
+        future_b = executor.submit(migrator.copy_from, source)
+        release.set()
+        with pytest.raises(KeyboardInterrupt, match="stop"):
+            future_a.result(timeout=5)
+        with pytest.raises(KeyboardInterrupt, match="stop"):
+            future_b.result(timeout=5)
