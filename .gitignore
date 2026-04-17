@@ -178,3 +178,6 @@ uv.toml
 *.csv
 *.parquet
 *migration_utils_output_*.txt
+
+# AI
+.claude
