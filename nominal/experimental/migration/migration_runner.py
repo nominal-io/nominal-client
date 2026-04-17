@@ -91,6 +91,7 @@ class MigrationRunner:
                     source_asset,
                     AssetCopyOptions(
                         dataset_config=self.dataset_config,
+                        include_attachments=True,
                         include_events=True,
                         include_runs=True,
                         include_video=True,

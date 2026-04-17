@@ -8,6 +8,7 @@ from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
@@ -27,6 +28,7 @@ class AssetCopyOptions(ResourceCopyOptions):
     new_asset_properties: dict[str, Any] | None = None
     new_asset_labels: Sequence[str] | None = None
     dataset_config: MigrationDatasetConfig | None = None
+    include_attachments: bool = False
     include_events: bool = False
     include_runs: bool = False
     include_video: bool = False
@@ -41,6 +43,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
     def default_copy_options(self) -> AssetCopyOptions:
         return AssetCopyOptions(
             dataset_config=MigrationDatasetConfig(preserve_dataset_uuid=True, include_dataset_files=True),
+            include_attachments=True,
             include_events=True,
             include_runs=True,
             include_video=True,
@@ -73,6 +76,10 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         if options.include_video:
             logger.info("Copying videos for asset %s (rid: %s)", source_asset.name, source_asset.rid)
             self._copy_asset_videos(source_asset, new_asset)
+
+        if options.include_attachments:
+            logger.info("Copying attachments for asset %s (rid: %s)", source_asset.name, source_asset.rid)
+            self._copy_asset_attachments(source_asset, new_asset)
 
         self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs)
         return new_asset
@@ -174,6 +181,12 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 logger.debug(
                     "Skipping data review execution for %s: already in migration state", source_data_review.rid
                 )
+
+    def _copy_asset_attachments(self, source_asset: Asset, destination_asset: Asset) -> None:
+        attachment_migrator = AttachmentMigrator(self.ctx)
+        new_attachments = [attachment_migrator.copy_from(a) for a in source_asset.list_attachments()]
+        if new_attachments:
+            destination_asset.add_attachments(new_attachments)
 
     def _copy_asset_videos(self, source_asset: Asset, new_asset: Asset) -> None:
         video_migrator = VideoMigrator(self.ctx)
