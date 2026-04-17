@@ -11,7 +11,6 @@ from nominal.experimental.migration.config.migration_data_config import Migratio
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
 from nominal.experimental.migration.migrator.checklist_migrator import ChecklistCopyOptions, ChecklistMigrator
-from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.migrator.dataset_migrator import DatasetCopyOptions, DatasetMigrator
 from nominal.experimental.migration.migrator.event_migrator import EventCopyOptions, EventMigrator
 from nominal.experimental.migration.migrator.run_migrator import RunCopyOptions, RunMigrator
@@ -183,8 +182,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     "Skipping data review execution for %s: already in migration state", source_data_review.rid
                 )
 
+    def _copy_asset_attachments(self, source_asset: Asset, destination_asset: Asset) -> None:
         attachment_migrator = AttachmentMigrator(self.ctx)
-        )
         new_attachments = [attachment_migrator.copy_from(a) for a in source_asset.list_attachments()]
         if new_attachments:
             destination_asset.add_attachments(new_attachments)
