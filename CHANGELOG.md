@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.132.0](https://github.com/nominal-io/nominal-client/compare/v1.131.0...v1.132.0) (2026-04-17)
+
+
+### Features
+
+* multi-asset run migration ([#718](https://github.com/nominal-io/nominal-client/issues/718)) ([283e504](https://github.com/nominal-io/nominal-client/commit/283e5042e4d26118e05f65697c79982d4fc0201e))
+* support batch preregister users in python client ([#719](https://github.com/nominal-io/nominal-client/issues/719)) ([37e7edd](https://github.com/nominal-io/nominal-client/commit/37e7edd1eb5d42f76780dd4ab91e54cb2f08f5ad))
+
+
+### Bug Fixes
+
+* resolve threadpool connection size warnings ([#716](https://github.com/nominal-io/nominal-client/issues/716)) ([bd4005b](https://github.com/nominal-io/nominal-client/commit/bd4005bbdb0863b397776bd152a0e69e8180d1d2))
+
 ## [1.131.0](https://github.com/nominal-io/nominal-client/compare/v1.130.0...v1.131.0) (2026-04-15)
 
 
