@@ -9,6 +9,7 @@ import pytest
 from nominal.core.dataset import Dataset, DatasetBounds, _api_base_url_to_grpc_target
 from nominal.core.log import LogPoint
 from nominal.core.unit import Unit
+from nominal.core.user import User
 
 UNITS = [
     Unit(name="coulomb", symbol="C"),
@@ -89,8 +90,8 @@ def test_write_logs_less_than_batch(mock_dataset: Dataset):
 
 def test_get_owner_rid_uses_role_service_lookup(monkeypatch: pytest.MonkeyPatch, mock_dataset: Dataset):
     def fake_lookup(*, auth_header: str, api_base_url: str, dataset_rid: str) -> str | None:
-        assert auth_header == mock_dataset._clients.auth_header
-        assert api_base_url == mock_dataset._clients._api_base_url
+        assert auth_header is mock_dataset._clients.auth_header
+        assert api_base_url is mock_dataset._clients._api_base_url
         assert dataset_rid == mock_dataset.rid
         return "ri.authn.user.owner"
 
@@ -99,6 +100,22 @@ def test_get_owner_rid_uses_role_service_lookup(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr("nominal.core.dataset._get_dataset_owner_rid", fake_lookup)
 
     assert mock_dataset.get_owner_rid() == "ri.authn.user.owner"
+
+
+def test_get_owner_returns_user_from_owner_rid(monkeypatch: pytest.MonkeyPatch, mock_dataset: Dataset):
+    mock_dataset._clients.authentication.get_user.return_value = User(
+        rid="ri.authn.user.owner",
+        display_name="Owner User",
+        email="owner@nominal.io",
+    )
+    monkeypatch.setattr("nominal.core.dataset.Dataset.get_owner_rid", lambda self: "ri.authn.user.owner")
+
+    owner = mock_dataset.get_owner()
+
+    assert owner.rid == "ri.authn.user.owner"
+    mock_dataset._clients.authentication.get_user.assert_called_once_with(
+        mock_dataset._clients.auth_header, "ri.authn.user.owner"
+    )
 
 
 def test_get_owner_rid_raises_when_no_owner_found(monkeypatch: pytest.MonkeyPatch, mock_dataset: Dataset):
