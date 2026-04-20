@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.132.1](https://github.com/nominal-io/nominal-client/compare/v1.132.0...v1.132.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* dedupe concurrent shared-resource migrations ([#720](https://github.com/nominal-io/nominal-client/issues/720)) ([687a5df](https://github.com/nominal-io/nominal-client/commit/687a5dfd7b54643a65b3fb3ef7732594899cec46))
+
 ## [1.132.0](https://github.com/nominal-io/nominal-client/compare/v1.131.0...v1.132.0) (2026-04-17)
 
 
