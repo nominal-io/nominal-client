@@ -35,6 +35,9 @@ dependencies = [
     "truststore>=0.10.4",
     "types-cachetools>=6.0.0.20250525",
     "typing-extensions>=4,<5",
+    # fastavro gained cramjam-backed snappy support in 1.9.
+    "fastavro>=1.9.0",
+    "cramjam>=2.7.0",
     # Any version is okay for these dependencies
     "pandas>=0.0.0",
     "polars>=0.0.0",
