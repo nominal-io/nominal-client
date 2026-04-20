@@ -8,6 +8,7 @@ from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
 from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
+from urllib.parse import urlparse
 
 from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
 from typing_extensions import Self, deprecated
@@ -617,6 +618,25 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         """Unarchives this dataset, allowing it to show up in the 'All Datasets' pane in the UI."""
         self._clients.catalog.unarchive_dataset(self._clients.auth_header, self.rid)
 
+    def get_owner_rid(self) -> str:
+        """Retrieve the owner RID for this dataset via a direct role-service gRPC lookup.
+
+        Returns:
+            The RID of the user with the dataset owner role.
+
+        Raises:
+            ImportError: `nominal[protos]` is required for this role-service lookup.
+            ValueError: No owner assignment could be resolved for this dataset.
+        """
+        owner_rid = _get_dataset_owner_rid(
+            auth_header=self._clients.auth_header,
+            api_base_url=self._clients._api_base_url,
+            dataset_rid=self.rid,
+        )
+        if owner_rid is None:
+            raise ValueError(f"Could not resolve an owner for dataset {self.rid}")
+        return owner_rid
+
     @classmethod
     def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
         return cls(
@@ -1105,6 +1125,44 @@ def _get_dataset(
     if len(datasets) > 1:
         raise ValueError(f"expected exactly one dataset, got {len(datasets)}")
     return datasets[0]
+
+
+def _get_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_rid: str) -> str | None:
+    try:
+        import grpc
+        from nominal_api_protos.nominal.authorization.roles.v1 import roles_pb2, roles_pb2_grpc
+    except ImportError as ex:
+        raise ImportError("nominal[protos] is required to use Dataset.get_owner_rid()") from ex
+
+    target = _api_base_url_to_grpc_target(api_base_url)
+    parsed = urlparse(api_base_url)
+    if parsed.scheme == "http":
+        channel = grpc.insecure_channel(target)
+    else:
+        channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
+
+    with channel:
+        stub = roles_pb2_grpc.RoleServiceStub(channel)
+        response = stub.GetResourceRoles(
+            roles_pb2.GetResourceRolesRequest(resource=dataset_rid),
+            metadata=(("authorization", auth_header),),
+        )
+
+    for assignment in getattr(response, "role_assignments", ()):
+        if getattr(assignment, "role", None) != 1:
+            continue
+        user_rid = getattr(assignment, "user_rid", None)
+        if isinstance(user_rid, str) and user_rid.strip():
+            return user_rid
+
+    return None
+
+
+def _api_base_url_to_grpc_target(api_base_url: str) -> str:
+    parsed = urlparse(api_base_url)
+    if not parsed.netloc:
+        raise ValueError(f"Could not derive gRPC target from API base URL: {api_base_url}")
+    return parsed.netloc
 
 
 def _create_dataset(
