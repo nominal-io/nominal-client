@@ -98,6 +98,31 @@ def create_api_tags(tags: Mapping[str, str] | None = None) -> dict[str, scout_co
     return {key: scout_compute_api.StringConstant(literal=value) for key, value in tags.items()}
 
 
+def build_compute_tag_filter(tags: Mapping[str, str] | None) -> scout_compute_api.TagFilters | None:
+    """Convert a simple tag mapping into the TagFilters union type for the compute API.
+
+    Each {key: value} pair becomes a TagFilter with operator=IN and a single-element value list.
+    Multiple tags are composed with AND semantics.
+    """
+    if not tags:
+        return None
+
+    single_filters = [
+        scout_compute_api.TagFilters(
+            single=scout_compute_api.TagFilter(
+                key=scout_compute_api.StringConstant(literal=key),
+                values=[scout_compute_api.StringConstant(literal=value)],
+                operator=scout_compute_api.TagFilterOperator.IN,
+            )
+        )
+        for key, value in tags.items()
+    ]
+
+    if len(single_filters) == 1:
+        return single_filters[0]
+    return scout_compute_api.TagFilters(and_=single_filters)
+
+
 def filter_scopes(
     scopes: Sequence[scout_asset_api.DataScope], scope_type: ScopeTypeSpecifier
 ) -> Sequence[scout_asset_api.DataScope]:

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import concurrent.futures
 import enum
+import functools
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import BinaryIO, Iterable, Mapping, Protocol, cast, overload
+from typing import BinaryIO, Iterable, Iterator, Mapping, Protocol, Sequence, cast, overload
 
 from nominal_api import (
     api,
@@ -18,8 +20,9 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.iterator_tools import batched
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import RefreshableMixin, create_api_tags
+from nominal.core._utils.api_tools import RefreshableMixin, build_compute_tag_filter, create_api_tags
 from nominal.core._utils.pagination_tools import paginate_rpc
 from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _build_unit_update
@@ -442,3 +445,147 @@ def _create_series_from_channel(
         return scout_compute_api.Series(log=scout_compute_api.LogSeries(channel=channel_series))
     else:
         raise ValueError(f"Unsupported channel data type: {data_type}")
+
+
+def _batch_check_channels_have_data(
+    clients: Channel._Clients,
+    channels: Sequence[Channel],
+    tag_filters: scout_compute_api.TagFilters | None,
+    start: api.Timestamp,
+    end: api.Timestamp,
+) -> tuple[list[Channel], list[str]]:
+    """Check a batch of channels for data presence via a single batchGetSeriesCount call.
+
+    Returns a tuple of:
+        - channels confirmed to have data (series_count > 0)
+        - names of channels with underconstrained tags (series_count > 1)
+    """
+    time_range = api.Range(start=start, end=end)
+    request = datasource_api.BatchGetSeriesCountRequest(
+        requests=[
+            datasource_api.GetSeriesCountRequest(
+                data_source_rid=channel.data_source,
+                channel=channel.name,
+                range=time_range,
+                tag_filters=tag_filters,
+            )
+            for channel in channels
+        ]
+    )
+    response = clients.datasource.batch_get_series_count(clients.auth_header, request)
+
+    channels_with_data: list[Channel] = []
+    underconstrained: list[str] = []
+    for channel, result in zip(channels, response.responses, strict=True):
+        count = result.series_count
+        if count is not None and count > 0:
+            channels_with_data.append(channel)
+            # Multiple series for a single channel+tags means the tags don't fully
+            # constrain the data — results may contain duplicate timestamps.
+            if count > 1:
+                underconstrained.append(channel.name)
+
+    return channels_with_data, underconstrained
+
+
+def filter_channels_with_data(
+    channels: Sequence[Channel],
+    *,
+    tags: Mapping[str, str] | None = None,
+    start_time: datetime | IntegralNanosecondsUTC,
+    end_time: datetime | IntegralNanosecondsUTC,
+    num_workers: int = 8,
+    batch_size: int = 200,
+) -> Iterator[Channel]:
+    """Yield channels that have data in the given time range, optionally filtered by tags.
+
+    Uses batchGetSeriesCount to query data presence server-side in batched API calls. If a
+    batch call fails, its channels are re-submitted individually into the same pool; a
+    single-channel call that fails is treated as having no data and excluded.
+
+    Args:
+        channels: Channels to check for data presence.
+        tags: If provided, only yield channels matching these tag key-value pairs.
+        start_time: Start of the time range to check for data.
+        end_time: End of the time range to check for data.
+        num_workers: Number of concurrent API requests.
+        batch_size: Max channels per API call.
+
+    Yields:
+        Channel objects for each input channel confirmed to have data in the range.
+    """
+    if not channels:
+        return
+
+    clients = channels[0]._clients
+    api_start = _SecondsNanos.from_flexible(start_time).to_api()
+    api_end = _SecondsNanos.from_flexible(end_time).to_api()
+    tag_filters = build_compute_tag_filter(tags)
+
+    matched_keys: set[tuple[str, str]] = set()
+    all_underconstrained: list[str] = []
+    still_failing: list[Channel] = []
+
+    check_batch = functools.partial(
+        _batch_check_channels_have_data,
+        clients,
+        tag_filters=tag_filters,
+        start=api_start,
+        end=api_end,
+    )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
+        pending: dict[concurrent.futures.Future[tuple[list[Channel], list[str]]], Sequence[Channel]] = {
+            pool.submit(check_batch, batch): batch for batch in batched(channels, batch_size)
+        }
+
+        while pending:
+            done, _ = concurrent.futures.wait(pending, return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in done:
+                batch = pending.pop(future)
+                try:
+                    matched, underconstrained = future.result()
+                except Exception:
+                    # A single-channel request that failed is already a retry (or was submitted
+                    # that way by the caller via batch_size=1); don't retry indefinitely.
+                    if len(batch) == 1:
+                        still_failing.extend(batch)
+                        continue
+                    logger.warning(
+                        "Batch data-presence check failed for %d channels; retrying individually",
+                        len(batch),
+                    )
+                    for ch in batch:
+                        pending[pool.submit(check_batch, [ch])] = [ch]
+                    continue
+
+                for ch in matched:
+                    matched_keys.add((ch.data_source, ch.name))
+                all_underconstrained.extend(underconstrained)
+
+    if still_failing:
+        # Both the batch and the individual retry failed — we can't verify data exists, so
+        # exclude these channels rather than admitting. Admitting would run expensive PPS
+        # compute downstream on channels the export would likely fail on anyway.
+        logger.warning(
+            "Data-presence check failed for %d channels even after individual retry; "
+            "treating as having no data and excluding from export: %s",
+            len(still_failing),
+            ", ".join(ch.name for ch in still_failing),
+        )
+
+    if all_underconstrained:
+        sample = all_underconstrained[:10]
+        joined = ", ".join(sample)
+        suffix = f", ... ({len(all_underconstrained) - 10} more)" if len(all_underconstrained) > 10 else ""
+        logger.warning(
+            "%d channels have underconstrained tags (multiple series matched): %s%s",
+            len(all_underconstrained),
+            joined,
+            suffix,
+        )
+
+    # Yield in original input order
+    for channel in channels:
+        if (channel.data_source, channel.name) in matched_keys:
+            yield channel
