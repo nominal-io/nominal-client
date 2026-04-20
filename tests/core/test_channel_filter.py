@@ -76,6 +76,7 @@ def test_external_datasources_excluded(mock_clients, make_channel, make_series_c
 
 def test_batching_respects_batch_size(mock_clients, make_channel, make_series_count_response):
     """Channels are split into batches of the configured size."""
+
     # A callable side_effect keeps the test deterministic regardless of which order the
     # ThreadPoolExecutor happens to complete batches in — each request gets a response
     # whose shape matches its contents.
