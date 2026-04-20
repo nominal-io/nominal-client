@@ -76,34 +76,40 @@ def test_external_datasources_excluded(mock_clients, make_channel, make_series_c
 
 def test_batching_respects_batch_size(mock_clients, make_channel, make_series_count_response):
     """Channels are split into batches of the configured size."""
-    mock_clients.datasource.batch_get_series_count.side_effect = [
-        make_series_count_response([1, 1]),
-        make_series_count_response([1, 1]),
-        make_series_count_response([1]),
-    ]
+    # A callable side_effect keeps the test deterministic regardless of which order the
+    # ThreadPoolExecutor happens to complete batches in — each request gets a response
+    # whose shape matches its contents.
+    def side_effect(_auth_header, request):
+        return make_series_count_response([1] * len(request.requests))
+
+    mock_clients.datasource.batch_get_series_count.side_effect = side_effect
     channels = [make_channel(f"ch{i}") for i in range(5)]
 
     result = list(filter_channels_with_data(channels, start_time=START_TIME, end_time=END_TIME, batch_size=2))
 
     assert len(result) == 5
+    # 5 channels at batch_size=2 → batches of 2, 2, 1 = 3 API calls.
     assert mock_clients.datasource.batch_get_series_count.call_count == 3
 
 
 def test_all_results_collected_across_concurrent_batches(mock_clients, make_channel, make_series_count_response):
     """With multiple batches and workers, all results are collected without drops."""
-    mock_clients.datasource.batch_get_series_count.side_effect = [
-        make_series_count_response([1, 0, 1]),
-        make_series_count_response([1, 1, 0]),
-        make_series_count_response([0, 1, 1]),
-        make_series_count_response([1]),
-    ]
+    # 7 of 10 channels have data; the rest don't. Encoding the outcome per channel (not
+    # per batch) makes the test agnostic to batch-completion order.
+    has_data = {f"ch{i}" for i in (0, 2, 3, 4, 7, 8, 9)}
+
+    def side_effect(_auth_header, request):
+        counts = [1 if req.channel in has_data else 0 for req in request.requests]
+        return make_series_count_response(counts)
+
+    mock_clients.datasource.batch_get_series_count.side_effect = side_effect
     channels = [make_channel(f"ch{i}") for i in range(10)]
 
     result = list(
         filter_channels_with_data(channels, start_time=START_TIME, end_time=END_TIME, batch_size=3, num_workers=4)
     )
 
-    assert len(result) == 7
+    assert {ch.name for ch in result} == has_data
 
 
 def test_api_error_triggers_individual_retry_then_excludes_still_failing(
