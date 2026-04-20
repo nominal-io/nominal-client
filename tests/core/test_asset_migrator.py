@@ -13,6 +13,7 @@ if sys.version_info < (3, 13):
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
+from nominal.experimental.migration.resource_type import ResourceType
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,13 +27,29 @@ def _att_rid(n: int) -> str:
     return f"ri.attachments.{_STACK}.attachment.{hex8}-0000-0000-0000-000000000000"
 
 
-def _make_context() -> MigrationContext:
+def _asset_rid(n: int) -> str:
+    return f"ri.scout.{_STACK}.asset.{n:08x}-0000-0000-0000-000000000000"
+
+
+def _run_rid(n: int) -> str:
+    return f"ri.scout.{_STACK}.run.{n:08x}-0000-0000-0000-000000000000"
+
+
+def _wb_rid(n: int) -> str:
+    return f"ri.scout.{_STACK}.notebook.{n:08x}-0000-0000-0000-000000000000"
+
+
+def _make_context(source_asset_rids: frozenset[str] = frozenset()) -> MigrationContext:
     mock_client = MagicMock()
     mock_client._clients.workspace_rid = "ws-rid"
     mock_workspace = MagicMock()
     mock_workspace.rid = "ws-rid"
     mock_client.get_workspace.return_value = mock_workspace
-    return MigrationContext(destination_client=mock_client, migration_state=MigrationState())
+    return MigrationContext(
+        destination_client=mock_client,
+        migration_state=MigrationState(),
+        source_asset_rids=source_asset_rids,
+    )
 
 
 def _make_source_asset(
@@ -157,3 +174,117 @@ class TestAssetMigratorAttachments:
         # AttachmentMigrator was constructed with a context that shares the same migration_state
         init_ctx = mock_att_cls.call_args[0][0]
         assert init_ctx.migration_state is ctx.migration_state
+
+
+# ---------------------------------------------------------------------------
+# Workbook routing: _copy_asset_and_run_workbooks
+# ---------------------------------------------------------------------------
+
+
+def _stub_workbook(rid: str, asset_rids: list[str] | None = None, run_rids: list[str] | None = None) -> MagicMock:
+    wb = MagicMock()
+    wb.rid = rid
+    wb.asset_rids = asset_rids
+    wb.run_rids = run_rids
+    return wb
+
+
+class TestAssetMigratorWorkbookRouting:
+    """Tests for _copy_asset_and_run_workbooks: single vs. multi routing and scope checks."""
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_routing_single_asset_multi_asset_and_out_of_scope(self, mock_wm_cls: MagicMock) -> None:
+        """Verifies all routing branches in one pass:
+        - single-asset workbook → copy_from called
+        - multi-asset workbook with all assets in source_asset_rids → pending
+        - multi-asset workbook with all assets already in migration state (prior run) → pending
+        - multi-asset workbook with one asset completely out of scope → skip recorded
+        - workbook with no asset_rids → ignored
+        """
+        a1, a2, a3, a_out = _asset_rid(1), _asset_rid(2), _asset_rid(3), _asset_rid(99)
+        new_a3 = _asset_rid(103)
+        wb_single = _wb_rid(1)
+        wb_multi_in_scope = _wb_rid(2)
+        wb_multi_prior_run = _wb_rid(3)
+        wb_multi_missing = _wb_rid(4)
+        wb_no_rids = _wb_rid(5)
+
+        # a1, a2 are in the current migration config; a3 was migrated in a prior run
+        ctx = _make_context(source_asset_rids=frozenset([a1, a2]))
+        ctx.migration_state.record_mapping(ResourceType.ASSET, a3, new_a3)
+
+        source_asset = _make_source_asset()
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [
+            _stub_workbook(wb_single, asset_rids=[a1]),  # single → copy_from
+            _stub_workbook(wb_multi_in_scope, asset_rids=[a1, a2]),  # all in config → pending
+            _stub_workbook(wb_multi_prior_run, asset_rids=[a1, a3]),  # a3 in state → pending
+            _stub_workbook(wb_multi_missing, asset_rids=[a1, a_out]),  # a_out missing → skip
+            _stub_workbook(wb_no_rids, asset_rids=None),  # no rids → ignored
+        ]
+        source_asset.list_runs.return_value = []
+
+        migrator = AssetMigrator(ctx)
+        migrator._copy_asset_and_run_workbooks(source_asset, new_asset, include_runs=False)
+
+        mock_wm = mock_wm_cls.return_value
+        mock_wm.copy_from.assert_called_once()
+
+        state = ctx.migration_state
+        assert wb_multi_in_scope in state.pending_multi_asset_workbooks
+        assert state.pending_multi_asset_workbooks[wb_multi_in_scope] == [a1, a2]
+
+        assert wb_multi_prior_run in state.pending_multi_asset_workbooks
+        assert state.pending_multi_asset_workbooks[wb_multi_prior_run] == [a1, a3]
+
+        assert wb_multi_missing not in state.pending_multi_asset_workbooks
+        assert len(state.skipped_resources) == 1
+        assert a_out in state.skipped_resources[0].reason
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_multi_run_workbook_always_enqueued_single_run_uses_copy_from(self, mock_wm_cls: MagicMock) -> None:
+        """Single-run workbooks go to copy_from; multi-run workbooks are always enqueued
+        for deferred migration without an upfront scope check. Also verifies that finding
+        the same multi-run workbook via two different runs overwrites the pending entry
+        idempotently.
+        """
+        r1, r2 = _run_rid(1), _run_rid(2)
+        new_r1, new_r2 = _run_rid(101), _run_rid(102)
+        wb_single_run = _wb_rid(1)
+        wb_multi_run = _wb_rid(2)
+
+        ctx = _make_context()
+        ctx.migration_state.record_mapping(ResourceType.RUN, r1, new_r1)
+        ctx.migration_state.record_mapping(ResourceType.RUN, r2, new_r2)
+
+        source_asset = _make_source_asset()
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = []
+
+        run1 = MagicMock()
+        run1.rid = r1
+        run1.search_workbooks.return_value = [
+            _stub_workbook(wb_single_run, run_rids=[r1]),
+            _stub_workbook(wb_multi_run, run_rids=[r1, r2]),
+        ]
+        run2 = MagicMock()
+        run2.rid = r2
+        # wb_multi_run found again via run2 — should overwrite pending, not duplicate
+        run2.search_workbooks.return_value = [
+            _stub_workbook(wb_multi_run, run_rids=[r1, r2]),
+        ]
+        source_asset.list_runs.return_value = [run1, run2]
+
+        dest_run1 = MagicMock()
+        ctx.destination_client.get_run.return_value = dest_run1
+
+        migrator = AssetMigrator(ctx)
+        migrator._copy_asset_and_run_workbooks(source_asset, new_asset, include_runs=True)
+
+        mock_wm = mock_wm_cls.return_value
+        assert mock_wm.copy_from.call_count == 1  # only wb_single_run
+
+        state = ctx.migration_state
+        assert wb_multi_run in state.pending_multi_run_workbooks
+        assert state.pending_multi_run_workbooks[wb_multi_run] == [r1, r2]
+        assert len(state.pending_multi_run_workbooks) == 1  # not duplicated

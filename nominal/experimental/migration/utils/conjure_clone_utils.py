@@ -105,3 +105,45 @@ def clone_conjure_objects_with_new_uuids(
         decoder.do_decode(new_json_obj, obj_type) for new_json_obj, obj_type in zip(new_json_objs, original_types)
     ]
     return tuple(result) if isinstance(objs, tuple) else result
+
+
+@overload
+def clone_conjure_objects_with_rid_overrides(
+    objs: tuple[T1, T2],
+    rid_overrides: dict[str, str],
+) -> tuple[T1, T2]: ...
+
+
+@overload
+def clone_conjure_objects_with_rid_overrides(
+    objs: list[ConjureType],
+    rid_overrides: dict[str, str],
+) -> list[ConjureType]: ...
+
+
+def clone_conjure_objects_with_rid_overrides(
+    objs: tuple[ConjureType, ...] | list[ConjureType],
+    rid_overrides: dict[str, str],
+) -> tuple[ConjureType, ...] | list[ConjureType]:
+    """Clone conjure objects with fresh internal UUIDs, applying explicit RID substitutions.
+
+    Behaves like clone_conjure_objects_with_new_uuids but merges rid_overrides into the UUID
+    mapping before replacement. This replaces specific RIDs (e.g. source asset/run RIDs) with
+    their known destination counterparts, while all other internal UUIDs are regenerated as usual.
+
+    rid_overrides entries take precedence: any auto-generated mapping for an override key is
+    removed before the overrides are merged in, ensuring the explicit value is always used.
+    """
+    original_types = [type(obj) for obj in objs]
+    json_objs = [ConjureEncoder.do_encode(obj) for obj in objs]
+    mapping = _generate_uuid_mapping(json_objs)
+    for rid in rid_overrides:
+        mapping.pop(rid, None)
+    mapping.update(rid_overrides)
+    new_json_objs = [_replace_uuids_in_obj(json_obj, mapping) for json_obj in json_objs]
+
+    decoder = ConjureDecoder()
+    result = [
+        decoder.do_decode(new_json_obj, obj_type) for new_json_obj, obj_type in zip(new_json_objs, original_types)
+    ]
+    return tuple(result) if isinstance(objs, tuple) else result

@@ -4,13 +4,16 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import cast
 
 from nominal.core import NominalClient
+from nominal.core._clientsbunch import ClientsBunch
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.context import DestinationClientResolver, MigrationContext
+from nominal.experimental.migration.migrator.workbook_migrator import WorkbookMigrator
 from nominal.experimental.migration.migrator.workbook_template_migrator import WorkbookTemplateMigrator
 
 logger = logging.getLogger(__name__)
@@ -82,6 +85,7 @@ class MigrationRunner:
                 destination_client=self.destination_client,
                 migration_state=self.migration_state,
                 destination_client_resolver=self.destination_client_resolver,
+                source_asset_rids=frozenset(self.migration_resources.source_assets.keys()),
             )
             asset_migrator = AssetMigrator(migration_context)
             template_migrator = WorkbookTemplateMigrator(migration_context)
@@ -101,6 +105,12 @@ class MigrationRunner:
 
             for source_template in self.migration_resources.source_standalone_templates:
                 template_migrator.clone(source_template)
+
+            source_clients_by_asset_rid: dict[str, ClientsBunch] = {
+                asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
+                for asset_rid, asset_resources in self.migration_resources.source_assets.items()
+            }
+            WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
         finally:
             self.save_state()
         logger.info("Completed migration")

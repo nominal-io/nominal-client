@@ -20,6 +20,7 @@ class MigrationContext:
     destination_client: NominalClient
     migration_state: MigrationState
     destination_client_resolver: DestinationClientResolver | None = None
+    source_asset_rids: frozenset[str] = field(default_factory=frozenset)
     _singleflight_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _singleflight_futures: dict[tuple[str, str], concurrent.futures.Future[Any]] = field(
         default_factory=dict,
