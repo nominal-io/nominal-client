@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, BinaryIO, Iterable, Mapping, Sequence, TypeAlias, cast, overload
+from typing import BinaryIO, Iterable, Mapping, Sequence, TypeAlias, overload
 from urllib.parse import urlparse
 
 from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
@@ -631,7 +631,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
         """
         owner_rid = _get_dataset_owner_rid(
             auth_header=self._clients.auth_header,
-            api_base_url=cast(Any, self._clients)._api_base_url,
+            api_base_url=self._clients._api_base_url,
             dataset_rid=self.rid,
         )
         if owner_rid is None:
@@ -640,10 +640,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
     def get_owner(self) -> User:
         """Retrieve the owner user for this dataset via the role service."""
-        return cast(
-            User,
-            cast(Any, self._clients).authentication.get_user(self._clients.auth_header, self.get_owner_rid()),
-        )
+        return User._from_conjure(self._clients.authentication.get_user(self._clients.auth_header, self.get_owner_rid()))
 
     @classmethod
     def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
@@ -1136,7 +1133,12 @@ def _get_dataset(
 
 
 def _get_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_rid: str) -> str | None:
-    grpc, roles_pb2, roles_pb2_grpc = _import_role_service_modules()
+    try:
+        import grpc  # type: ignore[import-untyped]
+        from nominal_api_protos.nominal.authorization.roles.v1 import roles_pb2, roles_pb2_grpc
+    except ImportError as ex:
+        raise ImportError("nominal[protos] is required to use Dataset.get_owner() and Dataset.get_owner_rid()") from ex
+
     target = _api_base_url_to_grpc_target(api_base_url)
     metadata = (("authorization", auth_header),)
     parsed = urlparse(api_base_url)
@@ -1146,7 +1148,7 @@ def _get_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_rid: 
         channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
 
     with channel:
-        stub = roles_pb2_grpc.RoleServiceStub(channel)
+        stub = roles_pb2_grpc.RoleServiceStub(channel)  # type: ignore[no-untyped-call]
         response = stub.GetResourceRoles(
             roles_pb2.GetResourceRolesRequest(resource=dataset_rid),
             metadata=metadata,
@@ -1161,15 +1163,6 @@ def _get_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_rid: 
             return user_rid
 
     return None
-
-
-def _import_role_service_modules() -> tuple[Any, Any, Any]:
-    try:
-        import grpc  # type: ignore[import-untyped]
-        from nominal_api_protos.nominal.authorization.roles.v1 import roles_pb2, roles_pb2_grpc
-    except ImportError as ex:
-        raise ImportError("nominal[protos] is required to use Dataset.get_owner() and Dataset.get_owner_rid()") from ex
-    return grpc, roles_pb2, roles_pb2_grpc
 
 
 def _api_base_url_to_grpc_target(api_base_url: str) -> str:
