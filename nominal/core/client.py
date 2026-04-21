@@ -1164,12 +1164,14 @@ class NominalClient:
     def get_or_create_asset_by_properties(
         self, properties: Mapping[str, str], *, name: str, description: str | None = None, labels: Sequence[str] = ()
     ) -> Asset:
-        """Searches for an asset using using properties. If no assets returned, create one.
-           If multiple assets returned, throw error.
+        """Searches for an asset using properties. If no assets returned, create one.
+        If multiple assets share those properties, disambiguate by exact name match;
+        raise only when the name still does not uniquely identify one asset.
 
         Args:
             properties: key-value properties to use when searching for and creating assets.
-            name: Name of asset to be used if creation is necessary.
+            name: Name of asset. Used to disambiguate when multiple assets share the given
+                properties, and used when creation is necessary.
             description: Description of asset to be used if creation is necessary.
             labels: a sequence of labels to use when if creation is necessary.
 
@@ -1180,14 +1182,22 @@ class NominalClient:
 
         logger.info("Found %d assets searching by properties.", len(assets))
 
+        if len(assets) == 1:
+            return assets[0]
+
         if len(assets) > 1:
+            # Multiple assets match the given properties; disambiguate by exact name.
+            by_name = self.search_assets(properties=properties, exact_match=name, workspace=WorkspaceSearchType.DEFAULT)
+            if len(by_name) == 1:
+                return by_name[0]
             asset_names_str = "\n".join(a.name for a in assets[:MAX_ASSETS_SHOWN]) + (
                 "\n..." if len(assets) > MAX_ASSETS_SHOWN else ""
             )
-            raise ValueError(f"Multiple assets returned per search parameters:\n{asset_names_str}")
-
-        if len(assets) == 1:
-            return assets[0]
+            raise ValueError(
+                f"Multiple assets match properties {dict(properties)!r} and "
+                f"{len(by_name)} match name {name!r}; cannot uniquely identify one asset:\n"
+                f"{asset_names_str}"
+            )
 
         return self.create_asset(name=name, description=description, properties=properties, labels=labels)
 
@@ -1203,6 +1213,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         *,
+        exact_match: str | None = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         exact_substring: str | None = None,
@@ -1214,6 +1225,8 @@ class NominalClient:
 
         Args:
             search_text: case-insensitive search for any of the keywords in all string fields
+            exact_match: Filter results to only assets whose name exactly matches this string.
+                Applied client-side after the server-side filters.
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
             exact_substring: case-insensitive search for exact string match in all string fields
@@ -1236,7 +1249,10 @@ class NominalClient:
             exact_substring=exact_substring,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return list(self._iter_search_assets(query, archive_status))
+        results = list(self._iter_search_assets(query, archive_status))
+        if exact_match is not None:
+            results = [a for a in results if a.name == exact_match]
+        return results
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Sequence[str]:
         """List all Streaming Checklists.
