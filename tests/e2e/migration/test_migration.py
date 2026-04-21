@@ -40,9 +40,9 @@ from nominal.experimental.migration.config.migration_resources import AssetResou
 from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.resource_type import ResourceType
-from tests.e2e import POLL_INTERVAL, _create_random_start_end
+from tests.e2e import POLL_INTERVAL
 
-ArchiveFn = Callable[[object], None]
+RegisterCleanup = Callable[[Callable[[], None]], None]
 
 
 # ---------------------------------------------------------------------------
@@ -86,32 +86,34 @@ def _dest_asset(runner: MigrationRunner, source_asset: Asset, dest_client: Nomin
     return dest_client.get_asset(rid)
 
 
-def _create_source_asset(source_client: NominalClient, source_archive: ArchiveFn) -> Asset:
+def _create_source_asset(source_client: NominalClient, register_cleanup: RegisterCleanup) -> Asset:
     asset = source_client.create_asset(
         f"migration-e2e-asset-{uuid4()}",
         description="asset description",
         properties={"asset-prop": "asset-val"},
         labels=["migration-e2e"],
     )
-    source_archive(asset)
+    register_cleanup(asset.archive)
     return asset
 
 
-def _create_source_dataset(source_client: NominalClient, source_archive: ArchiveFn, source_asset: Asset) -> Dataset:
+def _create_source_dataset(
+    source_client: NominalClient, register_cleanup: RegisterCleanup, source_asset: Asset
+) -> Dataset:
     ds = source_client.create_dataset(
         f"migration-e2e-ds-{uuid4()}",
         description="dataset description",
         properties={"ds-prop": "ds-val"},
         labels=["migration-e2e"],
     )
-    source_archive(ds)
+    register_cleanup(ds.archive)
     source_asset.add_dataset("primary", ds, series_tags={"scope-tag": "scope-val"})
     return ds
 
 
 def _create_source_events(
     source_client: NominalClient,
-    source_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     source_asset: Asset,
     start: datetime,
 ) -> tuple[Event, Event]:
@@ -125,7 +127,7 @@ def _create_source_events(
         properties={"event-prop": "flag"},
         labels=["migration-e2e"],
     )
-    source_archive(event_a)
+    register_cleanup(event_a.archive)
     event_b = source_client.create_event(
         f"migration-e2e-event-b-{uuid4()}",
         EventType.INFO,
@@ -136,13 +138,13 @@ def _create_source_events(
         properties={"event-prop": "info"},
         labels=["migration-e2e"],
     )
-    source_archive(event_b)
+    register_cleanup(event_b.archive)
     return event_a, event_b
 
 
 def _create_source_run(
     source_client: NominalClient,
-    source_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     source_asset: Asset,
     start: datetime,
     end: datetime,
@@ -156,27 +158,27 @@ def _create_source_run(
         properties={"run-prop": "run-val"},
         labels=["migration-e2e"],
     )
-    source_archive(run)
+    register_cleanup(run.archive)
     return run
 
 
 def _create_source_checklist_and_review(
     source_client: NominalClient,
-    source_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     source_run: Run,
 ) -> tuple[Checklist, DataReview]:
     checklist = _create_checklist_with_content(
         source_client, title=f"migration-e2e-checklist-{uuid4()}", is_published=True
     )
-    source_archive(checklist)
+    register_cleanup(checklist.archive)
     data_review = checklist.execute(source_run)
-    source_archive(data_review)
+    register_cleanup(data_review.archive)
     return checklist, data_review
 
 
 def _create_source_video(
     source_client: NominalClient,
-    source_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     source_asset: Asset,
     mp4_data: bytes,
     start: datetime,
@@ -187,7 +189,7 @@ def _create_source_video(
         properties={"video-prop": "video-val"},
         labels=["migration-e2e"],
     )
-    source_archive(video)
+    register_cleanup(video.archive)
     video.add_from_io(BytesIO(mp4_data), "test.mp4", start=start).poll_until_ingestion_completed(interval=POLL_INTERVAL)
     source_asset.add_video("camera", video)
     return video
@@ -195,7 +197,7 @@ def _create_source_video(
 
 def _create_source_workbook(
     source_client: NominalClient,
-    source_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     source_asset: Asset,
 ) -> Workbook:
     """Create a workbook on the source asset.
@@ -210,38 +212,9 @@ def _create_source_workbook(
         properties={"wbt-prop": "wbt-val"},
     )
     workbook = template.create_workbook(asset=source_asset, title=f"migration-e2e-workbook-{uuid4()}")
-    source_archive(workbook)
+    register_cleanup(workbook.archive)
     template.archive()
     return workbook
-
-
-def _setup_source_resources(
-    source_client: NominalClient, source_archive: ArchiveFn, mp4_data: bytes
-) -> tuple[Asset, Dataset, Event, Event, Run, Checklist, DataReview, Video, Workbook]:
-    """Create a source asset with one of every resource type, each populated with labels,
-    properties, and descriptions to exercise full metadata migration fidelity.
-    """
-    start, end = _create_random_start_end()
-    source_asset = _create_source_asset(source_client, source_archive)
-    source_ds = _create_source_dataset(source_client, source_archive, source_asset)
-    event_a, event_b = _create_source_events(source_client, source_archive, source_asset, start)
-    source_run = _create_source_run(source_client, source_archive, source_asset, start, end)
-    source_checklist, source_data_review = _create_source_checklist_and_review(
-        source_client, source_archive, source_run
-    )
-    source_video = _create_source_video(source_client, source_archive, source_asset, mp4_data, start)
-    source_workbook = _create_source_workbook(source_client, source_archive, source_asset)
-    return (
-        source_asset,
-        source_ds,
-        event_a,
-        event_b,
-        source_run,
-        source_checklist,
-        source_data_review,
-        source_video,
-        source_workbook,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +234,6 @@ def _assert_dataset_migrated(
     dest: Dataset,
     scope_name: str,
     dest_asset: Asset,
-    series_tags: Mapping[str, str] | None = None,
 ) -> None:
     assert dest.name == source.name
     assert dest.description == source.description
@@ -271,10 +243,6 @@ def _assert_dataset_migrated(
     dest_datasets = dict(dest_asset.list_datasets())
     assert scope_name in dest_datasets
     assert dest_datasets[scope_name].rid == dest.rid
-    # series_tags on the scope are preserved — get_or_create_dataset raises on tag mismatch.
-    if series_tags is not None:
-        matched = dest_asset.get_or_create_dataset(scope_name, series_tags=series_tags)
-        assert matched.rid == dest.rid
 
 
 def _assert_event_migrated(source: Event, dest: Event, dest_asset: Asset) -> None:
@@ -336,8 +304,7 @@ def _assert_workbook_migrated(source: Workbook, dest: Workbook, dest_asset: Asse
 def test_migrate_asset(
     source_client: NominalClient,
     dest_client: NominalClient,
-    source_archive: ArchiveFn,
-    dest_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     mp4_data: bytes,
     tmp_path: Path,
 ):
@@ -349,17 +316,17 @@ def test_migrate_asset(
     - Resources are correctly linked to the migrated destination asset
     """
     # --- source setup ---
-    (
-        source_asset,
-        source_ds,
-        event_a,
-        event_b,
-        source_run,
-        source_checklist,
-        source_data_review,
-        source_video,
-        source_workbook,
-    ) = _setup_source_resources(source_client, source_archive, mp4_data)
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    event_a, event_b = _create_source_events(source_client, register_cleanup, source_asset, start)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+    source_checklist, source_data_review = _create_source_checklist_and_review(
+        source_client, register_cleanup, source_run
+    )
+    source_video = _create_source_video(source_client, register_cleanup, source_asset, mp4_data, start)
+    source_workbook = _create_source_workbook(source_client, register_cleanup, source_asset)
 
     # --- migrate ---
     runner = _make_runner(_make_resources(source_asset), _no_files_config(), dest_client, tmp_path / "state.json")
@@ -367,7 +334,7 @@ def test_migrate_asset(
     state = runner.migration_state
 
     dest_asset = _dest_asset(runner, source_asset, dest_client)
-    dest_archive(dest_asset)
+    register_cleanup(dest_asset.archive)
 
     # --- asset ---
     _assert_asset_migrated(source_asset, dest_asset)
@@ -376,8 +343,11 @@ def test_migrate_asset(
     dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
     assert dest_ds_rid is not None
     dest_ds = dest_client.get_dataset(dest_ds_rid)
-    dest_archive(dest_ds)
-    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset, series_tags={"scope-tag": "scope-val"})
+    register_cleanup(dest_ds.archive)
+    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset)
+    # Verify series_tags are preserved: get_or_create_dataset raises on tag mismatch.
+    matched = dest_asset.get_or_create_dataset("primary", series_tags={"scope-tag": "scope-val"})
+    assert matched.rid == dest_ds.rid
 
     # --- events ---
     dest_event_a_rid = state.get_mapped_rid(ResourceType.EVENT, event_a.rid)
@@ -393,14 +363,14 @@ def test_migrate_asset(
     dest_run_rid = state.get_mapped_rid(ResourceType.RUN, source_run.rid)
     assert dest_run_rid is not None
     dest_run = dest_client.get_run(dest_run_rid)
-    dest_archive(dest_run)
+    register_cleanup(dest_run.archive)
     _assert_run_migrated(source_run, dest_run, dest_asset)
 
     # --- checklist + data review ---
     dest_checklist_rid = state.get_mapped_rid(ResourceType.CHECKLIST, source_checklist.rid)
     assert dest_checklist_rid is not None
     dest_checklist = dest_client.get_checklist(dest_checklist_rid)
-    dest_archive(dest_checklist)
+    register_cleanup(dest_checklist.archive)
     _assert_checklist_migrated(source_checklist, dest_checklist)
     assert state.get_mapped_rid(ResourceType.DATA_REVIEW, source_data_review.rid) is not None
 
@@ -408,7 +378,7 @@ def test_migrate_asset(
     dest_video_rid = state.get_mapped_rid(ResourceType.VIDEO, source_video.rid)
     assert dest_video_rid is not None
     dest_video = dest_client.get_video(dest_video_rid)
-    dest_archive(dest_video)
+    register_cleanup(dest_video.archive)
     _assert_video_migrated(source_video, dest_video, "camera", dest_asset)
     dest_video_files = list(dest_video.list_files())
     assert len(dest_video_files) == 1
@@ -418,23 +388,22 @@ def test_migrate_asset(
     dest_workbook_rid = state.get_mapped_rid(ResourceType.WORKBOOK, source_workbook.rid)
     assert dest_workbook_rid is not None
     dest_workbook = dest_client.get_workbook(dest_workbook_rid)
-    dest_archive(dest_workbook)
+    register_cleanup(dest_workbook.archive)
     _assert_workbook_migrated(source_workbook, dest_workbook, dest_asset)
 
 
 def test_migrate_asset_with_dataset_files(
     source_client: NominalClient,
     dest_client: NominalClient,
-    source_archive: ArchiveFn,
-    dest_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     csv_data: bytes,
     tmp_path: Path,
 ):
     """Dataset files are copied and ingested on the destination when include_dataset_files=True."""
     source_asset = source_client.create_asset(f"migration-e2e-files-asset-{uuid4()}")
-    source_archive(source_asset)
+    register_cleanup(source_asset.archive)
     source_ds = source_client.create_dataset(f"migration-e2e-files-ds-{uuid4()}")
-    source_archive(source_ds)
+    register_cleanup(source_ds.archive)
     source_ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(
         interval=POLL_INTERVAL
     )
@@ -444,11 +413,11 @@ def test_migrate_asset_with_dataset_files(
     runner.run_migration()
 
     dest_asset = _dest_asset(runner, source_asset, dest_client)
-    dest_archive(dest_asset)
+    register_cleanup(dest_asset.archive)
     dest_ds_rid = runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
     assert dest_ds_rid is not None
     dest_ds = dest_client.get_dataset(dest_ds_rid)
-    dest_archive(dest_ds)
+    register_cleanup(dest_ds.archive)
 
     dest_files = list(dest_ds.list_files())
     assert len(dest_files) == 1
@@ -464,8 +433,7 @@ def test_migrate_asset_with_dataset_files(
 def test_migrate_standalone_template(
     source_client: NominalClient,
     dest_client: NominalClient,
-    source_archive: ArchiveFn,
-    dest_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     tmp_path: Path,
 ):
     """Standalone workbook templates are cloned to the destination client."""
@@ -475,7 +443,7 @@ def test_migrate_standalone_template(
         labels=["migration-e2e"],
         properties={"wbt-prop": "wbt-val"},
     )
-    source_archive(source_template)
+    register_cleanup(source_template.archive)
 
     resources = MigrationResources(
         source_assets={},
@@ -487,7 +455,7 @@ def test_migrate_standalone_template(
     dest_template_rid = runner.migration_state.get_mapped_rid(ResourceType.WORKBOOK_TEMPLATE, source_template.rid)
     assert dest_template_rid is not None
     dest_template = dest_client.get_workbook_template(dest_template_rid)
-    dest_archive(dest_template)
+    register_cleanup(dest_template.archive)
     assert dest_template.title == source_template.title
     assert dest_template.description == source_template.description
     assert set(dest_template.labels) == set(source_template.labels)
@@ -497,15 +465,14 @@ def test_migrate_standalone_template(
 def test_migration_idempotency(
     source_client: NominalClient,
     dest_client: NominalClient,
-    source_archive: ArchiveFn,
-    dest_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     tmp_path: Path,
 ):
     """Running run_migration() twice on the same runner creates no duplicate resources."""
     source_asset = source_client.create_asset(f"migration-e2e-idempotent-asset-{uuid4()}")
-    source_archive(source_asset)
+    register_cleanup(source_asset.archive)
     source_ds = source_client.create_dataset(f"migration-e2e-idempotent-ds-{uuid4()}")
-    source_archive(source_ds)
+    register_cleanup(source_ds.archive)
     source_asset.add_dataset("primary", source_ds)
 
     runner = _make_runner(_make_resources(source_asset), _no_files_config(), dest_client, tmp_path / "state.json")
@@ -515,8 +482,8 @@ def test_migration_idempotency(
     dest_ds_rid_1 = runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
     assert dest_asset_rid_1 is not None
     assert dest_ds_rid_1 is not None
-    dest_archive(dest_client.get_asset(dest_asset_rid_1))
-    dest_archive(dest_client.get_dataset(dest_ds_rid_1))
+    register_cleanup(dest_client.get_asset(dest_asset_rid_1).archive)
+    register_cleanup(dest_client.get_dataset(dest_ds_rid_1).archive)
 
     runner.run_migration()
     assert runner.migration_state.get_mapped_rid(ResourceType.ASSET, source_asset.rid) == dest_asset_rid_1
@@ -526,8 +493,7 @@ def test_migration_idempotency(
 def test_resume_partial_migration(
     source_client: NominalClient,
     dest_client: NominalClient,
-    source_archive: ArchiveFn,
-    dest_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     tmp_path: Path,
 ):
     """Resuming from a partial state completes the migration without duplicating already-migrated resources.
@@ -537,17 +503,17 @@ def test_resume_partial_migration(
     and ds2 fresh, reuse the pre-existing ds1 (no duplicate), and link both to the new asset.
     """
     source_asset = source_client.create_asset(f"migration-e2e-partial-asset-{uuid4()}")
-    source_archive(source_asset)
+    register_cleanup(source_asset.archive)
     source_ds1 = source_client.create_dataset(f"migration-e2e-partial-ds1-{uuid4()}")
-    source_archive(source_ds1)
+    register_cleanup(source_ds1.archive)
     source_ds2 = source_client.create_dataset(f"migration-e2e-partial-ds2-{uuid4()}")
-    source_archive(source_ds2)
+    register_cleanup(source_ds2.archive)
     source_asset.add_dataset("primary", source_ds1)
     source_asset.add_dataset("secondary", source_ds2)
 
     # Simulate a previous run: ds1 already exists on dest, state file was written, then crash.
     pre_dest_ds1 = dest_client.create_dataset(f"migration-e2e-partial-ds1-pre-{uuid4()}")
-    dest_archive(pre_dest_ds1)
+    register_cleanup(pre_dest_ds1.archive)
     partial_state = MigrationState(rid_mapping={ResourceType.DATASET.value: {source_ds1.rid: pre_dest_ds1.rid}})
     state_file = tmp_path / "state.json"
     state_file.write_text(partial_state.to_json(), encoding="utf-8")
@@ -556,10 +522,10 @@ def test_resume_partial_migration(
     runner.run_migration()
 
     dest_asset = _dest_asset(runner, source_asset, dest_client)
-    dest_archive(dest_asset)
+    register_cleanup(dest_asset.archive)
     dest_ds2_rid = runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_ds2.rid)
     assert dest_ds2_rid is not None
-    dest_archive(dest_client.get_dataset(dest_ds2_rid))
+    register_cleanup(dest_client.get_dataset(dest_ds2_rid).archive)
 
     # ds1 was reused — no duplicate created.
     assert runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_ds1.rid) == pre_dest_ds1.rid
@@ -574,8 +540,7 @@ def test_resume_partial_migration(
 def test_resume_complete_migration(
     source_client: NominalClient,
     dest_client: NominalClient,
-    source_archive: ArchiveFn,
-    dest_archive: ArchiveFn,
+    register_cleanup: RegisterCleanup,
     tmp_path: Path,
 ):
     """Resuming from a complete state file creates nothing new.
@@ -584,11 +549,11 @@ def test_resume_complete_migration(
     same state file. The second run must return identical RIDs for every resource.
     """
     source_asset = source_client.create_asset(f"migration-e2e-complete-asset-{uuid4()}")
-    source_archive(source_asset)
+    register_cleanup(source_asset.archive)
     source_ds1 = source_client.create_dataset(f"migration-e2e-complete-ds1-{uuid4()}")
-    source_archive(source_ds1)
+    register_cleanup(source_ds1.archive)
     source_ds2 = source_client.create_dataset(f"migration-e2e-complete-ds2-{uuid4()}")
-    source_archive(source_ds2)
+    register_cleanup(source_ds2.archive)
     source_asset.add_dataset("primary", source_ds1)
     source_asset.add_dataset("secondary", source_ds2)
 
@@ -603,9 +568,9 @@ def test_resume_complete_migration(
     dest_ds1_rid = first_runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_ds1.rid)
     dest_ds2_rid = first_runner.migration_state.get_mapped_rid(ResourceType.DATASET, source_ds2.rid)
     assert dest_asset_rid and dest_ds1_rid and dest_ds2_rid
-    dest_archive(dest_client.get_asset(dest_asset_rid))
-    dest_archive(dest_client.get_dataset(dest_ds1_rid))
-    dest_archive(dest_client.get_dataset(dest_ds2_rid))
+    register_cleanup(dest_client.get_asset(dest_asset_rid).archive)
+    register_cleanup(dest_client.get_dataset(dest_ds1_rid).archive)
+    register_cleanup(dest_client.get_dataset(dest_ds2_rid).archive)
 
     # Second run: loads the complete state file, should create nothing.
     # MigrationRunner increments the output path to state_v2.json but reuses the loaded state.

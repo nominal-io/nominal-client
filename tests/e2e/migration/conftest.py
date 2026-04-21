@@ -12,8 +12,14 @@ Migration tests require two Nominal clients:
 
 Teardown helpers
 ----------------
-``source_archive`` / ``dest_archive`` — function-scoped helpers that register objects
-for cleanup (archive) after each test, even on failure.
+``register_cleanup`` — a function-scoped fixture that schedules a callable for execution
+after each test, even on failure. Pass any no-arg callable (typically ``obj.archive``) to
+register it::
+
+    register_cleanup(obj.archive)
+
+See https://docs.pytest.org/en/stable/reference/reference.html#request for details on the
+underlying pytest ``request`` fixture.
 """
 
 from __future__ import annotations
@@ -31,7 +37,7 @@ from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.context import MigrationContext
 from tests.e2e import POLL_INTERVAL
 
-ArchiveFn = Callable[[object], None]
+RegisterCleanup = Callable[[Callable[[], None]], None]
 
 
 def pytest_addoption(parser):
@@ -100,21 +106,16 @@ def set_connection(dest_client: NominalClient) -> Iterator[None]:
 
 
 @pytest.fixture
-def source_archive(request) -> ArchiveFn:
-    """Register source-environment objects for cleanup after each test."""
+def register_cleanup(request) -> RegisterCleanup:
+    """Schedule a callable to run after the current test, even on failure.
 
-    def _register(obj):
-        request.addfinalizer(obj.archive)
+    Usage::
 
-    return _register
+        register_cleanup(obj.archive)
+    """
 
-
-@pytest.fixture
-def dest_archive(request) -> ArchiveFn:
-    """Register destination-environment objects for cleanup after each test."""
-
-    def _register(obj):
-        request.addfinalizer(obj.archive)
+    def _register(fn: Callable[[], None]) -> None:
+        request.addfinalizer(fn)
 
     return _register
 
@@ -129,9 +130,11 @@ def migration_ctx(dest_client: NominalClient) -> MigrationContext:
 
 
 @pytest.fixture
-def ingested_source_dataset(source_client: NominalClient, csv_data: bytes, source_archive: ArchiveFn) -> Dataset:
+def ingested_source_dataset(
+    source_client: NominalClient, csv_data: bytes, register_cleanup: RegisterCleanup
+) -> Dataset:
     """A dataset on the source client, fully ingested from csv_data."""
     ds = source_client.create_dataset(f"migration-e2e-source-{uuid4().hex[:8]}")
-    source_archive(ds)
+    register_cleanup(ds.archive)
     ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
     return ds
