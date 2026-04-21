@@ -99,7 +99,7 @@ class TestAssetMigratorAttachments:
         source_asset = _make_source_asset(attachments=[source_att])
 
         dest_asset = _make_dest_asset()
-        ctx.destination_client.create_asset.return_value = dest_asset
+        ctx.destination_client.create_asset.return_value = dest_asset  # type: ignore[attr-defined]
 
         migrator.copy_from(source_asset, AssetCopyOptions(include_attachments=False))
 
@@ -124,7 +124,7 @@ class TestAssetMigratorAttachments:
         source_asset = _make_source_asset(attachments=[source_att_1, source_att_2])
 
         dest_asset = _make_dest_asset()
-        ctx.destination_client.create_asset.return_value = dest_asset
+        ctx.destination_client.create_asset.return_value = dest_asset  # type: ignore[attr-defined]
 
         new_att_1 = MagicMock()
         new_att_1.rid = new_rid_1
@@ -146,7 +146,7 @@ class TestAssetMigratorAttachments:
 
         source_asset = _make_source_asset(attachments=[])
         dest_asset = _make_dest_asset()
-        ctx.destination_client.create_asset.return_value = dest_asset
+        ctx.destination_client.create_asset.return_value = dest_asset  # type: ignore[attr-defined]
 
         migrator.copy_from(source_asset, AssetCopyOptions(include_attachments=True))
 
@@ -163,7 +163,7 @@ class TestAssetMigratorAttachments:
         source_asset = _make_source_asset(attachments=[source_att])
 
         dest_asset = _make_dest_asset()
-        ctx.destination_client.create_asset.return_value = dest_asset
+        ctx.destination_client.create_asset.return_value = dest_asset  # type: ignore[attr-defined]
 
         new_att = MagicMock()
         new_att.rid = _att_rid(101)
@@ -276,7 +276,7 @@ class TestAssetMigratorWorkbookRouting:
         source_asset.list_runs.return_value = [run1, run2]
 
         dest_run1 = MagicMock()
-        ctx.destination_client.get_run.return_value = dest_run1
+        ctx.destination_client.get_run.return_value = dest_run1  # type: ignore[attr-defined]
 
         migrator = AssetMigrator(ctx)
         migrator._copy_asset_and_run_workbooks(source_asset, new_asset, include_runs=True)

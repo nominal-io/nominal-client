@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -56,7 +57,7 @@ def _stub_source_workbook(
     return wb
 
 
-def _stub_raw_notebook(title: str = "WB", labels: list | None = None, properties: dict | None = None) -> MagicMock:
+def _stub_raw_notebook(title: str = "WB", labels: list[str] | None = None, properties: dict[str, str] | None = None) -> MagicMock:
     nb = MagicMock()
     nb.content_v2 = None  # forces use of nb.content, avoiding isinstance check on MagicMock
     nb.metadata.title = title
@@ -114,7 +115,7 @@ class TestMigrationStatePendingAndSkips:
 
 
 class TestCopyMultiAssetWorkbook:
-    def _make_migrator(self, **ctx_kwargs: object) -> tuple[WorkbookMigrator, MigrationContext]:
+    def _make_migrator(self, **ctx_kwargs: Any) -> tuple[WorkbookMigrator, MigrationContext]:
         ctx = _make_context(**ctx_kwargs)
         return WorkbookMigrator(ctx), ctx
 
@@ -155,7 +156,7 @@ class TestCopyMultiAssetWorkbook:
         assert kwargs["rid_overrides"] == {old_a1: new_a1, old_a2: new_a2}
 
         # notebook created with new asset RIDs in data_scope
-        create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]
+        create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]  # type: ignore[attr-defined]
         assert set(create_req.data_scope.asset_rids) == {new_a1, new_a2}
         assert create_req.data_scope.run_rids is None
 
@@ -186,7 +187,7 @@ class TestCopyMultiAssetWorkbook:
         assert result is None
         assert len(ctx.migration_state.skipped_resources) == 1
         assert old_a2 in ctx.migration_state.skipped_resources[0].reason
-        ctx.destination_client._clients.notebook.create.assert_not_called()
+        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.clone_conjure_objects_with_rid_overrides")
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
@@ -203,14 +204,14 @@ class TestCopyMultiAssetWorkbook:
 
         existing_wb = MagicMock()
         existing_wb.rid = wb_dst
-        ctx.destination_client.get_workbook.return_value = existing_wb
+        ctx.destination_client.get_workbook.return_value = existing_wb  # type: ignore[attr-defined]
 
         source = _stub_source_workbook(wb_src, asset_rids=[_asset_rid(1)])
         result = migrator.copy_multi_asset_workbook(source, [_asset_rid(1)])
 
         assert result is existing_wb
         mock_clone.assert_not_called()
-        ctx.destination_client._clients.notebook.create.assert_not_called()
+        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +254,7 @@ class TestCopyMultiRunWorkbook:
         _, kwargs = mock_clone.call_args
         assert kwargs["rid_overrides"] == {old_r1: new_r1, old_r2: new_r2, old_a1: new_a1}
 
-        create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]
+        create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]  # type: ignore[attr-defined]
         assert set(create_req.data_scope.run_rids) == {new_r1, new_r2}
         assert create_req.data_scope.asset_rids is None
 
@@ -276,7 +277,7 @@ class TestCopyMultiRunWorkbook:
         assert result is None
         assert len(ctx.migration_state.skipped_resources) == 1
         assert old_r2 in ctx.migration_state.skipped_resources[0].reason
-        ctx.destination_client._clients.notebook.create.assert_not_called()
+        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +290,7 @@ class TestMigrateDeferredWorkbooks:
         """When no workbooks are pending, no source clients are fetched and no copy methods are called."""
         ctx = _make_context()
         migrator = WorkbookMigrator(ctx)
-        source_clients: dict = {}
+        source_clients: dict[str, Any] = {}
 
         migrator.migrate_deferred_workbooks(source_clients)
         # Nothing to assert beyond no exceptions raised

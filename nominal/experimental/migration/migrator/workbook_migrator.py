@@ -198,7 +198,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         )
 
         destination_client = self.destination_client_for(source)
-        dest_clients = cast(ClientsBunch, destination_client._clients)
+        dest_clients = destination_client._clients
         request = scout_notebook_api.CreateNotebookRequest(
             title=raw_notebook.metadata.title,
             description=raw_notebook.metadata.description,
@@ -266,7 +266,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         )
 
         destination_client = self.destination_client_for(source)
-        dest_clients = cast(ClientsBunch, destination_client._clients)
+        dest_clients = destination_client._clients
         request = scout_notebook_api.CreateNotebookRequest(
             title=raw_notebook.metadata.title,
             description=raw_notebook.metadata.description,

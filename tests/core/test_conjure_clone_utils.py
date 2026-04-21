@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -129,7 +130,7 @@ class TestUuidMappingAndReplacement:
 class TestCloneWithRidOverrides:
     """End-to-end tests via the public function, with Conjure encode/decode patched to be identity ops."""
 
-    def _make_source_obj(self, d: dict) -> MagicMock:
+    def _make_source_obj(self, d: dict[str, Any]) -> MagicMock:
         obj = MagicMock()
         obj.__class__ = MagicMock  # satisfies type() call in the function
         return obj
