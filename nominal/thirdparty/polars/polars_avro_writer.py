@@ -320,6 +320,14 @@ class PolarsAvroWriter:
             )
 
         if ts_series.len() > 0:
+            # ts.min/max skip nulls, so a null-tolerant range check would let
+            # null rows through and surface as an opaque fastavro encode error.
+            null_count = ts_series.null_count()
+            if null_count > 0:
+                raise ValueError(
+                    f"Timestamp column {self._timestamp_column!r} in group {group_name!r} "
+                    f"contains {null_count} null(s); timestamps must not be null."
+                )
             ts_min = cast("int | None", ts_series.min())
             ts_max = cast("int | None", ts_series.max())
             if ts_min is not None and ts_min < 0:

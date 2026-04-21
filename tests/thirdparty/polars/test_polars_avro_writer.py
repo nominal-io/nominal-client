@@ -310,6 +310,13 @@ def test_timestamp_at_long_max_raises(writer_path: Path) -> None:
             w.add("g", df)
 
 
+def test_null_timestamp_raises(writer_path: Path) -> None:
+    df = pl.DataFrame({TS_COL: pl.Series([100, None, 300], dtype=pl.Int64), "v": [1.0, 2.0, 3.0]})
+    with PolarsAvroWriter(writer_path, timestamp_column=TS_COL) as w:
+        with pytest.raises(ValueError, match="null"):
+            w.add("g", df)
+
+
 def test_reserved_tag_key_raises(writer_path: Path, make_df) -> None:
     df = make_df(n=1, v=[1.0])
     with PolarsAvroWriter(writer_path, timestamp_column=TS_COL) as w:
