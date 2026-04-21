@@ -7,10 +7,10 @@ from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, BinaryIO, Iterable, Mapping, Sequence, TypeAlias, cast, overload
+from typing import BinaryIO, Callable, Iterable, Mapping, Protocol, Sequence, TypeAlias, cast, overload
 from urllib.parse import urlparse
 
-from nominal_api import api, ingest_api, scout_asset_api, scout_catalog
+from nominal_api import api, authentication_api, ingest_api, scout_asset_api, scout_catalog
 from typing_extensions import Self, deprecated
 
 from nominal.core._stream.batch_processor import process_log_batch
@@ -39,6 +39,50 @@ from nominal.ts import (
 logger = logging.getLogger(__name__)
 
 DatasetBounds: TypeAlias = Bounds
+
+
+class _DatasetOwnerClients(DataSource._Clients, Protocol):
+    _api_base_url: str
+    authentication: authentication_api.AuthenticationServiceV2
+
+
+class _GrpcModule(Protocol):
+    def insecure_channel(self, target: str) -> _GrpcChannel: ...
+    def secure_channel(self, target: str, credentials: object) -> _GrpcChannel: ...
+    def ssl_channel_credentials(self) -> object: ...
+
+
+class _RolesPb2Module(Protocol):
+    ROLE_OWNER: object
+    GetResourceRolesRequest: Callable[..., object]
+
+
+class _RoleAssignment(Protocol):
+    role: object
+    user_rid: str
+
+
+class _RoleAssignmentsResponse(Protocol):
+    role_assignments: Iterable[_RoleAssignment]
+
+
+class _GrpcChannel(Protocol):
+    def __enter__(self) -> object: ...
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> object: ...
+
+
+class _RoleServiceStub(Protocol):
+    def GetResourceRoles(
+        self, request: object, *, metadata: tuple[tuple[str, str], ...]
+    ) -> _RoleAssignmentsResponse: ...
+
+
+class _RoleServiceStubFactory(Protocol):
+    def __call__(self, channel: object) -> _RoleServiceStub: ...
+
+
+class _RolesPb2GrpcModule(Protocol):
+    RoleServiceStub: _RoleServiceStubFactory
 
 
 @dataclass(frozen=True)
@@ -629,9 +673,10 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             ImportError: `nominal[protos]` is required for this gRPC-backed lookup.
             ValueError: No owner assignment could be resolved for this dataset.
         """
+        clients = cast(_DatasetOwnerClients, self._clients)
         owner_rid = _get_dataset_owner_rid(
-            auth_header=self._clients.auth_header,
-            api_base_url=cast(Any, self._clients)._api_base_url,
+            auth_header=clients.auth_header,
+            api_base_url=clients._api_base_url,
             dataset_rid=self.rid,
         )
         if owner_rid is None:
@@ -640,10 +685,8 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
     def get_owner(self) -> User:
         """Retrieve the owner user for this dataset via the role service."""
-        return cast(
-            User,
-            cast(Any, self._clients).authentication.get_user(self._clients.auth_header, self.get_owner_rid()),
-        )
+        clients = cast(_DatasetOwnerClients, self._clients)
+        return User._from_conjure(clients.authentication.get_user(clients.auth_header, self.get_owner_rid()))
 
     @classmethod
     def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
@@ -1163,13 +1206,17 @@ def _get_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_rid: 
     return None
 
 
-def _import_role_service_modules() -> tuple[Any, Any, Any]:
+def _import_role_service_modules() -> tuple[_GrpcModule, _RolesPb2Module, _RolesPb2GrpcModule]:
     try:
         import grpc  # type: ignore[import-untyped]
         from nominal_api_protos.nominal.authorization.roles.v1 import roles_pb2, roles_pb2_grpc
     except ImportError as ex:
         raise ImportError("nominal[protos] is required to use Dataset.get_owner() and Dataset.get_owner_rid()") from ex
-    return grpc, roles_pb2, roles_pb2_grpc
+    return (
+        cast(_GrpcModule, grpc),
+        cast(_RolesPb2Module, roles_pb2),
+        cast(_RolesPb2GrpcModule, roles_pb2_grpc),
+    )
 
 
 def _api_base_url_to_grpc_target(api_base_url: str) -> str:
