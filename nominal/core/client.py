@@ -122,6 +122,11 @@ class WorkspaceSearchType(enum.Enum):
 WorkspaceSearchT = WorkspaceSearchType | Workspace | str
 
 
+def filter_assets_by_exact_name(assets: Iterable[Asset], exact_match: str) -> list[Asset]:
+    """Return only the assets whose name is exactly ``exact_match``."""
+    return [a for a in assets if a.name == exact_match]
+
+
 @dataclass(frozen=True)
 class NominalClient:
     _clients: ClientsBunch = field(repr=False)
@@ -1252,7 +1257,7 @@ class NominalClient:
         )
         results = list(self._iter_search_assets(query, archive_status))
         if exact_match is not None:
-            results = [a for a in results if a.name == exact_match]
+            results = filter_assets_by_exact_name(results, exact_match)
         return results
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Sequence[str]:

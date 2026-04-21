@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.core.client import NominalClient, WorkspaceSearchType
+from nominal.core.client import NominalClient, WorkspaceSearchType, filter_assets_by_exact_name
 
 
 def _make_client() -> NominalClient:
@@ -91,30 +91,22 @@ def test_raises_when_multiple_property_matches_and_no_name_match() -> None:
             client.get_or_create_asset_by_properties(properties, name="FSAE CT8 Vehicle")
 
 
-def test_search_assets_exact_match_filters_client_side() -> None:
-    """search_assets(exact_match=...) filters results to assets whose name matches exactly."""
-    client = _make_client()
+def test_filter_assets_by_exact_name_returns_only_matches() -> None:
+    """The filter keeps only assets whose name equals the requested string."""
     match = _asset("FSAE CT8 Vehicle")
     other = _asset("FSAE CT8 Vehicle2")
 
-    with patch.object(NominalClient, "_iter_search_assets", return_value=iter([match, other])):
-        results = client.search_assets(exact_match="FSAE CT8 Vehicle")
-
-    assert results == [match]
+    assert filter_assets_by_exact_name([match, other], "FSAE CT8 Vehicle") == [match]
 
 
-def test_search_assets_exact_match_ignores_iteration_order() -> None:
-    """exact_match must match the exact name, not just the first result.
+def test_filter_assets_by_exact_name_ignores_iteration_order() -> None:
+    """Filtering must match on exact name, not position in the input.
 
     The non-target asset is alphanumerically less than the target, so a naive
     implementation that returned the first result (or the alphabetically first)
     would incorrectly pick the non-target.
     """
-    client = _make_client()
     non_target = _asset("a_non_target_asset")
     target = _asset("target_asset")
 
-    with patch.object(NominalClient, "_iter_search_assets", return_value=iter([non_target, target])):
-        results = client.search_assets(exact_match="target_asset")
-
-    assert results == [target]
+    assert filter_assets_by_exact_name([non_target, target], "target_asset") == [target]
