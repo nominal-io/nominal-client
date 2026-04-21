@@ -5,7 +5,7 @@ import logging
 import pathlib
 from dataclasses import dataclass
 from types import TracebackType
-from typing import IO, NoReturn, Protocol, TypedDict, cast
+from typing import IO, Literal, NoReturn, Protocol, TypedDict, cast
 
 import fastavro
 import polars as pl
@@ -16,7 +16,12 @@ logger = logging.getLogger(__name__)
 _BYTES_PER_MIB = 1024 * 1024
 _BYTES_PER_GIB = 1024 * 1024 * 1024
 
-_DEFAULT_CODEC = "snappy"
+AvroCodec = Literal["null", "deflate", "snappy", "bzip2", "xz"]
+"""Avro compression codec. ``null`` and ``deflate`` are part of the Avro
+spec; ``snappy`` goes through ``cramjam`` (bundled); ``bzip2`` and ``xz``
+use stdlib modules."""
+
+_DEFAULT_CODEC: AvroCodec = "snappy"
 _DEFAULT_CHANNEL_BATCH_SIZE = 50_000
 _DEFAULT_MAX_FILE_BYTES = _BYTES_PER_GIB
 
@@ -66,7 +71,7 @@ _AVRO_STREAM_SCHEMA: dict[str, object] = fastavro.parse_schema(
             },
         ],
     }
-)  # type: ignore
+)  # type: ignore[assignment]  # fastavro.parse_schema returns str|list|dict
 
 
 _REJECTED_DTYPE_HINTS: dict[type, str] = {
@@ -232,7 +237,7 @@ class PolarsAvroWriter:
         *,
         channel_batch_size: int = _DEFAULT_CHANNEL_BATCH_SIZE,
         max_file_bytes: int = _DEFAULT_MAX_FILE_BYTES,
-        codec: str = _DEFAULT_CODEC,
+        codec: AvroCodec = _DEFAULT_CODEC,
         integers_as_double: bool = False,
     ) -> None:
         """Initialize the writer.
@@ -245,7 +250,7 @@ class PolarsAvroWriter:
             channel_batch_size: Maximum rows per channel slice.
             max_file_bytes: Approximate maximum bytes per output file
                 before rolling.
-            codec: fastavro compression codec.
+            codec: Avro compression codec. See ``AvroCodec``.
             integers_as_double: Emit integer columns via the ``double``
                 arm (Float64 upcast, NaN for nulls) instead of the
                 spec-native ``long`` arm.
@@ -374,10 +379,14 @@ class PolarsAvroWriter:
         path = self.base_path.with_name(f"{stem}_{self._file_index:03d}{suffix}")
         self._file_index += 1
         handle = open(path, "wb")
-        writer = cast(
-            _AvroStreamWriter,
-            fastavro.write.Writer(handle, _AVRO_STREAM_SCHEMA, codec=self._codec),
-        )
+        try:
+            writer = cast(
+                _AvroStreamWriter,
+                fastavro.write.Writer(handle, _AVRO_STREAM_SCHEMA, codec=self._codec),
+            )
+        except BaseException:
+            handle.close()
+            raise
         self._current = _OpenFile(path=path, handle=handle, writer=writer)
 
     def _finalize_current_file(self) -> None:
