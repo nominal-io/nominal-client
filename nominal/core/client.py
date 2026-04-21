@@ -1186,8 +1186,9 @@ class NominalClient:
             return assets[0]
 
         if len(assets) > 1:
-            # Multiple assets match the given properties; disambiguate by exact name.
-            by_name = self.search_assets(properties=properties, exact_match=name, workspace=WorkspaceSearchType.DEFAULT)
+            # Multiple assets match the given properties; disambiguate by exact
+            # name using the already-fetched results (no extra server call).
+            by_name = [a for a in assets if a.name == name]
             if len(by_name) == 1:
                 return by_name[0]
             asset_names_str = "\n".join(a.name for a in assets[:MAX_ASSETS_SHOWN]) + (

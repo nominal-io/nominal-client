@@ -60,15 +60,11 @@ def test_disambiguates_multiple_property_matches_by_exact_name() -> None:
     match = _asset("FSAE CT8 Vehicle")
     dupe = _asset("FSAE CT8 Vehicle2")
 
-    # First call returns both property matches; second call (with exact_match) returns only `match`.
-    with patch.object(NominalClient, "search_assets", side_effect=[[match, dupe], [match]]) as search_assets:
+    with patch.object(NominalClient, "search_assets", return_value=[match, dupe]) as search_assets:
         assert client.get_or_create_asset_by_properties(properties, name="FSAE CT8 Vehicle") is match
 
-    assert search_assets.call_count == 2
-    search_assets.assert_any_call(properties=properties, workspace=WorkspaceSearchType.DEFAULT)
-    search_assets.assert_any_call(
-        properties=properties, exact_match="FSAE CT8 Vehicle", workspace=WorkspaceSearchType.DEFAULT
-    )
+    # Disambiguation filters the already-fetched list locally; no extra server call.
+    search_assets.assert_called_once_with(properties=properties, workspace=WorkspaceSearchType.DEFAULT)
 
 
 def test_raises_when_disambiguation_still_ambiguous() -> None:
@@ -78,7 +74,7 @@ def test_raises_when_disambiguation_still_ambiguous() -> None:
     match_a = _asset("FSAE CT8 Vehicle")
     match_b = _asset("FSAE CT8 Vehicle")
 
-    with patch.object(NominalClient, "search_assets", side_effect=[[match_a, match_b], [match_a, match_b]]):
+    with patch.object(NominalClient, "search_assets", return_value=[match_a, match_b]):
         with pytest.raises(ValueError, match="cannot uniquely identify one asset"):
             client.get_or_create_asset_by_properties(properties, name="FSAE CT8 Vehicle")
 
@@ -90,7 +86,7 @@ def test_raises_when_multiple_property_matches_and_no_name_match() -> None:
     match_a = _asset("FSAE CT8 Vehicle2")
     match_b = _asset("FSAE CT8 Vehicle3")
 
-    with patch.object(NominalClient, "search_assets", side_effect=[[match_a, match_b], []]):
+    with patch.object(NominalClient, "search_assets", return_value=[match_a, match_b]):
         with pytest.raises(ValueError, match="cannot uniquely identify one asset"):
             client.get_or_create_asset_by_properties(properties, name="FSAE CT8 Vehicle")
 
@@ -105,3 +101,20 @@ def test_search_assets_exact_match_filters_client_side() -> None:
         results = client.search_assets(exact_match="FSAE CT8 Vehicle")
 
     assert results == [match]
+
+
+def test_search_assets_exact_match_ignores_iteration_order() -> None:
+    """exact_match must match the exact name, not just the first result.
+
+    The non-target asset is alphanumerically less than the target, so a naive
+    implementation that returned the first result (or the alphabetically first)
+    would incorrectly pick the non-target.
+    """
+    client = _make_client()
+    non_target = _asset("a_non_target_asset")
+    target = _asset("target_asset")
+
+    with patch.object(NominalClient, "_iter_search_assets", return_value=iter([non_target, target])):
+        results = client.search_assets(exact_match="target_asset")
+
+    assert results == [target]
