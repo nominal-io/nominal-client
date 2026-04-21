@@ -243,10 +243,15 @@ class TestCopyMultiRunWorkbook:
         new_wb.rid = wb_dst
         mock_from_conjure.return_value = new_wb
 
+        # Also record a migrated asset to verify it's included in rid_overrides
+        old_a1 = _asset_rid(1)
+        new_a1 = _asset_rid(101)
+        ctx.migration_state.record_mapping(ResourceType.ASSET, old_a1, new_a1)
+
         result = migrator.copy_multi_run_workbook(source, [old_r1, old_r2])
 
         _, kwargs = mock_clone.call_args
-        assert kwargs["rid_overrides"] == {old_r1: new_r1, old_r2: new_r2}
+        assert kwargs["rid_overrides"] == {old_r1: new_r1, old_r2: new_r2, old_a1: new_a1}
 
         create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]
         assert set(create_req.data_scope.run_rids) == {new_r1, new_r2}

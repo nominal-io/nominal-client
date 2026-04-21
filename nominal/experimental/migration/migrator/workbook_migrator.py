@@ -246,6 +246,11 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                 return None
             rid_map[old_rid] = new_rid
 
+        # Also remap any asset RIDs embedded in the content (channels resolve against both
+        # run RIDs and asset RIDs, so both must be substituted).
+        asset_rid_map = dict(self.ctx.migration_state.rid_mapping.get(ResourceType.ASSET.value, {}))
+        rid_overrides = {**asset_rid_map, **rid_map}
+
         source_clients = cast(ClientsBunch, source._clients)
         raw_notebook = source_clients.notebook.get(source_clients.auth_header, source.rid)
 
@@ -257,7 +262,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
             raise ValueError(f"Missing content for workbook {source.rid}")
 
         new_layout, new_content = clone_conjure_objects_with_rid_overrides(
-            (raw_notebook.layout, content), rid_overrides=rid_map
+            (raw_notebook.layout, content), rid_overrides=rid_overrides
         )
 
         destination_client = self.destination_client_for(source)
