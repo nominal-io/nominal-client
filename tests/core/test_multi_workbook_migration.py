@@ -57,7 +57,9 @@ def _stub_source_workbook(
     return wb
 
 
-def _stub_raw_notebook(title: str = "WB", labels: list[str] | None = None, properties: dict[str, str] | None = None) -> MagicMock:
+def _stub_raw_notebook(
+    title: str = "WB", labels: list[str] | None = None, properties: dict[str, str] | None = None
+) -> MagicMock:
     nb = MagicMock()
     nb.content_v2 = None  # forces use of nb.content, avoiding isinstance check on MagicMock
     nb.metadata.title = title
