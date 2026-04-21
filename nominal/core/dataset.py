@@ -640,7 +640,9 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
 
     def get_owner(self) -> User:
         """Retrieve the owner user for this dataset via the role service."""
-        return User._from_conjure(self._clients.authentication.get_user(self._clients.auth_header, self.get_owner_rid()))
+        return User._from_conjure(
+            self._clients.authentication.get_user(self._clients.auth_header, self.get_owner_rid())
+        )
 
     @classmethod
     def _from_conjure(cls, clients: DataSource._Clients, dataset: scout_catalog.EnrichedDataset) -> Self:
