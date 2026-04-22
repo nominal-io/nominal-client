@@ -21,6 +21,30 @@ DEFAULT_CHUNK_SIZE = 64_000_000
 DEFAULT_NUM_WORKERS = 8
 
 
+def _wrap_multipart_retry_exception(
+    *,
+    ex: Exception,
+    key: str,
+    part: int,
+    upload_id: str,
+    attempt: int,
+    previous_attempt_ex: Exception | None,
+) -> NominalMultipartUploadFailed:
+    response = getattr(ex, "response", None)
+    response_headers = (
+        ", ".join(f"{header}={value!r}" for header, value in sorted(response.headers.items()))
+        if response is not None and response.headers is not None
+        else "none"
+    )
+    wrapped = NominalMultipartUploadFailed(
+        f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part}, "
+        f"attempt={attempt}: {type(ex).__name__}: {ex}. Response headers: {response_headers}"
+    )
+    if previous_attempt_ex is not None:
+        wrapped.__cause__ = previous_attempt_ex
+    return wrapped
+
+
 def _sign_and_upload_part_job(
     upload_client: upload_api.UploadService,
     multipart_session: requests.Session,
@@ -34,7 +58,7 @@ def _sign_and_upload_part_job(
     data = q.get()
 
     try:
-        last_ex: Exception | None = None
+        last_ex: NominalMultipartUploadFailed | None = None
         for attempt in range(num_retries):
             try:
                 log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
@@ -54,22 +78,20 @@ def _sign_and_upload_part_job(
                     headers=sign_response.headers,
                     verify=upload_client._verify,
                 )
+                put_response.raise_for_status()
                 logger.debug(
                     "Finished pushing part %d for multipart upload with status %d",
                     part,
                     put_response.status_code,
                     extra={"response.url": put_response.url, **log_extras},
                 )
-                put_response.raise_for_status()
                 return put_response
             except Exception as ex:
-                logger.warning(
-                    "Failed to upload part %d: %s",
-                    part,
-                    ex,
-                    extra=log_extras,
+                logger.warning("Failed to upload part %d: %s", part, ex, extra=log_extras)
+                wrapped_ex = _wrap_multipart_retry_exception(
+                    ex=ex, key=key, part=part, upload_id=upload_id, attempt=attempt + 1, previous_attempt_ex=last_ex
                 )
-                last_ex = ex
+                last_ex = wrapped_ex
 
         raise (
             last_ex
