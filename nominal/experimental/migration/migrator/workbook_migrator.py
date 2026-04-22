@@ -180,6 +180,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                 reason = f"asset {old_rid} not found in migration state"
                 logger.warning("Skipping multi-asset workbook %s: %s", source.rid, reason)
                 self.ctx.migration_state.record_skip(ResourceType.WORKBOOK, source.rid, reason)
+                self.ctx.migration_state.clear_pending_multi_asset_workbook(source.rid)
                 return None
             rid_map[old_rid] = new_rid
 
@@ -243,6 +244,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                 reason = f"run {old_rid} not found in migration state"
                 logger.warning("Skipping multi-run workbook %s: %s", source.rid, reason)
                 self.ctx.migration_state.record_skip(ResourceType.WORKBOOK, source.rid, reason)
+                self.ctx.migration_state.clear_pending_multi_run_workbook(source.rid)
                 return None
             rid_map[old_rid] = new_rid
 

@@ -171,17 +171,19 @@ class TestCopyMultiAssetWorkbook:
         assert result is new_wb
 
     def test_missing_assets_returns_none_and_records_skip(self) -> None:
-        """When one or more asset RIDs are absent from the migration state, returns None
-        and records a skip entry; no notebook is created.
+        """When one or more asset RIDs are absent from the migration state, returns None,
+        records a skip entry, clears the pending entry, and creates no notebook.
         """
         old_a1, old_a2 = _asset_rid(1), _asset_rid(2)
         new_a1 = _asset_rid(101)
+        wb_src = _wb_rid(1)
         # old_a2 intentionally not mapped
 
         migrator, ctx = self._make_migrator()
         ctx.migration_state.record_mapping(ResourceType.ASSET, old_a1, new_a1)
+        ctx.migration_state.record_pending_multi_asset_workbook(wb_src, [old_a1, old_a2])
 
-        source = _stub_source_workbook(_wb_rid(1), asset_rids=[old_a1, old_a2])
+        source = _stub_source_workbook(wb_src, asset_rids=[old_a1, old_a2])
         source._clients.notebook.get.return_value = _stub_raw_notebook()
 
         result = migrator.copy_multi_asset_workbook(source, [old_a1, old_a2])
@@ -189,6 +191,7 @@ class TestCopyMultiAssetWorkbook:
         assert result is None
         assert len(ctx.migration_state.skipped_resources) == 1
         assert old_a2 in ctx.migration_state.skipped_resources[0].reason
+        assert wb_src not in ctx.migration_state.pending_multi_asset_workbooks
         ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.clone_conjure_objects_with_rid_overrides")
@@ -265,13 +268,17 @@ class TestCopyMultiRunWorkbook:
         assert result is new_wb
 
     def test_missing_run_returns_none_and_records_skip(self) -> None:
-        """A run RID absent from the migration state causes the workbook to be skipped."""
+        """A run RID absent from the migration state causes the workbook to be skipped,
+        clears the pending entry, and creates no notebook.
+        """
         old_r1, old_r2 = _run_rid(1), _run_rid(2)
+        wb_src = _wb_rid(1)
         migrator, ctx = self._make_migrator()
         ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, _run_rid(101))
+        ctx.migration_state.record_pending_multi_run_workbook(wb_src, [old_r1, old_r2])
         # old_r2 not mapped
 
-        source = _stub_source_workbook(_wb_rid(1), run_rids=[old_r1, old_r2])
+        source = _stub_source_workbook(wb_src, run_rids=[old_r1, old_r2])
         source._clients.notebook.get.return_value = _stub_raw_notebook()
 
         result = migrator.copy_multi_run_workbook(source, [old_r1, old_r2])
@@ -279,6 +286,7 @@ class TestCopyMultiRunWorkbook:
         assert result is None
         assert len(ctx.migration_state.skipped_resources) == 1
         assert old_r2 in ctx.migration_state.skipped_resources[0].reason
+        assert wb_src not in ctx.migration_state.pending_multi_run_workbooks
         ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
 
 
