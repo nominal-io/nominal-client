@@ -30,6 +30,11 @@ def _wrap_multipart_retry_exception(
     attempt: int,
     previous_attempt_ex: Exception | None,
 ) -> NominalMultipartUploadFailed:
+    """Wrap failed multipart upload attempts so that we can:
+    - chain exceptions across retries to preserve the full history of failures for debugging
+    - add contextual information, especially response headers so that we can debug S3 errors
+    - AWS will want x-amz-request-id and x-amz-id-2 headers for debugging
+    """
     response = getattr(ex, "response", None)
     response_headers = (
         ", ".join(f"{header}={value!r}" for header, value in sorted(response.headers.items()))
