@@ -11,30 +11,56 @@ from nominal.core._utils.api_tools import HasRid
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 
-class ContainerImageStatus(str, Enum):
+class ContainerImageStatus(Enum):
+    """Lifecycle state of a container image in Nominal's registry."""
+
     UNSPECIFIED = "CONTAINER_IMAGE_STATUS_UNSPECIFIED"
+    """Status is unset or unrecognized. Treat as an unknown state."""
+
     PENDING = "CONTAINER_IMAGE_STATUS_PENDING"
+    """Tarball uploaded but is not ready for use yet."""
+
     READY = "CONTAINER_IMAGE_STATUS_READY"
+    """Image is available in the registry and can be pulled."""
+
     FAILED = "CONTAINER_IMAGE_STATUS_FAILED"
+    """Registry push failed. The image will not become available."""
 
     @classmethod
-    def _parse(cls, raw: object) -> ContainerImageStatus:
-        if isinstance(raw, str):
-            try:
-                return cls(raw)
-            except ValueError:
-                pass
-        return cls.UNSPECIFIED
+    def _from_conjure(cls, api_status: str) -> ContainerImageStatus:
+        try:
+            return cls(api_status)
+        except ValueError:
+            return cls.UNSPECIFIED
 
 
 @dataclass(frozen=True)
 class ContainerImage(HasRid):
+    """A container image tarball stored in Nominal's registry.
+
+    Create one via `NominalClient.upload_container_image_from_io`. The registry push is
+    asynchronous: a freshly uploaded image may be returned in `PENDING` state and transition
+    to `READY` (or `FAILED`) once the server finishes pushing the tarball to the internal
+    OCI registry.
+    """
+
     rid: str
+    """Nominal resource identifier for this image."""
+
     name: str
+    """Image name within the workspace (e.g. `my-extractor`)."""
+
     tag: str
+    """Image tag (e.g. `v1.2.3`). Unique per `(workspace, name)`."""
+
     status: ContainerImageStatus
+    """Current lifecycle state of the image."""
+
     created_at: IntegralNanosecondsUTC
+    """Creation timestamp, in nanoseconds since the Unix epoch."""
+
     size_bytes: int | None
+    """Size of the uploaded tarball in bytes, or `None` until the server populates it."""
 
     _clients: _Clients = field(repr=False)
 
@@ -43,14 +69,20 @@ class ContainerImage(HasRid):
         def registry(self) -> RegistryService: ...
 
     @classmethod
-    def _from_response(cls, clients: _Clients, image: dict[str, Any]) -> Self:
+    def _from_grpc(cls, clients: _Clients, image: dict[str, Any]) -> Self:
         raw_size = image.get("sizeBytes")
         size_bytes = int(raw_size) if raw_size is not None else None
+        raw_status = image.get("status")
+        status = (
+            ContainerImageStatus._from_conjure(raw_status)
+            if isinstance(raw_status, str)
+            else ContainerImageStatus.UNSPECIFIED
+        )
         return cls(
             rid=str(image["rid"]),
             name=str(image.get("name", "")),
             tag=str(image.get("tag", "")),
-            status=ContainerImageStatus._parse(image.get("status")),
+            status=status,
             created_at=_SecondsNanos.from_flexible(image["createdAt"]).to_nanoseconds(),
             size_bytes=size_bytes,
             _clients=clients,

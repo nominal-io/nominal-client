@@ -988,26 +988,23 @@ class NominalClient:
 
     def upload_container_image_from_io(
         self,
-        tarball: BinaryIO,
+        path: BinaryIO,
         name: str,
         tag: str,
-        *,
-        file_type: tuple[str, str] | FileType = FileTypes.TAR,
     ) -> ContainerImage:
         """Upload a container image tarball to Nominal's self-hosted registry.
 
         The tarball must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
         """
-        if isinstance(tarball, TextIOBase):
-            raise TypeError(f"tarball {tarball!r} must be open in binary mode, rather than text mode")
+        if isinstance(path, TextIOBase):
+            raise TypeError(f"tarball {path!r} must be open in binary mode, rather than text mode")
 
-        file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
             self._clients.auth_header,
             self._clients.workspace_rid,
-            tarball,
+            path,
             f"{name}-{tag}",
-            file_type,
+            FileTypes.TAR,
             self._clients.upload,
         )
         request = {
@@ -1020,7 +1017,7 @@ class NominalClient:
         image = response.get("image")
         if not isinstance(image, dict):
             raise NominalError(f"unexpected CreateImageResponse from registry: {response!r}")
-        return ContainerImage._from_response(self._clients, image)
+        return ContainerImage._from_grpc(self._clients, image)
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""
