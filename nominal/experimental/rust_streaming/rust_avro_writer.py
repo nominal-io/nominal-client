@@ -9,6 +9,7 @@ from typing import Any, Mapping, Sequence
 import polars as pl
 from nominal_streaming._nominal_streaming import PyNominalDatasetStream, PyNominalStreamOpts
 from nominal_streaming.nominal_dataset_stream import _parse_timestamp
+from typing_extensions import Self
 
 TimestampLike = str | int | datetime.datetime
 ScalarValue = int | float | str
@@ -51,7 +52,7 @@ class RollingAvroWriter:
         need to share one writer.
 
     Example:
-        >>> with RustAvroWriter(pathlib.Path("out.avro")) as w:
+        >>> with RollingAvroWriter(pathlib.Path("out.avro")) as w:
         ...     w.add("speed", 1_000_000_000, 42.5)
         ...     w.add_batch("altitude", [1_000_000_000, 2_000_000_000], [100.0, 101.0])
         ...     w.add_float_array("vec", 3_000_000_000, [1.0, 2.0, 3.0])
@@ -97,7 +98,7 @@ class RollingAvroWriter:
         self._points_in_current = 0
         self.files_written: list[pathlib.Path] = []
 
-    def __enter__(self) -> RustAvroWriter:
+    def __enter__(self) -> Self:
         """Return ``self`` so the writer can be used as a context manager."""
         return self
 
