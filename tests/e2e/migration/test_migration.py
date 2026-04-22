@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable
 from uuid import uuid4
 
 from nominal.core import NominalClient
@@ -286,6 +286,10 @@ def _assert_video_migrated(source: Video, dest: Video, scope_name: str, dest_ass
     dest_videos = dict(dest_asset.list_videos())
     assert scope_name in dest_videos
     assert dest_videos[scope_name].rid == dest.rid
+    # File: the migrated video has exactly one file, fully ingested.
+    dest_files = list(dest.list_files())
+    assert len(dest_files) == 1
+    dest_files[0].poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
 
 def _assert_workbook_migrated(source: Workbook, dest: Workbook, dest_asset: Asset) -> None:
@@ -350,10 +354,8 @@ def test_migrate_asset(
     assert matched.rid == dest_ds.rid
 
     # --- events ---
-    dest_event_a_rid = state.get_mapped_rid(ResourceType.EVENT, event_a.rid)
-    dest_event_b_rid = state.get_mapped_rid(ResourceType.EVENT, event_b.rid)
-    assert dest_event_a_rid is not None
-    assert dest_event_b_rid is not None
+    assert (dest_event_a_rid := state.get_mapped_rid(ResourceType.EVENT, event_a.rid)) is not None
+    assert (dest_event_b_rid := state.get_mapped_rid(ResourceType.EVENT, event_b.rid)) is not None
     dest_event_a = dest_client.get_event(dest_event_a_rid)
     dest_event_b = dest_client.get_event(dest_event_b_rid)
     _assert_event_migrated(event_a, dest_event_a, dest_asset)
@@ -380,9 +382,6 @@ def test_migrate_asset(
     dest_video = dest_client.get_video(dest_video_rid)
     register_cleanup(dest_video.archive)
     _assert_video_migrated(source_video, dest_video, "camera", dest_asset)
-    dest_video_files = list(dest_video.list_files())
-    assert len(dest_video_files) == 1
-    dest_video_files[0].poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
     # --- workbook ---
     dest_workbook_rid = state.get_mapped_rid(ResourceType.WORKBOOK, source_workbook.rid)
