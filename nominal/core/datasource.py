@@ -7,7 +7,6 @@ from typing import Iterable, Literal, Mapping, Protocol, Sequence, overload
 
 from nominal_api import (
     api,
-    authentication_api,
     datasource_api,
     ingest_api,
     scout,
@@ -62,10 +61,6 @@ class DataSource(HasRid):
     _clients: _Clients = field(repr=False)
 
     class _Clients(Channel._Clients, HasScoutParams, Protocol):
-        @property
-        def _api_base_url(self) -> str: ...
-        @property
-        def authentication(self) -> authentication_api.AuthenticationServiceV2: ...
         @property
         def catalog(self) -> scout_catalog.CatalogService: ...
         @property
