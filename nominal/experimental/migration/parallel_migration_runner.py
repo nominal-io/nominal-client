@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+from typing import Callable
 
+from nominal.experimental.migration.config.migration_resources import AssetResources
 from nominal.experimental.migration.migration_runner import MigrationRunner
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
 from nominal.experimental.migration.migrator.context import MigrationContext
@@ -17,6 +19,22 @@ from nominal.experimental.migration.parallel_migration_executor import (
 from nominal.experimental.migration.parallel_migration_state import ThreadSafeMigrationState
 
 logger = logging.getLogger(__name__)
+
+
+def _make_asset_fn(
+    asset_resources: AssetResources, asset_migrator: AssetMigrator, asset_copy_options: AssetCopyOptions
+) -> Callable[[], None]:
+    def fn() -> None:
+        asset_migrator.copy_from(asset_resources.asset, asset_copy_options)
+
+    return fn
+
+
+def _make_template_fn(template: object, template_migrator: WorkbookTemplateMigrator) -> Callable[[], None]:
+    def fn() -> None:
+        template_migrator.clone(template)  # type: ignore[arg-type]
+
+    return fn
 
 
 def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
@@ -42,7 +60,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         MigrationTask(
             rid=rid,
             label="asset",
-            fn=lambda ar=asset_resources: asset_migrator.copy_from(ar.asset, asset_copy_options),
+            fn=_make_asset_fn(asset_resources, asset_migrator, asset_copy_options),
         )
         for rid, asset_resources in runner.migration_resources.source_assets.items()
     ]
@@ -50,7 +68,7 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         MigrationTask(
             rid=template.rid,
             label="template",
-            fn=lambda template=template: template_migrator.clone(template),
+            fn=_make_template_fn(template, template_migrator),
         )
         for template in runner.migration_resources.source_standalone_templates
     ]
