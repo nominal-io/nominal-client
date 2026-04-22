@@ -116,7 +116,7 @@ class ProtoWriteService(Service):
 class RegistryService(Service):
     """HTTP client for nominal.registry.v1.RegistryService via the gRPC-gateway JSON transcoder."""
 
-    def create_image(self, auth_header: str, request: Mapping[str, Any]) -> dict[str, Any]:
+    def create_image(self, auth_header: str, request: Mapping[str, Any]) -> Mapping[str, Any]:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",

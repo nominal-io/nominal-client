@@ -19,7 +19,6 @@ def container_registry_cmd() -> None:
 @click.option(
     "-f",
     "--file",
-    "file",
     required=True,
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
     help="path to the container image tarball to upload",
