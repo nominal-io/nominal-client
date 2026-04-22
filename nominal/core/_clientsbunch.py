@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Mapping, Protocol, TypeVar
+from typing import Any, Mapping, Protocol, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -113,6 +113,26 @@ class ProtoWriteService(Service):
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
 
+class RegistryService(Service):
+    """HTTP client for nominal.registry.v1.RegistryService via the gRPC-gateway JSON transcoder."""
+
+    def create_image(self, auth_header: str, request: Mapping[str, Any]) -> dict[str, Any]:
+        _headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": auth_header,
+        }
+        response = self._request(
+            "POST",
+            self._uri + "/registry/v1/images",
+            params={},
+            headers=_headers,
+            json=request,
+        )
+        parsed: dict[str, Any] = response.json()
+        return parsed
+
+
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
@@ -158,6 +178,7 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
+    registry: RegistryService
 
     def with_default_request_headers(self, headers: Mapping[str, str]) -> Self:
         return type(self).from_config(
@@ -299,6 +320,7 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
+            registry=client_factory(RegistryService),
         )
 
 

@@ -74,6 +74,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.container_image import ContainerImage
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
@@ -984,6 +985,42 @@ class NominalClient:
         """Retrieve an attachment by its RID."""
         response = self._clients.attachment.get(self._clients.auth_header, rid)
         return Attachment._from_conjure(self._clients, response)
+
+    def upload_container_image_from_io(
+        self,
+        tarball: BinaryIO,
+        name: str,
+        tag: str,
+        *,
+        file_type: tuple[str, str] | FileType = FileTypes.TAR,
+    ) -> ContainerImage:
+        """Upload a container image tarball to Nominal's self-hosted registry.
+
+        The tarball must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        """
+        if isinstance(tarball, TextIOBase):
+            raise TypeError(f"tarball {tarball!r} must be open in binary mode, rather than text mode")
+
+        file_type = FileType(*file_type)
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            self._clients.workspace_rid,
+            tarball,
+            f"{name}-{tag}",
+            file_type,
+            self._clients.upload,
+        )
+        request = {
+            "workspaceRid": self._clients.workspace_rid,
+            "name": name,
+            "tag": tag,
+            "objectPath": s3_path,
+        }
+        response = self._clients.registry.create_image(self._clients.auth_header, request)
+        image = response.get("image")
+        if not isinstance(image, dict):
+            raise NominalError(f"unexpected CreateImageResponse from registry: {response!r}")
+        return ContainerImage._from_response(self._clients, image)
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""

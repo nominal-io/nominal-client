@@ -9,6 +9,7 @@ from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.connection import Connection
+from nominal.core.container_image import ContainerImage, ContainerImageStatus
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
@@ -45,6 +46,8 @@ __all__ = [
     "Checklist",
     "CheckViolation",
     "Connection",
+    "ContainerImage",
+    "ContainerImageStatus",
     "ContainerizedExtractor",
     "DataReview",
     "DataReviewBuilder",
