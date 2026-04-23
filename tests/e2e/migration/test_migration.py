@@ -18,14 +18,14 @@ Run with:
 
 from __future__ import annotations
 
-import pytest
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
-from nominal_api import scout_notebook_api, scout_workbookcommon_api
+import pytest
+from nominal_api import scout_notebook_api
 
 from nominal.core import NominalClient
 from nominal.core._event_types import EventType
@@ -426,7 +426,7 @@ def _assert_run_migrated_multi_asset(source: Run, dest: Run, dest_assets: list[A
 # ---------------------------------------------------------------------------
 
 
-def test_migrate_asset(
+def test_migrate_asset(  # noqa: PLR0915
     source_client: NominalClient,
     dest_client: NominalClient,
     register_cleanup: RegisterCleanup,
