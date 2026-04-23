@@ -54,6 +54,16 @@ def pytest_addoption(parser):
         default="https://api-staging.gov.nominal.io/api",
         help="Destination base URL (default: staging)",
     )
+    parser.addoption(
+        "--impersonation-source-user-rid",
+        default=None,
+        help="Source user RID for impersonation e2e test (must match the creator of source resources)",
+    )
+    parser.addoption(
+        "--impersonation-dest-user-rid",
+        default=None,
+        help="Destination user RID to impersonate in impersonation e2e test",
+    )
 
 
 @pytest.fixture(scope="session")
