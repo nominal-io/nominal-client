@@ -104,6 +104,7 @@ video = ["nominal-video==0.1.9; platform_python_implementation=='CPython' and py
 nom = 'nominal.cli:nom'
 nominal = 'nominal.cli:nom'
 nom-migrate = 'nominal.experimental.migration.migration_cli:migrate_cmd'
+nom-preregister-users = 'nominal.experimental.migration.preregister_cli:main'
 
 [build-system]
 requires = ["hatchling"]
