@@ -22,7 +22,15 @@ def test_collect_emails_raises_when_no_emails_provided() -> None:
         _collect_emails((), None)
 
 
-def test_main_uses_default_profile_and_batches_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_requires_profile() -> None:
+    runner = CliRunner()
+    result = runner.invoke(main, ["user@example.com"])
+
+    assert result.exit_code != 0
+    assert "Missing option '--profile'." in result.output
+
+
+def test_main_uses_explicit_profile_and_batches_requests(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_profiles: list[str] = []
     preregister_batches: list[list[str]] = []
 
@@ -45,7 +53,7 @@ def test_main_uses_default_profile_and_batches_requests(monkeypatch: pytest.Monk
 
     emails = [f"user{i}@example.com" for i in range(MAX_EMAILS_PER_REQUEST + 3)]
     runner = CliRunner()
-    result = runner.invoke(main, emails)
+    result = runner.invoke(main, ["--profile", "wisk_gcp", *emails])
 
     assert result.exit_code == 0
     assert captured_profiles == ["wisk_gcp"]

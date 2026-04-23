@@ -47,8 +47,7 @@ def _collect_emails(emails: Sequence[str], emails_file: str | None) -> list[str]
 )
 @click.option(
     "--profile",
-    default="wisk_gcp",
-    show_default=True,
+    required=True,
     help="Named Nominal profile used to authenticate the destination tenant.",
 )
 def main(emails: Sequence[str], emails_file: str | None, profile: str) -> None:
