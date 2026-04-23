@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.133.0](https://github.com/nominal-io/nominal-client/compare/v1.132.1...v1.133.0) (2026-04-23)
+
+
+### Features
+
+* e2e testing for migration ([#683](https://github.com/nominal-io/nominal-client/issues/683)) ([3f87a99](https://github.com/nominal-io/nominal-client/commit/3f87a99a57847ad0351220dcfaee651c8d4d367c))
+* move migration runner to nominal-client ([#728](https://github.com/nominal-io/nominal-client/issues/728)) ([e66501d](https://github.com/nominal-io/nominal-client/commit/e66501d6c6121e094647b3f7f9de821c3351cb4d))
+* multi-asset/run workbook migration ([#722](https://github.com/nominal-io/nominal-client/issues/722)) ([878c1ae](https://github.com/nominal-io/nominal-client/commit/878c1ae7cde7ffd6bf09d47c834cc5176cef6100))
+* preserve auto-created status in asset migration ([#732](https://github.com/nominal-io/nominal-client/issues/732)) ([ce44880](https://github.com/nominal-io/nominal-client/commit/ce44880fcb86b5a9631bb70eecbcb72aab61bbf0))
+
 ## [1.132.1](https://github.com/nominal-io/nominal-client/compare/v1.132.0...v1.132.1) (2026-04-20)
 
 
