@@ -30,7 +30,7 @@ def mock_dataset():
 def test_get_dataset_owner_rid_uses_role_service_lookup(monkeypatch: pytest.MonkeyPatch, mock_dataset: Dataset):
     def fake_lookup(*, auth_header: str, api_base_url: str, dataset_rid: str) -> str | None:
         assert auth_header is mock_dataset._clients.auth_header
-        assert api_base_url is mock_dataset._clients._api_base_url
+        assert api_base_url is mock_dataset._clients._api_base_url  # type: ignore[attr-defined]
         assert dataset_rid == mock_dataset.rid
         return "ri.authn.user.owner"
 
@@ -40,7 +40,7 @@ def test_get_dataset_owner_rid_uses_role_service_lookup(monkeypatch: pytest.Monk
 
 
 def test_get_dataset_owner_returns_user_from_owner_rid(monkeypatch: pytest.MonkeyPatch, mock_dataset: Dataset):
-    mock_dataset._clients.authentication.get_user.return_value = User(
+    mock_dataset._clients.authentication.get_user.return_value = User(  # type: ignore[attr-defined]
         rid="ri.authn.user.owner",
         display_name="Owner User",
         email="owner@nominal.io",
@@ -53,7 +53,7 @@ def test_get_dataset_owner_returns_user_from_owner_rid(monkeypatch: pytest.Monke
     owner = get_dataset_owner(mock_dataset)
 
     assert owner.rid == "ri.authn.user.owner"
-    mock_dataset._clients.authentication.get_user.assert_called_once_with(
+    mock_dataset._clients.authentication.get_user.assert_called_once_with(  # type: ignore[attr-defined]
         mock_dataset._clients.auth_header, "ri.authn.user.owner"
     )
 

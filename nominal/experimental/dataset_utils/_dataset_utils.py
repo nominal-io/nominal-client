@@ -1,16 +1,9 @@
 from collections.abc import Mapping, Sequence
-from typing import Protocol, cast
 from urllib.parse import urlparse
 
-from nominal_api import authentication_api, scout_catalog
+from nominal_api import scout_catalog
 
 from nominal.core import Dataset, NominalClient, User
-
-
-class _DatasetOwnerClients(Protocol):
-    auth_header: str
-    _api_base_url: str
-    authentication: authentication_api.AuthenticationServiceV2
 
 
 def create_dataset_with_uuid(
@@ -76,10 +69,9 @@ def get_dataset_owner_rid(dataset: Dataset) -> str:
         ImportError: `nominal[protos]` is required for this lookup.
         ValueError: No owner assignment could be resolved for the dataset.
     """
-    clients = cast(_DatasetOwnerClients, dataset._clients)
     owner_rid = _lookup_dataset_owner_rid(
-        auth_header=clients.auth_header,
-        api_base_url=clients._api_base_url,
+        auth_header=dataset._clients.auth_header,
+        api_base_url=dataset._clients._api_base_url,  # type: ignore[attr-defined]
         dataset_rid=dataset.rid,
     )
     if owner_rid is None:
@@ -89,9 +81,10 @@ def get_dataset_owner_rid(dataset: Dataset) -> str:
 
 def get_dataset_owner(dataset: Dataset) -> User:
     """Retrieve the owner user for a dataset via the role service."""
-    clients = cast(_DatasetOwnerClients, dataset._clients)
     owner_rid = get_dataset_owner_rid(dataset)
-    return User._from_conjure(clients.authentication.get_user(clients.auth_header, owner_rid))
+    return User._from_conjure(
+        dataset._clients.authentication.get_user(dataset._clients.auth_header, owner_rid)  # type: ignore[attr-defined]
+    )
 
 
 def _lookup_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_rid: str) -> str | None:
@@ -103,11 +96,7 @@ def _lookup_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_ri
 
     target = _api_base_url_to_grpc_target(api_base_url)
     metadata = (("authorization", auth_header),)
-    parsed = urlparse(api_base_url)
-    if parsed.scheme == "http":
-        channel = grpc.insecure_channel(target)
-    else:
-        channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
+    channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
 
     with channel:
         stub = roles_pb2_grpc.RoleServiceStub(channel)  # type: ignore[no-untyped-call]
@@ -116,11 +105,10 @@ def _lookup_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_ri
             metadata=metadata,
         )
 
-    owner_role = getattr(roles_pb2, "ROLE_OWNER", None)
-    for assignment in getattr(response, "role_assignments", ()):
-        if getattr(assignment, "role", None) != owner_role:
+    for assignment in response.role_assignments:
+        if assignment.role != roles_pb2.ROLE_OWNER:
             continue
-        user_rid = getattr(assignment, "user_rid", None)
+        user_rid = assignment.user_rid
         if isinstance(user_rid, str) and user_rid.strip():
             return user_rid
 
