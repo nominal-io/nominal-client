@@ -21,6 +21,10 @@ DEFAULT_CHUNK_SIZE = 64_000_000
 DEFAULT_NUM_WORKERS = 8
 
 
+class _MultipartUploadError(Exception):
+    """A single failed multipart upload attempt."""
+
+
 def _wrap_multipart_retry_exception(
     *,
     ex: Exception,
@@ -28,10 +32,8 @@ def _wrap_multipart_retry_exception(
     part: int,
     upload_id: str,
     attempt: int,
-    previous_attempt_ex: Exception | None,
-) -> NominalMultipartUploadFailed:
-    """Wrap failed multipart upload attempts so that we can:
-    - chain exceptions across retries to preserve the full history of failures for debugging
+) -> _MultipartUploadError:
+    """Wrap a failed multipart upload attempt so that we can:
     - add contextual information, especially response headers so that we can debug S3 errors
     - AWS will want x-amz-request-id and x-amz-id-2 headers for debugging
     """
@@ -41,12 +43,11 @@ def _wrap_multipart_retry_exception(
         if response is not None and response.headers is not None
         else "none"
     )
-    wrapped = NominalMultipartUploadFailed(
+    wrapped = _MultipartUploadError(
         f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part}, "
         f"attempt={attempt}: {type(ex).__name__}: {ex}. Response headers: {response_headers}"
     )
-    if previous_attempt_ex is not None:
-        wrapped.__cause__ = previous_attempt_ex
+    wrapped.__cause__ = ex
     return wrapped
 
 
@@ -63,7 +64,7 @@ def _sign_and_upload_part_job(
     data = q.get()
 
     try:
-        last_ex: NominalMultipartUploadFailed | None = None
+        attempt_errors: list[_MultipartUploadError] = []
         for attempt in range(num_retries):
             try:
                 log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
@@ -93,16 +94,24 @@ def _sign_and_upload_part_job(
                 return put_response
             except Exception as ex:
                 logger.warning("Failed to upload part %d: %s", part, ex, extra=log_extras)
-                wrapped_ex = _wrap_multipart_retry_exception(
-                    ex=ex, key=key, part=part, upload_id=upload_id, attempt=attempt + 1, previous_attempt_ex=last_ex
+                attempt_errors.append(
+                    _wrap_multipart_retry_exception(
+                        ex=ex,
+                        key=key,
+                        part=part,
+                        upload_id=upload_id,
+                        attempt=attempt + 1,
+                    )
                 )
-                last_ex = wrapped_ex
 
-        raise (
-            last_ex
-            if last_ex
-            else RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
-        )
+        if attempt_errors:
+            raise NominalMultipartUploadFailed(
+                f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part} "
+                f"after {num_retries} attempts",
+                attempt_errors,
+            )
+
+        raise RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
     finally:
         q.task_done()
 
@@ -207,7 +216,10 @@ def put_multipart_upload(
         parts = [ingest_api.Part(etag=p.etag, part_number=p.part_number) for p in parts_with_size]
         complete_response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
         if complete_response.location is None:
-            raise NominalMultipartUploadFailed("completing multipart upload failed: no location on response")
+            raise NominalMultipartUploadFailed(
+                "completing multipart upload failed: no location on response",
+                [RuntimeError("Multipart upload completion returned no location")],
+            )
         return complete_response.location
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e)

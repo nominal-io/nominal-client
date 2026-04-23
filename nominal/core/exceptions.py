@@ -1,5 +1,8 @@
 from typing import Mapping
 
+# Remove this import once the minimum supported Python version is 3.11+.
+from exceptiongroup import ExceptionGroup
+
 
 class NominalError(Exception):
     """Base class for Nominal exceptions."""
@@ -31,7 +34,7 @@ class NominalIngestFailed(NominalIngestError):
     """The ingest failed."""
 
 
-class NominalMultipartUploadFailed(NominalError):
+class NominalMultipartUploadFailed(NominalError, ExceptionGroup):
     """The multipart upload failed."""
 
 
