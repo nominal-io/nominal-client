@@ -23,3 +23,14 @@ class ThreadSafeMigrationState(MigrationState):
     def get_mapped_rid(self, resource_type: ResourceType, old_rid: str) -> str | None:
         with self._lock:
             return super().get_mapped_rid(resource_type, old_rid)
+
+    def to_json(self, **encoder_kwargs: object) -> str:
+        # dataclass_wizard cannot resolve forward references from migration_state.py when
+        # introspecting this subclass, so serialize as a plain MigrationState instead.
+        base = MigrationState(
+            rid_mapping=self.rid_mapping,
+            pending_multi_asset_workbooks=self.pending_multi_asset_workbooks,
+            pending_multi_run_workbooks=self.pending_multi_run_workbooks,
+            skipped_resources=self.skipped_resources,
+        )
+        return base.to_json(**encoder_kwargs)  # type: ignore[arg-type]
