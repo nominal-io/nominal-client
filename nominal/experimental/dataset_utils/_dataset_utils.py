@@ -1,4 +1,5 @@
 from collections.abc import Mapping, Sequence
+from typing import cast
 from urllib.parse import urlparse
 
 from nominal_api import scout_catalog
@@ -109,8 +110,8 @@ def _lookup_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_ri
         if assignment.role != roles_pb2.ROLE_OWNER:
             continue
         user_rid = assignment.user_rid
-        if isinstance(user_rid, str) and user_rid.strip():
-            return user_rid
+        if user_rid:
+            return cast(str, user_rid)
 
     return None
 
