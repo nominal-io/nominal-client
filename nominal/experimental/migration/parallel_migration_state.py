@@ -24,6 +24,26 @@ class ThreadSafeMigrationState(MigrationState):
         with self._lock:
             return super().get_mapped_rid(resource_type, old_rid)
 
+    def record_pending_multi_asset_workbook(self, workbook_rid: str, asset_rids: list[str]) -> None:
+        with self._lock:
+            super().record_pending_multi_asset_workbook(workbook_rid, asset_rids)
+
+    def record_pending_multi_run_workbook(self, workbook_rid: str, run_rids: list[str]) -> None:
+        with self._lock:
+            super().record_pending_multi_run_workbook(workbook_rid, run_rids)
+
+    def clear_pending_multi_asset_workbook(self, workbook_rid: str) -> None:
+        with self._lock:
+            super().clear_pending_multi_asset_workbook(workbook_rid)
+
+    def clear_pending_multi_run_workbook(self, workbook_rid: str) -> None:
+        with self._lock:
+            super().clear_pending_multi_run_workbook(workbook_rid)
+
+    def record_skip(self, resource_type: ResourceType, source_rid: str, reason: str) -> None:
+        with self._lock:
+            super().record_skip(resource_type, source_rid, reason)
+
     def to_json(self, **encoder_kwargs: object) -> str:
         # dataclass_wizard cannot resolve forward references from migration_state.py when
         # introspecting this subclass, so serialize as a plain MigrationState instead.

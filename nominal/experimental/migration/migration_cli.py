@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Sequence
@@ -245,6 +246,7 @@ class ImpersonatingDestinationClientResolver:
         self._destination_client = destination_client
         self._impersonation_config = impersonation_config
         self._impersonated_clients_by_user_rid: dict[str, NominalClient] = {}
+        self._lock = threading.Lock()
 
     def __call__(self, source_resource: Any) -> NominalClient:
         source_user_rid = get_source_user_rid(source_resource)
@@ -269,15 +271,16 @@ class ImpersonatingDestinationClientResolver:
             )
             return self._destination_client
 
-        if destination_user_rid not in self._impersonated_clients_by_user_rid:
-            logger.debug(
-                "Creating impersonated destination client for source user %s -> destination user %s.",
-                source_user_rid,
-                destination_user_rid,
-            )
-            self._impersonated_clients_by_user_rid[destination_user_rid] = as_user(
-                self._destination_client, destination_user_rid
-            )
+        with self._lock:
+            if destination_user_rid not in self._impersonated_clients_by_user_rid:
+                logger.debug(
+                    "Creating impersonated destination client for source user %s -> destination user %s.",
+                    source_user_rid,
+                    destination_user_rid,
+                )
+                self._impersonated_clients_by_user_rid[destination_user_rid] = as_user(
+                    self._destination_client, destination_user_rid
+                )
 
         logger.debug(
             "Using impersonated destination client for %s (rid: %s): source user %s -> destination user %s.",
@@ -530,7 +533,7 @@ def copy(
     type=click.Path(dir_okay=False, path_type=Path),
     help="Path where the generated migration config YAML will be written.",
 )
-def prep(client: NominalClient, migration_name: str, output_path: Path) -> dict[str, set[str]]:
+def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
     """Count resources on a tenant to determine migration scope and generate a starter config."""
     logger.info("In-scope migration numbers:")
 
@@ -611,18 +614,3 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> dict[
     with output_path.open("w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
     logger.info("Wrote migration config to %s", output_path)
-
-    return {
-        "runs": {r.rid for r in runs},
-        "workbooks_single_asset_run": workbooks_with_single_asset_run,
-        "manually_created_assets": manually_created_asset_rids,
-        "auto_created_assets": auto_created_assets,
-        "all_assets": all_assets,
-        "total_datasets": {d.rid for d in datasets},
-        "datasets_with_assets": datasets_with_assets,
-        "workbooks_multi_asset_run": workbooks_with_multi_asset_run,
-        "orphaned_datasets": orphaned_datasets,
-        "streaming_checklists": set(streaming_checklists),
-        "containerized_extractors": {e.rid for e in containerized_extractors},
-        "videos": {v.rid for v in videos},
-    }

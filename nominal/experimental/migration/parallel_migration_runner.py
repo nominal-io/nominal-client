@@ -42,7 +42,11 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
     max_workers = validate_max_workers(max_workers)
     runner.migration_state = ThreadSafeMigrationState(rid_mapping=runner.migration_state.rid_mapping)
 
-    ctx = MigrationContext(destination_client=runner.destination_client, migration_state=runner.migration_state)
+    ctx = MigrationContext(
+        destination_client=runner.destination_client,
+        migration_state=runner.migration_state,
+        source_asset_rids=frozenset(runner.migration_resources.source_assets.keys()),
+    )
     if getattr(runner, "destination_client_resolver", None) is not None:
         setattr(ctx, "destination_client_resolver", runner.destination_client_resolver)
     asset_migrator = AssetMigrator(ctx)
