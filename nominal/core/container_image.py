@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Protocol
+from typing import Protocol
 
 from typing_extensions import Self
 
+from nominal.core._api_types import _ApiContainerImage
 from nominal.core._clientsbunch import HasScoutParams, RegistryService
 from nominal.core._utils.api_tools import HasRid
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
@@ -27,7 +28,7 @@ class ContainerImageStatus(Enum):
     """Registry push failed. The image will not become available."""
 
     @classmethod
-    def _from_conjure(cls, api_status: str) -> ContainerImageStatus:
+    def _from_grpc(cls, api_status: str) -> ContainerImageStatus:
         try:
             return cls(api_status)
         except ValueError:
@@ -69,21 +70,13 @@ class ContainerImage(HasRid):
         def registry(self) -> RegistryService: ...
 
     @classmethod
-    def _from_grpc(cls, clients: _Clients, image: dict[str, Any]) -> Self:
-        raw_size = image.get("sizeBytes")
-        size_bytes = int(raw_size) if raw_size is not None else None
-        raw_status = image.get("status")
-        status = (
-            ContainerImageStatus._from_conjure(raw_status)
-            if isinstance(raw_status, str)
-            else ContainerImageStatus.UNSPECIFIED
-        )
+    def _from_grpc(cls, clients: _Clients, image: _ApiContainerImage) -> Self:
         return cls(
-            rid=str(image["rid"]),
-            name=str(image.get("name", "")),
-            tag=str(image.get("tag", "")),
-            status=status,
-            created_at=_SecondsNanos.from_flexible(image["createdAt"]).to_nanoseconds(),
-            size_bytes=size_bytes,
+            rid=image.rid,
+            name=image.name,
+            tag=image.tag,
+            status=ContainerImageStatus._from_grpc(image.status),
+            created_at=_SecondsNanos.from_flexible(image.created_at).to_nanoseconds(),
+            size_bytes=image.size_bytes,
             _clients=clients,
         )

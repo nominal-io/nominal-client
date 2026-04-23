@@ -33,6 +33,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
+from nominal.core._api_types import _ApiContainerImage
 from nominal.core._utils.networking import create_conjure_client_factory
 from nominal.core.exceptions import NominalConfigError
 from nominal.ts import IntegralNanosecondsUTC
@@ -116,7 +117,7 @@ class ProtoWriteService(Service):
 class RegistryService(Service):
     """HTTP client for nominal.registry.v1.RegistryService via the gRPC-gateway JSON transcoder."""
 
-    def create_image(self, auth_header: str, request: Mapping[str, Any]) -> Mapping[str, Any]:
+    def create_image(self, auth_header: str, request: Mapping[str, Any]) -> _ApiContainerImage:
         _headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -129,8 +130,11 @@ class RegistryService(Service):
             headers=_headers,
             json=request,
         )
-        parsed: dict[str, Any] = response.json()
-        return parsed
+        body: dict[str, Any] = response.json()
+        image = body.get("image")
+        if not isinstance(image, Mapping):
+            raise ValueError(f"unexpected CreateImageResponse from registry: {body!r}")
+        return _ApiContainerImage._parse(image)
 
 
 @dataclass(frozen=True)

@@ -1013,11 +1013,8 @@ class NominalClient:
             "tag": tag,
             "objectPath": s3_path,
         }
-        response = self._clients.registry.create_image(self._clients.auth_header, request)
-        image = response.get("image")
-        if not isinstance(image, dict):
-            raise NominalError(f"unexpected CreateImageResponse from registry: {response!r}")
-        return ContainerImage._from_grpc(self._clients, image)
+        api_image = self._clients.registry.create_image(self._clients.auth_header, request)
+        return ContainerImage._from_grpc(self._clients, api_image)
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""
