@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.134.0](https://github.com/nominal-io/nominal-client/compare/v1.133.0...v1.134.0) (2026-04-23)
+
+
+### Features
+
+* add dataset owner lookup ([#723](https://github.com/nominal-io/nominal-client/issues/723)) ([9c560d3](https://github.com/nominal-io/nominal-client/commit/9c560d3bc91e1fd58704ebef9c18b4b38b40dfbd))
+
 ## [1.133.0](https://github.com/nominal-io/nominal-client/compare/v1.132.1...v1.133.0) (2026-04-23)
 
 
