@@ -599,9 +599,15 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         "The 'include_archived' parameter for asset.search_workbooks is deprecated and will be removed in a future "
         "version of Nominal. Please use 'archive_status' instead!",
     )
+    @warn_on_deprecated_argument(
+        "exact_match",
+        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
     def search_workbooks(
         self,
         *,
+        substring_match: str | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -623,6 +629,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
         return _search_workbooks(
             self._clients,
+            substring_match=substring_match,
             exact_match=exact_match,
             search_text=search_text,
             labels=labels,

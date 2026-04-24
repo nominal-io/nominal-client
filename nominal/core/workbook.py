@@ -358,6 +358,7 @@ def _iter_search_workbooks(
 def _search_workbooks(
     clients: Workbook._Clients,
     *,
+    substring_match: str | None = None,
     exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
@@ -371,6 +372,7 @@ def _search_workbooks(
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Sequence[Workbook]:
     query = create_search_workbooks_query(
+        substring_match=substring_match,
         exact_match=exact_match,
         search_text=search_text,
         labels=labels,

@@ -11,6 +11,7 @@ from nominal_api.api import Timestamp
 
 from nominal import ts
 from nominal._utils import batched, reader_writer
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
@@ -252,9 +253,14 @@ def _get_renamed_timestamp_column(channels: list[Channel]) -> str:
     return renamed_timestamp_col
 
 
+@warn_on_deprecated_argument(
+    "channel_exact_match",
+    "'channel_exact_match' is deprecated and will be removed in a future version of Nominal. "
+    "Use 'channel_substring_matches' instead.",
+)
 def datasource_to_dataframe(
     datasource: DataSource,
-    channel_exact_match: Sequence[str] | None = None,
+    channel_substring_matches: Sequence[str] | None = None,
     channel_fuzzy_search_text: str | None = None,
     start: str | datetime | ts.IntegralNanosecondsUTC | None = None,
     end: str | datetime | ts.IntegralNanosecondsUTC | None = None,
@@ -264,6 +270,7 @@ def datasource_to_dataframe(
     channels: Sequence[Channel] | None = None,
     num_workers: int = 1,
     channel_batch_size: int = 20,
+    channel_exact_match: Sequence[str] | None = None,
     relative_to: datetime | ts.IntegralNanosecondsUTC | None = None,
     relative_resolution: ts._LiteralTimeUnit = "nanoseconds",
 ) -> pd.DataFrame:
@@ -272,14 +279,15 @@ def datasource_to_dataframe(
     Args:
     ----
         datasource: The datasource to download data from
-        channel_exact_match: Filter the returned channels to those whose names match all provided strings
+        channel_substring_matches: Filter the returned channels to those whose names match all provided strings
             (case insensitive).
             For example, a channel named 'engine_turbine_rpm' would match against ['engine', 'turbine', 'rpm'],
             whereas a channel named 'engine_turbine_flowrate' would not!
+        channel_exact_match: Deprecated. Use ``channel_substring_matches`` instead.
         channel_fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided
             string.
         channels: List of channels to fetch data for. If provided, supercedes search parameters of
-            `channel_exact_match` and `channel_fuzzy_search_text`.
+            `channel_substring_matches`, `channel_exact_match`, and `channel_fuzzy_search_text`.
         tags: Dictionary of tags to filter channels by
         start: The minimum data updated time to filter channels by
         end: The maximum data start time to filter channels by
@@ -317,15 +325,23 @@ def datasource_to_dataframe(
 
     # Get all channels from the datasource
     if channels is None:
+        effective_channel_substring_matches = (
+            channel_substring_matches if channel_substring_matches is not None else channel_exact_match
+        )
         channels = list(
             datasource.search_channels(
-                exact_match=channel_exact_match or (),
+                substring_matches=effective_channel_substring_matches or (),
                 fuzzy_search_text=channel_fuzzy_search_text or "",
             )
         )
-    elif channel_exact_match is not None or channel_fuzzy_search_text is not None:
+    elif (
+        channel_substring_matches is not None
+        or channel_exact_match is not None
+        or channel_fuzzy_search_text is not None
+    ):
         logger.warning(
-            "'channel_exact_match' and 'channel_fuzzy_search_text' are ignored when a list of channels "
+            "'channel_substring_matches', 'channel_exact_match', and 'channel_fuzzy_search_text' are ignored when "
+            "a list of channels "
             "are provided to 'datasource_to_dataframe'."
         )
 
