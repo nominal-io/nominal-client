@@ -42,15 +42,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_CHANNEL_BATCH_SIZE = 500
 
 
-def _validate_substring_matches(
-    substring_matches: Sequence[str] | None,
-    argument_name: str,
-) -> Sequence[str] | None:
-    if isinstance(substring_matches, str):
-        raise TypeError(f"{argument_name} must be a sequence of strings, not a single string.")
-    return substring_matches
-
-
 @dataclass(frozen=True)
 class CreateChannelRequest:
     name: str
@@ -226,10 +217,10 @@ class DataSource(HasRid):
         Yields:
             Channel objects for each matching channel
         """
-        effective_substring_matches = _validate_substring_matches(
-            substring_matches if substring_matches is not None else exact_match,
-            "substring_matches" if substring_matches is not None else "exact_match",
-        )
+        effective_substring_matches = substring_matches if substring_matches is not None else exact_match
+        if isinstance(effective_substring_matches, str):
+            argument_name = "substring_matches" if substring_matches is not None else "exact_match"
+            raise TypeError(f"{argument_name} must be a sequence of strings, not a single string.")
         allowable_types = set(data_types) if data_types else None
         next_page_token = None
         while True:
