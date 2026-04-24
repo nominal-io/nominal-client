@@ -359,7 +359,6 @@ def _search_workbooks(
     clients: Workbook._Clients,
     *,
     substring_match: str | None = None,
-    exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
@@ -373,7 +372,6 @@ def _search_workbooks(
 ) -> Sequence[Workbook]:
     query = create_search_workbooks_query(
         substring_match=substring_match,
-        exact_match=exact_match,
         search_text=search_text,
         labels=labels,
         properties=properties,

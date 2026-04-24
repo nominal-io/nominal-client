@@ -629,8 +629,7 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
 
         return _search_workbooks(
             self._clients,
-            substring_match=substring_match,
-            exact_match=exact_match,
+            substring_match=substring_match if substring_match is not None else exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,

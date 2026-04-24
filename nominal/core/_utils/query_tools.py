@@ -194,13 +194,11 @@ def create_search_videos_query(
 
 def create_search_users_query(
     substring_match: str | None = None,
-    exact_match: str | None = None,
     search_text: str | None = None,
 ) -> authentication_api.SearchUsersQuery:
     queries = []
-    effective_substring_match = substring_match if substring_match is not None else exact_match
-    if effective_substring_match is not None:
-        queries.append(authentication_api.SearchUsersQuery(exact_match=effective_substring_match))
+    if substring_match is not None:
+        queries.append(authentication_api.SearchUsersQuery(exact_match=substring_match))
     if search_text is not None:
         queries.append(authentication_api.SearchUsersQuery(search_text=search_text))
 
@@ -236,15 +234,13 @@ def create_search_assets_query(
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     substring_match: str | None = None,
-    exact_substring: str | None = None,
     workspace_rid: str | None = None,
 ) -> scout_asset_api.SearchAssetsQuery:
     queries = []
     if search_text is not None:
         queries.append(scout_asset_api.SearchAssetsQuery(search_text=search_text))
-    effective_substring_match = substring_match if substring_match is not None else exact_substring
-    if effective_substring_match is not None:
-        queries.append(scout_asset_api.SearchAssetsQuery(exact_substring=effective_substring_match))
+    if substring_match is not None:
+        queries.append(scout_asset_api.SearchAssetsQuery(exact_substring=substring_match))
     if labels is not None:
         for label in labels:
             queries.append(scout_asset_api.SearchAssetsQuery(label=label))
@@ -304,7 +300,6 @@ def create_search_dataset_files_query(
 
 def create_search_datasets_query(
     substring_match: str | None = None,
-    exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
@@ -317,9 +312,8 @@ def create_search_datasets_query(
     if search_text is not None:
         queries.append(scout_catalog.SearchDatasetsQuery(search_text=search_text))
 
-    effective_substring_match = substring_match if substring_match is not None else exact_match
-    if effective_substring_match is not None:
-        queries.append(scout_catalog.SearchDatasetsQuery(exact_match=effective_substring_match))
+    if substring_match is not None:
+        queries.append(scout_catalog.SearchDatasetsQuery(exact_match=substring_match))
 
     if labels is not None:
         for label in labels:
@@ -356,7 +350,6 @@ def create_search_runs_query(
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     substring_match: str | None = None,
-    exact_match: str | None = None,
     search_text: str | None = None,
     created_after: str | datetime | IntegralNanosecondsUTC | None = None,
     created_before: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -411,9 +404,8 @@ def create_search_runs_query(
             queries.append(
                 scout_run_api.SearchQuery(properties=scout_rids_api.PropertiesFilter(name=name, values=[value]))
             )
-    effective_substring_match = substring_match if substring_match is not None else exact_match
-    if effective_substring_match is not None:
-        queries.append(scout_run_api.SearchQuery(exact_match=effective_substring_match))
+    if substring_match is not None:
+        queries.append(scout_run_api.SearchQuery(exact_match=substring_match))
     if search_text is not None:
         queries.append(scout_run_api.SearchQuery(search_text=search_text))
     if workspace_rid is not None:
@@ -423,7 +415,6 @@ def create_search_runs_query(
 
 def create_search_workbooks_query(
     substring_match: str | None = None,
-    exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
@@ -440,9 +431,8 @@ def create_search_workbooks_query(
         _backfill_workbook_draft_query_clause(include_drafts),
     ]
 
-    effective_substring_match = substring_match if substring_match is not None else exact_match
-    if effective_substring_match is not None:
-        queries.append(scout_notebook_api.SearchNotebooksQuery(exact_match=effective_substring_match))
+    if substring_match is not None:
+        queries.append(scout_notebook_api.SearchNotebooksQuery(exact_match=substring_match))
 
     if search_text is not None:
         queries.append(scout_notebook_api.SearchNotebooksQuery(search_text=search_text))
@@ -475,7 +465,6 @@ def create_search_workbooks_query(
 
 def create_search_workbook_templates_query(
     substring_match: str | None = None,
-    exact_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
@@ -485,9 +474,8 @@ def create_search_workbook_templates_query(
 ) -> scout_template_api.SearchTemplatesQuery:
     queries = [_backfill_workbook_template_archive_query_clause(archive_status)]
 
-    effective_substring_match = substring_match if substring_match is not None else exact_match
-    if effective_substring_match is not None:
-        queries.append(scout_template_api.SearchTemplatesQuery(exact_match=effective_substring_match))
+    if substring_match is not None:
+        queries.append(scout_template_api.SearchTemplatesQuery(exact_match=substring_match))
 
     if search_text is not None:
         queries.append(scout_template_api.SearchTemplatesQuery(search_text=search_text))

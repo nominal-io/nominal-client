@@ -325,8 +325,7 @@ class NominalClient:
             All users which match all of the provided conditions
         """
         query = create_search_users_query(
-            substring_match=substring_match,
-            exact_match=exact_match,
+            substring_match=substring_match if substring_match is not None else exact_match,
             search_text=search_text,
         )
         return list(self._iter_search_users(query))
@@ -396,8 +395,7 @@ class NominalClient:
         )
 
         query = create_search_datasets_query(
-            substring_match=substring_match,
-            exact_match=exact_match,
+            substring_match=substring_match if substring_match is not None else exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -1271,8 +1269,7 @@ class NominalClient:
             search_text=search_text,
             labels=labels,
             properties=properties,
-            substring_match=substring_match,
-            exact_substring=exact_substring,
+            substring_match=substring_match if substring_match is not None else exact_substring,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
         return list(self._iter_search_assets(query, archive_status))
@@ -1576,8 +1573,7 @@ class NominalClient:
 
         return _search_workbooks(
             self._clients,
-            substring_match=substring_match,
-            exact_match=exact_match,
+            substring_match=substring_match if substring_match is not None else exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -1654,8 +1650,7 @@ class NominalClient:
         )
 
         query = create_search_workbook_templates_query(
-            substring_match=substring_match,
-            exact_match=exact_match,
+            substring_match=substring_match if substring_match is not None else exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,

@@ -87,9 +87,3 @@ def test_create_search_workbook_templates_query_uses_substring_match_for_exact_m
     assert query.and_ is not None
     assert query.and_[1].exact_match == "template"
 
-
-def test_create_search_runs_query_supports_deprecated_exact_match_alias():
-    query = create_search_runs_query(exact_match="legacy")
-
-    assert query.and_ is not None
-    assert query.and_[0].exact_match == "legacy"
