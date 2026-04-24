@@ -1,6 +1,6 @@
 [project]
 name = "nominal"
-version = "1.132.1"
+version = "1.134.0"
 description = "Automate Nominal workflows in Python"
 authors = [
     { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
@@ -104,6 +104,7 @@ video = ["nominal-video==0.1.9; platform_python_implementation=='CPython' and py
 [project.scripts]
 nom = 'nominal.cli:nom'
 nominal = 'nominal.cli:nom'
+nom-migrate = 'nominal.experimental.migration.migration_cli:migrate_cmd'
 
 [build-system]
 requires = ["hatchling"]

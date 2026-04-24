@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -30,6 +30,11 @@ def _run_rid(n: int) -> str:
 def _asset_rid(n: int) -> str:
     hex8 = f"{n:08x}"
     return f"ri.scout.{_STACK}.asset.{hex8}-0000-0000-0000-000000000000"
+
+
+def _att_rid(n: int) -> str:
+    hex8 = f"{n:08x}"
+    return f"ri.attachments.{_STACK}.attachment.{hex8}-0000-0000-0000-000000000000"
 
 
 def _make_run(rid: str, name: str = "Run", asset_rids: list[str] | None = None) -> MagicMock:
@@ -239,3 +244,62 @@ class TestRunMigratorEnsureAssetsAdded:
         run = _make_run(_run_rid(1), asset_rids=[_asset_rid(10)])
         with pytest.raises(ValueError, match="non-empty"):
             migrator._ensure_assets_added(run, [])
+
+
+# ---------------------------------------------------------------------------
+# Attachment migration
+# ---------------------------------------------------------------------------
+
+
+class TestRunMigratorAttachments:
+    @patch("nominal.experimental.migration.migrator.run_migrator.AttachmentMigrator")
+    def test_new_run_attachments_are_migrated(self, mock_att_cls: MagicMock) -> None:
+        """When creating a new run, each source attachment is migrated and passed to create_run."""
+        ctx = _make_context()
+        migrator = RunMigrator(ctx)
+
+        src_att_1, src_att_2 = MagicMock(rid=_att_rid(1)), MagicMock(rid=_att_rid(2))
+        new_att_1, new_att_2 = MagicMock(rid=_att_rid(101)), MagicMock(rid=_att_rid(102))
+
+        mock_att_migrator = mock_att_cls.return_value
+        mock_att_migrator.copy_from.side_effect = [new_att_1, new_att_2]
+
+        source_run = _make_run(_run_rid(1))
+        source_run.list_attachments.return_value = [src_att_1, src_att_2]
+
+        dest_run = _make_run(_run_rid(100))
+        ctx.destination_client.create_run.return_value = dest_run
+
+        migrator.copy_from(source_run, RunCopyOptions())
+
+        # AttachmentMigrator was instantiated with the shared context
+        mock_att_cls.assert_called_once_with(ctx)
+
+        # Each attachment was migrated in order
+        mock_att_migrator.copy_from.assert_any_call(src_att_1)
+        mock_att_migrator.copy_from.assert_any_call(src_att_2)
+        assert mock_att_migrator.copy_from.call_count == 2
+
+        # create_run received the migrated attachments
+        call_kwargs = ctx.destination_client.create_run.call_args.kwargs
+        assert set(a.rid for a in call_kwargs["attachments"]) == {_att_rid(101), _att_rid(102)}
+
+    @patch("nominal.experimental.migration.migrator.run_migrator.AttachmentMigrator")
+    def test_existing_run_does_not_remigrate_attachments(self, mock_att_cls: MagicMock) -> None:
+        """When the run already exists in state, AttachmentMigrator is never instantiated."""
+        ctx = _make_context()
+        migrator = RunMigrator(ctx)
+
+        source_rid, dest_rid = _run_rid(1), _run_rid(100)
+        ctx.migration_state.record_mapping(ResourceType.RUN, source_rid, dest_rid)
+
+        existing_run = _make_run(dest_rid)
+        ctx.destination_client.get_run.return_value = existing_run
+
+        source_run = _make_run(source_rid)
+        source_run.list_attachments.return_value = [MagicMock(rid=_att_rid(1))]
+
+        migrator.copy_from(source_run, RunCopyOptions())
+
+        mock_att_cls.assert_not_called()
+        ctx.destination_client.create_run.assert_not_called()
