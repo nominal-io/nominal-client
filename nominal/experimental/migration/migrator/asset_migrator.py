@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from nominal_api import scout_asset_api
+
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
@@ -96,7 +98,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         if existing_asset is not None:
             return existing_asset
 
-        return self.destination_client_for(source_asset).create_asset(
+        new_asset = self.destination_client_for(source_asset).create_asset(
             name=options.new_asset_name if options.new_asset_name is not None else source_asset.name,
             description=options.new_asset_description
             if options.new_asset_description is not None
@@ -106,6 +108,15 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             else source_asset.properties,
             labels=options.new_asset_labels if options.new_asset_labels is not None else source_asset.labels,
         )
+
+        if source_asset._get_latest_api().is_staged:
+            new_asset._clients.assets.update_asset(
+                new_asset._clients.auth_header,
+                scout_asset_api.UpdateAssetRequest(is_staged=True),
+                new_asset.rid,
+            )
+
+        return new_asset
 
     def _copy_asset_datasets(self, source_asset: Asset, destination_asset: Asset, options: AssetCopyOptions) -> None:
         if options.dataset_config is None:
