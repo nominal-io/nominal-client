@@ -12,17 +12,13 @@ import requests
 from nominal_api import ingest_api, upload_api
 
 from nominal.core._utils.networking import create_multipart_request_session
-from nominal.core.exceptions import NominalMultipartUploadFailed
+from nominal.core.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
 from nominal.core.filetype import FileType
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 64_000_000
 DEFAULT_NUM_WORKERS = 8
-
-
-class _MultipartUploadError(Exception):
-    """A single failed multipart upload attempt."""
 
 
 def _wrap_multipart_retry_exception(
@@ -32,7 +28,7 @@ def _wrap_multipart_retry_exception(
     part: int,
     upload_id: str,
     attempt: int,
-) -> _MultipartUploadError:
+) -> NominalMultipartUploadError:
     """Wrap a failed multipart upload attempt so that we can:
     - add contextual information, especially response headers so that we can debug S3 errors
     - AWS will want x-amz-request-id and x-amz-id-2 headers for debugging
@@ -43,7 +39,7 @@ def _wrap_multipart_retry_exception(
         if response is not None and response.headers is not None
         else "none"
     )
-    wrapped = _MultipartUploadError(
+    wrapped = NominalMultipartUploadError(
         f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part}, "
         f"attempt={attempt}: {type(ex).__name__}: {ex}. Response headers: {response_headers}"
     )
@@ -64,7 +60,7 @@ def _sign_and_upload_part_job(
     data = q.get()
 
     try:
-        attempt_errors: list[_MultipartUploadError] = []
+        attempt_errors: list[NominalMultipartUploadError] = []
         for attempt in range(num_retries):
             try:
                 log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}

@@ -34,8 +34,12 @@ class NominalIngestFailed(NominalIngestError):
     """The ingest failed."""
 
 
+class NominalMultipartUploadError(Exception):
+    """A single failed multipart upload attempt."""
+
+
 class NominalMultipartUploadFailed(NominalError, ExceptionGroup):
-    """The multipart upload failed."""
+    """The multipart upload failed after retries."""
 
 
 class NominalConfigError(NominalError):
