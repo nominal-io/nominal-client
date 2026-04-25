@@ -221,12 +221,13 @@ class DataSource(HasRid):
         if isinstance(effective_substring_matches, str):
             argument_name = "substring_matches" if substring_matches is not None else "exact_match"
             raise TypeError(f"{argument_name} must be a sequence of strings, not a single string.")
+        effective_substring_matches = tuple(effective_substring_matches or ())
         allowable_types = set(data_types) if data_types else None
         next_page_token = None
         while True:
             query = datasource_api.SearchChannelsRequest(
                 data_sources=[self.rid],
-                exact_match=list(effective_substring_matches or ()),
+                exact_match=list(effective_substring_matches),
                 fuzzy_search_text=fuzzy_search_text,
                 previously_selected_channels={},
                 next_page_token=next_page_token,
@@ -247,7 +248,11 @@ class DataSource(HasRid):
                     if data_type not in allowable_types:
                         continue
 
-                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
+                channel = Channel._from_conjure_datasource_api(self._clients, channel_metadata)
+                if not all(match.casefold() in channel.name.casefold() for match in effective_substring_matches):
+                    continue
+
+                yield channel
             if response.next_page_token is None:
                 break
             next_page_token = response.next_page_token

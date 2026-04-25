@@ -114,6 +114,10 @@ DEFAULT_CONNECT_TIMEOUT = timedelta(seconds=30)
 MAX_ASSETS_SHOWN = 10
 
 
+def _matches_name_substring(name: str, substring_match: str | None) -> bool:
+    return substring_match is None or substring_match.casefold() in name.casefold()
+
+
 class WorkspaceSearchType(enum.Enum):
     ALL = "ALL"
     DEFAULT = "DEFAULT"
@@ -317,18 +321,23 @@ class NominalClient:
         Filters are ANDed together, e.g., if substring_match and search_text are both provided, then both must match.
 
         Args:
-            substring_match: Searches for a case-insensitive substring across display name and email.
+            substring_match: Searches for a case-insensitive substring in the user's display name.
             exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: Searches for a (case-insensitive) substring across display name and email
 
         Returns:
             All users which match all of the provided conditions
         """
+        effective_substring_match = substring_match if substring_match is not None else exact_match
         query = create_search_users_query(
-            substring_match=substring_match if substring_match is not None else exact_match,
+            substring_match=effective_substring_match,
             search_text=search_text,
         )
-        return list(self._iter_search_users(query))
+        return [
+            user
+            for user in self._iter_search_users(query)
+            if _matches_name_substring(user.display_name, effective_substring_match)
+        ]
 
     def _iter_search_datasets(
         self,
@@ -368,7 +377,7 @@ class NominalClient:
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
 
         Args:
-            substring_match: Searches for a case-insensitive substring of dataset name.
+            substring_match: Searches for a case-insensitive substring in the dataset name.
             exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: Searches for a (case-insensitive) substring across all text fields.
             labels: A sequence of labels that must ALL be present on a secret to be included.
@@ -393,9 +402,10 @@ class NominalClient:
             archive_status,
             archived=archived,
         )
+        effective_substring_match = substring_match if substring_match is not None else exact_match
 
         query = create_search_datasets_query(
-            substring_match=substring_match if substring_match is not None else exact_match,
+            substring_match=effective_substring_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -404,7 +414,11 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
             archive_status=effective_archive_status,
         )
-        return list(self._iter_search_datasets(query))
+        return [
+            dataset
+            for dataset in self._iter_search_datasets(query)
+            if _matches_name_substring(dataset.name, effective_substring_match)
+        ]
 
     def search_dataset_files(
         self,
@@ -697,7 +711,9 @@ class NominalClient:
             workspace_rid=workspace_rid,
         )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query, archive_status):
-            yield Run._from_conjure(self._clients, run)
+            parsed_run = Run._from_conjure(self._clients, run)
+            if _matches_name_substring(parsed_run.name, substring_match):
+                yield parsed_run
 
     @warn_on_deprecated_argument(
         "exact_match",
@@ -729,7 +745,7 @@ class NominalClient:
             name_substring: Searches for a (case-insensitive) substring in the name.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
-            substring_match: A case-insensitive substring that must be matched.
+            substring_match: Searches for a case-insensitive substring in the run name.
             exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: A case-insensitive substring to perform fuzzy-search on all fields with
             created_after: Filter runs created after this timestamp (exclusive).
@@ -1251,7 +1267,7 @@ class NominalClient:
             search_text: case-insensitive search for any of the keywords in all string fields
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
-            substring_match: case-insensitive substring match in all string fields.
+            substring_match: Searches for a case-insensitive substring in the asset name.
             exact_substring: Deprecated. Use ``substring_match`` instead.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
@@ -1265,14 +1281,19 @@ class NominalClient:
         Returns:
             All assets which match all of the provided conditions
         """
+        effective_substring_match = substring_match if substring_match is not None else exact_substring
         query = create_search_assets_query(
             search_text=search_text,
             labels=labels,
             properties=properties,
-            substring_match=substring_match if substring_match is not None else exact_substring,
+            substring_match=effective_substring_match,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return list(self._iter_search_assets(query, archive_status))
+        return [
+            asset
+            for asset in self._iter_search_assets(query, archive_status)
+            if _matches_name_substring(asset.name, effective_substring_match)
+        ]
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Sequence[str]:
         """List all Streaming Checklists.
@@ -1536,7 +1557,7 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
 
         Args:
-            substring_match: Searches for a case-insensitive substring in the workbook's metadata.
+            substring_match: Searches for a case-insensitive substring in the workbook title.
             exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: Fuzzy-searches for a string in the workbook's metadata
             labels: A list of labels that must ALL be present on an workbook to be included.
@@ -1630,7 +1651,7 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
 
         Args:
-            substring_match: Searches for a case-insensitive substring in the template's metadata.
+            substring_match: Searches for a case-insensitive substring in the template title.
             exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: Fuzzy-searches for a string in the template's metadata
             labels: A list of labels that must ALL be present on an workbook to be included.
@@ -1648,9 +1669,10 @@ class NominalClient:
             archive_status,
             archived=archived,
         )
+        effective_substring_match = substring_match if substring_match is not None else exact_match
 
         query = create_search_workbook_templates_query(
-            substring_match=substring_match if substring_match is not None else exact_match,
+            substring_match=effective_substring_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -1658,7 +1680,11 @@ class NominalClient:
             published=published,
             archive_status=effective_archive_status,
         )
-        return list(self._iter_search_workbook_templates(query))
+        return [
+            template
+            for template in self._iter_search_workbook_templates(query)
+            if _matches_name_substring(template.title, effective_substring_match)
+        ]
 
     @deprecated(
         "Calling `NominalClient.create_workbook_from_template` is deprecated and will be removed "
