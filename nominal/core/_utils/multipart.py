@@ -12,13 +12,39 @@ import requests
 from nominal_api import ingest_api, upload_api
 
 from nominal.core._utils.networking import create_multipart_request_session
-from nominal.core.exceptions import NominalMultipartUploadFailed
+from nominal.core.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
 from nominal.core.filetype import FileType
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 64_000_000
 DEFAULT_NUM_WORKERS = 8
+
+
+def _wrap_multipart_retry_exception(
+    *,
+    ex: Exception,
+    key: str,
+    part: int,
+    upload_id: str,
+    attempt: int,
+) -> NominalMultipartUploadError:
+    """Wrap a failed multipart upload attempt so that we can:
+    - add contextual information, especially response headers so that we can debug S3 errors
+    - AWS will want x-amz-request-id and x-amz-id-2 headers for debugging
+    """
+    response = getattr(ex, "response", None)
+    response_headers = (
+        ", ".join(f"{header}={value!r}" for header, value in sorted(response.headers.items()))
+        if response is not None and response.headers is not None
+        else "none"
+    )
+    wrapped = NominalMultipartUploadError(
+        f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part}, "
+        f"attempt={attempt}: {type(ex).__name__}: {ex}. Response headers: {response_headers}"
+    )
+    wrapped.__cause__ = ex
+    return wrapped
 
 
 def _sign_and_upload_part_job(
@@ -34,7 +60,7 @@ def _sign_and_upload_part_job(
     data = q.get()
 
     try:
-        last_ex: Exception | None = None
+        attempt_errors: list[NominalMultipartUploadError] = []
         for attempt in range(num_retries):
             try:
                 log_extras = {"key": key, "part": part, "upload_id": upload_id, "attempt": attempt + 1}
@@ -54,28 +80,34 @@ def _sign_and_upload_part_job(
                     headers=sign_response.headers,
                     verify=upload_client._verify,
                 )
+                put_response.raise_for_status()
                 logger.debug(
                     "Finished pushing part %d for multipart upload with status %d",
                     part,
                     put_response.status_code,
                     extra={"response.url": put_response.url, **log_extras},
                 )
-                put_response.raise_for_status()
                 return put_response
             except Exception as ex:
-                logger.warning(
-                    "Failed to upload part %d: %s",
-                    part,
-                    ex,
-                    extra=log_extras,
+                logger.warning("Failed to upload part %d: %s", part, ex, extra=log_extras)
+                attempt_errors.append(
+                    _wrap_multipart_retry_exception(
+                        ex=ex,
+                        key=key,
+                        part=part,
+                        upload_id=upload_id,
+                        attempt=attempt + 1,
+                    )
                 )
-                last_ex = ex
 
-        raise (
-            last_ex
-            if last_ex
-            else RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
-        )
+        if attempt_errors:
+            raise NominalMultipartUploadFailed(
+                f"Multipart upload failed for key={key}, upload_id={upload_id}, part={part} "
+                f"after {num_retries} attempts",
+                attempt_errors,
+            )
+
+        raise RuntimeError(f"Unknown error uploading part {part} for upload_id={upload_id} and key={key}")
     finally:
         q.task_done()
 
@@ -180,7 +212,10 @@ def put_multipart_upload(
         parts = [ingest_api.Part(etag=p.etag, part_number=p.part_number) for p in parts_with_size]
         complete_response = upload_client.complete_multipart_upload(auth_header, key, upload_id, parts)
         if complete_response.location is None:
-            raise NominalMultipartUploadFailed("completing multipart upload failed: no location on response")
+            raise NominalMultipartUploadFailed(
+                "completing multipart upload failed: no location on response",
+                [RuntimeError("Multipart upload completion returned no location")],
+            )
         return complete_response.location
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e)
