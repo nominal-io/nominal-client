@@ -346,7 +346,6 @@ def create_search_datasets_query(
 def create_search_runs_query(
     start: str | datetime | IntegralNanosecondsUTC | None = None,
     end: str | datetime | IntegralNanosecondsUTC | None = None,
-    name_substring: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
     substring_match: str | None = None,
@@ -390,8 +389,6 @@ def create_search_runs_query(
                 )
             )
         )
-    if name_substring is not None:
-        queries.append(scout_run_api.SearchQuery(exact_match=name_substring))
     if labels:
         queries.append(
             scout_run_api.SearchQuery(

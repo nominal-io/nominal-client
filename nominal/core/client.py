@@ -688,7 +688,6 @@ class NominalClient:
         self,
         start: str | datetime | IntegralNanosecondsUTC | None,
         end: str | datetime | IntegralNanosecondsUTC | None,
-        name_substring: str | None,
         labels: Sequence[str] | None,
         properties: Mapping[str, str] | None,
         substring_match: str | None,
@@ -701,7 +700,6 @@ class NominalClient:
         query = create_search_runs_query(
             start=start,
             end=end,
-            name_substring=name_substring,
             labels=labels,
             properties=properties,
             substring_match=substring_match,
@@ -715,6 +713,11 @@ class NominalClient:
             if _matches_name_substring(parsed_run.name, substring_match):
                 yield parsed_run
 
+    @warn_on_deprecated_argument(
+        "name_substring",
+        "'name_substring' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
     @warn_on_deprecated_argument(
         "exact_match",
         "'exact_match' is deprecated and will be removed in a future version of Nominal. "
@@ -742,7 +745,7 @@ class NominalClient:
         Args:
             start: Inclusive start time for filtering runs.
             end: Inclusive end time for filtering runs.
-            name_substring: Searches for a (case-insensitive) substring in the name.
+            name_substring: Deprecated. Use ``substring_match`` instead.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
             substring_match: Searches for a case-insensitive substring in the run name.
@@ -763,14 +766,20 @@ class NominalClient:
         Returns:
             All runs which match all of the provided conditions
         """
+        effective_substring_match = (
+            substring_match
+            if substring_match is not None
+            else name_substring
+            if name_substring is not None
+            else exact_match
+        )
         return list(
             self._iter_search_runs(
                 start=start,
                 end=end,
-                name_substring=name_substring,
                 labels=labels,
                 properties=properties,
-                substring_match=substring_match if substring_match is not None else exact_match,
+                substring_match=effective_substring_match,
                 search_text=search_text,
                 created_after=created_after,
                 created_before=created_before,
