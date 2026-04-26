@@ -18,6 +18,7 @@ from nominal_api import (
 )
 from typing_extensions import Self
 
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import RefreshableMixin, create_api_tags
 from nominal.core._utils.pagination_tools import paginate_rpc
@@ -142,7 +143,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         self,
         *,
         tags: Mapping[str, str] | None = None,
-        insensitive_match: str,
+        substring_match: str,
         start: _InferrableTimestampType | None = None,
         end: _InferrableTimestampType | None = None,
     ) -> Iterable[LogPoint]: ...
@@ -156,10 +157,16 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         end: _InferrableTimestampType | None = None,
     ) -> Iterable[LogPoint]: ...
 
+    @warn_on_deprecated_argument(
+        "insensitive_match",
+        "'insensitive_match' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
     def search_logs(
         self,
         *,
         regex_match: str | None = None,
+        substring_match: str | None = None,
         insensitive_match: str | None = None,
         tags: Mapping[str, str] | None = None,
         start: _InferrableTimestampType | None = None,
@@ -169,9 +176,10 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
 
         Args:
             regex_match: If provided, a regex match to filter potential log messages by
-                NOTE: must not be present with `insensitive_match`
-            insensitive_match: If provided, a case insensitive string that yielded logs match exactly
+                NOTE: must not be present with `substring_match`
+            substring_match: If provided, a case-insensitive substring that yielded log messages must contain
                 NOTE: must not be present with `regex_match`
+            insensitive_match: Deprecated. Use ``substring_match`` instead.
             tags: Tags to filter logs from the channel with
             start: Timestamp to start yielding results from. If not present, searches starting from unix epoch
             end: Timestamp after which to stop yielding results from. If not present, searches until end of time.
@@ -185,10 +193,11 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         api_start = (_SecondsNanos.from_flexible(start) if start else _MIN_TIMESTAMP).to_api()
         api_end = (_SecondsNanos.from_flexible(end) if end else _MAX_TIMESTAMP).to_api()
 
+        effective_substring_match = substring_match if substring_match is not None else insensitive_match
         filtered_series = scout_compute_api.LogSeries(
             filter=scout_compute_api.LogFilterSeries(
                 input=scout_compute_api.LogSeries(channel=self._to_channel_series(tags=tags)),
-                operator=_log_filter_operator(regex_match=regex_match, insensitive_match=insensitive_match),
+                operator=_log_filter_operator(regex_match=regex_match, substring_match=effective_substring_match),
             )
         )
         compute_series = scout_compute_api.Series(log=filtered_series)
