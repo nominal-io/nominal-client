@@ -96,3 +96,49 @@ def test_batch_add_channels_returns_missing_when_server_drops_channel(mock_datas
 
     assert result.channels == [mock_ch1]
     assert result.missing == [req2]
+
+
+def test_search_channels_rejects_string_substring_matches(mock_datasource: DataSource):
+    with pytest.raises(TypeError, match="substring_matches must be a sequence of strings"):
+        list(mock_datasource.search_channels(substring_matches="asdf"))  # type: ignore[arg-type]
+
+
+def test_search_channels_rejects_string_deprecated_exact_match(mock_datasource: DataSource):
+    with pytest.warns(UserWarning, match="'exact_match' is deprecated"):
+        with pytest.raises(TypeError, match="exact_match must be a sequence of strings"):
+            list(mock_datasource.search_channels(exact_match="asdf"))  # type: ignore[arg-type]
+
+
+def test_search_channels_filters_substring_matches_by_channel_name(
+    mock_datasource: DataSource, mock_clients: MagicMock
+):
+    engine_temperature = MagicMock()
+    engine_temperature.name = "engine_temperature"
+    engine_temperature.data_source = "test-datasource-rid"
+    engine_temperature.unit = None
+    engine_temperature.data_type = None
+    engine_temperature.description = None
+
+    ambient_temperature = MagicMock()
+    ambient_temperature.name = "ambient_temperature"
+    ambient_temperature.data_source = "test-datasource-rid"
+    ambient_temperature.unit = None
+    ambient_temperature.data_type = None
+    ambient_temperature.description = None
+
+    engine_pressure = MagicMock()
+    engine_pressure.name = "engine_pressure"
+    engine_pressure.data_source = "test-datasource-rid"
+    engine_pressure.unit = None
+    engine_pressure.data_type = None
+    engine_pressure.description = None
+    mock_clients.datasource.search_channels.return_value.results = [
+        engine_temperature,
+        ambient_temperature,
+        engine_pressure,
+    ]
+    mock_clients.datasource.search_channels.return_value.next_page_token = None
+
+    channels = list(mock_datasource.search_channels(substring_matches=["engine", "temperature"]))
+
+    assert [channel.name for channel in channels] == ["engine_temperature"]

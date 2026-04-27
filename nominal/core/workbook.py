@@ -16,6 +16,11 @@ from nominal.core.exceptions import NominalMethodRemovedError
 
 logger = logging.getLogger(__name__)
 
+
+def _matches_title_substring(title: str, substring_match: str | None) -> bool:
+    return substring_match is None or substring_match.casefold() in title.casefold()
+
+
 if TYPE_CHECKING:
     from nominal.core.workbook_template import WorkbookTemplate
 
@@ -358,7 +363,7 @@ def _iter_search_workbooks(
 def _search_workbooks(
     clients: Workbook._Clients,
     *,
-    exact_match: str | None = None,
+    substring_match: str | None = None,
     search_text: str | None = None,
     labels: Sequence[str] | None = None,
     properties: Mapping[str, str] | None = None,
@@ -371,7 +376,7 @@ def _search_workbooks(
     archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
 ) -> Sequence[Workbook]:
     query = create_search_workbooks_query(
-        exact_match=exact_match,
+        substring_match=substring_match,
         search_text=search_text,
         labels=labels,
         properties=properties,
@@ -383,4 +388,8 @@ def _search_workbooks(
         include_drafts=include_drafts,
         archive_status=archive_status,
     )
-    return list(_iter_search_workbooks(clients, query))
+    return [
+        workbook
+        for workbook in _iter_search_workbooks(clients, query)
+        if _matches_title_substring(workbook.title, substring_match)
+    ]

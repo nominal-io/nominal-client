@@ -353,16 +353,16 @@ def archive_search_context(  # noqa: PLR0915
 # ---------------------------------------------------------------------------
 
 
-def test_search_runs_by_name_substring(client: NominalClient, search_context: SearchContext) -> None:
-    """Searching runs by name_substring returns only runs whose name contains the session tag."""
-    results = client.search_runs(name_substring=search_context.tag)
+def test_search_runs_by_substring_match(client: NominalClient, search_context: SearchContext) -> None:
+    """Searching runs by substring_match returns only runs whose name contains the session tag."""
+    results = client.search_runs(substring_match=search_context.tag)
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
 
 def test_search_runs_by_labels(client: NominalClient, search_context: SearchContext) -> None:
     """Filtering by a label narrows results to only the run created with that label."""
-    results = client.search_runs(labels=["search-test"], name_substring=search_context.tag)
+    results = client.search_runs(labels=["search-test"], substring_match=search_context.tag)
     rids = {r.rid for r in results}
     assert rids == {search_context.run.rid}
 
@@ -382,7 +382,7 @@ def test_search_runs_archive_status(
     """Run search honors archive_status filtering."""
     _assert_archive_status_behavior(
         lambda archive_status: client.search_runs(
-            name_substring=search_context.tag,
+            substring_match=search_context.tag,
             archive_status=archive_status,
         ),
         active_rids={search_context.run.rid},

@@ -114,6 +114,10 @@ DEFAULT_CONNECT_TIMEOUT = timedelta(seconds=30)
 MAX_ASSETS_SHOWN = 10
 
 
+def _matches_name_substring(name: str, substring_match: str | None) -> bool:
+    return substring_match is None or substring_match.casefold() in name.casefold()
+
+
 class WorkspaceSearchType(enum.Enum):
     ALL = "ALL"
     DEFAULT = "DEFAULT"
@@ -301,19 +305,39 @@ class NominalClient:
         for raw_user in search_users_paginated(self._clients.authentication, self._clients.auth_header, query):
             yield User._from_conjure(raw_user)
 
-    def search_users(self, exact_match: str | None = None, search_text: str | None = None) -> Sequence[User]:
+    @warn_on_deprecated_argument(
+        "exact_match",
+        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
+    def search_users(
+        self,
+        substring_match: str | None = None,
+        search_text: str | None = None,
+        *,
+        exact_match: str | None = None,
+    ) -> Sequence[User]:
         """Search for users meeting the specified filters.
-        Filters are ANDed together, e.g., if exact_match and search_text are both provided, then both must match.
+        Filters are ANDed together, e.g., if substring_match and search_text are both provided, then both must match.
 
         Args:
-            exact_match: Searches for an exact substring across display name and email
+            substring_match: Searches for a case-insensitive substring in the user's display name.
+            exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: Searches for a (case-insensitive) substring across display name and email
 
         Returns:
             All users which match all of the provided conditions
         """
-        query = create_search_users_query(exact_match=exact_match, search_text=search_text)
-        return list(self._iter_search_users(query))
+        effective_substring_match = substring_match if substring_match is not None else exact_match
+        query = create_search_users_query(
+            substring_match=effective_substring_match,
+            search_text=search_text,
+        )
+        return [
+            user
+            for user in self._iter_search_users(query)
+            if _matches_name_substring(user.display_name, effective_substring_match)
+        ]
 
     def _iter_search_datasets(
         self,
@@ -330,9 +354,15 @@ class NominalClient:
         "archived",
         "'archived' is deprecated and will be removed in a future version of Nominal. Use 'archive_status' instead.",
     )
+    @warn_on_deprecated_argument(
+        "exact_match",
+        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
     def search_datasets(
         self,
         *,
+        substring_match: str | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -347,7 +377,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(secret.label == label) AND (secret.property == property)`
 
         Args:
-            exact_match: Searches for an exact substring of dataset name
+            substring_match: Searches for a case-insensitive substring in the dataset name.
+            exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: Searches for a (case-insensitive) substring across all text fields.
             labels: A sequence of labels that must ALL be present on a secret to be included.
             properties: A mapping of key-value pairs that must ALL be present on a secret to be included.
@@ -371,9 +402,10 @@ class NominalClient:
             archive_status,
             archived=archived,
         )
+        effective_substring_match = substring_match if substring_match is not None else exact_match
 
         query = create_search_datasets_query(
-            exact_match=exact_match,
+            substring_match=effective_substring_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -382,7 +414,11 @@ class NominalClient:
             workspace_rid=self._workspace_rid_for_search(workspace),
             archive_status=effective_archive_status,
         )
-        return list(self._iter_search_datasets(query))
+        return [
+            dataset
+            for dataset in self._iter_search_datasets(query)
+            if _matches_name_substring(dataset.name, effective_substring_match)
+        ]
 
     def search_dataset_files(
         self,
@@ -652,10 +688,9 @@ class NominalClient:
         self,
         start: str | datetime | IntegralNanosecondsUTC | None,
         end: str | datetime | IntegralNanosecondsUTC | None,
-        name_substring: str | None,
         labels: Sequence[str] | None,
         properties: Mapping[str, str] | None,
-        exact_match: str | None,
+        substring_match: str | None,
         search_text: str | None,
         created_after: str | datetime | IntegralNanosecondsUTC | None,
         created_before: str | datetime | IntegralNanosecondsUTC | None,
@@ -665,18 +700,29 @@ class NominalClient:
         query = create_search_runs_query(
             start=start,
             end=end,
-            name_substring=name_substring,
             labels=labels,
             properties=properties,
-            exact_match=exact_match,
+            substring_match=substring_match,
             search_text=search_text,
             created_after=created_after,
             created_before=created_before,
             workspace_rid=workspace_rid,
         )
         for run in search_runs_paginated(self._clients.run, self._clients.auth_header, query, archive_status):
-            yield Run._from_conjure(self._clients, run)
+            parsed_run = Run._from_conjure(self._clients, run)
+            if _matches_name_substring(parsed_run.name, substring_match):
+                yield parsed_run
 
+    @warn_on_deprecated_argument(
+        "name_substring",
+        "'name_substring' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
+    @warn_on_deprecated_argument(
+        "exact_match",
+        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
     def search_runs(
         self,
         start: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -685,6 +731,7 @@ class NominalClient:
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        substring_match: str | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         created_after: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -698,10 +745,11 @@ class NominalClient:
         Args:
             start: Inclusive start time for filtering runs.
             end: Inclusive end time for filtering runs.
-            name_substring: Searches for a (case-insensitive) substring in the name.
+            name_substring: Deprecated. Use ``substring_match`` instead.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: A mapping of key-value pairs that must ALL be present on a run to be included.
-            exact_match: A case-insensitive substring that must be matched exactly.
+            substring_match: Searches for a case-insensitive substring in the run name.
+            exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: A case-insensitive substring to perform fuzzy-search on all fields with
             created_after: Filter runs created after this timestamp (exclusive).
             created_before: Filter runs created before this timestamp (exclusive).
@@ -718,14 +766,20 @@ class NominalClient:
         Returns:
             All runs which match all of the provided conditions
         """
+        effective_substring_match = (
+            substring_match
+            if substring_match is not None
+            else name_substring
+            if name_substring is not None
+            else exact_match
+        )
         return list(
             self._iter_search_runs(
                 start=start,
                 end=end,
-                name_substring=name_substring,
                 labels=labels,
                 properties=properties,
-                exact_match=exact_match,
+                substring_match=effective_substring_match,
                 search_text=search_text,
                 created_after=created_after,
                 created_before=created_before,
@@ -1199,12 +1253,18 @@ class NominalClient:
         for asset in search_assets_paginated(self._clients.assets, self._clients.auth_header, query, archive_status):
             yield Asset._from_conjure(self._clients, asset)
 
+    @warn_on_deprecated_argument(
+        "exact_substring",
+        "'exact_substring' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
     def search_assets(
         self,
         search_text: str | None = None,
         *,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
+        substring_match: str | None = None,
         exact_substring: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.ALL,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
@@ -1216,7 +1276,8 @@ class NominalClient:
             search_text: case-insensitive search for any of the keywords in all string fields
             labels: A sequence of labels that must ALL be present on a asset to be included.
             properties: A mapping of key-value pairs that must ALL be present on a asset to be included.
-            exact_substring: case-insensitive search for exact string match in all string fields
+            substring_match: Searches for a case-insensitive substring in the asset name.
+            exact_substring: Deprecated. Use ``substring_match`` instead.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
@@ -1229,14 +1290,19 @@ class NominalClient:
         Returns:
             All assets which match all of the provided conditions
         """
+        effective_substring_match = substring_match if substring_match is not None else exact_substring
         query = create_search_assets_query(
             search_text=search_text,
             labels=labels,
             properties=properties,
-            exact_substring=exact_substring,
+            substring_match=effective_substring_match,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        return list(self._iter_search_assets(query, archive_status))
+        return [
+            asset
+            for asset in self._iter_search_assets(query, archive_status)
+            if _matches_name_substring(asset.name, effective_substring_match)
+        ]
 
     def list_streaming_checklists(self, asset: Asset | str | None = None) -> Sequence[str]:
         """List all Streaming Checklists.
@@ -1473,9 +1539,15 @@ class NominalClient:
         "The 'include_archived' parameter for client.search_workbooks is deprecated and will be removed in a future "
         "version of Nominal. Please use 'archive_status' instead!",
     )
+    @warn_on_deprecated_argument(
+        "exact_match",
+        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
     def search_workbooks(
         self,
         *,
+        substring_match: str | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -1494,7 +1566,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.created_by == "rid")`
 
         Args:
-            exact_match: Searches for a string to match exactly in the workbook's metadata
+            substring_match: Searches for a case-insensitive substring in the workbook title.
+            exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: Fuzzy-searches for a string in the workbook's metadata
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
@@ -1530,7 +1603,7 @@ class NominalClient:
 
         return _search_workbooks(
             self._clients,
-            exact_match=exact_match,
+            substring_match=substring_match if substring_match is not None else exact_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -1565,9 +1638,15 @@ class NominalClient:
         "archived",
         "'archived' is deprecated and will be removed in a future version of Nominal. Use 'archive_status' instead.",
     )
+    @warn_on_deprecated_argument(
+        "exact_match",
+        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_match' instead.",
+    )
     def search_workbook_templates(
         self,
         *,
+        substring_match: str | None = None,
         exact_match: str | None = None,
         search_text: str | None = None,
         labels: Sequence[str] | None = None,
@@ -1581,7 +1660,8 @@ class NominalClient:
         Filters are ANDed together, e.g. `(workbook.label == label) AND (workbook.author_rid == "rid")`
 
         Args:
-            exact_match: Searches for a string to match exactly in the template's metadata
+            substring_match: Searches for a case-insensitive substring in the template title.
+            exact_match: Deprecated. Use ``substring_match`` instead.
             search_text: Fuzzy-searches for a string in the template's metadata
             labels: A list of labels that must ALL be present on an workbook to be included.
             properties: A mapping of key-value pairs that must ALL be present on an workbook to be included.
@@ -1598,9 +1678,10 @@ class NominalClient:
             archive_status,
             archived=archived,
         )
+        effective_substring_match = substring_match if substring_match is not None else exact_match
 
         query = create_search_workbook_templates_query(
-            exact_match=exact_match,
+            substring_match=effective_substring_match,
             search_text=search_text,
             labels=labels,
             properties=properties,
@@ -1608,7 +1689,11 @@ class NominalClient:
             published=published,
             archive_status=effective_archive_status,
         )
-        return list(self._iter_search_workbook_templates(query))
+        return [
+            template
+            for template in self._iter_search_workbook_templates(query)
+            if _matches_name_substring(template.title, effective_substring_match)
+        ]
 
     @deprecated(
         "Calling `NominalClient.create_workbook_from_template` is deprecated and will be removed "

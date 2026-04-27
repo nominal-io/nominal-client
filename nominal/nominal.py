@@ -372,7 +372,9 @@ def search_runs(
         All runs which match all of the provided conditions
     """
     client = _get_default_client()
-    return client.search_runs(start=start, end=end, name_substring=name_substring, labels=labels, properties=properties)
+    return client.search_runs(
+        start=start, end=end, substring_match=name_substring, labels=labels, properties=properties
+    )
 
 
 @typing_extensions.deprecated(

@@ -24,6 +24,7 @@ from nominal_api import (
 )
 
 from nominal._utils import batched
+from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core._clientsbunch import HasScoutParams, ProtoWriteService
 from nominal.core._stream.batch_processor import process_batch_legacy
 from nominal.core._stream.write_stream import DataStream, WriteStream
@@ -191,30 +192,42 @@ class DataSource(HasRid):
             clients=self._clients,
         )
 
+    @warn_on_deprecated_argument(
+        "exact_match",
+        "'exact_match' is deprecated and will be removed in a future version of Nominal. "
+        "Use 'substring_matches' instead.",
+    )
     def search_channels(
         self,
-        exact_match: Sequence[str] = (),
+        substring_matches: Sequence[str] | None = None,
         fuzzy_search_text: str = "",
         *,
+        exact_match: Sequence[str] | None = None,
         data_types: Sequence[ChannelDataType] | None = None,
     ) -> Iterable[Channel]:
         """Look up channels associated with a datasource.
 
         Args:
-            exact_match: Filter the returned channels to those whose names match all provided strings
+            substring_matches: Filter the returned channels to those whose names match all provided strings
                 (case insensitive).
+            exact_match: Deprecated. Use ``substring_matches`` instead.
             fuzzy_search_text: Filters the returned channels to those whose names fuzzily match the provided string.
             data_types: Filter the returned channels to those that match any of the provided types
 
         Yields:
             Channel objects for each matching channel
         """
+        effective_substring_matches = substring_matches if substring_matches is not None else exact_match
+        if isinstance(effective_substring_matches, str):
+            argument_name = "substring_matches" if substring_matches is not None else "exact_match"
+            raise TypeError(f"{argument_name} must be a sequence of strings, not a single string.")
+        effective_substring_matches = tuple(effective_substring_matches or ())
         allowable_types = set(data_types) if data_types else None
         next_page_token = None
         while True:
             query = datasource_api.SearchChannelsRequest(
                 data_sources=[self.rid],
-                exact_match=list(exact_match),
+                exact_match=list(effective_substring_matches),
                 fuzzy_search_text=fuzzy_search_text,
                 previously_selected_channels={},
                 next_page_token=next_page_token,
@@ -235,7 +248,11 @@ class DataSource(HasRid):
                     if data_type not in allowable_types:
                         continue
 
-                yield Channel._from_conjure_datasource_api(self._clients, channel_metadata)
+                channel = Channel._from_conjure_datasource_api(self._clients, channel_metadata)
+                if not all(match.casefold() in channel.name.casefold() for match in effective_substring_matches):
+                    continue
+
+                yield channel
             if response.next_page_token is None:
                 break
             next_page_token = response.next_page_token
