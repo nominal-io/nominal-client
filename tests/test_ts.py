@@ -6,17 +6,17 @@ from datetime import datetime
 import dateutil.parser
 import pytest
 
-import nominal as nm
+from nominal import ts
 
 
 @pytest.mark.parametrize(
     "t",
     [
-        nm.ts._SecondsNanos.from_nanoseconds(time.time_ns()),
-        nm.ts._SecondsNanos.from_datetime(datetime.now()),
+        ts._SecondsNanos.from_nanoseconds(time.time_ns()),
+        ts._SecondsNanos.from_datetime(datetime.now()),
     ],
 )
-def test_time_conversions(t: nm.ts._SecondsNanos):
+def test_time_conversions(t: ts._SecondsNanos):
     assert t.seconds == t.to_nanoseconds() // 1_000_000_000
     assert t.nanos == t.to_nanoseconds() % 1_000_000_000
     assert t == t.from_nanoseconds(t.to_nanoseconds())
