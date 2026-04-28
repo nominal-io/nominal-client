@@ -39,7 +39,7 @@ from nominal.core.run import Run
 from nominal.core.video import Video
 from nominal.core.workbook import Workbook
 from nominal.experimental.checklist_utils.checklist_utils import _create_checklist_with_content
-from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_cli import ImpersonatingDestinationClientResolver, ImpersonationConfig
 from nominal.experimental.migration.migration_runner import MigrationRunner
@@ -76,11 +76,13 @@ def _make_runner(
     config: MigrationDatasetConfig,
     dest_client: NominalClient,
     state_path: Path,
+    asset_inclusion_config: AssetInclusionConfig | None = None,
 ) -> MigrationRunner:
     return MigrationRunner(
         migration_resources=resources,
         dataset_config=config,
         destination_client=dest_client,
+        asset_inclusion_config=asset_inclusion_config,
         migration_state_path=state_path,
     )
 
@@ -426,14 +428,14 @@ def _assert_run_migrated_multi_asset(source: Run, dest: Run, dest_assets: list[A
 # ---------------------------------------------------------------------------
 
 
-def test_migrate_asset(  # noqa: PLR0915
+def test_migrate_asset_maximal(  # noqa: PLR0915
     source_client: NominalClient,
     dest_client: NominalClient,
     register_cleanup: RegisterCleanup,
     mp4_data: bytes,
     tmp_path: Path,
 ):
-    """Full migration of an asset covering all resource types: dataset, events, run, checklist, video, and workbook.
+    """Full (maximal) migration of an asset covering all resource types: dataset, events, run, checklist, video, and workbook.
 
     Verifies:
     - All child resources exist on the destination with RID mappings in state
@@ -534,6 +536,61 @@ def test_migrate_asset(  # noqa: PLR0915
     dest_multi_run_wb = dest_client.get_workbook(dest_multi_run_wb_rid)
     register_cleanup(dest_multi_run_wb.archive)
     _assert_workbook_migrated_multi_run(source_multi_run_wb, dest_multi_run_wb, [dest_run, dest_run_b])
+
+
+def test_migrate_asset_minimal(
+    source_client: NominalClient,
+    dest_client: NominalClient,
+    register_cleanup: RegisterCleanup,
+    tmp_path: Path,
+):
+    """Minimal migration: only the asset and its datasets are copied; all other resource types are excluded.
+
+    Sets every AssetInclusionConfig flag to False and verifies that events, runs, and workbooks
+    are absent from the migration state while the asset and dataset are still migrated.
+    """
+    start = datetime(2024, 1, 1)
+    end = start + timedelta(hours=1)
+    source_asset = _create_source_asset(source_client, register_cleanup)
+    source_ds = _create_source_dataset(source_client, register_cleanup, source_asset)
+    event_a, _ = _create_source_events(source_client, register_cleanup, source_asset, start)
+    source_run = _create_source_run(source_client, register_cleanup, source_asset, start, end)
+    source_workbook = _create_source_workbook(source_client, register_cleanup, source_asset)
+
+    runner = _make_runner(
+        _make_resources(source_asset),
+        _no_files_config(),
+        dest_client,
+        tmp_path / "state.json",
+        asset_inclusion_config=AssetInclusionConfig(
+            include_video=False,
+            include_runs=False,
+            include_events=False,
+            include_attachments=False,
+            include_checklists=False,
+            include_workbooks=False,
+        ),
+    )
+    runner.run_migration()
+    state = runner.migration_state
+
+    dest_asset = _dest_asset(runner, source_asset, dest_client)
+    register_cleanup(dest_asset.archive)
+
+    # Asset is always migrated.
+    _assert_asset_migrated(source_asset, dest_asset)
+
+    # Dataset is always migrated (controlled by dataset_config, not inclusion flags).
+    dest_ds_rid = state.get_mapped_rid(ResourceType.DATASET, source_ds.rid)
+    assert dest_ds_rid is not None
+    dest_ds = dest_client.get_dataset(dest_ds_rid)
+    register_cleanup(dest_ds.archive)
+    _assert_dataset_migrated(source_ds, dest_ds, "primary", dest_asset)
+
+    # All excluded resource types must be absent from the migration state.
+    assert state.get_mapped_rid(ResourceType.EVENT, event_a.rid) is None
+    assert state.get_mapped_rid(ResourceType.RUN, source_run.rid) is None
+    assert state.get_mapped_rid(ResourceType.WORKBOOK, source_workbook.rid) is None
 
 
 def test_migrate_asset_with_dataset_files(

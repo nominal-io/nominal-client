@@ -36,6 +36,7 @@ class AssetCopyOptions(ResourceCopyOptions):
     include_runs: bool = False
     include_video: bool = False
     include_checklists: bool = False
+    include_workbooks: bool = True
 
 
 class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
@@ -50,6 +51,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             include_events=True,
             include_runs=True,
             include_video=True,
+            include_workbooks=True,
         )
 
     def _copy_from_impl(self, source_asset: Asset, options: AssetCopyOptions) -> Asset:
@@ -84,7 +86,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             logger.info("Copying attachments for asset %s (rid: %s)", source_asset.name, source_asset.rid)
             self._copy_asset_attachments(source_asset, new_asset)
 
-        self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs)
+        if options.include_workbooks:
+            self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs)
         return new_asset
 
     def _get_resource_name(self, resource: Asset) -> str:
