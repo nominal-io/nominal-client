@@ -435,7 +435,9 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     mp4_data: bytes,
     tmp_path: Path,
 ):
-    """Full (maximal) migration of an asset covering all resource types: dataset, events, run, checklist, video, and workbook.
+    """Full (maximal) migration of an asset covering all resource types.
+
+    Resource types covered: dataset, events, run, checklist, video, and workbook.
 
     Verifies:
     - All child resources exist on the destination with RID mappings in state

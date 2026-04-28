@@ -354,15 +354,9 @@ def _load_migration_config(
         include_video=_optional_bool(m.get("include_video"), "migration.include_video", default=True),
         include_runs=_optional_bool(m.get("include_runs"), "migration.include_runs", default=True),
         include_events=_optional_bool(m.get("include_events"), "migration.include_events", default=True),
-        include_attachments=_optional_bool(
-            m.get("include_attachments"), "migration.include_attachments", default=True
-        ),
-        include_checklists=_optional_bool(
-            m.get("include_checklists"), "migration.include_checklists", default=True
-        ),
-        include_workbooks=_optional_bool(
-            m.get("include_workbooks"), "migration.include_workbooks", default=True
-        ),
+        include_attachments=_optional_bool(m.get("include_attachments"), "migration.include_attachments", default=True),
+        include_checklists=_optional_bool(m.get("include_checklists"), "migration.include_checklists", default=True),
+        include_workbooks=_optional_bool(m.get("include_workbooks"), "migration.include_workbooks", default=True),
     )
 
     asset_resources_by_rid = _load_asset_resources(

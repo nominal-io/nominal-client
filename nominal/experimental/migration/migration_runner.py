@@ -60,7 +60,9 @@ class MigrationRunner:
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
-        self.asset_inclusion_config = asset_inclusion_config if asset_inclusion_config is not None else AssetInclusionConfig()
+        self.asset_inclusion_config = (
+            asset_inclusion_config if asset_inclusion_config is not None else AssetInclusionConfig()
+        )
         self.destination_client = destination_client
         self.destination_client_resolver = destination_client_resolver
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
