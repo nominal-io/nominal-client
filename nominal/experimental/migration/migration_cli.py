@@ -582,12 +582,16 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
 
     logger.info("  Total videos: %d", len(videos))
 
+    channel_count = 0
+
     for asset_rid in all_assets:
         asset = client.get_asset(asset_rid)
         for _data_scope, dataset in asset.list_datasets():
             datasets_with_assets.add(dataset.rid)
+            channel_count += sum(1 for _ in dataset.search_channels())
 
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
+    logger.info("  Total channels: %d", channel_count)
 
     orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
 
