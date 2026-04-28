@@ -580,7 +580,7 @@ def upload_mcap_video(
 
 @typing_extensions.deprecated(
     "nominal.create_streaming_connection is deprecated and will be removed in a future version. "
-    f"Use `nominal.NominalClient.create_streaming_connection` instead, see {AUTHENTICATION_DOCS_LINK}"
+    f"Use `nominal.NominalClient.create_dataset` instead, see {AUTHENTICATION_DOCS_LINK}"
 )
 def create_streaming_connection(
     datasource_id: str,

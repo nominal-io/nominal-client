@@ -1084,7 +1084,8 @@ class NominalClient:
         return video
 
     @deprecated(
-        "NominalClient.create_streaming_connection is deprecated and will be removed in a future version."
+        "NominalClient.create_streaming_connection is deprecated and will be removed in a future version. "
+        "Use `NominalClient.create_dataset` instead."
     )
     def create_streaming_connection(
         self,
