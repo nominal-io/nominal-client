@@ -8,7 +8,7 @@ from typing import cast
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import MigrationResources
 from nominal.experimental.migration.migration_state import MigrationState
 from nominal.experimental.migration.migrator.asset_migrator import AssetCopyOptions, AssetMigrator
@@ -33,6 +33,7 @@ class MigrationRunner:
     migration_state: MigrationState
     migration_resources: MigrationResources
     dataset_config: MigrationDatasetConfig
+    asset_inclusion_config: AssetInclusionConfig
     destination_client: NominalClient
     destination_client_resolver: DestinationClientResolver | None
 
@@ -41,6 +42,7 @@ class MigrationRunner:
         migration_resources: MigrationResources,
         dataset_config: MigrationDatasetConfig,
         destination_client: NominalClient,
+        asset_inclusion_config: AssetInclusionConfig | None = None,
         destination_client_resolver: DestinationClientResolver | None = None,
         migration_state_path: Path | str | None = None,
     ) -> None:
@@ -50,12 +52,17 @@ class MigrationRunner:
             migration_resources (MigrationResources): _description_
             dataset_config (MigrationDatasetConfig): _description_
             destination_client (NominalClient): _description_
+            asset_inclusion_config (AssetInclusionConfig | None): Controls which resource types are copied per
+                asset. Defaults to including all resource types.
             destination_client_resolver (DestinationClientResolver | None): Optional callback that resolves the
                 destination client for each source resource. Defaults to None.
             migration_state_path (Path | str | None, optional): _description_. Defaults to None.
         """
         self.migration_resources = migration_resources
         self.dataset_config = dataset_config
+        self.asset_inclusion_config = (
+            asset_inclusion_config if asset_inclusion_config is not None else AssetInclusionConfig()
+        )
         self.destination_client = destination_client
         self.destination_client_resolver = destination_client_resolver
         resolved_path = Path(migration_state_path) if migration_state_path is not None else Path("migration_state.json")
@@ -95,11 +102,12 @@ class MigrationRunner:
                     source_asset,
                     AssetCopyOptions(
                         dataset_config=self.dataset_config,
-                        include_attachments=True,
-                        include_events=True,
-                        include_runs=True,
-                        include_video=True,
-                        include_checklists=True,
+                        include_attachments=self.asset_inclusion_config.include_attachments,
+                        include_events=self.asset_inclusion_config.include_events,
+                        include_runs=self.asset_inclusion_config.include_runs,
+                        include_video=self.asset_inclusion_config.include_video,
+                        include_checklists=self.asset_inclusion_config.include_checklists,
+                        include_workbooks=self.asset_inclusion_config.include_workbooks,
                     ),
                 )
 
@@ -110,7 +118,8 @@ class MigrationRunner:
                 asset_rid: cast(ClientsBunch, asset_resources.asset._clients)
                 for asset_rid, asset_resources in self.migration_resources.source_assets.items()
             }
-            WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
+            if self.asset_inclusion_config.include_workbooks:
+                WorkbookMigrator(migration_context).migrate_deferred_workbooks(source_clients_by_asset_rid)
         finally:
             self.save_state()
         logger.info("Completed migration")

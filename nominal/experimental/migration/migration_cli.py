@@ -13,7 +13,7 @@ from nominal_api.scout_sandbox_api import SandboxWorkspaceService, SetDemoWorkbo
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, NominalClient
 from nominal.experimental import as_user
-from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
+from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_decorators import migration_client_options
 from nominal.experimental.migration.migration_runner import MigrationRunner
@@ -91,6 +91,14 @@ def _require_non_empty_string(value: Any, label: str) -> str:
 
 
 def _require_bool(value: Any, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise click.UsageError(f"'{label}' must be a boolean.")
+    return value
+
+
+def _optional_bool(value: Any, label: str, default: bool) -> bool:
+    if value is None:
+        return default
     if not isinstance(value, bool):
         raise click.UsageError(f"'{label}' must be a boolean.")
     return value
@@ -327,7 +335,7 @@ def _extract_user_rid_from_identity(value: Any) -> str | None:
 
 def _load_migration_config(
     source_client: NominalClient, config_path: Path
-) -> tuple[str, MigrationResources, MigrationDatasetConfig, bool, ImpersonationConfig | None]:
+) -> tuple[str, MigrationResources, MigrationDatasetConfig, AssetInclusionConfig, bool, ImpersonationConfig | None]:
     with config_path.open("r", encoding="utf-8") as f:
         raw: Any = yaml.safe_load(f)
 
@@ -341,6 +349,15 @@ def _load_migration_config(
     if not isinstance(set_to_demo_workbook_raw, bool):
         raise click.UsageError("'migration.set_to_demo_workbook' must be a boolean.")
     set_to_demo_workbook: bool = set_to_demo_workbook_raw
+
+    asset_inclusion_config = AssetInclusionConfig(
+        include_video=_optional_bool(m.get("include_video"), "migration.include_video", default=True),
+        include_runs=_optional_bool(m.get("include_runs"), "migration.include_runs", default=True),
+        include_events=_optional_bool(m.get("include_events"), "migration.include_events", default=True),
+        include_attachments=_optional_bool(m.get("include_attachments"), "migration.include_attachments", default=True),
+        include_checklists=_optional_bool(m.get("include_checklists"), "migration.include_checklists", default=True),
+        include_workbooks=_optional_bool(m.get("include_workbooks"), "migration.include_workbooks", default=True),
+    )
 
     asset_resources_by_rid = _load_asset_resources(
         source_client,
@@ -366,6 +383,7 @@ def _load_migration_config(
             source_standalone_templates=standalone_workbook_templates,
         ),
         dataset_config,
+        asset_inclusion_config,
         set_to_demo_workbook,
         impersonation_config,
     )
@@ -477,9 +495,14 @@ def copy(
 ) -> None:
     source_client, target_client = clients
     logger.info("Loading migration config from: %s", config_path)
-    name, migration_resources, dataset_config, set_to_demo_workbook, impersonation_config = _load_migration_config(
-        source_client, config_path
-    )
+    (
+        name,
+        migration_resources,
+        dataset_config,
+        asset_inclusion_config,
+        set_to_demo_workbook,
+        impersonation_config,
+    ) = _load_migration_config(source_client, config_path)
 
     if set_to_demo_workbook:
         workspace = target_client.get_workspace()
@@ -507,6 +530,7 @@ def copy(
     runner = MigrationRunner(
         migration_resources=migration_resources,
         dataset_config=dataset_config,
+        asset_inclusion_config=asset_inclusion_config,
         destination_client=target_client,
         destination_client_resolver=destination_client_resolver,
         migration_state_path=migration_state_path,
@@ -606,6 +630,12 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
             "name": migration_name,
             "include_dataset_files": False,
             "preserve_dataset_uuid": True,
+            "include_video": True,
+            "include_runs": True,
+            "include_events": True,
+            "include_attachments": True,
+            "include_checklists": True,
+            "include_workbooks": True,
             "set_to_demo_workbook": False,
             "source_asset_rids": [{"asset_rid": rid} for rid in sorted(all_assets)],
         }
