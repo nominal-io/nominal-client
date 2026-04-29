@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.135.0](https://github.com/nominal-io/nominal-client/compare/v1.134.0...v1.135.0) (2026-04-27)
+
+
+### Features
+
+* add PUT response headers in S3 multipart upload exception ([#731](https://github.com/nominal-io/nominal-client/issues/731)) ([a2f8346](https://github.com/nominal-io/nominal-client/commit/a2f83461344fd34e9f9274cf7686fbcd52c07001))
+* enable streaming arrays and structs with rust_experimental streaming ([#729](https://github.com/nominal-io/nominal-client/issues/729)) ([1cd45d7](https://github.com/nominal-io/nominal-client/commit/1cd45d7dd116120ef44e23f8e82a3d92097fb7e3))
+* update e2e testing for new migration features ([#734](https://github.com/nominal-io/nominal-client/issues/734)) ([e77e76a](https://github.com/nominal-io/nominal-client/commit/e77e76ab04ce2111bbecf625ffdd3f684ed45351))
+
 ## [1.134.0](https://github.com/nominal-io/nominal-client/compare/v1.133.0...v1.134.0) (2026-04-23)
 
 
