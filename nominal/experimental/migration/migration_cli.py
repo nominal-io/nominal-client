@@ -11,7 +11,7 @@ import yaml
 from nominal_api.scout_sandbox_api import SandboxWorkspaceService, SetDemoWorkbooksRequest
 
 from nominal.cli.util.global_decorators import client_options, global_options
-from nominal.core import Asset, NominalClient
+from nominal.core import Asset, NominalClient, Workbook
 from nominal.experimental import as_user
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -541,6 +541,16 @@ def copy(
         _update_demo_workbooks(target_client, runner)
 
 
+def _categorize_workbooks(workbooks: Sequence[Workbook]) -> tuple[set[str], set[str]]:
+    single: set[str] = set()
+    multi: set[str] = set()
+    for workbook in workbooks:
+        rids = workbook.run_rids or workbook.asset_rids
+        if rids:
+            (single if len(rids) == 1 else multi).add(workbook.rid)
+    return single, multi
+
+
 @migrate_cmd.command(name="prep", help="Count in-scope and out-of-scope resources and generate a migration config.")
 @client_options
 @global_options
@@ -565,20 +575,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
     logger.info("  Total runs: %d", len(runs))
 
     workbooks = client.search_workbooks(include_drafts=True)
-    workbooks_with_single_asset_run: set[str] = set()
-    workbooks_with_multi_asset_run: set[str] = set()
-
-    for workbook in workbooks:
-        if workbook.run_rids:
-            if len(workbook.run_rids) == 1:
-                workbooks_with_single_asset_run.add(workbook.rid)
-            else:
-                workbooks_with_multi_asset_run.add(workbook.rid)
-        elif workbook.asset_rids:
-            if len(workbook.asset_rids) == 1:
-                workbooks_with_single_asset_run.add(workbook.rid)
-            else:
-                workbooks_with_multi_asset_run.add(workbook.rid)
+    workbooks_with_single_asset_run, workbooks_with_multi_asset_run = _categorize_workbooks(workbooks)
 
     logger.info("  Workbooks with single asset/run: %d", len(workbooks_with_single_asset_run))
 
@@ -606,12 +603,16 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
 
     logger.info("  Total videos: %d", len(videos))
 
+    channel_count = 0
+
     for asset_rid in all_assets:
         asset = client.get_asset(asset_rid)
         for _data_scope, dataset in asset.list_datasets():
             datasets_with_assets.add(dataset.rid)
+            channel_count += sum(1 for _ in dataset.search_channels())
 
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
+    logger.info("  Total channels: %d", channel_count)
 
     orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
 
