@@ -118,6 +118,7 @@ class ClientsBunch:
     auth_header: str
     workspace_rid: str | None
     app_base_url: str
+    default_headers: Mapping[str, str]
     _api_base_url: str = field(repr=False)
     _user_agent: str = field(repr=False)
     _token: str = field(repr=False)
@@ -158,8 +159,6 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
-
-    default_headers: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def with_default_request_headers(self, headers: Mapping[str, str]) -> Self:
         return type(self).from_config(
@@ -269,6 +268,7 @@ class ClientsBunch:
             auth_header=f"Bearer {token}",
             workspace_rid=workspace_rid,
             app_base_url=app_base_url,
+            default_headers=dict(default_headers) if default_headers is not None else {},
             _api_base_url=base_url,
             _user_agent=agent,
             _token=token,
@@ -301,7 +301,6 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
-            default_headers=dict(default_headers) if default_headers is not None else {},
         )
 
 
