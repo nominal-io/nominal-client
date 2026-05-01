@@ -134,6 +134,7 @@ class NominalClient:
         *,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
+        additional_headers: Iterable[tuple[str, str]] = (),
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
@@ -142,6 +143,8 @@ class NominalClient:
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
+            additional_headers: Extra headers to attach to every request issued by the client, as (name, value)
+                pairs.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -151,6 +154,7 @@ class NominalClient:
             workspace_rid=prof.workspace_rid,
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
+            additional_headers=additional_headers,
             _profile=profile,
         )
         return client
@@ -164,6 +168,7 @@ class NominalClient:
         workspace_rid: str | None = None,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
+        additional_headers: Iterable[tuple[str, str]] = (),
         _profile: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
@@ -176,6 +181,8 @@ class NominalClient:
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
+            additional_headers: Extra headers to attach to every request issued by the client, as (name, value)
+                pairs.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -185,7 +192,12 @@ class NominalClient:
             connect_timeout=timeout_seconds,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, base_url, agent, token, workspace_rid), _profile=_profile)
+        return cls(
+            _clients=ClientsBunch.from_config(
+                cfg, base_url, agent, token, workspace_rid, default_headers=dict(additional_headers)
+            ),
+            _profile=_profile,
+        )
 
     @classmethod
     def create(
@@ -196,6 +208,7 @@ class NominalClient:
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         *,
         workspace_rid: str | None = None,
+        additional_headers: Iterable[tuple[str, str]] = (),
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -206,6 +219,7 @@ class NominalClient:
         connect_timeout: Timeout for any single request to the Nominal API.
         workspace_rid: Optional workspace RID to pin the client to for operations that require a single
             workspace. If not provided, those operations resolve a default workspace client-side when needed.
+        additional_headers: Extra headers to attach to every request issued by the client, as (name, value) pairs.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -215,6 +229,7 @@ class NominalClient:
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
             workspace_rid=workspace_rid,
+            additional_headers=additional_headers,
         )
 
     def __repr__(self) -> str:
