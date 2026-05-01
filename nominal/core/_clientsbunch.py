@@ -159,6 +159,8 @@ class ClientsBunch:
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
 
+    default_headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+
     def with_default_request_headers(self, headers: Mapping[str, str]) -> Self:
         return type(self).from_config(
             self._service_config,
@@ -299,6 +301,7 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
+            default_headers=dict(default_headers) if default_headers is not None else {},
         )
 
 
@@ -309,6 +312,8 @@ class HasScoutParams(Protocol):
     def workspace_rid(self) -> str | None: ...
     @property
     def app_base_url(self) -> str: ...
+    @property
+    def default_headers(self) -> Mapping[str, str]: ...
     def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace: ...
     def resolve_default_workspace_rid(self) -> str: ...
 

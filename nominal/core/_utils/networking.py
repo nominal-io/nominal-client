@@ -221,6 +221,7 @@ def create_multipart_request_session(
     *,
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
+    default_headers: Mapping[str, str] | None = None,
 ) -> requests.Session:
     """Create a requests Session configured for multipart uploads to S3.
 
@@ -231,6 +232,7 @@ def create_multipart_request_session(
         pool_size: Number of concurrent workers. Controls the number of cached host pools
             and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
+        default_headers: Additional default headers to attach to every request issued by the session.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
@@ -241,6 +243,8 @@ def create_multipart_request_session(
         status_forcelist=(429, 500, 502, 503, 504),
     )
     session = requests.Session()
+    if default_headers:
+        session.headers.update(default_headers)
     adapter = SslBypassRequestsAdapter(
         max_retries=retries,
         # Match the number of cached host pools to the thread count to avoid LRU eviction.

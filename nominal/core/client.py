@@ -983,6 +983,7 @@ class NominalClient:
             name,
             file_type,
             self._clients.upload,
+            default_headers=self._clients.default_headers,
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",

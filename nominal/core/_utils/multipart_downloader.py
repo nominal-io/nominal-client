@@ -111,7 +111,14 @@ class MultipartFileDownloader:
     _closed: bool = field(default=False, repr=False)
 
     @classmethod
-    def create(cls, *, max_workers: int | None = None, timeout: float = 30.0, max_part_retries: int = 3) -> Self:
+    def create(
+        cls,
+        *,
+        max_workers: int | None = None,
+        timeout: float = 30.0,
+        max_part_retries: int = 3,
+        default_headers: Mapping[str, str] | None = None,
+    ) -> Self:
         """Factor for MultipartFileDownloader
 
         Args:
@@ -120,6 +127,7 @@ class MultipartFileDownloader:
             timeout: Maximum amount of time before considering a connection dead
             max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
                 4xx error, and source file changing mid download are all things that may cause a retry)
+            default_headers: Additional default headers to attach to every request issued by the session.
 
         Returns:
             Constructed MultipartFileDownloader prepared to begin downloading.
@@ -128,7 +136,7 @@ class MultipartFileDownloader:
             max_workers = multiprocessing.cpu_count()
             logger.info("Inferring core count as %d", max_workers)
 
-        session = create_multipart_request_session(pool_size=max_workers)
+        session = create_multipart_request_session(pool_size=max_workers, default_headers=default_headers)
         pool = ThreadPoolExecutor(max_workers=max_workers)
         return cls(max_workers, timeout, max_part_retries, _session=session, _pool=pool, _closed=False)
 
