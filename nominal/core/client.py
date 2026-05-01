@@ -74,6 +74,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.container_image import ContainerImage
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
@@ -984,6 +985,36 @@ class NominalClient:
         """Retrieve an attachment by its RID."""
         response = self._clients.attachment.get(self._clients.auth_header, rid)
         return Attachment._from_conjure(self._clients, response)
+
+    def upload_container_image_from_io(
+        self,
+        path: BinaryIO,
+        name: str,
+        tag: str,
+    ) -> ContainerImage:
+        """Upload a container image tarball to Nominal's self-hosted registry.
+
+        The tarball must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        """
+        if isinstance(path, TextIOBase):
+            raise TypeError(f"tarball {path!r} must be open in binary mode, rather than text mode")
+
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            self._clients.workspace_rid,
+            path,
+            f"{name}-{tag}",
+            FileTypes.TAR,
+            self._clients.upload,
+        )
+        request = {
+            "workspaceRid": self._clients.workspace_rid,
+            "name": name,
+            "tag": tag,
+            "objectPath": s3_path,
+        }
+        api_image = self._clients.registry.create_image(self._clients.auth_header, request)
+        return ContainerImage._from_grpc(self._clients, api_image)
 
     def get_attachments(self, rids: Iterable[str]) -> Sequence[Attachment]:
         """Retrive attachments by their RIDs."""
