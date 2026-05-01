@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.136.0](https://github.com/nominal-io/nominal-client/compare/v1.135.0...v1.136.0) (2026-04-30)
+
+
+### Features
+
+* add channel count to migration prep ([#739](https://github.com/nominal-io/nominal-client/issues/739)) ([6ffbf92](https://github.com/nominal-io/nominal-client/commit/6ffbf9245d8bebbc90c9365bf0e2984c93a1e196))
+* add parameters to include/exclude child resources to migrate ([#740](https://github.com/nominal-io/nominal-client/issues/740)) ([fa2cfb4](https://github.com/nominal-io/nominal-client/commit/fa2cfb4cc55fc77b1b96bb96ef6d07b8e644f8b6))
+* deprecate streaming connection creation ([#741](https://github.com/nominal-io/nominal-client/issues/741)) ([5b28a7b](https://github.com/nominal-io/nominal-client/commit/5b28a7b892418de931f7ddde8ebbb03dd941ef02))
+
 ## [1.135.0](https://github.com/nominal-io/nominal-client/compare/v1.134.0...v1.135.0) (2026-04-27)
 
 
