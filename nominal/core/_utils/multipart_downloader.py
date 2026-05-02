@@ -111,7 +111,14 @@ class MultipartFileDownloader:
     _closed: bool = field(default=False, repr=False)
 
     @classmethod
-    def create(cls, *, max_workers: int | None = None, timeout: float = 30.0, max_part_retries: int = 3) -> Self:
+    def create(
+        cls,
+        *,
+        max_workers: int | None = None,
+        timeout: float = 30.0,
+        max_part_retries: int = 3,
+        enable_smartcard_auth: bool = False,
+    ) -> Self:
         """Factor for MultipartFileDownloader
 
         Args:
@@ -120,6 +127,8 @@ class MultipartFileDownloader:
             timeout: Maximum amount of time before considering a connection dead
             max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
                 4xx error, and source file changing mid download are all things that may cause a retry)
+            enable_smartcard_auth: If True, configure the underlying session so the system OpenSSL can drive a
+                smartcard / CAC client cert during the TLS handshake.
 
         Returns:
             Constructed MultipartFileDownloader prepared to begin downloading.
@@ -128,7 +137,9 @@ class MultipartFileDownloader:
             max_workers = multiprocessing.cpu_count()
             logger.info("Inferring core count as %d", max_workers)
 
-        session = create_multipart_request_session(pool_size=max_workers)
+        session = create_multipart_request_session(
+            pool_size=max_workers, enable_smartcard_auth=enable_smartcard_auth
+        )
         pool = ThreadPoolExecutor(max_workers=max_workers)
         return cls(max_workers, timeout, max_part_retries, _session=session, _pool=pool, _closed=False)
 

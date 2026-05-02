@@ -251,11 +251,22 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
 
         workspace_rid = self._clients.resolve_default_workspace_rid()
         timestamp_manifest = _build_video_file_timestamp_manifest(
-            self._clients.auth_header, workspace_rid, self._clients.upload, start, frame_timestamps
+            self._clients.auth_header,
+            workspace_rid,
+            self._clients.upload,
+            start,
+            frame_timestamps,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
-            self._clients.auth_header, workspace_rid, video, name, file_type, self._clients.upload
+            self._clients.auth_header,
+            workspace_rid,
+            video,
+            name,
+            file_type,
+            self._clients.upload,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
         request = ingest_api.IngestRequest(
             ingest_api.IngestOptions(
@@ -356,6 +367,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             name,
             file_type,
             self._clients.upload,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
@@ -412,6 +424,8 @@ def _upload_frame_timestamps(
     workspace_rid: str | None,
     upload_client: upload_api.UploadService,
     frame_timestamps: Sequence[IntegralNanosecondsUTC],
+    *,
+    enable_smartcard_auth: bool = False,
 ) -> str:
     """Uploads per-frame video timestamps to S3 and provides a path to the uploaded resource."""
     # Dump timestamp array into an in-memory file-like IO object
@@ -429,6 +443,7 @@ def _upload_frame_timestamps(
         "timestamp_manifest",
         FileTypes.JSON,
         upload_client,
+        enable_smartcard_auth=enable_smartcard_auth,
     )
 
 
@@ -438,11 +453,19 @@ def _build_video_file_timestamp_manifest(
     upload_client: upload_api.UploadService,
     start: datetime | IntegralNanosecondsUTC | None = None,
     frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+    *,
+    enable_smartcard_auth: bool = False,
 ) -> scout_video_api.VideoFileTimestampManifest:
     if None not in (start, frame_timestamps):
         raise ValueError("Only one of 'start' or 'frame_timestamps' are allowed")
     elif frame_timestamps is not None:
-        manifest_s3_path = _upload_frame_timestamps(auth_header, workspace_rid, upload_client, frame_timestamps)
+        manifest_s3_path = _upload_frame_timestamps(
+            auth_header,
+            workspace_rid,
+            upload_client,
+            frame_timestamps,
+            enable_smartcard_auth=enable_smartcard_auth,
+        )
         return scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
     elif start is not None:
         # TODO(drake): expose scale parameter to users

@@ -27,8 +27,21 @@ def profile_cmd() -> None:
 @click.option("-u", "--base-url", default="https://api.gov.nominal.io/api")
 @click.option("-w", "--workspace-rid", help="workspace RID  [optional]")
 @click.option("--validate/--no-validate", default=True, help="Validate authentication parameters")
+@click.option(
+    "--enable-smartcard-auth/--no-enable-smartcard-auth",
+    "enable_smartcard_auth",
+    default=False,
+    help="Enable smartcard / CAC client-cert TLS for this profile (e.g. for .mil deployments)",
+)
 @global_options
-def add_profile(profile: str, base_url: str, token: str, workspace_rid: str | None, validate: bool) -> None:
+def add_profile(
+    profile: str,
+    base_url: str,
+    token: str,
+    workspace_rid: str | None,
+    validate: bool,
+    enable_smartcard_auth: bool,
+) -> None:
     """Add or update a profile to your Nominal config"""
     cfg = config.NominalConfig(profiles={}, version=2)
     try:
@@ -37,9 +50,13 @@ def add_profile(profile: str, base_url: str, token: str, workspace_rid: str | No
         pass
     if validate:
         validate_token_url(token, base_url, workspace_rid)
-    new_cfg = dataclasses.replace(
-        cfg, profiles={**cfg.profiles, profile: config.ConfigProfile(base_url, token, workspace_rid)}
+    new_profile = config.ConfigProfile(
+        base_url=base_url,
+        token=token,
+        workspace_rid=workspace_rid,
+        enable_smartcard_auth=enable_smartcard_auth,
     )
+    new_cfg = dataclasses.replace(cfg, profiles={**cfg.profiles, profile: new_profile})
     new_cfg.to_yaml()
     click.secho(f"Wrote profile {profile} to {config.DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")
 
@@ -70,9 +87,17 @@ def migrate() -> None:
             new_workspace_rid = None
             if click.prompt("Add workspace?", default="n", type=bool):
                 new_workspace_rid = click.prompt("Workspace RID")
+            enable_smartcard_auth = bool(
+                click.prompt("Require smartcard / CAC client cert for TLS?", default="n", type=bool)
+            )
             if click.prompt("Validate authentication?", default="y", type=bool):
                 validate_token_url(new_token, new_url, new_workspace_rid)
-            profiles[name] = config.ConfigProfile(new_url, new_token, new_workspace_rid)
+            profiles[name] = config.ConfigProfile(
+                base_url=new_url,
+                token=new_token,
+                workspace_rid=new_workspace_rid,
+                enable_smartcard_auth=enable_smartcard_auth,
+            )
     new_cfg = config.NominalConfig(profiles=profiles, version=2)
     new_cfg.to_yaml()
     click.secho(f"Migrated config to {config.DEFAULT_NOMINAL_CONFIG_PATH}", fg="green")
@@ -108,4 +133,6 @@ def list_profiles() -> None:
             print(", missing token", end="")
         if profile.workspace_rid:
             print(", in workspace", end="")
+        if profile.enable_smartcard_auth:
+            print(", smartcard auth", end="")
         print(")")

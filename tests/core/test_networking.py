@@ -122,3 +122,36 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
     session, _uris, _ct, _rt, verify, _rn = service_class.call_args.args
     assert verify is None
     session.close()
+
+
+def test_ssl_adapter_default_uses_truststore_context() -> None:
+    """The default code path keeps using ThreadSafeSSLContext (not the smartcard pool)."""
+    from nominal.core._utils.networking import ThreadSafeSSLContext
+
+    adapter = SslBypassRequestsAdapter()
+
+    assert isinstance(adapter._ssl_context, ThreadSafeSSLContext)
+    assert adapter._enable_smartcard_auth is False
+
+
+def test_ssl_adapter_smartcard_uses_smartcard_pool_manager() -> None:
+    """When enable_smartcard_auth=True, init_poolmanager installs SmartcardPoolManager and skips SSLContext."""
+    from nominal.core._utils.smartcard import SmartcardPoolManager
+
+    adapter = SslBypassRequestsAdapter(enable_smartcard_auth=True)
+
+    assert adapter._ssl_context is None
+    assert adapter._enable_smartcard_auth is True
+    assert isinstance(adapter.poolmanager, SmartcardPoolManager)
+
+
+def test_ssl_adapter_smartcard_setstate_round_trips() -> None:
+    """Pickled state must reconstruct the adapter without losing the smartcard flag."""
+    adapter = SslBypassRequestsAdapter(enable_smartcard_auth=True)
+
+    state = adapter.__getstate__()
+    new = SslBypassRequestsAdapter.__new__(SslBypassRequestsAdapter)
+    new.__setstate__(state)
+
+    assert new._enable_smartcard_auth is True
+    assert new._ssl_context is None

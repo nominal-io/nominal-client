@@ -94,6 +94,15 @@ nominal = { workspace = true }
 [project.optional-dependencies]
 protos = ["nominal-api-protos>=0.1090.0"]
 tdms = ["nptdms>=1.9.0,<2"]
+# Smartcard / CAC client-cert TLS support for Nominal Core deployments behind networks that require
+# PKCS#11-driven client auth. The PKCS#11 module itself (e.g. OpenSC's opensc-pkcs11) must be installed at
+# the OS level — see nominal/core/_utils/smartcard.py for the discovered standard paths.
+smartcard = [
+    "PyKCS11>=1.5.12",
+    "pyOpenSSL>=23.0.0",
+    "cryptography>=42.0.0",
+    "cffi>=1.17.0",
+]
 # nominal-video wheels exist for:
 # - Windows x86_64 (AMD64)
 # - macOS arm64
@@ -178,6 +187,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "ffmpeg"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["PyKCS11", "OpenSSL", "OpenSSL.SSL", "cryptography", "cryptography.*", "cffi"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

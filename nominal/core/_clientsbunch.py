@@ -122,6 +122,7 @@ class ClientsBunch:
     _user_agent: str = field(repr=False)
     _token: str = field(repr=False)
     _service_config: ServiceConfiguration = field(repr=False)
+    _enable_smartcard_auth: bool = field(default=False, repr=False, kw_only=True)
 
     _default_workspace: LazyField[security_api_workspace.Workspace] = field(
         default_factory=LazyField,
@@ -167,6 +168,7 @@ class ClientsBunch:
             self._token,
             self.workspace_rid,
             default_headers=headers,
+            enable_smartcard_auth=self._enable_smartcard_auth,
         )
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
@@ -253,6 +255,7 @@ class ClientsBunch:
         workspace_rid: str | None,
         *,
         default_headers: Mapping[str, str] | None = None,
+        enable_smartcard_auth: bool = False,
     ) -> Self:
         app_base_url = api_base_url_to_app_base_url(base_url)
 
@@ -261,6 +264,7 @@ class ClientsBunch:
                 user_agent=agent,
                 service_config=cfg,
                 default_headers=default_headers,
+                enable_smartcard_auth=enable_smartcard_auth,
             )(service_class)
 
         return cls(
@@ -271,6 +275,7 @@ class ClientsBunch:
             _user_agent=agent,
             _token=token,
             _service_config=cfg,
+            _enable_smartcard_auth=enable_smartcard_auth,
             assets=client_factory(scout_assets.AssetService),
             attachment=client_factory(attachments_api.AttachmentService),
             authentication=client_factory(authentication_api.AuthenticationServiceV2),
@@ -309,6 +314,8 @@ class HasScoutParams(Protocol):
     def workspace_rid(self) -> str | None: ...
     @property
     def app_base_url(self) -> str: ...
+    @property
+    def _enable_smartcard_auth(self) -> bool: ...
     def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace: ...
     def resolve_default_workspace_rid(self) -> str: ...
 

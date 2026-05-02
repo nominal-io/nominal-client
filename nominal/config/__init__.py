@@ -21,11 +21,18 @@ class ConfigProfile:
 
     If `workspace_rid` is set, methods that resolve `WorkspaceSearchType.DEFAULT` use it before falling back to a
     default-workspace lookup.
+
+    If `enable_smartcard_auth` is True, TLS connections from this profile are configured so the system's OpenSSL
+    can drive a smartcard / CAC client certificate (e.g. via a PKCS#11 engine configured in `OPENSSL_CONF`). The
+    flag itself does not load any smartcard module — it disables the in-process truststore SSL context so the
+    system-level cert / engine configuration is honored. Use this for Nominal Core deployments behind networks
+    that require CAC authentication (e.g. .mil endpoints).
     """
 
     base_url: str
     token: str
     workspace_rid: str | None = None
+    enable_smartcard_auth: bool = False
 
 
 @dataclass(frozen=True)

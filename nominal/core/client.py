@@ -151,6 +151,7 @@ class NominalClient:
             workspace_rid=prof.workspace_rid,
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
+            enable_smartcard_auth=prof.enable_smartcard_auth,
             _profile=profile,
         )
         return client
@@ -164,6 +165,7 @@ class NominalClient:
         workspace_rid: str | None = None,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
+        enable_smartcard_auth: bool = False,
         _profile: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
@@ -176,6 +178,10 @@ class NominalClient:
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
+            enable_smartcard_auth: If True, configure HTTPS connections so the system OpenSSL can present a
+                smartcard / CAC client certificate during the TLS handshake (e.g. via a PKCS#11 engine wired into
+                `OPENSSL_CONF`). The flag itself does not load any smartcard module — it switches the in-process
+                SSL context off of the bundled truststore so the system-level cert configuration is honored.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -185,7 +191,25 @@ class NominalClient:
             connect_timeout=timeout_seconds,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, base_url, agent, token, workspace_rid), _profile=_profile)
+        if enable_smartcard_auth:
+            # Eagerly initialize the smartcard session so the PIN prompt happens at NominalClient creation
+            # rather than from inside an upload thread later. The PKCS#11 module remains logged in for the
+            # rest of the process; subsequent TLS handshakes (including parallel multipart uploads to S3)
+            # reuse the same logged-in session and never re-prompt.
+            from nominal.core._utils.smartcard import SmartcardSession
+
+            SmartcardSession.get().ssl_context
+        return cls(
+            _clients=ClientsBunch.from_config(
+                cfg,
+                base_url,
+                agent,
+                token,
+                workspace_rid,
+                enable_smartcard_auth=enable_smartcard_auth,
+            ),
+            _profile=_profile,
+        )
 
     @classmethod
     def create(
@@ -968,6 +992,7 @@ class NominalClient:
             name,
             file_type,
             self._clients.upload,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
