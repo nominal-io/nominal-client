@@ -56,14 +56,29 @@ class SslBypassRequestsAdapter(HTTPAdapter):
     """Transport adapter that uses the OS trust store via truststore.
 
     All sessions use a ThreadSafeSSLContext, which is safe to share across threads.
+
+    When `enable_smartcard_auth=True`, the adapter substitutes a urllib3 PoolManager that uses pyOpenSSL with
+    a PKCS#11-backed private key for HTTPS. See `nominal.core._utils.smartcard`. The smartcard PIN is
+    prompted on the first network call (or eagerly via `SmartcardSession.get()`) and the logged-in PKCS#11
+    session is shared across every TLS handshake produced by this process.
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
-    __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
+    ENABLE_SMARTCARD_AUTH_ATTR = "_enable_smartcard_auth"
+    __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR, ENABLE_SMARTCARD_AUTH_ATTR]
 
-    def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
+    def __init__(
+        self,
+        *args: Any,
+        enable_keep_alive: bool = False,
+        enable_smartcard_auth: bool = False,
+        **kwargs: Any,
+    ):
         self._enable_keep_alive = enable_keep_alive
-        self._ssl_context = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self._enable_smartcard_auth = enable_smartcard_auth
+        self._ssl_context: ssl.SSLContext | None = (
+            None if enable_smartcard_auth else ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        )
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -79,16 +94,33 @@ class SslBypassRequestsAdapter(HTTPAdapter):
                 *HTTPConnection.default_socket_options,
                 *KEEP_ALIVE_SOCKET_OPTIONS,
             ]
+        if self._enable_smartcard_auth:
+            from nominal.core._utils.smartcard import SmartcardPoolManager
+
+            self.poolmanager = SmartcardPoolManager(
+                num_pools=connections,
+                maxsize=maxsize,
+                block=block,
+                **kwargs,
+            )
+            return
         super().init_poolmanager(connections, maxsize, block, **kwargs, ssl_context=self._ssl_context)  # type: ignore[no-untyped-call]
 
     def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
         proxy_kwargs.pop("ssl_context", None)
+        if self._enable_smartcard_auth:
+            return super().proxy_manager_for(proxy, **proxy_kwargs)  # type: ignore[no-untyped-call]
         return super().proxy_manager_for(proxy, **proxy_kwargs, ssl_context=self._ssl_context)  # type: ignore[no-untyped-call]
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         state[self.ENABLE_KEEP_ALIVE_ATTR] = state.get(self.ENABLE_KEEP_ALIVE_ATTR, False)
+        state[self.ENABLE_SMARTCARD_AUTH_ATTR] = state.get(self.ENABLE_SMARTCARD_AUTH_ATTR, False)
         if "_ssl_context" not in state:
-            state["_ssl_context"] = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            state["_ssl_context"] = (
+                None
+                if state[self.ENABLE_SMARTCARD_AUTH_ATTR]
+                else ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            )
         super().__setstate__(state)  # type: ignore[misc]
 
 
@@ -142,6 +174,7 @@ def create_conjure_service_client(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     default_headers: Mapping[str, str] | None = None,
+    enable_smartcard_auth: bool = False,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
@@ -160,6 +193,7 @@ def create_conjure_service_client(
             union type is encountered during decoding API responses.
         default_headers: Additional default headers to attach to the service session.
         enable_keep_alive: If true, enable keep alive in connections with the service.
+        enable_smartcard_auth: If true, route HTTPS through the smartcard / CAC adapter.
 
     Returns:
         Instantiated conjure client object to hit the API with
@@ -175,7 +209,9 @@ def create_conjure_service_client(
     )
     # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
     # required since this session is shared across threads via ClientsBunch.
-    transport_adapter = NominalRequestsAdapter(max_retries=retry)
+    # When smartcard auth is enabled, the adapter uses a stock SSLContext so the system OpenSSL config (e.g.
+    # a PKCS#11 engine for CAC) can drive client cert presentation.
+    transport_adapter = NominalRequestsAdapter(max_retries=retry, enable_smartcard_auth=enable_smartcard_auth)
     session = requests.Session()
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent, **(default_headers or {})})
     if service_config.security is not None:
@@ -199,6 +235,7 @@ def create_conjure_client_factory(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     default_headers: Mapping[str, str] | None = None,
+    enable_smartcard_auth: bool = False,
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
@@ -212,6 +249,7 @@ def create_conjure_client_factory(
             service_config=service_config,
             return_none_for_unknown_union_types=return_none_for_unknown_union_types,
             default_headers=default_headers,
+            enable_smartcard_auth=enable_smartcard_auth,
         )
 
     return factory
@@ -221,6 +259,7 @@ def create_multipart_request_session(
     *,
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
+    enable_smartcard_auth: bool = False,
 ) -> requests.Session:
     """Create a requests Session configured for multipart uploads to S3.
 
@@ -231,6 +270,8 @@ def create_multipart_request_session(
         pool_size: Number of concurrent workers. Controls the number of cached host pools
             and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
+        enable_smartcard_auth: If True, the adapter uses a stock SSLContext so the system OpenSSL can drive a
+            smartcard / CAC client cert during the TLS handshake.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
@@ -247,6 +288,7 @@ def create_multipart_request_session(
         pool_connections=pool_size,
         # Double the per-host connection limit so retries/redirects don't discard connections.
         pool_maxsize=pool_size * 2,
+        enable_smartcard_auth=enable_smartcard_auth,
     )
     session.mount("https://", adapter)
     return session

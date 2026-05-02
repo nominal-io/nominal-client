@@ -218,6 +218,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_name,
             file_type,
             self._clients.upload,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
 
         request = ingest_api.IngestRequest(
@@ -304,6 +305,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             avro_path,
             self._clients.upload,
             file_type=FileTypes.AVRO_STREAM,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -352,6 +354,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             log_path,
             self._clients.upload,
             file_type=file_type,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -445,6 +448,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_name,
             file_type=FileTypes.MCAP,
             upload_client=self._clients.upload,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
 
         channels = _create_mcap_channels(include_topics, exclude_topics)
@@ -484,6 +488,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             dataflash_path,
             self._clients.upload,
             file_type=FileTypes.DATAFLASH,
+            enable_smartcard_auth=self._clients._enable_smartcard_auth,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -578,6 +583,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 workspace_rid,
                 Path(source_path),
                 self._clients.upload,
+                enable_smartcard_auth=self._clients._enable_smartcard_auth,
             )
             logger.info("Uploaded %s -> %s", source_path, s3_path)
             s3_inputs[source] = s3_path

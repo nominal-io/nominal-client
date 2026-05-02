@@ -138,6 +138,7 @@ def put_multipart_upload(
     upload_client: upload_api.UploadService,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
+    enable_smartcard_auth: bool = False,
 ) -> str:
     """Execute a multipart upload to S3.
 
@@ -153,6 +154,7 @@ def put_multipart_upload(
         upload_client: Conjure upload client
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
+        enable_smartcard_auth: If true, route HTTPS through the smartcard / CAC adapter.
 
     Returns: Path to the uploaded object in S3
 
@@ -177,7 +179,9 @@ def put_multipart_upload(
     key, upload_id = initiate_response.key, initiate_response.upload_id
 
     # One session shared across all part jobs for this upload.
-    session = create_multipart_request_session(pool_size=max_workers)
+    session = create_multipart_request_session(
+        pool_size=max_workers, enable_smartcard_auth=enable_smartcard_auth
+    )
 
     # Prefill arguments for helper function
     _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, session, auth_header, key, upload_id, q)
@@ -231,6 +235,7 @@ def upload_multipart_io(
     upload_client: upload_api.UploadService,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
+    enable_smartcard_auth: bool = False,
 ) -> str:
     """Execute a multipart upload to S3 proxied via Nominal servers
 
@@ -244,6 +249,7 @@ def upload_multipart_io(
         upload_client: Conjure upload client
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
+        enable_smartcard_auth: If true, route HTTPS through the smartcard / CAC adapter.
 
     Returns: Path to the uploaded object in S3
 
@@ -261,6 +267,7 @@ def upload_multipart_io(
         upload_client,
         chunk_size=chunk_size,
         max_workers=max_workers,
+        enable_smartcard_auth=enable_smartcard_auth,
     )
 
 
@@ -272,6 +279,7 @@ def upload_multipart_file(
     file_type: FileType | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
+    enable_smartcard_auth: bool = False,
 ) -> str:
     """Execute a multipart upload to S3 proxied via Nominal servers.
 
@@ -283,6 +291,7 @@ def upload_multipart_file(
         file_type: Manually override inferred file type for the given file
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
+        enable_smartcard_auth: If true, route HTTPS through the smartcard / CAC adapter.
 
     Returns: Path to the uploaded object in S3
 
@@ -303,6 +312,7 @@ def upload_multipart_file(
             upload_client,
             chunk_size=chunk_size,
             max_workers=max_workers,
+            enable_smartcard_auth=enable_smartcard_auth,
         )
 
 

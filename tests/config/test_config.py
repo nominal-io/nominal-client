@@ -28,12 +28,32 @@ def test_nominal_config_round_trips_profiles(config_path: Path) -> None:
                 token="token-2",
                 workspace_rid="ri.workspace.test.workspace.123",
             ),
+            "gov-cac": ConfigProfile(
+                base_url="https://api.gov.nominal.mil/api",
+                token="token-3",
+                enable_smartcard_auth=True,
+            ),
         },
     )
 
     config.to_yaml(config_path)
 
     assert NominalConfig.from_yaml(config_path) == config
+
+
+def test_nominal_config_loads_legacy_profile_without_smartcard_field(config_path: Path) -> None:
+    """A v2 profile written before enable_smartcard_auth was added must still load (default to False)."""
+    config_path.write_text(
+        "version: 2\n"
+        "profiles:\n"
+        "  legacy:\n"
+        "    base_url: https://api.gov.nominal.io/api\n"
+        "    token: legacy-token\n"
+    )
+
+    cfg = NominalConfig.from_yaml(config_path)
+
+    assert cfg.profiles["legacy"].enable_smartcard_auth is False
 
 
 def test_nominal_config_get_profile_returns_matching_profile() -> None:

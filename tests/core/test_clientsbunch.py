@@ -77,8 +77,9 @@ def _fake_create_conjure_client_factory(
     service_config,
     return_none_for_unknown_union_types=False,
     default_headers=None,
+    enable_smartcard_auth=False,
 ):
-    del user_agent, service_config, return_none_for_unknown_union_types
+    del user_agent, service_config, return_none_for_unknown_union_types, enable_smartcard_auth
 
     def factory(service_class):
         if service_class.__name__ == "CatalogService":
