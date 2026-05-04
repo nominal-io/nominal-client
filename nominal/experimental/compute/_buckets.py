@@ -45,13 +45,21 @@ class Bucket:
 
     @classmethod
     def _from_conjure(cls, timestamp: api.Timestamp, bucket: scout_compute_api.NumericBucket) -> Bucket:
+        if (
+            bucket.min is None
+            or bucket.max is None
+            or bucket.mean is None
+            or bucket.variance is None
+            or bucket.count is None
+        ):
+            raise ValueError(f"NumericBucket returned incomplete data: {bucket}")
         return cls(
             _timestamp_from_conjure(timestamp),
-            bucket.min if bucket.min is not None else 0.0,
-            bucket.max if bucket.max is not None else 0.0,
-            bucket.mean if bucket.mean is not None else 0.0,
-            bucket.variance if bucket.variance is not None else 0.0,
-            bucket.count if bucket.count is not None else 0,
+            bucket.min,
+            bucket.max,
+            bucket.mean,
+            bucket.variance,
+            bucket.count,
         )
 
 
