@@ -7,6 +7,7 @@ from typing import Iterable, Mapping, Sequence, TypeAlias
 from nominal_api import api, scout_compute_api
 
 from nominal.core import NominalClient
+from nominal.core.exceptions import NominalComputeError
 from nominal.experimental.compute.dsl import exprs as _exprs
 from nominal.experimental.compute.dsl import params
 from nominal.ts import _SecondsNanos
@@ -52,7 +53,7 @@ class Bucket:
             or bucket.variance is None
             or bucket.count is None
         ):
-            raise ValueError(f"NumericBucket returned incomplete data: {bucket}")
+            raise NominalComputeError(f"NumericBucket returned incomplete data: {bucket}")
         return cls(
             _timestamp_from_conjure(timestamp),
             bucket.min,
@@ -413,12 +414,13 @@ def _create_compute_request_buckets(
             variables={
                 k: scout_compute_api.VariableValue(
                     compute_node=scout_compute_api.ComputeNodeWithContext(
-                        context=scout_compute_api.Context(frame_references={}, variables={}),
+                        context=scout_compute_api.Context(frame_references={}, variables={}, function_variables={}),
                         series_node=_to_compute_node(v),
                     )
                 )
                 for k, v in context.items()
             },
+            function_variables={},
         ),
         node=scout_compute_api.ComputableNode(
             series=scout_compute_api.SummarizeSeries(
