@@ -249,7 +249,7 @@ def export_channels_to_matlab(
             end_time=api_end,
             resolution=api_resolution,
             channels=export_channels,
-            context=scout_compute_api.Context({}),
+            context=scout_compute_api.Context(frame_references={}, variables={}),
         ),
     )
     bin_resp = cast(BinaryIO, resp)

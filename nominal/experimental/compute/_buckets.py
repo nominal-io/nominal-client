@@ -46,7 +46,12 @@ class Bucket:
     @classmethod
     def _from_conjure(cls, timestamp: api.Timestamp, bucket: scout_compute_api.NumericBucket) -> Bucket:
         return cls(
-            _timestamp_from_conjure(timestamp), bucket.min, bucket.max, bucket.mean, bucket.variance, bucket.count
+            _timestamp_from_conjure(timestamp),
+            bucket.min if bucket.min is not None else 0.0,
+            bucket.max if bucket.max is not None else 0.0,
+            bucket.mean if bucket.mean is not None else 0.0,
+            bucket.variance if bucket.variance is not None else 0.0,
+            bucket.count if bucket.count is not None else 0,
         )
 
 
@@ -396,15 +401,16 @@ def _create_compute_request_buckets(
 ) -> scout_compute_api.ComputeNodeRequest:
     return scout_compute_api.ComputeNodeRequest(
         context=scout_compute_api.Context(
+            frame_references={},
             variables={
                 k: scout_compute_api.VariableValue(
                     compute_node=scout_compute_api.ComputeNodeWithContext(
-                        context=scout_compute_api.Context(variables={}),
+                        context=scout_compute_api.Context(frame_references={}, variables={}),
                         series_node=_to_compute_node(v),
                     )
                 )
                 for k, v in context.items()
-            }
+            },
         ),
         node=scout_compute_api.ComputableNode(
             series=scout_compute_api.SummarizeSeries(
