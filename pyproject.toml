@@ -80,6 +80,7 @@ dev = [
     "pytest-cov>=5.0.0,<6",
     "pytest>=8.3.2,<9",
     "ruff==0.12.1",
+    "ty>=0.0.34",
     "types-protobuf>=4.24.0.20240311,<5",
     "types-python-dateutil>=2.9.0.20250822",
     "types-pyyaml>=6.0.12.20240808,<7",
@@ -187,6 +188,12 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disable_error_code = ["no-untyped-def"]
+
+# ty is being evaluated alongside mypy; see `just check-types-both` and the
+# instructions at the bottom of CONTRIBUTING.md. Scope is intentionally
+# narrowed to `nominal/` to mirror `[tool.mypy].packages`.
+[tool.ty.src]
+include = ["nominal"]
 
 [tool.pytest.ini_options]
 filterwarnings = [

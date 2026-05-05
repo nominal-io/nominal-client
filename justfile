@@ -47,6 +47,37 @@ check-types-all:
     uv run mypy --python-version 3.11
     uv run mypy --python-version 3.10
 
+# check static typing with ty (Astral, alpha — for evaluation alongside mypy)
+check-types-ty:
+    uv run ty check
+
+# run mypy and ty back to back, capturing each output to a file
+check-types-both:
+    @echo "=== mypy ==="
+    -uv run mypy 2>&1 | tee .types-mypy.out
+    @echo ""
+    @echo "=== ty ==="
+    -uv run ty check --output-format concise 2>&1 | tee .types-ty.out
+    @echo ""
+    @echo "Outputs written to .types-mypy.out and .types-ty.out"
+
+# time mypy vs ty: each runs cold (cache cleared) then warm (cache primed)
+time-types:
+    @echo "Clearing mypy cache..."
+    rm -rf .mypy_cache
+    @echo ""
+    @echo "=== mypy (cold) ==="
+    time uv run mypy >/dev/null 2>&1 || true
+    @echo ""
+    @echo "=== mypy (warm) ==="
+    time uv run mypy >/dev/null 2>&1 || true
+    @echo ""
+    @echo "=== ty (cold) ==="
+    time uv run ty check >/dev/null 2>&1 || true
+    @echo ""
+    @echo "=== ty (warm) ==="
+    time uv run ty check >/dev/null 2>&1 || true
+
 # check code formatting | fix with `just fix-format`
 check-format:
     uv run ruff format --check

@@ -25,3 +25,15 @@ uv run pytest tests/e2e --auth-token AUTH_TOKEN [--base-url BASE_URL]
 ```
 
 or with `just test-e2e-token <token>`.
+
+## Evaluating `ty` alongside `mypy`
+
+We currently use `mypy` for static typing. `ty` (Astral, alpha) is installed as a dev dependency for evaluation. It is **not** wired into CI and is **not** required to pass — `just check-types` is still the gate.
+
+- `just check-types-ty` — run ty on its own.
+- `just check-types-both` — run mypy then ty back-to-back. Each tool's output is also written to `.types-mypy.out` and `.types-ty.out` (gitignored) so you can diff them directly.
+- `just time-types` — clear the mypy cache, then run mypy (cold), mypy (warm), ty (cold), ty (warm) and print wall-clock time for each.
+
+Notes:
+- `ty` is scoped to `nominal/` via `[tool.ty.src]` in `pyproject.toml` to mirror `[tool.mypy].packages`. Its strictness defaults differ from mypy's `strict = true` and the per-module `[[tool.mypy.overrides]]` are not yet translated, so expect ty to surface diagnostics that mypy doesn't.
+- `# type: ignore[<code>]` codes are mypy-specific and won't be recognised by ty; ty uses `# ty: ignore[<rule>]`. Don't bulk-rewrite them while ty is still being evaluated.

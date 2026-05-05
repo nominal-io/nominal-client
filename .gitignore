@@ -147,6 +147,10 @@ docs/site
 .dmypy.json
 dmypy.json
 
+# ty (alpha) — evaluation outputs from `just check-types-both`
+.types-mypy.out
+.types-ty.out
+
 # Pyre type checker
 .pyre/
 
