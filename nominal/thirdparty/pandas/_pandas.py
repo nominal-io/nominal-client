@@ -476,7 +476,10 @@ def run_to_dataframe(
                 continue
             selected[scope] = dataset_by_datascope[scope]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(selected))) as pool:
+    if not selected:
+        return {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(selected)) as pool:
         futures = {
             pool.submit(
                 datasource_to_dataframe,
