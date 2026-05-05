@@ -23,10 +23,19 @@ def container_registry_cmd() -> None:
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, path_type=Path),
     help="path to the container image tarball to upload",
 )
+@click.option(
+    "-w",
+    "--workspace-rid",
+    default=None,
+    help="workspace RID to upload the image into (defaults to the profile's pinned workspace)",
+)
 @client_options
 @global_options
-def upload(name: str, tag: str, file: Path, client: NominalClient) -> None:
-    """Upload a container image tarball to Nominal's registry."""
+def upload(name: str, tag: str, file: Path, workspace_rid: str | None, client: NominalClient) -> None:
+    """Upload a container image tarball to Nominal's registry.
+
+    Prints the resulting container image RID on stdout for shell-script capture.
+    """
     with open(file, "rb") as f:
-        image = client.upload_container_image_from_io(f, name, tag)
-    click.echo(image)
+        image = client.upload_container_image_from_io(f, name, tag, workspace_rid)
+    click.echo(image.rid)
