@@ -1430,6 +1430,7 @@ class NominalClient:
         self,
         name: str,
         *,
+        workspace_rid: str | None = None,
         docker_image: DockerImageSource | None = None,
         container_image_rid: str | None = None,
         timestamp_column: str,
@@ -1440,13 +1441,21 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         description: str | None = None,
     ) -> ContainerizedExtractor:
-        if (docker_image is None) == (container_image_rid is None):
-            raise ValueError("exactly one of `docker_image` or `container_image_rid` must be provided")
+        if docker_image is None and container_image_rid is None:
+            raise ValueError("must provide either `docker_image` or `container_image_rid`")
+        if docker_image is not None and container_image_rid is not None:
+            raise ValueError("must provide only one of `docker_image` or `container_image_rid`, not both")
 
-        workspace_rid = self._clients.resolve_default_workspace_rid()
+        if workspace_rid is None:
+            workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:
+            raise ValueError("workspace_rid must be provided or the client must be pinned to a workspace")
+
+        image = docker_image._to_conjure() if docker_image is not None else None
+        output_file_format_conj = file_output_format._to_conjure() if file_output_format is not None else None
 
         req = ingest_api.RegisterContainerizedExtractorRequest(
-            image=docker_image._to_conjure() if docker_image is not None else None,
+            image=image,
             container_image_rid=container_image_rid,
             inputs=[file_input._to_conjure() for file_input in inputs],
             labels=list(labels),
@@ -1459,7 +1468,7 @@ class NominalClient:
             ),
             workspace=workspace_rid,
             description=description,
-            output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
+            output_file_format=output_file_format_conj,
         )
         resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
         return self.get_containerized_extractor(resp.extractor_rid)
