@@ -16,6 +16,6 @@ def as_user(client: NominalClient, user_rid: str) -> NominalClient:
         workspace_rid=client._clients.workspace_rid,
         trust_store_path=security.trust_store_path if security is not None else None,
         connect_timeout=client._clients._service_config.connect_timeout,
-        header_provider={ON_BEHALF_OF_USER_RID_HEADER: user_rid},
+        extra_headers={ON_BEHALF_OF_USER_RID_HEADER: user_rid},
         _profile=client._profile,
     )

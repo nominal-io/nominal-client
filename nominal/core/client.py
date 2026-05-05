@@ -135,7 +135,7 @@ class NominalClient:
         *,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
-        header_provider: HeadersLike | None = None,
+        extra_headers: HeadersLike | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
@@ -144,7 +144,7 @@ class NominalClient:
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
-            header_provider: Extra headers, or a provider for dynamic headers, to attach to every request.
+            extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -154,7 +154,7 @@ class NominalClient:
             workspace_rid=prof.workspace_rid,
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
-            header_provider=header_provider,
+            extra_headers=extra_headers,
             _profile=profile,
         )
         return client
@@ -168,7 +168,7 @@ class NominalClient:
         workspace_rid: str | None = None,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
-        header_provider: HeadersLike | None = None,
+        extra_headers: HeadersLike | None = None,
         _profile: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
@@ -181,7 +181,7 @@ class NominalClient:
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
-            header_provider: Extra headers, or a provider for dynamic headers, to attach to every request.
+            extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -198,7 +198,7 @@ class NominalClient:
                 agent,
                 token,
                 workspace_rid,
-                header_provider=normalize_header_provider(header_provider),
+                header_provider=normalize_header_provider(extra_headers),
             ),
             _profile=_profile,
         )
@@ -212,7 +212,7 @@ class NominalClient:
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         *,
         workspace_rid: str | None = None,
-        header_provider: HeadersLike | None = None,
+        extra_headers: HeadersLike | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -223,7 +223,7 @@ class NominalClient:
         connect_timeout: Timeout for any single request to the Nominal API.
         workspace_rid: Optional workspace RID to pin the client to for operations that require a single
             workspace. If not provided, those operations resolve a default workspace client-side when needed.
-        header_provider: Extra headers, or a provider for dynamic headers, to attach to every request.
+        extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -233,7 +233,7 @@ class NominalClient:
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
             workspace_rid=workspace_rid,
-            header_provider=header_provider,
+            extra_headers=extra_headers,
         )
 
     def __repr__(self) -> str:
