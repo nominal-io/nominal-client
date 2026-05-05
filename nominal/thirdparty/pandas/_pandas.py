@@ -464,17 +464,10 @@ def run_to_dataframe(
     if datascopes is None:
         selected = dataset_by_datascope
     else:
-        selected = {}
-        for scope in datascopes:
-            if scope not in dataset_by_datascope:
-                logger.warning(
-                    "Run %s does not have a datascope %r; available: %s",
-                    run.rid,
-                    scope,
-                    sorted(dataset_by_datascope),
-                )
-                continue
-            selected[scope] = dataset_by_datascope[scope]
+        missing = [scope for scope in datascopes if scope not in dataset_by_datascope]
+        if missing:
+            raise ValueError(f"Run {run.rid!r} does not have datascope(s) {missing}")
+        selected = {scope: dataset_by_datascope[scope] for scope in datascopes}
 
     if not selected:
         return {}
