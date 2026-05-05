@@ -471,15 +471,18 @@ def run_to_dataframe(
                 continue
             selected[scope] = dataset_by_datascope[scope]
 
-    return {
-        ref_name: datasource_to_dataframe(
-            dataset,
-            channel_exact_match=channel_exact_match,
-            start=run.start,
-            end=run.end,
-            enable_gzip=True,
-            num_workers=num_workers,
-            channel_batch_size=channel_batch_size,
-        )
-        for ref_name, dataset in selected.items()
-    }
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(selected))) as pool:
+        futures = {
+            pool.submit(
+                datasource_to_dataframe,
+                dataset,
+                channel_exact_match=channel_exact_match,
+                start=run.start,
+                end=run.end,
+                enable_gzip=True,
+                num_workers=num_workers,
+                channel_batch_size=channel_batch_size,
+            ): ref_name
+            for ref_name, dataset in selected.items()
+        }
+        return {futures[future]: future.result() for future in concurrent.futures.as_completed(futures)}
