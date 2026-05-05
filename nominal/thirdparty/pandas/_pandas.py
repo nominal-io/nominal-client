@@ -441,11 +441,16 @@ def run_to_dataframe(
     Example:
     -------
     ```
-    rid = "..."  # Taken from the UI or via the SDK
-    run = client.get_run(rid)
+    run = client.get_run("...")  # rid taken from the UI or via the SDK
+
+    # Download every datascope on the run
     dfs = run_to_dataframe(run)
-    for ref_name, df in dfs.items():
-        print(ref_name, df.shape)
+
+    # Or filter to specific datascopes and channels
+    dfs = run_to_dataframe(run, datascopes=["primary"], channel_exact_match=["engine", "rpm"])
+
+    for datascope, df in dfs.items():
+        print(datascope, df.shape)
     ```
 
     """
