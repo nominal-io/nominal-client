@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import BinaryIO, Iterable, Mapping, NamedTuple, Protocol, cast, overload
 
 from nominal_api import (
@@ -245,23 +245,13 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         *,
         start: _InferrableTimestampType | None = None,
         end: _InferrableTimestampType | None = None,
-        lookback: timedelta | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> LatestValue | None:
-        """Return the most recent ``(timestamp, value)`` for this channel within a time window.
-
-        Provide exactly one of ``start`` or ``lookback`` to bound the window. ``end`` is
-        accepted in either mode:
-
-        * ``lookback``: window is ``[end - lookback, end]``; ``end`` defaults to
-          ``datetime.now(UTC)`` captured client-side at call time.
-        * ``start`` (with optional ``end``): window is ``[start, end]``; ``end`` defaults
-          to ``_MAX_TIMESTAMP``.
+        """Return the most recent ``(timestamp, value)`` for this channel within ``[start, end]``.
 
         Args:
-            start: Lower bound of the search window. Mutually exclusive with ``lookback``.
-            end: Upper bound of the search window. Default depends on mode (see above).
-            lookback: How far back from ``end`` to search. Must be strictly positive.
+            start: Lower bound of the search window. If not present, searches starting from unix epoch.
+            end: Upper bound of the search window. If not present, searches until end of time.
             tags: Tags to filter the channel by (exact-match). Group-by is not supported.
 
         Returns:
@@ -269,31 +259,15 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
 
         Raises:
             TypeError: If the channel is not a numeric (DOUBLE, INT) or string channel.
-            ValueError: If neither or both of ``start`` and ``lookback`` are provided, if
-                ``lookback <= timedelta(0)``, or if ``end <= start``.
         """
         if self.data_type not in (ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING):
             raise TypeError(
                 f"get_latest_value only supports numeric (DOUBLE, INT) and STRING channels; "
                 f"channel {self.name!r} has type {self.data_type}"
             )
-        if (start is None) == (lookback is None):
-            raise ValueError("exactly one of `start` or `lookback` must be provided")
-        if lookback is not None and lookback <= timedelta(0):
-            raise ValueError(f"lookback must be strictly positive, got {lookback!r}")
 
-        if lookback is not None:
-            end_dt = datetime.now(timezone.utc) if end is None else _SecondsNanos.from_flexible(end).to_datetime()
-            api_start = _SecondsNanos.from_flexible(end_dt - lookback).to_api()
-            api_end = _SecondsNanos.from_flexible(end_dt).to_api()
-        else:
-            assert start is not None
-            start_sn = _SecondsNanos.from_flexible(start)
-            end_sn = _SecondsNanos.from_flexible(end) if end is not None else _MAX_TIMESTAMP
-            if end_sn <= start_sn:
-                raise ValueError(f"`end` must be strictly after `start`, got start={start!r} end={end!r}")
-            api_start = start_sn.to_api()
-            api_end = end_sn.to_api()
+        api_start = (_SecondsNanos.from_flexible(start) if start else _MIN_TIMESTAMP).to_api()
+        api_end = (_SecondsNanos.from_flexible(end) if end else _MAX_TIMESTAMP).to_api()
 
         request = scout_compute_api.ComputeNodeRequest(
             start=api_start,
