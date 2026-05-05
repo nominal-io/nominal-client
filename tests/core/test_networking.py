@@ -3,16 +3,19 @@ from __future__ import annotations
 import gzip
 from unittest.mock import MagicMock, patch, sentinel
 
+import pytest
 import requests
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.configuration import SslConfiguration
 from requests.adapters import HTTPAdapter
 
 from nominal.core._utils.networking import (
+    HeaderProviderSession,
     NominalRequestsAdapter,
     SslBypassRequestsAdapter,
     create_conjure_service_client,
 )
+from nominal.core.exceptions import HeaderConflictError
 
 
 def _prepared_request(body: object) -> requests.PreparedRequest:
@@ -121,4 +124,53 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
 
     session, _uris, _ct, _rt, verify, _rn = service_class.call_args.args
     assert verify is None
+    session.close()
+
+
+def test_header_provider_session_evaluates_headers_per_request() -> None:
+    class DynamicHeaders:
+        value = "first"
+
+        def headers(self) -> dict[str, str]:
+            return {"X-Test": self.value}
+
+    provider = DynamicHeaders()
+    session = HeaderProviderSession(provider)
+
+    first = session.prepare_request(requests.Request("GET", "https://example.com"))
+    provider.value = "second"
+    second = session.prepare_request(requests.Request("GET", "https://example.com"))
+
+    assert first.headers["X-Test"] == "first"
+    assert second.headers["X-Test"] == "second"
+    session.close()
+
+
+def test_header_provider_session_raises_for_explicit_request_header_conflict() -> None:
+    class DynamicHeaders:
+        def headers(self) -> dict[str, str]:
+            return {"X-Test": "default"}
+
+    session = HeaderProviderSession(DynamicHeaders())
+
+    with pytest.raises(
+        HeaderConflictError,
+        match="HeaderProvider returned header 'X-Test', but the request already set that header; "
+        "HeaderProvider cannot override explicit request headers.",
+    ):
+        session.prepare_request(requests.Request("GET", "https://example.com", headers={"X-Test": "explicit"}))
+    session.close()
+
+
+def test_header_provider_session_can_override_session_default_headers() -> None:
+    class DynamicHeaders:
+        def headers(self) -> dict[str, str]:
+            return {"User-Agent": "provider-agent"}
+
+    session = HeaderProviderSession(DynamicHeaders())
+    session.headers["User-Agent"] = "session-agent"
+
+    prepared = session.prepare_request(requests.Request("GET", "https://example.com"))
+
+    assert prepared.headers["User-Agent"] == "provider-agent"
     session.close()

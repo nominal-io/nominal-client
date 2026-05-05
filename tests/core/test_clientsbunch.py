@@ -12,6 +12,7 @@ from nominal.core._clientsbunch import (
     ClientsBunch,
     api_base_url_to_app_base_url,
 )
+from nominal.core._utils.networking import StaticHeaderProvider
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 from nominal.experimental import as_user
@@ -28,6 +29,7 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
             "auth_header",
             "workspace_rid",
             "app_base_url",
+            "header_provider",
             "_api_base_url",
             "_user_agent",
             "_token",
@@ -39,6 +41,7 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
         auth_header="Bearer token",
         workspace_rid=workspace_rid,
         app_base_url="https://app.nominal.test",
+        header_provider=None,
         _api_base_url="https://api.nominal.test",
         _user_agent="test-agent",
         _token="token",
@@ -76,14 +79,15 @@ def _fake_create_conjure_client_factory(
     user_agent,
     service_config,
     return_none_for_unknown_union_types=False,
-    default_headers=None,
+    header_provider=None,
 ):
     del user_agent, service_config, return_none_for_unknown_union_types
+    headers = header_provider.headers() if header_provider is not None else None
 
     def factory(service_class):
         if service_class.__name__ == "CatalogService":
-            return _FakeCatalogService(default_headers)
-        return _FakeService(default_headers)
+            return _FakeCatalogService(headers)
+        return _FakeService(headers)
 
     return factory
 
@@ -210,7 +214,7 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
     workspace_service.get_default_workspace.assert_not_called()
 
 
-def test_with_default_request_headers_recreates_clients_from_config(monkeypatch):
+def test_with_header_provider_recreates_clients_from_config(monkeypatch):
     monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
 
     clients = ClientsBunch.from_config(
@@ -221,7 +225,9 @@ def test_with_default_request_headers_recreates_clients_from_config(monkeypatch)
         None,
     )
 
-    cloned = clients.with_default_request_headers({ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"})
+    cloned = clients.with_header_provider(
+        StaticHeaderProvider({ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"})
+    )
 
     assert cloned is not clients
     assert cloned.catalog is not clients.catalog
