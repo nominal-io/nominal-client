@@ -3,8 +3,8 @@ from __future__ import annotations
 import enum
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import BinaryIO, Iterable, Mapping, Protocol, cast, overload
+from datetime import datetime, timedelta, timezone
+from typing import BinaryIO, Iterable, Mapping, NamedTuple, Protocol, cast, overload
 
 from nominal_api import (
     api,
@@ -35,6 +35,17 @@ from nominal.ts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class LatestValue(NamedTuple):
+    """Result of `Channel.get_latest_value`.
+
+    `value` is `float` for DOUBLE channels, `int` for INT channels, and `str` for STRING channels.
+    `timestamp` is timezone-aware and in UTC.
+    """
+
+    timestamp: datetime
+    value: float | int | str
 
 
 class ChannelDataType(enum.Enum):
@@ -228,6 +239,91 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
                     yield LogPoint._from_compute_api(log, timestamp)
             else:
                 raise RuntimeError(f"Expected response type to be `paged_log`, received: `{resp.type}`")
+
+    def get_latest_value(
+        self,
+        *,
+        start: _InferrableTimestampType | None = None,
+        end: _InferrableTimestampType | None = None,
+        lookback: timedelta | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> LatestValue | None:
+        """Return the most recent ``(timestamp, value)`` for this channel within a time window.
+
+        Provide exactly one of ``start`` or ``lookback`` to bound the window. ``end`` is
+        accepted in either mode:
+
+        * ``lookback``: window is ``[end - lookback, end]``; ``end`` defaults to
+          ``datetime.now(UTC)`` captured client-side at call time.
+        * ``start`` (with optional ``end``): window is ``[start, end]``; ``end`` defaults
+          to ``_MAX_TIMESTAMP``.
+
+        Args:
+            start: Lower bound of the search window. Mutually exclusive with ``lookback``.
+            end: Upper bound of the search window. Default depends on mode (see above).
+            lookback: How far back from ``end`` to search. Must be strictly positive.
+            tags: Tags to filter the channel by (exact-match). Group-by is not supported.
+
+        Returns:
+            See ``LatestValue``. Returns ``None`` if the window is empty.
+
+        Raises:
+            TypeError: If the channel is not a numeric (DOUBLE, INT) or string channel.
+            ValueError: If neither or both of ``start`` and ``lookback`` are provided, if
+                ``lookback <= timedelta(0)``, or if ``end <= start``.
+        """
+        if self.data_type not in (ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING):
+            raise TypeError(
+                f"get_latest_value only supports numeric (DOUBLE, INT) and STRING channels; "
+                f"channel {self.name!r} has type {self.data_type}"
+            )
+        if (start is None) == (lookback is None):
+            raise ValueError("exactly one of `start` or `lookback` must be provided")
+        if lookback is not None and lookback <= timedelta(0):
+            raise ValueError(f"lookback must be strictly positive, got {lookback!r}")
+
+        if lookback is not None:
+            end_dt = datetime.now(timezone.utc) if end is None else _SecondsNanos.from_flexible(end).to_datetime()
+            api_start = _SecondsNanos.from_flexible(end_dt - lookback).to_api()
+            api_end = _SecondsNanos.from_flexible(end_dt).to_api()
+        else:
+            start_sn = _SecondsNanos.from_flexible(start)
+            end_sn = _SecondsNanos.from_flexible(end) if end is not None else _MAX_TIMESTAMP
+            if end_sn.to_nanoseconds() <= start_sn.to_nanoseconds():
+                raise ValueError(f"`end` must be strictly after `start`, got start={start!r} end={end!r}")
+            api_start = start_sn.to_api()
+            api_end = end_sn.to_api()
+
+        request = scout_compute_api.ComputeNodeRequest(
+            start=api_start,
+            end=api_end,
+            node=scout_compute_api.ComputableNode(
+                value=scout_compute_api.SelectValue(last_value_point=self._to_compute_series(tags=tags)),
+            ),
+            context=scout_compute_api.Context(frame_references={}, variables={}, function_variables={}),
+        )
+        try:
+            response = self._clients.compute.compute(self._clients.auth_header, request)
+        except ValueError as e:
+            # Empty windows return {"type":"singlePoint","singlePoint":null}; conjure rejects null
+            # unions with this exact message. Match exactly so we don't swallow unrelated ValueErrors.
+            if str(e) == "a union value must not be None":
+                return None
+            raise
+
+        point = response.single_point
+        if point is None:
+            raise RuntimeError(f"Expected response type to be `single_point`, received: `{response.type}`")
+        ts = _SecondsNanos.from_api(point.timestamp).to_datetime()
+        v = point.value
+        if v.float64_value is not None:
+            return LatestValue(ts, v.float64_value)
+        if v.int64_value is not None:
+            # int64 is wire-encoded as a string to preserve precision across JSON
+            return LatestValue(ts, int(v.int64_value))
+        if v.string_value is not None:
+            return LatestValue(ts, v.string_value)
+        raise RuntimeError(f"Unexpected value variant in `single_point` response: `{type(v).__name__}`")
 
     def get_available_tags(
         self,
