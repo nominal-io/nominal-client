@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.136.1](https://github.com/nominal-io/nominal-client/compare/v1.136.0...v1.136.1) (2026-05-04)
+
+
+### Miscellaneous Chores
+
+* force release ([b57721f](https://github.com/nominal-io/nominal-client/commit/b57721fa6cfc563c20e5c69f06463be38169d9a8))
+
 ## [1.136.0](https://github.com/nominal-io/nominal-client/compare/v1.135.0...v1.136.0) (2026-04-30)
 
 

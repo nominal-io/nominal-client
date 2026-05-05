@@ -69,6 +69,10 @@ class NominalMethodRemovedError(NominalError):
             return f"{base_msg} To fix: {self._instructions}"
 
 
+class NominalComputeError(NominalError):
+    """An error occurred during a compute request."""
+
+
 class NominalVideoStreamError(NominalError):
     """An error occurred during live video streaming."""
 

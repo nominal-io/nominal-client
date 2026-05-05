@@ -370,7 +370,7 @@ class _ExportJob:
         """Construct conjure export request given the provided configuration options."""
         return scout_dataexport_api.ExportDataRequest(
             channels=self.export_channels(datasource),
-            context=scout_compute_api.Context(function_variables={}, variables={}),
+            context=scout_compute_api.Context(frame_references={}, variables={}, function_variables={}),
             end_time=self.time_slice.end_api,
             start_time=self.time_slice.start_api,
             resolution=self.resolution_options(),
