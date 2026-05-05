@@ -455,6 +455,10 @@ def run_to_dataframe(
         on the run (Dataset/Asset not associated with the run) are skipped with a warning
         rather than raising.
 
+    Raises:
+    ------
+        TypeError: if a `data_filters` item is not a `Dataset` or `Asset`.
+
     Example:
     -------
     ```
@@ -489,8 +493,7 @@ def run_to_dataframe(
                 for _, ds in item.list_datasets():
                     out_ds_rid[ds.rid] = ds
             else:
-                logger.warning("Unsupported data_filters item: %s", item)
-                continue
+                raise TypeError(f"Unsupported data_filters item: {item!r}")
 
     required_labels = set(labels or ())
     required_properties = properties or {}

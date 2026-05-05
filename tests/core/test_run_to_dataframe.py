@@ -169,6 +169,13 @@ def test_asset_not_in_run_warns_and_skips(
     assert any("does not have an asset" in r.message and "asset-rid-stranger" in r.message for r in caplog.records)
 
 
+def test_unsupported_filter_type_raises_type_error(mock_run: Run, mock_dataset: Dataset, patched_export: MagicMock):
+    """A filter item that is neither a Dataset nor an Asset raises TypeError."""
+    with patch.object(Run, "list_datasets", return_value=[("primary", mock_dataset)]):
+        with pytest.raises(TypeError, match="Unsupported data_filters item"):
+            pandas_module.run_to_dataframe(mock_run, data_filters=["not-a-real-filter"])
+
+
 def test_filter_sequence_unions_and_dedupes_by_rid(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
     """A mixed sequence of filters takes the union; datasets matched twice are downloaded once."""
     ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
