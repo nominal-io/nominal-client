@@ -389,7 +389,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def to_dataframe(
         self,
         *,
-        data_filters: "str | Dataset | Asset | Sequence[str | Dataset | Asset] | None" = None,
+        data_filters: "Dataset | Asset | Sequence[Dataset | Asset] | None" = None,
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
         channel_exact_match: Sequence[str] | None = None,

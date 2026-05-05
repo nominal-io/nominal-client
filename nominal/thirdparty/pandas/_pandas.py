@@ -423,7 +423,7 @@ def run_to_dataframe(
 ) -> Mapping[str, pd.DataFrame]:
     """Download data from datasets associated with a run, scoped to the run's time window.
 
-    Returns a mapping of ref_name -> pandas DataFrame, one entry per dataset that was
+    Returns a mapping of dataset RID -> pandas DataFrame, one entry per dataset that was
     downloaded. The run's `start` and `end` are used as the time bounds.
 
     Args:
@@ -433,8 +433,8 @@ def run_to_dataframe(
 
             - None (default): every dataset directly attached to the run (`run.list_datasets()`).
             - Dataset: a Dataset attached to the run (matched by RID).
-            - Asset: an Asset attached to the run; expands to every dataset within that
-              asset (`asset.list_datasets()`). The asset's own ref_names are used as keys.
+            - Asset: an Asset attached to the run; expands to every dataset within that asset
+              (`asset.list_datasets()`).
             - Sequence of any of the above
         labels: Only include datasets that have *all* of these labels. Applied after
             `data_filters` resolves to a candidate set.
@@ -451,9 +451,9 @@ def run_to_dataframe(
 
     Returns:
     -------
-        Mapping of ref_name to pandas DataFrame. Filter items that do not match anything
-        on the run (unknown ref_name, Dataset/Asset not associated with the run) are
-        skipped with a warning rather than raising.
+        Mapping of dataset RID to pandas DataFrame. Filter items that do not match anything
+        on the run (Dataset/Asset not associated with the run) are skipped with a warning
+        rather than raising.
 
     Example:
     -------
@@ -461,36 +461,35 @@ def run_to_dataframe(
     rid = "..."  # Taken from the UI or via the SDK
     run = client.get_run(rid)
     dfs = run_to_dataframe(run)
-    for ref_name, df in dfs.items():
-        print(ref_name, df.shape)
+    for ds_rid, df in dfs.items():
+        print(ds_rid, df.shape)
     ```
 
     """
-    datasets_by_rid = {ds.rid: ds for _, ds in run.list_datasets()}
+    out_ds_rid: dict[str, Dataset] = {}
 
     if data_filters is None:
-        out_ds_rid = datasets_by_rid
+        out_ds_rid = {ds.rid: ds for _, ds in run.list_datasets()}
     else:
+        run_dataset_rids = {ds.rid for _, ds in run.list_datasets()}
         filter_items: Sequence[Dataset | Asset] = (
             [data_filters] if isinstance(data_filters, (Dataset, Asset)) else list(data_filters)
         )
 
-        export_rids: set[str] = set()
         for filter in filter_items:
             if isinstance(filter, Dataset):
-                if filter.rid not in datasets_by_rid:
+                if filter.rid not in run_dataset_rids:
                     logger.warning("Run %s does not have a dataset %s", run.rid, filter.rid)
                     continue
-                export_rids.add(filter.rid)
+                out_ds_rid[filter.rid] = filter
             elif isinstance(filter, Asset):
                 if filter.rid not in run.assets:
                     logger.warning("Run %s does not have an asset %s", run.rid, filter.rid)
                     continue
-                [export_rids.add(ds.rid) for _, ds in filter.list_datasets()]
+                for _, ds in filter.list_datasets():
+                    out_ds_rid[ds.rid] = ds
             else:
                 raise TypeError(f"Unsupported data_filters item: {filter!r}")
-
-        out_ds_rid = {rid: datasets_by_rid[rid] for rid in export_rids}
 
     required_labels = set(labels or ())
     required_properties = properties or {}
