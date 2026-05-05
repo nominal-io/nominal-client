@@ -399,7 +399,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         num_workers: int = 1,
         channel_batch_size: int = 20,
     ) -> "Mapping[str, pd.DataFrame]":
-        """Download data from datasets in this run as pandas DataFrames keyed by ref_name.
+        """Download data from datasets in this run as pandas DataFrames, keyed by dataset RID.
 
         Time bounds default to the run's `start` and `end`. See
         `nominal.thirdparty.pandas.run_to_dataframe` for full parameter documentation.

@@ -476,20 +476,20 @@ def run_to_dataframe(
             [data_filters] if isinstance(data_filters, (Dataset, Asset)) else list(data_filters)
         )
 
-        for filter in filter_items:
-            if isinstance(filter, Dataset):
-                if filter.rid not in run_dataset_rids:
-                    logger.warning("Run %s does not have a dataset %s", run.rid, filter.rid)
+        for item in filter_items:
+            if isinstance(item, Dataset):
+                if item.rid not in run_dataset_rids:
+                    logger.warning("Run %s does not have a dataset %s", run.rid, item.rid)
                     continue
-                out_ds_rid[filter.rid] = filter
-            elif isinstance(filter, Asset):
-                if filter.rid not in run.assets:
-                    logger.warning("Run %s does not have an asset %s", run.rid, filter.rid)
+                out_ds_rid[item.rid] = item
+            elif isinstance(item, Asset):
+                if item.rid not in run.assets:
+                    logger.warning("Run %s does not have an asset %s", run.rid, item.rid)
                     continue
-                for _, ds in filter.list_datasets():
+                for _, ds in item.list_datasets():
                     out_ds_rid[ds.rid] = ds
             else:
-                logger.warning("Unsupported data_filters item: %s", filter)
+                logger.warning("Unsupported data_filters item: %s", item)
                 continue
 
     required_labels = set(labels or ())
