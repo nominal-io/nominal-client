@@ -1430,7 +1430,8 @@ class NominalClient:
         self,
         name: str,
         *,
-        docker_image: DockerImageSource,
+        docker_image: DockerImageSource | None = None,
+        container_image_rid: str | None = None,
         timestamp_column: str,
         timestamp_type: ts._AnyTimestampType,
         inputs: Sequence[FileExtractionInput] = (),
@@ -1439,10 +1440,14 @@ class NominalClient:
         properties: Mapping[str, str] | None = None,
         description: str | None = None,
     ) -> ContainerizedExtractor:
+        if (docker_image is None) == (container_image_rid is None):
+            raise ValueError("exactly one of `docker_image` or `container_image_rid` must be provided")
+
         workspace_rid = self._clients.resolve_default_workspace_rid()
 
         req = ingest_api.RegisterContainerizedExtractorRequest(
-            image=docker_image._to_conjure(),
+            image=docker_image._to_conjure() if docker_image is not None else None,
+            container_image_rid=container_image_rid,
             inputs=[file_input._to_conjure() for file_input in inputs],
             labels=list(labels),
             name=name,
