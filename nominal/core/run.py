@@ -389,32 +389,22 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def to_dataframe(
         self,
         *,
-        data_filters: "Dataset | Asset | Sequence[Dataset | Asset] | None" = None,
-        labels: Sequence[str] | None = None,
-        properties: Mapping[str, str] | None = None,
+        datascopes: Sequence[str] | None = None,
         channel_exact_match: Sequence[str] | None = None,
-        channel_fuzzy_search_text: str | None = None,
-        tags: Mapping[str, str] | None = None,
-        enable_gzip: bool = True,
         num_workers: int = 1,
         channel_batch_size: int = 20,
     ) -> "Mapping[str, pd.DataFrame]":
-        """Download data from datasets in this run as pandas DataFrames, keyed by dataset RID.
+        """Download data from datasets in this run as pandas DataFrames, keyed by datascope (ref_name).
 
-        Time bounds default to the run's `start` and `end`. See
-        `nominal.thirdparty.pandas.run_to_dataframe` for full parameter documentation.
+        Time bounds default to the run's `start` and `end`. Export is always gzip-compressed.
+        See `nominal.thirdparty.pandas.run_to_dataframe` for full parameter documentation.
         """
         from nominal.thirdparty.pandas._pandas import run_to_dataframe
 
         return run_to_dataframe(
             self,
-            data_filters=data_filters,
-            labels=labels,
-            properties=properties,
+            datascopes=datascopes,
             channel_exact_match=channel_exact_match,
-            channel_fuzzy_search_text=channel_fuzzy_search_text,
-            tags=tags,
-            enable_gzip=enable_gzip,
             num_workers=num_workers,
             channel_batch_size=channel_batch_size,
         )

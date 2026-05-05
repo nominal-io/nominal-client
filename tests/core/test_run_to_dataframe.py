@@ -6,38 +6,19 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nominal.core.asset import Asset
 from nominal.core.dataset import Dataset
 from nominal.core.run import Run
 from nominal.thirdparty.pandas import _pandas as pandas_module
 
 
-def _make_dataset(
-    clients: MagicMock,
-    rid: str,
-    *,
-    labels: list[str] | None = None,
-    properties: dict[str, str] | None = None,
-) -> Dataset:
+def _make_dataset(clients: MagicMock, rid: str) -> Dataset:
     return Dataset(
         rid=rid,
         name=rid,
         description=None,
         bounds=None,
-        properties=properties or {},
-        labels=labels or [],
-        _clients=clients,
-    )
-
-
-def _make_asset(clients: MagicMock, rid: str) -> Asset:
-    return Asset(
-        rid=rid,
-        name=rid,
-        description=None,
         properties={},
         labels=[],
-        created_at=0,
         _clients=clients,
     )
 
@@ -50,11 +31,6 @@ def mock_clients() -> MagicMock:
 @pytest.fixture
 def mock_dataset(mock_clients: MagicMock) -> Dataset:
     return _make_dataset(mock_clients, "dataset-rid-1")
-
-
-@pytest.fixture
-def mock_asset(mock_clients: MagicMock) -> Asset:
-    return _make_asset(mock_clients, "asset-rid-1")
 
 
 @pytest.fixture
@@ -84,14 +60,14 @@ def patched_export():
 
 
 def test_default_downloads_all_run_datasets(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
-    """With no filters, every dataset on the run is downloaded scoped to the run's start/end."""
+    """With no filters, every datascope on the run is downloaded scoped to the run's start/end."""
     ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
     ds_2 = _make_dataset(mock_clients, "dataset-rid-2")
 
     with patch.object(Run, "list_datasets", return_value=[("primary", ds_1), ("secondary", ds_2)]):
         result = pandas_module.run_to_dataframe(mock_run)
 
-    assert set(result.keys()) == {"dataset-rid-1", "dataset-rid-2"}
+    assert set(result.keys()) == {"primary", "secondary"}
     assert patched_export.call_count == 2
     for call in patched_export.call_args_list:
         assert call.kwargs["start"] == 1_000
@@ -108,161 +84,63 @@ def test_open_run_forwards_none_end(mock_run: Run, mock_dataset: Dataset, patche
     assert patched_export.call_args.kwargs["end"] is None
 
 
-def test_dataset_filter_downloads_only_matched(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
-    """A Dataset filter restricts the download to that single dataset."""
+def test_datascope_filter_downloads_only_matched(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
+    """A datascopes filter restricts the download to the matching ref_names."""
     ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
     ds_2 = _make_dataset(mock_clients, "dataset-rid-2")
 
     with patch.object(Run, "list_datasets", return_value=[("primary", ds_1), ("secondary", ds_2)]):
-        result = pandas_module.run_to_dataframe(mock_run, data_filters=ds_2)
+        result = pandas_module.run_to_dataframe(mock_run, datascopes=["secondary"])
 
-    assert set(result.keys()) == {"dataset-rid-2"}
+    assert set(result.keys()) == {"secondary"}
 
 
-def test_dataset_not_in_run_warns_and_skips(
-    mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock, caplog: pytest.LogCaptureFixture
+def test_unknown_datascope_warns_and_skips(
+    mock_run: Run, mock_dataset: Dataset, patched_export: MagicMock, caplog: pytest.LogCaptureFixture
 ):
-    """A Dataset that's not on the run is skipped with a warning; valid filter items still download."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
-    stranger = _make_dataset(mock_clients, "dataset-rid-stranger")
-
+    """An unknown datascope ref_name is skipped with a warning; valid ref_names still download."""
     with (
-        patch.object(Run, "list_datasets", return_value=[("primary", ds_1)]),
+        patch.object(Run, "list_datasets", return_value=[("primary", mock_dataset)]),
         caplog.at_level("WARNING", logger=pandas_module.__name__),
     ):
-        result = pandas_module.run_to_dataframe(mock_run, data_filters=[stranger, ds_1])
+        result = pandas_module.run_to_dataframe(mock_run, datascopes=["primary", "nonexistent"])
 
-    assert set(result.keys()) == {"dataset-rid-1"}
-    assert any("does not have a dataset" in r.message and "dataset-rid-stranger" in r.message for r in caplog.records)
-
-
-def test_asset_filter_includes_all_asset_datasets(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
-    """An Asset filter expands to every dataset within the asset, even ones not directly on the run."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
-    ds_2 = _make_dataset(mock_clients, "dataset-rid-2")
-    asset = _make_asset(mock_clients, "asset-rid-1")
-    run = dataclasses.replace(mock_run, assets=("asset-rid-1",))
-
-    with (
-        patch.object(Run, "list_datasets", return_value=[("primary", ds_1)]),
-        patch.object(Asset, "list_datasets", return_value=[("from_asset_a", ds_1), ("from_asset_b", ds_2)]),
-    ):
-        result = pandas_module.run_to_dataframe(run, data_filters=asset)
-
-    assert set(result.keys()) == {"dataset-rid-1", "dataset-rid-2"}
+    assert set(result.keys()) == {"primary"}
+    assert any("does not have a datascope" in r.message and "'nonexistent'" in r.message for r in caplog.records)
 
 
-def test_asset_not_in_run_warns_and_skips(
-    mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock, caplog: pytest.LogCaptureFixture
-):
-    """An Asset whose RID isn't in run.assets is skipped with a warning; valid items still download."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
-    stranger_asset = _make_asset(mock_clients, "asset-rid-stranger")
+def test_multi_asset_run_raises(mock_run: Run):
+    """A run with more than one asset raises RuntimeError."""
+    multi_asset_run = dataclasses.replace(mock_run, assets=("asset-rid-1", "asset-rid-2"))
 
-    with (
-        patch.object(Run, "list_datasets", return_value=[("primary", ds_1)]),
-        caplog.at_level("WARNING", logger=pandas_module.__name__),
-    ):
-        result = pandas_module.run_to_dataframe(mock_run, data_filters=[stranger_asset, ds_1])
-
-    assert set(result.keys()) == {"dataset-rid-1"}
-    assert any("does not have an asset" in r.message and "asset-rid-stranger" in r.message for r in caplog.records)
-
-
-def test_unsupported_filter_type_raises_type_error(mock_run: Run, mock_dataset: Dataset, patched_export: MagicMock):
-    """A filter item that is neither a Dataset nor an Asset raises TypeError."""
-    with patch.object(Run, "list_datasets", return_value=[("primary", mock_dataset)]):
-        with pytest.raises(TypeError, match="Unsupported data_filters item"):
-            pandas_module.run_to_dataframe(mock_run, data_filters=["not-a-real-filter"])
-
-
-def test_filter_sequence_unions_and_dedupes_by_rid(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
-    """A mixed sequence of filters takes the union; datasets matched twice are downloaded once."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
-    ds_2 = _make_dataset(mock_clients, "dataset-rid-2")
-    asset = _make_asset(mock_clients, "asset-rid-1")
-    run = dataclasses.replace(mock_run, assets=("asset-rid-1",))
-
-    with (
-        patch.object(Run, "list_datasets", return_value=[("primary", ds_1), ("secondary", ds_2)]),
-        patch.object(Asset, "list_datasets", return_value=[("a", ds_1), ("b", ds_2)]),
-    ):
-        result = pandas_module.run_to_dataframe(run, data_filters=[ds_1, asset])
-
-    assert set(result.keys()) == {"dataset-rid-1", "dataset-rid-2"}
-    assert patched_export.call_count == 2
-
-
-def test_labels_filter_requires_all_labels(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
-    """Only datasets whose labels are a superset of the requested labels are kept."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1", labels=["env-prod", "team-a"])
-    ds_2 = _make_dataset(mock_clients, "dataset-rid-2", labels=["env-prod"])
-    ds_3 = _make_dataset(mock_clients, "dataset-rid-3", labels=["env-dev", "team-a"])
-
-    with patch.object(Run, "list_datasets", return_value=[("a", ds_1), ("b", ds_2), ("c", ds_3)]):
-        result = pandas_module.run_to_dataframe(mock_run, labels=["env-prod", "team-a"])
-
-    assert set(result.keys()) == {"dataset-rid-1"}
-
-
-def test_properties_filter_requires_all_kv_pairs(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
-    """Only datasets whose properties contain every requested key/value pair are kept."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1", properties={"environment": "prod", "owner": "team-a"})
-    ds_2 = _make_dataset(mock_clients, "dataset-rid-2", properties={"environment": "prod"})
-    ds_3 = _make_dataset(mock_clients, "dataset-rid-3", properties={"environment": "dev", "owner": "team-a"})
-
-    with patch.object(Run, "list_datasets", return_value=[("a", ds_1), ("b", ds_2), ("c", ds_3)]):
-        result = pandas_module.run_to_dataframe(mock_run, properties={"environment": "prod", "owner": "team-a"})
-
-    assert set(result.keys()) == {"dataset-rid-1"}
-
-
-def test_labels_and_properties_combined(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
-    """When both filters are given, only datasets matching both are kept (intersection)."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1", labels=["foo"], properties={"k": "v"})
-    ds_2 = _make_dataset(mock_clients, "dataset-rid-2", labels=["foo"], properties={"k": "other"})
-    ds_3 = _make_dataset(mock_clients, "dataset-rid-3", labels=[], properties={"k": "v"})
-
-    with patch.object(Run, "list_datasets", return_value=[("a", ds_1), ("b", ds_2), ("c", ds_3)]):
-        result = pandas_module.run_to_dataframe(mock_run, labels=["foo"], properties={"k": "v"})
-
-    assert set(result.keys()) == {"dataset-rid-1"}
+    with pytest.raises(RuntimeError, match="only supports single-asset"):
+        pandas_module.run_to_dataframe(multi_asset_run)
 
 
 def test_channel_and_export_options_forwarded(mock_run: Run, mock_dataset: Dataset, patched_export: MagicMock):
-    """Channel/tag/transport options are forwarded verbatim to datasource_to_dataframe."""
+    """Channel/export options are forwarded verbatim, and gzip is always enabled."""
     with patch.object(Run, "list_datasets", return_value=[("primary", mock_dataset)]):
         pandas_module.run_to_dataframe(
             mock_run,
             channel_exact_match=["engine", "rpm"],
-            channel_fuzzy_search_text="rpm",
-            tags={"sensor": "alpha"},
-            enable_gzip=False,
             num_workers=4,
             channel_batch_size=10,
         )
 
     kwargs = patched_export.call_args.kwargs
     assert kwargs["channel_exact_match"] == ["engine", "rpm"]
-    assert kwargs["channel_fuzzy_search_text"] == "rpm"
-    assert kwargs["tags"] == {"sensor": "alpha"}
-    assert kwargs["enable_gzip"] is False
     assert kwargs["num_workers"] == 4
     assert kwargs["channel_batch_size"] == 10
+    assert kwargs["enable_gzip"] is True
 
 
-def test_run_method_delegates_to_run_to_dataframe(mock_run: Run, mock_dataset: Dataset, mock_asset: Asset):
+def test_run_method_delegates_to_run_to_dataframe(mock_run: Run):
     """Run.to_dataframe forwards every kwarg verbatim to run_to_dataframe."""
-    expected = {"dataset-rid-1": pd.DataFrame()}
+    expected: dict[str, pd.DataFrame] = {}
     with patch("nominal.thirdparty.pandas._pandas.run_to_dataframe", return_value=expected) as mock:
         result = mock_run.to_dataframe(
-            data_filters=[mock_dataset, mock_asset],
-            labels=["env-prod"],
-            properties={"k": "v"},
+            datascopes=["primary"],
             channel_exact_match=["x"],
-            channel_fuzzy_search_text="y",
-            tags={"t": "v"},
-            enable_gzip=False,
             num_workers=2,
             channel_batch_size=15,
         )
@@ -270,13 +148,8 @@ def test_run_method_delegates_to_run_to_dataframe(mock_run: Run, mock_dataset: D
     assert result is expected
     mock.assert_called_once_with(
         mock_run,
-        data_filters=[mock_dataset, mock_asset],
-        labels=["env-prod"],
-        properties={"k": "v"},
+        datascopes=["primary"],
         channel_exact_match=["x"],
-        channel_fuzzy_search_text="y",
-        tags={"t": "v"},
-        enable_gzip=False,
         num_workers=2,
         channel_batch_size=15,
     )
