@@ -12,7 +12,6 @@ from nominal.core._clientsbunch import (
     ClientsBunch,
     api_base_url_to_app_base_url,
 )
-from nominal.core._utils.networking import StaticHeaderProvider
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 from nominal.experimental import as_user
@@ -212,29 +211,6 @@ def test_resolve_workspace_reuses_the_cached_configured_default_workspace_object
 
     workspace_service.get_workspace.assert_called_once_with("Bearer token", configured_workspace_rid)
     workspace_service.get_default_workspace.assert_not_called()
-
-
-def test_with_header_provider_recreates_clients_from_config(monkeypatch):
-    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
-
-    clients = ClientsBunch.from_config(
-        ServiceConfiguration(uris=["https://api.nominal.test"]),
-        "https://api.nominal.test",
-        "test-agent",
-        "token",
-        None,
-    )
-
-    cloned = clients.with_header_provider(
-        StaticHeaderProvider({ON_BEHALF_OF_USER_RID_HEADER: "ri.authn.dev.user.target"})
-    )
-
-    assert cloned is not clients
-    assert cloned.catalog is not clients.catalog
-    assert ON_BEHALF_OF_USER_RID_HEADER not in clients.catalog._requests_session.headers
-    assert cloned.catalog._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
-    assert cloned.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
-    assert cloned.attachment._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == "ri.authn.dev.user.target"
 
 
 def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):

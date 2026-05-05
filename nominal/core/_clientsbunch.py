@@ -163,16 +163,6 @@ class ClientsBunch:
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
 
-    def with_header_provider(self, header_provider: HeaderProvider | None) -> Self:
-        return type(self).from_config(
-            self._service_config,
-            self._api_base_url,
-            self._user_agent,
-            self._token,
-            self.workspace_rid,
-            header_provider=header_provider,
-        )
-
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
         """Fetch the workspace object this client should treat as its default.
 
