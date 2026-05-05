@@ -298,7 +298,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             return LatestValue(ts, int(v.int64_value))
         if v.string_value is not None:
             return LatestValue(ts, v.string_value)
-        raise RuntimeError(f"Unexpected value variant in `single_point` response: `{type(v).__name__}`")
+        raise RuntimeError(f"Unexpected value variant in `single_point` response: `{v.type}`")
 
     def get_available_tags(
         self,
