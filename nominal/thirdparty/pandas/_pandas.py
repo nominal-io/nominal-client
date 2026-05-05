@@ -489,7 +489,8 @@ def run_to_dataframe(
                 for _, ds in filter.list_datasets():
                     out_ds_rid[ds.rid] = ds
             else:
-                raise TypeError(f"Unsupported data_filters item: {filter!r}")
+                logger.warning("Unsupported data_filters item: %s", filter)
+                continue
 
     required_labels = set(labels or ())
     required_properties = properties or {}
