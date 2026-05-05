@@ -422,9 +422,9 @@ def run_to_dataframe(
     Args:
     ----
         run: The run to download from. Must have at most one asset.
-        datascopes: Optional list of datascopes  from `run.list_datasets()`. If None
-            (default), every datascope on the run is downloaded. Unknown datascopes are
-            skipped with a warning.
+        datascopes: Optional list of datascopes from `run.list_datasets()`. If None
+            (default), every datascope on the run is downloaded. Any datascope not
+            present on the run causes the call to fail before any download begins.
         channel_exact_match: Substring AND match — every string must appear (case-insensitive)
             in a channel's name. Forwarded per-dataset to `datasource_to_dataframe`.
         num_workers: Parallel export workers per dataset.
@@ -437,6 +437,7 @@ def run_to_dataframe(
     Raises:
     ------
         RuntimeError: if the run has more than one asset.
+        ValueError: if any entry in `datascopes` is not present on the run.
 
     Example:
     -------

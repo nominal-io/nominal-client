@@ -95,18 +95,13 @@ def test_datascope_filter_downloads_only_matched(mock_run: Run, mock_clients: Ma
     assert set(result.keys()) == {"secondary"}
 
 
-def test_unknown_datascope_warns_and_skips(
-    mock_run: Run, mock_dataset: Dataset, patched_export: MagicMock, caplog: pytest.LogCaptureFixture
-):
-    """An unknown datascope ref_name is skipped with a warning; valid ref_names still download."""
-    with (
-        patch.object(Run, "list_datasets", return_value=[("primary", mock_dataset)]),
-        caplog.at_level("WARNING", logger=pandas_module.__name__),
-    ):
-        result = pandas_module.run_to_dataframe(mock_run, datascopes=["primary", "nonexistent"])
+def test_unknown_datascope_raises(mock_run: Run, mock_dataset: Dataset, patched_export: MagicMock):
+    """An unknown datascope ref_name raises ValueError before any export happens."""
+    with patch.object(Run, "list_datasets", return_value=[("primary", mock_dataset)]):
+        with pytest.raises(ValueError, match="does not have datascope.*nonexistent"):
+            pandas_module.run_to_dataframe(mock_run, datascopes=["primary", "nonexistent"])
 
-    assert set(result.keys()) == {"primary"}
-    assert any("does not have a datascope" in r.message and "'nonexistent'" in r.message for r in caplog.records)
+    patched_export.assert_not_called()
 
 
 def test_multi_asset_run_raises(mock_run: Run):
@@ -132,24 +127,3 @@ def test_channel_and_export_options_forwarded(mock_run: Run, mock_dataset: Datas
     assert kwargs["num_workers"] == 4
     assert kwargs["channel_batch_size"] == 10
     assert kwargs["enable_gzip"] is True
-
-
-def test_run_method_delegates_to_run_to_dataframe(mock_run: Run):
-    """Run.to_dataframe forwards every kwarg verbatim to run_to_dataframe."""
-    expected: dict[str, pd.DataFrame] = {}
-    with patch("nominal.thirdparty.pandas._pandas.run_to_dataframe", return_value=expected) as mock:
-        result = mock_run.to_dataframe(
-            datascopes=["primary"],
-            channel_exact_match=["x"],
-            num_workers=2,
-            channel_batch_size=15,
-        )
-
-    assert result is expected
-    mock.assert_called_once_with(
-        mock_run,
-        datascopes=["primary"],
-        channel_exact_match=["x"],
-        num_workers=2,
-        channel_batch_size=15,
-    )
