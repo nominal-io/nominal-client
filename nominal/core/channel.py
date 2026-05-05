@@ -290,7 +290,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             assert start is not None
             start_sn = _SecondsNanos.from_flexible(start)
             end_sn = _SecondsNanos.from_flexible(end) if end is not None else _MAX_TIMESTAMP
-            if end_sn.to_nanoseconds() <= start_sn.to_nanoseconds():
+            if end_sn <= start_sn:
                 raise ValueError(f"`end` must be strictly after `start`, got start={start!r} end={end!r}")
             api_start = start_sn.to_api()
             api_end = end_sn.to_api()
