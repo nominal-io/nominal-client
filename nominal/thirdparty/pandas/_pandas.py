@@ -11,12 +11,14 @@ from nominal_api.api import Timestamp
 
 from nominal import ts
 from nominal._utils import batched, reader_writer
+from nominal.core.asset import Asset
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.core.datasource import DataSource, _construct_export_request
 from nominal.core.filetype import FileTypes
+from nominal.core.run import Run
 
 logger = logging.getLogger(__name__)
 
@@ -404,3 +406,108 @@ def datasource_to_dataframe(
         result_df.index = result_df.index.rename(_EXPORTED_TIMESTAMP_COL_NAME)
 
     return result_df
+
+
+def run_to_dataframe(
+    run: Run,
+    *,
+    data_filters: Dataset | Asset | Sequence[Dataset | Asset] | None = None,
+    labels: Sequence[str] | None = None,
+    properties: Mapping[str, str] | None = None,
+    channel_exact_match: Sequence[str] | None = None,
+    channel_fuzzy_search_text: str | None = None,
+    tags: Mapping[str, str] | None = None,
+    enable_gzip: bool = True,
+    num_workers: int = 1,
+    channel_batch_size: int = 20,
+) -> Mapping[str, pd.DataFrame]:
+    """Download data from datasets associated with a run, scoped to the run's time window.
+
+    Returns a mapping of ref_name -> pandas DataFrame, one entry per dataset that was
+    downloaded. The run's `start` and `end` are used as the time bounds.
+
+    Args:
+    ----
+        run: The run to download from.
+        data_filters: Optional filter for which datasets to download.
+
+            - None (default): every dataset directly attached to the run (`run.list_datasets()`).
+            - Dataset: a Dataset attached to the run (matched by RID).
+            - Asset: an Asset attached to the run; expands to every dataset within that
+              asset (`asset.list_datasets()`). The asset's own ref_names are used as keys.
+            - Sequence of any of the above
+        labels: Only include datasets that have *all* of these labels. Applied after
+            `data_filters` resolves to a candidate set.
+        properties: Only include datasets whose properties contain every provided
+            key/value pair. Applied after `data_filters`.
+        channel_exact_match: Substring AND match — every string must appear (case-insensitive)
+            in a channel's name. Forwarded per-dataset to `datasource_to_dataframe`.
+        channel_fuzzy_search_text: Optional fuzzy channel filter, forwarded to
+            `datasource_to_dataframe`.
+        tags: Tag filters forwarded per-dataset to the export.
+        enable_gzip: If true, use gzip when exporting data from Nominal.
+        num_workers: Parallel export workers per dataset.
+        channel_batch_size: Channels per request per worker.
+
+    Returns:
+    -------
+        Mapping of ref_name to pandas DataFrame. Filter items that do not match anything
+        on the run (unknown ref_name, Dataset/Asset not associated with the run) are
+        skipped with a warning rather than raising.
+
+    Example:
+    -------
+    ```
+    rid = "..."  # Taken from the UI or via the SDK
+    run = client.get_run(rid)
+    dfs = run_to_dataframe(run)
+    for ref_name, df in dfs.items():
+        print(ref_name, df.shape)
+    ```
+
+    """
+    datasets_by_rid = {ds.rid: ds for _, ds in run.list_datasets()}
+
+    if data_filters is None:
+        out_ds_rid = datasets_by_rid
+    else:
+        filter_items: Sequence[Dataset | Asset] = (
+            [data_filters] if isinstance(data_filters, (Dataset, Asset)) else list(data_filters)
+        )
+
+        export_rids: set[str] = set()
+        for filter in filter_items:
+            if isinstance(filter, Dataset):
+                if filter.rid not in datasets_by_rid:
+                    logger.warning("Run %s does not have a dataset %s", run.rid, filter.rid)
+                    continue
+                export_rids.add(filter.rid)
+            elif isinstance(filter, Asset):
+                if filter.rid not in run.assets:
+                    logger.warning("Run %s does not have an asset %s", run.rid, filter.rid)
+                    continue
+                [export_rids.add(ds.rid) for _, ds in filter.list_datasets()]
+            else:
+                raise TypeError(f"Unsupported data_filters item: {filter!r}")
+
+        out_ds_rid = {rid: datasets_by_rid[rid] for rid in export_rids}
+
+    required_labels = set(labels or ())
+    required_properties = properties or {}
+
+    return {
+        rid: datasource_to_dataframe(
+            dataset,
+            channel_exact_match=channel_exact_match,
+            channel_fuzzy_search_text=channel_fuzzy_search_text,
+            start=run.start,
+            end=run.end,
+            tags=tags,
+            enable_gzip=enable_gzip,
+            num_workers=num_workers,
+            channel_batch_size=channel_batch_size,
+        )
+        for rid, dataset in out_ds_rid.items()
+        if required_labels.issubset(dataset.labels)
+        and all(dataset.properties.get(k) == v for k, v in required_properties.items())
+    }

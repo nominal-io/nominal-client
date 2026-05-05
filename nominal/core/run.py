@@ -36,6 +36,8 @@ from nominal.core.workbook import Workbook, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos, _to_api_duration
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from nominal.core.asset import Asset
 
 
@@ -383,6 +385,39 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     def list_assets(self) -> Sequence["Asset"]:
         """List assets associated with this run."""
         return list(self._iter_list_assets())
+
+    def to_dataframe(
+        self,
+        *,
+        data_filters: "str | Dataset | Asset | Sequence[str | Dataset | Asset] | None" = None,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
+        channel_exact_match: Sequence[str] | None = None,
+        channel_fuzzy_search_text: str | None = None,
+        tags: Mapping[str, str] | None = None,
+        enable_gzip: bool = True,
+        num_workers: int = 1,
+        channel_batch_size: int = 20,
+    ) -> "Mapping[str, pd.DataFrame]":
+        """Download data from datasets in this run as pandas DataFrames keyed by ref_name.
+
+        Time bounds default to the run's `start` and `end`. See
+        `nominal.thirdparty.pandas.run_to_dataframe` for full parameter documentation.
+        """
+        from nominal.thirdparty.pandas._pandas import run_to_dataframe
+
+        return run_to_dataframe(
+            self,
+            data_filters=data_filters,
+            labels=labels,
+            properties=properties,
+            channel_exact_match=channel_exact_match,
+            channel_fuzzy_search_text=channel_fuzzy_search_text,
+            tags=tags,
+            enable_gzip=enable_gzip,
+            num_workers=num_workers,
+            channel_batch_size=channel_batch_size,
+        )
 
     def remove_attachments(self, attachments: Iterable[Attachment] | Iterable[str]) -> None:
         """Remove attachments from this run.
