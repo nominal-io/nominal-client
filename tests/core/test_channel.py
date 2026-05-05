@@ -128,9 +128,7 @@ def test_get_latest_value_explicit_end_overrides_default_now(
             return fixed_now if tz is timezone.utc else datetime.now(tz)
 
     monkeypatch.setattr("nominal.core.channel.datetime", _FixedDatetime)
-    mock_clients.compute.compute.return_value = _make_response(
-        scout_compute_api.Value(float64_value=1.0), explicit_end
-    )
+    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), explicit_end)
 
     mock_channel.get_latest_value(lookback=timedelta(minutes=1), end=explicit_end)
 
@@ -199,17 +197,13 @@ def test_get_latest_value_start_only_defaults_end_to_max(mock_channel: Channel, 
     assert request.end.nanos == expected_end.nanos
 
 
-def test_get_latest_value_requires_exactly_one_of_start_or_lookback(
-    mock_channel: Channel, mock_clients: MagicMock
-):
+def test_get_latest_value_requires_exactly_one_of_start_or_lookback(mock_channel: Channel, mock_clients: MagicMock):
     """Passing neither `start` nor `lookback`, or both, is rejected up front."""
     with pytest.raises(ValueError, match="exactly one of `start` or `lookback`"):
         mock_channel.get_latest_value()
 
     with pytest.raises(ValueError, match="exactly one of `start` or `lookback`"):
-        mock_channel.get_latest_value(
-            start=datetime(2026, 1, 1, tzinfo=timezone.utc), lookback=timedelta(minutes=5)
-        )
+        mock_channel.get_latest_value(start=datetime(2026, 1, 1, tzinfo=timezone.utc), lookback=timedelta(minutes=5))
 
     mock_clients.compute.compute.assert_not_called()
 
@@ -257,7 +251,9 @@ def test_get_latest_value_unhandled_value_variant_raises(mock_channel: Channel, 
     api_ts = api.Timestamp(seconds=int(ts.timestamp()), nanos=0)
     mock_clients.compute.compute.return_value = scout_compute_api.ComputeNodeResponse(
         single_point=scout_compute_api.SinglePoint(
-            precision_loss=False, timestamp=api_ts, value=scout_compute_api.Value(array_value=[]),
+            precision_loss=False,
+            timestamp=api_ts,
+            value=scout_compute_api.Value(array_value=[]),
         ),
     )
 
