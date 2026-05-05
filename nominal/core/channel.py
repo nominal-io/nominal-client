@@ -280,8 +280,9 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         try:
             response = self._clients.compute.compute(self._clients.auth_header, request)
         except ValueError as e:
-            # Empty windows return {"type":"singlePoint","singlePoint":null}; conjure rejects null
-            # unions with this exact message. Match exactly so we don't swallow unrelated ValueErrors.
+            # The generated conjure-python union constructor doesn't handle optional union members,
+            # raising this ValueError when the window is empty (fixed upstream in palantir/conjure-python#1050).
+            # Match exactly so we don't swallow unrelated ValueErrors.
             if str(e) == "a union value must not be None":
                 return None
             raise
