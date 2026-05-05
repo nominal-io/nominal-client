@@ -6,7 +6,7 @@ import ssl
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Type, TypeAlias, TypeVar
+from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
 import truststore
@@ -39,10 +39,7 @@ class StaticHeaderProvider(HeaderProvider):
         return self._headers
 
 
-HeadersLike: TypeAlias = HeaderProvider | Mapping[str, str]
-
-
-def normalize_header_provider(headers: HeadersLike | None) -> HeaderProvider | None:
+def normalize_header_provider(headers: HeaderProvider | Mapping[str, str] | None) -> HeaderProvider | None:
     if headers is None:
         return None
     if isinstance(headers, HeaderProvider):
