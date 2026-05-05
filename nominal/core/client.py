@@ -991,24 +991,32 @@ class NominalClient:
         path: BinaryIO,
         name: str,
         tag: str,
+        workspace_rid: str | None = None,
     ) -> ContainerImage:
         """Upload a container image tarball to Nominal's self-hosted registry.
 
         The tarball must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        `workspace_rid` overrides the client's pinned workspace; if omitted, the client's
+        configured `workspace_rid` is used.
         """
         if isinstance(path, TextIOBase):
             raise TypeError(f"tarball {path!r} must be open in binary mode, rather than text mode")
 
+        if workspace_rid is None:
+            workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:
+            raise ValueError("workspace_rid must be provided or the client must be pinned to a workspace")
+
         s3_path = upload_multipart_io(
             self._clients.auth_header,
-            self._clients.workspace_rid,
+            workspace_rid,
             path,
             f"{name}-{tag}",
             FileTypes.TAR,
             self._clients.upload,
         )
         request = {
-            "workspaceRid": self._clients.workspace_rid,
+            "workspaceRid": workspace_rid,
             "name": name,
             "tag": tag,
             "objectPath": s3_path,
