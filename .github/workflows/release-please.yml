@@ -15,6 +15,33 @@ jobs:
     runs-on: depot-ubuntu-24.04-small
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
           release-type: python
+
+      - name: Check out release PR branch
+        if: ${{ steps.release.outputs.pr }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
+
+      - name: Install uv
+        if: ${{ steps.release.outputs.pr }}
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.x"
+
+      - name: Sync uv.lock to release PR
+        if: ${{ steps.release.outputs.pr }}
+        run: |
+          uv lock
+          if git diff --quiet uv.lock; then
+            echo "uv.lock already in sync with pyproject.toml"
+            exit 0
+          fi
+          git config user.name NomBot
+          git config user.email 117409387+nominal-bot@users.noreply.github.com
+          git commit -m "chore: update uv.lock" uv.lock
+          git push
