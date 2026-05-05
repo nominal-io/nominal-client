@@ -36,6 +36,8 @@ jobs:
       - name: Sync uv.lock to release PR
         if: ${{ steps.release.outputs.pr }}
         run: |
+          set -euo pipefail
+          uv lock
           uv lock
           if git diff --quiet uv.lock; then
             echo "uv.lock already in sync with pyproject.toml"
