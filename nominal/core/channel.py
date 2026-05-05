@@ -287,6 +287,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             api_start = _SecondsNanos.from_flexible(end_dt - lookback).to_api()
             api_end = _SecondsNanos.from_flexible(end_dt).to_api()
         else:
+            assert start is not None
             start_sn = _SecondsNanos.from_flexible(start)
             end_sn = _SecondsNanos.from_flexible(end) if end is not None else _MAX_TIMESTAMP
             if end_sn.to_nanoseconds() <= start_sn.to_nanoseconds():
