@@ -93,7 +93,9 @@ def test_open_run_forwards_none_end(mock_run: Run, mock_dataset: Dataset, patche
     assert patched_export.call_args.kwargs["end"] is None
 
 
-def test_datascope_filter_downloads_only_matched(mock_run: Run, make_dataset: Callable[[str], Dataset]):
+def test_datascope_filter_downloads_only_matched(
+    mock_run: Run, make_dataset: Callable[[str], Dataset], patched_export: MagicMock
+):
     """A datascopes filter restricts the download to the matching ref_names."""
     ds_1 = make_dataset("dataset-rid-1")
     ds_2 = make_dataset("dataset-rid-2")
