@@ -614,6 +614,9 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
     logger.info("  Total channels: %d", channel_count)
 
+    workbook_templates = client.search_workbook_templates(archive_status=ArchiveStatusFilter.NOT_ARCHIVED)
+    logger.info("  Workbook templates (non-archived): %d", len(workbook_templates))
+
     orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
 
     logger.info("Out-of-scope migration numbers:")
@@ -625,9 +628,6 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
 
     containerized_extractors = client.search_containerized_extractors()
     logger.info("  Containerized extractors: %d", len(containerized_extractors))
-
-    workbook_templates = client.search_workbook_templates(archive_status=ArchiveStatusFilter.NOT_ARCHIVED)
-    logger.info("  Workbook templates (non-archived): %d", len(workbook_templates))
 
     config = {
         "migration": {
