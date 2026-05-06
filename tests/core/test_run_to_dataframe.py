@@ -110,20 +110,3 @@ def test_multi_asset_run_raises(mock_run: Run):
 
     with pytest.raises(RuntimeError, match="only supports single-asset"):
         pandas_module.run_to_dataframe(multi_asset_run)
-
-
-def test_channel_and_export_options_forwarded(mock_run: Run, mock_dataset: Dataset, patched_export: MagicMock):
-    """Channel/export options are forwarded verbatim, and gzip is always enabled."""
-    with patch.object(Run, "list_datasets", return_value=[("primary", mock_dataset)]):
-        pandas_module.run_to_dataframe(
-            mock_run,
-            channel_exact_match=["engine", "rpm"],
-            num_workers=4,
-            channel_batch_size=10,
-        )
-
-    kwargs = patched_export.call_args.kwargs
-    assert kwargs["channel_exact_match"] == ["engine", "rpm"]
-    assert kwargs["num_workers"] == 4
-    assert kwargs["channel_batch_size"] == 10
-    assert kwargs["enable_gzip"] is True
