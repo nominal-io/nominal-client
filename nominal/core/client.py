@@ -22,6 +22,7 @@ from nominal_api import (
     scout_checks_api,
     scout_datasource_connection_api,
     scout_layout_api,
+    scout_spatial_api,
     scout_template_api,
     scout_video_api,
     scout_workbookcommon_api,
@@ -44,6 +45,7 @@ from nominal.core._utils.api_tools import (
     rid_from_instance_or_string,
 )
 from nominal.core._utils.multipart import (
+    upload_multipart_file,
     upload_multipart_io,
 )
 from nominal.core._utils.networking import HeaderProvider, normalize_header_provider
@@ -1011,6 +1013,82 @@ class NominalClient:
             Attachment._from_conjure(self._clients, a)
             for a in _iter_get_attachments(self._clients.auth_header, self._clients.attachment, rids)
         ]
+
+    def upload_point_cloud(
+        self,
+        path: PathLike,
+        name: str | None = None,
+        *,
+        description: str | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        sensor_model: str | None = None,
+        coordinate_system: str | None = None,
+        resolution_mm: float | None = None,
+        scan_pattern: str | None = None,
+    ) -> str:
+        """Upload a CSV point cloud file and trigger spatial import into Dagger.
+
+        The CSV must contain at minimum x, y, z columns. Additional attribute
+        columns (time, reflectivity, signal, etc.) are preserved.
+
+        Args:
+            path: Path to the CSV file containing point cloud data.
+            name: Display name for the spatial asset. Defaults to the filename stem.
+            description: Optional description.
+            labels: Labels for categorization.
+            properties: Arbitrary key-value metadata.
+            sensor_model: Sensor model name, e.g. "Ouster OS1-128".
+            coordinate_system: CRS identifier, e.g. "EPSG:4326", "ENU".
+            resolution_mm: Spatial resolution in millimeters.
+            scan_pattern: One of "ROTATING", "SOLID_STATE", "FLASH", "MECHANICAL".
+
+        Returns:
+            The spatial asset RID.
+        """
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"No such file: {path}")
+
+        if name is None:
+            name = path.stem
+
+        workspace_rid = self._clients.resolve_default_workspace_rid()
+
+        s3_path = upload_multipart_file(
+            self._clients.auth_header,
+            workspace_rid,
+            path,
+            self._clients.upload,
+            file_type=FileTypes.CSV,
+            header_provider=self._clients.header_provider,
+        )
+
+        point_cloud_metadata = scout_spatial_api.PointCloudMetadata(
+            sensor_model=sensor_model,
+            coordinate_system=coordinate_system,
+            resolution_mm=resolution_mm,
+            scan_pattern=(
+                getattr(scout_spatial_api.ScanPattern, scan_pattern) if scan_pattern is not None else None
+            ),
+        )
+        type_metadata = scout_spatial_api.SpatialTypeMetadata(
+            point_cloud=point_cloud_metadata,
+        )
+
+        request = scout_spatial_api.ImportFileRequest(
+            source=api.Handle(s3=s3_path),
+            title=name,
+            description=description,
+            labels=list(labels),
+            properties=dict(properties) if properties else {},
+            type_metadata=type_metadata,
+            workspace=workspace_rid,
+            marking_rids=[],
+        )
+
+        response = self._clients.spatial.import_file(self._clients.auth_header, request)
+        return response.spatial_rid
 
     def get_all_units(self) -> Sequence[Unit]:
         """Retrieve list of metadata for all supported units within Nominal"""

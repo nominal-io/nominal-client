@@ -100,6 +100,7 @@ tdms = ["nptdms>=1.9.0,<2"]
 # - Linux x86_64 and aarch64
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 video = ["nominal-video==0.1.9; platform_python_implementation=='CPython' and python_version>='3.10' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))"]
+ouster = ["ouster-sdk>=0.16", "numpy>=1.24", "pyyaml>=6.0"]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
@@ -182,6 +183,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "nominal_video"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "ouster.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
