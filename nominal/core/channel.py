@@ -37,8 +37,8 @@ from nominal.ts import (
 logger = logging.getLogger(__name__)
 
 
-class LatestValue(NamedTuple):
-    """Result of `Channel.get_latest_value`.
+class LastValue(NamedTuple):
+    """Result of `Channel.get_last_value`.
 
     `value` is `float` for DOUBLE channels, `int` for INT channels, and `str` for STRING channels.
     `timestamp` is timezone-aware and in UTC.
@@ -240,13 +240,13 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             else:
                 raise RuntimeError(f"Expected response type to be `paged_log`, received: `{resp.type}`")
 
-    def get_latest_value(
+    def get_last_value(
         self,
         *,
         start: _InferrableTimestampType | None = None,
         end: _InferrableTimestampType | None = None,
         tags: Mapping[str, str] | None = None,
-    ) -> LatestValue | None:
+    ) -> LastValue | None:
         """Return the most recent ``(timestamp, value)`` for this channel within ``[start, end]``.
 
         Args:
@@ -255,14 +255,14 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             tags: Tags to filter the channel by (exact-match). Group-by is not supported.
 
         Returns:
-            See ``LatestValue``. Returns ``None`` if the window is empty.
+            See ``LastValue``. Returns ``None`` if the window is empty.
 
         Raises:
             TypeError: If the channel is not a numeric (DOUBLE, INT) or string channel.
         """
         if self.data_type not in (ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING):
             raise TypeError(
-                f"get_latest_value only supports numeric (DOUBLE, INT) and STRING channels; "
+                f"get_last_value only supports numeric (DOUBLE, INT) and STRING channels; "
                 f"channel {self.name!r} has type {self.data_type}"
             )
 
@@ -293,12 +293,12 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         ts = _SecondsNanos.from_api(point.timestamp).to_datetime()
         v = point.value
         if v.float64_value is not None:
-            return LatestValue(ts, v.float64_value)
+            return LastValue(ts, v.float64_value)
         if v.int64_value is not None:
             # int64 is wire-encoded as a string to preserve precision across JSON
-            return LatestValue(ts, int(v.int64_value))
+            return LastValue(ts, int(v.int64_value))
         if v.string_value is not None:
-            return LatestValue(ts, v.string_value)
+            return LastValue(ts, v.string_value)
         raise RuntimeError(f"Unexpected value variant in `single_point` response: `{v.type}`")
 
     def get_available_tags(
