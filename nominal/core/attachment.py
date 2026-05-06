@@ -25,6 +25,7 @@ class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
     created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -101,6 +102,7 @@ class Attachment(HasRid, RefreshableMixin[attachments_api.Attachment]):
             labels=tuple(attachment.labels),
             created_at=_SecondsNanos.from_flexible(attachment.created_at).to_nanoseconds(),
             _clients=clients,
+            created_by_rid=attachment.created_by,
         )
 
 

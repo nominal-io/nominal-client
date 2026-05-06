@@ -72,6 +72,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
     properties: Mapping[str, str]
     workbook_type: WorkbookType
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -255,6 +256,7 @@ class WorkbookTemplate(HasRid, RefreshableMixin[scout_template_api.Template]):
             properties=template.metadata.properties,
             workbook_type=WorkbookType.COMPARISON_WORKBOOK,
             _clients=clients,
+            created_by_rid=template.metadata.created_by,
         )
 
 
