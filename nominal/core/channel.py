@@ -41,10 +41,10 @@ class LastValue(NamedTuple):
     """Result of `Channel.get_last_value`.
 
     `value` is `float` for DOUBLE channels, `int` for INT channels, and `str` for STRING channels.
-    `timestamp` is timezone-aware and in UTC.
+    `timestamp` is integer nanoseconds since the unix epoch (UTC).
     """
 
-    timestamp: datetime
+    timestamp: IntegralNanosecondsUTC
     value: float | int | str
 
 
@@ -290,7 +290,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         point = response.single_point
         if point is None:
             raise RuntimeError(f"Expected response type to be `single_point`, received: `{response.type}`")
-        ts = _SecondsNanos.from_api(point.timestamp).to_datetime()
+        ts = _SecondsNanos.from_api(point.timestamp).to_nanoseconds()
         v = point.value
         if v.float64_value is not None:
             return LastValue(ts, v.float64_value)

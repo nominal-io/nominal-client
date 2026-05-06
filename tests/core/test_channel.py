@@ -8,7 +8,7 @@ from conjure_python_client import ConjureDecoder
 from nominal_api import api, scout_compute_api
 
 from nominal.core.channel import Channel, ChannelDataType, LastValue
-from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP
+from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, _SecondsNanos
 
 
 def _make_response(value: scout_compute_api.Value, ts: datetime) -> scout_compute_api.ComputeNodeResponse:
@@ -16,6 +16,10 @@ def _make_response(value: scout_compute_api.Value, ts: datetime) -> scout_comput
     return scout_compute_api.ComputeNodeResponse(
         single_point=scout_compute_api.SinglePoint(precision_loss=False, timestamp=api_ts, value=value),
     )
+
+
+def _ns(ts: datetime) -> int:
+    return _SecondsNanos.from_datetime(ts).to_nanoseconds()
 
 
 @pytest.fixture
@@ -44,9 +48,9 @@ def test_get_last_value_returns_float64(mock_channel: Channel, mock_clients: Mag
 
     result = mock_channel.get_last_value()
 
-    assert result == LastValue(ts, 42.5)
+    assert result == LastValue(_ns(ts), 42.5)
     assert isinstance(result.value, float)
-    assert result.timestamp.tzinfo is timezone.utc
+    assert isinstance(result.timestamp, int)
 
 
 def test_get_last_value_returns_int64_parsed_from_string(mock_channel: Channel, mock_clients: MagicMock):
@@ -61,7 +65,7 @@ def test_get_last_value_returns_int64_parsed_from_string(mock_channel: Channel, 
 
     result = mock_channel.get_last_value()
 
-    assert result == LastValue(ts, 9007199254740993)
+    assert result == LastValue(_ns(ts), 9007199254740993)
     assert isinstance(result.value, int)
 
 
@@ -73,7 +77,7 @@ def test_get_last_value_returns_string(mock_channel: Channel, mock_clients: Magi
 
     result = mock_channel.get_last_value()
 
-    assert result == LastValue(ts, "hello")
+    assert result == LastValue(_ns(ts), "hello")
 
 
 def test_get_last_value_empty_window_returns_none(mock_channel: Channel, mock_clients: MagicMock):
