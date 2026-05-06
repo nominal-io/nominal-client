@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.138.0](https://github.com/nominal-io/nominal-client/compare/v1.137.0...v1.138.0) (2026-05-06)
+
+
+### Features
+
+* preserve creator rids on migrated resources ([#754](https://github.com/nominal-io/nominal-client/issues/754)) ([1ab0d68](https://github.com/nominal-io/nominal-client/commit/1ab0d6861583871868594a13e496d47bad1f910e))
+
 ## [1.137.0](https://github.com/nominal-io/nominal-client/compare/v1.136.1...v1.137.0) (2026-05-06)
 
 
