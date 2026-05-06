@@ -103,6 +103,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
     """
 
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -337,6 +338,7 @@ class Workbook(HasRid, RefreshableMixin[scout_notebook_api.Notebook]):
             asset_rids=notebook.metadata.data_scope.asset_rids,
             workbook_type=workbook_type,
             _clients=clients,
+            created_by_rid=notebook.metadata.created_by_rid,
         )
 
 
