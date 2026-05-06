@@ -54,6 +54,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
+    author_rid: str | None = field(default=None, repr=False)
 
     class _Clients(
         Attachment._Clients,
@@ -459,6 +460,7 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
             assets=tuple(run.assets),
             created_at=_SecondsNanos.from_flexible(run.created_at).to_nanoseconds(),
             _clients=clients,
+            author_rid=run.author_rid,
         )
 
 

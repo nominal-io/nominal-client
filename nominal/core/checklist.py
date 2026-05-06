@@ -30,6 +30,7 @@ class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
     properties: Mapping[str, str]
     labels: Sequence[str]
     _clients: _Clients = field(repr=False)
+    author_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -56,6 +57,7 @@ class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
             properties=checklist.metadata.properties,
             labels=checklist.metadata.labels,
             _clients=clients,
+            author_rid=checklist.metadata.author_rid,
         )
 
     def _get_latest_api(self) -> scout_checks_api.VersionedChecklist:

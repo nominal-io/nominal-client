@@ -35,6 +35,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -417,6 +418,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             labels=tuple(video.labels),
             created_at=_SecondsNanos.from_flexible(video.created_at).to_nanoseconds(),
             _clients=clients,
+            created_by_rid=video.created_by,
         )
 
 
