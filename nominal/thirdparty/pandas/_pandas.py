@@ -467,8 +467,9 @@ def run_to_dataframe(
     else:
         requested_datascopes = set(datascopes)
         selected = {name: dataset for name, dataset in dataset_by_datascope.items() if name in requested_datascopes}
-        if requested_datascopes.difference(selected):
-            raise ValueError(f"Run {run.rid!r} does not have datascope(s) {requested_datascopes.difference(selected)}")
+        missing = sorted(requested_datascopes - selected.keys())
+        if missing:
+            raise ValueError(f"Run {run.rid!r} does not have datascope(s) {missing}")
 
     return {
         ref_name: datasource_to_dataframe(
