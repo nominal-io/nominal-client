@@ -180,7 +180,8 @@ class NominalClient:
         """
         if workspace_rid is None:
             warnings.warn(
-                "NominalClient will soon require a workspace RID. Any client which doesn't have a workspace RID specified will fail.",
+                "NominalClient will soon require a workspace RID. "
+                "Any client which doesn't have a workspace RID specified will fail.",
                 UserWarning,
                 stacklevel=2,
             )
