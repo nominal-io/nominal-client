@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.137.0](https://github.com/nominal-io/nominal-client/compare/v1.136.1...v1.137.0) (2026-05-06)
+
+
+### Features
+
+* allow additional header passthru ([#744](https://github.com/nominal-io/nominal-client/issues/744)) ([20bb4d8](https://github.com/nominal-io/nominal-client/commit/20bb4d8ebb9cb78b8f59e50012a00257326be3ce))
+* preserve workbook creator RID ([#753](https://github.com/nominal-io/nominal-client/issues/753)) ([bfb12e5](https://github.com/nominal-io/nominal-client/commit/bfb12e52433a03278b18296da57ef262df559e69))
+
 ## [1.136.1](https://github.com/nominal-io/nominal-client/compare/v1.136.0...v1.136.1) (2026-05-04)
 
 
