@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -11,26 +12,32 @@ from nominal.core.run import Run
 from nominal.thirdparty.pandas import _pandas as pandas_module
 
 
-def _make_dataset(clients: MagicMock, rid: str) -> Dataset:
-    return Dataset(
-        rid=rid,
-        name=rid,
-        description=None,
-        bounds=None,
-        properties={},
-        labels=[],
-        _clients=clients,
-    )
-
-
 @pytest.fixture
 def mock_clients() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def mock_dataset(mock_clients: MagicMock) -> Dataset:
-    return _make_dataset(mock_clients, "dataset-rid-1")
+def make_dataset(mock_clients: MagicMock) -> Callable[[str], Dataset]:
+    """Factory fixture: build a Dataset with the shared mock_clients and the given rid."""
+
+    def _make(rid: str) -> Dataset:
+        return Dataset(
+            rid=rid,
+            name=rid,
+            description=None,
+            bounds=None,
+            properties={},
+            labels=[],
+            _clients=mock_clients,
+        )
+
+    return _make
+
+
+@pytest.fixture
+def mock_dataset(make_dataset: Callable[[str], Dataset]) -> Dataset:
+    return make_dataset("dataset-rid-1")
 
 
 @pytest.fixture
@@ -59,10 +66,12 @@ def patched_export():
         yield mock
 
 
-def test_default_downloads_all_run_datasets(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
+def test_default_downloads_all_run_datasets(
+    mock_run: Run, make_dataset: Callable[[str], Dataset], patched_export: MagicMock
+):
     """With no filters, every datascope on the run is downloaded scoped to the run's start/end."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
-    ds_2 = _make_dataset(mock_clients, "dataset-rid-2")
+    ds_1 = make_dataset("dataset-rid-1")
+    ds_2 = make_dataset("dataset-rid-2")
 
     with patch.object(Run, "list_datasets", return_value=[("primary", ds_1), ("secondary", ds_2)]):
         result = pandas_module.run_to_dataframe(mock_run)
@@ -84,10 +93,10 @@ def test_open_run_forwards_none_end(mock_run: Run, mock_dataset: Dataset, patche
     assert patched_export.call_args.kwargs["end"] is None
 
 
-def test_datascope_filter_downloads_only_matched(mock_run: Run, mock_clients: MagicMock, patched_export: MagicMock):
+def test_datascope_filter_downloads_only_matched(mock_run: Run, make_dataset: Callable[[str], Dataset]):
     """A datascopes filter restricts the download to the matching ref_names."""
-    ds_1 = _make_dataset(mock_clients, "dataset-rid-1")
-    ds_2 = _make_dataset(mock_clients, "dataset-rid-2")
+    ds_1 = make_dataset("dataset-rid-1")
+    ds_2 = make_dataset("dataset-rid-2")
 
     with patch.object(Run, "list_datasets", return_value=[("primary", ds_1), ("secondary", ds_2)]):
         result = pandas_module.run_to_dataframe(mock_run, datascopes=["secondary"])
