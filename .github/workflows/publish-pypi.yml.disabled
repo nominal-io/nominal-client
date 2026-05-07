@@ -1,0 +1,19 @@
+name: Publish PyPI
+on:
+  push:
+    tags:
+      - "v*.*.*"
+jobs:
+  publish:
+    runs-on: depot-ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.x"
+          enable-cache: false
+          cache-dependency-glob: "uv.lock"
+      - name: Build and Publish Package to PYPI
+        run: |
+          uv build

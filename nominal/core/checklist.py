@@ -1,0 +1,173 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import timedelta
+from typing import Mapping, Protocol, Sequence
+
+from nominal_api import (
+    event,
+    scout,
+    scout_checklistexecution_api,
+    scout_checks_api,
+    scout_datareview_api,
+    scout_integrations_api,
+)
+from typing_extensions import Self
+
+from nominal.core import run as core_run
+from nominal.core._clientsbunch import HasScoutParams
+from nominal.core._utils.api_tools import HasRid, RefreshableMixin, rid_from_instance_or_string
+from nominal.core.asset import Asset
+from nominal.core.data_review import DataReview
+from nominal.ts import _to_api_duration
+
+
+@dataclass(frozen=True)
+class Checklist(HasRid, RefreshableMixin[scout_checks_api.VersionedChecklist]):
+    rid: str
+    name: str
+    description: str
+    properties: Mapping[str, str]
+    labels: Sequence[str]
+    _clients: _Clients = field(repr=False)
+    author_rid: str | None = field(default=None, repr=False)
+
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def checklist(self) -> scout_checks_api.ChecklistService: ...
+        @property
+        def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
+        @property
+        def datareview(self) -> scout_datareview_api.DataReviewService: ...
+        @property
+        def event(self) -> event.EventService: ...
+        @property
+        def run(self) -> scout.RunService: ...
+
+    @classmethod
+    def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
+        # TODO(ritwikdixit): support draft checklists with VCS
+        if not checklist.metadata.is_published:
+            raise ValueError("cannot get a checklist that has not been published")
+
+        return cls(
+            rid=checklist.rid,
+            name=checklist.metadata.title,
+            description=checklist.metadata.description,
+            properties=checklist.metadata.properties,
+            labels=checklist.metadata.labels,
+            _clients=clients,
+            author_rid=checklist.metadata.author_rid,
+        )
+
+    def _get_latest_api(self) -> scout_checks_api.VersionedChecklist:
+        return self._clients.checklist.get(self._clients.auth_header, self.rid)
+
+    def execute(self, run: core_run.Run | str, commit: str | None = None) -> DataReview:
+        """Execute a checklist against a run.
+
+        Args:
+            run: Run (or its rid) to execute the checklist against
+            commit: Commit hash of the version of the checklist to run, or None for the latest version
+
+        Returns:
+            Created datareview for the checklist execution
+        """
+        run_rid = rid_from_instance_or_string(run)
+
+        response = self._clients.datareview.batch_initiate(
+            self._clients.auth_header,
+            scout_datareview_api.BatchInitiateDataReviewRequest(
+                notification_configurations=[],
+                requests=[
+                    scout_datareview_api.CreateDataReviewRequest(
+                        checklist_rid=self.rid,
+                        run_rid=run_rid,
+                        commit=commit,
+                    )
+                ],
+            ),
+        )
+        if len(response.rids) != 1:
+            raise RuntimeError(f"Expected exactly one response from batch_initiate, received {len(response.rids)}")
+
+        return DataReview._from_conjure(
+            self._clients,
+            self._clients.datareview.get(self._clients.auth_header, response.rids[0]),
+        )
+
+    def execute_streaming(
+        self,
+        assets: Sequence[Asset | str],
+        integration_rids: Sequence[str],
+        *,
+        evaluation_delay: timedelta = timedelta(),
+        recovery_delay: timedelta = timedelta(seconds=15),
+        auto_create_events: bool = False,
+    ) -> None:
+        """Execute the checklist for the given assets.
+
+        Args:
+            assets: List of assets or asset rids to execute the streaming checklist upon
+            integration_rids: List of rids of integrations to apply to the created streaming checklist for notifications
+            evaluation_delay: Delays the evaluation of the streaming checklist-- useful when data lags behind live.
+            recovery_delay: Specifies the minimum amount of time that must pass before a check may recover from a
+                failure state. Minimum value is 15 seconds.
+            auto_create_events: If true, automatically creates events for check status changes, in particular, when
+                checks fail and then recover.
+        """
+        self._clients.checklist_execution.execute_streaming_checklist(
+            self._clients.auth_header,
+            scout_checklistexecution_api.ExecuteChecklistForAssetsRequest(
+                assets=[rid_from_instance_or_string(asset) for asset in assets],
+                checklist=self.rid,
+                notification_configurations=[
+                    scout_integrations_api.NotificationConfiguration(c, tags=[]) for c in integration_rids
+                ],
+                evaluation_delay=_to_api_duration(evaluation_delay),
+                recovery_delay=_to_api_duration(recovery_delay),
+                auto_create_events=auto_create_events,
+            ),
+        )
+
+    def stop_streaming(self) -> None:
+        """Stop the checklist."""
+        self._clients.checklist_execution.stop_streaming_checklist(self._clients.auth_header, self.rid)
+
+    def stop_streaming_for_assets(self, assets: Sequence[Asset | str]) -> None:
+        """Stop the checklist for the given assets."""
+        self._clients.checklist_execution.stop_streaming_checklist_for_assets(
+            self._clients.auth_header,
+            scout_checklistexecution_api.StopStreamingChecklistForAssetsRequest(
+                assets=[rid_from_instance_or_string(asset) for asset in assets],
+                checklist=self.rid,
+            ),
+        )
+
+    def reload_streaming(self) -> None:
+        """Reload the checklist."""
+        self._clients.checklist_execution.reload_streaming_checklist(self._clients.auth_header, self.rid)
+
+    def archive(self) -> None:
+        """Archive this checklist.
+        Archived checklists are not deleted, but are hidden from the UI.
+        """
+        self._clients.checklist.archive(
+            self._clients.auth_header, scout_checks_api.ArchiveChecklistsRequest(rids=[self.rid])
+        )
+
+    def unarchive(self) -> None:
+        """Unarchive this checklist, allowing it to be viewed in the UI."""
+        self._clients.checklist.unarchive(
+            self._clients.auth_header, scout_checks_api.UnarchiveChecklistsRequest(rids=[self.rid])
+        )
+
+    @property
+    def nominal_url(self) -> str:
+        """Returns a link to the page for this checklist in the Nominal app"""
+        return f"{self._clients.app_base_url}/checklists/{self.rid}"
+
+    def preview_for_run_url(self, run: core_run.Run | str) -> str:
+        """Returns a link to the page for previewing this checklist on a given run in the Nominal app"""
+        run_rid = rid_from_instance_or_string(run)
+        return f"{self.nominal_url}?previewRunRid={run_rid}"
