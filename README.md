@@ -9,7 +9,5 @@ View on [docs.nominal.io](https://docs.nominal.io/).
 pip install nominal
 ```
 
-### Usage
+### Usage Examples
 Please refer to usage examples in the [documentation](https://docs.nominal.io/core/sdk/python-client/quickstart).
-
-<!-- Declarative environment verification: README-only PR. -->
