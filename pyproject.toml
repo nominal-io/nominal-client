@@ -38,7 +38,7 @@ dependencies = [
     "typing-extensions>=4,<5",
     # Any version is okay for these dependencies
     "pandas>=0.0.0",
-    "polars>=0.0.0",
+    "polars==1.40.0",
     "python-dateutil>=0.0.0",
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
