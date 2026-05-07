@@ -991,21 +991,18 @@ class NominalClient:
         path: BinaryIO,
         name: str,
         tag: str,
-        workspace_rid: str | None = None,
     ) -> ContainerImage:
         """Upload a container image tarball to Nominal's self-hosted registry.
 
         The tarball must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
-        `workspace_rid` overrides the client's pinned workspace; if omitted, the client's
-        configured `workspace_rid` is used.
+        The client's configured `workspace_rid` is used.
         """
         if isinstance(path, TextIOBase):
             raise TypeError(f"tarball {path!r} must be open in binary mode, rather than text mode")
 
+        workspace_rid = self._clients.workspace_rid
         if workspace_rid is None:
-            workspace_rid = self._clients.workspace_rid
-        if workspace_rid is None:
-            raise ValueError("workspace_rid must be provided or the client must be pinned to a workspace")
+            raise ValueError("client profile must specify workspace_rid to upload a container image")
 
         s3_path = upload_multipart_io(
             self._clients.auth_header,
@@ -1431,7 +1428,6 @@ class NominalClient:
         self,
         name: str,
         *,
-        workspace_rid: str | None = None,
         docker_image: DockerImageSource,
         container_image_rid: None = None,
         timestamp_column: str,
@@ -1447,7 +1443,6 @@ class NominalClient:
         self,
         name: str,
         *,
-        workspace_rid: str | None = None,
         docker_image: None = None,
         container_image_rid: str,
         timestamp_column: str,
@@ -1462,7 +1457,6 @@ class NominalClient:
         self,
         name: str,
         *,
-        workspace_rid: str | None = None,
         docker_image: DockerImageSource | None = None,
         container_image_rid: str | None = None,
         timestamp_column: str,
@@ -1478,10 +1472,9 @@ class NominalClient:
         if docker_image is not None and container_image_rid is not None:
             raise ValueError("must provide only one of `docker_image` or `container_image_rid`, not both")
 
+        workspace_rid = self._clients.workspace_rid
         if workspace_rid is None:
-            workspace_rid = self._clients.workspace_rid
-        if workspace_rid is None:
-            raise ValueError("workspace_rid must be provided or the client must be pinned to a workspace")
+            raise ValueError("client profile must specify workspace_rid to create a containerized extractor")
 
         image = docker_image._to_conjure() if docker_image is not None else None
         output_file_format_conj = file_output_format._to_conjure() if file_output_format is not None else None
