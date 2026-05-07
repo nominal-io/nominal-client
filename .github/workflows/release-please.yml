@@ -36,13 +36,10 @@ jobs:
         if: ${{ steps.release.outputs.pr }}
         run: |
           set -euo pipefail
-          uv lock
-          if git diff --quiet uv.lock; then
+          if uv lock --check; then
             echo "uv.lock already in sync with pyproject.toml"
             exit 0
           fi
-          git config user.name NomBot
-          git config user.email 117409387+nominal-bot@users.noreply.github.com
-          git add uv.lock
-          git commit -m "chore: update uv.lock"
+          uv lock
+          git -c user.name=NomBot -c user.email=117409387+nominal-bot@users.noreply.github.com commit -m "chore: update uv.lock" uv.lock
           git push
