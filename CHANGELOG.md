@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.139.0](https://github.com/nominal-io/nominal-client/compare/v1.138.0...v1.139.0) (2026-05-07)
+
+
+### Features
+
+* add Run.add_comment to post to a run's discussion ([#758](https://github.com/nominal-io/nominal-client/issues/758)) ([8dab1b0](https://github.com/nominal-io/nominal-client/commit/8dab1b03aaf6ff73a84554382d9cd75acae19d59))
+* add templates to migration_prep ([#756](https://github.com/nominal-io/nominal-client/issues/756)) ([ad7dd6f](https://github.com/nominal-io/nominal-client/commit/ad7dd6fae34e26f06dfc41762747845b0e0ba0e6))
+
 ## [1.138.0](https://github.com/nominal-io/nominal-client/compare/v1.137.0...v1.138.0) (2026-05-06)
 
 
