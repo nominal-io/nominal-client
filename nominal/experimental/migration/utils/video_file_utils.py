@@ -68,13 +68,15 @@ def _create_destination_video_file(
         return new_file
 
     if mcap_video_details is not None:
-        return destination_video_dataset.add_mcap_from_io(
+        new_file = destination_video_dataset.add_mcap_from_io(
             mcap=raw_video_stream,
             name=file_stem,
             topic=mcap_video_details.mcap_channel_locator_topic,
             description=source_video_file.description,
             file_type=FileTypes.MCAP,
         )
+        new_file.poll_until_ingestion_completed()
+        return new_file
 
     raise ValueError(
         "Unsupported video file ingest options for copying video file. "
