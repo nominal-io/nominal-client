@@ -43,5 +43,6 @@ jobs:
           fi
           git config user.name NomBot
           git config user.email 117409387+nominal-bot@users.noreply.github.com
-          git commit -m "chore: update uv.lock" uv.lock
+          git add uv.lock
+          git commit -m "chore: update uv.lock"
           git push
