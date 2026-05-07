@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Sequence, TypeAlias
 
 from nominal_api import (
+    comments_api,
     event,
     scout,
     scout_asset_api,
@@ -70,6 +71,8 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
     ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
+        @property
+        def comments(self) -> comments_api.CommentsService: ...
         @property
         def run(self) -> scout.RunService: ...
         @property
