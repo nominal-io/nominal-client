@@ -60,6 +60,7 @@ def _create_destination_video_file(
             start=timestamp_options.starting_timestamp,
             description=source_video_file.description,
         )
+        new_file.poll_until_ingestion_completed()
         new_file.update(
             starting_timestamp=timestamp_options.starting_timestamp,
             ending_timestamp=timestamp_options.ending_timestamp,
