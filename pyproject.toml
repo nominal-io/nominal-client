@@ -92,7 +92,7 @@ dev = [
 nominal = { workspace = true }
 
 [project.optional-dependencies]
-protos = ["nominal-api-protos>=0.1090.0"]
+protos = ["nominal-api-protos>=0.1230.0"]
 tdms = ["nptdms>=1.9.0,<2"]
 # nominal-video wheels exist for:
 # - Windows x86_64 (AMD64)
