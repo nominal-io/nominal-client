@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
 from nominal_api import comments_api
 
-from nominal.core.comment import Message
+from nominal.core.comment import Comment
 from nominal.core.run import Run
 
 RUN_RID = "ri.scout.test.run.abc"
@@ -52,10 +51,10 @@ def _stub_comment() -> comments_api.Comment:
     )
 
 
-def test_add_message_sends_run_parented_request(mock_run, mock_clients):
+def test_add_comment_sends_run_parented_request(mock_run, mock_clients):
     mock_clients.comments.create_comment.return_value = _stub_comment()
 
-    mock_run.add_message("hello")
+    mock_run.add_comment("hello")
 
     mock_clients.comments.create_comment.assert_called_once()
     auth_header, request = mock_clients.comments.create_comment.call_args.args
@@ -69,13 +68,14 @@ def test_add_message_sends_run_parented_request(mock_run, mock_clients):
     assert parent_resource.resource_rid == RUN_RID
 
 
-def test_add_message_returns_message_dataclass(mock_run, mock_clients):
+def test_add_comment_returns_comment_dataclass(mock_run, mock_clients):
     mock_clients.comments.create_comment.return_value = _stub_comment()
 
-    message = mock_run.add_message("hello")
+    comment = mock_run.add_comment("hello")
 
-    assert isinstance(message, Message)
-    assert message.rid == "ri.scout.test.comment.123"
-    assert message.author_rid == "ri.users.user.42"
-    assert message.content == "hello"
-    assert message.created_at == datetime(2026, 5, 7, 12, 0, 0, tzinfo=timezone.utc)
+    assert isinstance(comment, Comment)
+    assert comment.rid == "ri.scout.test.comment.123"
+    assert comment.author_rid == "ri.users.user.42"
+    assert comment.content == "hello"
+    # 2026-05-07T12:00:00Z in nanoseconds since epoch
+    assert comment.created_at == 1_778_155_200_000_000_000

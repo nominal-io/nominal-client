@@ -9,7 +9,7 @@ from nominal.core.bounds import Bounds
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient, WorkspaceSearchType
-from nominal.core.comment import Message
+from nominal.core.comment import Comment
 from nominal.core.connection import Connection
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
@@ -65,7 +65,7 @@ __all__ = [
     "LinkDict",
     "LogPoint",
     "LogStream",
-    "Message",
+    "Comment",
     "NominalClient",
     "poll_until_ingestion_completed",
     "Run",

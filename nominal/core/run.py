@@ -28,7 +28,7 @@ from nominal.core._utils.api_tools import (
 )
 from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
-from nominal.core.comment import Message
+from nominal.core.comment import Comment
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
@@ -126,31 +126,14 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated_run)
 
-def add_message(self, content: str) -> Message:
-    """Post a markdown message to this run's discussion.
-
-    Args:
-        content: Markdown content for the message. The backend rejects empty content and
-            content longer than 65535 characters.
-
-    Returns:
-        The created `Message`.
-        
-    Raises:
-        ValueError: If content is empty or exceeds length limits.
-    """
-    if not content.strip():
-        raise ValueError("Message content cannot be empty")
-    if len(content) > 65535:
-        raise ValueError(f"Message content exceeds maximum length of 65535 characters (got {len(content)})")
-        """Post a markdown message to this run's discussion.
+    def add_comment(self, content: str) -> Comment:
+        """Post a markdown comment to this run's discussion.
 
         Args:
-            content: Markdown content for the message. The backend rejects empty content and
-                content longer than 65535 characters.
+            content: Markdown content for the comment.
 
         Returns:
-            The created `Message`.
+            The created `Comment`.
         """
         request = comments_api.CreateCommentRequest(
             parent=comments_api.CommentParent(
@@ -163,7 +146,7 @@ def add_message(self, content: str) -> Message:
             attachments=[],
         )
         api_comment = self._clients.comments.create_comment(self._clients.auth_header, request)
-        return Message._from_conjure(api_comment)
+        return Comment._from_conjure(api_comment)
 
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
         api_run = self._get_latest_api()
