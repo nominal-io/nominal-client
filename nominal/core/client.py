@@ -1426,6 +1426,38 @@ class NominalClient:
             self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
         )
 
+    @overload
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        workspace_rid: str | None = None,
+        docker_image: DockerImageSource,
+        container_image_rid: None = None,
+        timestamp_column: str,
+        timestamp_type: ts._AnyTimestampType,
+        inputs: Sequence[FileExtractionInput] = (),
+        file_output_format: FileOutputFormat | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        description: str | None = None,
+    ) -> ContainerizedExtractor: ...
+    @overload
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        workspace_rid: str | None = None,
+        docker_image: None = None,
+        container_image_rid: str,
+        timestamp_column: str,
+        timestamp_type: ts._AnyTimestampType,
+        inputs: Sequence[FileExtractionInput] = (),
+        file_output_format: FileOutputFormat | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        description: str | None = None,
+    ) -> ContainerizedExtractor: ...
     def create_containerized_extractor(
         self,
         name: str,
