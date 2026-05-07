@@ -6,6 +6,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence, cast
 
 from nominal_api import (
+    comments_api,
     event,
     scout,
     scout_asset_api,
@@ -27,6 +28,7 @@ from nominal.core._utils.api_tools import (
 )
 from nominal.core._utils.query_tools import ArchiveStatusFilter, resolve_effective_archive_status
 from nominal.core.attachment import Attachment, _iter_get_attachments
+from nominal.core.comment import Comment
 from nominal.core.connection import Connection, _get_connections
 from nominal.core.dataset import Dataset, _DatasetWrapper, _get_datasets
 from nominal.core.datasource import DataSource
@@ -65,6 +67,8 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
     ):
         @property
         def assets(self) -> scout_assets.AssetService: ...
+        @property
+        def comments(self) -> comments_api.CommentsService: ...
         @property
         def event(self) -> event.EventService: ...
         @property
@@ -121,6 +125,28 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         )
         updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated_run)
+
+    def add_comment(self, content: str) -> Comment:
+        """Post a markdown comment to this run's discussion.
+
+        Args:
+            content: Markdown content for the comment.
+
+        Returns:
+            The created `Comment`.
+        """
+        request = comments_api.CreateCommentRequest(
+            parent=comments_api.CommentParent(
+                resource=comments_api.CommentParentResource(
+                    resource_type=comments_api.ResourceType.RUN,
+                    resource_rid=self.rid,
+                )
+            ),
+            content=content,
+            attachments=[],
+        )
+        api_comment = self._clients.comments.create_comment(self._clients.auth_header, request)
+        return Comment._from_conjure(api_comment)
 
     def _list_dataset_scopes(self) -> Sequence[scout_asset_api.DataScope]:
         api_run = self._get_latest_api()

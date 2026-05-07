@@ -9,6 +9,7 @@ from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
     attachments_api,
     authentication_api,
+    comments_api,
     event,
     ingest_api,
     scout,
@@ -157,6 +158,7 @@ class ClientsBunch:
     datareview: scout_datareview_api.DataReviewService
     proto_write: ProtoWriteService
     event: event.EventService
+    comments: comments_api.CommentsService
     channel_metadata: timeseries_channelmetadata.ChannelMetadataService
     series_metadata: timeseries_metadata.SeriesMetadataService
     workspace: security_api_workspace.WorkspaceService
@@ -289,6 +291,7 @@ class ClientsBunch:
             datareview=client_factory(scout_datareview_api.DataReviewService),
             proto_write=client_factory(ProtoWriteService),
             event=client_factory(event.EventService),
+            comments=client_factory(comments_api.CommentsService),
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
