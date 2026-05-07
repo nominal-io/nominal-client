@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.139.1](https://github.com/nominal-io/nominal-client/compare/v1.139.0...v1.139.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* cleaned up workflow ([8ce920a](https://github.com/nominal-io/nominal-client/commit/8ce920af5770874d7f622006d11f0d4cf2849045))
+* enable release-please for source branch ([13617c6](https://github.com/nominal-io/nominal-client/commit/13617c63eb4c529c26dd881251fb80eb4556254c))
+
 ## [1.139.0](https://github.com/nominal-io/nominal-client/compare/v1.138.0...v1.139.0) (2026-05-07)
 
 
