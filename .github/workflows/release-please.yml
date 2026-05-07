@@ -23,6 +23,8 @@ jobs:
         if: ${{ steps.release.outputs.pr }}
         uses: actions/checkout@v4
         with:
+          # Using fromJSON since github refnames don't provide the release-please
+          # branch, which is what this next commit needs to be based off of
           ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
           token: ${{ secrets.NOMBOT_CLASSIC_PERSONAL_ACCESS_TOKEN }}
 
