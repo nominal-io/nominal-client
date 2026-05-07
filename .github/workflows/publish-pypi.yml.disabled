@@ -17,4 +17,3 @@ jobs:
       - name: Build and Publish Package to PYPI
         run: |
           uv build
-          uv publish --token ${{ secrets.PYPI_TOKEN }}
