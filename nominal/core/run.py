@@ -126,7 +126,23 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         updated_run = self._clients.run.update_run(self._clients.auth_header, request, self.rid)
         return self._refresh_from_api(updated_run)
 
-    def add_message(self, content: str) -> Message:
+def add_message(self, content: str) -> Message:
+    """Post a markdown message to this run's discussion.
+
+    Args:
+        content: Markdown content for the message. The backend rejects empty content and
+            content longer than 65535 characters.
+
+    Returns:
+        The created `Message`.
+        
+    Raises:
+        ValueError: If content is empty or exceeds length limits.
+    """
+    if not content.strip():
+        raise ValueError("Message content cannot be empty")
+    if len(content) > 65535:
+        raise ValueError(f"Message content exceeds maximum length of 65535 characters (got {len(content)})")
         """Post a markdown message to this run's discussion.
 
         Args:
