@@ -330,9 +330,10 @@ def datasource_to_dataframe(  # noqa: PLR0912, PLR0915
         end: The maximum data start time to filter channels by
         enable_gzip: If true, use gzip when exporting data from Nominal. This will almost always make export
             faster and use less bandwidth.
-        num_workers: Use this many parallel processes for performing export requests against the backend. This should
-            roughly be corresponding to the strength of your network connection, with 4-8 workers being more than
-            sufficient to completely saturate most connections.
+        num_workers: Number of parallel threads used to request presigned export URLs from the backend
+            (one API request per channel batch). The actual file downloads from S3 are run by
+            `MultipartFileDownloader`, which uses its own cpu_count default for parallel ranged GETs and
+            is not gated by this parameter. 4-8 is more than sufficient for the URL-fetch phase.
         channel_batch_size: Number of channels to request at a time per worker thread. Reducing this number may allow
             fetching a larger time duration (i.e., `end` - `start`), depending on how synchronized the timing is amongst
             the requested channels. This is a result of a limit of 10_000_000 unique timestamps returned per request,
@@ -461,6 +462,9 @@ def datasource_to_dataframe(  # noqa: PLR0912, PLR0915
                         datasource.rid,
                     )
                 )
+                # Free the CSV from disk as soon as it's parsed so the temp directory
+                # holds at most one batch at a time, not the whole export.
+                path.unlink(missing_ok=True)
 
     if not all_dataframes:
         logger.warning(f"No data found for export from datasource {datasource.rid}")
