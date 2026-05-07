@@ -40,6 +40,7 @@ def copy_file_to_dataset(
                     with response:
                         shutil.copyfileobj(response.raw, tmp)
                 new_file = destination_dataset.add_journal_json(tmp_path)
+                new_file.poll_until_ingestion_completed()
             finally:
                 if tmp_path is not None:
                     tmp_path.unlink(missing_ok=True)
@@ -53,6 +54,7 @@ def copy_file_to_dataset(
                 tag_columns=source_file.tag_columns,
                 tags=source_file.file_tags,
             )
+            new_file.poll_until_ingestion_completed()
         else:
             raise ValueError("Unsupported file handle type or missing timestamp information.")
         logger.debug(
