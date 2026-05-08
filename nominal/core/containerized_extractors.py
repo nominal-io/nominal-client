@@ -97,9 +97,7 @@ class FileExtractionParameter:
     Args:
         name: Human-readable name for this parameter configuration.
         description: Optional detailed description of what this parameter represents.
-        environment_variable: Environment variable name that will be set in the container
-            to specify the input file path.
-        file_suffixes: List of file extensions that this input accepts (e.g., ['.csv', '.txt']).
+        environment_variable: Environment variable name in the container which will be set to the parameter value.
         required: Whether this input is mandatory for the extractor to run. Defaults to False.
     """
 
