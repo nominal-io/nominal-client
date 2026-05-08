@@ -1429,7 +1429,6 @@ class NominalClient:
         name: str,
         *,
         docker_image: DockerImageSource,
-        container_image_rid: None = None,
         timestamp_column: str,
         timestamp_type: ts._AnyTimestampType,
         inputs: Sequence[FileExtractionInput] = (),
@@ -1443,7 +1442,6 @@ class NominalClient:
         self,
         name: str,
         *,
-        docker_image: None = None,
         container_image_rid: str,
         timestamp_column: str,
         timestamp_type: ts._AnyTimestampType,
@@ -1469,8 +1467,6 @@ class NominalClient:
     ) -> ContainerizedExtractor:
         if docker_image is None and container_image_rid is None:
             raise ValueError("must provide either `docker_image` or `container_image_rid`")
-        if docker_image is not None and container_image_rid is not None:
-            raise ValueError("must provide only one of `docker_image` or `container_image_rid`, not both")
 
         workspace_rid = self._clients.workspace_rid
         if workspace_rid is None:
