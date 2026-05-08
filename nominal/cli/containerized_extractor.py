@@ -251,6 +251,7 @@ def _extractor_to_wire_dict(extractor: ContainerizedExtractor) -> dict[str, obje
         "name": extractor.name,
         "description": extractor.description,
         "image": ConjureEncoder.do_encode(extractor.image._to_conjure()),
+        "containerImageRid": extractor.container_image_rid,
         "inputs": [ConjureEncoder.do_encode(inp._to_conjure()) for inp in extractor.inputs],
         "labels": list(extractor.labels),
         "properties": dict(extractor.properties),
@@ -261,6 +262,14 @@ def _extractor_to_wire_dict(extractor: ContainerizedExtractor) -> dict[str, obje
 
 
 def _format_image_ref(extractor: ContainerizedExtractor) -> str:
+    """Render the column-friendly image reference for an extractor.
+
+    Self-hosted extractors carry their image as a `containerImageRid` and leave the
+    `image` field as placeholder values (which would otherwise show as `/:latest`); for
+    those, surface the RID directly.
+    """
+    if extractor.container_image_rid:
+        return extractor.container_image_rid
     image = extractor.image
     return f"{image.registry}/{image.repository}:{image.tag_details.default_tag}"
 
@@ -303,11 +312,14 @@ def _print_extractor_detail(extractor: ContainerizedExtractor) -> None:
         show_header=False,
     )
     table.add_row("Description", escape(extractor.description or "-"))
-    table.add_row("Image", escape(f"{image.registry}/{image.repository}"))
-    table.add_row("Tags", escape(", ".join(image.tag_details.tags) or "-"))
-    table.add_row("Default tag", escape(image.tag_details.default_tag))
-    if image.command:
-        table.add_row("Command", escape(image.command))
+    if extractor.container_image_rid:
+        table.add_row("Container Image", escape(extractor.container_image_rid))
+    else:
+        table.add_row("Image", escape(f"{image.registry}/{image.repository}"))
+        table.add_row("Tags", escape(", ".join(image.tag_details.tags) or "-"))
+        table.add_row("Default tag", escape(image.tag_details.default_tag))
+        if image.command:
+            table.add_row("Command", escape(image.command))
     table.add_row("Labels", escape(render_labels(extractor.labels)))
     table.add_row("Properties", escape(render_properties(extractor.properties)))
     if extractor.inputs:
