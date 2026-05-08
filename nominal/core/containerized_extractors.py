@@ -235,6 +235,7 @@ class ContainerizedExtractor(HasRid):
     name: str
     description: str | None
     image: DockerImageSource
+    container_image_rid: str | None
     inputs: Sequence[FileExtractionInput]
     parameters: Sequence[FileExtractionParameter]
     properties: Mapping[str, str]
@@ -322,6 +323,7 @@ class ContainerizedExtractor(HasRid):
             name=raw_extractor.name,
             description=raw_extractor.description,
             image=DockerImageSource._from_conjure(raw_extractor.image),
+            container_image_rid=raw_extractor.container_image_rid,
             inputs=[FileExtractionInput._from_conjure(raw_input) for raw_input in raw_extractor.inputs],
             parameters=[FileExtractionParameter._from_conjure(raw_param) for raw_param in raw_extractor.parameters],
             properties=raw_extractor.properties,
