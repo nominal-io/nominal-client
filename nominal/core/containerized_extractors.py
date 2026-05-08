@@ -89,6 +89,7 @@ class FileExtractionInput:
             required=self.required,
         )
 
+
 @dataclass(frozen=True)
 class FileExtractionParameter:
     """Configuration for a file extraction parameter in a containerized extractor.
