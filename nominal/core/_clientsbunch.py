@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol, Sequence, TypeVar
+from typing import TYPE_CHECKING, Protocol, TypeVar
+from urllib.parse import urlparse
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -34,13 +35,16 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
-from nominal.core._api_types import _ApiContainerImage
 from nominal.core._utils.networking import (
     HeaderProvider,
     create_conjure_client_factory,
 )
 from nominal.core.exceptions import NominalConfigError
 from nominal.ts import IntegralNanosecondsUTC
+
+if TYPE_CHECKING:
+    import grpc  # type: ignore[import-untyped]
+    from nominal_api_protos.nominal.registry.v1 import registry_pb2, registry_pb2_grpc
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
 TService = TypeVar("TService", bound=Service)
@@ -118,69 +122,63 @@ class ProtoWriteService(Service):
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
 
-class RegistryService(Service):
-    """HTTP client for nominal.registry.v1.RegistryService via the gRPC-gateway JSON transcoder.
+@dataclass(frozen=True)
+class RegistryService:
+    """Native-gRPC client for nominal.registry.v1.RegistryService.
 
-    Inherits conjure_python_client.Service to pick up the shared truststore configuration used
-    against on-prem / self-hosted backends, even though this is not a conjure-modeled service.
+    Implemented against the protobuf stubs published in `nominal-api-protos` (gated behind the
+    `nominal[protos]` extra) so the registry calls reuse the same wire contract scout's gRPC
+    server speaks, without the `grpc-gateway` JSON-transcoder hop. A new TLS channel is opened
+    per RPC; the registry sees CLI-grade traffic, not a hot path.
     """
 
-    _BASE_PATH = "/registry/v1/images"
+    api_base_url: str
 
-    def _json_headers(self, auth_header: str) -> dict[str, str]:
-        return {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": auth_header,
-        }
+    def _stub_in(self, channel: grpc.Channel) -> registry_pb2_grpc.RegistryServiceStub:
+        from nominal_api_protos.nominal.registry.v1 import registry_pb2_grpc as pb_grpc
 
-    def create_image(self, auth_header: str, request: Mapping[str, Any]) -> _ApiContainerImage:
-        response = self._request(
-            "POST",
-            self._uri + self._BASE_PATH,
-            params={},
-            headers=self._json_headers(auth_header),
-            json=request,
-        )
-        body: dict[str, Any] = response.json()
-        image = body.get("image")
-        if not isinstance(image, Mapping):
-            raise ValueError(f"unexpected CreateImageResponse from registry: {body!r}")
-        return _ApiContainerImage._parse(image)
+        return pb_grpc.RegistryServiceStub(channel)  # type: ignore[no-untyped-call]
 
-    def list_images(self, auth_header: str, *, workspace_rid: str | None = None) -> Sequence[_ApiContainerImage]:
-        params: dict[str, str] = {}
-        if workspace_rid is not None:
-            params["workspaceRid"] = workspace_rid
-        response = self._request(
-            "GET",
-            self._uri + self._BASE_PATH,
-            params=params,
-            headers=self._json_headers(auth_header),
-        )
-        body: dict[str, Any] = response.json()
-        return _ApiContainerImage._parse_list(body)
+    def _open_channel(self) -> grpc.Channel:
+        try:
+            import grpc as grpc_runtime
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use the container registry") from ex
+        target = urlparse(self.api_base_url).netloc
+        if not target:
+            raise ValueError(f"could not derive gRPC target from API base URL: {self.api_base_url!r}")
+        return grpc_runtime.secure_channel(target, grpc_runtime.ssl_channel_credentials())
 
-    def get_image(self, auth_header: str, rid: str) -> _ApiContainerImage:
-        response = self._request(
-            "GET",
-            f"{self._uri}{self._BASE_PATH}/{rid}",
-            params={},
-            headers=self._json_headers(auth_header),
-        )
-        body: dict[str, Any] = response.json()
-        image = body.get("image", body)
-        if not isinstance(image, Mapping):
-            raise ValueError(f"unexpected GetImageResponse from registry: {body!r}")
-        return _ApiContainerImage._parse(image)
+    def create_image(self, auth_header: str, request: registry_pb2.CreateImageRequest) -> registry_pb2.ContainerImage:
+        with self._open_channel() as channel:
+            response = self._stub_in(channel).CreateImage(request, metadata=(("authorization", auth_header),))
+        return response.image  # type: ignore[no-any-return]
 
-    def delete_image(self, auth_header: str, rid: str) -> None:
-        self._request(
-            "DELETE",
-            f"{self._uri}{self._BASE_PATH}/{rid}",
-            params={},
-            headers=self._json_headers(auth_header),
-        )
+    def get_image(self, auth_header: str, rid: str, *, workspace_rid: str) -> registry_pb2.ContainerImage:
+        from nominal_api_protos.nominal.registry.v1 import registry_pb2 as pb
+
+        with self._open_channel() as channel:
+            response = self._stub_in(channel).GetImage(
+                pb.GetImageRequest(rid=rid, workspace_rid=workspace_rid),
+                metadata=(("authorization", auth_header),),
+            )
+        return response.image  # type: ignore[no-any-return]
+
+    def delete_image(self, auth_header: str, rid: str, *, workspace_rid: str) -> None:
+        from nominal_api_protos.nominal.registry.v1 import registry_pb2 as pb
+
+        with self._open_channel() as channel:
+            self._stub_in(channel).DeleteImage(
+                pb.DeleteImageRequest(rid=rid, workspace_rid=workspace_rid),
+                metadata=(("authorization", auth_header),),
+            )
+
+    def search_images(
+        self, auth_header: str, request: registry_pb2.SearchImagesRequest
+    ) -> registry_pb2.SearchImagesResponse:
+        with self._open_channel() as channel:
+            response = self._stub_in(channel).SearchImages(request, metadata=(("authorization", auth_header),))
+        return response  # type: ignore[no-any-return]
 
 
 @dataclass(frozen=True)
@@ -377,7 +375,7 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=lenient_client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
-            registry=client_factory(RegistryService),
+            registry=RegistryService(api_base_url=base_url),
         )
 
 
