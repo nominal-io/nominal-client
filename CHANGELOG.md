@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.140.0](https://github.com/nominal-io/nominal-client/compare/v1.139.0...v1.140.0) (2026-05-07)
+
+
+### Features
+
+* add poll until ingestion completed for file uploads in migration ([#773](https://github.com/nominal-io/nominal-client/issues/773)) ([0a5d959](https://github.com/nominal-io/nominal-client/commit/0a5d959485e1305ab53fd31bbee9fbef12d35506))
+
 ## [1.139.0](https://github.com/nominal-io/nominal-client/compare/v1.138.0...v1.139.0) (2026-05-07)
 
 
