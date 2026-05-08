@@ -263,11 +263,14 @@ def _format_image_ref(extractor: ContainerizedExtractor) -> str:
 
     Self-hosted extractors carry their image as a `containerImageRid` and leave the
     `image` field as placeholder values (which would otherwise show as `/:latest`); for
-    those, surface the RID directly.
+    those, surface the RID directly. Legacy self-hosted rows that have neither a real
+    image nor a populated `containerImageRid` render as `-` instead of the placeholder.
     """
     if extractor.container_image_rid:
         return extractor.container_image_rid
     image = extractor.image
+    if not image.registry and not image.repository:
+        return "-"
     return f"{image.registry}/{image.repository}:{image.tag_details.default_tag}"
 
 
@@ -311,6 +314,8 @@ def _print_extractor_detail(extractor: ContainerizedExtractor) -> None:
     table.add_row("Description", escape(extractor.description or "-"))
     if extractor.container_image_rid:
         table.add_row("Container Image", escape(extractor.container_image_rid))
+    elif not image.registry and not image.repository:
+        table.add_row("Container Image", "-")
     else:
         table.add_row("Image", escape(f"{image.registry}/{image.repository}"))
         table.add_row("Tags", escape(", ".join(image.tag_details.tags) or "-"))
