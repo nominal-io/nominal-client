@@ -89,6 +89,41 @@ class FileExtractionInput:
             required=self.required,
         )
 
+@dataclass(frozen=True)
+class FileExtractionParameter:
+    """Configuration for a file extraction parameter in a containerized extractor.
+
+    Args:
+        name: Human-readable name for this parameter configuration.
+        description: Optional detailed description of what this parameter represents.
+        environment_variable: Environment variable name that will be set in the container
+            to specify the input file path.
+        file_suffixes: List of file extensions that this input accepts (e.g., ['.csv', '.txt']).
+        required: Whether this input is mandatory for the extractor to run. Defaults to False.
+    """
+
+    name: str
+    description: str | None
+    environment_variable: str
+    required: bool
+
+    @classmethod
+    def _from_conjure(cls, file_extraction_parameter: ingest_api.FileExtractionParameter) -> Self:
+        return cls(
+            name=file_extraction_parameter.name,
+            description=file_extraction_parameter.description,
+            environment_variable=file_extraction_parameter.environment_variable,
+            required=file_extraction_parameter.required if file_extraction_parameter.required is not None else False,
+        )
+
+    def _to_conjure(self) -> ingest_api.FileExtractionParameter:
+        return ingest_api.FileExtractionParameter(
+            environment_variable=self.environment_variable,
+            name=self.name,
+            description=self.description,
+            required=self.required,
+        )
+
 
 @dataclass(frozen=True)
 class TagDetails:
