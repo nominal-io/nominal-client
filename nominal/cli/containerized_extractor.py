@@ -8,9 +8,15 @@ from typing import Sequence
 import click
 from conjure_python_client import ConjureDecoder
 from nominal_api import ingest_api
+from rich.box import ASCII
+from rich.console import Console
+from rich.style import Style
+from rich.table import Column, Table
 
+from nominal.cli.util.format import render_labels, render_properties
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core.client import NominalClient, WorkspaceSearchType
+from nominal.core.containerized_extractors import ContainerizedExtractor
 
 
 @click.group(name="containerized-extractor")
@@ -91,7 +97,7 @@ def register(
 @global_options
 def get(rid: str, client: NominalClient) -> None:
     """Fetch a containerized extractor by its RID."""
-    click.echo(client.get_containerized_extractor(rid))
+    _print_extractor_detail(client.get_containerized_extractor(rid))
 
 
 @containerized_extractor_cmd.command("search")
@@ -135,8 +141,7 @@ def search(
         properties=dict(properties) or None,
         workspace=workspace,
     )
-    for extractor in extractors:
-        click.echo(extractor)
+    _print_extractor_table(extractors)
 
 
 @containerized_extractor_cmd.command("update")
@@ -195,7 +200,7 @@ def update(
         tags=list(tags) if tags else None,
         default_tag=default_tag,
     )
-    click.echo(extractor)
+    _print_extractor_detail(extractor)
 
 
 @containerized_extractor_cmd.command("archive")
@@ -216,3 +221,69 @@ def unarchive(rid: str, client: NominalClient) -> None:
     """Unarchive a containerized extractor."""
     client.get_containerized_extractor(rid).unarchive()
     click.echo(f"unarchived {rid}")
+
+
+def _format_image_ref(extractor: ContainerizedExtractor) -> str:
+    image = extractor.image
+    return f"{image.registry}/{image.repository}:{image.tag_details.default_tag}"
+
+
+def _print_extractor_table(extractors: Sequence[ContainerizedExtractor]) -> None:
+    console = Console()
+    if not extractors:
+        console.print("No containerized extractors matched.", style=Style(color="yellow"))
+        return
+    table = Table(
+        Column("RID", style=Style(italic=True, dim=True), ratio=3, overflow="fold"),
+        Column("Name", style=Style(color="white", bold=True), ratio=2, overflow="fold"),
+        Column("Image", style=Style(color="cyan"), ratio=4, overflow="fold"),
+        Column("Labels", style=Style(color="green"), ratio=3, overflow="fold"),
+        Column("Properties", style=Style(color="magenta"), ratio=4, overflow="fold"),
+        title=f"Containerized Extractors ({len(extractors)})",
+        expand=True,
+        box=ASCII,
+    )
+    for extractor in extractors:
+        table.add_row(
+            extractor.rid,
+            extractor.name,
+            _format_image_ref(extractor),
+            render_labels(extractor.labels),
+            render_properties(extractor.properties),
+        )
+    console.print(table)
+
+
+def _print_extractor_detail(extractor: ContainerizedExtractor) -> None:
+    console = Console()
+    image = extractor.image
+    table = Table(
+        Column("Field", style=Style(color="white", bold=True), ratio=1, overflow="fold"),
+        Column("Value", style=Style(color="cyan"), ratio=4, overflow="fold"),
+        title=f"{extractor.name} ({extractor.rid})",
+        expand=True,
+        box=ASCII,
+        show_header=False,
+    )
+    table.add_row("Description", extractor.description or "-")
+    table.add_row("Image", f"{image.registry}/{image.repository}")
+    table.add_row("Tags", ", ".join(image.tag_details.tags) or "-")
+    table.add_row("Default tag", image.tag_details.default_tag)
+    if image.command:
+        table.add_row("Command", image.command)
+    table.add_row("Labels", render_labels(extractor.labels))
+    table.add_row("Properties", render_properties(extractor.properties))
+    if extractor.inputs:
+        formatted_inputs = "\n".join(
+            f"- {inp.name} (env={inp.environment_variable}, "
+            f"suffixes=[{', '.join(inp.file_suffixes) or 'any'}], "
+            f"{'required' if inp.required else 'optional'})"
+            for inp in extractor.inputs
+        )
+        table.add_row("Inputs", formatted_inputs)
+    else:
+        table.add_row("Inputs", "-")
+    if extractor.default_timestamp_metadata is not None:
+        ts_meta = extractor.default_timestamp_metadata
+        table.add_row("Timestamp", f"{ts_meta.series_name} ({ts_meta.timestamp_type})")
+    console.print(table)
