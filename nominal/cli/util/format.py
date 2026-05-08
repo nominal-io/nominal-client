@@ -1,6 +1,43 @@
 from __future__ import annotations
 
-from typing import Mapping, Optional, Sequence
+import json
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, TypeVar
+
+import click
+
+T = TypeVar("T")
+
+
+def emit_jsonl(records: Iterable[Mapping[str, Any]]) -> None:
+    """Emit one compact JSON object per line on stdout, suitable for piping into `jq` etc."""
+    for record in records:
+        click.echo(json.dumps(record, separators=(",", ":")))
+
+
+def emit_records(
+    records: Sequence[T],
+    output_format: str,
+    *,
+    to_dict: Callable[[T], Mapping[str, Any]],
+    render_table: Callable[[Sequence[T]], None],
+    render_detail: Optional[Callable[[T], None]] = None,
+) -> None:
+    """Render a sequence of records in the chosen output format.
+
+    Pairs with the `output_fmt_options` decorator: pass the `output_format` kwarg through.
+
+    For `json` format, encodes each record via `to_dict` and emits JSONL.
+    For `table` format (the default), calls `render_detail` when there is exactly one record and a
+    detail renderer was supplied; otherwise calls `render_table` with all records (including the
+    empty case so the renderer can show its own "no results" message).
+    """
+    if output_format == "json":
+        emit_jsonl(to_dict(record) for record in records)
+        return
+    if len(records) == 1 and render_detail is not None:
+        render_detail(records[0])
+    else:
+        render_table(records)
 
 
 def render_properties(props: Optional[Mapping[str, str]]) -> str:

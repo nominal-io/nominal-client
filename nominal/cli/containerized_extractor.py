@@ -14,7 +14,7 @@ from rich.markup import escape
 from rich.style import Style
 from rich.table import Column, Table
 
-from nominal.cli.util.format import render_labels, render_properties
+from nominal.cli.util.format import emit_records, render_labels, render_properties
 from nominal.cli.util.global_decorators import client_options, global_options, output_fmt_options
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.containerized_extractors import ContainerizedExtractor
@@ -231,14 +231,13 @@ def unarchive(rid: str, client: NominalClient) -> None:
 
 
 def _emit_extractors(extractors: Sequence[ContainerizedExtractor], output_format: str) -> None:
-    if output_format == "jsonl":
-        for extractor in extractors:
-            click.echo(json.dumps(_extractor_to_wire_dict(extractor), separators=(",", ":")))
-        return
-    if len(extractors) == 1:
-        _print_extractor_detail(extractors[0])
-    else:
-        _print_extractor_table(extractors)
+    emit_records(
+        extractors,
+        output_format,
+        to_dict=_extractor_to_wire_dict,
+        render_table=_print_extractor_table,
+        render_detail=_print_extractor_detail,
+    )
 
 
 def _extractor_to_wire_dict(extractor: ContainerizedExtractor) -> dict[str, object]:
