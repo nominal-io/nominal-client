@@ -10,6 +10,7 @@ from conjure_python_client import ConjureDecoder, ConjureEncoder
 from nominal_api import ingest_api
 from rich.box import ASCII
 from rich.console import Console
+from rich.markup import escape
 from rich.style import Style
 from rich.table import Column, Table
 
@@ -282,11 +283,11 @@ def _print_extractor_table(extractors: Sequence[ContainerizedExtractor]) -> None
     )
     for extractor in extractors:
         table.add_row(
-            extractor.rid,
-            extractor.name,
-            _format_image_ref(extractor),
-            render_labels(extractor.labels),
-            render_properties(extractor.properties),
+            escape(extractor.rid),
+            escape(extractor.name),
+            escape(_format_image_ref(extractor)),
+            escape(render_labels(extractor.labels)),
+            escape(render_properties(extractor.properties)),
         )
     console.print(table)
 
@@ -297,19 +298,19 @@ def _print_extractor_detail(extractor: ContainerizedExtractor) -> None:
     table = Table(
         Column("Field", style=Style(color="white", bold=True), ratio=1, overflow="fold"),
         Column("Value", style=Style(color="cyan"), ratio=4, overflow="fold"),
-        title=f"{extractor.name} ({extractor.rid})",
+        title=f"{escape(extractor.name)} ({escape(extractor.rid)})",
         expand=True,
         box=ASCII,
         show_header=False,
     )
-    table.add_row("Description", extractor.description or "-")
-    table.add_row("Image", f"{image.registry}/{image.repository}")
-    table.add_row("Tags", ", ".join(image.tag_details.tags) or "-")
-    table.add_row("Default tag", image.tag_details.default_tag)
+    table.add_row("Description", escape(extractor.description or "-"))
+    table.add_row("Image", escape(f"{image.registry}/{image.repository}"))
+    table.add_row("Tags", escape(", ".join(image.tag_details.tags) or "-"))
+    table.add_row("Default tag", escape(image.tag_details.default_tag))
     if image.command:
-        table.add_row("Command", image.command)
-    table.add_row("Labels", render_labels(extractor.labels))
-    table.add_row("Properties", render_properties(extractor.properties))
+        table.add_row("Command", escape(image.command))
+    table.add_row("Labels", escape(render_labels(extractor.labels)))
+    table.add_row("Properties", escape(render_properties(extractor.properties)))
     if extractor.inputs:
         formatted_inputs = "\n".join(
             f"- {inp.name} (env={inp.environment_variable}, "
@@ -317,10 +318,10 @@ def _print_extractor_detail(extractor: ContainerizedExtractor) -> None:
             f"{'required' if inp.required else 'optional'})"
             for inp in extractor.inputs
         )
-        table.add_row("Inputs", formatted_inputs)
+        table.add_row("Inputs", escape(formatted_inputs))
     else:
         table.add_row("Inputs", "-")
     if extractor.default_timestamp_metadata is not None:
         ts_meta = extractor.default_timestamp_metadata
-        table.add_row("Timestamp", f"{ts_meta.series_name} ({ts_meta.timestamp_type})")
+        table.add_row("Timestamp", escape(f"{ts_meta.series_name} ({ts_meta.timestamp_type})"))
     console.print(table)
