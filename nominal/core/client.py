@@ -75,6 +75,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.container_image import ContainerImage, upload_container_image
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
@@ -1413,6 +1414,33 @@ class NominalClient:
         return ContainerizedExtractor._from_conjure(
             self._clients,
             self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
+        )
+
+    def upload_container_image(
+        self,
+        *,
+        name: str,
+        tag: str,
+        file: Path,
+        workspace_rid: str | None = None,
+    ) -> ContainerImage:
+        """Upload a docker image tarball to Nominal's self-hosted container registry.
+
+        The returned `ContainerImage.rid` can be passed as the `containerImageRid` field of a
+        RegisterContainerizedExtractorRequest.
+
+        Args:
+            name: Image name (e.g. the package name).
+            tag: Image tag, typically a git short SHA.
+            file: Path to an uncompressed `docker save`/OCI tarball.
+            workspace_rid: Workspace to upload into. Defaults to the client's default workspace.
+        """
+        return upload_container_image(
+            self._clients,
+            name=name,
+            tag=tag,
+            file=file,
+            workspace_rid=workspace_rid,
         )
 
     def create_containerized_extractor(
