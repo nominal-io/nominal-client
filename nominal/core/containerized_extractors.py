@@ -98,7 +98,7 @@ class FileExtractionParameter:
         name: Human-readable name for this parameter configuration.
         description: Optional detailed description of what this parameter represents.
         environment_variable: Environment variable name in the container which will be set to the parameter value.
-        required: Whether this input is mandatory for the extractor to run. Defaults to False.
+        required: Whether this parameter is mandatory for the extractor to run.
     """
 
     name: str
@@ -236,6 +236,7 @@ class ContainerizedExtractor(HasRid):
     description: str | None
     image: DockerImageSource
     inputs: Sequence[FileExtractionInput]
+    parameters: Sequence[FileExtractionParameter]
     properties: Mapping[str, str]
     labels: Sequence[str]
     default_timestamp_metadata: TimestampMetadata | None
@@ -263,6 +264,8 @@ class ContainerizedExtractor(HasRid):
         *,
         name: str | None = None,
         description: str | None = None,
+        inputs: Sequence[FileExtractionInput] | None = None,
+        parameters: Sequence[FileExtractionParameter] | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
         timestamp_metadata: TimestampMetadata | None = None,
@@ -275,6 +278,8 @@ class ContainerizedExtractor(HasRid):
         request = ingest_api.UpdateContainerizedExtractorRequest(
             name=name,
             description=description,
+            inputs=None if inputs is None else [i._to_conjure() for i in inputs],
+            parameters=None if parameters is None else [p._to_conjure() for p in parameters],
             properties=None if properties is None else {**properties},
             labels=None if labels is None else list(labels),
             timestamp_metadata=None if timestamp_metadata is None else timestamp_metadata._to_conjure(),
@@ -311,6 +316,7 @@ class ContainerizedExtractor(HasRid):
             description=raw_extractor.description,
             image=DockerImageSource._from_conjure(raw_extractor.image),
             inputs=[FileExtractionInput._from_conjure(raw_input) for raw_input in raw_extractor.inputs],
+            parameters=[FileExtractionParameter._from_conjure(raw_param) for raw_param in raw_extractor.parameters],
             properties=raw_extractor.properties,
             labels=raw_extractor.labels,
             default_timestamp_metadata=timestamp_metadata,

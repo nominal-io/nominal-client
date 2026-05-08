@@ -1416,15 +1416,15 @@ class NominalClient:
         self,
         name: str,
         *,
+        description: str | None = None,
         docker_image: DockerImageSource,
-        timestamp_column: str,
-        timestamp_type: ts._AnyTimestampType,
         inputs: Sequence[FileExtractionInput] = (),
         parameters: Sequence[FileExtractionParameter] = (),
-        file_output_format: FileOutputFormat | None = None,
-        labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
-        description: str | None = None,
+        labels: Sequence[str] = (),
+        timestamp_column: str,
+        timestamp_type: ts._AnyTimestampType,
+        file_output_format: FileOutputFormat | None = None,
     ) -> ContainerizedExtractor:
         workspace_rid = self._clients.resolve_default_workspace_rid()
 
