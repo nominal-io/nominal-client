@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence, cast
 
+from conjure_python_client._serde.decoder import ConjureDecoder
+from conjure_python_client._serde.encoder import ConjureEncoder
 from nominal_api import api as nominal_api
 from nominal_api import scout_notebook_api, scout_workbookcommon_api
 
 from nominal.core import NominalClient
 from nominal.core._clientsbunch import ClientsBunch
-from nominal.core.asset import Asset
-from nominal.core.run import Run
 from nominal.core.workbook import Workbook
 from nominal.experimental.id_utils.id_utils import UUID_RE
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
@@ -26,8 +27,8 @@ ATTACHMENT_RID_PATTERN = re.compile(rf"ri\.attachments\.[^.]+\.attachment\.{UUID
 
 @dataclass(frozen=True)
 class WorkbookCopyOptions(ResourceCopyOptions):
-    destination_asset: Asset | None = None
-    destination_run: Run | None = None
+    source_to_destination_asset_rid_mapping: Mapping[str, str] = field(default_factory=dict)
+    source_to_destination_run_rid_mapping: Mapping[str, str] = field(default_factory=dict)
     new_labels: Sequence[str] | None = None
     new_properties: Mapping[str, str] | None = None
 
@@ -38,6 +39,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         return ResourceType.WORKBOOK
 
     def clone(self, source: Workbook) -> Workbook:
+        """Not supported — workbooks must be copied with an explicit RID mapping via copy_from."""
         raise NotImplementedError("Workbook clone is unsupported; use copy_from with destination asset/run.")
 
     def default_copy_options(self) -> WorkbookCopyOptions | None:
@@ -51,24 +53,31 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         if existing_workbook is not None:
             return existing_workbook
 
-        if (options.destination_asset is None) == (options.destination_run is None):
-            raise ValueError("Exactly one of destination_asset or destination_run must be provided.")
-
         source_clients = cast(ClientsBunch, source._clients)
         raw_notebook = source_clients.notebook.get(source_clients.auth_header, source.rid)
 
-        asset_rid_map = dict(self.ctx.migration_state.rid_mapping.get(ResourceType.ASSET.value, {}))
+        source_run_rids = raw_notebook.metadata.data_scope.run_rids or []
+        source_asset_rids = raw_notebook.metadata.data_scope.asset_rids or []
+        rid_overrides: dict[str, str] = {
+            **options.source_to_destination_asset_rid_mapping,
+            **options.source_to_destination_run_rid_mapping,
+        }
 
-        if options.destination_run is not None:
-            dest_run_rid = options.destination_run.rid
-            source_run_rids = raw_notebook.metadata.data_scope.run_rids or []
-            rid_overrides = {**asset_rid_map, **{r: dest_run_rid for r in source_run_rids}}
-            data_scope = scout_notebook_api.NotebookDataScope(run_rids=[dest_run_rid], asset_rids=None)
+        if source_run_rids:
+            missing = [r for r in source_run_rids if r not in options.source_to_destination_run_rid_mapping]
+            if missing:
+                raise ValueError(f"Run RIDs not provided for workbook {source.rid}: {missing}")
+            data_scope = scout_notebook_api.NotebookDataScope(
+                run_rids=[options.source_to_destination_run_rid_mapping[r] for r in source_run_rids], asset_rids=None
+            )
         else:
-            dest_asset_rid = options.destination_asset.rid  # type: ignore[union-attr]
-            source_asset_rids = raw_notebook.metadata.data_scope.asset_rids or []
-            rid_overrides = {**asset_rid_map, **{r: dest_asset_rid for r in source_asset_rids}}
-            data_scope = scout_notebook_api.NotebookDataScope(run_rids=None, asset_rids=[dest_asset_rid])
+            missing = [r for r in source_asset_rids if r not in options.source_to_destination_asset_rid_mapping]
+            if missing:
+                raise ValueError(f"Asset RIDs not provided for workbook {source.rid}: {missing}")
+            data_scope = scout_notebook_api.NotebookDataScope(
+                run_rids=None,
+                asset_rids=[options.source_to_destination_asset_rid_mapping[r] for r in source_asset_rids],
+            )
 
         return self._copy_workbook(
             source,
@@ -88,9 +97,12 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         labels: Sequence[str] | None = None,
         properties: Mapping[str, str] | None = None,
     ) -> Workbook:
+        """Create a new workbook in the destination by find/replacing RIDs in the source content.
+
+        Handles RID substitution, content attachment migration, preview image migration,
+        and metadata (labels/properties) propagation.
+        """
         content_v2 = raw_notebook.content_v2
-        if content_v2 is not None and not isinstance(content_v2, scout_workbookcommon_api.UnifiedWorkbookContent):
-            raise ValueError(f"Unexpected content_v2 type for workbook {source.rid}")
         content = (content_v2.workbook if content_v2 is not None else None) or raw_notebook.content
         if content is None:
             raise ValueError(f"Missing content for workbook {source.rid}")
@@ -98,6 +110,7 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         new_layout, new_content = clone_conjure_objects_with_rid_overrides(
             (raw_notebook.layout, content), rid_overrides=rid_overrides
         )
+        new_content = self._migrate_content_attachments(source, new_content)
 
         destination_client = self.destination_client_for(source)
         dest_clients = destination_client._clients
@@ -125,6 +138,38 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
 
         self._migrate_preview_image(source, new_workbook)
         return new_workbook
+
+    def _migrate_content_attachments(
+        self,
+        source: Workbook,
+        content: scout_workbookcommon_api.WorkbookContent,
+    ) -> scout_workbookcommon_api.WorkbookContent:
+        """Migrate attachment RIDs embedded in workbook content (e.g. images in markdown panels).
+
+        Attachment RIDs appear inside markdown strings, so they cannot be handled by the structured
+        RID find/replace in clone_conjure_objects_with_rid_overrides — a regex pass is needed.
+        """
+        content_json = json.dumps(ConjureEncoder.do_encode(content))
+        attachment_rids = set(ATTACHMENT_RID_PATTERN.findall(content_json))
+        if not attachment_rids:
+            return content
+
+        source_clients = cast(ClientsBunch, source._clients)
+        attachment_migrator = AttachmentMigrator(self.ctx)
+        rid_map: dict[str, str] = {}
+        for old_rid in attachment_rids:
+            new_attachment = attachment_migrator.migrate_by_rid(source_clients, old_rid)
+            rid_map[old_rid] = new_attachment.rid
+            logger.debug("Migrated content attachment %s -> %s", old_rid, new_attachment.rid)
+
+        def _replace_rid(match: re.Match[str]) -> str:
+            return rid_map.get(match.group(0), match.group(0))
+
+        content_json = ATTACHMENT_RID_PATTERN.sub(_replace_rid, content_json)
+        result: scout_workbookcommon_api.WorkbookContent = ConjureDecoder().do_decode(
+            json.loads(content_json), scout_workbookcommon_api.WorkbookContent
+        )
+        return result
 
     def _migrate_preview_image(self, source: Workbook, dest: Workbook) -> None:
         """Migrate preview image attachment RIDs from source to destination workbook.
@@ -174,74 +219,6 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
 
         logger.info("Migrated preview image for workbook %s", dest.title)
 
-    def copy_multi_asset_workbook(self, source: Workbook, source_asset_rids: list[str]) -> Workbook | None:
-        """Copy a multi-asset workbook by find/replacing asset RIDs in the serialized content.
-
-        All source_asset_rids must already be present in the migration state before calling this.
-        Returns None if any asset RID is missing from the migration state (already logged as a skip).
-        """
-        existing = self.get_existing_destination_resource(source)
-        if existing is not None:
-            return existing
-
-        rid_map: dict[str, str] = {}
-        for old_rid in source_asset_rids:
-            new_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.ASSET, old_rid)
-            if new_rid is None:
-                reason = f"asset {old_rid} not found in migration state"
-                logger.warning("Skipping multi-asset workbook %s: %s", source.rid, reason)
-                self.ctx.migration_state.record_skip(ResourceType.WORKBOOK, source.rid, reason)
-                self.ctx.migration_state.clear_pending_multi_asset_workbook(source.rid)
-                return None
-            rid_map[old_rid] = new_rid
-
-        source_clients = cast(ClientsBunch, source._clients)
-        raw_notebook = source_clients.notebook.get(source_clients.auth_header, source.rid)
-        data_scope = scout_notebook_api.NotebookDataScope(
-            asset_rids=[rid_map[r] for r in source_asset_rids], run_rids=None
-        )
-        new_workbook = self._copy_workbook(source, raw_notebook, rid_map, data_scope)
-
-        self.ctx.migration_state.clear_pending_multi_asset_workbook(source.rid)
-        logger.info("Migrated multi-asset workbook %s -> %s", source.rid, new_workbook.rid)
-        return new_workbook
-
-    def copy_multi_run_workbook(self, source: Workbook, source_run_rids: list[str]) -> Workbook | None:
-        """Copy a multi-run workbook by find/replacing run RIDs in the serialized content.
-
-        All source_run_rids must already be present in the migration state before calling this.
-        Returns None if any run RID is missing from the migration state (already logged as a skip).
-        """
-        existing = self.get_existing_destination_resource(source)
-        if existing is not None:
-            return existing
-
-        rid_map: dict[str, str] = {}
-        for old_rid in source_run_rids:
-            new_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, old_rid)
-            if new_rid is None:
-                reason = f"run {old_rid} not found in migration state"
-                logger.warning("Skipping multi-run workbook %s: %s", source.rid, reason)
-                self.ctx.migration_state.record_skip(ResourceType.WORKBOOK, source.rid, reason)
-                self.ctx.migration_state.clear_pending_multi_run_workbook(source.rid)
-                return None
-            rid_map[old_rid] = new_rid
-
-        # Also remap any asset RIDs embedded in the content (channels resolve against both
-        # run RIDs and asset RIDs, so both must be substituted).
-        asset_rid_map = dict(self.ctx.migration_state.rid_mapping.get(ResourceType.ASSET.value, {}))
-
-        source_clients = cast(ClientsBunch, source._clients)
-        raw_notebook = source_clients.notebook.get(source_clients.auth_header, source.rid)
-        data_scope = scout_notebook_api.NotebookDataScope(
-            asset_rids=None, run_rids=[rid_map[r] for r in source_run_rids]
-        )
-        new_workbook = self._copy_workbook(source, raw_notebook, {**asset_rid_map, **rid_map}, data_scope)
-
-        self.ctx.migration_state.clear_pending_multi_run_workbook(source.rid)
-        logger.info("Migrated multi-run workbook %s -> %s", source.rid, new_workbook.rid)
-        return new_workbook
-
     def migrate_deferred_workbooks(self, source_clients_by_asset_rid: dict[str, ClientsBunch]) -> None:
         """Migrate all pending multi-asset and multi-run workbooks recorded in the migration state.
 
@@ -250,6 +227,9 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         """
         pending_multi_asset = dict(self.ctx.migration_state.pending_multi_asset_workbooks)
         pending_multi_run = dict(self.ctx.migration_state.pending_multi_run_workbooks)
+
+        asset_rid_map = dict(self.ctx.migration_state.rid_mapping.get(ResourceType.ASSET.value, {}))
+        run_rid_map = dict(self.ctx.migration_state.rid_mapping.get(ResourceType.RUN.value, {}))
 
         if pending_multi_asset:
             logger.info("Migrating %d deferred multi-asset workbook(s)", len(pending_multi_asset))
@@ -261,18 +241,30 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
                     continue
                 raw_notebook = source_clients.notebook.get(source_clients.auth_header, workbook_rid)
                 source_workbook = Workbook._from_conjure(source_clients, raw_notebook)
-                self.copy_multi_asset_workbook(source_workbook, source_asset_rids)
+                self.copy_from(
+                    source_workbook, WorkbookCopyOptions(source_to_destination_asset_rid_mapping=asset_rid_map)
+                )
+                self.ctx.migration_state.clear_pending_multi_asset_workbook(workbook_rid)
+                logger.info("Migrated multi-asset workbook %s", workbook_rid)
 
         if pending_multi_run:
             logger.info("Migrating %d deferred multi-run workbook(s)", len(pending_multi_run))
-            for workbook_rid, source_run_rids in pending_multi_run.items():
+            for workbook_rid in pending_multi_run:
                 source_clients = next(iter(source_clients_by_asset_rid.values()), None)
                 if source_clients is None:
                     logger.warning("No source assets available to fetch multi-run workbook %s — skipping", workbook_rid)
                     continue
                 raw_notebook = source_clients.notebook.get(source_clients.auth_header, workbook_rid)
                 source_workbook = Workbook._from_conjure(source_clients, raw_notebook)
-                self.copy_multi_run_workbook(source_workbook, source_run_rids)
+                self.copy_from(
+                    source_workbook,
+                    WorkbookCopyOptions(
+                        source_to_destination_asset_rid_mapping=asset_rid_map,
+                        source_to_destination_run_rid_mapping=run_rid_map,
+                    ),
+                )
+                self.ctx.migration_state.clear_pending_multi_run_workbook(workbook_rid)
+                logger.info("Migrated multi-run workbook %s", workbook_rid)
 
     def _resolve_source_clients(
         self,

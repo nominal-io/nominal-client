@@ -112,93 +112,161 @@ class TestMigrationStatePendingAndSkips:
 
 
 # ---------------------------------------------------------------------------
-# WorkbookMigrator.copy_multi_asset_workbook
+# WorkbookMigrator._copy_from_impl (via copy_from)
 # ---------------------------------------------------------------------------
 
 
-class TestCopyMultiAssetWorkbook:
+class TestCopyFromImpl:
     def _make_migrator(self, **ctx_kwargs: Any) -> tuple[WorkbookMigrator, MigrationContext]:
         ctx = _make_context(**ctx_kwargs)
         return WorkbookMigrator(ctx), ctx
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.clone_conjure_objects_with_rid_overrides")
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
-    def test_happy_path_remaps_rids_records_state_and_copies_metadata(
-        self, mock_from_conjure: MagicMock, mock_clone: MagicMock
+    @patch.object(WorkbookMigrator, "_migrate_content_attachments")
+    def test_asset_workbook_looks_up_rids_from_state(
+        self, mock_migrate_attachments: MagicMock, mock_from_conjure: MagicMock, mock_clone: MagicMock
     ) -> None:
-        """All assets present: RID map is built correctly, clone called with overrides,
-        notebook created with remapped data_scope, mapping recorded, pending cleared,
-        labels/properties copied from source.
+        """Multi-asset workbook: all mapped RIDs are read from migration state, clone called with
+        full asset map as overrides, data_scope contains the new asset RIDs.
         """
+        mock_migrate_attachments.side_effect = lambda source, content: content
         old_a1, old_a2 = _asset_rid(1), _asset_rid(2)
         new_a1, new_a2 = _asset_rid(101), _asset_rid(102)
-        wb_src = _wb_rid(1)
-        wb_dst = _wb_rid(100)
+        wb_src, wb_dst = _wb_rid(1), _wb_rid(100)
 
         migrator, ctx = self._make_migrator()
         ctx.migration_state.record_mapping(ResourceType.ASSET, old_a1, new_a1)
         ctx.migration_state.record_mapping(ResourceType.ASSET, old_a2, new_a2)
-        ctx.migration_state.record_pending_multi_asset_workbook(wb_src, [old_a1, old_a2])
 
         source = _stub_source_workbook(wb_src, asset_rids=[old_a1, old_a2])
         raw_nb = _stub_raw_notebook(labels=["lbl"], properties={"k": "v"})
+        raw_nb.metadata.data_scope.asset_rids = [old_a1, old_a2]
+        raw_nb.metadata.data_scope.run_rids = []
         source._clients.notebook.get.return_value = raw_nb
 
-        new_layout, new_content = MagicMock(), MagicMock()
-        mock_clone.return_value = (new_layout, new_content)
         new_wb = MagicMock()
         new_wb.rid = wb_dst
+        mock_clone.return_value = (MagicMock(), MagicMock())
         mock_from_conjure.return_value = new_wb
 
-        result = migrator.copy_multi_asset_workbook(source, [old_a1, old_a2])
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
 
-        # clone called with the correct RID overrides
-        mock_clone.assert_called_once()
+        result = migrator.copy_from(
+            source, WorkbookCopyOptions(source_to_destination_asset_rid_mapping={old_a1: new_a1, old_a2: new_a2})
+        )
+
         _, kwargs = mock_clone.call_args
         assert kwargs["rid_overrides"] == {old_a1: new_a1, old_a2: new_a2}
 
-        # notebook created with new asset RIDs in data_scope
         create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]  # type: ignore[attr-defined]
         assert set(create_req.data_scope.asset_rids) == {new_a1, new_a2}
         assert create_req.data_scope.run_rids is None
 
-        # state: mapping recorded, pending cleared
         assert ctx.migration_state.get_mapped_rid(ResourceType.WORKBOOK, wb_src) == wb_dst
-        assert wb_src not in ctx.migration_state.pending_multi_asset_workbooks
-
-        # metadata copied
         new_wb.update.assert_called_once_with(labels=["lbl"], properties={"k": "v"})
         assert result is new_wb
 
-    def test_missing_assets_returns_none_and_records_skip(self) -> None:
-        """When one or more asset RIDs are absent from the migration state, returns None,
-        records a skip entry, clears the pending entry, and creates no notebook.
-        """
-        old_a1, old_a2 = _asset_rid(1), _asset_rid(2)
-        new_a1 = _asset_rid(101)
-        wb_src = _wb_rid(1)
-        # old_a2 intentionally not mapped
-
-        migrator, ctx = self._make_migrator()
-        ctx.migration_state.record_mapping(ResourceType.ASSET, old_a1, new_a1)
-        ctx.migration_state.record_pending_multi_asset_workbook(wb_src, [old_a1, old_a2])
-
-        source = _stub_source_workbook(wb_src, asset_rids=[old_a1, old_a2])
-        source._clients.notebook.get.return_value = _stub_raw_notebook()
-
-        result = migrator.copy_multi_asset_workbook(source, [old_a1, old_a2])
-
-        assert result is None
-        assert len(ctx.migration_state.skipped_resources) == 1
-        assert old_a2 in ctx.migration_state.skipped_resources[0].reason
-        assert wb_src not in ctx.migration_state.pending_multi_asset_workbooks
-        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
-
     @patch("nominal.experimental.migration.migrator.workbook_migrator.clone_conjure_objects_with_rid_overrides")
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
-    def test_idempotent_returns_existing_workbook_without_creating(
-        self, mock_from_conjure: MagicMock, mock_clone: MagicMock
+    @patch.object(WorkbookMigrator, "_migrate_content_attachments")
+    def test_run_workbook_looks_up_rids_from_state(
+        self, mock_migrate_attachments: MagicMock, mock_from_conjure: MagicMock, mock_clone: MagicMock
     ) -> None:
+        """Multi-run workbook: run RIDs looked up from state, asset map also included in overrides,
+        data_scope contains the new run RIDs.
+        """
+        mock_migrate_attachments.side_effect = lambda source, content: content
+        old_r1, old_r2 = _run_rid(1), _run_rid(2)
+        new_r1, new_r2 = _run_rid(101), _run_rid(102)
+        old_a1, new_a1 = _asset_rid(1), _asset_rid(101)
+        wb_src, wb_dst = _wb_rid(1), _wb_rid(100)
+
+        migrator, ctx = self._make_migrator()
+        ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, new_r1)
+        ctx.migration_state.record_mapping(ResourceType.RUN, old_r2, new_r2)
+        ctx.migration_state.record_mapping(ResourceType.ASSET, old_a1, new_a1)
+
+        source = _stub_source_workbook(wb_src, run_rids=[old_r1, old_r2])
+        raw_nb = _stub_raw_notebook()
+        raw_nb.metadata.data_scope.run_rids = [old_r1, old_r2]
+        raw_nb.metadata.data_scope.asset_rids = []
+        source._clients.notebook.get.return_value = raw_nb
+
+        new_wb = MagicMock()
+        new_wb.rid = wb_dst
+        mock_clone.return_value = (MagicMock(), MagicMock())
+        mock_from_conjure.return_value = new_wb
+
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
+
+        result = migrator.copy_from(
+            source,
+            WorkbookCopyOptions(
+                source_to_destination_run_rid_mapping={old_r1: new_r1, old_r2: new_r2},
+                source_to_destination_asset_rid_mapping={old_a1: new_a1},
+            ),
+        )
+
+        _, kwargs = mock_clone.call_args
+        assert kwargs["rid_overrides"] == {old_r1: new_r1, old_r2: new_r2, old_a1: new_a1}
+
+        create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]  # type: ignore[attr-defined]
+        assert set(create_req.data_scope.run_rids) == {new_r1, new_r2}
+        assert create_req.data_scope.asset_rids is None
+
+        assert ctx.migration_state.get_mapped_rid(ResourceType.WORKBOOK, wb_src) == wb_dst
+        assert result is new_wb
+
+    def test_missing_asset_rid_raises(self) -> None:
+        """If a source asset RID is absent from migration state, ValueError is raised."""
+        old_a1, old_a2 = _asset_rid(1), _asset_rid(2)
+        wb_src = _wb_rid(1)
+
+        migrator, ctx = self._make_migrator()
+        ctx.migration_state.record_mapping(ResourceType.ASSET, old_a1, _asset_rid(101))
+        # old_a2 intentionally not mapped
+
+        source = _stub_source_workbook(wb_src, asset_rids=[old_a1, old_a2])
+        raw_nb = _stub_raw_notebook()
+        raw_nb.metadata.data_scope.asset_rids = [old_a1, old_a2]
+        raw_nb.metadata.data_scope.run_rids = []
+        source._clients.notebook.get.return_value = raw_nb
+
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
+
+        with pytest.raises(ValueError, match=old_a2):
+            migrator.copy_from(
+                source, WorkbookCopyOptions(source_to_destination_asset_rid_mapping={old_a1: _asset_rid(101)})
+            )
+
+        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_missing_run_rid_raises(self) -> None:
+        """If a source run RID is absent from migration state, ValueError is raised."""
+        old_r1, old_r2 = _run_rid(1), _run_rid(2)
+        wb_src = _wb_rid(1)
+
+        migrator, ctx = self._make_migrator()
+        ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, _run_rid(101))
+        # old_r2 intentionally not mapped
+
+        source = _stub_source_workbook(wb_src, run_rids=[old_r1, old_r2])
+        raw_nb = _stub_raw_notebook()
+        raw_nb.metadata.data_scope.run_rids = [old_r1, old_r2]
+        raw_nb.metadata.data_scope.asset_rids = []
+        source._clients.notebook.get.return_value = raw_nb
+
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
+
+        with pytest.raises(ValueError, match=old_r2):
+            migrator.copy_from(
+                source, WorkbookCopyOptions(source_to_destination_run_rid_mapping={old_r1: _run_rid(101)})
+            )
+
+        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_idempotent_returns_existing_workbook_without_creating(self) -> None:
         """If the workbook is already in the migration state, the existing destination workbook
         is returned and no new notebook is created.
         """
@@ -211,82 +279,14 @@ class TestCopyMultiAssetWorkbook:
         existing_wb.rid = wb_dst
         ctx.destination_client.get_workbook.return_value = existing_wb  # type: ignore[attr-defined]
 
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
+
         source = _stub_source_workbook(wb_src, asset_rids=[_asset_rid(1)])
-        result = migrator.copy_multi_asset_workbook(source, [_asset_rid(1)])
+        result = migrator.copy_from(
+            source, WorkbookCopyOptions(source_to_destination_asset_rid_mapping={_asset_rid(1): _asset_rid(101)})
+        )
 
         assert result is existing_wb
-        mock_clone.assert_not_called()
-        ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
-
-
-# ---------------------------------------------------------------------------
-# WorkbookMigrator.copy_multi_run_workbook
-# ---------------------------------------------------------------------------
-
-
-class TestCopyMultiRunWorkbook:
-    def _make_migrator(self) -> tuple[WorkbookMigrator, MigrationContext]:
-        ctx = _make_context()
-        return WorkbookMigrator(ctx), ctx
-
-    @patch("nominal.experimental.migration.migrator.workbook_migrator.clone_conjure_objects_with_rid_overrides")
-    @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
-    def test_happy_path_remaps_run_rids(self, mock_from_conjure: MagicMock, mock_clone: MagicMock) -> None:
-        """All runs present: RID map built, data_scope has new run RIDs, mapping recorded, pending cleared."""
-        old_r1, old_r2 = _run_rid(1), _run_rid(2)
-        new_r1, new_r2 = _run_rid(101), _run_rid(102)
-        wb_src, wb_dst = _wb_rid(1), _wb_rid(100)
-
-        migrator, ctx = self._make_migrator()
-        ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, new_r1)
-        ctx.migration_state.record_mapping(ResourceType.RUN, old_r2, new_r2)
-        ctx.migration_state.record_pending_multi_run_workbook(wb_src, [old_r1, old_r2])
-
-        source = _stub_source_workbook(wb_src, run_rids=[old_r1, old_r2])
-        source._clients.notebook.get.return_value = _stub_raw_notebook()
-        mock_clone.return_value = (MagicMock(), MagicMock())
-        new_wb = MagicMock()
-        new_wb.rid = wb_dst
-        mock_from_conjure.return_value = new_wb
-
-        # Also record a migrated asset to verify it's included in rid_overrides
-        old_a1 = _asset_rid(1)
-        new_a1 = _asset_rid(101)
-        ctx.migration_state.record_mapping(ResourceType.ASSET, old_a1, new_a1)
-
-        result = migrator.copy_multi_run_workbook(source, [old_r1, old_r2])
-
-        _, kwargs = mock_clone.call_args
-        assert kwargs["rid_overrides"] == {old_r1: new_r1, old_r2: new_r2, old_a1: new_a1}
-
-        create_req = ctx.destination_client._clients.notebook.create.call_args[0][1]  # type: ignore[attr-defined]
-        assert set(create_req.data_scope.run_rids) == {new_r1, new_r2}
-        assert create_req.data_scope.asset_rids is None
-
-        assert ctx.migration_state.get_mapped_rid(ResourceType.WORKBOOK, wb_src) == wb_dst
-        assert wb_src not in ctx.migration_state.pending_multi_run_workbooks
-        assert result is new_wb
-
-    def test_missing_run_returns_none_and_records_skip(self) -> None:
-        """A run RID absent from the migration state causes the workbook to be skipped,
-        clears the pending entry, and creates no notebook.
-        """
-        old_r1, old_r2 = _run_rid(1), _run_rid(2)
-        wb_src = _wb_rid(1)
-        migrator, ctx = self._make_migrator()
-        ctx.migration_state.record_mapping(ResourceType.RUN, old_r1, _run_rid(101))
-        ctx.migration_state.record_pending_multi_run_workbook(wb_src, [old_r1, old_r2])
-        # old_r2 not mapped
-
-        source = _stub_source_workbook(wb_src, run_rids=[old_r1, old_r2])
-        source._clients.notebook.get.return_value = _stub_raw_notebook()
-
-        result = migrator.copy_multi_run_workbook(source, [old_r1, old_r2])
-
-        assert result is None
-        assert len(ctx.migration_state.skipped_resources) == 1
-        assert old_r2 in ctx.migration_state.skipped_resources[0].reason
-        assert wb_src not in ctx.migration_state.pending_multi_run_workbooks
         ctx.destination_client._clients.notebook.create.assert_not_called()  # type: ignore[attr-defined]
 
 
@@ -305,19 +305,18 @@ class TestMigrateDeferredWorkbooks:
         migrator.migrate_deferred_workbooks(source_clients)
         # Nothing to assert beyond no exceptions raised
 
-    @patch.object(WorkbookMigrator, "copy_multi_run_workbook")
-    @patch.object(WorkbookMigrator, "copy_multi_asset_workbook")
+    @patch.object(WorkbookMigrator, "copy_from")
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
     def test_routes_pending_asset_and_run_workbooks(
         self,
         mock_from_conjure: MagicMock,
-        mock_copy_asset: MagicMock,
-        mock_copy_run: MagicMock,
+        mock_copy_from: MagicMock,
     ) -> None:
-        """Pending asset and run workbooks are fetched from source clients and routed to the
-        correct copy method. The correct source_asset_rids / source_run_rids are forwarded.
-        Multi-run workbook falls back to first available client when no asset RID matches.
+        """Pending asset and run workbooks are fetched from source clients and copy_from is called
+        for each. Multi-run workbook falls back to first available client when no asset RID matches.
         """
+        from nominal.experimental.migration.migrator.workbook_migrator import WorkbookCopyOptions
+
         asset_rid_1 = _asset_rid(1)
         wb_asset = _wb_rid(1)
         wb_run = _wb_rid(2)
@@ -345,9 +344,13 @@ class TestMigrateDeferredWorkbooks:
         source_clients.notebook.get.assert_any_call(source_clients.auth_header, wb_asset)
         source_clients.notebook.get.assert_any_call(source_clients.auth_header, wb_run)
 
-        # Each routed to the correct copy method with the right RID lists
-        mock_copy_asset.assert_called_once_with(source_wb_asset, [asset_rid_1])
-        mock_copy_run.assert_called_once_with(source_wb_run, run_rids)
+        # copy_from called for each with explicit RID mappings built from migration state
+        assert mock_copy_from.call_count == 2
+        mock_copy_from.assert_any_call(source_wb_asset, WorkbookCopyOptions(source_to_destination_asset_rid_mapping={}))
+        mock_copy_from.assert_any_call(
+            source_wb_run,
+            WorkbookCopyOptions(source_to_destination_asset_rid_mapping={}, source_to_destination_run_rid_mapping={}),
+        )
 
     @patch("nominal.experimental.migration.migrator.workbook_migrator.Workbook._from_conjure")
     def test_missing_source_client_for_asset_workbook_skips_gracefully(self, mock_from_conjure: MagicMock) -> None:
