@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Mapping, Sequence
 
+from conjure_python_client import ConjureDecoder, ConjureEncoder
 from nominal_api import api, scout_spatial_api
 
 from nominal.core._types import PathLike
@@ -91,5 +92,26 @@ def upload_point_cloud(
         marking_rids=[],
     )
 
-    response = clients.spatial.import_file(clients.auth_header, request)
-    return response.spatial_rid
+    # spatialType is required by the server but not yet in the SDK's ImportFileRequest
+    request_json = ConjureEncoder.do_encode(request)
+    request_json["spatialType"] = scout_spatial_api.SpatialType.POINT_CLOUD.value
+
+    response = clients.spatial._request(
+        "POST",
+        clients.spatial._uri + "/spatial/v1/spatials/import-file",
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": clients.auth_header,
+        },
+        params={},
+        json=request_json,
+    )
+
+    decoder = ConjureDecoder()
+    import_response = decoder.decode(
+        response.json(),
+        scout_spatial_api.ImportFileResponse,
+        clients.spatial._return_none_for_unknown_union_types,
+    )
+    return import_response.spatial_rid
