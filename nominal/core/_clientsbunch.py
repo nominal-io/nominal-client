@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from typing import Any, Mapping, Protocol, Sequence, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -34,6 +34,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
+from nominal.core._api_types import _ApiContainerImage
 from nominal.core._utils.networking import (
     HeaderProvider,
     create_conjure_client_factory,
@@ -117,6 +118,71 @@ class ProtoWriteService(Service):
         self._request("POST", self._uri + _path, params={}, headers=_headers, data=request)
 
 
+class RegistryService(Service):
+    """HTTP client for nominal.registry.v1.RegistryService via the gRPC-gateway JSON transcoder.
+
+    Inherits conjure_python_client.Service to pick up the shared truststore configuration used
+    against on-prem / self-hosted backends, even though this is not a conjure-modeled service.
+    """
+
+    _BASE_PATH = "/registry/v1/images"
+
+    def _json_headers(self, auth_header: str) -> dict[str, str]:
+        return {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": auth_header,
+        }
+
+    def create_image(self, auth_header: str, request: Mapping[str, Any]) -> _ApiContainerImage:
+        response = self._request(
+            "POST",
+            self._uri + self._BASE_PATH,
+            params={},
+            headers=self._json_headers(auth_header),
+            json=request,
+        )
+        body: dict[str, Any] = response.json()
+        image = body.get("image")
+        if not isinstance(image, Mapping):
+            raise ValueError(f"unexpected CreateImageResponse from registry: {body!r}")
+        return _ApiContainerImage._parse(image)
+
+    def list_images(self, auth_header: str, *, workspace_rid: str | None = None) -> Sequence[_ApiContainerImage]:
+        params: dict[str, str] = {}
+        if workspace_rid is not None:
+            params["workspaceRid"] = workspace_rid
+        response = self._request(
+            "GET",
+            self._uri + self._BASE_PATH,
+            params=params,
+            headers=self._json_headers(auth_header),
+        )
+        body: dict[str, Any] = response.json()
+        return _ApiContainerImage._parse_list(body)
+
+    def get_image(self, auth_header: str, rid: str) -> _ApiContainerImage:
+        response = self._request(
+            "GET",
+            f"{self._uri}{self._BASE_PATH}/{rid}",
+            params={},
+            headers=self._json_headers(auth_header),
+        )
+        body: dict[str, Any] = response.json()
+        image = body.get("image", body)
+        if not isinstance(image, Mapping):
+            raise ValueError(f"unexpected GetImageResponse from registry: {body!r}")
+        return _ApiContainerImage._parse(image)
+
+    def delete_image(self, auth_header: str, rid: str) -> None:
+        self._request(
+            "DELETE",
+            f"{self._uri}{self._BASE_PATH}/{rid}",
+            params={},
+            headers=self._json_headers(auth_header),
+        )
+
+
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
@@ -164,6 +230,7 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
+    registry: RegistryService
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
         """Fetch the workspace object this client should treat as its default.
@@ -297,6 +364,7 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
+            registry=client_factory(RegistryService),
         )
 
 

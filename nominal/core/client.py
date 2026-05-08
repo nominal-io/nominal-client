@@ -75,7 +75,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
-from nominal.core.container_image import ContainerImage, upload_container_image
+from nominal.core.container_image import ContainerImage
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
@@ -1416,32 +1416,65 @@ class NominalClient:
             self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
         )
 
-    def upload_container_image(
+    def upload_container_image_from_io(
         self,
-        *,
+        path: BinaryIO,
         name: str,
         tag: str,
-        file: Path,
-        workspace_rid: str | None = None,
     ) -> ContainerImage:
-        """Upload a docker image tarball to Nominal's self-hosted container registry.
+        """Upload a container image tarball to Nominal's self-hosted registry.
 
-        The returned `ContainerImage.rid` can be passed as the `containerImageRid` field of a
-        RegisterContainerizedExtractorRequest.
+        The tarball must be a file-like object in binary mode (e.g. `open(path, "rb")` or
+        `io.BytesIO`). The returned `ContainerImage.rid` can be passed as the
+        `containerImageRid` field of a RegisterContainerizedExtractorRequest.
+        """
+        if isinstance(path, TextIOBase):
+            raise TypeError(f"tarball {path!r} must be open in binary mode, rather than text mode")
+
+        workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:
+            raise ValueError("client profile must specify workspace_rid to upload a container image")
+
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            workspace_rid,
+            path,
+            f"{name}-{tag}",
+            FileTypes.TAR,
+            self._clients.upload,
+        )
+        request = {
+            "workspaceRid": workspace_rid,
+            "name": name,
+            "tag": tag,
+            "objectPath": s3_path,
+        }
+        api_image = self._clients.registry.create_image(self._clients.auth_header, request)
+        return ContainerImage._from_grpc(self._clients, api_image)
+
+    def list_container_images(self, *, workspace_rid: str | None = None) -> Sequence[ContainerImage]:
+        """List container images visible to this client.
 
         Args:
-            name: Image name (e.g. the package name).
-            tag: Image tag, typically a git short SHA.
-            file: Path to an uncompressed `docker save`/OCI tarball.
-            workspace_rid: Workspace to upload into. Defaults to the client's default workspace.
+            workspace_rid: Filter to images in this workspace. Defaults to the client's
+                configured workspace; pass an explicit RID to override or `None` to list
+                across the tenant when the server permits.
         """
-        return upload_container_image(
-            self._clients,
-            name=name,
-            tag=tag,
-            file=file,
-            workspace_rid=workspace_rid,
+        effective_workspace = workspace_rid if workspace_rid is not None else self._clients.workspace_rid
+        api_images = self._clients.registry.list_images(
+            self._clients.auth_header,
+            workspace_rid=effective_workspace,
         )
+        return [ContainerImage._from_grpc(self._clients, image) for image in api_images]
+
+    def get_container_image(self, rid: str) -> ContainerImage:
+        """Fetch a container image by its RID."""
+        api_image = self._clients.registry.get_image(self._clients.auth_header, rid)
+        return ContainerImage._from_grpc(self._clients, api_image)
+
+    def delete_container_image(self, rid: str) -> None:
+        """Delete a container image by its RID."""
+        self._clients.registry.delete_image(self._clients.auth_header, rid)
 
     def create_containerized_extractor(
         self,

@@ -1,102 +1,89 @@
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Protocol
 
-import requests
 from typing_extensions import Self
 
-from nominal.core._clientsbunch import ClientsBunch
+from nominal.core._api_types import _ApiContainerImage
+from nominal.core._clientsbunch import HasScoutParams, RegistryService
 from nominal.core._utils.api_tools import HasRid
-from nominal.core._utils.multipart import put_multipart_upload
+from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
-logger = logging.getLogger(__name__)
 
-_TAR_MIMETYPE = "application/x-tar"
-_REGISTRY_IMAGES_PATH = "/registry/v1/images"
+class ContainerImageStatus(Enum):
+    """Lifecycle state of a container image in Nominal's registry."""
+
+    UNSPECIFIED = "CONTAINER_IMAGE_STATUS_UNSPECIFIED"
+    """Status is unset or unrecognized. Treat as an unknown state."""
+
+    PENDING = "CONTAINER_IMAGE_STATUS_PENDING"
+    """Tarball uploaded but is not ready for use yet."""
+
+    READY = "CONTAINER_IMAGE_STATUS_READY"
+    """Image is available in the registry and can be pulled."""
+
+    FAILED = "CONTAINER_IMAGE_STATUS_FAILED"
+    """Registry push failed. The image will not become available."""
+
+    @classmethod
+    def _from_grpc(cls, api_status: str) -> ContainerImageStatus:
+        try:
+            return cls(api_status)
+        except ValueError:
+            return cls.UNSPECIFIED
 
 
 @dataclass(frozen=True)
 class ContainerImage(HasRid):
-    """A docker image uploaded to Nominal's self-hosted container registry.
+    """A container image tarball stored in Nominal's registry.
 
-    Container images are referenced by `containerImageRid` in containerized extractor registration
-    requests, as an alternative to pulling from an external docker registry.
+    Create one via `NominalClient.upload_container_image_from_io`. The registry push is
+    asynchronous: a freshly uploaded image may be returned in `PENDING` state and transition
+    to `READY` (or `FAILED`) once the server finishes pushing the tarball to the internal
+    OCI registry.
     """
 
     rid: str
+    """Nominal resource identifier for this image."""
+
     name: str
+    """Image name within the workspace (e.g. `my-extractor`)."""
+
     tag: str
+    """Image tag (e.g. `v1.2.3`). Unique per `(workspace, name)`."""
+
+    status: ContainerImageStatus
+    """Current lifecycle state of the image."""
+
+    created_at: IntegralNanosecondsUTC
+    """Creation timestamp, in nanoseconds since the Unix epoch."""
+
+    size_bytes: int | None
+    """Size of the uploaded tarball in bytes, or `None` until the server populates it."""
+
+    _clients: _Clients = field(repr=False)
+
+    class _Clients(HasScoutParams, Protocol):
+        @property
+        def registry(self) -> RegistryService: ...
+
+    def delete(self) -> None:
+        """Delete this container image from Nominal's registry.
+
+        Note: extractors that reference this image's RID will fail to pull on subsequent ingests.
+        """
+        self._clients.registry.delete_image(self._clients.auth_header, self.rid)
 
     @classmethod
-    def _from_response(cls, body: dict[str, Any]) -> Self:
-        return cls(rid=body["rid"], name=body["name"], tag=body["tag"])
-
-
-def upload_container_image(
-    clients: ClientsBunch,
-    *,
-    name: str,
-    tag: str,
-    file: Path,
-    workspace_rid: str | None = None,
-) -> ContainerImage:
-    """Upload a docker image tarball to Nominal's self-hosted container registry.
-
-    The tarball must be the uncompressed output of `docker save` (or an equivalent OCI tar). The
-    image is keyed by (workspace, name, tag); re-uploading the same tag replaces it.
-
-    Args:
-        clients: Authenticated client bundle.
-        name: Image name (e.g. the package name).
-        tag: Image tag, typically a git short SHA.
-        file: Path to the uncompressed tarball.
-        workspace_rid: Workspace to upload into. Defaults to the client's default workspace.
-
-    Returns:
-        The newly created ContainerImage.
-    """
-    resolved_workspace = workspace_rid or clients.resolve_default_workspace_rid()
-
-    # Use a unique-per-tag filename so the multipart object key cannot collide across tags.
-    upload_filename = f"{name}-{tag}.tar"
-    with file.open("rb") as f:
-        object_path = put_multipart_upload(
-            auth_header=clients.auth_header,
-            workspace_rid=resolved_workspace,
-            f=f,
-            filename=upload_filename,
-            mimetype=_TAR_MIMETYPE,
-            upload_client=clients.upload,
-            header_provider=clients.header_provider,
+    def _from_grpc(cls, clients: _Clients, image: _ApiContainerImage) -> Self:
+        return cls(
+            rid=image.rid,
+            name=image.name,
+            tag=image.tag,
+            status=ContainerImageStatus._from_grpc(image.status),
+            created_at=_SecondsNanos.from_flexible(image.created_at).to_nanoseconds(),
+            size_bytes=image.size_bytes,
+            _clients=clients,
         )
-    logger.info("uploaded container image tarball to %s", object_path)
-
-    # The conjure service for the image registry (POST /registry/v1/images) is not yet generated
-    # into nominal_api; fall back to raw HTTP. Replace with a typed conjure call once available.
-    response = requests.post(
-        f"{clients._api_base_url.rstrip('/')}{_REGISTRY_IMAGES_PATH}",
-        headers={
-            "Authorization": clients.auth_header,
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": clients._user_agent,
-        },
-        json={
-            "workspaceRid": resolved_workspace,
-            "name": name,
-            "tag": tag,
-            "objectPath": object_path,
-        },
-    )
-    if not response.ok:
-        raise RuntimeError(
-            f"failed to register container image: {response.status_code} {response.reason}: {response.text}"
-        )
-    body = response.json()
-    image_body = body.get("image")
-    if not isinstance(image_body, dict):
-        raise RuntimeError(f"unexpected create-image response: {body!r}")
-    return ContainerImage._from_response(image_body)
