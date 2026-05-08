@@ -86,10 +86,7 @@ def register(
         payload["workspace"] = client._clients.resolve_default_workspace_rid()
 
     request = ConjureDecoder().decode(payload, ingest_api.RegisterContainerizedExtractorRequest)
-    resp = client._clients.containerized_extractors.register_containerized_extractor(
-        client._clients.auth_header, request
-    )
-    click.echo(resp.extractor_rid)
+    click.echo(client.register_containerized_extractor(request))
 
 
 @containerized_extractor_cmd.command("get")
@@ -216,7 +213,7 @@ def update(
 @global_options
 def archive(rid: str, client: NominalClient) -> None:
     """Archive a containerized extractor."""
-    client.get_containerized_extractor(rid).archive()
+    client.archive_containerized_extractor(rid)
     click.echo(f"archived {rid}")
 
 
@@ -226,7 +223,7 @@ def archive(rid: str, client: NominalClient) -> None:
 @global_options
 def unarchive(rid: str, client: NominalClient) -> None:
     """Unarchive a containerized extractor."""
-    client.get_containerized_extractor(rid).unarchive()
+    client.unarchive_containerized_extractor(rid)
     click.echo(f"unarchived {rid}")
 
 

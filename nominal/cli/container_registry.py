@@ -7,6 +7,7 @@ from typing import Any, Mapping, Sequence
 import click
 from rich.box import ASCII
 from rich.console import Console
+from rich.filesize import decimal as format_filesize
 from rich.markup import escape
 from rich.style import Style
 from rich.table import Column, Table
@@ -14,7 +15,7 @@ from rich.table import Column, Table
 from nominal.cli.util.format import emit_records
 from nominal.cli.util.global_decorators import client_options, global_options, output_fmt_options
 from nominal.core.client import NominalClient
-from nominal.core.container_image import ContainerImage
+from nominal.core.container_image import ContainerImage, ContainerImageStatus
 
 
 @click.group(name="container-registry")
@@ -50,42 +51,82 @@ def upload(name: str, tag: str, file_path: Path, client: NominalClient) -> None:
 
 @container_registry_cmd.command("get")
 @click.option("-r", "--rid", required=True)
-@output_fmt_options
-@client_options
-@global_options
-def get(rid: str, output_format: str, client: NominalClient) -> None:
-    """Fetch a container image by its RID."""
-    image = client.get_container_image(rid)
-    _emit_images([image], output_format)
-
-
-@container_registry_cmd.command("list")
 @click.option(
     "--workspace",
     "workspace_rid",
-    help="Workspace RID to filter to. Defaults to the active profile's workspace.",
+    help="Workspace owning the image. Defaults to the active profile's workspace.",
 )
 @output_fmt_options
 @client_options
 @global_options
-def list_images(workspace_rid: str | None, output_format: str, client: NominalClient) -> None:
-    """List container images in the registry."""
-    images = client.list_container_images(workspace_rid=workspace_rid)
+def get(rid: str, workspace_rid: str | None, output_format: str, client: NominalClient) -> None:
+    """Fetch a container image by its RID."""
+    image = client.get_container_image(rid, workspace_rid=workspace_rid)
+    _emit_images([image], output_format)
+
+
+_STATUS_CHOICES = tuple(s.name.lower() for s in ContainerImageStatus if s != ContainerImageStatus.UNSPECIFIED)
+
+
+@container_registry_cmd.command("search")
+@click.option("-n", "--name", help="Filter by exact image name.")
+@click.option("-t", "--tag", help="Filter by exact image tag.")
+@click.option(
+    "--status",
+    type=click.Choice(_STATUS_CHOICES, case_sensitive=False),
+    help="Filter by lifecycle status.",
+)
+@click.option(
+    "--workspace",
+    "workspace_rid",
+    help="Workspace to search. Defaults to the active profile's workspace.",
+)
+@click.option(
+    "--page-size",
+    type=click.IntRange(1, 1000),
+    help="Server page size; results are concatenated across pages.",
+)
+@output_fmt_options
+@client_options
+@global_options
+def search(
+    name: str | None,
+    tag: str | None,
+    status: str | None,
+    workspace_rid: str | None,
+    page_size: int | None,
+    output_format: str,
+    client: NominalClient,
+) -> None:
+    """Search for container images. Filters are ANDed together."""
+    status_enum = ContainerImageStatus[status.upper()] if status is not None else None
+    images = client.search_container_images(
+        name=name,
+        tag=tag,
+        status=status_enum,
+        workspace_rid=workspace_rid,
+        page_size=page_size,
+    )
     _emit_images(images, output_format)
 
 
 @container_registry_cmd.command("delete")
 @click.option("-r", "--rid", required=True)
+@click.option(
+    "--workspace",
+    "workspace_rid",
+    help="Workspace owning the image. Defaults to the active profile's workspace.",
+)
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
 @client_options
 @global_options
-def delete(rid: str, yes: bool, client: NominalClient) -> None:
+def delete(rid: str, workspace_rid: str | None, yes: bool, client: NominalClient) -> None:
     """Delete a container image. Extractors that reference this image's RID will fail on
     subsequent ingests.
     """
     if not yes:
         click.confirm(f"Delete container image {rid}?", abort=True)
-    client.delete_container_image(rid)
+    client.delete_container_image(rid, workspace_rid=workspace_rid)
     click.echo(f"deleted {rid}")
 
 
@@ -138,6 +179,10 @@ def _print_image_table(images: Sequence[ContainerImage]) -> None:
     console.print(table)
 
 
+def _format_size(size_bytes: int | None) -> str:
+    return "-" if size_bytes is None else format_filesize(size_bytes)
+
+
 def _print_image_detail(image: ContainerImage) -> None:
     console = Console()
     table = Table(
@@ -158,15 +203,3 @@ def _print_image_detail(image: ContainerImage) -> None:
 
 def _ns_to_iso(nanoseconds: int) -> str:
     return datetime.fromtimestamp(nanoseconds / 1_000_000_000, tz=timezone.utc).isoformat()
-
-
-def _format_size(size_bytes: int | None) -> str:
-    if size_bytes is None:
-        return "-"
-    units = ("B", "KiB", "MiB", "GiB", "TiB")
-    value = float(size_bytes)
-    for unit in units:
-        if value < 1024 or unit == units[-1]:
-            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} {unit}"
-        value /= 1024
-    return f"{size_bytes} B"
