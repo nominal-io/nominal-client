@@ -104,7 +104,7 @@ def output_fmt_options(func: typing.Callable[Param, T]) -> typing.Callable[..., 
     """Decorator to add a `--format` option to commands that emit a record (or list of records)
     and want a machine-readable alternative to their default human-readable rendering.
 
-    Adds `--format` with choices `table` (default, human-readable) and `jsonl` (one JSON object
+    Adds `--format` with choices `table` (default, human-readable) and `json` (one JSON object
     per line, suitable for piping into `jq` or chaining into other commands). Each command
     decides how each format renders the records it returns.
 
@@ -114,11 +114,11 @@ def output_fmt_options(func: typing.Callable[Param, T]) -> typing.Callable[..., 
     format_option = click.option(
         "--format",
         "output_format",
-        type=click.Choice(["table", "jsonl"]),
+        type=click.Choice(["table", "json"]),
         default="table",
         show_default=True,
         help=(
-            "Output format. `table` is the human-readable rich rendering; `jsonl` emits one "
+            "Output format. `table` is the human-readable rich rendering; `json` emits one "
             "JSON object per line in conjure wire format, suitable for piping or scripting."
         ),
     )
