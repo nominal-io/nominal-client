@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, TypeVar
+from typing import Any, Callable, Iterable, Mapping, Sequence, TypeVar
 
 import click
 
@@ -20,7 +20,7 @@ def emit_records(
     *,
     to_dict: Callable[[T], Mapping[str, Any]],
     render_table: Callable[[Sequence[T]], None],
-    render_detail: Optional[Callable[[T], None]] = None,
+    render_detail: Callable[[T], None] | None = None,
 ) -> None:
     """Render a sequence of records in the chosen output format.
 
@@ -40,7 +40,7 @@ def emit_records(
         render_table(records)
 
 
-def render_properties(props: Optional[Mapping[str, str]]) -> str:
+def render_properties(props: Mapping[str, str] | None) -> str:
     if not props:
         return "-"
     items = [f"'{k}'='{v}'" for k, v in list(props.items())[:6]]
@@ -48,7 +48,7 @@ def render_properties(props: Optional[Mapping[str, str]]) -> str:
     return ", ".join(items) + suffix
 
 
-def render_labels(labels: Optional[Sequence[str]]) -> str:
+def render_labels(labels: Sequence[str] | None) -> str:
     if not labels:
         return "-"
     items = [f"'{label}'" for label in labels[:6]]
