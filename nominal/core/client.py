@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, overload
+from typing import BinaryIO, Iterable, List, Mapping, Sequence, cast, overload
 
 import certifi
 import conjure_python_client
@@ -79,6 +79,7 @@ from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
     FileExtractionInput,
+    FileExtractionParameter,
     FileOutputFormat,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
@@ -995,20 +996,25 @@ class NominalClient:
         """Upload a container image tarball to Nominal's self-hosted registry.
 
         The tarball must be a file-like object in binary mode, e.g. open(path, "rb") or io.BytesIO.
+        The client's configured `workspace_rid` is used.
         """
         if isinstance(path, TextIOBase):
             raise TypeError(f"tarball {path!r} must be open in binary mode, rather than text mode")
 
+        workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:
+            raise ValueError("client profile must specify workspace_rid to upload a container image")
+
         s3_path = upload_multipart_io(
             self._clients.auth_header,
-            self._clients.workspace_rid,
+            workspace_rid,
             path,
             f"{name}-{tag}",
             FileTypes.TAR,
             self._clients.upload,
         )
         request = {
-            "workspaceRid": self._clients.workspace_rid,
+            "workspaceRid": workspace_rid,
             "name": name,
             "tag": tag,
             "objectPath": s3_path,
@@ -1418,6 +1424,7 @@ class NominalClient:
             self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
         )
 
+    @overload
     def create_containerized_extractor(
         self,
         name: str,
@@ -1426,30 +1433,91 @@ class NominalClient:
         timestamp_column: str,
         timestamp_type: ts._AnyTimestampType,
         inputs: Sequence[FileExtractionInput] = (),
+        parameters: Sequence[FileExtractionParameter] = (),
         file_output_format: FileOutputFormat | None = None,
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         description: str | None = None,
+    ) -> ContainerizedExtractor: ...
+    @overload
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        container_image_rid: str,
+        timestamp_column: str,
+        timestamp_type: ts._AnyTimestampType,
+        inputs: Sequence[FileExtractionInput] = (),
+        parameters: Sequence[FileExtractionParameter] = (),
+        file_output_format: FileOutputFormat | None = None,
+        labels: Sequence[str] = (),
+        properties: Mapping[str, str] | None = None,
+        description: str | None = None,
+    ) -> ContainerizedExtractor: ...
+    def create_containerized_extractor(
+        self,
+        name: str,
+        **kwargs: object,
     ) -> ContainerizedExtractor:
-        workspace_rid = self._clients.resolve_default_workspace_rid()
+        description = cast(str | None, kwargs.pop("description", None))
+
+        docker_image = cast(DockerImageSource | None, kwargs.pop("docker_image", None))
+        container_image_rid = cast(str | None, kwargs.pop("container_image_rid", None))
+        if docker_image is None and container_image_rid is None:
+            raise TypeError("missing required keyword-only argument: 'docker_image' or 'container_image_rid'")
+        if docker_image is not None and container_image_rid is not None:
+            raise TypeError("got mutually exclusive keyword arguments: 'docker_image' and 'container_image_rid'")
+        image = docker_image._to_conjure() if docker_image is not None else None
+
+        file_extraction_inputs = cast(Sequence[FileExtractionInput], kwargs.pop("inputs", ()))
+        inputs=[file_extraction_input._to_conjure() for file_extraction_input in file_extraction_inputs]
+
+        file_extraction_parameters = cast(Sequence[FileExtractionParameter], kwargs.pop("parameters", ()))
+        parameters=[file_extraction_parameter._to_conjure() for file_extraction_parameter in file_extraction_parameters]
+
+        properties = dict(cast(Mapping[str, str] | None, kwargs.pop("properties", None)) or {})
+
+        labels: List[str] = list(cast(Sequence[str] | None, kwargs.pop("labels", None)) or [])
+
+        workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:
+            raise ValueError("client profile must specify workspace_rid to create a containerized extractor")
+
+        timestamp_column = cast(str, self._pop_required_kwarg(kwargs, "timestamp_column"))
+        timestamp_type = cast(ts._AnyTimestampType, self._pop_required_kwarg(kwargs, "timestamp_type"))
+
+        file_output_format = cast(FileOutputFormat | None, kwargs.pop("file_output_format", None))
+        output_file_format = file_output_format._to_conjure() if file_output_format is not None else None
+
+        if kwargs:
+            unexpected_arg = next(iter(kwargs))
+            raise TypeError(f"got an unexpected keyword argument {unexpected_arg!r}")
 
         req = ingest_api.RegisterContainerizedExtractorRequest(
-            image=docker_image._to_conjure(),
-            inputs=[file_input._to_conjure() for file_input in inputs],
-            labels=list(labels),
             name=name,
-            parameters=[],
-            properties={} if properties is None else {**properties},
+            description=description,
+            image=image,
+            container_image_rid=container_image_rid,
+            inputs=inputs,
+            parameters=parameters,
+            properties=properties,
+            labels=labels,
+            workspace=workspace_rid,
             timestamp_metadata=ingest_api.TimestampMetadata(
                 series_name=timestamp_column,
                 timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             ),
-            workspace=workspace_rid,
-            description=description,
-            output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
+            output_file_format=output_file_format,
         )
         resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
         return self.get_containerized_extractor(resp.extractor_rid)
+
+    @staticmethod
+    def _pop_required_kwarg(kwargs: dict[str, object], name: str) -> object:
+        try:
+            return kwargs.pop(name)
+        except KeyError:
+            raise TypeError(f"missing required keyword-only argument: {name!r}") from None
 
     def search_containerized_extractors(
         self,

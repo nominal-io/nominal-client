@@ -26,7 +26,10 @@ def container_registry_cmd() -> None:
 @client_options
 @global_options
 def upload(name: str, tag: str, file: Path, client: NominalClient) -> None:
-    """Upload a container image tarball to Nominal's registry."""
+    """Upload a container image tarball to Nominal's registry.
+
+    Prints the resulting container image RID on stdout for shell-script capture.
+    """
     with open(file, "rb") as f:
         image = client.upload_container_image_from_io(f, name, tag)
-    click.echo(image)
+    click.echo(image.rid)

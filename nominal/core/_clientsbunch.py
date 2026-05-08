@@ -115,7 +115,11 @@ class ProtoWriteService(Service):
 
 
 class RegistryService(Service):
-    """HTTP client for nominal.registry.v1.RegistryService via the gRPC-gateway JSON transcoder."""
+    """HTTP client for nominal.registry.v1.RegistryService via the gRPC-gateway JSON transcoder.
+
+    Inherits conjure_python_client.Service to pick up the shared truststore configuration used
+    against on-prem / self-hosted backends, even though this is not a conjure-modeled service.
+    """
 
     def create_image(self, auth_header: str, request: Mapping[str, Any]) -> _ApiContainerImage:
         _headers = {
