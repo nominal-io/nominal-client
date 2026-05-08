@@ -14,7 +14,7 @@ from rich.style import Style
 from rich.table import Column, Table
 
 from nominal.cli.util.format import render_labels, render_properties
-from nominal.cli.util.global_decorators import client_options, global_options
+from nominal.cli.util.global_decorators import client_options, global_options, output_fmt_options
 from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.containerized_extractors import ContainerizedExtractor
 
@@ -22,16 +22,6 @@ from nominal.core.containerized_extractors import ContainerizedExtractor
 @click.group(name="containerized-extractor")
 def containerized_extractor_cmd() -> None:
     pass
-
-
-_OUTPUT_FORMAT_OPTION = click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["table", "jsonl"]),
-    default="table",
-    show_default=True,
-    help="Output format: human-readable rich table, or one JSON object per line in conjure wire format.",
-)
 
 
 @containerized_extractor_cmd.command("register")
@@ -103,7 +93,7 @@ def register(
 
 @containerized_extractor_cmd.command("get")
 @click.option("-r", "--rid", required=True)
-@_OUTPUT_FORMAT_OPTION
+@output_fmt_options
 @client_options
 @global_options
 def get(rid: str, output_format: str, client: NominalClient) -> None:
@@ -130,7 +120,7 @@ def get(rid: str, output_format: str, client: NominalClient) -> None:
         "access. Pass `default` to use the active profile's default workspace."
     ),
 )
-@_OUTPUT_FORMAT_OPTION
+@output_fmt_options
 @client_options
 @global_options
 def search(
@@ -186,7 +176,7 @@ def search(
     help="Replace the docker image tag list (repeat for multiple).",
 )
 @click.option("--default-tag", help="Default docker image tag to use when running the extractor.")
-@_OUTPUT_FORMAT_OPTION
+@output_fmt_options
 @client_options
 @global_options
 def update(
