@@ -326,6 +326,19 @@ class ClientsBunch:
                 header_provider=header_provider,
             )(service_class)
 
+        def lenient_client_factory(service_class: type[TService]) -> TService:
+            """Like `client_factory` but decodes unknown union variants to None instead of
+            raising, so callers stay forward-compatible when the server adds a union variant
+            ahead of the locally-installed nominal-api version (at the cost of a silent loss
+            for the unrecognized field).
+            """
+            return create_conjure_client_factory(
+                user_agent=agent,
+                service_config=cfg,
+                return_none_for_unknown_union_types=True,
+                header_provider=header_provider,
+            )(service_class)
+
         return cls(
             auth_header=f"Bearer {token}",
             workspace_rid=workspace_rid,
@@ -362,7 +375,7 @@ class ClientsBunch:
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
-            containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
+            containerized_extractors=lenient_client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
             registry=client_factory(RegistryService),
         )
