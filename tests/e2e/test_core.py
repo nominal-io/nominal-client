@@ -210,12 +210,15 @@ def test_get_dataset_pandas(ingested_dataset: Dataset, csv_data):
 
     df = datasource_to_dataframe(ingested_dataset)
     df_sorted = df.reindex(expected_data.columns, axis=1)
-    pd.testing.assert_frame_equal(df_sorted, expected_data)
+    # check_dtype=False because the presigned-URL export emits integer-valued channels as
+    # ints in CSV (e.g. `relative_minutes`), which pandas infers as int64; the values are
+    # equal but the dtype isn't part of the contract.
+    pd.testing.assert_frame_equal(df_sorted, expected_data, check_dtype=False)
 
     # channel_exact_match filters to channels whose names contain ALL listed substrings;
     # "relative" AND "minutes" matches only "relative_minutes"
     df2 = datasource_to_dataframe(ingested_dataset, channel_exact_match=["relative", "minutes"])
-    pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]])
+    pd.testing.assert_frame_equal(df2, expected_data[["relative_minutes"]], check_dtype=False)
 
 
 def test_get_or_create_dataset_creates_and_returns_idempotently(client: NominalClient, archive: Callable[..., None]):
