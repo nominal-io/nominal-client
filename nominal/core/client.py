@@ -79,6 +79,7 @@ from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
     FileExtractionInput,
+    FileExtractionParameter,
     FileOutputFormat,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
@@ -1415,30 +1416,31 @@ class NominalClient:
         self,
         name: str,
         *,
+        description: str | None = None,
         docker_image: DockerImageSource,
+        inputs: Sequence[FileExtractionInput] = (),
+        parameters: Sequence[FileExtractionParameter] = (),
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
         timestamp_column: str,
         timestamp_type: ts._AnyTimestampType,
-        inputs: Sequence[FileExtractionInput] = (),
         file_output_format: FileOutputFormat | None = None,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        description: str | None = None,
     ) -> ContainerizedExtractor:
         workspace_rid = self._clients.resolve_default_workspace_rid()
 
         req = ingest_api.RegisterContainerizedExtractorRequest(
-            image=docker_image._to_conjure(),
-            inputs=[file_input._to_conjure() for file_input in inputs],
-            labels=list(labels),
             name=name,
-            parameters=[],
-            properties={} if properties is None else {**properties},
+            description=description,
+            image=docker_image._to_conjure(),
+            inputs=[file_extraction_input._to_conjure() for file_extraction_input in inputs],
+            parameters=[file_extraction_parameter._to_conjure() for file_extraction_parameter in parameters],
+            properties=dict(properties or {}),
+            labels=list(labels),
+            workspace=workspace_rid,
             timestamp_metadata=ingest_api.TimestampMetadata(
                 series_name=timestamp_column,
                 timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             ),
-            workspace=workspace_rid,
-            description=description,
             output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
         )
         resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)
