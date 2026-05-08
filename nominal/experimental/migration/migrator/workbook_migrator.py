@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Mapping, Sequence, cast
+from typing import Any, Mapping, Sequence, cast
 
 from nominal_api import api as nominal_api
 from nominal_api import scout_notebook_api, scout_workbookcommon_api
@@ -13,14 +13,9 @@ from nominal.core._clientsbunch import ClientsBunch
 from nominal.core.asset import Asset
 from nominal.core.run import Run
 from nominal.core.workbook import Workbook
-from nominal.core.workbook_template import WorkbookTemplate
 from nominal.experimental.id_utils.id_utils import UUID_RE
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
 from nominal.experimental.migration.migrator.base import Migrator, ResourceCopyOptions
-from nominal.experimental.migration.migrator.workbook_template_migrator import (
-    WorkbookTemplateCopyOptions,
-    WorkbookTemplateMigrator,
-)
 from nominal.experimental.migration.resource_type import ResourceType
 from nominal.experimental.migration.utils.conjure_clone_utils import clone_conjure_objects_with_rid_overrides
 
@@ -52,11 +47,6 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         return destination_client.get_workbook(mapped_rid)
 
     def _copy_from_impl(self, source: Workbook, options: WorkbookCopyOptions) -> Workbook:
-        """This method copies content from an old workbook to a new workbook by use of templates, in order to
-        modify hardcoded variables in workbook content. We do this by creating a template in the source
-        client, copying the template to the destination client, creating a new workbook from the template in the
-        destination client, and then archiving the template in both clients.
-        """
         existing_workbook = self.get_existing_destination_resource(source)
         if existing_workbook is not None:
             return existing_workbook
@@ -64,62 +54,83 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         if (options.destination_asset is None) == (options.destination_run is None):
             raise ValueError("Exactly one of destination_asset or destination_run must be provided.")
 
-        # NOTE: source_template is ephemeral — _create_template_from_workbook() assigns it a new rid
-        # on every call. If the process crashes after new_template is created but before new_workbook
-        # is recorded below, the destination template from the previous run becomes orphaned (not
-        # archived) and a fresh one is created on resume. This does not cause duplicate workbooks
-        # (the early-return above handles that), but orphaned templates may accumulate. Fixing this
-        # properly requires a stable dedup key derived from source.rid rather than the ephemeral
-        # source_template.rid.
-        source_template = source._create_template_from_workbook()
-        template_migrator = WorkbookTemplateMigrator(self.ctx)
-        new_template = template_migrator.copy_from(
-            source_template,
-            WorkbookTemplateCopyOptions(include_content_and_layout=True),
+        source_clients = cast(ClientsBunch, source._clients)
+        raw_notebook = source_clients.notebook.get(source_clients.auth_header, source.rid)
+
+        asset_rid_map = dict(self.ctx.migration_state.rid_mapping.get(ResourceType.ASSET.value, {}))
+
+        if options.destination_run is not None:
+            dest_run_rid = options.destination_run.rid
+            source_run_rids = raw_notebook.metadata.data_scope.run_rids or []
+            rid_overrides = {**asset_rid_map, **{r: dest_run_rid for r in source_run_rids}}
+            data_scope = scout_notebook_api.NotebookDataScope(run_rids=[dest_run_rid], asset_rids=None)
+        else:
+            dest_asset_rid = options.destination_asset.rid  # type: ignore[union-attr]
+            source_asset_rids = raw_notebook.metadata.data_scope.asset_rids or []
+            rid_overrides = {**asset_rid_map, **{r: dest_asset_rid for r in source_asset_rids}}
+            data_scope = scout_notebook_api.NotebookDataScope(run_rids=None, asset_rids=[dest_asset_rid])
+
+        return self._copy_workbook(
+            source,
+            raw_notebook,
+            rid_overrides,
+            data_scope,
+            labels=options.new_labels,
+            properties=options.new_properties,
         )
-        new_workbook = self._create_destination_workbook(source, new_template, options)
-        self.ctx.migration_state.record_mapping(self.resource_type, source.rid, new_workbook.rid)
 
-        source_metadata = source._get_latest_api().metadata
-        labels = options.new_labels if options.new_labels is not None else source_metadata.labels
-        properties = options.new_properties if options.new_properties is not None else source_metadata.properties
-        new_workbook.update(labels=labels, properties=properties)
-
-        self._migrate_preview_image(source, new_workbook)
-
-        new_template.archive()
-        source_template.archive()
-        return new_workbook
-
-    def _create_destination_workbook(
+    def _copy_workbook(
         self,
         source: Workbook,
-        new_template: WorkbookTemplate,
-        options: WorkbookCopyOptions,
+        raw_notebook: Any,
+        rid_overrides: dict[str, str],
+        data_scope: scout_notebook_api.NotebookDataScope,
+        labels: Sequence[str] | None = None,
+        properties: Mapping[str, str] | None = None,
     ) -> Workbook:
-        if options.destination_asset is not None:
-            return new_template.create_workbook(
-                asset=options.destination_asset,
-                title=source.title,
-                is_draft=source.is_draft(),
-            )
+        content_v2 = raw_notebook.content_v2
+        if content_v2 is not None and not isinstance(content_v2, scout_workbookcommon_api.UnifiedWorkbookContent):
+            raise ValueError(f"Unexpected content_v2 type for workbook {source.rid}")
+        content = (content_v2.workbook if content_v2 is not None else None) or raw_notebook.content
+        if content is None:
+            raise ValueError(f"Missing content for workbook {source.rid}")
 
-        destination_run = options.destination_run
-        if destination_run is None:
-            raise ValueError("Exactly one of destination_asset or destination_run must be provided.")
-
-        return new_template.create_workbook(
-            run=destination_run,
-            title=source.title,
-            is_draft=source.is_draft(),
+        new_layout, new_content = clone_conjure_objects_with_rid_overrides(
+            (raw_notebook.layout, content), rid_overrides=rid_overrides
         )
+
+        destination_client = self.destination_client_for(source)
+        dest_clients = destination_client._clients
+        request = scout_notebook_api.CreateNotebookRequest(
+            title=raw_notebook.metadata.title,
+            description=raw_notebook.metadata.description,
+            is_draft=source.is_draft(),
+            state_as_json="{}",
+            data_scope=data_scope,
+            layout=new_layout,
+            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=new_content),
+            event_refs=[],
+            workspace=dest_clients.resolve_default_workspace_rid(),
+        )
+        raw_new_notebook = dest_clients.notebook.create(dest_clients.auth_header, request)
+        new_workbook = Workbook._from_conjure(dest_clients, raw_new_notebook)
+
+        self.ctx.migration_state.record_mapping(ResourceType.WORKBOOK, source.rid, new_workbook.rid)
+
+        source_metadata = raw_notebook.metadata
+        new_workbook.update(
+            labels=labels if labels is not None else source_metadata.labels,
+            properties=properties if properties is not None else source_metadata.properties,
+        )
+
+        self._migrate_preview_image(source, new_workbook)
+        return new_workbook
 
     def _migrate_preview_image(self, source: Workbook, dest: Workbook) -> None:
         """Migrate preview image attachment RIDs from source to destination workbook.
 
         Reads the source workbook's preview image metadata, migrates any referenced
         attachments, and updates the destination workbook with the remapped RIDs.
-        Content attachments are handled by the template migrator.
         """
         source_clients = cast(ClientsBunch, source._clients)
         source_raw = source_clients.notebook.get(source_clients.auth_header, source.rid)
@@ -186,44 +197,12 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
 
         source_clients = cast(ClientsBunch, source._clients)
         raw_notebook = source_clients.notebook.get(source_clients.auth_header, source.rid)
-
-        content_v2 = raw_notebook.content_v2
-        if content_v2 is not None and not isinstance(content_v2, scout_workbookcommon_api.UnifiedWorkbookContent):
-            raise ValueError(f"Unexpected content_v2 type for workbook {source.rid}")
-        content = (content_v2.workbook if content_v2 is not None else None) or raw_notebook.content
-        if content is None:
-            raise ValueError(f"Missing content for workbook {source.rid}")
-
-        new_layout, new_content = clone_conjure_objects_with_rid_overrides(
-            (raw_notebook.layout, content), rid_overrides=rid_map
+        data_scope = scout_notebook_api.NotebookDataScope(
+            asset_rids=[rid_map[r] for r in source_asset_rids], run_rids=None
         )
+        new_workbook = self._copy_workbook(source, raw_notebook, rid_map, data_scope)
 
-        destination_client = self.destination_client_for(source)
-        dest_clients = destination_client._clients
-        request = scout_notebook_api.CreateNotebookRequest(
-            title=raw_notebook.metadata.title,
-            description=raw_notebook.metadata.description,
-            is_draft=source.is_draft(),
-            state_as_json="{}",
-            data_scope=scout_notebook_api.NotebookDataScope(
-                asset_rids=[rid_map[r] for r in source_asset_rids],
-                run_rids=None,
-            ),
-            layout=new_layout,
-            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=new_content),
-            event_refs=[],
-            workspace=dest_clients.resolve_default_workspace_rid(),
-        )
-        raw_new_notebook = dest_clients.notebook.create(dest_clients.auth_header, request)
-        new_workbook = Workbook._from_conjure(dest_clients, raw_new_notebook)
-
-        self.ctx.migration_state.record_mapping(ResourceType.WORKBOOK, source.rid, new_workbook.rid)
         self.ctx.migration_state.clear_pending_multi_asset_workbook(source.rid)
-
-        source_metadata = raw_notebook.metadata
-        new_workbook.update(labels=source_metadata.labels, properties=source_metadata.properties)
-        self._migrate_preview_image(source, new_workbook)
-
         logger.info("Migrated multi-asset workbook %s -> %s", source.rid, new_workbook.rid)
         return new_workbook
 
@@ -251,48 +230,15 @@ class WorkbookMigrator(Migrator[Workbook, WorkbookCopyOptions]):
         # Also remap any asset RIDs embedded in the content (channels resolve against both
         # run RIDs and asset RIDs, so both must be substituted).
         asset_rid_map = dict(self.ctx.migration_state.rid_mapping.get(ResourceType.ASSET.value, {}))
-        rid_overrides = {**asset_rid_map, **rid_map}
 
         source_clients = cast(ClientsBunch, source._clients)
         raw_notebook = source_clients.notebook.get(source_clients.auth_header, source.rid)
-
-        content_v2 = raw_notebook.content_v2
-        if content_v2 is not None and not isinstance(content_v2, scout_workbookcommon_api.UnifiedWorkbookContent):
-            raise ValueError(f"Unexpected content_v2 type for workbook {source.rid}")
-        content = (content_v2.workbook if content_v2 is not None else None) or raw_notebook.content
-        if content is None:
-            raise ValueError(f"Missing content for workbook {source.rid}")
-
-        new_layout, new_content = clone_conjure_objects_with_rid_overrides(
-            (raw_notebook.layout, content), rid_overrides=rid_overrides
+        data_scope = scout_notebook_api.NotebookDataScope(
+            asset_rids=None, run_rids=[rid_map[r] for r in source_run_rids]
         )
+        new_workbook = self._copy_workbook(source, raw_notebook, {**asset_rid_map, **rid_map}, data_scope)
 
-        destination_client = self.destination_client_for(source)
-        dest_clients = destination_client._clients
-        request = scout_notebook_api.CreateNotebookRequest(
-            title=raw_notebook.metadata.title,
-            description=raw_notebook.metadata.description,
-            is_draft=source.is_draft(),
-            state_as_json="{}",
-            data_scope=scout_notebook_api.NotebookDataScope(
-                asset_rids=None,
-                run_rids=[rid_map[r] for r in source_run_rids],
-            ),
-            layout=new_layout,
-            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(workbook=new_content),
-            event_refs=[],
-            workspace=dest_clients.resolve_default_workspace_rid(),
-        )
-        raw_new_notebook = dest_clients.notebook.create(dest_clients.auth_header, request)
-        new_workbook = Workbook._from_conjure(dest_clients, raw_new_notebook)
-
-        self.ctx.migration_state.record_mapping(ResourceType.WORKBOOK, source.rid, new_workbook.rid)
         self.ctx.migration_state.clear_pending_multi_run_workbook(source.rid)
-
-        source_metadata = raw_notebook.metadata
-        new_workbook.update(labels=source_metadata.labels, properties=source_metadata.properties)
-        self._migrate_preview_image(source, new_workbook)
-
         logger.info("Migrated multi-run workbook %s -> %s", source.rid, new_workbook.rid)
         return new_workbook
 
