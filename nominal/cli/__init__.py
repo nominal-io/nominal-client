@@ -5,7 +5,7 @@ import click
 from nominal.cli import (
     attachment,
     config,
-    container_image,
+    container_registry,
     containerized_extractor,
     dataset,
     download,
@@ -22,7 +22,7 @@ def nom() -> None:
 
 nom.add_command(attachment.attachment_cmd)
 nom.add_command(config.config_cmd)
-nom.add_command(container_image.container_image_cmd)
+nom.add_command(container_registry.container_registry_cmd)
 nom.add_command(containerized_extractor.containerized_extractor_cmd)
 nom.add_command(dataset.dataset_cmd)
 nom.add_command(download.download_cmd)
