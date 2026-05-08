@@ -6,7 +6,7 @@ import sys
 from typing import Sequence
 
 import click
-from conjure_python_client import ConjureDecoder
+from conjure_python_client import ConjureDecoder, ConjureEncoder
 from nominal_api import ingest_api
 from rich.box import ASCII
 from rich.console import Console
@@ -22,6 +22,16 @@ from nominal.core.containerized_extractors import ContainerizedExtractor
 @click.group(name="containerized-extractor")
 def containerized_extractor_cmd() -> None:
     pass
+
+
+_OUTPUT_FORMAT_OPTION = click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "jsonl"]),
+    default="table",
+    show_default=True,
+    help="Output format: human-readable rich table, or one JSON object per line in conjure wire format.",
+)
 
 
 @containerized_extractor_cmd.command("register")
@@ -93,11 +103,13 @@ def register(
 
 @containerized_extractor_cmd.command("get")
 @click.option("-r", "--rid", required=True)
+@_OUTPUT_FORMAT_OPTION
 @client_options
 @global_options
-def get(rid: str, client: NominalClient) -> None:
+def get(rid: str, output_format: str, client: NominalClient) -> None:
     """Fetch a containerized extractor by its RID."""
-    _print_extractor_detail(client.get_containerized_extractor(rid))
+    extractor = client.get_containerized_extractor(rid)
+    _emit_extractors([extractor], output_format)
 
 
 @containerized_extractor_cmd.command("search")
@@ -118,6 +130,7 @@ def get(rid: str, client: NominalClient) -> None:
         "access. Pass `default` to use the active profile's default workspace."
     ),
 )
+@_OUTPUT_FORMAT_OPTION
 @client_options
 @global_options
 def search(
@@ -125,6 +138,7 @@ def search(
     labels: Sequence[str],
     properties: Sequence[tuple[str, str]],
     workspace_rid: str | None,
+    output_format: str,
     client: NominalClient,
 ) -> None:
     """Search for containerized extractors. Filters are ANDed together."""
@@ -141,7 +155,7 @@ def search(
         properties=dict(properties) or None,
         workspace=workspace,
     )
-    _print_extractor_table(extractors)
+    _emit_extractors(extractors, output_format)
 
 
 @containerized_extractor_cmd.command("update")
@@ -172,6 +186,7 @@ def search(
     help="Replace the docker image tag list (repeat for multiple).",
 )
 @click.option("--default-tag", help="Default docker image tag to use when running the extractor.")
+@_OUTPUT_FORMAT_OPTION
 @client_options
 @global_options
 def update(
@@ -184,6 +199,7 @@ def update(
     clear_properties: bool,
     tags: Sequence[str],
     default_tag: str | None,
+    output_format: str,
     client: NominalClient,
 ) -> None:
     """Update mutable fields of a containerized extractor.
@@ -200,7 +216,7 @@ def update(
         tags=list(tags) if tags else None,
         default_tag=default_tag,
     )
-    _print_extractor_detail(extractor)
+    _emit_extractors([extractor], output_format)
 
 
 @containerized_extractor_cmd.command("archive")
@@ -221,6 +237,37 @@ def unarchive(rid: str, client: NominalClient) -> None:
     """Unarchive a containerized extractor."""
     client.get_containerized_extractor(rid).unarchive()
     click.echo(f"unarchived {rid}")
+
+
+def _emit_extractors(extractors: Sequence[ContainerizedExtractor], output_format: str) -> None:
+    if output_format == "jsonl":
+        for extractor in extractors:
+            click.echo(json.dumps(_extractor_to_wire_dict(extractor), separators=(",", ":")))
+        return
+    if len(extractors) == 1:
+        _print_extractor_detail(extractors[0])
+    else:
+        _print_extractor_table(extractors)
+
+
+def _extractor_to_wire_dict(extractor: ContainerizedExtractor) -> dict[str, object]:
+    """Serialize a ContainerizedExtractor to a conjure-wire-format dict (camelCase).
+
+    The shape mirrors what `register` accepts as input, so `get | register` round-trips.
+    """
+    timestamp_metadata = extractor.default_timestamp_metadata
+    return {
+        "rid": extractor.rid,
+        "name": extractor.name,
+        "description": extractor.description,
+        "image": ConjureEncoder.do_encode(extractor.image._to_conjure()),
+        "inputs": [ConjureEncoder.do_encode(inp._to_conjure()) for inp in extractor.inputs],
+        "labels": list(extractor.labels),
+        "properties": dict(extractor.properties),
+        "timestampMetadata": (
+            None if timestamp_metadata is None else ConjureEncoder.do_encode(timestamp_metadata._to_conjure())
+        ),
+    }
 
 
 def _format_image_ref(extractor: ContainerizedExtractor) -> str:
