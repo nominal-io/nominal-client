@@ -9,7 +9,7 @@ import datetime
 import logging
 import pathlib
 import warnings
-from typing import Any, List, Mapping, Optional, Sequence
+from typing import Any, List
 
 import click
 import pandas as pd
@@ -22,6 +22,8 @@ from rich.style import Style
 from rich.syntax import Syntax
 from rich.table import Column, Table
 
+from nominal.cli.util.format import render_labels as _render_labels
+from nominal.cli.util.format import render_properties as _render_properties
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, Channel, Dataset, Event, NominalClient, Run
 from nominal.experimental.logging.rich_log_handler import configure_rich_logging
@@ -33,24 +35,6 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------------------
 # UI helpers
 # --------------------------------------------------------------------------------------
-
-
-def _render_properties(props: Optional[Mapping[str, str]]) -> str:
-    if not props:
-        return "-"
-    # show a compact key=value list
-    items = [f"'{k}'='{v}'" for k, v in list(props.items())[:6]]
-    suffix = " ..." if props and len(props) > 6 else ""
-    return ", ".join(items) + suffix
-
-
-def _render_labels(labels: Optional[Sequence[str]]) -> str:
-    if not labels:
-        return "-"
-    # show a compact key=value list
-    items = [f"'{label}'" for label in labels[:6]]
-    suffix = " ..." if labels and len(labels) > 6 else ""
-    return ", ".join(items) + suffix
 
 
 def _parse_utc_ts(ts: str) -> datetime.datetime | None:
