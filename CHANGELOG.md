@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.142.0](https://github.com/nominal-io/nominal-client/compare/v1.141.0...v1.142.0) (2026-05-11)
+
+
+### Features
+
+* allow specifying marking rids when creating a dataset from the NominalClient ([#780](https://github.com/nominal-io/nominal-client/issues/780)) ([be70788](https://github.com/nominal-io/nominal-client/commit/be707885f26e74166ddabf0f6b840861820505ab))
+
 ## [1.141.0](https://github.com/nominal-io/nominal-client/compare/v1.140.0...v1.141.0) (2026-05-11)
 
 
