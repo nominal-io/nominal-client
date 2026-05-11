@@ -189,7 +189,7 @@ module = "ffmpeg"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["PyKCS11", "OpenSSL", "OpenSSL.SSL", "cryptography", "cryptography.*"]
+module = ["PyKCS11", "OpenSSL", "OpenSSL.SSL", "cryptography", "cryptography.*", "cffi"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

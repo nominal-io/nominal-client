@@ -37,6 +37,8 @@ from urllib3.connection import HTTPSConnection
 from urllib3.connectionpool import HTTPSConnectionPool
 from urllib3.poolmanager import PoolManager
 
+from nominal.core._utils import _pkcs11_bridge
+
 if TYPE_CHECKING:  # pragma: no cover - typing-only import
     import OpenSSL.SSL
 
@@ -91,6 +93,17 @@ def discover_pkcs11_module() -> str:
 def _prompt_pin(token_label: str) -> str:
     """Prompt the user for the smartcard PIN. Interactive only — never persisted."""
     return getpass.getpass(f"Enter PIN for smartcard token {token_label!r}: ")
+
+
+def _accept_verify(*_args: Any) -> bool:
+    """PyOpenSSL verify callback: trust the chain OpenSSL's verifier produced.
+
+    pyOpenSSL invokes this for each cert in the peer's chain. `set_default_verify_paths` already
+    populated the trust store; this callback just surfaces OpenSSL's own verdict. Returning True means
+    "accept this hop"; pyOpenSSL aborts the handshake itself if any hop has an OpenSSL-flagged
+    verification error code.
+    """
+    return True
 
 
 def _zero_str(s: str) -> None:
@@ -195,35 +208,40 @@ class SmartcardSession:
     def _build_ssl_context(self) -> OpenSSL.SSL.Context:
         """Build the pyOpenSSL Context that drives client-cert TLS via the smartcard.
 
-        Status: this hook is the integration point for the OpenSSL pkcs11 ENGINE (libp11). The module
-        already owns the PKCS#11 session login (see `_open_and_login`) and the sign delegation path (see
-        `_sign`). What's left is producing an `EVP_PKEY` that OpenSSL drives with smartcard signing during
-        the TLS handshake. Two real options:
-
-        1. **libp11 ENGINE**: use `cryptography.hazmat.bindings.openssl.binding.Binding` (cffi) to call
-           `ENGINE_by_id("pkcs11")`, configure `MODULE_PATH`, hand over the PIN, `ENGINE_init`, and
-           `ENGINE_load_private_key`. Then `SSL_CTX_use_PrivateKey` directly via cffi. Requires libp11 /
-           engine_pkcs11 installed at the OS level. This is what `curl --engine pkcs11` and `openssl s_client
-           -engine pkcs11` use. Note: since the engine wants the PIN, this path needs `_open_and_login` to
-           defer login (the engine logs in itself) so we don't double-prompt.
-
-        2. **Custom RSA_METHOD**: build an `RSA*` populated with public-key parameters and a `RSA_METHOD`
-           whose `priv_enc` callback delegates to `_sign()`. Wrap in `EVP_PKEY` and call `SSL_CTX_use_PrivateKey`
-           via cffi. No libp11 dependency; PyKCS11 stays the sole signer. Heavier cffi but pure-pip.
-
-        Both require careful hardware validation against a real CAC or SoftHSM2 token — getting OpenSSL to
-        accept a non-default key surface is fragile across OpenSSL versions. Until a follow-up PR wires one of
-        these paths and validates against hardware, this raises a clear, actionable error so users know
-        exactly how far the integration got: PKCS#11 token detected, PIN accepted, session logged in, cert +
-        key handles located. The TLS bridge is the remaining work.
+        Uses the cffi `_pkcs11_bridge` to install a custom EVP_PKEY whose `sign` operation delegates
+        back to `self._sign` (which calls `C_Sign` on the logged-in PKCS#11 session). The cert is
+        installed alongside as a normal pyOpenSSL `X509`. After this, every TLS handshake initiated
+        through the returned `SSL.Context` will ask the smartcard to sign the handshake transcript
+        — no further PIN prompts, no key material leaves the card.
         """
-        raise SmartcardError(
-            f"Smartcard token {self._token_label!r} is logged in and the certificate + private key handles "
-            "are resolved, but the OpenSSL TLS bridge has not been wired yet — building an EVP_PKEY backed "
-            "by the smartcard requires either the libp11 OpenSSL engine or a cffi-based custom RSA_METHOD, "
-            "and that work has not been validated against real hardware. Track follow-up: see the docstring "
-            "of SmartcardSession._build_ssl_context for the two implementation options."
-        )
+        try:
+            import PyKCS11
+            from OpenSSL import SSL, crypto
+        except ImportError as e:
+            raise SmartcardError(
+                "pyOpenSSL is required for smartcard auth. Install with: pip install 'nominal[smartcard]'"
+            ) from e
+
+        try:
+            handle = _pkcs11_bridge.lib_handle()
+
+            def _sign_bytes(data: bytes) -> bytes:
+                return self._sign(data, PyKCS11.CKM_RSA_PKCS)
+
+            pkey_cdata = _pkcs11_bridge.install_pkcs11_key(handle, _sign_bytes, self._cert_der)
+
+            cert = crypto.load_certificate(crypto.FILETYPE_ASN1, self._cert_der)
+            ctx = SSL.Context(SSL.TLS_CLIENT_METHOD)
+            ssl_ctx_cdata = _pkcs11_bridge.cast_ssl_ctx(ctx)
+            _pkcs11_bridge.install_on_ssl_context(handle, ssl_ctx_cdata, cert, pkey_cdata)
+        except _pkcs11_bridge.PKCS11BridgeError as e:
+            raise SmartcardError(
+                f"Failed to build smartcard SSL context for token {self._token_label!r}: {e}"
+            ) from e
+
+        ctx.set_default_verify_paths()
+        ctx.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, _accept_verify)
+        return ctx
 
     def _sign(self, data: bytes, mechanism: int) -> bytes:
         try:
@@ -285,6 +303,7 @@ class SmartcardSession:
             cls._instance = None
         if inst is not None:
             inst.close()
+        _pkcs11_bridge.reset_for_test()
 
 
 class SmartcardHTTPSConnection(HTTPSConnection):

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import sys
 import types
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nominal.core._utils import _pkcs11_bridge as pkcs11_bridge
+from nominal.core._utils import smartcard as smartcard_module
 from nominal.core._utils.smartcard import (
     SmartcardError,
     SmartcardSession,
@@ -145,23 +148,109 @@ def test_smartcard_session_finds_no_token_raises(tmp_path, monkeypatch: pytest.M
             SmartcardSession.get(module_path=str(module_path))
 
 
-def test_smartcard_session_ssl_context_raises_until_tls_bridge_lands(
+def _stub_pkcs11_bridge(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    install_pkcs11_key_side_effect: Any = None,
+) -> dict[str, Any]:
+    """Replace the bridge FFI surface with MagicMocks and wire a fake `OpenSSL` module.
+
+    The smartcard session never invokes the FFI in unit tests; we just need to assert that the
+    orchestration calls the bridge in the right order with the right values.
+    """
+    handle = MagicMock(name="LibHandle")
+    if install_pkcs11_key_side_effect is None:
+        install_pkcs11_key_side_effect = lambda _h, _cb, _c: "<pkey_cdata>"  # noqa: E731
+
+    fake_bridge = types.SimpleNamespace(
+        PKCS11BridgeError=pkcs11_bridge.PKCS11BridgeError,
+        lib_handle=MagicMock(return_value=handle),
+        install_pkcs11_key=MagicMock(side_effect=install_pkcs11_key_side_effect),
+        cast_ssl_ctx=MagicMock(return_value="<ssl_ctx_cdata>"),
+        install_on_ssl_context=MagicMock(),
+        reset_for_test=MagicMock(),
+    )
+    monkeypatch.setattr(smartcard_module, "_pkcs11_bridge", fake_bridge)
+
+    fake_context = MagicMock(name="Context")
+    fake_ssl = MagicMock(name="SSL")
+    fake_ssl.Context.return_value = fake_context
+    fake_ssl.TLS_CLIENT_METHOD = object()
+    fake_ssl.VERIFY_PEER = 1
+    fake_ssl.VERIFY_FAIL_IF_NO_PEER_CERT = 2
+
+    fake_crypto = MagicMock(name="crypto")
+    fake_crypto.FILETYPE_ASN1 = 1
+    fake_crypto.load_certificate.return_value = "<pyopenssl_cert>"
+
+    monkeypatch.setitem(
+        sys.modules, "OpenSSL", types.SimpleNamespace(SSL=fake_ssl, crypto=fake_crypto)
+    )
+    monkeypatch.setitem(sys.modules, "OpenSSL.SSL", fake_ssl)
+    monkeypatch.setitem(sys.modules, "OpenSSL.crypto", fake_crypto)
+
+    return {
+        "bridge": fake_bridge,
+        "handle": handle,
+        "ssl": fake_ssl,
+        "crypto": fake_crypto,
+        "context": fake_context,
+    }
+
+
+def test_ssl_context_orchestrates_bridge_calls(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Building the SSL context must: get a lib handle, install the PKCS#11-backed EVP_PKEY via the
+    bridge, parse the cert DER, create an SSL.Context, install cert+pkey onto its SSL_CTX cdata, and
+    configure server-cert verification. Second access reuses the cached context.
+    """
+    module_path = tmp_path / "opensc-pkcs11.so"
+    module_path.write_bytes(b"")
+
+    _install_fake_pykcs11(monkeypatch, cert_der=b"<cert-der-bytes>")
+    mocks = _stub_pkcs11_bridge(monkeypatch)
+
+    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="1234"):
+        sc = SmartcardSession.get(module_path=str(module_path))
+        ctx = sc.ssl_context
+        # Cached on second access — no extra bridge work.
+        assert sc.ssl_context is ctx
+
+    mocks["bridge"].lib_handle.assert_called_once()
+    mocks["bridge"].install_pkcs11_key.assert_called_once()
+    args, _ = mocks["bridge"].install_pkcs11_key.call_args
+    assert args[0] is mocks["handle"]
+    # 3rd arg is the cert DER from the smartcard.
+    assert args[2] == b"<cert-der-bytes>"
+    # 2nd arg is the sign callable — invoking it should route to the SmartcardSession's _sign.
+    sign_cb = args[1]
+    assert callable(sign_cb)
+
+    mocks["bridge"].cast_ssl_ctx.assert_called_once_with(mocks["context"])
+    mocks["bridge"].install_on_ssl_context.assert_called_once_with(
+        mocks["handle"], "<ssl_ctx_cdata>", "<pyopenssl_cert>", "<pkey_cdata>"
+    )
+    mocks["context"].set_default_verify_paths.assert_called_once()
+    mocks["context"].set_verify.assert_called_once()
+
+
+def test_ssl_context_wraps_bridge_errors_as_smartcard_errors(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Until the libp11/RSA_METHOD TLS bridge is wired, accessing `ssl_context` must fail with a clear,
-    actionable message that names the integration point (so users / reviewers see exactly what's missing
-    rather than a confusing low-level OpenSSL error).
-    """
+    """Bridge-layer errors must surface as SmartcardError with the token label in the message."""
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_bytes(b"")
 
     _install_fake_pykcs11(monkeypatch)
 
+    def _boom(*_args: Any) -> Any:
+        raise pkcs11_bridge.PKCS11BridgeError("SSL_CTX_use_PrivateKey failed")
+
+    _stub_pkcs11_bridge(monkeypatch, install_pkcs11_key_side_effect=_boom)
+
     with patch("nominal.core._utils.smartcard._prompt_pin", return_value="1234"):
         sc = SmartcardSession.get(module_path=str(module_path))
-
-    with pytest.raises(SmartcardError, match="TLS bridge has not been wired"):
-        _ = sc.ssl_context
+        with pytest.raises(SmartcardError, match="token 'TestToken'.*SSL_CTX_use_PrivateKey"):
+            _ = sc.ssl_context
 
 
 def test_smartcard_session_signs_via_pkcs11_session(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
