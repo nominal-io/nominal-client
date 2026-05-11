@@ -1,6 +1,7 @@
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
+from nominal.core._utils.networking import HeaderProvider
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
@@ -8,11 +9,13 @@ from nominal.core.bounds import Bounds
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.checklist import Checklist
 from nominal.core.client import NominalClient, WorkspaceSearchType
+from nominal.core.comment import Comment
 from nominal.core.connection import Connection
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
     FileExtractionInput,
+    FileExtractionParameter,
     TagDetails,
     TimestampMetadata,
     UserPassAuth,
@@ -56,12 +59,15 @@ __all__ = [
     "Event",
     "EventType",
     "FileExtractionInput",
+    "FileExtractionParameter",
     "FileType",
     "FileTypes",
+    "HeaderProvider",
     "IngestWaitType",
     "LinkDict",
     "LogPoint",
     "LogStream",
+    "Comment",
     "NominalClient",
     "poll_until_ingestion_completed",
     "Run",

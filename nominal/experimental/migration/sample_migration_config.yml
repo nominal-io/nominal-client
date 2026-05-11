@@ -1,0 +1,79 @@
+migration:
+  # Human-readable name for this migration run. Appears in logs.
+  name: "my-migration"
+
+  # -------------------------------------------------------------------------
+  # Dataset options
+  # -------------------------------------------------------------------------
+
+  # Sets whether to copy the raw data files attached to each dataset.
+  # Set to false for a resource-only migration.
+  include_dataset_files: false
+
+  # Sets whether to preserve the original dataset UUID on the destination. 
+  # If true, this will manually create channels in the new dataset.
+  # Set to true when using an external data backup method which requires same UUID.
+  preserve_dataset_uuid: true
+
+  # -------------------------------------------------------------------------
+  # Asset child-resource inclusion
+  # All fields below default to true when omitted.
+  # Set any to false to skip that resource type entirely.
+  # -------------------------------------------------------------------------
+
+  # Copy runs (and their associated datasets) linked to each asset.
+  include_runs: true
+
+  # Copy manually-created events linked to each asset.
+  include_events: true
+
+  # Copy video datasets linked to each asset.
+  include_video: true
+
+  # Copy file attachments linked to each asset.
+  include_attachments: true
+
+  # Copy checklists (data reviews) executed against runs on each asset.
+  # Requires include_runs: true — checklists are re-executed against the
+  # migrated destination runs.
+  include_checklists: true
+
+  # Copy workbooks scoped to each asset or its runs.
+  include_workbooks: true
+
+  # -------------------------------------------------------------------------
+  # Source assets
+  #
+  # Use ONE of the two forms below: a list (source_asset_rids) or a map
+  # (source_assets).  The list form is simpler; the map form lets you attach
+  # per-asset workbook templates using the asset RID as the key.
+  # -------------------------------------------------------------------------
+
+  # List form: each entry requires an asset_rid.
+  source_asset_rids:
+    - asset_rid: "ri.scout.gov-staging.asset.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    - asset_rid: "ri.scout.gov-staging.asset.yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
+    
+  # -------------------------------------------------------------------------
+  # Standalone workbook templates (optional)
+  # Templates listed here are cloned to the destination independently of any
+  # asset — useful for shared/library templates that are not tied to a single asset.
+  # -------------------------------------------------------------------------
+  # standalone_workbook_template_rids:
+  #   - "ri.scout.gov-staging.notebook-template.aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+  # -------------------------------------------------------------------------
+  # Impersonation (optional)
+  # When enabled, resources are created on the destination under the mapped
+  # destination user rather than the service account running the migration.
+  # Requires the service account to have impersonation privileges.
+  # -------------------------------------------------------------------------
+  # impersonation:
+  #   enabled: true
+  #   # What to do when a source resource's creator has no entry in the map below.
+  #   # Currently the only supported value is "service_user" (fall back to the
+  #   # service account).
+  #   unmapped_source_user_behavior: service_user
+  #   # Map of source user RID -> destination user RID.
+  #   source_to_destination_user_rids:
+  #     "ri.gotham.gov-prod.user.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx": "ri.gotham.gov-staging.user.yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"

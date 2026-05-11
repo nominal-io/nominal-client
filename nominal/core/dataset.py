@@ -218,6 +218,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_name,
             file_type,
             self._clients.upload,
+            header_provider=self._clients.header_provider,
         )
 
         request = ingest_api.IngestRequest(
@@ -304,6 +305,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             avro_path,
             self._clients.upload,
             file_type=FileTypes.AVRO_STREAM,
+            header_provider=self._clients.header_provider,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -352,6 +354,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             log_path,
             self._clients.upload,
             file_type=file_type,
+            header_provider=self._clients.header_provider,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -445,6 +448,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_name,
             file_type=FileTypes.MCAP,
             upload_client=self._clients.upload,
+            header_provider=self._clients.header_provider,
         )
 
         channels = _create_mcap_channels(include_topics, exclude_topics)
@@ -484,6 +488,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             dataflash_path,
             self._clients.upload,
             file_type=FileTypes.DATAFLASH,
+            header_provider=self._clients.header_provider,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -578,6 +583,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 workspace_rid,
                 Path(source_path),
                 self._clients.upload,
+                header_provider=self._clients.header_provider,
             )
             logger.info("Uploaded %s -> %s", source_path, s3_path)
             s3_inputs[source] = s3_path
@@ -1116,6 +1122,7 @@ def _create_dataset(
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
+    marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
     request = scout_catalog.CreateDataset(
         name=name,
@@ -1126,7 +1133,7 @@ def _create_dataset(
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=workspace_rid,
-        marking_rids=[],
+        marking_rids=list(marking_rids or []),
     )
     return client.create_dataset(auth_header, request)
 

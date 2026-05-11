@@ -1,5 +1,66 @@
 # Changelog
 
+## [1.142.0](https://github.com/nominal-io/nominal-client/compare/v1.141.0...v1.142.0) (2026-05-11)
+
+
+### Features
+
+* allow specifying marking rids when creating a dataset from the NominalClient ([#780](https://github.com/nominal-io/nominal-client/issues/780)) ([be70788](https://github.com/nominal-io/nominal-client/commit/be707885f26e74166ddabf0f6b840861820505ab))
+
+## [1.141.0](https://github.com/nominal-io/nominal-client/compare/v1.140.0...v1.141.0) (2026-05-11)
+
+
+### Features
+
+* add file extraction parameter to containerized extractors ([#776](https://github.com/nominal-io/nominal-client/issues/776)) ([30d91ab](https://github.com/nominal-io/nominal-client/commit/30d91abb8450aa50e9ac29b3647a8d3e51a1dc59))
+* consolidate workbook migration between single and multi asset/run ([#775](https://github.com/nominal-io/nominal-client/issues/775)) ([c3099e6](https://github.com/nominal-io/nominal-client/commit/c3099e6cf5024b4e9c8724dcc203cf539e43c170))
+
+## [1.140.0](https://github.com/nominal-io/nominal-client/compare/v1.139.0...v1.140.0) (2026-05-07)
+
+
+### Features
+
+* add poll until ingestion completed for file uploads in migration ([#773](https://github.com/nominal-io/nominal-client/issues/773)) ([0a5d959](https://github.com/nominal-io/nominal-client/commit/0a5d959485e1305ab53fd31bbee9fbef12d35506))
+
+## [1.139.0](https://github.com/nominal-io/nominal-client/compare/v1.138.0...v1.139.0) (2026-05-07)
+
+
+### Features
+
+* add Run.add_comment to post to a run's discussion ([#758](https://github.com/nominal-io/nominal-client/issues/758)) ([8dab1b0](https://github.com/nominal-io/nominal-client/commit/8dab1b03aaf6ff73a84554382d9cd75acae19d59))
+* add templates to migration_prep ([#756](https://github.com/nominal-io/nominal-client/issues/756)) ([ad7dd6f](https://github.com/nominal-io/nominal-client/commit/ad7dd6fae34e26f06dfc41762747845b0e0ba0e6))
+
+## [1.138.0](https://github.com/nominal-io/nominal-client/compare/v1.137.0...v1.138.0) (2026-05-06)
+
+
+### Features
+
+* preserve creator rids on migrated resources ([#754](https://github.com/nominal-io/nominal-client/issues/754)) ([1ab0d68](https://github.com/nominal-io/nominal-client/commit/1ab0d6861583871868594a13e496d47bad1f910e))
+
+## [1.137.0](https://github.com/nominal-io/nominal-client/compare/v1.136.1...v1.137.0) (2026-05-06)
+
+
+### Features
+
+* allow additional header passthru ([#744](https://github.com/nominal-io/nominal-client/issues/744)) ([20bb4d8](https://github.com/nominal-io/nominal-client/commit/20bb4d8ebb9cb78b8f59e50012a00257326be3ce))
+* preserve workbook creator RID ([#753](https://github.com/nominal-io/nominal-client/issues/753)) ([bfb12e5](https://github.com/nominal-io/nominal-client/commit/bfb12e52433a03278b18296da57ef262df559e69))
+
+## [1.136.1](https://github.com/nominal-io/nominal-client/compare/v1.136.0...v1.136.1) (2026-05-04)
+
+
+### Miscellaneous Chores
+
+* force release ([b57721f](https://github.com/nominal-io/nominal-client/commit/b57721fa6cfc563c20e5c69f06463be38169d9a8))
+
+## [1.136.0](https://github.com/nominal-io/nominal-client/compare/v1.135.0...v1.136.0) (2026-04-30)
+
+
+### Features
+
+* add channel count to migration prep ([#739](https://github.com/nominal-io/nominal-client/issues/739)) ([6ffbf92](https://github.com/nominal-io/nominal-client/commit/6ffbf9245d8bebbc90c9365bf0e2984c93a1e196))
+* add parameters to include/exclude child resources to migrate ([#740](https://github.com/nominal-io/nominal-client/issues/740)) ([fa2cfb4](https://github.com/nominal-io/nominal-client/commit/fa2cfb4cc55fc77b1b96bb96ef6d07b8e644f8b6))
+* deprecate streaming connection creation ([#741](https://github.com/nominal-io/nominal-client/issues/741)) ([5b28a7b](https://github.com/nominal-io/nominal-client/commit/5b28a7b892418de931f7ddde8ebbb03dd941ef02))
+
 ## [1.135.0](https://github.com/nominal-io/nominal-client/compare/v1.134.0...v1.135.0) (2026-04-27)
 
 

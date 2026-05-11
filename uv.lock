@@ -1154,7 +1154,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.133.0"
+version = "1.142.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1221,7 +1221,7 @@ requires-dist = [
     { name = "dataclass-wizard", specifier = ">=0.39.1" },
     { name = "exceptiongroup", specifier = ">=1.3.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1193.0" },
+    { name = "nominal-api", specifier = "==0.1224.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1090.0" },
     { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.8.2" },
     { name = "nominal-video", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.9" },
@@ -1267,15 +1267,15 @@ dev = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1193.0"
+version = "0.1224.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/5a/df0d515ca315f73f739237ad13f6a797c42456b867be4f43856c0feca274/nominal_api-0.1193.0.tar.gz", hash = "sha256:bd8258a7cf86c69f248d45b967c648e4bc621268a18b29e956eee7c1621d14b5", size = 721057, upload-time = "2026-04-10T15:08:34.358Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/05/92c0cae50722685b9d86189cc850c66bc9cbd3e3a4d89361feb82baec834/nominal_api-0.1224.0.tar.gz", hash = "sha256:b26679daafa77bb6f5185e8c079238feb32ac2631c1b6cea1eba4a9c4e84cdc7", size = 777985, upload-time = "2026-05-04T11:09:35.64Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/52/ab/04ac6fe48acdc1bd02db24692ef055ad87b3d9c689349c728252e3e34e3e/nominal_api-0.1193.0-py3-none-any.whl", hash = "sha256:615f46f34d2b9401713b8e7a61fc9d3271571e267a995b8604be9332281b9493", size = 755678, upload-time = "2026-04-10T15:08:32.831Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/5d/98194d2f1b45bf78b2e6f000b23a384c024ef7337336ecb4d82bb79afeb2/nominal_api-0.1224.0-py3-none-any.whl", hash = "sha256:7d9d0e7631d611d3615700c740453d1bd57dfab4088141ae418f36dbbf2f9ac6", size = 814389, upload-time = "2026-05-04T11:09:33.73Z" },
 ]
 
 [[package]]
@@ -1308,6 +1308,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/11/f8/1fb981538aa2dd88ae89fd61809faef78b7833e136892e25de4101cc25cc/nominal_streaming-0.8.2-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:73bd1f409be625c4bbbb6980c1933dbc018ee4a7fc508c31b9ffbf05f56ec9cd", size = 3667455, upload-time = "2026-04-22T19:31:42.507Z" },
     { url = "https://files.pythonhosted.org/packages/f6/76/11432cab1657762dbd4521e4e7645c680c8253bd0f9bd6135b697cca43de/nominal_streaming-0.8.2-cp310-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:043eeff479a8703468de42df3d402f3ba5577af14592542b9795f9a56d20ce4f", size = 3466574, upload-time = "2026-04-22T19:31:39.485Z" },
     { url = "https://files.pythonhosted.org/packages/16/8d/6d2a87e913d14a4fe3505362ffd43462b38eefeb330e9b84f409d5598940/nominal_streaming-0.8.2-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:8ed2acfd893efa7ef7e05a19334280ef782b8f1356dbc6895cc2f6ca55ad8d01", size = 3917023, upload-time = "2026-04-22T19:31:48.446Z" },
+    { url = "https://files.pythonhosted.org/packages/92/c9/1ca3193ddc848ad46a6c2599a9dd937e3deb1eb0f7e9b5ac3a809058632f/nominal_streaming-0.8.2-cp310-abi3-win_amd64.whl", hash = "sha256:4f857aca078b24c28e40a28178ed39bf71e685e11b7822954084bece1b5355d1", size = 3412398, upload-time = "2026-04-22T19:39:29.93Z" },
 ]
 
 [[package]]

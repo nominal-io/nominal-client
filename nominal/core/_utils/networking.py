@@ -4,6 +4,8 @@ import gzip
 import logging
 import ssl
 import threading
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Type, TypeVar
 
 import requests
@@ -15,11 +17,56 @@ from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
 from urllib3.connection import HTTPConnection
 from urllib3.util.retry import Retry
 
+from nominal.core.exceptions import HeaderConflictError
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
 GZIP_COMPRESSION_LEVEL = 1
+
+
+class HeaderProvider(ABC):
+    @abstractmethod
+    def headers(self) -> Mapping[str, str]: ...
+
+
+@dataclass(frozen=True)
+class StaticHeaderProvider(HeaderProvider):
+    _headers: Mapping[str, str]
+
+    def headers(self) -> Mapping[str, str]:
+        return self._headers
+
+
+def normalize_header_provider(headers: HeaderProvider | Mapping[str, str] | None) -> HeaderProvider | None:
+    if headers is None:
+        return None
+    if isinstance(headers, HeaderProvider):
+        return headers
+    return StaticHeaderProvider(headers)
+
+
+class HeaderProviderSession(requests.Session):
+    def __init__(self, header_provider: HeaderProvider | None = None) -> None:
+        super().__init__()
+        self._header_provider = header_provider
+
+    @typing_extensions.override
+    def prepare_request(self, request: requests.Request) -> requests.PreparedRequest:
+        prepared = super().prepare_request(request)
+        if self._header_provider is None:
+            return prepared
+
+        request_headers = CaseInsensitiveDict(request.headers or {})
+        for key, value in self._header_provider.headers().items():
+            if key in request_headers:
+                raise HeaderConflictError(
+                    f"HeaderProvider returned header {key!r}, but the request already set that header; "
+                    "HeaderProvider cannot override explicit request headers."
+                )
+            prepared.headers[key] = value
+        return prepared
 
 
 class ThreadSafeSSLContext(truststore.SSLContext):
@@ -141,7 +188,7 @@ def create_conjure_service_client(
     user_agent: str,
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
-    default_headers: Mapping[str, str] | None = None,
+    header_provider: HeaderProvider | None = None,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
@@ -158,7 +205,7 @@ def create_conjure_service_client(
             settings, and timeout settings.
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
-        default_headers: Additional default headers to attach to the service session.
+        header_provider: Additional default headers to attach to each request.
         enable_keep_alive: If true, enable keep alive in connections with the service.
 
     Returns:
@@ -176,8 +223,8 @@ def create_conjure_service_client(
     # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
     # required since this session is shared across threads via ClientsBunch.
     transport_adapter = NominalRequestsAdapter(max_retries=retry)
-    session = requests.Session()
-    session.headers = CaseInsensitiveDict({"User-Agent": user_agent, **(default_headers or {})})
+    session = HeaderProviderSession(header_provider)
+    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
         verify = service_config.security.trust_store_path
     else:
@@ -198,7 +245,7 @@ def create_conjure_client_factory(
     user_agent: str,
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
-    default_headers: Mapping[str, str] | None = None,
+    header_provider: HeaderProvider | None = None,
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
@@ -211,7 +258,7 @@ def create_conjure_client_factory(
             user_agent=user_agent,
             service_config=service_config,
             return_none_for_unknown_union_types=return_none_for_unknown_union_types,
-            default_headers=default_headers,
+            header_provider=header_provider,
         )
 
     return factory
@@ -221,6 +268,7 @@ def create_multipart_request_session(
     *,
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
+    header_provider: HeaderProvider | None = None,
 ) -> requests.Session:
     """Create a requests Session configured for multipart uploads to S3.
 
@@ -231,6 +279,7 @@ def create_multipart_request_session(
         pool_size: Number of concurrent workers. Controls the number of cached host pools
             and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
+        header_provider: Additional default headers to attach to every request issued by the session.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
@@ -240,7 +289,7 @@ def create_multipart_request_session(
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
-    session = requests.Session()
+    session = HeaderProviderSession(header_provider)
     adapter = SslBypassRequestsAdapter(
         max_retries=retries,
         # Match the number of cached host pools to the thread count to avoid LRU eviction.

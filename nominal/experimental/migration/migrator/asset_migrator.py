@@ -36,6 +36,7 @@ class AssetCopyOptions(ResourceCopyOptions):
     include_runs: bool = False
     include_video: bool = False
     include_checklists: bool = False
+    include_workbooks: bool = True
 
 
 class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
@@ -50,6 +51,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             include_events=True,
             include_runs=True,
             include_video=True,
+            include_workbooks=True,
         )
 
     def _copy_from_impl(self, source_asset: Asset, options: AssetCopyOptions) -> Asset:
@@ -84,7 +86,8 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             logger.info("Copying attachments for asset %s (rid: %s)", source_asset.name, source_asset.rid)
             self._copy_asset_attachments(source_asset, new_asset)
 
-        self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs)
+        if options.include_workbooks:
+            self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs)
         return new_asset
 
     def _get_resource_name(self, resource: Asset) -> str:
@@ -227,22 +230,30 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             if not workbook.asset_rids:
                 continue
             if len(workbook.asset_rids) == 1:
-                workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_asset=new_asset))
+                workbook_migrator.copy_from(
+                    workbook,
+                    WorkbookCopyOptions(source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid}),
+                )
             else:
                 self._enqueue_multi_asset_workbook(workbook, list(workbook.asset_rids))
 
         if include_runs:
             for source_run in source_asset.list_runs():
-                destination_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
-                if destination_run_rid is None:
+                dest_run_rid = self.ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid)
+                if dest_run_rid is None:
                     logger.warning("Run %s not found in migration state", source_run.rid)
                     continue
-                destination_run = self.ctx.destination_client_for(source_run).get_run(destination_run_rid)
                 for workbook in source_run.search_workbooks(include_drafts=True):
                     if not workbook.run_rids:
                         continue
                     if len(workbook.run_rids) == 1:
-                        workbook_migrator.copy_from(workbook, WorkbookCopyOptions(destination_run=destination_run))
+                        workbook_migrator.copy_from(
+                            workbook,
+                            WorkbookCopyOptions(
+                                source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid},
+                                source_to_destination_run_rid_mapping={source_run.rid: dest_run_rid},
+                            ),
+                        )
                     else:
                         self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids))
 

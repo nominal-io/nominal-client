@@ -46,6 +46,10 @@ class NominalConfigError(NominalError):
     """An error occurred reading or writing the configuration."""
 
 
+class HeaderConflictError(NominalError):
+    """A header provider attempted to override an explicit request header."""
+
+
 class NominalMethodRemovedError(NominalError):
     """An error raised when a method has been deprecated and now removed.
     Error informs users of the new method to use instead.
@@ -63,6 +67,10 @@ class NominalMethodRemovedError(NominalError):
             return f"{base_msg} Contact your Nominal Representative if you need this functionality."
         else:
             return f"{base_msg} To fix: {self._instructions}"
+
+
+class NominalComputeError(NominalError):
+    """An error occurred during a compute request."""
 
 
 class NominalVideoStreamError(NominalError):

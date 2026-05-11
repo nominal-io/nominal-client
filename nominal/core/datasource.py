@@ -410,8 +410,9 @@ def _construct_export_request(
         start_time=start,
         end_time=end,
         context=scout_compute_api.Context(
-            function_variables={},
+            frame_references={},
             variables={},
+            function_variables={},
         ),
         format=scout_dataexport_api.ExportFormat(csv=scout_dataexport_api.Csv()),
         resolution=scout_dataexport_api.ResolutionOption(
