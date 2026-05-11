@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.141.0](https://github.com/nominal-io/nominal-client/compare/v1.140.0...v1.141.0) (2026-05-11)
+
+
+### Features
+
+* add file extraction parameter to containerized extractors ([#776](https://github.com/nominal-io/nominal-client/issues/776)) ([30d91ab](https://github.com/nominal-io/nominal-client/commit/30d91abb8450aa50e9ac29b3647a8d3e51a1dc59))
+* consolidate workbook migration between single and multi asset/run ([#775](https://github.com/nominal-io/nominal-client/issues/775)) ([c3099e6](https://github.com/nominal-io/nominal-client/commit/c3099e6cf5024b4e9c8724dcc203cf539e43c170))
+
 ## [1.140.0](https://github.com/nominal-io/nominal-client/compare/v1.139.0...v1.140.0) (2026-05-07)
 
 
