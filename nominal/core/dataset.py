@@ -1122,6 +1122,7 @@ def _create_dataset(
     labels: Sequence[str] = (),
     properties: Mapping[str, str] | None = None,
     workspace_rid: str | None = None,
+    marking_rids: Sequence[str] | None = None,
 ) -> scout_catalog.EnrichedDataset:
     request = scout_catalog.CreateDataset(
         name=name,
@@ -1132,7 +1133,7 @@ def _create_dataset(
         metadata={},
         origin_metadata=scout_catalog.DatasetOriginMetadata(),
         workspace=workspace_rid,
-        marking_rids=[],
+        marking_rids=list(marking_rids or []),
     )
     return client.create_dataset(auth_header, request)
 

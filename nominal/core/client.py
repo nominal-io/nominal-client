@@ -782,6 +782,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        markings: Sequence[str] | None = None,
     ) -> Dataset:
         """Create an empty dataset.
 
@@ -791,6 +792,7 @@ class NominalClient:
             labels: Text labels to apply to the created dataset
             properties: Key-value properties to apply to the cleated dataset
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+            markings: If present, RIDs of markings to apply to the created dataset
 
         Returns:
             Reference to the created dataset in Nominal.
@@ -803,6 +805,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
+            marking_rids=markings,
         )
         dataset = Dataset._from_conjure(self._clients, response)
 
