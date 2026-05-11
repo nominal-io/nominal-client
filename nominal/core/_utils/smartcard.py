@@ -1,26 +1,39 @@
 """Smartcard / CAC client-cert TLS support for Nominal Core.
 
 This module wires an HTTPS adapter that performs client-cert TLS using a PKCS#11 token (e.g. a DoD CAC). The
-session prompts the user for a PIN exactly once per process, opens a PKCS#11 session against the token, and
-performs `C_Login` once. All subsequent TLS handshakes (to Nominal API endpoints and to S3 presigned URLs)
-reuse that logged-in session and ask the token to `C_Sign` for the handshake — no further PIN prompts.
+session prompts the user for a PIN exactly once per process, loads the OpenSSL `pkcs11` provider (libp11's
+`pkcs11prov`, or any RFC 7512 compatible provider) into the in-process libcrypto, and uses OSSL_STORE to
+resolve the token-resident certificate and private key by URI. The resulting EVP_PKEY / X509 references are
+installed onto a shared pyOpenSSL `SSL.Context`. Subsequent TLS handshakes (to Nominal API endpoints and to S3
+presigned URLs) reuse that context, and the smartcard signs handshake messages via the provider — no further
+PIN prompts.
+
+Why a provider rather than the legacy pkcs11 engine
+---------------------------------------------------
+OpenSSL ENGINEs are deprecated in OpenSSL 3.x. The replacement model is OpenSSL Providers. libp11 ships
+`pkcs11prov` as the provider-shaped replacement for its legacy `pkcs11` engine; alternative implementations
+(notably `latchset/pkcs11-provider`) follow the same provider name and RFC 7512 URI scheme so the integration
+is portable. We load the provider explicitly via `OSSL_PROVIDER_load(NULL, "pkcs11")` and pass the PKCS#11
+module path (e.g. opensc-pkcs11.so) inside the URI as a `module-path=` query attribute, so no system-wide
+OPENSSL_CONF edits are required.
 
 PIN handling
 ------------
 The PIN is prompted interactively via `getpass.getpass` and is NEVER persisted anywhere recoverable: no
-keyring, no environment variable, no file, no log. The local PIN buffer is overwritten after it is handed to
-the PKCS#11 module's `C_Login`. The token itself retains "logged-in" state inside the smartcard's own session
-state (this is the only safe place for it). A leaked PIN on a DoD CAC requires an in-person CAC-office visit
-to reset, so the cost of a leak is high; we treat the PIN like a secret that must not survive its single use.
+keyring, no environment variable, no log. It is passed to the provider exactly once, inside the OSSL_STORE
+URI, while the certificate and private key are loaded. The local Python references are dropped immediately
+afterward. Strings are immutable in CPython so the bytes may briefly linger in heap memory, but no reference
+survives this scope.
 
 Optional dependencies
 ---------------------
-This module imports `PyKCS11`, `OpenSSL`, and `cryptography`. They are not in the base install — install with:
+Install with `pip install 'nominal[smartcard]'`. The OS must also have:
+- A PKCS#11 module (typically OpenSC's `opensc-pkcs11`). Discovered automatically; `NOMINAL_PKCS11_MODULE`
+  overrides discovery if set.
+- An OpenSSL `pkcs11` provider (libp11's `pkcs11prov` or `latchset/pkcs11-provider`) installed where the
+  in-process libcrypto can find it. Override the search path with `NOMINAL_OSSL_MODULES_DIR` if needed.
 
-    pip install 'nominal[smartcard]'
-
-The OS must also have a PKCS#11 module installed (typically OpenSC's `opensc-pkcs11`). The module path is
-discovered automatically; `NOMINAL_PKCS11_MODULE` overrides discovery if set.
+FFI surface lives in `_openssl_provider.py` so the orchestration here reads like ordinary Python.
 """
 
 from __future__ import annotations
@@ -29,15 +42,15 @@ import getpass
 import logging
 import os
 import platform
-import socket
 import threading
+import urllib.parse
 from typing import TYPE_CHECKING, Any
 
 from urllib3.connection import HTTPSConnection
 from urllib3.connectionpool import HTTPSConnectionPool
 from urllib3.poolmanager import PoolManager
 
-from nominal.core._utils import _pkcs11_bridge
+from nominal.core._utils import _openssl_provider as openssl_provider
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import
     import OpenSSL.SSL
@@ -62,6 +75,25 @@ _DEFAULT_PKCS11_MODULE_PATHS = {
         r"C:\Program Files\OpenSC Project\OpenSC\pkcs11\opensc-pkcs11.dll",
     ],
 }
+
+_DEFAULT_OSSL_MODULES_DIRS = {
+    "Linux": [
+        "/usr/lib/x86_64-linux-gnu/ossl-modules",
+        "/usr/lib64/ossl-modules",
+        "/usr/lib/ossl-modules",
+        "/usr/local/lib/ossl-modules",
+    ],
+    "Darwin": [
+        "/opt/homebrew/lib/ossl-modules",
+        "/usr/local/lib/ossl-modules",
+    ],
+    "Windows": [
+        r"C:\Program Files\OpenSSL\bin\ossl-modules",
+        r"C:\Program Files\OpenSSL-Win64\bin\ossl-modules",
+    ],
+}
+
+_PROVIDER_NAME = "pkcs11"
 
 
 class SmartcardError(RuntimeError):
@@ -90,41 +122,164 @@ def discover_pkcs11_module() -> str:
     )
 
 
+def _discover_ossl_modules_dir() -> str | None:
+    """Return the directory to add to OpenSSL's provider search path, or None to use the default."""
+    override = os.environ.get("NOMINAL_OSSL_MODULES_DIR")
+    if override:
+        return override
+    for candidate in _DEFAULT_OSSL_MODULES_DIRS.get(platform.system(), []):
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
+
 def _prompt_pin(token_label: str) -> str:
     """Prompt the user for the smartcard PIN. Interactive only — never persisted."""
     return getpass.getpass(f"Enter PIN for smartcard token {token_label!r}: ")
 
 
-def _accept_verify(*_args: Any) -> bool:
-    """PyOpenSSL verify callback: trust the chain OpenSSL's verifier produced.
+def _probe_token_label(module_path: str) -> str:
+    """Open the PKCS#11 module just long enough to confirm a token is present and read its label.
 
-    pyOpenSSL invokes this for each cert in the peer's chain. `set_default_verify_paths` already
-    populated the trust store; this callback just surfaces OpenSSL's own verdict. Returning True means
-    "accept this hop"; pyOpenSSL aborts the handshake itself if any hop has an OpenSSL-flagged
-    verification error code.
+    No login is performed — the PIN is only handed to the OpenSSL pkcs11 provider during URI-driven key
+    loading. This early probe lets us fail fast with a clear error before touching OpenSSL providers, and
+    gives the PIN prompt a recognizable token name.
     """
-    return True
+    try:
+        import PyKCS11
+    except ImportError as e:
+        raise SmartcardError(
+            "PyKCS11 is required for smartcard auth. Install with: pip install 'nominal[smartcard]'"
+        ) from e
+
+    lib = PyKCS11.PyKCS11Lib()
+    try:
+        lib.load(module_path)
+    except PyKCS11.PyKCS11Error as e:
+        raise SmartcardError(f"failed to load PKCS#11 module at {module_path!r}: {e}") from e
+
+    slots = lib.getSlotList(tokenPresent=True)
+    if not slots:
+        raise SmartcardError("No smartcard tokens detected. Insert a CAC into your reader and retry.")
+    slot = slots[0]
+    token_info = lib.getTokenInfo(slot)
+    label = (token_info.label or "").strip() if token_info.label else ""
+    return label or f"slot-{slot}"
 
 
-def _zero_str(s: str) -> None:
-    """Best-effort overwrite of a Python string. CPython strings are immutable, so this is symbolic — the
-    real protection is that the variable binding is dropped immediately after C_Login.
+def _cert_score_for_tls_client_auth(cert_der: bytes) -> int:
+    """Score a token certificate for client-TLS use.
+
+    CAC/PIV tokens commonly expose several cert/key pairs. Prefer a cert that explicitly carries the
+    id-kp-clientAuth EKU, then a cert with a digital-signature key usage. Return 0 for unparsable certs so
+    they can still be used as a last resort if the token metadata is sparse.
     """
-    # Strings in CPython cannot be mutated in place, so this is a no-op other than asserting the contract.
-    # We rely on the surrounding code to drop the reference (`del pin`) so it becomes eligible for GC.
-    del s
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import ExtendedKeyUsageOID
+
+        cert = x509.load_der_x509_certificate(cert_der)
+    except Exception:
+        logger.debug("Could not parse smartcard certificate while selecting client-auth object", exc_info=True)
+        return 0
+
+    score = 0
+    try:
+        eku = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+    except x509.ExtensionNotFound:
+        pass
+    else:
+        if ExtendedKeyUsageOID.CLIENT_AUTH in eku:
+            score += 100
+
+    try:
+        key_usage = cert.extensions.get_extension_for_class(x509.KeyUsage).value
+    except x509.ExtensionNotFound:
+        pass
+    else:
+        if key_usage.digital_signature:
+            score += 10
+
+    return score
+
+
+def _select_client_auth_cert_id(module_path: str) -> bytes | None:
+    """Return the CKA_ID of the best visible certificate for TLS client auth.
+
+    The provider path can enumerate the token too, but constraining the PKCS#11 URI by `id=` avoids pairing
+    arbitrary "first" objects on multi-certificate CAC/PIV tokens. Certificate objects are public, so this
+    probe does not require the PIN.
+    """
+    try:
+        import PyKCS11
+    except ImportError as e:
+        raise SmartcardError(
+            "PyKCS11 is required for smartcard auth. Install with: pip install 'nominal[smartcard]'"
+        ) from e
+
+    lib = PyKCS11.PyKCS11Lib()
+    try:
+        lib.load(module_path)
+    except PyKCS11.PyKCS11Error as e:
+        raise SmartcardError(f"failed to load PKCS#11 module at {module_path!r}: {e}") from e
+
+    slots = lib.getSlotList(tokenPresent=True)
+    if not slots:
+        raise SmartcardError("No smartcard tokens detected. Insert a CAC into your reader and retry.")
+
+    session = lib.openSession(slots[0])
+    try:
+        cert_objects = session.findObjects([(PyKCS11.CKA_CLASS, PyKCS11.CKO_CERTIFICATE)])
+        best_id: bytes | None = None
+        best_score = -1
+        for cert_obj in cert_objects:
+            try:
+                raw_cert, raw_id = session.getAttributeValue(cert_obj, [PyKCS11.CKA_VALUE, PyKCS11.CKA_ID])
+            except Exception:
+                logger.debug("Could not read certificate attributes from smartcard", exc_info=True)
+                continue
+            if not raw_cert or not raw_id:
+                continue
+            cert_id = bytes(bytearray(raw_id))
+            score = _cert_score_for_tls_client_auth(bytes(bytearray(raw_cert)))
+            if score > best_score:
+                best_id = cert_id
+                best_score = score
+        return best_id
+    finally:
+        try:
+            session.closeSession()
+        except Exception:
+            logger.debug("PyKCS11 session.closeSession() failed after certificate probe", exc_info=True)
+
+
+def _build_pkcs11_uri(module_path: str, pin: str, cert_id: bytes | None = None) -> str:
+    """Build an RFC 7512 PKCS#11 URI for provider-backed smartcard loading.
+
+    When `cert_id` is known, the URI is scoped to objects with that CKA_ID so the provider resolves a matching
+    cert/key pair instead of whatever object happens to enumerate first.
+    """
+    path = f"id={urllib.parse.quote_from_bytes(cert_id, safe='')}" if cert_id else ""
+    query = f"module-path={urllib.parse.quote(module_path, safe='')}&pin-value={urllib.parse.quote(pin, safe='')}"
+    return f"pkcs11:{path}?{query}"
+
+
+def _verify_callback(_conn: Any, _cert: Any, _errnum: int, _depth: int, preverify_ok: int) -> bool:
+    """PyOpenSSL verify callback: return OpenSSL's own verification verdict."""
+
+    return bool(preverify_ok)
 
 
 class SmartcardSession:
-    """Process-wide singleton that owns the PKCS#11 session and the pyOpenSSL SSL.Context.
+    """Process-wide singleton that owns the smartcard-backed pyOpenSSL `SSL.Context`.
 
-    `SmartcardSession.get()` lazily logs in on first call, prompting for a PIN. Subsequent calls return the
-    same logged-in session. The same `OpenSSL.SSL.Context` is reused across all HTTPS connections issued by
-    Nominal adapters.
+    `SmartcardSession.get()` lazily prompts for a PIN and loads the cert + key on first use. Subsequent
+    calls return the same instance with the same context, which is shared across every HTTPS connection
+    produced by `SmartcardPoolManager`.
 
-    Thread safety: PKCS#11 sessions are not generally safe for concurrent use; an internal RLock serializes
-    `sign` operations performed during TLS handshakes. The TCP/TLS data path uses pyOpenSSL.SSL.Connection's
-    own thread safety once the handshake completes.
+    Thread safety: pyOpenSSL's `SSL.Context` is safe to share across threads as long as each handshake
+    gets its own `SSL.Connection`. The provider's per-token PKCS#11 session is serialized internally;
+    concurrent handshakes therefore queue at the signing call, which is fine for typical client workloads.
     """
 
     _instance: SmartcardSession | None = None
@@ -132,162 +287,82 @@ class SmartcardSession:
 
     def __init__(self, module_path: str) -> None:
         self._module_path = module_path
-        self._session_lock = threading.RLock()
-        self._lib, self._session, self._cert_der, self._key_handle, self._token_label = self._open_and_login(
-            module_path
-        )
+        self._token_label = _probe_token_label(module_path)
+        self._cert_id = _select_client_auth_cert_id(module_path)
+        self._ctx_lock = threading.Lock()
         self._ssl_context_cache: OpenSSL.SSL.Context | None = None
         self._closed = False
 
-    @staticmethod
-    def _open_and_login(module_path: str) -> tuple[Any, Any, bytes, Any, str]:
-        try:
-            import PyKCS11
-        except ImportError as e:
-            raise SmartcardError(
-                "PyKCS11 is required for smartcard auth. Install with: pip install 'nominal[smartcard]'"
-            ) from e
+    @property
+    def ssl_context(self) -> OpenSSL.SSL.Context:
+        """Return the SSL context, building it lazily on first access.
 
-        lib = PyKCS11.PyKCS11Lib()
-        try:
-            lib.load(module_path)
-        except PyKCS11.PyKCS11Error as e:
-            raise SmartcardError(f"failed to load PKCS#11 module at {module_path!r}: {e}") from e
+        Building lazily means `NominalClient` creation can still successfully discover the token before any
+        PIN prompt happens. The prompt fires on the first network call, or eagerly if the caller does
+        `SmartcardSession.get().ssl_context` immediately after construction.
+        """
+        with self._ctx_lock:
+            if self._ssl_context_cache is None:
+                self._ssl_context_cache = self._build_ssl_context()
+            return self._ssl_context_cache
 
-        slots = lib.getSlotList(tokenPresent=True)
-        if not slots:
-            raise SmartcardError(
-                "No smartcard tokens detected. Insert a CAC into your reader and retry."
-            )
-        slot = slots[0]
-        token_info = lib.getTokenInfo(slot)
-        token_label = token_info.label.strip() if token_info.label else f"slot-{slot}"
-
-        session = lib.openSession(slot)
-        pin = _prompt_pin(token_label)
-        try:
-            session.login(pin)
-        except PyKCS11.PyKCS11Error as e:
-            raise SmartcardError(f"PKCS#11 login failed for token {token_label!r}: {e}") from e
-        finally:
-            # Drop the PIN reference as soon as we hand it to C_Login. Strings are immutable in CPython so we
-            # can't truly zero memory, but we can ensure no Python-level reference survives this scope.
-            _zero_str(pin)
-            del pin
-
-        cert_der, key_handle = SmartcardSession._select_cert_and_key(PyKCS11, session)
-        return lib, session, cert_der, key_handle, token_label
-
-    @staticmethod
-    def _select_cert_and_key(PyKCS11: Any, session: Any) -> tuple[bytes, Any]:
-        """Find an X.509 certificate on the token and the private key that matches it (via CKA_ID)."""
-        cert_template = [(PyKCS11.CKA_CLASS, PyKCS11.CKO_CERTIFICATE)]
-        cert_objects = session.findObjects(cert_template)
-        if not cert_objects:
-            raise SmartcardError("No certificates found on smartcard token")
-
-        cert_der: bytes | None = None
-        cert_id: bytes | None = None
-        for cert_obj in cert_objects:
-            attrs = session.getAttributeValue(cert_obj, [PyKCS11.CKA_VALUE, PyKCS11.CKA_ID])
-            if attrs[0]:
-                cert_der = bytes(attrs[0])
-                cert_id = bytes(attrs[1]) if attrs[1] else None
-                break
-        if cert_der is None:
-            raise SmartcardError("Could not extract a certificate value from any object on the smartcard")
-
-        key_template: list[tuple[Any, Any]] = [(PyKCS11.CKA_CLASS, PyKCS11.CKO_PRIVATE_KEY)]
-        if cert_id is not None:
-            key_template.append((PyKCS11.CKA_ID, cert_id))
-        keys = session.findObjects(key_template)
-        if not keys:
-            raise SmartcardError("No matching private key found on smartcard for the selected certificate")
-        return cert_der, keys[0]
+    @property
+    def token_label(self) -> str:
+        return self._token_label
 
     def _build_ssl_context(self) -> OpenSSL.SSL.Context:
-        """Build the pyOpenSSL Context that drives client-cert TLS via the smartcard.
-
-        Uses the cffi `_pkcs11_bridge` to install a custom EVP_PKEY whose `sign` operation delegates
-        back to `self._sign` (which calls `C_Sign` on the logged-in PKCS#11 session). The cert is
-        installed alongside as a normal pyOpenSSL `X509`. After this, every TLS handshake initiated
-        through the returned `SSL.Context` will ask the smartcard to sign the handshake transcript
-        — no further PIN prompts, no key material leaves the card.
+        """Resolve the smartcard cert + private key via OpenSSL's pkcs11 provider, then install them on a
+        fresh pyOpenSSL `SSL.Context`.
         """
         try:
-            import PyKCS11
-            from OpenSSL import SSL, crypto
+            from OpenSSL import SSL
         except ImportError as e:
             raise SmartcardError(
                 "pyOpenSSL is required for smartcard auth. Install with: pip install 'nominal[smartcard]'"
             ) from e
 
         try:
-            handle = _pkcs11_bridge.lib_handle()
+            handle = openssl_provider.lib_handle()
+            openssl_provider.load_provider(handle, _PROVIDER_NAME, _discover_ossl_modules_dir())
 
-            def _sign_bytes(data: bytes) -> bytes:
-                return self._sign(data, PyKCS11.CKM_RSA_PKCS)
+            pin = _prompt_pin(self._token_label)
+            try:
+                uri = _build_pkcs11_uri(self._module_path, pin, self._cert_id)
+            finally:
+                # CPython strings are immutable so we cannot zero memory, but no Python reference survives.
+                del pin
 
-            pkey_cdata = _pkcs11_bridge.install_pkcs11_key(handle, _sign_bytes, self._cert_der)
+            try:
+                cert, pkey = openssl_provider.load_cert_and_key(handle, uri)
+            finally:
+                # `uri` carries the PIN; drop our reference now that the provider has consumed it.
+                del uri
 
-            cert = crypto.load_certificate(crypto.FILETYPE_ASN1, self._cert_der)
             ctx = SSL.Context(SSL.TLS_CLIENT_METHOD)
-            ssl_ctx_cdata = _pkcs11_bridge.cast_ssl_ctx(ctx)
-            _pkcs11_bridge.install_on_ssl_context(handle, ssl_ctx_cdata, cert, pkey_cdata)
-        except _pkcs11_bridge.PKCS11BridgeError as e:
-            raise SmartcardError(
-                f"Failed to build smartcard SSL context for token {self._token_label!r}: {e}"
-            ) from e
+            openssl_provider.validate_pyopenssl_context(handle, ctx)
+            ssl_ctx_cdata = openssl_provider.cast_pyopenssl_ssl_ctx(handle, ctx)
+            openssl_provider.install_on_ssl_context(handle, ssl_ctx_cdata, cert, pkey)
+        except openssl_provider.OpenSSLProviderError as e:
+            raise SmartcardError(f"Failed to build smartcard SSL context for token {self._token_label!r}: {e}") from e
 
         ctx.set_default_verify_paths()
-        ctx.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, _accept_verify)
+        ctx.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, _verify_callback)
         return ctx
-
-    def _sign(self, data: bytes, mechanism: int) -> bytes:
-        try:
-            import PyKCS11
-        except ImportError as e:  # pragma: no cover
-            raise SmartcardError("PyKCS11 disappeared at runtime") from e
-        with self._session_lock:
-            sig = self._session.sign(self._key_handle, data, PyKCS11.Mechanism(mechanism, None))
-        return bytes(sig)
-
-    @property
-    def ssl_context(self) -> OpenSSL.SSL.Context:
-        """Return the SSL context, building it lazily on first access.
-
-        Building lazily means `NominalClient` creation can still successfully prompt for the PIN and verify
-        the smartcard is configured correctly even before the TLS bridge is fully wired — the failure surface
-        moves to the first network call rather than client construction.
-        """
-        if self._ssl_context_cache is None:
-            self._ssl_context_cache = self._build_ssl_context()
-        return self._ssl_context_cache
-
-    @property
-    def token_label(self) -> str:
-        return self._token_label
 
     def close(self) -> None:
         if self._closed:
             return
-        with self._session_lock:
-            try:
-                self._session.logout()
-            except Exception as e:  # pragma: no cover - best-effort cleanup
-                logger.debug("smartcard logout raised %s", e)
-            try:
-                self._session.closeSession()
-            except Exception as e:  # pragma: no cover
-                logger.debug("smartcard closeSession raised %s", e)
-            self._closed = True
+        self._closed = True
+        # Nothing to actively tear down: OSSL_STORE was closed at the end of _build_ssl_context, and the
+        # provider stays loaded for the rest of the process. The SSL.Context goes away with its refcount.
 
     @classmethod
     def get(cls, module_path: str | None = None) -> SmartcardSession:
-        """Return the process-wide smartcard session, creating and logging in on first call.
+        """Return the process-wide smartcard session, creating it on first call.
 
-        On first call: discovers the PKCS#11 module, opens a session, and prompts for the PIN. Subsequent
-        calls return the same instance with the token still logged in.
+        On first call: discovers the PKCS#11 module and probes for a token. The PIN prompt happens on the
+        first access of `.ssl_context`, not here — token-only probing avoids an unnecessary prompt when
+        callers just want to confirm a token is plugged in.
         """
         with cls._instance_lock:
             if cls._instance is None:
@@ -303,7 +378,7 @@ class SmartcardSession:
             cls._instance = None
         if inst is not None:
             inst.close()
-        _pkcs11_bridge.reset_for_test()
+        openssl_provider.reset_for_test()
 
 
 class SmartcardHTTPSConnection(HTTPSConnection):
@@ -333,16 +408,33 @@ class SmartcardHTTPSConnection(HTTPSConnection):
         except ImportError as e:  # pragma: no cover - guarded earlier
             raise SmartcardError("pyOpenSSL is required for smartcard auth") from e
 
-        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        sock = self._new_conn()
+        if getattr(self, "_tunnel_host", None):
+            self.sock = sock
+            self._tunnel()
+
         ctx = SmartcardSession.get().ssl_context
         ssl_conn = SSL.Connection(ctx, sock)
-        ssl_conn.set_tlsext_host_name(self.host.encode("ascii"))
+        host = str(getattr(self, "_tunnel_host", None) or self.host).removeprefix("[").removesuffix("]")
+        try:
+            import ipaddress
+
+            ipaddress.ip_address(host)
+        except ValueError:
+            ssl_conn.set_tlsext_host_name(host.encode("idna"))
+        handle = openssl_provider.lib_handle()
+        ssl_cdata = openssl_provider.cast_pyopenssl_ssl(handle, ssl_conn)
+        openssl_provider.configure_hostname_verification(handle, ssl_cdata, host)
         ssl_conn.set_connect_state()
         try:
             ssl_conn.do_handshake()
+            openssl_provider.assert_verify_ok(handle, ssl_cdata, host)
         except SSL.Error as e:
             ssl_conn.close()
             raise SmartcardError(f"TLS handshake failed against {self.host!r}: {e}") from e
+        except openssl_provider.OpenSSLProviderError as e:
+            ssl_conn.close()
+            raise SmartcardError(f"TLS verification failed against {self.host!r}: {e}") from e
         self.sock = ssl_conn
 
 

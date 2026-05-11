@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import sys
 import types
-from typing import Any
+import urllib.parse
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.core._utils import _pkcs11_bridge as pkcs11_bridge
+from nominal.core._utils import _openssl_provider as openssl_provider
 from nominal.core._utils import smartcard as smartcard_module
 from nominal.core._utils.smartcard import (
     SmartcardError,
     SmartcardSession,
+    _build_pkcs11_uri,
+    _verify_callback,
     discover_pkcs11_module,
 )
 
@@ -57,214 +59,235 @@ class _FakePyKCS11Error(Exception):
 def _install_fake_pykcs11(
     monkeypatch: pytest.MonkeyPatch,
     *,
-    cert_der: bytes = b"\x30\x82\x01\x00",
-    raise_on_login: bool = False,
-) -> tuple[MagicMock, MagicMock]:
-    """Inject a fake PyKCS11 module into sys.modules and return (lib, session) mocks."""
-    fake_module = types.ModuleType("PyKCS11")
+    token_label: str = "TestToken",
+    slots=(1,),
+    cert_attrs=((b"not-a-real-cert", [0xAA]),),
+) -> MagicMock:
+    """Inject a minimal fake PyKCS11 used by `_probe_token_label`.
 
+    The provider-based path uses PyKCS11 only for public metadata: token label and certificate CKA_ID.
+    """
+    fake_module = types.ModuleType("PyKCS11")
     fake_module.PyKCS11Error = _FakePyKCS11Error  # type: ignore[attr-defined]
     fake_module.CKA_CLASS = "CKA_CLASS"  # type: ignore[attr-defined]
     fake_module.CKO_CERTIFICATE = "CKO_CERTIFICATE"  # type: ignore[attr-defined]
-    fake_module.CKO_PRIVATE_KEY = "CKO_PRIVATE_KEY"  # type: ignore[attr-defined]
     fake_module.CKA_VALUE = "CKA_VALUE"  # type: ignore[attr-defined]
     fake_module.CKA_ID = "CKA_ID"  # type: ignore[attr-defined]
-    fake_module.CKM_SHA256_RSA_PKCS = "CKM_SHA256_RSA_PKCS"  # type: ignore[attr-defined]
-    fake_module.CKM_SHA384_RSA_PKCS = "CKM_SHA384_RSA_PKCS"  # type: ignore[attr-defined]
-    fake_module.CKM_SHA512_RSA_PKCS = "CKM_SHA512_RSA_PKCS"  # type: ignore[attr-defined]
-    fake_module.CKM_SHA1_RSA_PKCS = "CKM_SHA1_RSA_PKCS"  # type: ignore[attr-defined]
-
-    class _Mechanism:
-        def __init__(self, mech, _params=None):
-            self.mech = mech
-
-    fake_module.Mechanism = _Mechanism  # type: ignore[attr-defined]
-
-    cert_object = object()
-    key_object = object()
-
-    session = MagicMock()
-    if raise_on_login:
-        session.login.side_effect = _FakePyKCS11Error("PIN incorrect")
-    session.findObjects.side_effect = lambda template: (
-        [cert_object] if any(p[1] == "CKO_CERTIFICATE" for p in template) else [key_object]
-    )
-    session.getAttributeValue.return_value = (list(cert_der), [0xAA])
 
     token_info = MagicMock()
-    token_info.label = "TestToken"
+    token_info.label = token_label
+
+    cert_objects = [object() for _ in cert_attrs]
+    session = MagicMock()
+    session.findObjects.return_value = cert_objects
+    session.getAttributeValue.side_effect = list(cert_attrs)
 
     lib = MagicMock()
-    lib.getSlotList.return_value = [1]
+    lib.getSlotList.return_value = list(slots)
     lib.getTokenInfo.return_value = token_info
     lib.openSession.return_value = session
 
     fake_module.PyKCS11Lib = MagicMock(return_value=lib)  # type: ignore[attr-defined]
-
     monkeypatch.setitem(sys.modules, "PyKCS11", fake_module)
-    return lib, session
+    return lib
 
 
-def test_smartcard_session_login_failure_raises_smartcard_error(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """If C_Login fails (wrong PIN), surface a SmartcardError, not the underlying PyKCS11 type."""
+def test_smartcard_session_no_token_raises(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """If the reader has no token inserted, fail fast at session construction with a clear error."""
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_bytes(b"")
 
-    _install_fake_pykcs11(monkeypatch, raise_on_login=True)
+    _install_fake_pykcs11(monkeypatch, slots=())
 
-    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="wrong"):
-        with pytest.raises(SmartcardError, match="login failed"):
-            SmartcardSession.get(module_path=str(module_path))
-
-
-def test_smartcard_session_prompts_pin_only_once(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """SmartcardSession is a singleton — the PIN prompt happens exactly once for repeated get() calls."""
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_bytes(b"")
-
-    _, session = _install_fake_pykcs11(monkeypatch)
-
-    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="1234") as prompt:
-        first = SmartcardSession.get(module_path=str(module_path))
-        second = SmartcardSession.get(module_path=str(module_path))
-
-    assert first is second
-    prompt.assert_called_once()
-    session.login.assert_called_once_with("1234")
+    with pytest.raises(SmartcardError, match="No smartcard tokens detected"):
+        SmartcardSession.get(module_path=str(module_path))
 
 
-def test_smartcard_session_finds_no_token_raises(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """If the reader has no token inserted, surface a clear error rather than hanging or KeyError-ing."""
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_bytes(b"")
-
-    lib, _ = _install_fake_pykcs11(monkeypatch)
-    lib.getSlotList.return_value = []
-
-    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="1234"):
-        with pytest.raises(SmartcardError, match="No smartcard tokens detected"):
-            SmartcardSession.get(module_path=str(module_path))
-
-
-def _stub_pkcs11_bridge(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    install_pkcs11_key_side_effect: Any = None,
-) -> dict[str, Any]:
-    """Replace the bridge FFI surface with MagicMocks and wire a fake `OpenSSL` module.
-
-    The smartcard session never invokes the FFI in unit tests; we just need to assert that the
-    orchestration calls the bridge in the right order with the right values.
-    """
-    handle = MagicMock(name="LibHandle")
-    if install_pkcs11_key_side_effect is None:
-        install_pkcs11_key_side_effect = lambda _h, _cb, _c: "<pkey_cdata>"  # noqa: E731
-
-    fake_bridge = types.SimpleNamespace(
-        PKCS11BridgeError=pkcs11_bridge.PKCS11BridgeError,
-        lib_handle=MagicMock(return_value=handle),
-        install_pkcs11_key=MagicMock(side_effect=install_pkcs11_key_side_effect),
-        cast_ssl_ctx=MagicMock(return_value="<ssl_ctx_cdata>"),
-        install_on_ssl_context=MagicMock(),
-        reset_for_test=MagicMock(),
-    )
-    monkeypatch.setattr(smartcard_module, "_pkcs11_bridge", fake_bridge)
-
-    fake_context = MagicMock(name="Context")
-    fake_ssl = MagicMock(name="SSL")
-    fake_ssl.Context.return_value = fake_context
-    fake_ssl.TLS_CLIENT_METHOD = object()
-    fake_ssl.VERIFY_PEER = 1
-    fake_ssl.VERIFY_FAIL_IF_NO_PEER_CERT = 2
-
-    fake_crypto = MagicMock(name="crypto")
-    fake_crypto.FILETYPE_ASN1 = 1
-    fake_crypto.load_certificate.return_value = "<pyopenssl_cert>"
-
-    monkeypatch.setitem(
-        sys.modules, "OpenSSL", types.SimpleNamespace(SSL=fake_ssl, crypto=fake_crypto)
-    )
-    monkeypatch.setitem(sys.modules, "OpenSSL.SSL", fake_ssl)
-    monkeypatch.setitem(sys.modules, "OpenSSL.crypto", fake_crypto)
-
-    return {
-        "bridge": fake_bridge,
-        "handle": handle,
-        "ssl": fake_ssl,
-        "crypto": fake_crypto,
-        "context": fake_context,
-    }
-
-
-def test_ssl_context_orchestrates_bridge_calls(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Building the SSL context must: get a lib handle, install the PKCS#11-backed EVP_PKEY via the
-    bridge, parse the cert DER, create an SSL.Context, install cert+pkey onto its SSL_CTX cdata, and
-    configure server-cert verification. Second access reuses the cached context.
-    """
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_bytes(b"")
-
-    _install_fake_pykcs11(monkeypatch, cert_der=b"<cert-der-bytes>")
-    mocks = _stub_pkcs11_bridge(monkeypatch)
-
-    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="1234"):
-        sc = SmartcardSession.get(module_path=str(module_path))
-        ctx = sc.ssl_context
-        # Cached on second access — no extra bridge work.
-        assert sc.ssl_context is ctx
-
-    mocks["bridge"].lib_handle.assert_called_once()
-    mocks["bridge"].install_pkcs11_key.assert_called_once()
-    args, _ = mocks["bridge"].install_pkcs11_key.call_args
-    assert args[0] is mocks["handle"]
-    # 3rd arg is the cert DER from the smartcard.
-    assert args[2] == b"<cert-der-bytes>"
-    # 2nd arg is the sign callable — invoking it should route to the SmartcardSession's _sign.
-    sign_cb = args[1]
-    assert callable(sign_cb)
-
-    mocks["bridge"].cast_ssl_ctx.assert_called_once_with(mocks["context"])
-    mocks["bridge"].install_on_ssl_context.assert_called_once_with(
-        mocks["handle"], "<ssl_ctx_cdata>", "<pyopenssl_cert>", "<pkey_cdata>"
-    )
-    mocks["context"].set_default_verify_paths.assert_called_once()
-    mocks["context"].set_verify.assert_called_once()
-
-
-def test_ssl_context_wraps_bridge_errors_as_smartcard_errors(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Bridge-layer errors must surface as SmartcardError with the token label in the message."""
+def test_smartcard_session_construct_does_not_prompt_pin(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Token probe must NOT prompt for a PIN — the prompt only fires when ssl_context is first accessed."""
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_bytes(b"")
 
     _install_fake_pykcs11(monkeypatch)
 
-    def _boom(*_args: Any) -> Any:
-        raise pkcs11_bridge.PKCS11BridgeError("SSL_CTX_use_PrivateKey failed")
-
-    _stub_pkcs11_bridge(monkeypatch, install_pkcs11_key_side_effect=_boom)
-
-    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="1234"):
+    with patch("nominal.core._utils.smartcard._prompt_pin") as prompt:
         sc = SmartcardSession.get(module_path=str(module_path))
-        with pytest.raises(SmartcardError, match="token 'TestToken'.*SSL_CTX_use_PrivateKey"):
-            _ = sc.ssl_context
+        assert sc.token_label == "TestToken"
+
+    prompt.assert_not_called()
 
 
-def test_smartcard_session_signs_via_pkcs11_session(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Once logged in, signing operations delegate to the cached PKCS#11 session — no re-prompt."""
+def test_build_pkcs11_uri_encodes_module_path_and_pin() -> None:
+    """Both module path and PIN must be URL-encoded — module paths can contain spaces, PINs can contain
+    reserved characters that would break URI parsing inside the provider.
+    """
+    uri = _build_pkcs11_uri("/lib path/opensc.so", "p&i=n;1")
+
+    assert uri.startswith("pkcs11:?")
+    qs = uri[len("pkcs11:?") :]
+    parsed = urllib.parse.parse_qs(qs)
+    assert parsed["module-path"] == ["/lib path/opensc.so"]
+    assert parsed["pin-value"] == ["p&i=n;1"]
+
+
+def test_build_pkcs11_uri_escapes_reserved_pin_characters() -> None:
+    """Reserved URI chars in the PIN (?, #, &, =) must be percent-encoded; otherwise the provider would
+    parse them as URI structure and misinterpret the PIN.
+    """
+    uri = _build_pkcs11_uri("/lib.so", "?&=#")
+
+    pin_field = [seg for seg in uri.split("&") if seg.startswith("pin-value=")][0]
+    assert pin_field == "pin-value=%3F%26%3D%23"
+
+
+def test_build_pkcs11_uri_scopes_to_certificate_id_when_known() -> None:
+    uri = _build_pkcs11_uri("/lib.so", "1234", b"\x01\xaa")
+
+    assert uri.startswith("pkcs11:id=%01%AA?")
+    assert "module-path=%2Flib.so" in uri
+
+
+def test_verify_callback_returns_openssl_preverify_result() -> None:
+    assert _verify_callback(None, None, 0, 0, 1) is True
+    assert _verify_callback(None, None, 20, 0, 0) is False
+
+
+def _stub_openssl_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    load_cert_and_key_side_effect=None,
+    load_provider_side_effect=None,
+) -> dict[str, MagicMock]:
+    """Replace the openssl_provider FFI surface with MagicMocks.
+
+    Returns the mocks so tests can assert on call args. Also wires a fake `OpenSSL.SSL` so we don't try
+    to construct a real Context (which would need a real, well-formed cert + key).
+    """
+    handle = MagicMock(name="LibHandle")
+    fake_provider = types.SimpleNamespace(
+        OpenSSLProviderError=openssl_provider.OpenSSLProviderError,
+        lib_handle=MagicMock(return_value=handle),
+        load_provider=MagicMock(side_effect=load_provider_side_effect),
+        load_cert_and_key=MagicMock(side_effect=load_cert_and_key_side_effect),
+        install_on_ssl_context=MagicMock(),
+        cast_pyopenssl_ssl_ctx=MagicMock(return_value="<ssl_ctx_cdata>"),
+        cast_pyopenssl_ssl=MagicMock(return_value="<ssl_cdata>"),
+        configure_hostname_verification=MagicMock(),
+        assert_verify_ok=MagicMock(),
+        validate_pyopenssl_context=MagicMock(),
+        reset_for_test=MagicMock(),
+    )
+    monkeypatch.setattr(smartcard_module, "openssl_provider", fake_provider)
+
+    fake_context = MagicMock(name="Context")
+    fake_ssl_module = MagicMock(name="SSL")
+    fake_ssl_module.Context.return_value = fake_context
+    fake_ssl_module.TLS_CLIENT_METHOD = object()
+    fake_ssl_module.VERIFY_PEER = 1
+    fake_ssl_module.VERIFY_FAIL_IF_NO_PEER_CERT = 2
+    monkeypatch.setitem(sys.modules, "OpenSSL", types.SimpleNamespace(SSL=fake_ssl_module))
+    monkeypatch.setitem(sys.modules, "OpenSSL.SSL", fake_ssl_module)
+
+    return {
+        "provider": fake_provider,
+        "handle": handle,
+        "ssl_module": fake_ssl_module,
+        "context": fake_context,
+    }
+
+
+def test_ssl_context_load_orchestrates_provider_calls(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Building an SSL context should: load the provider once, prompt once, OSSL_STORE-load by URI, install
+    cert+key onto pyOpenSSL's Context, and configure verification.
+    """
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_bytes(b"")
 
-    _, session = _install_fake_pykcs11(monkeypatch)
-    session.sign.return_value = [0x01, 0x02, 0x03]
+    _install_fake_pykcs11(monkeypatch)
+    mocks = _stub_openssl_provider(
+        monkeypatch,
+        load_cert_and_key_side_effect=lambda _handle, _uri: ("<cert>", "<pkey>"),
+    )
 
-    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="1234"):
+    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="1234") as prompt:
         sc = SmartcardSession.get(module_path=str(module_path))
+        ctx = sc.ssl_context
+        # Cached on second access — no second prompt, no second provider load.
+        assert sc.ssl_context is ctx
 
-    sig = sc._sign(b"to-sign", mechanism="CKM_SHA256_RSA_PKCS")
+    prompt.assert_called_once()
+    mocks["provider"].load_provider.assert_called_once()
+    args, _ = mocks["provider"].load_provider.call_args
+    assert args[0] is mocks["handle"]
+    assert args[1] == "pkcs11"
 
-    assert sig == bytes([0x01, 0x02, 0x03])
-    session.sign.assert_called_once()
+    # PIN was passed inside the URI to load_cert_and_key.
+    mocks["provider"].load_cert_and_key.assert_called_once()
+    _, uri_arg = mocks["provider"].load_cert_and_key.call_args.args
+    assert "pin-value=1234" in uri_arg
+    assert "id=%AA" in uri_arg
+    assert urllib.parse.quote(str(module_path), safe="") in uri_arg
+
+    # Cert + key were installed on the SSL_CTX cdata.
+    mocks["provider"].install_on_ssl_context.assert_called_once_with(
+        mocks["handle"], "<ssl_ctx_cdata>", "<cert>", "<pkey>"
+    )
+    mocks["context"].set_default_verify_paths.assert_called_once()
+    mocks["context"].set_verify.assert_called_once()
+
+
+def test_ssl_context_wraps_provider_errors_as_smartcard_errors(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provider-layer errors must surface as SmartcardError with the token label in the message."""
+    module_path = tmp_path / "opensc-pkcs11.so"
+    module_path.write_bytes(b"")
+
+    _install_fake_pykcs11(monkeypatch)
+
+    def _boom(_handle, _uri):
+        raise openssl_provider.OpenSSLProviderError("OSSL_STORE_open failed: pkcs11: bad PIN")
+
+    _stub_openssl_provider(monkeypatch, load_cert_and_key_side_effect=_boom)
+
+    with patch("nominal.core._utils.smartcard._prompt_pin", return_value="bad"):
+        sc = SmartcardSession.get(module_path=str(module_path))
+        with pytest.raises(SmartcardError, match="token 'TestToken'.*OSSL_STORE_open failed: pkcs11: bad PIN"):
+            _ = sc.ssl_context
+
+
+def test_ssl_context_does_not_swallow_unrelated_errors(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-provider exception (e.g. an interrupted PIN prompt) should propagate untouched."""
+    module_path = tmp_path / "opensc-pkcs11.so"
+    module_path.write_bytes(b"")
+
+    _install_fake_pykcs11(monkeypatch)
+    _stub_openssl_provider(monkeypatch)
+
+    with patch("nominal.core._utils.smartcard._prompt_pin", side_effect=KeyboardInterrupt):
+        sc = SmartcardSession.get(module_path=str(module_path))
+        with pytest.raises(KeyboardInterrupt):
+            _ = sc.ssl_context
+
+
+def test_smartcard_connection_configures_sni_and_hostname_verification(monkeypatch: pytest.MonkeyPatch) -> None:
+    mocks = _stub_openssl_provider(monkeypatch)
+    ssl_conn = MagicMock(name="SSL.Connection")
+    mocks["ssl_module"].Connection.return_value = ssl_conn
+    monkeypatch.setattr(
+        smartcard_module.SmartcardSession,
+        "get",
+        MagicMock(return_value=types.SimpleNamespace(ssl_context="<ctx>")),
+    )
+
+    conn = smartcard_module.SmartcardHTTPSConnection("api.example.com", port=443)
+    conn._new_conn = MagicMock(return_value="<tcp-sock>")  # type: ignore[method-assign]
+
+    conn.connect()
+
+    mocks["ssl_module"].Connection.assert_called_once_with("<ctx>", "<tcp-sock>")
+    ssl_conn.set_tlsext_host_name.assert_called_once_with(b"api.example.com")
+    mocks["provider"].cast_pyopenssl_ssl.assert_called_once_with(mocks["handle"], ssl_conn)
+    mocks["provider"].configure_hostname_verification.assert_called_once_with(
+        mocks["handle"], "<ssl_cdata>", "api.example.com"
+    )
+    mocks["provider"].assert_verify_ok.assert_called_once_with(mocks["handle"], "<ssl_cdata>", "api.example.com")
+    assert conn.sock is ssl_conn

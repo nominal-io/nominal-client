@@ -101,6 +101,7 @@ smartcard = [
     "PyKCS11>=1.5.12",
     "pyOpenSSL>=23.0.0",
     "cryptography>=42.0.0",
+    "cffi>=1.17.0",
 ]
 # nominal-video wheels exist for:
 # - Windows x86_64 (AMD64)
