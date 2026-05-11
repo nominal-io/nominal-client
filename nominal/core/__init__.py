@@ -29,6 +29,7 @@ from nominal.core.filetype import FileType, FileTypes
 from nominal.core.log import LogPoint
 from nominal.core.run import Run
 from nominal.core.secret import Secret
+from nominal.core.spatial import upload_point_cloud
 from nominal.core.unit import Unit, UnitLike
 from nominal.core.user import User
 from nominal.core.video import Video
@@ -77,6 +78,7 @@ __all__ = [
     "TimestampMetadata",
     "Unit",
     "UnitLike",
+    "upload_point_cloud",
     "User",
     "UserPassAuth",
     "Video",
