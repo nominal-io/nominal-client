@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.143.0](https://github.com/nominal-io/nominal-client/compare/v1.142.0...v1.143.0) (2026-05-11)
+
+
+### Features
+
+* remove top-level code for namespace packaging ([d2c5935](https://github.com/nominal-io/nominal-client/commit/d2c59350189af0ed917ac539b0003ae59002638a))
+* remove top-level code to allow for namespace packaging ([#738](https://github.com/nominal-io/nominal-client/issues/738)) ([d2c5935](https://github.com/nominal-io/nominal-client/commit/d2c59350189af0ed917ac539b0003ae59002638a))
+
 ## [1.142.0](https://github.com/nominal-io/nominal-client/compare/v1.141.0...v1.142.0) (2026-05-11)
 
 
