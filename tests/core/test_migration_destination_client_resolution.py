@@ -117,8 +117,6 @@ def test_nested_migrations_resolve_destination_client_per_child_resource() -> No
     destination_run = MagicMock(rid="run-destination")
     asset_client.create_asset.return_value = destination_asset
     run_client.create_run.return_value = destination_run
-    run_client.get_run.return_value = destination_run
-
     ctx = MigrationContext(
         destination_client=default_client,
         migration_state=MigrationState(),
@@ -143,6 +141,6 @@ def test_nested_migrations_resolve_destination_client_per_child_resource() -> No
     asset_client.create_run.assert_not_called()
     default_client.create_asset.assert_not_called()
     default_client.create_run.assert_not_called()
-    run_client.get_run.assert_called_once_with(destination_run.rid)
+    run_client.get_run.assert_not_called()
     assert ctx.migration_state.get_mapped_rid(ResourceType.ASSET, source_asset.rid) == destination_asset.rid
     assert ctx.migration_state.get_mapped_rid(ResourceType.RUN, source_run.rid) == destination_run.rid
