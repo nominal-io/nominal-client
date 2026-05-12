@@ -46,6 +46,10 @@ jobs:
           # Buffers inline comments and only posts high signal messages that have passed an internal review
           classify_inline_comments: "true"
 
+          # Append "Fix this" links to inline review feedback so a reviewer can open Claude Code locally
+          # with the issue context pre-loaded
+          include_fix_links: "true"
+
           additional_permissions: |
             actions: read
 
