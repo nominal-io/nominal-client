@@ -91,6 +91,40 @@ class FileExtractionInput:
 
 
 @dataclass(frozen=True)
+class FileExtractionParameter:
+    """Configuration for a file extraction parameter in a containerized extractor.
+
+    Args:
+        name: Human-readable name for this parameter configuration.
+        description: Optional detailed description of what this parameter represents.
+        environment_variable: Environment variable name in the container which will be set to the parameter value.
+        required: Whether this parameter is mandatory for the extractor to run.
+    """
+
+    name: str
+    description: str | None
+    environment_variable: str
+    required: bool
+
+    @classmethod
+    def _from_conjure(cls, file_extraction_parameter: ingest_api.FileExtractionParameter) -> Self:
+        return cls(
+            name=file_extraction_parameter.name,
+            description=file_extraction_parameter.description,
+            environment_variable=file_extraction_parameter.environment_variable,
+            required=file_extraction_parameter.required if file_extraction_parameter.required is not None else False,
+        )
+
+    def _to_conjure(self) -> ingest_api.FileExtractionParameter:
+        return ingest_api.FileExtractionParameter(
+            environment_variable=self.environment_variable,
+            name=self.name,
+            description=self.description,
+            required=self.required,
+        )
+
+
+@dataclass(frozen=True)
 class TagDetails:
     """Details about docker image tags to register for a custom extractor.
 
@@ -202,6 +236,7 @@ class ContainerizedExtractor(HasRid):
     description: str | None
     image: DockerImageSource
     inputs: Sequence[FileExtractionInput]
+    parameters: Sequence[FileExtractionParameter]
     properties: Mapping[str, str]
     labels: Sequence[str]
     default_timestamp_metadata: TimestampMetadata | None
@@ -229,6 +264,8 @@ class ContainerizedExtractor(HasRid):
         *,
         name: str | None = None,
         description: str | None = None,
+        inputs: Sequence[FileExtractionInput] | None = None,
+        parameters: Sequence[FileExtractionParameter] | None = None,
         properties: Mapping[str, str] | None = None,
         labels: Sequence[str] | None = None,
         timestamp_metadata: TimestampMetadata | None = None,
@@ -241,6 +278,8 @@ class ContainerizedExtractor(HasRid):
         request = ingest_api.UpdateContainerizedExtractorRequest(
             name=name,
             description=description,
+            inputs=None if inputs is None else [i._to_conjure() for i in inputs],
+            parameters=None if parameters is None else [p._to_conjure() for p in parameters],
             properties=None if properties is None else {**properties},
             labels=None if labels is None else list(labels),
             timestamp_metadata=None if timestamp_metadata is None else timestamp_metadata._to_conjure(),
@@ -277,6 +316,7 @@ class ContainerizedExtractor(HasRid):
             description=raw_extractor.description,
             image=DockerImageSource._from_conjure(raw_extractor.image),
             inputs=[FileExtractionInput._from_conjure(raw_input) for raw_input in raw_extractor.inputs],
+            parameters=[FileExtractionParameter._from_conjure(raw_param) for raw_param in raw_extractor.parameters],
             properties=raw_extractor.properties,
             labels=raw_extractor.labels,
             default_timestamp_metadata=timestamp_metadata,

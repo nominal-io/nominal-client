@@ -170,7 +170,9 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         file_uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
         destination = output_directory / filename_from_uri(file_uri)
         item = DownloadItem(provider=self._presigned_url_provider(), destination=destination, part_size=part_size)
-        with MultipartFileDownloader.create(max_part_retries=num_retries) as dl:
+        with MultipartFileDownloader.create(
+            max_part_retries=num_retries, header_provider=self._clients.header_provider
+        ) as dl:
             return dl.download_file(item)
 
     def download_original_files(
@@ -223,7 +225,9 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
             )
             return []
 
-        with MultipartFileDownloader.create(max_part_retries=num_retries) as dl:
+        with MultipartFileDownloader.create(
+            max_part_retries=num_retries, header_provider=self._clients.header_provider
+        ) as dl:
             results = dl.download_files(items)
 
         for failed_path, ex in results.failed.items():
@@ -239,7 +243,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
               self-hosted environments-- a RuntimeError will be thrown in this case.
         """
         # TODO(drake): pull out functionality in a more re-usable way without requiring the downloader class
-        with MultipartFileDownloader.create(max_workers=1) as downloader:
+        with MultipartFileDownloader.create(max_workers=1, header_provider=self._clients.header_provider) as downloader:
             size, _ = downloader._head_or_probe(self._presigned_url_provider())
             return size
 

@@ -17,6 +17,7 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
+from nominal.core._utils.networking import HeaderProvider
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
@@ -34,6 +35,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
     labels: Sequence[str]
     created_at: IntegralNanosecondsUTC
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -251,11 +253,22 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
 
         workspace_rid = self._clients.resolve_default_workspace_rid()
         timestamp_manifest = _build_video_file_timestamp_manifest(
-            self._clients.auth_header, workspace_rid, self._clients.upload, start, frame_timestamps
+            self._clients.auth_header,
+            workspace_rid,
+            self._clients.upload,
+            start,
+            frame_timestamps,
+            header_provider=self._clients.header_provider,
         )
         file_type = FileType(*file_type)
         s3_path = upload_multipart_io(
-            self._clients.auth_header, workspace_rid, video, name, file_type, self._clients.upload
+            self._clients.auth_header,
+            workspace_rid,
+            video,
+            name,
+            file_type,
+            self._clients.upload,
+            header_provider=self._clients.header_provider,
         )
         request = ingest_api.IngestRequest(
             ingest_api.IngestOptions(
@@ -356,6 +369,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             name,
             file_type,
             self._clients.upload,
+            header_provider=self._clients.header_provider,
         )
         request = ingest_api.IngestRequest(
             options=ingest_api.IngestOptions(
@@ -404,6 +418,7 @@ class Video(HasRid, RefreshableMixin[scout_video_api.Video]):
             labels=tuple(video.labels),
             created_at=_SecondsNanos.from_flexible(video.created_at).to_nanoseconds(),
             _clients=clients,
+            created_by_rid=video.created_by,
         )
 
 
@@ -412,6 +427,7 @@ def _upload_frame_timestamps(
     workspace_rid: str | None,
     upload_client: upload_api.UploadService,
     frame_timestamps: Sequence[IntegralNanosecondsUTC],
+    header_provider: HeaderProvider | None = None,
 ) -> str:
     """Uploads per-frame video timestamps to S3 and provides a path to the uploaded resource."""
     # Dump timestamp array into an in-memory file-like IO object
@@ -429,6 +445,7 @@ def _upload_frame_timestamps(
         "timestamp_manifest",
         FileTypes.JSON,
         upload_client,
+        header_provider=header_provider,
     )
 
 
@@ -438,11 +455,14 @@ def _build_video_file_timestamp_manifest(
     upload_client: upload_api.UploadService,
     start: datetime | IntegralNanosecondsUTC | None = None,
     frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
+    header_provider: HeaderProvider | None = None,
 ) -> scout_video_api.VideoFileTimestampManifest:
     if None not in (start, frame_timestamps):
         raise ValueError("Only one of 'start' or 'frame_timestamps' are allowed")
     elif frame_timestamps is not None:
-        manifest_s3_path = _upload_frame_timestamps(auth_header, workspace_rid, upload_client, frame_timestamps)
+        manifest_s3_path = _upload_frame_timestamps(
+            auth_header, workspace_rid, upload_client, frame_timestamps, header_provider=header_provider
+        )
         return scout_video_api.VideoFileTimestampManifest(s3path=manifest_s3_path)
     elif start is not None:
         # TODO(drake): expose scale parameter to users

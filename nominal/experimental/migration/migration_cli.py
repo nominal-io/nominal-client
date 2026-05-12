@@ -11,7 +11,7 @@ import yaml
 from nominal_api.scout_sandbox_api import SandboxWorkspaceService, SetDemoWorkbooksRequest
 
 from nominal.cli.util.global_decorators import client_options, global_options
-from nominal.core import Asset, NominalClient, Workbook
+from nominal.core import ArchiveStatusFilter, Asset, NominalClient, Workbook
 from nominal.experimental import as_user
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
@@ -614,6 +614,9 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
     logger.info("  Total channels: %d", channel_count)
 
+    workbook_templates = client.search_workbook_templates(archive_status=ArchiveStatusFilter.NOT_ARCHIVED)
+    logger.info("  Workbook templates (non-archived): %d", len(workbook_templates))
+
     orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
 
     logger.info("Out-of-scope migration numbers:")
@@ -639,6 +642,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
             "include_workbooks": True,
             "set_to_demo_workbook": False,
             "source_asset_rids": [{"asset_rid": rid} for rid in sorted(all_assets)],
+            "standalone_workbook_template_rids": [t.rid for t in workbook_templates],
         }
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)

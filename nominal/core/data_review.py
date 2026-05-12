@@ -43,6 +43,7 @@ class DataReview(HasRid):
     created_at: IntegralNanosecondsUTC
 
     _clients: _Clients = field(repr=False)
+    created_by_rid: str | None = field(default=None, repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -70,6 +71,7 @@ class DataReview(HasRid):
             completed=completed,
             created_at=_SecondsNanos.from_flexible(data_review.created_at).to_nanoseconds(),
             _clients=clients,
+            created_by_rid=data_review.created_by,
         )
 
     def get_checklist(self) -> "Checklist":

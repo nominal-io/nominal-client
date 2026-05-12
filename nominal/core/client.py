@@ -47,6 +47,7 @@ from nominal.core._utils.api_tools import (
 from nominal.core._utils.multipart import (
     upload_multipart_io,
 )
+from nominal.core._utils.networking import HeaderProvider, normalize_header_provider
 from nominal.core._utils.pagination_tools import (
     search_assets_paginated,
     search_checklists_paginated,
@@ -79,6 +80,7 @@ from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
     FileExtractionInput,
+    FileExtractionParameter,
     FileOutputFormat,
 )
 from nominal.core.data_review import DataReview, DataReviewBuilder, _iter_search_data_reviews
@@ -135,6 +137,7 @@ class NominalClient:
         *,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
+        extra_headers: HeaderProvider | Mapping[str, str] | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
@@ -143,6 +146,7 @@ class NominalClient:
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
+            extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -159,6 +163,7 @@ class NominalClient:
             workspace_rid=prof.workspace_rid,
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
+            extra_headers=extra_headers,
             _profile=profile,
             _workspace_warning_emitted=True,
         )
@@ -173,6 +178,7 @@ class NominalClient:
         workspace_rid: str | None = None,
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
+        extra_headers: HeaderProvider | Mapping[str, str] | None = None,
         _profile: str | None = None,
         _workspace_warning_emitted: bool = False,
     ) -> Self:
@@ -186,6 +192,7 @@ class NominalClient:
             trust_store_path: path to a trust store certificate chain to initiate SSL connections. If not provided,
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
+            extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
         if workspace_rid is None and not _workspace_warning_emitted:
             warnings.warn(
@@ -202,7 +209,17 @@ class NominalClient:
             connect_timeout=timeout_seconds,
         )
         agent = construct_user_agent_string()
-        return cls(_clients=ClientsBunch.from_config(cfg, base_url, agent, token, workspace_rid), _profile=_profile)
+        return cls(
+            _clients=ClientsBunch.from_config(
+                cfg,
+                base_url,
+                agent,
+                token,
+                workspace_rid,
+                header_provider=normalize_header_provider(extra_headers),
+            ),
+            _profile=_profile,
+        )
 
     @classmethod
     def create(
@@ -213,6 +230,7 @@ class NominalClient:
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         *,
         workspace_rid: str | None = None,
+        extra_headers: HeaderProvider | Mapping[str, str] | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -223,6 +241,7 @@ class NominalClient:
         connect_timeout: Timeout for any single request to the Nominal API.
         workspace_rid: Optional workspace RID to pin the client to for operations that require a single
             workspace. If not provided, those operations resolve a default workspace client-side when needed.
+        extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -239,6 +258,7 @@ class NominalClient:
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
             workspace_rid=workspace_rid,
+            extra_headers=extra_headers,
             _workspace_warning_emitted=True,
         )
 
@@ -787,6 +807,7 @@ class NominalClient:
         labels: Sequence[str] = (),
         properties: Mapping[str, str] | None = None,
         prefix_tree_delimiter: str | None = None,
+        markings: Sequence[str] | None = None,
     ) -> Dataset:
         """Create an empty dataset.
 
@@ -796,6 +817,7 @@ class NominalClient:
             labels: Text labels to apply to the created dataset
             properties: Key-value properties to apply to the cleated dataset
             prefix_tree_delimiter: If present, the delimiter to represent tiers when viewing channels hierarchically.
+            markings: If present, RIDs of markings to apply to the created dataset
 
         Returns:
             Reference to the created dataset in Nominal.
@@ -808,6 +830,7 @@ class NominalClient:
             labels=labels,
             properties=properties,
             workspace_rid=self._clients.resolve_default_workspace_rid(),
+            marking_rids=markings,
         )
         dataset = Dataset._from_conjure(self._clients, response)
 
@@ -993,6 +1016,7 @@ class NominalClient:
             name,
             file_type,
             self._clients.upload,
+            header_provider=self._clients.header_provider,
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
@@ -1420,30 +1444,31 @@ class NominalClient:
         self,
         name: str,
         *,
+        description: str | None = None,
         docker_image: DockerImageSource,
+        inputs: Sequence[FileExtractionInput] = (),
+        parameters: Sequence[FileExtractionParameter] = (),
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
         timestamp_column: str,
         timestamp_type: ts._AnyTimestampType,
-        inputs: Sequence[FileExtractionInput] = (),
         file_output_format: FileOutputFormat | None = None,
-        labels: Sequence[str] = (),
-        properties: Mapping[str, str] | None = None,
-        description: str | None = None,
     ) -> ContainerizedExtractor:
         workspace_rid = self._clients.resolve_default_workspace_rid()
 
         req = ingest_api.RegisterContainerizedExtractorRequest(
-            image=docker_image._to_conjure(),
-            inputs=[file_input._to_conjure() for file_input in inputs],
-            labels=list(labels),
             name=name,
-            parameters=[],
-            properties={} if properties is None else {**properties},
+            description=description,
+            image=docker_image._to_conjure(),
+            inputs=[file_extraction_input._to_conjure() for file_extraction_input in inputs],
+            parameters=[file_extraction_parameter._to_conjure() for file_extraction_parameter in parameters],
+            properties=dict(properties or {}),
+            labels=list(labels),
+            workspace=workspace_rid,
             timestamp_metadata=ingest_api.TimestampMetadata(
                 series_name=timestamp_column,
                 timestamp_type=_to_typed_timestamp_type(timestamp_type)._to_conjure_ingest_api(),
             ),
-            workspace=workspace_rid,
-            description=description,
             output_file_format=file_output_format._to_conjure() if file_output_format is not None else None,
         )
         resp = self._clients.containerized_extractors.register_containerized_extractor(self._clients.auth_header, req)

@@ -25,8 +25,7 @@ underlying pytest ``request`` fixture.
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Callable, Iterator
-from unittest import mock
+from typing import Callable
 from uuid import uuid4
 
 import pytest
@@ -102,17 +101,6 @@ def dest_client(pytestconfig) -> NominalClient:
     base_url = pytestconfig.getoption("dest_base_url") or pytestconfig.getoption("base_url")
     print(f"Using dest NominalClient.create(base_url={base_url!r})")
     return NominalClient.create(base_url=base_url, token=auth_token)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def set_connection(dest_client: NominalClient) -> Iterator[None]:
-    """Override the parent conftest's set_connection to use dest_client.
-
-    The parent fixture requires ``--profile`` which migration tests don't supply;
-    this shadows it so the module-level default client points at the destination env.
-    """
-    with mock.patch("nominal.nominal.get_default_client", return_value=dest_client):
-        yield
 
 
 @pytest.fixture
