@@ -11,7 +11,7 @@ from typing import Any, BinaryIO, Iterable, Mapping, Sequence, overload
 
 import certifi
 import conjure_python_client
-from conjure_python_client import ConjureDecoder, ConjureEncoder, ServiceConfiguration, SslConfiguration
+from conjure_python_client import ServiceConfiguration, SslConfiguration
 from nominal_api import (
     api,
     attachments_api,
@@ -123,53 +123,6 @@ class WorkspaceSearchType(enum.Enum):
 
 
 WorkspaceSearchT = WorkspaceSearchType | Workspace | str
-
-
-def _post_search_containerized_extractors_records(
-    clients: ClientsBunch,
-    request: ingest_api.SearchContainerizedExtractorsRequest,
-) -> list[Mapping[str, Any]]:
-    """Issue the search HTTP call directly and return raw JSON records.
-
-    Bypasses the auto-generated `search_containerized_extractors`, whose whole-list decode
-    fails the entire response if any record contains a union variant the locally installed
-    nominal-api doesn't recognize. Per-record decoding is then handled by the caller.
-    """
-    service = clients.containerized_extractors
-    response = service._request(
-        "POST",
-        service._uri + "/extractors/v1/container/search",
-        params={},
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": clients.auth_header,
-        },
-        json=ConjureEncoder().default(request),
-    )
-    body: list[Mapping[str, Any]] = response.json()
-    return body
-
-
-def _decode_extractor_record_resilient(
-    decoder: ConjureDecoder,
-    raw: Mapping[str, Any],
-) -> ingest_api.ContainerizedExtractor:
-    """Decode one extractor record, falling back to dropping `timestampMetadata` on failure.
-
-    Server-side timestamp variants can drift ahead of the client (e.g. an
-    `AbsoluteTimestamp.custom` the local nominal-api doesn't know about). Treating the
-    timestamp as unset preserves the rest of the record (rid/name/labels/image/etc.) instead
-    of crashing the whole search.
-    """
-    try:
-        decoded: ingest_api.ContainerizedExtractor = decoder.decode(raw, ingest_api.ContainerizedExtractor)
-        return decoded
-    except ValueError:
-        sanitized: ingest_api.ContainerizedExtractor = decoder.decode(
-            {**raw, "timestampMetadata": None}, ingest_api.ContainerizedExtractor
-        )
-        return sanitized
 
 
 @dataclass(frozen=True)
@@ -1463,24 +1416,6 @@ class NominalClient:
             self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
         )
 
-    def register_containerized_extractor(
-        self,
-        request: ingest_api.RegisterContainerizedExtractorRequest,
-    ) -> str:
-        """Register a containerized extractor from a fully-formed conjure request and return its RID."""
-        resp = self._clients.containerized_extractors.register_containerized_extractor(
-            self._clients.auth_header, request
-        )
-        return resp.extractor_rid
-
-    def archive_containerized_extractor(self, rid: str) -> None:
-        """Archive a containerized extractor by RID, without first fetching its full record."""
-        self._clients.containerized_extractors.archive_containerized_extractor(self._clients.auth_header, rid)
-
-    def unarchive_containerized_extractor(self, rid: str) -> None:
-        """Unarchive a containerized extractor by RID, without first fetching its full record."""
-        self._clients.containerized_extractors.unarchive_containerized_extractor(self._clients.auth_header, rid)
-
     def upload_container_image_from_io(
         self,
         tarball: BinaryIO,
@@ -1507,7 +1442,10 @@ class NominalClient:
             FileTypes.TAR,
             self._clients.upload,
         )
-        from nominal_api_protos.nominal.registry.v1 import registry_pb2
+        try:
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use the container registry") from ex
 
         request = registry_pb2.CreateImageRequest(
             workspace_rid=workspace_rid,
@@ -1518,30 +1456,18 @@ class NominalClient:
         pb_image = self._clients.registry.create_image(self._clients.auth_header, request)
         return ContainerImage._from_proto(self._clients, pb_image, workspace_rid)
 
-    def search_container_images(
+    def _iter_search_container_images(
         self,
         *,
-        name: str | None = None,
-        tag: str | None = None,
-        status: ContainerImageStatus | None = None,
-        workspace_rid: str | None = None,
-        page_size: int | None = None,
-    ) -> Sequence[ContainerImage]:
-        """Search for container images. Filters are ANDed together; pages are walked transparently.
-
-        Args:
-            name: Exact-match name filter.
-            tag: Exact-match tag filter.
-            status: Lifecycle status filter.
-            workspace_rid: Workspace to search. Defaults to the client's configured workspace.
-            page_size: Page size used to walk the result set; only affects RPC count, not the
-                returned records (all pages are concatenated).
-        """
-        effective_workspace = workspace_rid if workspace_rid is not None else self._clients.workspace_rid
-        if effective_workspace is None:
-            raise ValueError("workspace_rid is required to search container images")
-
-        from nominal_api_protos.nominal.registry.v1 import registry_pb2
+        name: str | None,
+        tag: str | None,
+        status: ContainerImageStatus | None,
+        workspace_rid: str,
+    ) -> Iterable[ContainerImage]:
+        try:
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use the container registry") from ex
 
         leaves: list[registry_pb2.SearchFilter] = []
         if name is not None:
@@ -1560,25 +1486,62 @@ class NominalClient:
             getattr(search_filter, "and").CopyFrom(registry_pb2.AndFilter(clauses=leaves))
 
         page_token: str | None = None
-        collected: list[ContainerImage] = []
         while True:
-            request_kwargs: dict[str, Any] = {"workspace_rid": effective_workspace}
+            request_kwargs: dict[str, Any] = {"workspace_rid": workspace_rid}
             if search_filter is not None:
                 request_kwargs["filter"] = search_filter
-            if page_size is not None:
-                request_kwargs["page_size"] = page_size
             if page_token is not None:
                 request_kwargs["next_page_token"] = page_token
 
             response = self._clients.registry.search_images(
                 self._clients.auth_header, registry_pb2.SearchImagesRequest(**request_kwargs)
             )
-            collected.extend(
-                ContainerImage._from_proto(self._clients, image, effective_workspace) for image in response.images
-            )
+            for image in response.images:
+                yield ContainerImage._from_proto(self._clients, image, workspace_rid)
             page_token = response.next_page_token or None
             if not page_token:
-                return collected
+                return
+
+    def search_container_images(
+        self,
+        *,
+        name: str | None = None,
+        tag: str | None = None,
+        status: ContainerImageStatus | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+    ) -> Sequence[ContainerImage]:
+        """Search for container images meeting the specified filters.
+        Filters are ANDed together, e.g. `(image.name == name) AND (image.tag == tag)`
+
+        Args:
+            name: Exact-match name filter.
+            tag: Exact-match tag filter.
+            status: Lifecycle status filter.
+            workspace: Filters search to a given workspace.
+
+        NOTE: The registry RPC is workspace-scoped, so unlike other `search_*` methods this one
+            defaults to WorkspaceSearchType.DEFAULT and does not support WorkspaceSearchType.ALL.
+            If DEFAULT is given, the client prefers its configured `workspace_rid` (for example
+            from `config.yml`) and otherwise falls back to a client-side default-workspace lookup;
+            if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace RID
+            is given, that value is used directly.
+
+        Returns:
+            All container images which match all of the provided conditions
+        """
+        effective_workspace = self._workspace_rid_for_search(workspace or WorkspaceSearchType.DEFAULT)
+        if effective_workspace is None:
+            raise ValueError(
+                "search_container_images requires a workspace; WorkspaceSearchType.ALL is not supported."
+            )
+        return list(
+            self._iter_search_container_images(
+                name=name,
+                tag=tag,
+                status=status,
+                workspace_rid=effective_workspace,
+            )
+        )
 
     def get_container_image(self, rid: str, *, workspace_rid: str | None = None) -> ContainerImage:
         """Fetch a container image by its RID. Defaults to the client's configured workspace."""
@@ -1662,11 +1625,10 @@ class NominalClient:
             properties=properties,
             workspace_rid=self._workspace_rid_for_search(workspace or WorkspaceSearchType.ALL),
         )
-        request = ingest_api.SearchContainerizedExtractorsRequest(query=query)
-        raw_records = _post_search_containerized_extractors_records(self._clients, request)
-        decoder = ConjureDecoder()
-        decoded = [_decode_extractor_record_resilient(decoder, raw) for raw in raw_records]
-        return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in decoded]
+        resp = self._clients.containerized_extractors.search_containerized_extractors(
+            self._clients.auth_header, request=ingest_api.SearchContainerizedExtractorsRequest(query=query)
+        )
+        return [ContainerizedExtractor._from_conjure(self._clients, extractor) for extractor in resp]
 
     def get_workbook(self, rid: str) -> Workbook:
         """Gets the given workbook by rid."""
