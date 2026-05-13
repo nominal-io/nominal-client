@@ -66,8 +66,14 @@ def register(
     --container-image-rid override fields in the JSON. The `workspace` field must NOT be
     present in the JSON; the workspace is always taken from the active config profile.
     """
-    raw = config_file.read_text() if config_file is not None else sys.stdin.read()
-    payload = json.loads(raw)
+    try:
+        raw = config_file.read_text() if config_file is not None else sys.stdin.read()
+    except (OSError, UnicodeDecodeError) as ex:
+        raise click.BadParameter(f"failed to read input: {ex}") from ex
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as ex:
+        raise click.BadParameter(f"invalid JSON: {ex.msg}") from ex
     if not isinstance(payload, dict):
         raise click.BadParameter("top-level JSON must be an object")
 
