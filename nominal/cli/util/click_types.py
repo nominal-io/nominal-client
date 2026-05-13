@@ -5,9 +5,7 @@ from typing import Sequence
 import click
 
 
-def parse_key_value(
-    ctx: click.Context, param: click.Parameter, values: Sequence[str]
-) -> Sequence[tuple[str, str]]:
+def parse_key_value(ctx: click.Context, param: click.Parameter, values: Sequence[str]) -> Sequence[tuple[str, str]]:
     """Click callback for `multiple=True` options that accept `KEY=VALUE` strings.
 
     Splits on the first `=` so values may themselves contain `=`. Empty keys are rejected.

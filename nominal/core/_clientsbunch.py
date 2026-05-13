@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from types import ModuleType
 from typing import TYPE_CHECKING, Protocol, TypeVar
 from urllib.parse import urlparse
 
@@ -44,8 +43,7 @@ from nominal.core.exceptions import NominalConfigError
 from nominal.ts import IntegralNanosecondsUTC
 
 if TYPE_CHECKING:
-    import grpc  # type: ignore[import-untyped]
-    from nominal_api_protos.nominal.registry.v1 import registry_pb2, registry_pb2_grpc
+    from nominal_api_protos.nominal.registry.v1 import registry_pb2
 
 ON_BEHALF_OF_USER_RID_HEADER = "X-Nominal-On-Behalf-Of-User"
 TService = TypeVar("TService", bound=Service)
@@ -135,54 +133,74 @@ class RegistryService:
 
     api_base_url: str
 
-    def _open_channel_and_stub(
-        self,
-    ) -> tuple[grpc.Channel, registry_pb2_grpc.RegistryServiceStub, ModuleType]:
-        """Open a TLS channel and return it alongside the registry stub and the protobuf module.
-
-        All three are gated behind the same try/except so missing-extra failures surface with
-        the same friendly error regardless of which protos symbol the caller reaches for.
-        """
+    def create_image(self, auth_header: str, request: registry_pb2.CreateImageRequest) -> registry_pb2.ContainerImage:
         try:
-            import grpc as grpc_runtime
-            from nominal_api_protos.nominal.registry.v1 import registry_pb2 as pb
-            from nominal_api_protos.nominal.registry.v1 import registry_pb2_grpc as pb_grpc
+            import grpc  # type: ignore[import-untyped]
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2_grpc
         except ImportError as ex:
             raise ImportError("nominal[protos] is required to use the container registry") from ex
+
         target = urlparse(self.api_base_url).netloc
         if not target:
             raise ValueError(f"could not derive gRPC target from API base URL: {self.api_base_url!r}")
-        channel = grpc_runtime.secure_channel(target, grpc_runtime.ssl_channel_credentials())
-        return channel, pb_grpc.RegistryServiceStub(channel), pb  # type: ignore[no-untyped-call]
-
-    def create_image(self, auth_header: str, request: registry_pb2.CreateImageRequest) -> registry_pb2.ContainerImage:
-        channel, stub, _ = self._open_channel_and_stub()
+        channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
         with channel:
+            stub = registry_pb2_grpc.RegistryServiceStub(channel)  # type: ignore[no-untyped-call]
             response = stub.CreateImage(request, metadata=(("authorization", auth_header),))
         return response.image  # type: ignore[no-any-return]
 
     def get_image(self, auth_header: str, rid: str, *, workspace_rid: str) -> registry_pb2.ContainerImage:
-        channel, stub, pb = self._open_channel_and_stub()
+        try:
+            import grpc
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2, registry_pb2_grpc
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use the container registry") from ex
+
+        target = urlparse(self.api_base_url).netloc
+        if not target:
+            raise ValueError(f"could not derive gRPC target from API base URL: {self.api_base_url!r}")
+        channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
         with channel:
+            stub = registry_pb2_grpc.RegistryServiceStub(channel)  # type: ignore[no-untyped-call]
             response = stub.GetImage(
-                pb.GetImageRequest(rid=rid, workspace_rid=workspace_rid),
+                registry_pb2.GetImageRequest(rid=rid, workspace_rid=workspace_rid),
                 metadata=(("authorization", auth_header),),
             )
         return response.image  # type: ignore[no-any-return]
 
     def delete_image(self, auth_header: str, rid: str, *, workspace_rid: str) -> None:
-        channel, stub, pb = self._open_channel_and_stub()
+        try:
+            import grpc
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2, registry_pb2_grpc
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use the container registry") from ex
+
+        target = urlparse(self.api_base_url).netloc
+        if not target:
+            raise ValueError(f"could not derive gRPC target from API base URL: {self.api_base_url!r}")
+        channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
         with channel:
+            stub = registry_pb2_grpc.RegistryServiceStub(channel)  # type: ignore[no-untyped-call]
             stub.DeleteImage(
-                pb.DeleteImageRequest(rid=rid, workspace_rid=workspace_rid),
+                registry_pb2.DeleteImageRequest(rid=rid, workspace_rid=workspace_rid),
                 metadata=(("authorization", auth_header),),
             )
 
     def search_images(
         self, auth_header: str, request: registry_pb2.SearchImagesRequest
     ) -> registry_pb2.SearchImagesResponse:
-        channel, stub, _ = self._open_channel_and_stub()
+        try:
+            import grpc
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2_grpc
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use the container registry") from ex
+
+        target = urlparse(self.api_base_url).netloc
+        if not target:
+            raise ValueError(f"could not derive gRPC target from API base URL: {self.api_base_url!r}")
+        channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
         with channel:
+            stub = registry_pb2_grpc.RegistryServiceStub(channel)  # type: ignore[no-untyped-call]
             response = stub.SearchImages(request, metadata=(("authorization", auth_header),))
         return response  # type: ignore[no-any-return]
 

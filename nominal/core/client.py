@@ -1531,9 +1531,7 @@ class NominalClient:
         """
         effective_workspace = self._workspace_rid_for_search(workspace or WorkspaceSearchType.DEFAULT)
         if effective_workspace is None:
-            raise ValueError(
-                "search_container_images requires a workspace; WorkspaceSearchType.ALL is not supported."
-            )
+            raise ValueError("search_container_images requires a workspace; WorkspaceSearchType.ALL is not supported.")
         return list(
             self._iter_search_container_images(
                 name=name,
