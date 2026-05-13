@@ -235,6 +235,7 @@ class ContainerizedExtractor(HasRid):
     name: str
     description: str | None
     image: DockerImageSource
+    container_image_rid: str | None
     inputs: Sequence[FileExtractionInput]
     parameters: Sequence[FileExtractionParameter]
     properties: Mapping[str, str]
@@ -303,18 +304,30 @@ class ContainerizedExtractor(HasRid):
         self._clients.containerized_extractors.unarchive_containerized_extractor(self._clients.auth_header, self.rid)
 
     @classmethod
+    def register_from_request(
+        cls,
+        clients: _Clients,
+        request: ingest_api.RegisterContainerizedExtractorRequest,
+    ) -> str:
+        """Register a containerized extractor from a fully-formed conjure request and return its RID."""
+        resp = clients.containerized_extractors.register_containerized_extractor(clients.auth_header, request)
+        return resp.extractor_rid
+
+    @classmethod
     def _from_conjure(cls, clients: _Clients, raw_extractor: ingest_api.ContainerizedExtractor) -> Self:
-        timestamp_metadata = (
-            None
-            if raw_extractor.timestamp_metadata is None
-            else TimestampMetadata._from_conjure(raw_extractor.timestamp_metadata)
-        )
+        timestamp_metadata: TimestampMetadata | None = None
+        if raw_extractor.timestamp_metadata is not None:
+            try:
+                timestamp_metadata = TimestampMetadata._from_conjure(raw_extractor.timestamp_metadata)
+            except ValueError:
+                timestamp_metadata = None
 
         return cls(
             rid=raw_extractor.rid,
             name=raw_extractor.name,
             description=raw_extractor.description,
             image=DockerImageSource._from_conjure(raw_extractor.image),
+            container_image_rid=raw_extractor.container_image_rid,
             inputs=[FileExtractionInput._from_conjure(raw_input) for raw_input in raw_extractor.inputs],
             parameters=[FileExtractionParameter._from_conjure(raw_param) for raw_param in raw_extractor.parameters],
             properties=raw_extractor.properties,

@@ -132,6 +132,7 @@ class FileTypes:
     TS: FileType = FileType(".ts", "video/mp2t")
     JOURNAL_JSONL: FileType = FileType(".jsonl", "application/jsonl")
     JOURNAL_JSONL_GZ: FileType = FileType(".jsonl.gz", "application/jsonl")
+    TAR: FileType = FileType(".tar", "application/x-tar")
 
     _CSV_TYPES = (CSV, CSV_GZ)
     _PARQUET_FILE_TYPES = (PARQUET_GZ, PARQUET)

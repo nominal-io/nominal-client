@@ -100,6 +100,31 @@ def global_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     return functools.wraps(func)(debug_switch(verbosity_switch(func)))
 
 
+def output_fmt_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
+    """Decorator to add a `--format` option to commands that emit a record (or list of records)
+    and want a machine-readable alternative to their default human-readable rendering.
+
+    Adds `--format` with choices `table` (default, human-readable) and `json` (one JSON object
+    per line, suitable for piping into `jq` or chaining into other commands). Each command
+    decides how each format renders the records it returns.
+
+    NOTE: any click command utilizing this decorator MUST accept a key-value argument pair named
+        `output_format` of type `str`.
+    """
+    format_option = click.option(
+        "--format",
+        "output_format",
+        type=click.Choice(["table", "json"]),
+        default="table",
+        show_default=True,
+        help=(
+            "Output format. `table` is the human-readable rich rendering; `json` emits one "
+            "JSON object per line in conjure wire format, suitable for piping or scripting."
+        ),
+    )
+    return format_option(func)
+
+
 def client_options(func: typing.Callable[Param, T]) -> typing.Callable[..., T]:
     """Decorator to add click options to a click command for dynamically creating and injecting an instance of the
     NominalClient into commands based on user-provided flags to configure its creation.

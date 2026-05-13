@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Sequence, overload
+from typing import Any, BinaryIO, Iterable, Mapping, Sequence, overload
 
 import certifi
 import conjure_python_client
@@ -75,6 +75,7 @@ from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment, _iter_get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.connection import Connection, StreamingConnection
+from nominal.core.container_image import ContainerImage, ContainerImageStatus
 from nominal.core.containerized_extractors import (
     ContainerizedExtractor,
     DockerImageSource,
@@ -1414,6 +1415,145 @@ class NominalClient:
             self._clients,
             self._clients.containerized_extractors.get_containerized_extractor(self._clients.auth_header, rid),
         )
+
+    def upload_container_image_from_io(
+        self,
+        tarball: BinaryIO,
+        name: str,
+        tag: str,
+    ) -> ContainerImage:
+        """Upload a container image tarball to Nominal's self-hosted registry.
+
+        The returned `ContainerImage.rid` can be passed as the `containerImageRid` field of a
+        RegisterContainerizedExtractorRequest.
+        """
+        if isinstance(tarball, TextIOBase):
+            raise TypeError(f"tarball {tarball!r} must be open in binary mode, rather than text mode")
+
+        workspace_rid = self._clients.workspace_rid
+        if workspace_rid is None:
+            raise ValueError("client profile must specify workspace_rid to upload a container image")
+
+        s3_path = upload_multipart_io(
+            self._clients.auth_header,
+            workspace_rid,
+            tarball,
+            f"{name}-{tag}",
+            FileTypes.TAR,
+            self._clients.upload,
+        )
+        try:
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use the container registry") from ex
+
+        request = registry_pb2.CreateImageRequest(
+            workspace_rid=workspace_rid,
+            name=name,
+            tag=tag,
+            object_path=s3_path,
+        )
+        pb_image = self._clients.registry.create_image(self._clients.auth_header, request)
+        return ContainerImage._from_proto(self._clients, pb_image, workspace_rid)
+
+    def _iter_search_container_images(
+        self,
+        *,
+        name: str | None,
+        tag: str | None,
+        status: ContainerImageStatus | None,
+        workspace_rid: str,
+    ) -> Iterable[ContainerImage]:
+        try:
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use the container registry") from ex
+
+        leaves: list[registry_pb2.SearchFilter] = []
+        if name is not None:
+            leaves.append(registry_pb2.SearchFilter(name=registry_pb2.NameFilter(name=name)))
+        if tag is not None:
+            leaves.append(registry_pb2.SearchFilter(tag=registry_pb2.TagFilter(tag=tag)))
+        if status is not None:
+            leaves.append(registry_pb2.SearchFilter(status=registry_pb2.StatusFilter(status=status.value)))
+
+        if not leaves:
+            search_filter: registry_pb2.SearchFilter | None = None
+        elif len(leaves) == 1:
+            search_filter = leaves[0]
+        else:
+            search_filter = registry_pb2.SearchFilter()
+            getattr(search_filter, "and").CopyFrom(registry_pb2.AndFilter(clauses=leaves))
+
+        page_token: str | None = None
+        while True:
+            request_kwargs: dict[str, Any] = {"workspace_rid": workspace_rid}
+            if search_filter is not None:
+                request_kwargs["filter"] = search_filter
+            if page_token is not None:
+                request_kwargs["next_page_token"] = page_token
+
+            response = self._clients.registry.search_images(
+                self._clients.auth_header, registry_pb2.SearchImagesRequest(**request_kwargs)
+            )
+            for image in response.images:
+                yield ContainerImage._from_proto(self._clients, image, workspace_rid)
+            page_token = response.next_page_token or None
+            if not page_token:
+                return
+
+    def search_container_images(
+        self,
+        *,
+        name: str | None = None,
+        tag: str | None = None,
+        status: ContainerImageStatus | None = None,
+        workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
+    ) -> Sequence[ContainerImage]:
+        """Search for container images meeting the specified filters.
+        Filters are ANDed together, e.g. `(image.name == name) AND (image.tag == tag)`
+
+        Args:
+            name: Exact-match name filter.
+            tag: Exact-match tag filter.
+            status: Lifecycle status filter.
+            workspace: Filters search to a given workspace.
+
+        NOTE: WorkspaceSearchType.ALL is not supported. If WorkspaceSearchType.DEFAULT (the default)
+            is given, the client prefers its configured `workspace_rid` (for example from `config.yml`)
+            and otherwise falls back to a client-side default-workspace lookup; if neither succeeds, a
+            NominalConfigError is raised. If a Workspace or workspace RID is given, that value is used
+            directly.
+
+        Returns:
+            All container images which match all of the provided conditions
+        """
+        effective_workspace = self._workspace_rid_for_search(workspace or WorkspaceSearchType.DEFAULT)
+        if effective_workspace is None:
+            raise ValueError("search_container_images requires a workspace; WorkspaceSearchType.ALL is not supported.")
+        return list(
+            self._iter_search_container_images(
+                name=name,
+                tag=tag,
+                status=status,
+                workspace_rid=effective_workspace,
+            )
+        )
+
+    def get_container_image(self, rid: str, *, workspace_rid: str | None = None) -> ContainerImage:
+        """Retrieve a container image by its RID."""
+        effective_workspace = workspace_rid if workspace_rid is not None else self._clients.workspace_rid
+        if effective_workspace is None:
+            raise ValueError("workspace_rid is required to fetch a container image")
+        pb_image = self._clients.registry.get_image(self._clients.auth_header, rid, workspace_rid=effective_workspace)
+        return ContainerImage._from_proto(self._clients, pb_image, effective_workspace)
+
+    def delete_container_image(self, rid: str, *, workspace_rid: str | None = None) -> None:
+        """Delete a container image by its RID."""
+        effective_workspace = workspace_rid if workspace_rid is not None else self._clients.workspace_rid
+        if effective_workspace is None:
+            raise ValueError("workspace_rid is required to delete a container image")
+        self._clients.registry.delete_image(self._clients.auth_header, rid, workspace_rid=effective_workspace)
 
     def create_containerized_extractor(
         self,
