@@ -234,10 +234,7 @@ def _emit_extractors(extractors: Sequence[ContainerizedExtractor], output_format
 
 
 def _extractor_to_wire_dict(extractor: ContainerizedExtractor) -> dict[str, object]:
-    """Serialize a ContainerizedExtractor to a conjure-wire-format dict (camelCase).
-
-    The shape mirrors what `register` accepts as input, so `get | register` round-trips.
-    """
+    """Serialize a ContainerizedExtractor to a conjure-wire-format dict (camelCase)."""
     timestamp_metadata = extractor.default_timestamp_metadata
     return {
         "rid": extractor.rid,

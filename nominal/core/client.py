@@ -1519,12 +1519,11 @@ class NominalClient:
             status: Lifecycle status filter.
             workspace: Filters search to a given workspace.
 
-        NOTE: The registry RPC is workspace-scoped, so unlike other `search_*` methods this one
-            defaults to WorkspaceSearchType.DEFAULT and does not support WorkspaceSearchType.ALL.
-            If DEFAULT is given, the client prefers its configured `workspace_rid` (for example
-            from `config.yml`) and otherwise falls back to a client-side default-workspace lookup;
-            if neither succeeds, a NominalConfigError is raised. If a Workspace or workspace RID
-            is given, that value is used directly.
+        NOTE: WorkspaceSearchType.ALL is not supported. If WorkspaceSearchType.DEFAULT (the default)
+            is given, the client prefers its configured `workspace_rid` (for example from `config.yml`)
+            and otherwise falls back to a client-side default-workspace lookup; if neither succeeds, a
+            NominalConfigError is raised. If a Workspace or workspace RID is given, that value is used
+            directly.
 
         Returns:
             All container images which match all of the provided conditions
@@ -1542,7 +1541,7 @@ class NominalClient:
         )
 
     def get_container_image(self, rid: str, *, workspace_rid: str | None = None) -> ContainerImage:
-        """Fetch a container image by its RID. Defaults to the client's configured workspace."""
+        """Retrieve a container image by its RID."""
         effective_workspace = workspace_rid if workspace_rid is not None else self._clients.workspace_rid
         if effective_workspace is None:
             raise ValueError("workspace_rid is required to fetch a container image")
@@ -1550,7 +1549,7 @@ class NominalClient:
         return ContainerImage._from_proto(self._clients, pb_image, effective_workspace)
 
     def delete_container_image(self, rid: str, *, workspace_rid: str | None = None) -> None:
-        """Delete a container image by its RID. Defaults to the client's configured workspace."""
+        """Delete a container image by its RID."""
         effective_workspace = workspace_rid if workspace_rid is not None else self._clients.workspace_rid
         if effective_workspace is None:
             raise ValueError("workspace_rid is required to delete a container image")
