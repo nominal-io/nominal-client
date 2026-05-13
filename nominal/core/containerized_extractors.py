@@ -304,6 +304,16 @@ class ContainerizedExtractor(HasRid):
         self._clients.containerized_extractors.unarchive_containerized_extractor(self._clients.auth_header, self.rid)
 
     @classmethod
+    def register_from_request(
+        cls,
+        clients: _Clients,
+        request: ingest_api.RegisterContainerizedExtractorRequest,
+    ) -> str:
+        """Register a containerized extractor from a fully-formed conjure request and return its RID."""
+        resp = clients.containerized_extractors.register_containerized_extractor(clients.auth_header, request)
+        return resp.extractor_rid
+
+    @classmethod
     def _from_conjure(cls, clients: _Clients, raw_extractor: ingest_api.ContainerizedExtractor) -> Self:
         """Build a ContainerizedExtractor from a (possibly lenient-decoded) conjure response.
 

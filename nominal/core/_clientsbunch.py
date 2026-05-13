@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
+from types import ModuleType
 from typing import TYPE_CHECKING, Protocol, TypeVar
 from urllib.parse import urlparse
 
@@ -134,41 +135,45 @@ class RegistryService:
 
     api_base_url: str
 
-    def _stub_in(self, channel: grpc.Channel) -> registry_pb2_grpc.RegistryServiceStub:
-        from nominal_api_protos.nominal.registry.v1 import registry_pb2_grpc as pb_grpc
+    def _open_channel_and_stub(
+        self,
+    ) -> tuple[grpc.Channel, registry_pb2_grpc.RegistryServiceStub, ModuleType]:
+        """Open a TLS channel and return it alongside the registry stub and the protobuf module.
 
-        return pb_grpc.RegistryServiceStub(channel)  # type: ignore[no-untyped-call]
-
-    def _open_channel(self) -> grpc.Channel:
+        All three are gated behind the same try/except so missing-extra failures surface with
+        the same friendly error regardless of which protos symbol the caller reaches for.
+        """
         try:
             import grpc as grpc_runtime
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2 as pb
+            from nominal_api_protos.nominal.registry.v1 import registry_pb2_grpc as pb_grpc
         except ImportError as ex:
             raise ImportError("nominal[protos] is required to use the container registry") from ex
         target = urlparse(self.api_base_url).netloc
         if not target:
             raise ValueError(f"could not derive gRPC target from API base URL: {self.api_base_url!r}")
-        return grpc_runtime.secure_channel(target, grpc_runtime.ssl_channel_credentials())
+        channel = grpc_runtime.secure_channel(target, grpc_runtime.ssl_channel_credentials())
+        return channel, pb_grpc.RegistryServiceStub(channel), pb  # type: ignore[no-untyped-call]
 
     def create_image(self, auth_header: str, request: registry_pb2.CreateImageRequest) -> registry_pb2.ContainerImage:
-        with self._open_channel() as channel:
-            response = self._stub_in(channel).CreateImage(request, metadata=(("authorization", auth_header),))
+        channel, stub, _ = self._open_channel_and_stub()
+        with channel:
+            response = stub.CreateImage(request, metadata=(("authorization", auth_header),))
         return response.image  # type: ignore[no-any-return]
 
     def get_image(self, auth_header: str, rid: str, *, workspace_rid: str) -> registry_pb2.ContainerImage:
-        from nominal_api_protos.nominal.registry.v1 import registry_pb2 as pb
-
-        with self._open_channel() as channel:
-            response = self._stub_in(channel).GetImage(
+        channel, stub, pb = self._open_channel_and_stub()
+        with channel:
+            response = stub.GetImage(
                 pb.GetImageRequest(rid=rid, workspace_rid=workspace_rid),
                 metadata=(("authorization", auth_header),),
             )
         return response.image  # type: ignore[no-any-return]
 
     def delete_image(self, auth_header: str, rid: str, *, workspace_rid: str) -> None:
-        from nominal_api_protos.nominal.registry.v1 import registry_pb2 as pb
-
-        with self._open_channel() as channel:
-            self._stub_in(channel).DeleteImage(
+        channel, stub, pb = self._open_channel_and_stub()
+        with channel:
+            stub.DeleteImage(
                 pb.DeleteImageRequest(rid=rid, workspace_rid=workspace_rid),
                 metadata=(("authorization", auth_header),),
             )
@@ -176,8 +181,9 @@ class RegistryService:
     def search_images(
         self, auth_header: str, request: registry_pb2.SearchImagesRequest
     ) -> registry_pb2.SearchImagesResponse:
-        with self._open_channel() as channel:
-            response = self._stub_in(channel).SearchImages(request, metadata=(("authorization", auth_header),))
+        channel, stub, _ = self._open_channel_and_stub()
+        with channel:
+            response = stub.SearchImages(request, metadata=(("authorization", auth_header),))
         return response  # type: ignore[no-any-return]
 
 
@@ -324,19 +330,6 @@ class ClientsBunch:
                 header_provider=header_provider,
             )(service_class)
 
-        def lenient_client_factory(service_class: type[TService]) -> TService:
-            """Like `client_factory` but decodes unknown union variants to None instead of
-            raising, so callers stay forward-compatible when the server adds a union variant
-            ahead of the locally-installed nominal-api version (at the cost of a silent loss
-            for the unrecognized field).
-            """
-            return create_conjure_client_factory(
-                user_agent=agent,
-                service_config=cfg,
-                return_none_for_unknown_union_types=True,
-                header_provider=header_provider,
-            )(service_class)
-
         return cls(
             auth_header=f"Bearer {token}",
             workspace_rid=workspace_rid,
@@ -373,7 +366,12 @@ class ClientsBunch:
             channel_metadata=client_factory(timeseries_channelmetadata.ChannelMetadataService),
             series_metadata=client_factory(timeseries_metadata.SeriesMetadataService),
             workspace=client_factory(security_api_workspace.WorkspaceService),
-            containerized_extractors=lenient_client_factory(ingest_api.ContainerizedExtractorService),
+            containerized_extractors=create_conjure_client_factory(
+                user_agent=agent,
+                service_config=cfg,
+                return_none_for_unknown_union_types=True,
+                header_provider=header_provider,
+            )(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
             registry=RegistryService(api_base_url=base_url),
         )

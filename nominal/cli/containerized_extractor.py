@@ -14,6 +14,7 @@ from rich.markup import escape
 from rich.style import Style
 from rich.table import Column, Table
 
+from nominal.cli.util.click_types import parse_key_value
 from nominal.cli.util.format import emit_records, render_labels, render_properties
 from nominal.cli.util.global_decorators import client_options, global_options, output_fmt_options
 from nominal.core.client import NominalClient, WorkspaceSearchType
@@ -50,43 +51,36 @@ def containerized_extractor_cmd() -> None:
         "uploaded as a separate step and its RID is unknown when the config is checked in."
     ),
 )
-@click.option(
-    "--workspace",
-    "workspace_rid",
-    help="Override the `workspace` field in the JSON. Defaults to the active profile's workspace.",
-)
 @client_options
 @global_options
 def register(
     config_file: pathlib.Path | None,
     name: str | None,
     container_image_rid: str | None,
-    workspace_rid: str | None,
     client: NominalClient,
 ) -> None:
     """Register a containerized extractor from a JSON request payload.
 
     The JSON body is the conjure wire format of a RegisterContainerizedExtractorRequest --
-    typically a per-package config checked into the repo. Values supplied via --name,
-    --container-image-rid, or --workspace override fields in the JSON; --workspace also acts
-    as a default if the JSON omits it.
+    typically a per-package config checked into the repo. Values supplied via --name or
+    --container-image-rid override fields in the JSON. The `workspace` field must NOT be
+    present in the JSON; the workspace is always taken from the active config profile.
     """
     raw = config_file.read_text() if config_file is not None else sys.stdin.read()
     payload = json.loads(raw)
     if not isinstance(payload, dict):
         raise click.BadParameter("top-level JSON must be an object")
 
+    if "workspace" in payload:
+        raise click.BadParameter("`workspace` must not be set in the JSON; it comes from the active config profile.")
     if name is not None:
         payload["name"] = name
     if container_image_rid is not None:
         payload["containerImageRid"] = container_image_rid
-    if workspace_rid is not None:
-        payload["workspace"] = workspace_rid
-    if not payload.get("workspace"):
-        payload["workspace"] = client._clients.resolve_default_workspace_rid()
+    payload["workspace"] = client._clients.resolve_default_workspace_rid()
 
     request = ConjureDecoder().decode(payload, ingest_api.RegisterContainerizedExtractorRequest)
-    click.echo(client.register_containerized_extractor(request))
+    click.echo(ContainerizedExtractor.register_from_request(client._clients, request))
 
 
 @containerized_extractor_cmd.command("get")
@@ -106,9 +100,10 @@ def get(rid: str, output_format: str, client: NominalClient) -> None:
 @click.option(
     "properties",
     "--property",
-    type=(str, str),
+    type=str,
     multiple=True,
-    help="Property KEY VALUE that must be present (repeat for multiple).",
+    callback=parse_key_value,
+    help="Property KEY=VALUE that must be present (repeat for multiple).",
 )
 @click.option(
     "--workspace",
@@ -161,9 +156,10 @@ def search(
 @click.option(
     "properties",
     "--property",
-    type=(str, str),
+    type=str,
     multiple=True,
-    help="Replace the extractor's properties as KEY VALUE (repeat for multiple).",
+    callback=parse_key_value,
+    help="Replace the extractor's properties as KEY=VALUE (repeat for multiple).",
 )
 @click.option("--clear-properties", is_flag=True, help="Set properties to the empty mapping.")
 @click.option(
@@ -213,7 +209,7 @@ def update(
 @global_options
 def archive(rid: str, client: NominalClient) -> None:
     """Archive a containerized extractor."""
-    client.archive_containerized_extractor(rid)
+    client.get_containerized_extractor(rid).archive()
     click.echo(f"archived {rid}")
 
 
@@ -223,7 +219,7 @@ def archive(rid: str, client: NominalClient) -> None:
 @global_options
 def unarchive(rid: str, client: NominalClient) -> None:
     """Unarchive a containerized extractor."""
-    client.unarchive_containerized_extractor(rid)
+    client.get_containerized_extractor(rid).unarchive()
     click.echo(f"unarchived {rid}")
 
 
