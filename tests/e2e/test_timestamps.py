@@ -128,22 +128,18 @@ def _upload_and_assert(
 
 
 def test_iso_8601(request, client: NominalClient, temperature_data: list[tuple[int, datetime]]):
-    """ISO 8601 timestamps ingest correctly; file bounds are truncated to millisecond precision."""
+    """ISO 8601 timestamps ingest correctly with sub-millisecond precision preserved."""
     name = f"dataset-{request.node.name}"
     desc = f"timestamp test {request.node.name}"
     csv_bytes = _create_csv_data(temperature_data, lambda temp, ts: f"{temp},{ts.isoformat()}")
-    # The CSV contains full microsecond precision (e.g. "...16:37:36.891349+00:00"), but the
-    # server's ISO 8601 ingestion pipeline stores file-level bounds at millisecond granularity.
-    # This is unlike custom-format ingestion, which preserves microsecond bounds. Expected values
-    # are truncated to ms here to match the actual server behavior.
     _upload_and_assert(
         client,
         name,
         desc,
         csv_bytes,
         "iso_8601",
-        _truncate_to_ms(temperature_data[0][1]),
-        _truncate_to_ms(temperature_data[-1][1]),
+        temperature_data[0][1],
+        temperature_data[-1][1],
     )
 
 
