@@ -25,11 +25,6 @@ def emit_records(
     """Render a sequence of records in the chosen output format.
 
     Pairs with the `output_fmt_options` decorator: pass the `output_format` kwarg through.
-
-    For `json` format, encodes each record via `to_dict` and emits JSONL.
-    For `table` format (the default), calls `render_detail` when there is exactly one record and a
-    detail renderer was supplied; otherwise calls `render_table` with all records (including the
-    empty case so the renderer can show its own "no results" message).
     """
     if output_format == "json":
         emit_jsonl(to_dict(record) for record in records)

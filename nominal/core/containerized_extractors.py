@@ -315,12 +315,6 @@ class ContainerizedExtractor(HasRid):
 
     @classmethod
     def _from_conjure(cls, clients: _Clients, raw_extractor: ingest_api.ContainerizedExtractor) -> Self:
-        """Build a ContainerizedExtractor from a (possibly lenient-decoded) conjure response.
-
-        Tolerates timestamp metadata whose union variant isn't known to the locally installed
-        nominal-api by treating the metadata as unset, so a single drift on the server side
-        doesn't crash construction of an otherwise-usable record.
-        """
         timestamp_metadata: TimestampMetadata | None = None
         if raw_extractor.timestamp_metadata is not None:
             try:

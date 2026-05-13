@@ -15,19 +15,10 @@ if TYPE_CHECKING:
 
 
 class ContainerImageStatus(Enum):
-    """Lifecycle state of a container image in Nominal's registry."""
-
     UNSPECIFIED = "CONTAINER_IMAGE_STATUS_UNSPECIFIED"
-    """Status is unset or unrecognized. Treat as an unknown state."""
-
     PENDING = "CONTAINER_IMAGE_STATUS_PENDING"
-    """Tarball uploaded but is not ready for use yet."""
-
     READY = "CONTAINER_IMAGE_STATUS_READY"
-    """Image is available in the registry and can be pulled."""
-
     FAILED = "CONTAINER_IMAGE_STATUS_FAILED"
-    """Registry push failed. The image will not become available."""
 
     @classmethod
     def _from_proto(cls, proto_status: int) -> ContainerImageStatus:
@@ -41,35 +32,13 @@ class ContainerImageStatus(Enum):
 
 @dataclass(frozen=True)
 class ContainerImage(HasRid):
-    """A container image tarball stored in Nominal's registry.
-
-    Create one via `NominalClient.upload_container_image_from_io`. The registry push is
-    asynchronous: a freshly uploaded image may be returned in `PENDING` state and transition
-    to `READY` (or `FAILED`) once the server finishes pushing the tarball to the internal
-    OCI registry.
-    """
-
     rid: str
-    """Nominal resource identifier for this image."""
-
     name: str
-    """Image name within the workspace (e.g. `my-extractor`)."""
-
     tag: str
-    """Image tag (e.g. `v1.2.3`). Unique per `(workspace, name)`."""
-
     status: ContainerImageStatus
-    """Current lifecycle state of the image."""
-
     created_at: IntegralNanosecondsUTC
-    """Creation timestamp, in nanoseconds since the Unix epoch."""
-
     size_bytes: int | None
-    """Size of the uploaded tarball in bytes, or `None` until the server populates it."""
-
     workspace_rid: str
-    """Workspace this image lives in. Required by the registry for follow-up RPCs (get/delete)."""
-
     _clients: _Clients = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
@@ -77,10 +46,7 @@ class ContainerImage(HasRid):
         def registry(self) -> RegistryService: ...
 
     def delete(self) -> None:
-        """Delete this container image from Nominal's registry.
-
-        Note: extractors that reference this image's RID will fail to pull on subsequent ingests.
-        """
+        """Delete this container image. Extractors referencing it will fail on subsequent ingests."""
         self._clients.registry.delete_image(self._clients.auth_header, self.rid, workspace_rid=self.workspace_rid)
 
     @classmethod

@@ -123,13 +123,7 @@ class ProtoWriteService(Service):
 
 @dataclass(frozen=True)
 class RegistryService:
-    """Native-gRPC client for nominal.registry.v1.RegistryService.
-
-    Implemented against the protobuf stubs published in `nominal-api-protos` (gated behind the
-    `nominal[protos]` extra) so the registry calls reuse the same wire contract scout's gRPC
-    server speaks, without the `grpc-gateway` JSON-transcoder hop. A new TLS channel is opened
-    per RPC; the registry sees CLI-grade traffic, not a hot path.
-    """
+    """Native-gRPC client for nominal.registry.v1.RegistryService."""
 
     api_base_url: str
 
