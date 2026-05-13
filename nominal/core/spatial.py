@@ -39,11 +39,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# scout's signed-download endpoint, mounted on the new SignedUrlResource. Lives
-# under the same /api prefix as the other scout APIs (clients._api_base_url
-# already ends in /api).
-# TODO: confirm exact path once the paired scout PR lands.
-_PRESIGN_DOWNLOAD_PATH = "/signed-urls/v1/download"
+# scout's signed-download endpoint, added on UploadService in scout #13918.
+# Returns a short-lived (15 min) signed GET URL for a freshly-uploaded object.
+# Once nominal-api regenerates against scout main, replace the raw _request
+# below with clients.upload.sign_download(auth_header, SignDownloadRequest(...)).
+_SIGN_DOWNLOAD_PATH = "/upload/v1/sign-download"
 
 # scout's dagger reverse proxy. Strips this prefix and forwards to dagger.
 _DAGGER_PROXY_PATH = "/dagger"
@@ -159,14 +159,15 @@ def upload_point_cloud(
 
 
 def _presign_download(clients: ClientsBunch, s3_path: str) -> str:
-    """POST /signed-urls/v1/download → presigned GET URL.
+    """POST /upload/v1/sign-download → presigned GET URL.
 
-    Uses raw HTTP rather than the SDK because the SignedUrlResource is not yet
-    code-generated. Swap to the typed client when the SDK regenerates.
+    Uses raw HTTP because UploadService.signDownload is not yet code-generated
+    into nominal-api. Once it is, replace with
+    clients.upload.sign_download(auth_header, SignDownloadRequest(path=s3_path)).url.
     """
-    response = clients.spatial._request(
+    response = clients.upload._request(
         "POST",
-        clients.spatial._uri + _PRESIGN_DOWNLOAD_PATH,
+        clients.upload._uri + _SIGN_DOWNLOAD_PATH,
         headers={
             "Accept": "application/json",
             "Content-Type": "application/json",

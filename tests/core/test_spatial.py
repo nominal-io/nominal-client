@@ -117,8 +117,8 @@ def _make_clients_mock(
         "url": "https://presigned.example/data.csv?sig=abc",
         "expiresAt": "2026-05-12T16:00:00Z",
     }
-    clients.spatial._request.return_value = presign_response
-    clients.spatial._uri = "https://api.nominal.test/api"
+    clients.upload._request.return_value = presign_response
+    clients.upload._uri = "https://api.nominal.test/api"
     return clients, workspace
 
 
@@ -171,10 +171,10 @@ def test_upload_point_cloud_full_flow(tmp_path: Path):
     upload_mock.assert_called_once()
     assert upload_mock.call_args.args[1] == workspace.rid
 
-    # Presign request shape.
-    presign_call = clients.spatial._request.call_args
+    # Presign request shape — POST /upload/v1/sign-download on UploadService.
+    presign_call = clients.upload._request.call_args
     assert presign_call.args[0] == "POST"
-    assert presign_call.args[1].endswith("/signed-urls/v1/download")
+    assert presign_call.args[1].endswith("/upload/v1/sign-download")
     assert presign_call.kwargs["json"] == {"path": s3_path}
 
     # Dagger client built with proxy URL and bare token (no "Bearer " prefix).
