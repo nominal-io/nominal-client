@@ -45,7 +45,8 @@ def test_workspace_rid_for_search_returns_none_for_all(client: NominalClient) ->
 
 def test_unconfigured_client_uses_workspace_service_default(client: NominalClient, pytestconfig) -> None:
     """Without a pinned workspace, DEFAULT should resolve to the tenant's service-side default."""
-    unconfigured_client = _client_with_workspace_override(client, pytestconfig, workspace_rid=None)
+    with pytest.warns(UserWarning, match="NominalClient will soon require a workspace RID"):
+        unconfigured_client = _client_with_workspace_override(client, pytestconfig, workspace_rid=None)
     expected_workspace_rid = _get_service_default_workspace_rid(unconfigured_client)
 
     assert unconfigured_client._clients.resolve_default_workspace_rid() == expected_workspace_rid
@@ -54,7 +55,8 @@ def test_unconfigured_client_uses_workspace_service_default(client: NominalClien
 
 def test_configured_workspace_rid_takes_precedence_over_service_default(client: NominalClient, pytestconfig) -> None:
     """A pinned workspace RID should win over the tenant default exposed by the workspace service."""
-    unconfigured_client = _client_with_workspace_override(client, pytestconfig, workspace_rid=None)
+    with pytest.warns(UserWarning, match="NominalClient will soon require a workspace RID"):
+        unconfigured_client = _client_with_workspace_override(client, pytestconfig, workspace_rid=None)
     service_default_workspace_rid = _get_service_default_workspace_rid(unconfigured_client)
     configured_workspace = next(
         (

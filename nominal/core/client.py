@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import logging
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -184,6 +185,13 @@ class NominalClient:
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
+        if workspace_rid is None:
+            warnings.warn(
+                "NominalClient will soon require a workspace RID. "
+                "Any client which doesn't have a workspace RID specified will fail.",
+                UserWarning,
+                stacklevel=2,
+            )
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
         cfg = ServiceConfiguration(

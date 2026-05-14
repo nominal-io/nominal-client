@@ -222,7 +222,7 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
             "https://api.nominal.test",
             "test-agent",
             "token",
-            None,
+            "ri.workspace.main.workspace.test",
         )
     )
 
