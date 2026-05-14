@@ -129,7 +129,7 @@ class MultipartFileDownloader:
             max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
                 4xx error, and source file changing mid download are all things that may cause a retry)
             header_provider: Additional headers to attach to every request issued by the session.
-            ssl_context_provider: Optional ssl.SSLContext provider for mTLS on object-store requests.
+            ssl_context_provider: Optional ssl.SSLContext provider for mTLS on requests.
 
         Returns:
             Constructed MultipartFileDownloader prepared to begin downloading.

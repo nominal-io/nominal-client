@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import ssl
 from unittest.mock import MagicMock, patch, sentinel
 
 import pytest
@@ -26,8 +27,6 @@ def _prepared_request(body: object) -> requests.PreparedRequest:
 
 class _FakeSslContextProvider(SslContextProvider):
     def __init__(self) -> None:
-        import ssl
-
         self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
     def create_ssl_context(self):

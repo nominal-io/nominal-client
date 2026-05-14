@@ -147,7 +147,7 @@ class NominalClient:
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
-            ssl_context_provider: Optional ssl.SSLContext provider for mTLS (e.g. CAC smartcard).
+            ssl_context_provider: Optional ssl.SSLContext provider to use for the session.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -187,7 +187,7 @@ class NominalClient:
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
-            ssl_context_provider: Optional ssl.SSLContext provider for mTLS (e.g. CAC smartcard).
+            ssl_context_provider: Optional ssl.SSLContext provider to use for the session.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -232,7 +232,7 @@ class NominalClient:
         workspace_rid: Optional workspace RID to pin the client to for operations that require a single
             workspace. If not provided, those operations resolve a default workspace client-side when needed.
         extra_headers: Extra request headers, either as a mapping or HeaderProvider.
-        ssl_context_provider: Optional ssl.SSLContext provider for mTLS (e.g. CAC smartcard).
+        ssl_context_provider: Optional ssl.SSLContext provider to use for the session.
         """
         if token is None:
             token = _config.get_token(base_url)
