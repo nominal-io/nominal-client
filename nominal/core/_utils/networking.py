@@ -224,8 +224,8 @@ def create_conjure_service_client(
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
         header_provider: Additional default headers to attach to each request.
-        ssl_context_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS). When None, a
-            ThreadSafeSSLContext is used.
+        ssl_context_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
+            When None, a ThreadSafeSSLContext is used.
 
     Returns:
         Instantiated conjure client object to hit the API with
@@ -302,6 +302,7 @@ def create_multipart_request_session(
         num_retries: Number of times to retry failed requests.
         header_provider: Additional default headers to attach to every request issued by the session.
         ssl_context_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
+            When None, a ThreadSafeSSLContext is used.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
