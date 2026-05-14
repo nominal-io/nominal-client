@@ -34,7 +34,7 @@ class HeaderProvider(ABC):
 class SslContextProvider(ABC):
     """Provides an ssl.SSLContext for transport-level mTLS auth.
 
-    Not tied to requests or gRPC. When the client migrates to gRPC, a ``create_grpc_credentials()`` 
+    Not tied to requests or gRPC. When the client migrates to gRPC, a ``create_grpc_credentials()``
     method can be added here without changing existing implementations.
     """
 
