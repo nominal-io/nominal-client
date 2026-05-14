@@ -27,10 +27,30 @@ def test_validate_token_url_accepts_valid_credentials() -> None:
     ):
         validate_token_url("token", "https://api.gov.nominal.io/api", None)
 
-    create_client.assert_called_once_with("https://api.gov.nominal.io/api", "token")
+    create_client.assert_called_once_with("https://api.gov.nominal.io/api", "token", ssl_context_provider=None)
     client.get_user.assert_called_once_with()
     client.get_workspace.assert_called_once_with(None)
     secho.assert_not_called()
+
+
+def test_validate_token_url_passes_ssl_context_provider() -> None:
+    """Validation should use the same ssl context provider as the profile being validated."""
+    client = MagicMock()
+    ssl_context_provider = MagicMock()
+
+    with patch("nominal.cli.util.verify_connection.NominalClient.create", return_value=client) as create_client:
+        validate_token_url(
+            "token",
+            "https://api.gov.nominal.io/api",
+            None,
+            ssl_context_provider=ssl_context_provider,
+        )
+
+    create_client.assert_called_once_with(
+        "https://api.gov.nominal.io/api",
+        "token",
+        ssl_context_provider=ssl_context_provider,
+    )
 
 
 @pytest.mark.parametrize(

@@ -31,6 +31,17 @@ class HeaderProvider(ABC):
     def headers(self) -> Mapping[str, str]: ...
 
 
+class SslContextProvider(ABC):
+    """Provides an ssl.SSLContext for transport-level mTLS auth.
+
+    Not tied to requests or gRPC. When the client migrates to gRPC, a ``create_grpc_credentials()`` 
+    method can be added here without changing existing implementations.
+    """
+
+    @abstractmethod
+    def create_ssl_context(self) -> ssl.SSLContext: ...
+
+
 @dataclass(frozen=True)
 class StaticHeaderProvider(HeaderProvider):
     _headers: Mapping[str, str]
@@ -108,9 +119,15 @@ class SslBypassRequestsAdapter(HTTPAdapter):
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
     __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
 
-    def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
+    def __init__(
+        self,
+        *args: Any,
+        enable_keep_alive: bool = False,
+        ssl_context: ssl.SSLContext | None = None,
+        **kwargs: Any,
+    ):
         self._enable_keep_alive = enable_keep_alive
-        self._ssl_context = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self._ssl_context = ssl_context if ssl_context is not None else ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -189,6 +206,7 @@ def create_conjure_service_client(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     header_provider: HeaderProvider | None = None,
+    ssl_context_provider: SslContextProvider | None = None,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
@@ -206,7 +224,8 @@ def create_conjure_service_client(
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
         header_provider: Additional default headers to attach to each request.
-        enable_keep_alive: If true, enable keep alive in connections with the service.
+        ssl_context_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS). When None, a
+            ThreadSafeSSLContext is used.
 
     Returns:
         Instantiated conjure client object to hit the API with
@@ -220,9 +239,8 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
-    # required since this session is shared across threads via ClientsBunch.
-    transport_adapter = NominalRequestsAdapter(max_retries=retry)
+    ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
+    transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
     session = HeaderProviderSession(header_provider)
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
@@ -246,6 +264,7 @@ def create_conjure_client_factory(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     header_provider: HeaderProvider | None = None,
+    ssl_context_provider: SslContextProvider | None = None,
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
@@ -259,6 +278,7 @@ def create_conjure_client_factory(
             service_config=service_config,
             return_none_for_unknown_union_types=return_none_for_unknown_union_types,
             header_provider=header_provider,
+            ssl_context_provider=ssl_context_provider,
         )
 
     return factory
@@ -269,6 +289,7 @@ def create_multipart_request_session(
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
     header_provider: HeaderProvider | None = None,
+    ssl_context_provider: SslContextProvider | None = None,
 ) -> requests.Session:
     """Create a requests Session configured for multipart uploads to S3.
 
@@ -280,6 +301,7 @@ def create_multipart_request_session(
             and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
         header_provider: Additional default headers to attach to every request issued by the session.
+        ssl_context_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
@@ -289,6 +311,7 @@ def create_multipart_request_session(
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
+    ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
     session = HeaderProviderSession(header_provider)
     adapter = SslBypassRequestsAdapter(
         max_retries=retries,
@@ -296,6 +319,7 @@ def create_multipart_request_session(
         pool_connections=pool_size,
         # Double the per-host connection limit so retries/redirects don't discard connections.
         pool_maxsize=pool_size * 2,
+        ssl_context=ssl_context,
     )
     session.mount("https://", adapter)
     return session

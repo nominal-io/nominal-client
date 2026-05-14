@@ -16,7 +16,7 @@ import requests
 from typing_extensions import Self
 
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
-from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
+from nominal.core._utils.networking import HeaderProvider, SslContextProvider, create_multipart_request_session
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,7 @@ class MultipartFileDownloader:
         timeout: float = 30.0,
         max_part_retries: int = 3,
         header_provider: HeaderProvider | None = None,
+        ssl_context_provider: SslContextProvider | None = None,
     ) -> Self:
         """Factor for MultipartFileDownloader
 
@@ -128,6 +129,7 @@ class MultipartFileDownloader:
             max_part_retries: Maximum amount of retries to perform per part download (IO, presigned url expiry,
                 4xx error, and source file changing mid download are all things that may cause a retry)
             header_provider: Additional headers to attach to every request issued by the session.
+            ssl_context_provider: Optional ssl.SSLContext provider for mTLS on object-store requests.
 
         Returns:
             Constructed MultipartFileDownloader prepared to begin downloading.
@@ -136,7 +138,11 @@ class MultipartFileDownloader:
             max_workers = multiprocessing.cpu_count()
             logger.info("Inferring core count as %d", max_workers)
 
-        session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
+        session = create_multipart_request_session(
+            pool_size=max_workers,
+            header_provider=header_provider,
+            ssl_context_provider=ssl_context_provider,
+        )
         pool = ThreadPoolExecutor(max_workers=max_workers)
         return cls(max_workers, timeout, max_part_retries, _session=session, _pool=pool, _closed=False)
 

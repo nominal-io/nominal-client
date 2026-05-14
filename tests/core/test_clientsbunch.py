@@ -29,6 +29,7 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
             "workspace_rid",
             "app_base_url",
             "header_provider",
+            "ssl_context_provider",
             "_api_base_url",
             "_user_agent",
             "_token",
@@ -41,6 +42,7 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
         workspace_rid=workspace_rid,
         app_base_url="https://app.nominal.test",
         header_provider=None,
+        ssl_context_provider=None,
         _api_base_url="https://api.nominal.test",
         _user_agent="test-agent",
         _token="token",
@@ -79,8 +81,9 @@ def _fake_create_conjure_client_factory(
     service_config,
     return_none_for_unknown_union_types=False,
     header_provider=None,
+    ssl_context_provider=None,
 ):
-    del user_agent, service_config, return_none_for_unknown_union_types
+    del user_agent, service_config, return_none_for_unknown_union_types, ssl_context_provider
     headers = header_provider.headers() if header_provider is not None else None
 
     def factory(service_class):
@@ -237,3 +240,4 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
+    assert impersonated._clients.ssl_context_provider is client._clients.ssl_context_provider

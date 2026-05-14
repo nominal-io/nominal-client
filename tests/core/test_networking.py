@@ -13,13 +13,25 @@ from nominal.core._utils.networking import (
     HeaderProviderSession,
     NominalRequestsAdapter,
     SslBypassRequestsAdapter,
+    SslContextProvider,
     create_conjure_service_client,
+    create_multipart_request_session,
 )
 from nominal.core.exceptions import HeaderConflictError
 
 
 def _prepared_request(body: object) -> requests.PreparedRequest:
     return requests.Request("POST", "https://example.com", data=body).prepare()
+
+
+class _FakeSslContextProvider(SslContextProvider):
+    def __init__(self) -> None:
+        import ssl
+
+        self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    def create_ssl_context(self):
+        return self.ssl_context
 
 
 def test_gzip_adapter_updates_content_length_after_compression() -> None:
@@ -124,6 +136,40 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
 
     session, _uris, _ct, _rt, verify, _rn = service_class.call_args.args
     assert verify is None
+    session.close()
+
+
+def test_create_conjure_service_client_uses_ssl_context_from_provider() -> None:
+    """API clients should use the ssl_context supplied by the provider."""
+    service_class = MagicMock(return_value=sentinel.client)
+    service_config = ServiceConfiguration(uris=["https://api.example.com"])
+    provider = _FakeSslContextProvider()
+
+    create_conjure_service_client(
+        service_class=service_class,
+        user_agent="test",
+        service_config=service_config,
+        ssl_context_provider=provider,
+    )
+
+    session = service_class.call_args.args[0]
+    adapter = session.adapters["https://api.example.com"]
+    assert adapter._ssl_context is provider.ssl_context
+    session.close()
+
+
+def test_create_multipart_request_session_uses_ssl_context_from_provider() -> None:
+    """Object-store sessions should use the ssl_context supplied by the provider."""
+    provider = _FakeSslContextProvider()
+
+    session = create_multipart_request_session(
+        pool_size=7,
+        num_retries=3,
+        ssl_context_provider=provider,
+    )
+
+    adapter = session.adapters["https://"]
+    assert adapter._ssl_context is provider.ssl_context
     session.close()
 
 

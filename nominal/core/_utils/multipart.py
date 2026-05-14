@@ -11,7 +11,7 @@ from typing import BinaryIO, Iterable
 import requests
 from nominal_api import ingest_api, upload_api
 
-from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
+from nominal.core._utils.networking import HeaderProvider, SslContextProvider, create_multipart_request_session
 from nominal.core.exceptions import NominalMultipartUploadError, NominalMultipartUploadFailed
 from nominal.core.filetype import FileType
 
@@ -139,6 +139,7 @@ def put_multipart_upload(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
     header_provider: HeaderProvider | None = None,
+    ssl_context_provider: SslContextProvider | None = None,
 ) -> str:
     """Execute a multipart upload to S3.
 
@@ -155,6 +156,7 @@ def put_multipart_upload(
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
         header_provider: Optional provider for headers to include in all requests to object store
+        ssl_context_provider: Optional ssl.SSLContext provider for mTLS on object-store requests
 
     Returns: Path to the uploaded object in S3
 
@@ -179,7 +181,11 @@ def put_multipart_upload(
     key, upload_id = initiate_response.key, initiate_response.upload_id
 
     # One session shared across all part jobs for this upload.
-    session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
+    session = create_multipart_request_session(
+        pool_size=max_workers,
+        header_provider=header_provider,
+        ssl_context_provider=ssl_context_provider,
+    )
 
     # Prefill arguments for helper function
     _sign_and_upload_part = partial(_sign_and_upload_part_job, upload_client, session, auth_header, key, upload_id, q)
@@ -234,6 +240,7 @@ def upload_multipart_io(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
     header_provider: HeaderProvider | None = None,
+    ssl_context_provider: SslContextProvider | None = None,
 ) -> str:
     """Execute a multipart upload to S3 proxied via Nominal servers
 
@@ -248,6 +255,7 @@ def upload_multipart_io(
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
         header_provider: Optional provider for headers to include in all requests to object store
+        ssl_context_provider: Optional ssl.SSLContext provider for mTLS on object-store requests
 
     Returns: Path to the uploaded object in S3
 
@@ -266,6 +274,7 @@ def upload_multipart_io(
         chunk_size=chunk_size,
         max_workers=max_workers,
         header_provider=header_provider,
+        ssl_context_provider=ssl_context_provider,
     )
 
 
@@ -278,6 +287,7 @@ def upload_multipart_file(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     max_workers: int = DEFAULT_NUM_WORKERS,
     header_provider: HeaderProvider | None = None,
+    ssl_context_provider: SslContextProvider | None = None,
 ) -> str:
     """Execute a multipart upload to S3 proxied via Nominal servers.
 
@@ -290,6 +300,7 @@ def upload_multipart_file(
         chunk_size: Maximum size of chunk to upload to S3 at once
         max_workers: Number of worker threads to use when processing and uploading data
         header_provider: Optional provider for headers to include in all requests to object store
+        ssl_context_provider: Optional ssl.SSLContext provider for mTLS on object-store requests
 
     Returns: Path to the uploaded object in S3
 
@@ -311,6 +322,7 @@ def upload_multipart_file(
             chunk_size=chunk_size,
             max_workers=max_workers,
             header_provider=header_provider,
+            ssl_context_provider=ssl_context_provider,
         )
 
 
