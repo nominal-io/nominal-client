@@ -150,13 +150,6 @@ class NominalClient:
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
-        if prof.workspace_rid is None:
-            warnings.warn(
-                "NominalClient will soon require a workspace RID. "
-                "Any client which doesn't have a workspace RID specified will fail.",
-                UserWarning,
-                stacklevel=2,
-            )
         client = cls.from_token(
             prof.token,
             prof.base_url,
@@ -165,7 +158,6 @@ class NominalClient:
             connect_timeout=connect_timeout,
             extra_headers=extra_headers,
             _profile=profile,
-            _workspace_warning_emitted=True,
         )
         return client
 
@@ -180,7 +172,6 @@ class NominalClient:
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
         _profile: str | None = None,
-        _workspace_warning_emitted: bool = False,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
 
@@ -194,7 +185,7 @@ class NominalClient:
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
-        if workspace_rid is None and not _workspace_warning_emitted:
+        if workspace_rid is None:
             warnings.warn(
                 "NominalClient will soon require a workspace RID. "
                 "Any client which doesn't have a workspace RID specified will fail.",
@@ -245,13 +236,6 @@ class NominalClient:
         """
         if token is None:
             token = _config.get_token(base_url)
-        if workspace_rid is None:
-            warnings.warn(
-                "NominalClient will soon require a workspace RID. "
-                "Any client which doesn't have a workspace RID specified will fail.",
-                UserWarning,
-                stacklevel=2,
-            )
         return cls.from_token(
             token,
             base_url,
@@ -259,7 +243,6 @@ class NominalClient:
             connect_timeout=connect_timeout,
             workspace_rid=workspace_rid,
             extra_headers=extra_headers,
-            _workspace_warning_emitted=True,
         )
 
     def __repr__(self) -> str:
