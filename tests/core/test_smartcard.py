@@ -20,7 +20,7 @@ from nominal.smartcard import (
 )
 from nominal.smartcard._dependencies import assert_required_dependencies_available
 from nominal.smartcard._openssl_provider import _key_uri_from_cert_uri
-from nominal.smartcard._pkcs11 import CLIENT_AUTH_EKU, Pkcs11Backend, _build_pkcs11_uri, _parse_certificate_metadata
+from nominal.smartcard._pkcs11 import Pkcs11Backend, _build_pkcs11_uri
 from nominal.smartcard.errors import (
     SmartcardConfigurationError,
     SmartcardDependencyError,
@@ -37,18 +37,12 @@ def _candidate(
     *,
     label: str = "PIV Authentication",
     slot: str | None = "9A",
-    object_id: str | None = "01",
     pkcs11_uri: str = "pkcs11:token=CAC;id=%01",
-    ekus: tuple[str, ...] = (),
-    der_certificate: bytes = b"cert",
 ) -> CertificateCandidate:
     return CertificateCandidate(
         label=label,
         slot=slot,
-        object_id=object_id,
         pkcs11_uri=pkcs11_uri,
-        der_certificate=der_certificate,
-        extended_key_usages=ekus,
     )
 
 
@@ -153,20 +147,20 @@ def test_discover_pkcs11_module_raises_when_no_platform_path_exists(
 
 
 def test_is_piv_candidate_slot_9a() -> None:
-    assert _candidate(slot="9A", object_id=None, ekus=()).is_piv_authentication_candidate
+    assert _candidate(slot="9A").is_piv_authentication_candidate
 
 
 def test_is_piv_candidate_slot_case_insensitive() -> None:
-    assert _candidate(slot="9a", object_id=None, ekus=()).is_piv_authentication_candidate
+    assert _candidate(slot="9a").is_piv_authentication_candidate
 
 
 def test_is_not_piv_candidate_slot_9c() -> None:
-    c = _candidate(label="Digital Signature", slot="9C", object_id="02", ekus=())
+    c = _candidate(label="Digital Signature", slot="9C")
     assert not c.is_piv_authentication_candidate
 
 
 def test_is_not_piv_candidate_no_slot() -> None:
-    c = _candidate(slot=None, object_id="01", ekus=())
+    c = _candidate(slot=None)
     assert not c.is_piv_authentication_candidate
 
 
@@ -182,7 +176,7 @@ def test_select_raises_when_no_candidates() -> None:
 
 def test_select_single_piv_auth_candidate() -> None:
     piv = _candidate(slot="9A")
-    dig = _candidate(label="Digital Signature", slot="9C", object_id="02")
+    dig = _candidate(label="Digital Signature", slot="9C")
     assert select_piv_authentication_certificate([dig, piv]) is piv
 
 
@@ -195,7 +189,7 @@ def test_select_rejects_ambiguous_piv_candidates() -> None:
 
 
 def test_select_no_piv_candidates_raises_with_discovered_list() -> None:
-    c = _candidate(label="Digital Signature", slot="9C", object_id="02")
+    c = _candidate(label="Digital Signature", slot="9C")
     with pytest.raises(SmartcardCertificateSelectionError, match="Digital Signature"):
         select_piv_authentication_certificate([c])
 
@@ -458,7 +452,7 @@ def test_smartcard_dependency_check_passes_when_all_present(monkeypatch: pytest.
 
 
 def test_build_pkcs11_uri_single_byte() -> None:
-    assert _build_pkcs11_uri("MY TOKEN", b"\x01") == "pkcs11:token=MY TOKEN;id=%01"
+    assert _build_pkcs11_uri("MY TOKEN", b"\x01") == "pkcs11:token=MY%20TOKEN;id=%01"
 
 
 def test_build_pkcs11_uri_multi_byte() -> None:
@@ -489,106 +483,12 @@ def test_key_uri_from_cert_uri_strips_type_anywhere() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _parse_certificate_metadata
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def self_signed_der_cert() -> bytes:
-    pytest.importorskip("cryptography")
-    import datetime
-
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.x509.oid import ExtendedKeyUsageOID
-
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "test")])
-    now = datetime.datetime.now(datetime.timezone.utc)
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + datetime.timedelta(days=1))
-        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH]), critical=False)
-        .sign(key, hashes.SHA256())
-    )
-    return cert.public_bytes(serialization.Encoding.DER)
-
-
-def test_parse_certificate_metadata_returns_sha256_fingerprint(self_signed_der_cert: bytes) -> None:
-    fingerprint, _ = _parse_certificate_metadata(self_signed_der_cert)
-    parts = fingerprint.split(":")
-    assert len(parts) == 32
-    assert all(len(p) == 2 for p in parts)
-
-
-def test_parse_certificate_metadata_extracts_client_auth_eku(self_signed_der_cert: bytes) -> None:
-    _, ekus = _parse_certificate_metadata(self_signed_der_cert)
-    assert CLIENT_AUTH_EKU in ekus
-
-
-def test_parse_certificate_metadata_empty_ekus_when_none_set() -> None:
-    pytest.importorskip("cryptography")
-    import datetime
-
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
-
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "no-eku")])
-    now = datetime.datetime.now(datetime.timezone.utc)
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + datetime.timedelta(days=1))
-        .sign(key, hashes.SHA256())
-    )
-    der = cert.public_bytes(serialization.Encoding.DER)
-    _, ekus = _parse_certificate_metadata(der)
-    assert ekus == ()
-
-
-# ---------------------------------------------------------------------------
 # PyKCS11Backend (via mock)
 # ---------------------------------------------------------------------------
 
 
 def _make_mock_pykcs11_env():
-    """Return (mock_PyKCS11_module, mock_session, der_cert_bytes)."""
-    pytest.importorskip("cryptography")
-    import datetime
-
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.x509.oid import ExtendedKeyUsageOID
-
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "piv-auth")])
-    now = datetime.datetime.now(datetime.timezone.utc)
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + datetime.timedelta(days=1))
-        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH]), critical=False)
-        .sign(key, hashes.SHA256())
-    )
-    der = cert.public_bytes(serialization.Encoding.DER)
-
+    """Return (mock_PyKCS11_module, mock_session)."""
     PyKCS11 = MagicMock()
     PyKCS11.CKF_SERIAL_SESSION = 4
     PyKCS11.CKU_USER = 1
@@ -598,7 +498,6 @@ def _make_mock_pykcs11_env():
     PyKCS11.CKC_X_509 = 0
     PyKCS11.CKA_LABEL = 3
     PyKCS11.CKA_ID = 0x102
-    PyKCS11.CKA_VALUE = 0x11
 
     token_info = MagicMock()
     token_info.label = "CAC TOKEN     "
@@ -606,7 +505,7 @@ def _make_mock_pykcs11_env():
     cert_obj = MagicMock()
     session = MagicMock()
     session.findObjects.return_value = [cert_obj]
-    session.getAttributeValue.return_value = ["PIV Authentication", b"\x01", der]
+    session.getAttributeValue.return_value = ["PIV Authentication", b"\x01"]
 
     lib = MagicMock()
     lib.getSlotList.return_value = [0]
@@ -616,13 +515,13 @@ def _make_mock_pykcs11_env():
     PyKCS11.PyKCS11Lib.return_value = lib
     PyKCS11.PyKCS11Error = type("PyKCS11Error", (Exception,), {"value": 0})
 
-    return PyKCS11, session, der
+    return PyKCS11, session
 
 
 def test_pykcs11_backend_list_certificate_candidates(tmp_path: Path) -> None:
     from nominal.smartcard._pkcs11 import PyKCS11Backend
 
-    mock_pykcs11, _, der = _make_mock_pykcs11_env()
+    mock_pykcs11, _ = _make_mock_pykcs11_env()
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
@@ -634,16 +533,13 @@ def test_pykcs11_backend_list_certificate_candidates(tmp_path: Path) -> None:
     c = candidates[0]
     assert c.label == "PIV Authentication"
     assert c.slot == "9A"
-    assert c.object_id == "01"
-    assert c.der_certificate == der
-    assert c.pkcs11_uri == "pkcs11:token=CAC TOKEN;id=%01"
-    assert CLIENT_AUTH_EKU in c.extended_key_usages
+    assert c.pkcs11_uri == "pkcs11:token=CAC%20TOKEN;id=%01"
 
 
 def test_pykcs11_backend_login_calls_session_login(tmp_path: Path) -> None:
     from nominal.smartcard._pkcs11 import PyKCS11Backend
 
-    mock_pykcs11, mock_session, _ = _make_mock_pykcs11_env()
+    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
@@ -658,7 +554,7 @@ def test_pykcs11_backend_login_calls_session_login(tmp_path: Path) -> None:
 def test_pykcs11_backend_login_raises_smartcard_pin_error_on_incorrect_pin(tmp_path: Path) -> None:
     from nominal.smartcard._pkcs11 import PyKCS11Backend
 
-    mock_pykcs11, mock_session, _ = _make_mock_pykcs11_env()
+    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
     wrong_pin_err = mock_pykcs11.PyKCS11Error("wrong pin")
     wrong_pin_err.value = 0xA0  # CKR_PIN_INCORRECT
     mock_session.login.side_effect = wrong_pin_err
@@ -676,7 +572,7 @@ def test_pykcs11_backend_login_raises_smartcard_pin_error_on_incorrect_pin(tmp_p
 def test_pykcs11_backend_login_raises_pin_locked_error(tmp_path: Path) -> None:
     from nominal.smartcard._pkcs11 import PyKCS11Backend
 
-    mock_pykcs11, mock_session, _ = _make_mock_pykcs11_env()
+    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
     locked_err = mock_pykcs11.PyKCS11Error("locked")
     locked_err.value = 0xA4  # CKR_PIN_LOCKED
     mock_session.login.side_effect = locked_err
@@ -694,7 +590,7 @@ def test_pykcs11_backend_login_raises_pin_locked_error(tmp_path: Path) -> None:
 def test_pykcs11_backend_close_closes_sessions(tmp_path: Path) -> None:
     from nominal.smartcard._pkcs11 import PyKCS11Backend
 
-    mock_pykcs11, mock_session, _ = _make_mock_pykcs11_env()
+    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
@@ -709,7 +605,7 @@ def test_pykcs11_backend_close_closes_sessions(tmp_path: Path) -> None:
 def test_pykcs11_backend_skips_slots_that_fail_to_open(tmp_path: Path) -> None:
     from nominal.smartcard._pkcs11 import PyKCS11Backend
 
-    mock_pykcs11, _, _ = _make_mock_pykcs11_env()
+    mock_pykcs11, _ = _make_mock_pykcs11_env()
     lib = mock_pykcs11.PyKCS11Lib.return_value
     lib.getSlotList.return_value = [0, 1]
     good_session = lib.openSession.return_value
@@ -731,12 +627,12 @@ def test_pykcs11_backend_login_raises_when_no_session_for_certificate(tmp_path: 
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     # Build a backend without calling list_certificate_candidates first
-    mock_pykcs11, _, _ = _make_mock_pykcs11_env()
+    mock_pykcs11, _ = _make_mock_pykcs11_env()
 
     with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
         backend = PyKCS11Backend(module_path)
         # Attempt login with a candidate that was never enrolled
-        orphan = _candidate(object_id="99", pkcs11_uri="pkcs11:token=NOTFOUND;id=%99")
+        orphan = _candidate(pkcs11_uri="pkcs11:token=NOTFOUND;id=%99")
         with pytest.raises(SmartcardConfigurationError, match="No open PKCS#11 session"):
             backend.login(orphan, "pin")
 

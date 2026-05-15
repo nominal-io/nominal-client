@@ -123,24 +123,6 @@ def _build_pkcs11_uri(token_label: str, object_id_bytes: bytes) -> str:
     return f"pkcs11:token={pct_label};id={pct_id}"
 
 
-def _parse_certificate_metadata(der_cert: bytes) -> tuple[str, tuple[str, ...]]:
-    """Return (sha256_fingerprint, extended_key_usages) for a DER-encoded certificate."""
-    from cryptography import x509 as cryptography_x509
-    from cryptography.hazmat.primitives import hashes
-
-    cert = cryptography_x509.load_der_x509_certificate(der_cert)
-    fp_bytes = cert.fingerprint(hashes.SHA256())
-    sha256_fingerprint = ":".join(f"{b:02x}" for b in fp_bytes)
-
-    try:
-        ekus_ext = cert.extensions.get_extension_for_oid(cryptography_x509.ExtensionOID.EXTENDED_KEY_USAGE)
-        ekus: tuple[str, ...] = tuple(oid.dotted_string for oid in ekus_ext.value)
-    except cryptography_x509.ExtensionNotFound:
-        ekus = ()
-
-    return sha256_fingerprint, ekus
-
-
 class PyKCS11Backend(Pkcs11Backend):
     """PKCS#11 token backend backed by the PyKCS11 library."""
 
@@ -200,24 +182,15 @@ class PyKCS11Backend(Pkcs11Backend):
                 try:
                     attrs = session.getAttributeValue(
                         cert_obj,
-                        [
-                            PyKCS11.CKA_LABEL,
-                            PyKCS11.CKA_ID,
-                            PyKCS11.CKA_VALUE,
-                        ],
+                        [PyKCS11.CKA_LABEL, PyKCS11.CKA_ID],
                     )
-                    label_raw, id_raw, value_raw = attrs[0], attrs[1], attrs[2]
+                    label_raw, id_raw = attrs[0], attrs[1]
                     label = str(label_raw).strip() if label_raw else None
                     object_id_bytes = bytes(id_raw) if id_raw else b""
-                    der_cert = bytes(value_raw) if value_raw else b""
-
-                    if not der_cert:
-                        continue
 
                     object_id_str = object_id_bytes.hex() if object_id_bytes else None
                     piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str or "") if object_id_str else None
                     pkcs11_uri = _build_pkcs11_uri(token_label, object_id_bytes)
-                    _, ekus = _parse_certificate_metadata(der_cert)
 
                     self._sessions[pkcs11_uri] = session
 
@@ -225,10 +198,7 @@ class PyKCS11Backend(Pkcs11Backend):
                         CertificateCandidate(
                             label=label,
                             slot=piv_slot,
-                            object_id=object_id_str,
                             pkcs11_uri=pkcs11_uri,
-                            der_certificate=der_cert,
-                            extended_key_usages=ekus,
                         )
                     )
                 except PyKCS11.PyKCS11Error:

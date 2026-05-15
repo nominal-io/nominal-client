@@ -13,10 +13,7 @@ class CertificateCandidate:
 
     label: str | None
     slot: str | None
-    object_id: str | None
     pkcs11_uri: str
-    der_certificate: bytes
-    extended_key_usages: tuple[str, ...] = ()
 
     @property
     def is_piv_authentication_candidate(self) -> bool:
