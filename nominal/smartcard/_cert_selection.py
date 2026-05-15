@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nominal.smartcard.errors import SmartcardCertificateSelectionError
+from nominal.smartcard._errors import SmartcardCertificateSelectionError
 
+"""Slot 9A is reserved for PIV Authentication keys on the smartcard."""
 PIV_AUTHENTICATION_SLOT = "9A"
 
 
@@ -13,10 +14,9 @@ class CertificateCandidate:
 
     label: str | None
     slot: str | None
-    object_id: str | None
-    pkcs11_uri: str
-    der_certificate: bytes
-    extended_key_usages: tuple[str, ...] = ()
+    certificate_uri: str
+    private_key_uri: str
+    der_certificate: bytes = b""
 
     @property
     def is_piv_authentication_candidate(self) -> bool:
@@ -26,17 +26,18 @@ class CertificateCandidate:
 def select_piv_authentication_certificate(
     candidates: list[CertificateCandidate],
 ) -> CertificateCandidate:
-    """Select the CAC PIV Authentication cert/key pair from discovered candidates."""
+    """Select the PIV Authentication cert/key pair from discovered candidates."""
     if not candidates:
         raise SmartcardCertificateSelectionError("No certificates were found on the smartcard token.")
 
     piv_auth_candidates = [candidate for candidate in candidates if candidate.is_piv_authentication_candidate]
     if len(piv_auth_candidates) == 1:
         return piv_auth_candidates[0]
+
     if not piv_auth_candidates:
         raise SmartcardCertificateSelectionError(
-            "Could not find a PIV Authentication certificate on the smartcard token. "
-            "Do not use the Digital Signature, Key Management, or PIV Card Authentication certificate."
+            "Could not find a PIV Authentication certificate on the smartcard token."
         )
-    labels = ", ".join(candidate.label or candidate.pkcs11_uri for candidate in piv_auth_candidates)
+
+    labels = ", ".join(candidate.label or candidate.certificate_uri for candidate in piv_auth_candidates)
     raise SmartcardCertificateSelectionError(f"Multiple PIV Authentication certificate candidates were found: {labels}")

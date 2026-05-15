@@ -7,15 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from nominal.smartcard._cert_selection import CertificateCandidate
-from nominal.smartcard.errors import (
-    SmartcardConfigurationError,
-    SmartcardPinError,
-    SmartcardPinLockedError,
-)
+from nominal.smartcard._errors import SmartcardConfigurationError
 
 NOMINAL_PKCS11_MODULE_ENV_VAR = "NOMINAL_PKCS11_MODULE"
-
-CLIENT_AUTH_EKU = "1.3.6.1.5.5.7.3.2"
 
 _LINUX_OPENSC_PATHS = (
     "/usr/lib64/opensc-pkcs11.so",
@@ -43,12 +37,10 @@ _OBJECT_ID_TO_PIV_SLOT: dict[str, str] = {
 }
 
 
-def discover_pkcs11_module(explicit_path: Path | None = None) -> Path:
+def discover_pkcs11_module() -> Path:
     """Find the OpenSC PKCS#11 module used to communicate with the smartcard."""
-    configured_path = explicit_path
-    if configured_path is None:
-        env_path = os.environ.get(NOMINAL_PKCS11_MODULE_ENV_VAR)
-        configured_path = Path(env_path) if env_path else None
+    env_path = os.environ.get(NOMINAL_PKCS11_MODULE_ENV_VAR)
+    configured_path = Path(env_path) if env_path else None
 
     if configured_path is not None:
         module_path = configured_path.expanduser()
@@ -73,20 +65,20 @@ def _platform_default_paths() -> tuple[str, ...]:
         return _MACOS_OPENSC_PATHS
     if system == "Windows":
         return _WINDOWS_OPENSC_PATHS
-    return _LINUX_OPENSC_PATHS
+    if system == "Linux":
+        return _LINUX_OPENSC_PATHS
+
+    raise SmartcardConfigurationError(f"Unsupported platform: {system}")
 
 
 class Pkcs11Backend(ABC):
-    """Backend responsible for direct PKCS#11 token access."""
+    """Backend responsible for direct PKCS#11 token discovery."""
 
     def __init__(self, module_path: Path) -> None:
         self.module_path = module_path
 
     @abstractmethod
     def list_certificate_candidates(self) -> list[CertificateCandidate]: ...
-
-    @abstractmethod
-    def login(self, certificate: CertificateCandidate, pin: str) -> None: ...
 
     @abstractmethod
     def close(self) -> None: ...
@@ -112,33 +104,18 @@ def _pct_encode_pk11_pchar(value: str) -> str:
     return "".join(parts)
 
 
-def _build_pkcs11_uri(token_label: str, object_id_bytes: bytes) -> str:
+def _build_pkcs11_uri(token_label: str, object_id_bytes: bytes, *, object_type: str | None = None) -> str:
     """Build a PKCS#11 URI for a token + object identifier.
 
-    Format: pkcs11:token=TOKEN_LABEL;id=%XX%YY...
+    Format: pkcs11:token=TOKEN_LABEL;id=%XX%YY...;type=OBJECT_TYPE
     Both the token label and the id bytes are percent-encoded per RFC 7512.
     """
     pct_id = "".join(f"%{b:02x}" for b in object_id_bytes)
     pct_label = _pct_encode_pk11_pchar(token_label)
-    return f"pkcs11:token={pct_label};id={pct_id}"
-
-
-def _parse_certificate_metadata(der_cert: bytes) -> tuple[str, tuple[str, ...]]:
-    """Return (sha256_fingerprint, extended_key_usages) for a DER-encoded certificate."""
-    from cryptography import x509 as cryptography_x509
-    from cryptography.hazmat.primitives import hashes
-
-    cert = cryptography_x509.load_der_x509_certificate(der_cert)
-    fp_bytes = cert.fingerprint(hashes.SHA256())
-    sha256_fingerprint = ":".join(f"{b:02x}" for b in fp_bytes)
-
-    try:
-        ekus_ext = cert.extensions.get_extension_for_oid(cryptography_x509.ExtensionOID.EXTENDED_KEY_USAGE)
-        ekus: tuple[str, ...] = tuple(oid.dotted_string for oid in ekus_ext.value)
-    except cryptography_x509.ExtensionNotFound:
-        ekus = ()
-
-    return sha256_fingerprint, ekus
+    uri = f"pkcs11:token={pct_label};id={pct_id}"
+    if object_type is not None:
+        uri += f";type={object_type}"
+    return uri
 
 
 class PyKCS11Backend(Pkcs11Backend):
@@ -147,8 +124,6 @@ class PyKCS11Backend(Pkcs11Backend):
     def __init__(self, module_path: Path) -> None:
         super().__init__(module_path)
         self._lib: Any = None
-        # Maps pkcs11_uri → open session for that slot
-        self._sessions: dict[str, Any] = {}
 
     def _get_lib(self) -> Any:
         if self._lib is not None:
@@ -159,18 +134,20 @@ class PyKCS11Backend(Pkcs11Backend):
             raise SmartcardConfigurationError(
                 "PyKCS11 is not installed. Run `pip install 'nominal[smartcard]'`."
             ) from e
+
         lib = PyKCS11.PyKCS11Lib()
         try:
             lib.load(str(self.module_path))
         except PyKCS11.PyKCS11Error as e:
             raise SmartcardConfigurationError(f"Failed to load PKCS#11 module {self.module_path}: {e}") from e
+
         self._lib = lib
         return lib
 
     def list_certificate_candidates(self) -> list[CertificateCandidate]:
+        lib = self._get_lib()
         import PyKCS11
 
-        lib = self._get_lib()
         try:
             slots = lib.getSlotList(tokenPresent=True)
         except PyKCS11.PyKCS11Error as e:
@@ -178,97 +155,54 @@ class PyKCS11Backend(Pkcs11Backend):
 
         candidates: list[CertificateCandidate] = []
         for slot in slots:
+            session: Any = None
             try:
-                token_info = lib.getTokenInfo(slot)
-                token_label = str(token_info.label).strip()
-                session = lib.openSession(slot, PyKCS11.CKF_SERIAL_SESSION)
-            except PyKCS11.PyKCS11Error:
-                continue
-
-            try:
-                cert_objects = session.findObjects(
-                    [
-                        (PyKCS11.CKA_CLASS, PyKCS11.CKO_CERTIFICATE),
-                        (PyKCS11.CKA_CERTIFICATE_TYPE, PyKCS11.CKC_X_509),
-                    ]
-                )
-            except PyKCS11.PyKCS11Error:
-                session.closeSession()
-                continue
-
-            for cert_obj in cert_objects:
                 try:
-                    attrs = session.getAttributeValue(
-                        cert_obj,
+                    token_info = lib.getTokenInfo(slot)
+                    token_label = str(token_info.label).strip()
+                    session = lib.openSession(slot, PyKCS11.CKF_SERIAL_SESSION)
+
+                    cert_objects = session.findObjects(
                         [
-                            PyKCS11.CKA_LABEL,
-                            PyKCS11.CKA_ID,
-                            PyKCS11.CKA_VALUE,
-                        ],
+                            (PyKCS11.CKA_CLASS, PyKCS11.CKO_CERTIFICATE),
+                            (PyKCS11.CKA_CERTIFICATE_TYPE, PyKCS11.CKC_X_509),
+                        ]
                     )
-                    label_raw, id_raw, value_raw = attrs[0], attrs[1], attrs[2]
-                    label = str(label_raw).strip() if label_raw else None
-                    object_id_bytes = bytes(id_raw) if id_raw else b""
-                    der_cert = bytes(value_raw) if value_raw else b""
 
-                    if not der_cert:
-                        continue
-
-                    object_id_str = object_id_bytes.hex() if object_id_bytes else None
-                    piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str or "") if object_id_str else None
-                    pkcs11_uri = _build_pkcs11_uri(token_label, object_id_bytes)
-                    _, ekus = _parse_certificate_metadata(der_cert)
-
-                    self._sessions[pkcs11_uri] = session
-
-                    candidates.append(
-                        CertificateCandidate(
-                            label=label,
-                            slot=piv_slot,
-                            object_id=object_id_str,
-                            pkcs11_uri=pkcs11_uri,
-                            der_certificate=der_cert,
-                            extended_key_usages=ekus,
+                    for cert_obj in cert_objects:
+                        attrs = session.getAttributeValue(
+                            cert_obj,
+                            [PyKCS11.CKA_LABEL, PyKCS11.CKA_ID, PyKCS11.CKA_VALUE],
                         )
-                    )
+                        label_raw, id_raw, value_raw = attrs[0], attrs[1], attrs[2]
+                        label = str(label_raw).strip() if label_raw else None
+                        object_id_bytes = bytes(id_raw) if id_raw else b""
+                        der_certificate = bytes(value_raw) if value_raw else b""
+
+                        object_id_str = object_id_bytes.hex() if object_id_bytes else None
+                        piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str or "") if object_id_str else None
+                        certificate_uri = _build_pkcs11_uri(token_label, object_id_bytes, object_type="cert")
+                        private_key_uri = _build_pkcs11_uri(token_label, object_id_bytes, object_type="private")
+
+                        candidates.append(
+                            CertificateCandidate(
+                                label=label,
+                                slot=piv_slot,
+                                certificate_uri=certificate_uri,
+                                private_key_uri=private_key_uri,
+                                der_certificate=der_certificate,
+                            )
+                        )
                 except PyKCS11.PyKCS11Error:
-                    continue
+                    pass  # Skip slots we can't access or that don't conform to expected structure
+            finally:
+                if session is not None:
+                    try:
+                        session.closeSession()
+                    except PyKCS11.PyKCS11Error:
+                        pass
 
         return candidates
 
-    def login(self, certificate: CertificateCandidate, pin: str) -> None:
-        import PyKCS11
-
-        session = self._sessions.get(certificate.pkcs11_uri)
-        if session is None:
-            raise SmartcardConfigurationError(
-                f"No open PKCS#11 session for {certificate.pkcs11_uri!r}. Call list_certificate_candidates() first."
-            )
-
-        try:
-            session.login(PyKCS11.CKU_USER, pin)
-        except PyKCS11.PyKCS11Error as e:
-            error_code = e.value if hasattr(e, "value") else None
-            # CKR_PIN_LOCKED = 0x000000A4
-            if error_code == 0xA4:
-                raise SmartcardPinLockedError("CAC PIN is locked. Contact your CAC office to unlock it.") from e
-            # CKR_PIN_INCORRECT = 0x000000A0, CKR_PIN_INVALID = 0x000000A1
-            if error_code in (0xA0, 0xA1):
-                raise SmartcardPinError("Incorrect PIN.") from e
-            raise SmartcardConfigurationError(f"PKCS#11 login failed: {e}") from e
-
     def close(self) -> None:
-        import PyKCS11
-
-        seen_sessions: set[int] = set()
-        for session in self._sessions.values():
-            session_id = id(session)
-            if session_id in seen_sessions:
-                continue
-            seen_sessions.add(session_id)
-            try:
-                session.closeSession()
-            except PyKCS11.PyKCS11Error:
-                pass
-        self._sessions.clear()
         self._lib = None

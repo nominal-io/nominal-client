@@ -7,14 +7,11 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-from nominal.smartcard._config import SmartcardConfig
+from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._session import SmartcardSession
-from nominal.smartcard.errors import SmartcardConfigurationError
 
-# OSSL_STORE_INFO type constants (openssl/store.h)
-_OSSL_STORE_INFO_CERT = 3
+# OSSL_STORE_INFO_get_type returns this value for private keys.
 _OSSL_STORE_INFO_PKEY = 4
-
 _PROVIDER_NAME = "pkcs11"
 
 # Deferred at module import; initialised once by _load_ffi().
@@ -24,7 +21,6 @@ _lib: Any = None
 
 _provider_lock: threading.Lock = threading.Lock()
 _loaded_provider: Any = None  # kept alive for the process lifetime once loaded
-_loaded_provider_name: str | None = None
 
 
 def _load_ffi() -> tuple[Any, Any]:
@@ -124,11 +120,14 @@ def _validate_library_binding(ffi: Any, lib: Any) -> None:
                 "This would cause memory corruption. Ensure only one OpenSSL installation is active."
             )
     except AttributeError:
-        # SSL_CTX_check_private_key not found in ctypes on this platform; skip validation.
-        pass
+        raise SmartcardConfigurationError(
+            "Failed to validate OpenSSL library binding: SSL_CTX_check_private_key symbol not "
+            "found in ctypes. This may indicate an unsupported platform or Python build. "
+            "Use a standard CPython build."
+        )
 
 
-def _ensure_provider_loaded(ffi: Any, lib: Any, provider_name: str) -> None:
+def _ensure_provider_loaded(ffi: Any, lib: Any) -> None:
     """Load the named OpenSSL provider once and keep it loaded for process lifetime.
 
     The provider must outlive every SSLContext built from it: the EVP_PKEY installed
@@ -137,27 +136,18 @@ def _ensure_provider_loaded(ffi: Any, lib: Any, provider_name: str) -> None:
     removes the provider from OpenSSL's algorithm dispatch table and causes those
     handshakes to fail.
     """
-    global _loaded_provider, _loaded_provider_name
+    global _loaded_provider
     with _provider_lock:
         if _loaded_provider is not None:
-            if _loaded_provider_name != provider_name:
-                raise SmartcardConfigurationError(
-                    f"OpenSSL provider {_loaded_provider_name!r} is already loaded in this process; "
-                    f"cannot load a different provider {provider_name!r}. "
-                    "All SmartcardConfig objects in the same process must use the same openssl_provider_path."
-                )
             return
-        provider = lib.OSSL_PROVIDER_load(ffi.NULL, provider_name.encode())
+        provider = lib.OSSL_PROVIDER_load(ffi.NULL, _PROVIDER_NAME.encode())
         if provider == ffi.NULL:
             err = _get_openssl_error(ffi, lib)
             raise SmartcardConfigurationError(
-                f"Failed to load OpenSSL provider {provider_name!r}: {err}. "
-                "Install pkcs11-provider (e.g. `brew install pkcs11-provider` on macOS, "
-                "`apt install pkcs11-provider` on Ubuntu) and ensure it is on the OpenSSL "
-                "providers search path."
+                f"Failed to load OpenSSL provider {_PROVIDER_NAME!r}: {err}. "
+                "Install pkcs11-provider and ensure it is on the OpenSSL providers search path."
             )
         _loaded_provider = provider
-        _loaded_provider_name = provider_name
 
 
 def _get_openssl_error(ffi: Any, lib: Any) -> str:
@@ -172,7 +162,7 @@ def _get_openssl_error(ffi: Any, lib: Any) -> str:
 def _get_ssl_ctx_ptr(ffi: Any, ssl_context: ssl.SSLContext) -> Any:
     """Extract the SSL_CTX* pointer from a Python ssl.SSLContext.
 
-    CPython's PySSLContext struct layout (stable across 3.7–3.12 release builds):
+    CPython's PySSLContext struct layout:
       offset 0:  ob_refcnt  (Py_ssize_t, 8 bytes on 64-bit)
       offset 8:  ob_type    (PyTypeObject *, 8 bytes on 64-bit)
       offset 16: ctx        (SSL_CTX *)
@@ -210,7 +200,7 @@ def _pct_encode_pin(pin: str) -> str:
     return "".join(parts)
 
 
-def _load_pkey_from_store(ffi: Any, lib: Any, pkcs11_uri: str, pin: str | None = None) -> Any:
+def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str, pin: str | None = None) -> Any:
     """Open a PKCS#11 URI via OSSL_STORE and return the first EVP_PKEY found.
 
     When pin is provided it is embedded as ?pin-value=... so that pkcs11-provider
@@ -219,7 +209,7 @@ def _load_pkey_from_store(ffi: Any, lib: Any, pkcs11_uri: str, pin: str | None =
     not shared across separate C_Initialize call chains.  The cffi buffer holding
     the URI (including the PIN) is zeroed immediately after OSSL_STORE_open returns.
     """
-    uri = pkcs11_uri if pin is None else f"{pkcs11_uri}?pin-value={_pct_encode_pin(pin)}"
+    uri = private_key_uri if pin is None else f"{private_key_uri}?pin-value={_pct_encode_pin(pin)}"
     uri_bytes = uri.encode()
     uri_buf = ffi.new("char[]", uri_bytes)
     try:
@@ -230,7 +220,7 @@ def _load_pkey_from_store(ffi: Any, lib: Any, pkcs11_uri: str, pin: str | None =
     if store == ffi.NULL:
         err = _get_openssl_error(ffi, lib)
         raise SmartcardConfigurationError(
-            f"OSSL_STORE_open failed for URI {pkcs11_uri!r}: {err}. "
+            f"OSSL_STORE_open failed for URI {private_key_uri!r}: {err}. "
             "Verify pkcs11-provider is installed and the PKCS#11 module path is correct."
         )
 
@@ -253,7 +243,7 @@ def _load_pkey_from_store(ffi: Any, lib: Any, pkcs11_uri: str, pin: str | None =
 
     if pkey == ffi.NULL:
         raise SmartcardConfigurationError(
-            f"No private key found at PKCS#11 URI {pkcs11_uri!r}. "
+            f"No private key found at PKCS#11 URI {private_key_uri!r}. "
             "Verify the token is present and the object ID is correct."
         )
     return pkey
@@ -270,18 +260,6 @@ def _load_x509_from_der(ffi: Any, lib: Any, der_cert: bytes) -> Any:
     return x509
 
 
-def _key_uri_from_cert_uri(cert_uri: str) -> str:
-    """Derive the private-key PKCS#11 URI from a certificate URI.
-
-    Strips any existing type= attribute and appends type=private.
-    Handles type= appearing anywhere in the URI, including as the first attribute.
-    """
-    scheme = "pkcs11:"
-    body = cert_uri[len(scheme) :] if cert_uri.startswith(scheme) else cert_uri
-    attrs = [a for a in body.split(";") if not a.startswith("type=")]
-    return scheme + ";".join(attrs) + ";type=private"
-
-
 @dataclass(frozen=True)
 class OpenSslProviderBridge:
     """Bridge from Python ssl.SSLContext to OpenSSL's pkcs11-provider via cffi.
@@ -289,25 +267,21 @@ class OpenSslProviderBridge:
     Setup (Python-side, once per session):
       1. Load pkcs11-provider into the in-process libcrypto via OSSL_PROVIDER_load.
       2. Open the private-key PKCS#11 URI through OSSL_STORE; the returned EVP_PKEY
-         is an opaque handle — signing operations remain on the card.
+         is an opaque handle; signing operations remain on the card.
       3. Parse the DER certificate obtained from PyKCS11 into an X509*.
       4. Install both onto the SSL_CTX* extracted from a standard ssl.SSLContext.
 
-    Every subsequent TLS handshake runs entirely in compiled C; Python is not
-    in the hot path.
+    Every subsequent TLS handshake runs entirely in compiled C.
     """
 
-    config: SmartcardConfig
-
-    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+    def build_ssl_context(self, *, session: SmartcardSession, pin: str) -> ssl.SSLContext:
         ffi, lib = _load_ffi()
-        _ensure_provider_loaded(ffi, lib, self._provider_name())
+        _ensure_provider_loaded(ffi, lib)
 
         pkey = ffi.NULL
         x509 = ffi.NULL
         try:
-            key_uri = _key_uri_from_cert_uri(session.pkcs11_uri)
-            pkey = _load_pkey_from_store(ffi, lib, key_uri, session.pin)
+            pkey = _load_pkey_from_store(ffi, lib, session.private_key_uri, pin)
             x509 = _load_x509_from_der(ffi, lib, session.certificate.der_certificate)
 
             ssl_ctx = self._make_base_ssl_context()
@@ -336,19 +310,9 @@ class OpenSslProviderBridge:
             if x509 != ffi.NULL:
                 lib.X509_free(x509)
 
-    def _provider_name(self) -> str:
-        if self.config.openssl_provider_path is not None:
-            return str(self.config.openssl_provider_path)
-        return _PROVIDER_NAME
-
     def _make_base_ssl_context(self) -> ssl.SSLContext:
         """Create a baseline ssl.SSLContext with hostname verification enabled."""
-        try:
-            import truststore
-
-            ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        except ImportError:
-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = True
         ctx.verify_mode = ssl.CERT_REQUIRED
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2

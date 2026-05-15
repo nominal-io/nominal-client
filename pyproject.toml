@@ -95,9 +95,7 @@ nominal = { workspace = true }
 protos = ["nominal-api-protos>=0.1090.0"]
 smartcard = [
     "cffi>=1.17.0",
-    "cryptography>=45.0.0",
     "PyKCS11>=1.5.18",
-    "pyOpenSSL>=25.0.0",
 ]
 tdms = ["nptdms>=1.9.0,<2"]
 # nominal-video wheels exist for:

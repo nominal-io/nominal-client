@@ -20,12 +20,8 @@ class SmartcardCertificateSelectionError(SmartcardError):
 
 
 class SmartcardPinError(SmartcardError):
-    """The CAC PIN was rejected by the smartcard."""
+    """The PIN was rejected by the smartcard."""
 
 
 class SmartcardPinLockedError(SmartcardPinError):
-    """The CAC PIN is locked due to too many incorrect attempts."""
-
-
-class SmartcardNotImplementedError(SmartcardError, NotImplementedError):
-    """Smartcard hardware/provider integration is intentionally not implemented yet."""
+    """The PIN is locked due to too many incorrect attempts."""
