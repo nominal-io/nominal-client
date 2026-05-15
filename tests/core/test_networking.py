@@ -15,6 +15,7 @@ from nominal.core._utils.networking import (
     NominalRequestsAdapter,
     NominalSslRequestsAdapter,
     SslContextProvider,
+    ThreadSafeSSLContext,
     create_conjure_service_client,
     create_multipart_request_session,
 )
@@ -101,6 +102,37 @@ def test_ssl_adapter_proxy_uses_own_ssl_context() -> None:
     kwargs = super_proxy.call_args.kwargs
     assert kwargs["ssl_context"] is adapter._ssl_context
     assert kwargs["ssl_context"] is not foreign_ctx
+
+
+def test_ssl_adapter_stores_provided_ssl_context() -> None:
+    """An explicitly provided ssl_context should be stored as-is and not replaced."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    adapter = NominalSslRequestsAdapter(ssl_context=ctx)
+    assert adapter._ssl_context is ctx
+
+
+def test_ssl_adapter_defaults_to_thread_safe_ssl_context_when_none_provided() -> None:
+    """When no ssl_context is given the adapter should create a ThreadSafeSSLContext for thread safety."""
+    adapter = NominalSslRequestsAdapter()
+    assert isinstance(adapter._ssl_context, ThreadSafeSSLContext)
+
+
+def test_create_conjure_service_client_calls_create_ssl_context_exactly_once() -> None:
+    """The provider's create_ssl_context() must be called once at session build time, not per-request."""
+    service_class = MagicMock(return_value=sentinel.client)
+    service_config = ServiceConfiguration(uris=["https://api.example.com"])
+    provider = MagicMock(spec=SslContextProvider)
+    provider.create_ssl_context.return_value = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    create_conjure_service_client(
+        service_class=service_class,
+        user_agent="test",
+        service_config=service_config,
+        ssl_context_provider=provider,
+    )
+
+    provider.create_ssl_context.assert_called_once_with()
+    service_class.call_args.args[0].close()
 
 
 def test_create_conjure_service_client_passes_trust_store_path_as_verify() -> None:
