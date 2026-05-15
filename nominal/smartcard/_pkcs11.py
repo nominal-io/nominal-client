@@ -128,8 +128,8 @@ class PyKCS11Backend(Pkcs11Backend):
     def __init__(self, module_path: Path) -> None:
         super().__init__(module_path)
         self._lib: Any = None
-        # Maps (token_label, hex_object_id) → open session for that slot
-        self._sessions: dict[tuple[str, str], Any] = {}
+        # Maps pkcs11_uri → open session for that slot
+        self._sessions: dict[str, Any] = {}
 
     def _get_lib(self) -> Any:
         if self._lib is not None:
@@ -198,18 +198,15 @@ class PyKCS11Backend(Pkcs11Backend):
                     object_id_str = object_id_bytes.hex() if object_id_bytes else None
                     piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str or "") if object_id_str else None
                     pkcs11_uri = _build_pkcs11_uri(token_label, object_id_bytes)
-                    sha256_fingerprint, ekus = _parse_certificate_metadata(der_cert)
+                    _, ekus = _parse_certificate_metadata(der_cert)
 
-                    session_key = (token_label, object_id_str or "")
-                    self._sessions[session_key] = session
+                    self._sessions[pkcs11_uri] = session
 
                     candidates.append(
                         CertificateCandidate(
                             label=label,
-                            token_label=token_label,
                             slot=piv_slot,
                             object_id=object_id_str,
-                            sha256_fingerprint=sha256_fingerprint,
                             pkcs11_uri=pkcs11_uri,
                             der_certificate=der_cert,
                             extended_key_usages=ekus,
@@ -223,12 +220,10 @@ class PyKCS11Backend(Pkcs11Backend):
     def login(self, certificate: CertificateCandidate, pin: str) -> None:
         import PyKCS11
 
-        session_key = (certificate.token_label or "", certificate.object_id or "")
-        session = self._sessions.get(session_key)
+        session = self._sessions.get(certificate.pkcs11_uri)
         if session is None:
             raise SmartcardConfigurationError(
-                f"No open PKCS#11 session for token {certificate.token_label!r} / "
-                f"object {certificate.object_id!r}. Call list_certificate_candidates() first."
+                f"No open PKCS#11 session for {certificate.pkcs11_uri!r}. Call list_certificate_candidates() first."
             )
 
         try:

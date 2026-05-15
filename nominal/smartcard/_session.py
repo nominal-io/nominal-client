@@ -80,7 +80,6 @@ class SmartcardSessionManager:
         backend = self._backend_factory(module_path)
         certificate = select_piv_authentication_certificate(
             backend.list_certificate_candidates(),
-            self._config,
         )
 
         for attempt in range(_CAC_MAX_PIN_ATTEMPTS):

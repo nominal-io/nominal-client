@@ -18,7 +18,6 @@ from nominal.smartcard import (
     discover_pkcs11_module,
     select_piv_authentication_certificate,
 )
-from nominal.smartcard._cert_selection import normalize_fingerprint
 from nominal.smartcard._dependencies import assert_required_dependencies_available
 from nominal.smartcard._openssl_provider import _key_uri_from_cert_uri
 from nominal.smartcard._pkcs11 import CLIENT_AUTH_EKU, Pkcs11Backend, _build_pkcs11_uri, _parse_certificate_metadata
@@ -39,18 +38,14 @@ def _candidate(
     label: str = "PIV Authentication",
     slot: str | None = "9A",
     object_id: str | None = "01",
-    fingerprint: str = "AA:BB",
-    token_label: str = "CAC",
     pkcs11_uri: str = "pkcs11:token=CAC;id=%01",
     ekus: tuple[str, ...] = (),
     der_certificate: bytes = b"cert",
 ) -> CertificateCandidate:
     return CertificateCandidate(
         label=label,
-        token_label=token_label,
         slot=slot,
         object_id=object_id,
-        sha256_fingerprint=fingerprint,
         pkcs11_uri=pkcs11_uri,
         der_certificate=der_certificate,
         extended_key_usages=ekus,
@@ -176,85 +171,19 @@ def test_is_not_piv_candidate_no_slot() -> None:
 
 
 # ---------------------------------------------------------------------------
-# normalize_fingerprint
-# ---------------------------------------------------------------------------
-
-
-def test_normalize_fingerprint_strips_colons() -> None:
-    assert normalize_fingerprint("AA:BB:CC") == "aabbcc"
-
-
-def test_normalize_fingerprint_strips_spaces() -> None:
-    assert normalize_fingerprint("AA BB CC") == "aabbcc"
-
-
-def test_normalize_fingerprint_lowercases() -> None:
-    assert normalize_fingerprint("AABBCC") == "aabbcc"
-
-
-# ---------------------------------------------------------------------------
 # select_piv_authentication_certificate
 # ---------------------------------------------------------------------------
 
 
 def test_select_raises_when_no_candidates() -> None:
     with pytest.raises(SmartcardCertificateSelectionError, match="No certificates"):
-        select_piv_authentication_certificate([], SmartcardConfig())
-
-
-def test_select_prefers_explicit_fingerprint() -> None:
-    selected = _candidate(label="configured", fingerprint="11:22", slot=None, object_id=None)
-    other = _candidate(fingerprint="33:44")
-
-    result = select_piv_authentication_certificate(
-        [other, selected],
-        SmartcardConfig(certificate_fingerprint="1122"),
-    )
-    assert result is selected
-
-
-def test_select_fingerprint_normalization_ignores_colons_and_case() -> None:
-    selected = _candidate(fingerprint="aa:bb:cc")
-    other = _candidate(fingerprint="11:22:33", pkcs11_uri="pkcs11:other")
-
-    result = select_piv_authentication_certificate(
-        [other, selected],
-        SmartcardConfig(certificate_fingerprint="AABBCC"),
-    )
-    assert result is selected
-
-
-def test_select_fingerprint_no_match_raises() -> None:
-    c = _candidate(fingerprint="aa:bb")
-    with pytest.raises(SmartcardCertificateSelectionError, match="fingerprint"):
-        select_piv_authentication_certificate([c], SmartcardConfig(certificate_fingerprint="ffffff"))
-
-
-def test_select_fingerprint_ambiguous_raises() -> None:
-    c1 = _candidate(label="cert1", fingerprint="aa:bb", pkcs11_uri="pkcs11:1")
-    c2 = _candidate(label="cert2", fingerprint="aa:bb", pkcs11_uri="pkcs11:2")
-    with pytest.raises(SmartcardCertificateSelectionError, match="Multiple.*fingerprint"):
-        select_piv_authentication_certificate([c1, c2], SmartcardConfig(certificate_fingerprint="aabb"))
-
-
-def test_select_filters_by_token_label() -> None:
-    correct = _candidate(label="auth", token_label="MYTOKEN", pkcs11_uri="pkcs11:correct")
-    wrong = _candidate(label="auth", token_label="OTHER", pkcs11_uri="pkcs11:wrong")
-
-    result = select_piv_authentication_certificate([wrong, correct], SmartcardConfig(token_label="MYTOKEN"))
-    assert result is correct
-
-
-def test_select_token_label_filter_no_match_raises() -> None:
-    c = _candidate(token_label="SOMETOKEN")
-    with pytest.raises(SmartcardCertificateSelectionError, match="OTHERTOKEN"):
-        select_piv_authentication_certificate([c], SmartcardConfig(token_label="OTHERTOKEN"))
+        select_piv_authentication_certificate([])
 
 
 def test_select_single_piv_auth_candidate() -> None:
     piv = _candidate(slot="9A")
-    dig = _candidate(label="Digital Signature", slot="9C", object_id="02", fingerprint="11:22")
-    assert select_piv_authentication_certificate([dig, piv], SmartcardConfig()) is piv
+    dig = _candidate(label="Digital Signature", slot="9C", object_id="02")
+    assert select_piv_authentication_certificate([dig, piv]) is piv
 
 
 def test_select_rejects_ambiguous_piv_candidates() -> None:
@@ -262,13 +191,13 @@ def test_select_rejects_ambiguous_piv_candidates() -> None:
     second = _candidate(label="PIV Authentication 2", pkcs11_uri="pkcs11:object=two")
 
     with pytest.raises(SmartcardCertificateSelectionError, match="Multiple PIV Authentication"):
-        select_piv_authentication_certificate([first, second], SmartcardConfig())
+        select_piv_authentication_certificate([first, second])
 
 
 def test_select_no_piv_candidates_raises_with_discovered_list() -> None:
-    c = _candidate(label="Digital Signature", slot="9C", object_id="02", fingerprint="11:22")
+    c = _candidate(label="Digital Signature", slot="9C", object_id="02")
     with pytest.raises(SmartcardCertificateSelectionError, match="Digital Signature"):
-        select_piv_authentication_certificate([c], SmartcardConfig())
+        select_piv_authentication_certificate([c])
 
 
 # ---------------------------------------------------------------------------
@@ -704,7 +633,6 @@ def test_pykcs11_backend_list_certificate_candidates(tmp_path: Path) -> None:
     assert len(candidates) == 1
     c = candidates[0]
     assert c.label == "PIV Authentication"
-    assert c.token_label == "CAC TOKEN"
     assert c.slot == "9A"
     assert c.object_id == "01"
     assert c.der_certificate == der
@@ -808,7 +736,7 @@ def test_pykcs11_backend_login_raises_when_no_session_for_certificate(tmp_path: 
     with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
         backend = PyKCS11Backend(module_path)
         # Attempt login with a candidate that was never enrolled
-        orphan = _candidate(token_label="NOTFOUND", object_id="99")
+        orphan = _candidate(object_id="99", pkcs11_uri="pkcs11:token=NOTFOUND;id=%99")
         with pytest.raises(SmartcardConfigurationError, match="No open PKCS#11 session"):
             backend.login(orphan, "pin")
 
