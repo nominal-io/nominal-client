@@ -152,9 +152,7 @@ def _ensure_provider_loaded(ffi: Any, lib: Any, provider_name: str) -> None:
             err = _get_openssl_error(ffi, lib)
             raise SmartcardConfigurationError(
                 f"Failed to load OpenSSL provider {provider_name!r}: {err}. "
-                "Install pkcs11-provider (e.g. `brew install pkcs11-provider` on macOS, "
-                "`apt install pkcs11-provider` on Ubuntu) and ensure it is on the OpenSSL "
-                "providers search path."
+                "Install pkcs11-provider and ensure it is on the OpenSSL providers search path."
             )
         _loaded_provider = provider
         _loaded_provider_name = provider_name

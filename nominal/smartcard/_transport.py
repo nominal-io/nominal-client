@@ -42,8 +42,4 @@ class SmartcardSslContextProvider(SslContextProvider):
 
     def create_ssl_context(self) -> ssl.SSLContext:
         session = self.session_manager.get_session()
-        pin = self.pin_provider("CAC PIN: ")
-        try:
-            return self.openssl_bridge.build_ssl_context(session=session, pin=pin)
-        finally:
-            del pin
+        return self.openssl_bridge.build_ssl_context(session=session, pin=self.pin_provider("CAC PIN: "))
