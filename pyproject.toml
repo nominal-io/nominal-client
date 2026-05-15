@@ -37,8 +37,8 @@ dependencies = [
     "types-cachetools>=6.0.0.20250525",
     "typing-extensions>=4,<5",
     # Any version is okay for these dependencies
-    "pandas>=0.0.0",
-    "polars>=0.0.0",
+    "nominal-thirdparty-pandas==1.143.0",
+    "nominal-thirdparty-polars==1.143.0",
     "python-dateutil>=0.0.0",
     "pyyaml>=0.0.0",
     "requests>=0.0.0",
@@ -63,6 +63,9 @@ Repository = "https://github.com/nominal-io/nominal-client"
 
 [tool.uv]
 default-groups = ["dev"]
+
+[tool.uv.workspace]
+members = ["packages/*"]
 
 [dependency-groups]
 dev = [
@@ -90,10 +93,13 @@ dev = [
 
 [tool.uv.sources]
 nominal = { workspace = true }
+nominal-thirdparty-pandas = { workspace = true }
+nominal-thirdparty-polars = { workspace = true }
+nominal-thirdparty-tdms = { workspace = true }
 
 [project.optional-dependencies]
 protos = ["nominal-api-protos>=0.1090.0"]
-tdms = ["nptdms>=1.9.0,<2"]
+tdms = ["nominal-thirdparty-tdms==1.143.0"]
 # nominal-video wheels exist for:
 # - Windows x86_64 (AMD64)
 # - macOS arm64
@@ -118,7 +124,7 @@ include = ["README.md", "LICENSE", "CHANGELOG.md", "nominal/*"]
 
 [tool.ruff]
 line-length = 120
-include = ["nominal/**/*.py", "tests/**/*.py"]
+include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -164,7 +170,12 @@ ignore = [
 
 [tool.mypy]
 strict = true
-packages = ["nominal"]
+packages = [
+    "nominal",
+    "nominal.thirdparty.pandas",
+    "nominal.thirdparty.polars",
+    "nominal.thirdparty.tdms",
+]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"

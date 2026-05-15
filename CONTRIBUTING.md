@@ -1,10 +1,12 @@
 Developer workflows are run with [`just`](https://github.com/casey/just). You can use `just -l` to list commands, and view the `justfile` for the commands.
 
-We use `uv` for packaging and developing. Add a dependency with `uv add dep`, or `uv add --dev dep` for a dev dependency.
+We use `uv` for packaging and developing. This repository is a uv workspace: the root package is `nominal`, and extension distributions live in `packages/`. Add a dependency with `uv add dep`, `uv add --dev dep` for a dev dependency, or `uv add --package PACKAGE dep` when the dependency belongs to a workspace package.
 
 We use `ruff` for formatting and imports, `mypy` for static typing, and `pytest` for testing.
 
 To run all tests and checks: `just verify`. To include e2e tests (for Nominal developers): `just verify-e2e`.
+
+Use `just build` to build all workspace distributions.
 
 As a rule, all tools should be configured via pyproject.toml, and should prefer configuration over parameters for project information. For example, `uv run mypy` should work without having to run `uv run mypy nominal`.
 

@@ -1,4 +1,4 @@
-set positional-arguments
+set positional-arguments := true
 
 # Default command is no subcommand given to list available commands
 default:
@@ -6,7 +6,7 @@ default:
 
 # development install with dependencies
 install:
-    uv sync
+    uv sync --all-packages --all-extras
 
 # Execute the python CLI
 cli *args='--help':
@@ -22,17 +22,17 @@ test:
 
 # run e2e tests using a named Nominal profile (preferred)
 test-e2e profile:
-    uv run pytest tests/e2e --profile {{profile}} --no-cov -v
+    uv run pytest tests/e2e --profile {{ profile }} --no-cov -v
 
 # run e2e tests using a raw auth token
 test-e2e-token token:
-    uv run pytest tests/e2e --auth-token {{token}} --no-cov -v
+    uv run pytest tests/e2e --auth-token {{ token }} --no-cov -v
 
 # run migration e2e tests using named Nominal profiles (source is prod, dest is staging)
 test-e2e-migration source-profile dest-profile:
     uv run pytest tests/e2e/migration \
-        --source-profile {{source-profile}} \
-        --dest-profile {{dest-profile}} \
+        --source-profile {{ source-profile }} \
+        --dest-profile {{ dest-profile }} \
         --no-cov -v
 
 # check static typing
@@ -75,14 +75,18 @@ verify: install test check
 # run all tests and checks, including e2e tests
 verify-e2e profile: install check test (test-e2e profile)
 
+# build all workspace packages
+build:
+    uv build --all-packages
+
 # clean up uv environments
 clean:
     uv cache clean
 
 # build docs
 build-docs:
-    uv run mkdocs build --config-file docs/mkdocs.yml
+    uv run --extra tdms mkdocs build --config-file docs/mkdocs.yml
 
 # serve docs locally
 serve-docs:
-    uv run mkdocs serve --config-file docs/mkdocs.yml
+    uv run --extra tdms mkdocs serve --config-file docs/mkdocs.yml
