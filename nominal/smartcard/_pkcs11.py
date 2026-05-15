@@ -92,16 +92,37 @@ class Pkcs11Backend(ABC):
     def close(self) -> None: ...
 
 
+# Characters allowed unencoded in a pk11-pchar value (RFC 7512 §2.3):
+# unreserved (RFC 3986) + ":" / "[" / "]" / "@" / "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / ","
+# Notably absent: ";" (path separator), "=" (name-value separator), "%" (must be part of pct-encoded).
+_PK11_PCHAR_SAFE: frozenset[str] = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    "-._~"
+    ":[]@!$&'()*+,"
+)
+
+
+def _pct_encode_pk11_pchar(value: str) -> str:
+    """Percent-encode every character outside the pk11-pchar set (RFC 7512 §2.3)."""
+    parts = []
+    for ch in value:
+        if ch in _PK11_PCHAR_SAFE:
+            parts.append(ch)
+        else:
+            for byte in ch.encode("utf-8"):
+                parts.append(f"%{byte:02x}")
+    return "".join(parts)
+
+
 def _build_pkcs11_uri(token_label: str, object_id_bytes: bytes) -> str:
     """Build a PKCS#11 URI for a token + object identifier.
 
     Format: pkcs11:token=TOKEN_LABEL;id=%XX%YY...
-    The id bytes are percent-encoded per RFC 7512.
+    Both the token label and the id bytes are percent-encoded per RFC 7512.
     """
     pct_id = "".join(f"%{b:02x}" for b in object_id_bytes)
-    # RFC 7512 requires spaces in token labels to be percent-encoded or preserved.
-    # OpenSC/pkcs11-provider handle spaces in token labels, so we keep them as-is.
-    return f"pkcs11:token={token_label};id={pct_id}"
+    pct_label = _pct_encode_pk11_pchar(token_label)
+    return f"pkcs11:token={pct_label};id={pct_id}"
 
 
 def _parse_certificate_metadata(der_cert: bytes) -> tuple[str, tuple[str, ...]]:
