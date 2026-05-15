@@ -13,7 +13,7 @@ from requests.adapters import HTTPAdapter
 from nominal.core._utils.networking import (
     HeaderProviderSession,
     NominalRequestsAdapter,
-    SslBypassRequestsAdapter,
+    NominalSslRequestsAdapter,
     SslContextProvider,
     create_conjure_service_client,
     create_multipart_request_session,
@@ -40,7 +40,7 @@ def test_gzip_adapter_updates_content_length_after_compression() -> None:
 
     adapter.add_headers(request)
 
-    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
+    with patch("nominal.core._utils.networking.NominalSslRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request)
 
@@ -61,7 +61,7 @@ def test_gzip_adapter_compresses_bytes_body() -> None:
 
     adapter.add_headers(request)
 
-    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
+    with patch("nominal.core._utils.networking.NominalSslRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request)
 
@@ -83,7 +83,7 @@ def test_gzip_adapter_skips_compression_for_streaming_requests() -> None:
 
     assert "Content-Encoding" not in request.headers
 
-    with patch("nominal.core._utils.networking.SslBypassRequestsAdapter.send", autospec=True) as super_send:
+    with patch("nominal.core._utils.networking.NominalSslRequestsAdapter.send", autospec=True) as super_send:
         super_send.return_value = requests.Response()
         adapter.send(request, stream=True)
 
@@ -92,7 +92,7 @@ def test_gzip_adapter_skips_compression_for_streaming_requests() -> None:
 
 def test_ssl_adapter_proxy_uses_own_ssl_context() -> None:
     """Proxied connections must use the adapter's ThreadSafeSSLContext, not any context supplied by the caller."""
-    adapter = SslBypassRequestsAdapter()
+    adapter = NominalSslRequestsAdapter()
     foreign_ctx = MagicMock()
 
     with patch.object(HTTPAdapter, "proxy_manager_for", autospec=True, return_value=MagicMock()) as super_proxy:
