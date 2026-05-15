@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ssl
 from dataclasses import fields
 from typing import cast
 from unittest.mock import MagicMock
@@ -12,9 +13,15 @@ from nominal.core._clientsbunch import (
     ClientsBunch,
     api_base_url_to_app_base_url,
 )
+from nominal.core._utils.networking import SslContextProvider
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 from nominal.experimental import as_user
+
+
+class _FakeSslContextProvider(SslContextProvider):
+    def create_ssl_context(self) -> ssl.SSLContext:
+        return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
 
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
@@ -241,3 +248,24 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
         "ri.authn.dev.user.target"
     )
     assert impersonated._clients.ssl_context_provider is client._clients.ssl_context_provider
+
+
+def test_experimental_as_user_propagates_non_none_ssl_context_provider(monkeypatch):
+    """as_user must forward a non-None ssl_context_provider so the impersonated client uses the same transport."""
+    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
+
+    provider = _FakeSslContextProvider()
+    client = NominalClient(
+        _clients=ClientsBunch.from_config(
+            ServiceConfiguration(uris=["https://api.nominal.test"]),
+            "https://api.nominal.test",
+            "test-agent",
+            "token",
+            None,
+            ssl_context_provider=provider,
+        )
+    )
+
+    impersonated = as_user(client, "ri.authn.dev.user.target")
+
+    assert impersonated._clients.ssl_context_provider is provider

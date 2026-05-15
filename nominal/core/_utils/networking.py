@@ -110,10 +110,10 @@ class ThreadSafeSSLContext(truststore.SSLContext):
             return super().wrap_socket(*args, **kwargs)
 
 
-class SslBypassRequestsAdapter(HTTPAdapter):
+class NominalSslRequestsAdapter(HTTPAdapter):
     """Transport adapter that uses the OS trust store via truststore.
 
-    All sessions use a ThreadSafeSSLContext, which is safe to share across threads.
+    If a SSL context is not provided, sessions use a ThreadSafeSSLContext, which is safe to share across threads.
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
@@ -156,7 +156,7 @@ class SslBypassRequestsAdapter(HTTPAdapter):
         super().__setstate__(state)  # type: ignore[misc]
 
 
-class NominalRequestsAdapter(SslBypassRequestsAdapter):
+class NominalRequestsAdapter(NominalSslRequestsAdapter):
     """Adapter used with `requests` library for sending gzip-compressed data."""
 
     ACCEPT_ENCODING = "Accept-Encoding"
@@ -239,6 +239,8 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
+    # If no ssl_context_provider is passed in, defaults to ThreadSafeSSLContext, which is
+    # required since this session is shared across threads via ClientsBunch.
     ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
     transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
     session = HeaderProviderSession(header_provider)
@@ -314,7 +316,7 @@ def create_multipart_request_session(
     )
     ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
     session = HeaderProviderSession(header_provider)
-    adapter = SslBypassRequestsAdapter(
+    adapter = NominalSslRequestsAdapter(
         max_retries=retries,
         # Match the number of cached host pools to the thread count to avoid LRU eviction.
         pool_connections=pool_size,
