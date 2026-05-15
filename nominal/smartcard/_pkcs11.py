@@ -96,9 +96,7 @@ class Pkcs11Backend(ABC):
 # unreserved (RFC 3986) + ":" / "[" / "]" / "@" / "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / ","
 # Notably absent: ";" (path separator), "=" (name-value separator), "%" (must be part of pct-encoded).
 _PK11_PCHAR_SAFE: frozenset[str] = frozenset(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    "-._~"
-    ":[]@!$&'()*+,"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:[]@!$&'()*+,"
 )
 
 

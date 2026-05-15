@@ -25,6 +25,7 @@ class SmartcardSession:
     module_path: Path
     certificate: CertificateCandidate
     backend: Pkcs11Backend = field(repr=False)
+    pin: str | None = field(default=None, repr=False, compare=False, hash=False)
 
     @property
     def pkcs11_uri(self) -> str:
@@ -82,6 +83,7 @@ class SmartcardSessionManager:
             backend.list_certificate_candidates(),
         )
 
+        successful_pin: str | None = None
         for attempt in range(_CAC_MAX_PIN_ATTEMPTS):
             remaining_after = _CAC_MAX_PIN_ATTEMPTS - attempt - 1
             if attempt == 0:
@@ -94,6 +96,7 @@ class SmartcardSessionManager:
             pin = self._pin_provider(prompt)
             try:
                 backend.login(certificate, pin)
+                successful_pin = pin
                 break
             except SmartcardPinLockedError:
                 raise
@@ -106,4 +109,4 @@ class SmartcardSessionManager:
             finally:
                 del pin
 
-        return SmartcardSession(module_path=module_path, certificate=certificate, backend=backend)
+        return SmartcardSession(module_path=module_path, certificate=certificate, backend=backend, pin=successful_pin)

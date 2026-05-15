@@ -21,7 +21,10 @@ _PROVIDER_NAME = "pkcs11"
 _ffi_lock: threading.Lock = threading.Lock()
 _ffi: Any = None
 _lib: Any = None
+
+_provider_lock: threading.Lock = threading.Lock()
 _loaded_provider: Any = None  # kept alive for the process lifetime once loaded
+_loaded_provider_name: str | None = None
 
 
 def _load_ffi() -> tuple[Any, Any]:
@@ -134,9 +137,15 @@ def _ensure_provider_loaded(ffi: Any, lib: Any, provider_name: str) -> None:
     removes the provider from OpenSSL's algorithm dispatch table and causes those
     handshakes to fail.
     """
-    global _loaded_provider
-    with _ffi_lock:
+    global _loaded_provider, _loaded_provider_name
+    with _provider_lock:
         if _loaded_provider is not None:
+            if _loaded_provider_name != provider_name:
+                raise SmartcardConfigurationError(
+                    f"OpenSSL provider {_loaded_provider_name!r} is already loaded in this process; "
+                    f"cannot load a different provider {provider_name!r}. "
+                    "All SmartcardConfig objects in the same process must use the same openssl_provider_path."
+                )
             return
         provider = lib.OSSL_PROVIDER_load(ffi.NULL, provider_name.encode())
         if provider == ffi.NULL:
@@ -148,6 +157,7 @@ def _ensure_provider_loaded(ffi: Any, lib: Any, provider_name: str) -> None:
                 "providers search path."
             )
         _loaded_provider = provider
+        _loaded_provider_name = provider_name
 
 
 def _get_openssl_error(ffi: Any, lib: Any) -> str:
@@ -187,10 +197,36 @@ def _get_ssl_ctx_ptr(ffi: Any, ssl_context: ssl.SSLContext) -> Any:
     return ffi.cast("SSL_CTX *", raw)
 
 
-def _load_pkey_from_store(ffi: Any, lib: Any, pkcs11_uri: str) -> Any:
-    """Open a PKCS#11 URI via OSSL_STORE and return the first EVP_PKEY found."""
-    uri_bytes = pkcs11_uri.encode()
-    store = lib.OSSL_STORE_open(uri_bytes, ffi.NULL, ffi.NULL, ffi.NULL, ffi.NULL)
+def _pct_encode_pin(pin: str) -> str:
+    """Percent-encode a PIN value for embedding in a PKCS#11 URI query component."""
+    safe = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:[]@!$&'()*+,")
+    parts = []
+    for ch in pin:
+        if ch in safe:
+            parts.append(ch)
+        else:
+            for byte in ch.encode("utf-8"):
+                parts.append(f"%{byte:02x}")
+    return "".join(parts)
+
+
+def _load_pkey_from_store(ffi: Any, lib: Any, pkcs11_uri: str, pin: str | None = None) -> Any:
+    """Open a PKCS#11 URI via OSSL_STORE and return the first EVP_PKEY found.
+
+    When pin is provided it is embedded as ?pin-value=... so that pkcs11-provider
+    can authenticate its own PKCS#11 session independently of any PyKCS11 session.
+    This is necessary on real hardware tokens (DoD CAC, PIV) where C_Login state is
+    not shared across separate C_Initialize call chains.  The cffi buffer holding
+    the URI (including the PIN) is zeroed immediately after OSSL_STORE_open returns.
+    """
+    uri = pkcs11_uri if pin is None else f"{pkcs11_uri}?pin-value={_pct_encode_pin(pin)}"
+    uri_bytes = uri.encode()
+    uri_buf = ffi.new("char[]", uri_bytes)
+    try:
+        store = lib.OSSL_STORE_open(uri_buf, ffi.NULL, ffi.NULL, ffi.NULL, ffi.NULL)
+    finally:
+        ffi.buffer(uri_buf)[:] = bytes(len(uri_bytes) + 1)
+
     if store == ffi.NULL:
         err = _get_openssl_error(ffi, lib)
         raise SmartcardConfigurationError(
@@ -271,7 +307,7 @@ class OpenSslProviderBridge:
         x509 = ffi.NULL
         try:
             key_uri = _key_uri_from_cert_uri(session.pkcs11_uri)
-            pkey = _load_pkey_from_store(ffi, lib, key_uri)
+            pkey = _load_pkey_from_store(ffi, lib, key_uri, session.pin)
             x509 = _load_x509_from_der(ffi, lib, session.certificate.der_certificate)
 
             ssl_ctx = self._make_base_ssl_context()
