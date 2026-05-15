@@ -71,7 +71,11 @@ class SmartcardSessionManager:
     def _open_session(self) -> SmartcardSession:
         module_path = discover_pkcs11_module(self._config.pkcs11_module_path)
         backend = self._backend_factory(module_path)
-        certificate = select_piv_authentication_certificate(
-            backend.list_certificate_candidates(),
-        )
+        try:
+            certificate = select_piv_authentication_certificate(
+                backend.list_certificate_candidates(),
+            )
+        except BaseException:
+            backend.close()
+            raise
         return SmartcardSession(module_path=module_path, certificate=certificate, backend=backend)
