@@ -219,6 +219,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
+            ssl_context_provider=self._clients.ssl_context_provider,
         )
 
         request = ingest_api.IngestRequest(
@@ -306,6 +307,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             self._clients.upload,
             file_type=FileTypes.AVRO_STREAM,
             header_provider=self._clients.header_provider,
+            ssl_context_provider=self._clients.ssl_context_provider,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -355,6 +357,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             self._clients.upload,
             file_type=file_type,
             header_provider=self._clients.header_provider,
+            ssl_context_provider=self._clients.ssl_context_provider,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -449,6 +452,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             file_type=FileTypes.MCAP,
             upload_client=self._clients.upload,
             header_provider=self._clients.header_provider,
+            ssl_context_provider=self._clients.ssl_context_provider,
         )
 
         channels = _create_mcap_channels(include_topics, exclude_topics)
@@ -489,6 +493,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             self._clients.upload,
             file_type=FileTypes.DATAFLASH,
             header_provider=self._clients.header_provider,
+            ssl_context_provider=self._clients.ssl_context_provider,
         )
         target = ingest_api.DatasetIngestTarget(
             existing=ingest_api.ExistingDatasetIngestDestination(dataset_rid=self.rid)
@@ -584,6 +589,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
                 Path(source_path),
                 self._clients.upload,
                 header_provider=self._clients.header_provider,
+                ssl_context_provider=self._clients.ssl_context_provider,
             )
             logger.info("Uploaded %s -> %s", source_path, s3_path)
             s3_inputs[source] = s3_path
