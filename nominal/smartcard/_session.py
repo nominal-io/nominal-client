@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import getpass
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -9,13 +8,6 @@ from pathlib import Path
 from nominal.smartcard._cert_selection import CertificateCandidate, select_piv_authentication_certificate
 from nominal.smartcard._config import SmartcardConfig
 from nominal.smartcard._pkcs11 import Pkcs11Backend, PyKCS11Backend, discover_pkcs11_module
-from nominal.smartcard.errors import SmartcardPinError, SmartcardPinLockedError
-
-PinProvider = Callable[[str], str]
-BackendFactory = Callable[[Path], Pkcs11Backend]
-
-# CAC standard: 3 incorrect PIN attempts before the card locks.
-_CAC_MAX_PIN_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -25,18 +17,20 @@ class SmartcardSession:
     module_path: Path
     certificate: CertificateCandidate
     backend: Pkcs11Backend = field(repr=False)
-    pin: str | None = field(default=None, repr=False, compare=False, hash=False)
 
     @property
     def pkcs11_uri(self) -> str:
         return self.certificate.pkcs11_uri
 
 
-class SmartcardSessionManager:
-    """Create and cache a logged-in smartcard session.
+BackendFactory = Callable[[Path], Pkcs11Backend]
 
-    One manager prompts for the PIN at most once. The shared manager registry gives profile-created clients the desired
-    process-wide behavior while tests and advanced callers can still inject a dedicated manager.
+
+class SmartcardSessionManager:
+    """Create and cache an open smartcard session.
+
+    One manager opens the PKCS#11 session at most once. The shared manager registry gives profile-created clients the
+    desired process-wide behavior while tests and advanced callers can still inject a dedicated manager.
     """
 
     _shared_lock = threading.Lock()
@@ -46,11 +40,9 @@ class SmartcardSessionManager:
         self,
         config: SmartcardConfig,
         *,
-        pin_provider: PinProvider = getpass.getpass,
         backend_factory: BackendFactory = PyKCS11Backend,
     ) -> None:
         self._config = config
-        self._pin_provider = pin_provider
         self._backend_factory = backend_factory
         self._lock = threading.Lock()
         self._session: SmartcardSession | None = None
@@ -82,31 +74,4 @@ class SmartcardSessionManager:
         certificate = select_piv_authentication_certificate(
             backend.list_certificate_candidates(),
         )
-
-        successful_pin: str | None = None
-        for attempt in range(_CAC_MAX_PIN_ATTEMPTS):
-            remaining_after = _CAC_MAX_PIN_ATTEMPTS - attempt - 1
-            if attempt == 0:
-                prompt = self._config.pin_prompt
-            else:
-                prompt = (
-                    f"Incorrect PIN — {remaining_after} attempt(s) remaining before card locks. "
-                    f"{self._config.pin_prompt}"
-                )
-            pin = self._pin_provider(prompt)
-            try:
-                backend.login(certificate, pin)
-                successful_pin = pin
-                break
-            except SmartcardPinLockedError:
-                raise
-            except SmartcardPinError as e:
-                if remaining_after == 0:
-                    raise SmartcardPinError(
-                        f"Incorrect PIN entered {_CAC_MAX_PIN_ATTEMPTS} times. "
-                        "Contact your CAC office if the card is now locked."
-                    ) from e
-            finally:
-                del pin
-
-        return SmartcardSession(module_path=module_path, certificate=certificate, backend=backend, pin=successful_pin)
+        return SmartcardSession(module_path=module_path, certificate=certificate, backend=backend)

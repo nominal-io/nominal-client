@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from nominal.smartcard._dependencies import assert_required_dependencies_available
-from nominal.smartcard.errors import SmartcardDependencyError
+from nominal.smartcard._errors import SmartcardDependencyError
 
 
 def test_smartcard_dependency_check_names_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:

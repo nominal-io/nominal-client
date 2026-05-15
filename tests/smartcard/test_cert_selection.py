@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from nominal.smartcard._cert_selection import select_piv_authentication_certificate
-from nominal.smartcard.errors import SmartcardCertificateSelectionError
+from nominal.smartcard._errors import SmartcardCertificateSelectionError
 from tests.smartcard._helpers import _candidate
 
 # CertificateCandidate.is_piv_authentication_candidate

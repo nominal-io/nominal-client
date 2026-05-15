@@ -1,6 +1,5 @@
 from nominal.smartcard._config import SmartcardConfig
-from nominal.smartcard._transport import SmartcardSslContextProvider
-from nominal.smartcard.errors import (
+from nominal.smartcard._errors import (
     SmartcardCertificateSelectionError,
     SmartcardConfigurationError,
     SmartcardDependencyError,
@@ -8,6 +7,7 @@ from nominal.smartcard.errors import (
     SmartcardPinError,
     SmartcardPinLockedError,
 )
+from nominal.smartcard._transport import SmartcardSslContextProvider
 
 __all__ = [
     "SmartcardCertificateSelectionError",

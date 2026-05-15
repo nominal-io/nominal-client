@@ -7,11 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from nominal.smartcard._cert_selection import CertificateCandidate
-from nominal.smartcard.errors import (
-    SmartcardConfigurationError,
-    SmartcardPinError,
-    SmartcardPinLockedError,
-)
+from nominal.smartcard._errors import SmartcardConfigurationError
 
 NOMINAL_PKCS11_MODULE_ENV_VAR = "NOMINAL_PKCS11_MODULE"
 
@@ -84,9 +80,6 @@ class Pkcs11Backend(ABC):
 
     @abstractmethod
     def list_certificate_candidates(self) -> list[CertificateCandidate]: ...
-
-    @abstractmethod
-    def login(self, certificate: CertificateCandidate, pin: str) -> None: ...
 
     @abstractmethod
     def close(self) -> None: ...
@@ -182,11 +175,12 @@ class PyKCS11Backend(Pkcs11Backend):
                 try:
                     attrs = session.getAttributeValue(
                         cert_obj,
-                        [PyKCS11.CKA_LABEL, PyKCS11.CKA_ID],
+                        [PyKCS11.CKA_LABEL, PyKCS11.CKA_ID, PyKCS11.CKA_VALUE],
                     )
-                    label_raw, id_raw = attrs[0], attrs[1]
+                    label_raw, id_raw, value_raw = attrs[0], attrs[1], attrs[2]
                     label = str(label_raw).strip() if label_raw else None
                     object_id_bytes = bytes(id_raw) if id_raw else b""
+                    der_certificate = bytes(value_raw) if value_raw else b""
 
                     object_id_str = object_id_bytes.hex() if object_id_bytes else None
                     piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str or "") if object_id_str else None
@@ -199,33 +193,13 @@ class PyKCS11Backend(Pkcs11Backend):
                             label=label,
                             slot=piv_slot,
                             pkcs11_uri=pkcs11_uri,
+                            der_certificate=der_certificate,
                         )
                     )
                 except PyKCS11.PyKCS11Error:
                     continue
 
         return candidates
-
-    def login(self, certificate: CertificateCandidate, pin: str) -> None:
-        import PyKCS11
-
-        session = self._sessions.get(certificate.pkcs11_uri)
-        if session is None:
-            raise SmartcardConfigurationError(
-                f"No open PKCS#11 session for {certificate.pkcs11_uri!r}. Call list_certificate_candidates() first."
-            )
-
-        try:
-            session.login(PyKCS11.CKU_USER, pin)
-        except PyKCS11.PyKCS11Error as e:
-            error_code = e.value if hasattr(e, "value") else None
-            # CKR_PIN_LOCKED = 0x000000A4
-            if error_code == 0xA4:
-                raise SmartcardPinLockedError("CAC PIN is locked. Contact your CAC office to unlock it.") from e
-            # CKR_PIN_INCORRECT = 0x000000A0, CKR_PIN_INVALID = 0x000000A1
-            if error_code in (0xA0, 0xA1):
-                raise SmartcardPinError("Incorrect PIN.") from e
-            raise SmartcardConfigurationError(f"PKCS#11 login failed: {e}") from e
 
     def close(self) -> None:
         import PyKCS11

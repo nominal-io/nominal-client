@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import getpass
 import ssl
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from nominal.core._utils.networking import SslContextProvider
@@ -9,12 +11,15 @@ from nominal.smartcard._dependencies import assert_required_dependencies_availab
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
 
+PinProvider = Callable[[str], str]
+
 
 @dataclass(frozen=True)
 class SmartcardSslContextProvider(SslContextProvider):
     """ssl.SSLContext provider that will attach CAC-backed mTLS to all Nominal traffic."""
 
     config: SmartcardConfig = field(default_factory=SmartcardConfig)
+    pin_provider: PinProvider = field(default=getpass.getpass, repr=False, compare=False)
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
     _openssl_bridge: OpenSslProviderBridge | None = field(default=None, repr=False, compare=False)
 
@@ -37,4 +42,8 @@ class SmartcardSslContextProvider(SslContextProvider):
 
     def create_ssl_context(self) -> ssl.SSLContext:
         session = self.session_manager.get_session()
-        return self.openssl_bridge.build_ssl_context(session=session)
+        pin = self.pin_provider("CAC PIN: ")
+        try:
+            return self.openssl_bridge.build_ssl_context(session=session, pin=pin)
+        finally:
+            del pin

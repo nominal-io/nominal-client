@@ -6,27 +6,27 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal.smartcard import _pkcs11
+from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._pkcs11 import (
     NOMINAL_PKCS11_MODULE_ENV_VAR,
     PyKCS11Backend,
     _build_pkcs11_uri,
     discover_pkcs11_module,
 )
-from nominal.smartcard.errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
-from tests.smartcard._helpers import _candidate
+from tests.smartcard._helpers import FAKE_DER
 
 
 def _make_mock_pykcs11_env():
     """Return (mock_PyKCS11_module, mock_session)."""
     PyKCS11 = MagicMock()
     PyKCS11.CKF_SERIAL_SESSION = 4
-    PyKCS11.CKU_USER = 1
     PyKCS11.CKA_CLASS = 0
     PyKCS11.CKO_CERTIFICATE = 1
     PyKCS11.CKA_CERTIFICATE_TYPE = 0x80
     PyKCS11.CKC_X_509 = 0
     PyKCS11.CKA_LABEL = 3
     PyKCS11.CKA_ID = 0x102
+    PyKCS11.CKA_VALUE = 0x11
 
     token_info = MagicMock()
     token_info.label = "CAC TOKEN     "
@@ -34,7 +34,7 @@ def _make_mock_pykcs11_env():
     cert_obj = MagicMock()
     session = MagicMock()
     session.findObjects.return_value = [cert_obj]
-    session.getAttributeValue.return_value = ["PIV Authentication", b"\x01"]
+    session.getAttributeValue.return_value = ["PIV Authentication", b"\x01", FAKE_DER]
 
     lib = MagicMock()
     lib.getSlotList.return_value = [0]
@@ -130,51 +130,7 @@ def test_pykcs11_backend_list_certificate_candidates(tmp_path: Path) -> None:
     assert c.label == "PIV Authentication"
     assert c.slot == "9A"
     assert c.pkcs11_uri == "pkcs11:token=CAC%20TOKEN;id=%01"
-
-
-def test_pykcs11_backend_login_calls_session_login(tmp_path: Path) -> None:
-    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_text("")
-
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
-        candidates = backend.list_certificate_candidates()
-        backend.login(candidates[0], "123456")
-
-    mock_session.login.assert_called_once_with(mock_pykcs11.CKU_USER, "123456")
-
-
-def test_pykcs11_backend_login_raises_smartcard_pin_error_on_incorrect_pin(tmp_path: Path) -> None:
-    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
-    wrong_pin_err = mock_pykcs11.PyKCS11Error("wrong pin")
-    wrong_pin_err.value = 0xA0  # CKR_PIN_INCORRECT
-    mock_session.login.side_effect = wrong_pin_err
-
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_text("")
-
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
-        candidates = backend.list_certificate_candidates()
-        with pytest.raises(SmartcardPinError):
-            backend.login(candidates[0], "wrong")
-
-
-def test_pykcs11_backend_login_raises_pin_locked_error(tmp_path: Path) -> None:
-    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
-    locked_err = mock_pykcs11.PyKCS11Error("locked")
-    locked_err.value = 0xA4  # CKR_PIN_LOCKED
-    mock_session.login.side_effect = locked_err
-
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_text("")
-
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
-        candidates = backend.list_certificate_candidates()
-        with pytest.raises(SmartcardPinLockedError):
-            backend.login(candidates[0], "wrong")
+    assert c.der_certificate == FAKE_DER
 
 
 def test_pykcs11_backend_close_closes_sessions(tmp_path: Path) -> None:
@@ -205,15 +161,3 @@ def test_pykcs11_backend_skips_slots_that_fail_to_open(tmp_path: Path) -> None:
         candidates = backend.list_certificate_candidates()
 
     assert len(candidates) == 1
-
-
-def test_pykcs11_backend_login_raises_when_no_session_for_certificate(tmp_path: Path) -> None:
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_text("")
-    mock_pykcs11, _ = _make_mock_pykcs11_env()
-
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
-        orphan = _candidate(pkcs11_uri="pkcs11:token=NOTFOUND;id=%99")
-        with pytest.raises(SmartcardConfigurationError, match="No open PKCS#11 session"):
-            backend.login(orphan, "pin")

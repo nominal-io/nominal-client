@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from nominal.smartcard._config import SmartcardConfig
+from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._session import SmartcardSession
-from nominal.smartcard.errors import SmartcardConfigurationError
 
 # OSSL_STORE_INFO type constants (openssl/store.h)
 _OSSL_STORE_INFO_CERT = 3
@@ -299,7 +299,7 @@ class OpenSslProviderBridge:
 
     config: SmartcardConfig
 
-    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+    def build_ssl_context(self, *, session: SmartcardSession, pin: str) -> ssl.SSLContext:
         ffi, lib = _load_ffi()
         _ensure_provider_loaded(ffi, lib, self._provider_name())
 
@@ -307,7 +307,7 @@ class OpenSslProviderBridge:
         x509 = ffi.NULL
         try:
             key_uri = _key_uri_from_cert_uri(session.pkcs11_uri)
-            pkey = _load_pkey_from_store(ffi, lib, key_uri, session.pin)
+            pkey = _load_pkey_from_store(ffi, lib, key_uri, pin)
             x509 = _load_x509_from_der(ffi, lib, session.certificate.der_certificate)
 
             ssl_ctx = self._make_base_ssl_context()

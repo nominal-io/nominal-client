@@ -13,4 +13,3 @@ class SmartcardConfig:
 
     pkcs11_module_path: Path | None = None
     openssl_provider_path: Path | None = None
-    pin_prompt: str = "CAC PIN: "
