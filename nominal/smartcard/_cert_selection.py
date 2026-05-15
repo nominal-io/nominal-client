@@ -5,10 +5,7 @@ from dataclasses import dataclass
 from nominal.smartcard._config import SmartcardConfig
 from nominal.smartcard.errors import SmartcardCertificateSelectionError
 
-CLIENT_AUTH_EKU = "1.3.6.1.5.5.7.3.2"
-PIV_CARD_AUTH_EKU = "2.16.840.1.101.3.6.8"
 PIV_AUTHENTICATION_SLOT = "9A"
-OPENSC_PIV_AUTHENTICATION_OBJECT_ID = "01"
 
 
 @dataclass(frozen=True)
@@ -30,15 +27,7 @@ class CertificateCandidate:
 
     @property
     def is_piv_authentication_candidate(self) -> bool:
-        if PIV_CARD_AUTH_EKU in self.extended_key_usages:
-            return False
-        if self.slot is not None and self.slot.upper() == PIV_AUTHENTICATION_SLOT:
-            return True
-        if self.object_id is not None and self.object_id.lower() == OPENSC_PIV_AUTHENTICATION_OBJECT_ID:
-            return True
-        if CLIENT_AUTH_EKU in self.extended_key_usages and self.label is not None:
-            return "piv" in self.label.lower() and "authentication" in self.label.lower()
-        return False
+        return self.slot is not None and self.slot.upper() == PIV_AUTHENTICATION_SLOT
 
 
 def normalize_fingerprint(fingerprint: str) -> str:

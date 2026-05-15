@@ -16,6 +16,8 @@ from nominal.smartcard.errors import (
     SmartcardDependencyError,
     SmartcardError,
     SmartcardNotImplementedError,
+    SmartcardPinError,
+    SmartcardPinLockedError,
 )
 
 __all__ = [
@@ -30,6 +32,8 @@ __all__ = [
     "SmartcardDependencyError",
     "SmartcardError",
     "SmartcardNotImplementedError",
+    "SmartcardPinError",
+    "SmartcardPinLockedError",
     "SmartcardSession",
     "SmartcardSessionManager",
     "SmartcardSslContextProvider",

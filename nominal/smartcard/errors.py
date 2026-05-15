@@ -19,5 +19,13 @@ class SmartcardCertificateSelectionError(SmartcardError):
     """The PIV Authentication certificate could not be selected deterministically."""
 
 
+class SmartcardPinError(SmartcardError):
+    """The CAC PIN was rejected by the smartcard."""
+
+
+class SmartcardPinLockedError(SmartcardPinError):
+    """The CAC PIN is locked due to too many incorrect attempts."""
+
+
 class SmartcardNotImplementedError(SmartcardError, NotImplementedError):
     """Smartcard hardware/provider integration is intentionally not implemented yet."""

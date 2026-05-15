@@ -9,9 +9,13 @@ from pathlib import Path
 from nominal.smartcard._cert_selection import CertificateCandidate, select_piv_authentication_certificate
 from nominal.smartcard._config import SmartcardConfig
 from nominal.smartcard._pkcs11 import Pkcs11Backend, PyKCS11Backend, discover_pkcs11_module
+from nominal.smartcard.errors import SmartcardPinError, SmartcardPinLockedError
 
 PinProvider = Callable[[str], str]
 BackendFactory = Callable[[Path], Pkcs11Backend]
+
+# CAC standard: 3 incorrect PIN attempts before the card locks.
+_CAC_MAX_PIN_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -78,9 +82,29 @@ class SmartcardSessionManager:
             backend.list_certificate_candidates(),
             self._config,
         )
-        pin = self._pin_provider(self._config.pin_prompt)
-        try:
-            backend.login(certificate, pin)
-        finally:
-            del pin
+
+        for attempt in range(_CAC_MAX_PIN_ATTEMPTS):
+            remaining_after = _CAC_MAX_PIN_ATTEMPTS - attempt - 1
+            if attempt == 0:
+                prompt = self._config.pin_prompt
+            else:
+                prompt = (
+                    f"Incorrect PIN — {remaining_after} attempt(s) remaining before card locks. "
+                    f"{self._config.pin_prompt}"
+                )
+            pin = self._pin_provider(prompt)
+            try:
+                backend.login(certificate, pin)
+                break
+            except SmartcardPinLockedError:
+                raise
+            except SmartcardPinError as e:
+                if remaining_after == 0:
+                    raise SmartcardPinError(
+                        f"Incorrect PIN entered {_CAC_MAX_PIN_ATTEMPTS} times. "
+                        "Contact your CAC office if the card is now locked."
+                    ) from e
+            finally:
+                del pin
+
         return SmartcardSession(module_path=module_path, certificate=certificate, backend=backend)
