@@ -64,6 +64,9 @@ Repository = "https://github.com/nominal-io/nominal-client"
 [tool.uv]
 default-groups = ["dev"]
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
 [dependency-groups]
 dev = [
     "black>=24.8.0,<25",
@@ -90,16 +93,19 @@ dev = [
 
 [tool.uv.sources]
 nominal = { workspace = true }
+nominal-thirdparty-tdms = { workspace = true }
 
 [project.optional-dependencies]
 protos = ["nominal-api-protos>=0.1090.0"]
-tdms = ["nptdms>=1.9.0,<2"]
+tdms = ["nominal-thirdparty-tdms==1.143.0"]
 # nominal-video wheels exist for:
 # - Windows x86_64 (AMD64)
 # - macOS arm64
 # - Linux x86_64 and aarch64
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
-video = ["nominal-video==0.1.9; platform_python_implementation=='CPython' and python_version>='3.10' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))"]
+video = [
+    "nominal-video==0.1.9; platform_python_implementation=='CPython' and python_version>='3.10' and ((sys_platform=='win32' and platform_machine=='AMD64') or (sys_platform=='darwin' and platform_machine=='arm64') or (sys_platform=='linux' and (platform_machine=='x86_64' or platform_machine=='aarch64')))",
+]
 
 [project.scripts]
 nom = 'nominal.cli:nom'
@@ -118,7 +124,7 @@ include = ["README.md", "LICENSE", "CHANGELOG.md", "nominal/*"]
 
 [tool.ruff]
 line-length = 120
-include = ["nominal/**/*.py", "tests/**/*.py"]
+include = ["nominal/**/*.py", "packages/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -153,18 +159,20 @@ ignore = [
     "D401",    # imperative mood
     "D415",    # doc line ends in punctuation
     "FIX002",  # Ignore TODOs
-    "PLC0415", # import should be at top-level of a file  
+    "PLC0415", # import should be at top-level of a file
     "PLR0913", # too many arguments
     "PLR2004", # magic values
     "PLW0603", # globals
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"nominal/core/dataset.py" = ["E501"]  # allow long lines for avro schema in docstring
+"nominal/core/dataset.py" = [
+    "E501",
+] # allow long lines for avro schema in docstring
 
 [tool.mypy]
 strict = true
-packages = ["nominal"]
+packages = ["nominal", "nominal.thirdparty.tdms"]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"
