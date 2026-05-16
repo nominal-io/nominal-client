@@ -22,8 +22,6 @@ resolution-markers = [
 [manifest]
 members = [
     "nominal",
-    "nominal-thirdparty-pandas",
-    "nominal-thirdparty-polars",
     "nominal-thirdparty-tdms",
 ]
 
@@ -1173,9 +1171,9 @@ dependencies = [
     { name = "ffmpeg-python" },
     { name = "nominal-api" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')" },
-    { name = "nominal-thirdparty-pandas" },
-    { name = "nominal-thirdparty-polars" },
     { name = "openpyxl" },
+    { name = "pandas" },
+    { name = "polars" },
     { name = "python-dateutil" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -1232,11 +1230,11 @@ requires-dist = [
     { name = "nominal-api", specifier = "==0.1224.0" },
     { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1090.0" },
     { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.8.2" },
-    { name = "nominal-thirdparty-pandas", editable = "packages/nominal-thirdparty-pandas" },
-    { name = "nominal-thirdparty-polars", editable = "packages/nominal-thirdparty-polars" },
     { name = "nominal-thirdparty-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-thirdparty-tdms" },
     { name = "nominal-video", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.9" },
     { name = "openpyxl", specifier = ">=0.0.0" },
+    { name = "pandas", specifier = ">=0.0.0" },
+    { name = "polars", specifier = ">=0.0.0" },
     { name = "python-dateutil", specifier = ">=0.0.0" },
     { name = "pyyaml", specifier = ">=0.0.0" },
     { name = "requests", specifier = ">=0.0.0" },
@@ -1320,53 +1318,17 @@ wheels = [
 ]
 
 [[package]]
-name = "nominal-thirdparty-pandas"
-version = "1.143.0"
-source = { editable = "packages/nominal-thirdparty-pandas" }
-dependencies = [
-    { name = "nominal" },
-    { name = "pandas" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "nominal", editable = "." },
-    { name = "pandas", specifier = ">=0.0.0" },
-]
-
-[[package]]
-name = "nominal-thirdparty-polars"
-version = "1.143.0"
-source = { editable = "packages/nominal-thirdparty-polars" }
-dependencies = [
-    { name = "nominal" },
-    { name = "nominal-api" },
-    { name = "polars" },
-    { name = "typing-extensions" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "nominal", editable = "." },
-    { name = "nominal-api", specifier = "==0.1224.0" },
-    { name = "polars", specifier = ">=0.0.0" },
-    { name = "typing-extensions", specifier = ">=4,<5" },
-]
-
-[[package]]
 name = "nominal-thirdparty-tdms"
 version = "1.143.0"
 source = { editable = "packages/nominal-thirdparty-tdms" }
 dependencies = [
     { name = "nominal" },
-    { name = "nominal-thirdparty-pandas" },
     { name = "nptdms" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "nominal", editable = "." },
-    { name = "nominal-thirdparty-pandas", editable = "packages/nominal-thirdparty-pandas" },
     { name = "nptdms", specifier = ">=1.9.0,<2" },
 ]
 
