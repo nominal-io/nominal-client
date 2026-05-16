@@ -6,8 +6,8 @@ Also see the [Python Quickstart guide](https://docs.nominal.io/core/sdk/python-c
 Third-party integrations:
 
 [`nominal.thirdparty.matlab`](./thirdparty/matlab.md) - tools for working with matlab.  
-[`nominal.thirdparty.pandas`](./thirdparty/pandas.md) - tools for working with pandas. 
-[`nominal.thirdparty.polars`](./thirdparty/polars.md) - tools for working with polars.
+[`nominal.thirdparty.pandas`](./thirdparty/pandas.md) - tools for working with pandas.  
+[`nominal.thirdparty.polars`](./thirdparty/polars.md) - tools for working with polars.  
 [`nominal.thirdparty.tdms`](./thirdparty/tdms.md) - tools for ingesting tdms data, installed with the `tdms` extra via `nominal-thirdparty-tdms`.  
 
 Experimental functionality:
