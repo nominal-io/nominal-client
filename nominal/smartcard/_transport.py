@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import getpass
 import ssl
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -13,13 +14,15 @@ from nominal.smartcard._session import SmartcardSessionManager
 PinProvider = Callable[[str], str]
 
 
-@dataclass(frozen=True)
+@dataclass
 class SmartcardSslContextProvider(SslContextProvider):
     """ssl.SSLContext provider that will attach smartcard-backed mTLS to all Nominal traffic."""
 
     pin_provider: PinProvider = field(default=getpass.getpass, repr=False, compare=False)
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
     _openssl_bridge: OpenSslProviderBridge | None = field(default=None, repr=False, compare=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    _cached_ctx: ssl.SSLContext | None = field(default=None, repr=False, compare=False)
 
     @classmethod
     def create(cls) -> SmartcardSslContextProvider:
@@ -39,5 +42,10 @@ class SmartcardSslContextProvider(SslContextProvider):
         return OpenSslProviderBridge()
 
     def create_ssl_context(self) -> ssl.SSLContext:
-        session = self.session_manager.get_session()
-        return self.openssl_bridge.build_ssl_context(session=session, pin=self.pin_provider("Card PIN: "))
+        with self._lock:
+            if self._cached_ctx is None:
+                session = self.session_manager.get_session()
+                self._cached_ctx = self.openssl_bridge.build_ssl_context(
+                    session=session, pin=self.pin_provider("Card PIN: ")
+                )
+            return self._cached_ctx

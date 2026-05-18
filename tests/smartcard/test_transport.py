@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ssl
+import threading
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,38 @@ def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypat
     )
     provider.create_ssl_context()
     assert bridge.calls[0][0].certificate is certificate
+
+
+def test_ssl_context_provider_caches_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
+    provider, bridge = _make_provider(tmp_path, monkeypatch)
+    ctx1 = provider.create_ssl_context()
+    ctx2 = provider.create_ssl_context()
+    assert ctx1 is ctx2
+    assert len(bridge.calls) == 1
+
+
+def test_ssl_context_provider_pin_prompted_once_across_threads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
+    provider, bridge = _make_provider(tmp_path, monkeypatch)
+    barrier = threading.Barrier(10)
+    results: list[ssl.SSLContext] = []
+    lock = threading.Lock()
+
+    def call() -> None:
+        barrier.wait()
+        ctx = provider.create_ssl_context()
+        with lock:
+            results.append(ctx)
+
+    threads = [threading.Thread(target=call) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(bridge.calls) == 1
+    assert all(ctx is bridge.context for ctx in results)
 
 
 # SmartcardSslContextProvider property factory
