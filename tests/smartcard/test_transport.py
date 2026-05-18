@@ -8,7 +8,7 @@ import pytest
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import SmartcardSslContextProvider
-from tests.smartcard._helpers import _candidate, _FakeBackend
+from tests.smartcard._helpers import _candidate, _FakeBackend, _make_der_cert
 
 
 class _FakeBridge:
@@ -28,7 +28,7 @@ def _make_provider(
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
     manager = SmartcardSessionManager(
-        backend_factory=lambda path: _FakeBackend(path, [_candidate()]),
+        backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
     )
     bridge = _FakeBridge()
     provider = SmartcardSslContextProvider(
@@ -40,6 +40,7 @@ def _make_provider(
 
 
 def test_ssl_context_provider_builds_ssl_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
     provider, bridge = _make_provider(tmp_path, monkeypatch)
     ctx = provider.create_ssl_context()
     assert ctx is bridge.context
@@ -47,16 +48,18 @@ def test_ssl_context_provider_builds_ssl_context(tmp_path: Path, monkeypatch: py
 
 
 def test_ssl_context_provider_passes_pin_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
     provider, bridge = _make_provider(tmp_path, monkeypatch, pin="secret")
     provider.create_ssl_context()
     assert bridge.calls[0][1] == "secret"
 
 
 def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    certificate = _candidate()
+    certificate = _candidate(der_certificate=_make_der_cert())
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [certificate]),
     )

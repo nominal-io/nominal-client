@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import ssl
-from unittest.mock import MagicMock
+import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._openssl_provider import (
     OpenSslProviderBridge,
     _get_openssl_error,
     _get_ssl_ctx_ptr,
-    _pct_encode_pin,
 )
 
 # _get_ssl_ctx_ptr
@@ -28,33 +29,34 @@ def test_get_ssl_ctx_ptr_returns_nonzero() -> None:
     assert int(ffi.cast("uintptr_t", ptr)) != 0
 
 
-# _pct_encode_pin
+def test_get_ssl_ctx_ptr_raises_on_nogil(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cffi")
+    import cffi
+
+    ffi = cffi.FFI()
+    ffi.cdef("typedef struct ssl_ctx_st SSL_CTX;")
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+    mock_flags = MagicMock()
+    mock_flags.nogil = True
+    monkeypatch.setattr(sys, "flags", mock_flags)
+
+    with pytest.raises(SmartcardConfigurationError, match="free-threaded"):
+        _get_ssl_ctx_ptr(ffi, ctx)
 
 
-def test_pct_encode_pin_passes_safe_alphanumeric() -> None:
-    assert _pct_encode_pin("ABC123xyz") == "ABC123xyz"
+def test_get_ssl_ctx_ptr_raises_on_debug_build(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cffi")
+    import cffi
 
+    ffi = cffi.FFI()
+    ffi.cdef("typedef struct ssl_ctx_st SSL_CTX;")
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
-def test_pct_encode_pin_encodes_space() -> None:
-    assert _pct_encode_pin("my pin") == "my%20pin"
+    monkeypatch.setattr(sys, "gettotalrefcount", lambda: 0, raising=False)
 
-
-def test_pct_encode_pin_encodes_semicolon() -> None:
-    assert _pct_encode_pin(";") == "%3b"
-
-
-def test_pct_encode_pin_encodes_unicode() -> None:
-    # é is UTF-8 0xc3 0xa9
-    assert _pct_encode_pin("é") == "%c3%a9"
-
-
-def test_pct_encode_pin_safe_special_chars_pass_through() -> None:
-    safe = "-._~:[]@!$&'()*+,"
-    assert _pct_encode_pin(safe) == safe
-
-
-def test_pct_encode_pin_empty_string() -> None:
-    assert _pct_encode_pin("") == ""
+    with pytest.raises(SmartcardConfigurationError, match="debug build"):
+        _get_ssl_ctx_ptr(ffi, ctx)
 
 
 # _get_openssl_error
@@ -100,3 +102,10 @@ def test_make_base_ssl_context_minimum_tls_version() -> None:
     bridge = OpenSslProviderBridge()
     ctx = bridge._make_base_ssl_context()
     assert ctx.minimum_version == ssl.TLSVersion.TLSv1_2
+
+
+def test_make_base_ssl_context_loads_os_default_certs() -> None:
+    bridge = OpenSslProviderBridge()
+    with patch.object(ssl.SSLContext, "load_default_certs") as mock_load:
+        bridge._make_base_ssl_context()
+    mock_load.assert_called_once_with(ssl.Purpose.SERVER_AUTH)

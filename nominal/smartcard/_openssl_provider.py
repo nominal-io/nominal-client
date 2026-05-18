@@ -83,6 +83,7 @@ def _load_ffi() -> tuple[Any, Any]:
             int SSL_CTX_use_certificate(SSL_CTX *ctx, X509 *x);
             int SSL_CTX_use_PrivateKey(SSL_CTX *ctx, EVP_PKEY *pkey);
             int SSL_CTX_check_private_key(const SSL_CTX *ctx);
+            X509 *SSL_CTX_get0_certificate(const SSL_CTX *ctx);
 
             /* Memory management */
             void EVP_PKEY_free(EVP_PKEY *pkey);
@@ -162,20 +163,34 @@ def _get_openssl_error(ffi: Any, lib: Any) -> str:
 def _get_ssl_ctx_ptr(ffi: Any, ssl_context: ssl.SSLContext) -> Any:
     """Extract the SSL_CTX* pointer from a Python ssl.SSLContext.
 
-    CPython's PySSLContext struct layout:
+    CPython's PySSLContext struct layout (GIL-enabled release builds):
       offset 0:  ob_refcnt  (Py_ssize_t, 8 bytes on 64-bit)
       offset 8:  ob_type    (PyTypeObject *, 8 bytes on 64-bit)
       offset 16: ctx        (SSL_CTX *)
 
-    Python 3.13 free-threaded builds add extra per-thread refcount fields to
-    PyObject_HEAD, shifting the SSL_CTX* to an unknown offset.  Reading the
-    wrong offset would silently corrupt memory, so we refuse to proceed.
+    Two non-standard configurations break this layout and are explicitly rejected:
+
+    * Python 3.13+ free-threaded builds (sys.flags.nogil): PyObject_HEAD grows
+      due to per-thread refcount fields (ob_tid, ob_ref_local, ob_ref_shared),
+      shifting ctx to an unknown offset.
+    * Debug builds compiled with --with-pydebug (Py_TRACE_REFS): two extra
+      _ob_prev/_ob_next trace pointers are prepended before ob_refcnt, also
+      shifting ctx by 2 * ptr_size.
+
+    sys.gettotalrefcount is only present in --with-pydebug builds, so its
+    presence reliably distinguishes them from release builds.
     """
     if getattr(sys.flags, "nogil", False):
         raise SmartcardConfigurationError(
             "Smartcard TLS is not supported under Python 3.13+ free-threaded mode: "
             "the PyObject header layout changes make the SSL_CTX* offset unpredictable. "
             "Use a standard (GIL-enabled) Python build."
+        )
+    if hasattr(sys, "gettotalrefcount"):
+        raise SmartcardConfigurationError(
+            "Smartcard TLS is not supported under Python debug builds: "
+            "Py_TRACE_REFS prepends extra pointers to PyObject_HEAD, shifting the "
+            "SSL_CTX* to an unpredictable offset. Use a standard release build."
         )
     ptr_size = ctypes.sizeof(ctypes.c_void_p)
     raw = ctypes.c_void_p.from_address(id(ssl_context) + 2 * ptr_size).value
@@ -187,19 +202,6 @@ def _get_ssl_ctx_ptr(ffi: Any, ssl_context: ssl.SSLContext) -> Any:
     return ffi.cast("SSL_CTX *", raw)
 
 
-def _pct_encode_pin(pin: str) -> str:
-    """Percent-encode a PIN value for embedding in a PKCS#11 URI query component."""
-    safe = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:[]@!$&'()*+,")
-    parts = []
-    for ch in pin:
-        if ch in safe:
-            parts.append(ch)
-        else:
-            for byte in ch.encode("utf-8"):
-                parts.append(f"%{byte:02x}")
-    return "".join(parts)
-
-
 def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str, pin: str | None = None) -> Any:
     """Open a PKCS#11 URI via OSSL_STORE and return the first EVP_PKEY found.
 
@@ -209,7 +211,7 @@ def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str, pin: str | N
     not shared across separate C_Initialize call chains.  The cffi buffer holding
     the URI (including the PIN) is zeroed immediately after OSSL_STORE_open returns.
     """
-    uri = private_key_uri if pin is None else f"{private_key_uri}?pin-value={_pct_encode_pin(pin)}"
+    uri = private_key_uri if pin is None else f"{private_key_uri}?pin-value={pin})"
     uri_bytes = uri.encode()
     uri_buf = ffi.new("char[]", uri_bytes)
     try:
@@ -287,6 +289,17 @@ class OpenSslProviderBridge:
             ssl_ctx = self._make_base_ssl_context()
             raw_ctx = _get_ssl_ctx_ptr(ffi, ssl_ctx)
 
+            # Sentinel: a freshly-created SSL_CTX must carry no certificate.
+            # A non-NULL return means we read the wrong memory offset and must
+            # not proceed — the subsequent SSL_CTX_use_* calls would corrupt
+            # whatever struct (if any) raw_ctx actually points at.
+            if lib.SSL_CTX_get0_certificate(raw_ctx) != ffi.NULL:
+                raise SmartcardConfigurationError(
+                    "SSL_CTX* offset validation failed: unexpected certificate present on "
+                    "a freshly-created ssl.SSLContext. This CPython build's PySSLContext "
+                    "layout differs from the expected offset. Use a standard CPython release build."
+                )
+
             if lib.SSL_CTX_use_certificate(raw_ctx, x509) != 1:
                 err = _get_openssl_error(ffi, lib)
                 raise SmartcardConfigurationError(f"SSL_CTX_use_certificate failed: {err}")
@@ -311,9 +324,17 @@ class OpenSslProviderBridge:
                 lib.X509_free(x509)
 
     def _make_base_ssl_context(self) -> ssl.SSLContext:
-        """Create a baseline ssl.SSLContext with hostname verification enabled."""
+        """Create a baseline ssl.SSLContext with hostname verification enabled.
+
+        load_default_certs() loads OS-native CA certificates (Windows certificate
+        store, macOS Keychain / system bundle, OpenSSL default paths on Linux).
+        This matches the trust-store behaviour of the rest of the codebase and
+        ensures enterprise/government root CAs added to the OS store are trusted
+        without requiring cffi-level changes.
+        """
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = True
         ctx.verify_mode = ssl.CERT_REQUIRED
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_default_certs(ssl.Purpose.SERVER_AUTH)
         return ctx

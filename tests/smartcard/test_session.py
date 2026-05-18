@@ -8,7 +8,7 @@ import pytest
 from nominal.smartcard._errors import SmartcardCertificateSelectionError
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
-from tests.smartcard._helpers import _candidate, _FakeBackend
+from tests.smartcard._helpers import _candidate, _FakeBackend, _make_der_cert
 
 # SmartcardSession
 
@@ -40,10 +40,11 @@ def test_smartcard_session_manager_shared_returns_singleton(monkeypatch: pytest.
 
 
 def test_smartcard_session_manager_caches_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    certificate = _candidate()
+    certificate = _candidate(der_certificate=_make_der_cert())
     backends: list[_FakeBackend] = []
 
     def backend_factory(path: Path) -> _FakeBackend:
@@ -64,10 +65,11 @@ def test_smartcard_session_manager_caches_session(tmp_path: Path, monkeypatch: p
 
 
 def test_smartcard_session_manager_close_clears_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    certificate = _candidate()
+    certificate = _candidate(der_certificate=_make_der_cert())
     backends: list[_FakeBackend] = []
 
     def backend_factory(path: Path) -> _FakeBackend:
@@ -86,10 +88,11 @@ def test_smartcard_session_manager_close_clears_session(tmp_path: Path, monkeypa
 
 
 def test_smartcard_session_manager_thread_safety(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    certificate = _candidate()
+    certificate = _candidate(der_certificate=_make_der_cert())
     backend_count = 0
 
     def backend_factory(path: Path) -> _FakeBackend:
