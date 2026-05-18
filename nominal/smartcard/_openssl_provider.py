@@ -211,7 +211,7 @@ def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str, pin: str | N
     not shared across separate C_Initialize call chains.  The cffi buffer holding
     the URI (including the PIN) is zeroed immediately after OSSL_STORE_open returns.
     """
-    uri = private_key_uri if pin is None else f"{private_key_uri}?pin-value={pin})"
+    uri = private_key_uri if pin is None else f"{private_key_uri}?pin-value={pin}"
     uri_bytes = uri.encode()
     uri_buf = ffi.new("char[]", uri_bytes)
     try:

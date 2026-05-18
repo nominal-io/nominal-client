@@ -13,6 +13,7 @@ from nominal.smartcard._openssl_provider import (
     _ensure_provider_loaded,
     _get_openssl_error,
     _get_ssl_ctx_ptr,
+    _load_pkey_from_store,
     _load_x509_from_der,
     _validate_library_binding,
 )
@@ -113,6 +114,33 @@ def test_make_base_ssl_context_loads_os_default_certs() -> None:
     with patch.object(ssl.SSLContext, "load_default_certs") as mock_load:
         bridge._make_base_ssl_context()
     mock_load.assert_called_once_with(ssl.Purpose.SERVER_AUTH)
+
+
+# _load_pkey_from_store
+
+
+def test_load_pkey_from_store_uri_unchanged_without_pin() -> None:
+    ffi = MagicMock()
+    lib = MagicMock()
+    lib.OSSL_STORE_open.return_value = ffi.NULL
+    lib.ERR_get_error.return_value = 0
+
+    with pytest.raises(SmartcardConfigurationError):
+        _load_pkey_from_store(ffi, lib, "pkcs11:object=mykey")
+
+    ffi.new.assert_called_once_with("char[]", b"pkcs11:object=mykey")
+
+
+def test_load_pkey_from_store_pin_appended_without_trailing_paren() -> None:
+    ffi = MagicMock()
+    lib = MagicMock()
+    lib.OSSL_STORE_open.return_value = ffi.NULL
+    lib.ERR_get_error.return_value = 0
+
+    with pytest.raises(SmartcardConfigurationError):
+        _load_pkey_from_store(ffi, lib, "pkcs11:object=mykey", pin="1234")
+
+    ffi.new.assert_called_once_with("char[]", b"pkcs11:object=mykey?pin-value=1234")
 
 
 # _load_x509_from_der
