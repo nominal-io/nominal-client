@@ -83,3 +83,10 @@ def test_assert_client_auth_eku_rejects_empty_der() -> None:
     candidate = _candidate(der_certificate=b"")
     with pytest.raises(SmartcardCertificateSelectionError, match="no DER data"):
         _assert_client_auth_eku(candidate)
+
+
+def test_select_rejects_piv_candidate_with_wrong_eku() -> None:
+    pytest.importorskip("cryptography")
+    piv = _candidate(slot="9A", der_certificate=_make_der_cert(client_auth_eku=False))
+    with pytest.raises(SmartcardCertificateSelectionError, match="clientAuth"):
+        select_piv_authentication_certificate([piv])

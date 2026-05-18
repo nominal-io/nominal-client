@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import ssl
 import sys
 from unittest.mock import MagicMock, patch
@@ -9,8 +10,11 @@ import pytest
 from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._openssl_provider import (
     OpenSslProviderBridge,
+    _ensure_provider_loaded,
     _get_openssl_error,
     _get_ssl_ctx_ptr,
+    _load_x509_from_der,
+    _validate_library_binding,
 )
 
 # _get_ssl_ctx_ptr
@@ -109,3 +113,87 @@ def test_make_base_ssl_context_loads_os_default_certs() -> None:
     with patch.object(ssl.SSLContext, "load_default_certs") as mock_load:
         bridge._make_base_ssl_context()
     mock_load.assert_called_once_with(ssl.Purpose.SERVER_AUTH)
+
+
+# _load_x509_from_der
+
+
+def test_load_x509_from_der_raises_on_invalid_der() -> None:
+    ffi = MagicMock()
+    lib = MagicMock()
+    lib.d2i_X509.return_value = ffi.NULL
+    lib.ERR_get_error.return_value = 0
+
+    with pytest.raises(SmartcardConfigurationError, match="Failed to parse DER certificate"):
+        _load_x509_from_der(ffi, lib, b"\xff\xff\xff\xff")
+
+
+def test_load_x509_from_der_raises_on_truncated_der() -> None:
+    ffi = MagicMock()
+    lib = MagicMock()
+    lib.d2i_X509.return_value = ffi.NULL
+    lib.ERR_get_error.return_value = 0
+
+    with pytest.raises(SmartcardConfigurationError, match="Failed to parse DER certificate"):
+        _load_x509_from_der(ffi, lib, b"\x30\x82")
+
+
+# _validate_library_binding
+
+
+def test_validate_library_binding_raises_on_address_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    ffi = MagicMock()
+    lib = MagicMock()
+
+    # cffi resolves the symbol to 0x1000
+    ffi.cast.return_value = 0x1000
+
+    # ctypes resolves it to a different address
+    mock_ctypes_result = MagicMock()
+    mock_ctypes_result.value = 0x2000
+    monkeypatch.setattr(ctypes, "CDLL", MagicMock(return_value=MagicMock()))
+    monkeypatch.setattr(ctypes, "cast", MagicMock(return_value=mock_ctypes_result))
+
+    with pytest.raises(SmartcardConfigurationError, match="does not match"):
+        _validate_library_binding(ffi, lib)
+
+
+def test_validate_library_binding_raises_when_symbol_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    ffi = MagicMock()
+    lib = MagicMock()
+
+    # Simulate a platform where SSL_CTX_check_private_key isn't in the process namespace
+    monkeypatch.setattr(ctypes, "CDLL", MagicMock(return_value=MagicMock(spec=[])))
+
+    with pytest.raises(SmartcardConfigurationError, match="SSL_CTX_check_private_key symbol not found"):
+        _validate_library_binding(ffi, lib)
+
+
+# _ensure_provider_loaded
+
+
+def test_ensure_provider_loaded_raises_when_load_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
+    monkeypatch.setattr(mod, "_loaded_provider", None)
+
+    ffi = MagicMock()
+    lib = MagicMock()
+    lib.OSSL_PROVIDER_load.return_value = ffi.NULL
+    lib.ERR_get_error.return_value = 0
+
+    with pytest.raises(SmartcardConfigurationError, match="Failed to load OpenSSL provider"):
+        _ensure_provider_loaded(ffi, lib)
+
+
+def test_ensure_provider_loaded_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
+    sentinel = object()
+    monkeypatch.setattr(mod, "_loaded_provider", sentinel)
+
+    ffi = MagicMock()
+    lib = MagicMock()
+    _ensure_provider_loaded(ffi, lib)
+
+    lib.OSSL_PROVIDER_load.assert_not_called()
