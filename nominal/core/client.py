@@ -172,6 +172,7 @@ class NominalClient:
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
         _profile: str | None = None,
+        _workspace_warning_emitted: bool = False,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
 
@@ -185,7 +186,7 @@ class NominalClient:
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
-        if workspace_rid is None:
+        if workspace_rid is None and not _workspace_warning_emitted:
             warnings.warn(
                 "NominalClient will soon require a workspace RID. "
                 "Any client which doesn't have a workspace RID specified will fail.",
