@@ -157,7 +157,7 @@ def _get_openssl_error(ffi: Any, lib: Any) -> str:
         return "unknown error"
     buf = ffi.new("char[256]")
     lib.ERR_error_string_n(err, buf, 256)
-    return ffi.string(buf).decode("utf-8", errors="replace")
+    return ffi.string(buf).decode("utf-8", errors="replace")  # type: ignore[no-any-return]
 
 
 def _get_ssl_ctx_ptr(ffi: Any, ssl_context: ssl.SSLContext) -> Any:

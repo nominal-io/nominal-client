@@ -190,6 +190,14 @@ module = "nominal_video"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "PyKCS11"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "cffi"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disable_error_code = ["no-untyped-def"]
 
