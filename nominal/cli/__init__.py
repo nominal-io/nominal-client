@@ -2,7 +2,16 @@ import importlib.metadata
 
 import click
 
-from nominal.cli import attachment, config, dataset, download, mis, run
+from nominal.cli import (
+    attachment,
+    config,
+    container_registry,
+    containerized_extractor,
+    dataset,
+    download,
+    mis,
+    run,
+)
 
 
 @click.group(context_settings={"show_default": True, "help_option_names": ("-h", "--help")})
@@ -13,6 +22,8 @@ def nom() -> None:
 
 nom.add_command(attachment.attachment_cmd)
 nom.add_command(config.config_cmd)
+nom.add_command(container_registry.container_registry_cmd)
+nom.add_command(containerized_extractor.containerized_extractor_cmd)
 nom.add_command(dataset.dataset_cmd)
 nom.add_command(download.download_cmd)
 nom.add_command(mis.mis_cmd)
