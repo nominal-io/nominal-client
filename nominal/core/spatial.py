@@ -262,9 +262,10 @@ def _build_archetype(
         # zoom levels — without them, the attribute can't drive ramp
         # coloring or ValueRange filtering at all.
         #
-        # Numeric attributes get Min + Max + Mean: Min/Max satisfy
-        # `VolumetricFilter::ValueRange` (which builds a two-sided
-        # filter), and any single reduction is enough to drive
+        # Real attributes get Min + Max + Mean. Int attributes get Min +
+        # Max only — `SamplerType.MEAN` is not a valid pairing with an
+        # Int-typed attribute. Min/Max alone still satisfy
+        # `VolumetricFilter::ValueRange` (a two-sided filter) and drive
         # `ColorSource::Ramp` for Geometry coloring.
         #
         # String / bool attributes have no useful scalar aggregation,
@@ -273,7 +274,7 @@ def _build_archetype(
         if kind == "int":
             int_indices.append(i)
             ty: object = _FseTypeInt.INT
-            reductions = [SamplerType.MIN, SamplerType.MAX, SamplerType.MEAN]
+            reductions = [SamplerType.MIN, SamplerType.MAX]
         elif kind == "real":
             real_indices.append(i)
             ty = _FseTypeReal(real=RealMeasurement.INDEPENDENTVALUE)
