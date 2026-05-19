@@ -16,5 +16,5 @@ jobs:
           cache-dependency-glob: "uv.lock"
       - name: Build and Publish Package to PYPI
         run: |
-          uv build
+          uv build --all-packages
           uv publish --token ${{ secrets.PYPI_TOKEN }}

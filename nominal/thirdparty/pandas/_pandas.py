@@ -6,9 +6,9 @@ from datetime import datetime
 from threading import Thread
 from typing import Any, BinaryIO, Mapping, Sequence, cast
 
-import pandas as pd
 from nominal_api.api import Timestamp
 
+import pandas as pd
 from nominal import ts
 from nominal._utils import batched, reader_writer
 from nominal.core.channel import Channel

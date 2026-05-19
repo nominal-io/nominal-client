@@ -5,10 +5,10 @@ import datetime
 import logging
 from typing import Iterator, Mapping, Sequence
 
-import polars as pl
 from nominal_api import api, scout_compute_api, scout_dataexport_api
 from typing_extensions import Self
 
+import polars as pl
 from nominal._utils import LogTiming
 from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.client import NominalClient
