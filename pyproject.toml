@@ -79,6 +79,7 @@ dev = [
     "mkdocstrings>=0.29.1,<1",
     "mypy>=1.18.2,<2",
     "nominal-api-protos>=0.1142.0",
+    "nominal-tdms==1.143.0",
     "pandas-stubs~=2.0",
     "pytest-cov>=5.0.0,<6",
     "pytest>=8.3.2,<9",
@@ -93,11 +94,11 @@ dev = [
 
 [tool.uv.sources]
 nominal = { workspace = true }
-nominal-thirdparty-tdms = { workspace = true }
+nominal-tdms = { workspace = true }
 
 [project.optional-dependencies]
 protos = ["nominal-api-protos>=0.1090.0"]
-tdms = ["nominal-thirdparty-tdms==1.143.0"]
+tdms = ["nominal-tdms==1.143.0"]
 # nominal-video wheels exist for:
 # - Windows x86_64 (AMD64)
 # - macOS arm64
@@ -172,7 +173,7 @@ ignore = [
 
 [tool.mypy]
 strict = true
-packages = ["nominal", "nominal.thirdparty.tdms"]
+packages = ["nominal", "nominal.tdms"]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"
