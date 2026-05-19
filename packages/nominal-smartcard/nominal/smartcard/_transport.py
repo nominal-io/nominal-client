@@ -7,7 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from nominal.core._utils.networking import SslContextProvider
-from nominal.smartcard._dependencies import assert_required_dependencies_available
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
 
@@ -26,7 +25,6 @@ class SmartcardSslContextProvider(SslContextProvider):
 
     @classmethod
     def create(cls) -> SmartcardSslContextProvider:
-        assert_required_dependencies_available()
         return cls()
 
     @property

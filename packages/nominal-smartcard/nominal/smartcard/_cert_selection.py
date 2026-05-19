@@ -42,7 +42,7 @@ def _assert_client_auth_eku(candidate: CertificateCandidate) -> None:
     except ImportError:
         raise SmartcardCertificateSelectionError(
             "The 'cryptography' library is required to validate certificate EKU. "
-            "Install it with: pip install 'nominal[smartcard]'"
+            "Install it with: pip install nominal-smartcard"
         )
 
     cert = x509.load_der_x509_certificate(candidate.der_certificate)

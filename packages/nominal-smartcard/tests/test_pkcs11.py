@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from _helpers import FAKE_DER
 
 from nominal.smartcard import _pkcs11
 from nominal.smartcard._errors import SmartcardConfigurationError
@@ -14,7 +15,6 @@ from nominal.smartcard._pkcs11 import (
     _pct_encode_pk11_pchar,
     discover_pkcs11_module,
 )
-from tests.smartcard._helpers import FAKE_DER
 
 
 def _make_mock_pykcs11_env():

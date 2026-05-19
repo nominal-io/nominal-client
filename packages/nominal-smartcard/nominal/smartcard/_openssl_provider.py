@@ -39,7 +39,7 @@ def _load_ffi() -> tuple[Any, Any]:
         try:
             import cffi
         except ImportError as e:
-            raise SmartcardConfigurationError("cffi is not installed. Run `pip install 'nominal[smartcard]'`.") from e
+            raise SmartcardConfigurationError("cffi is not installed. Run `pip install nominal-smartcard`.") from e
 
         ffi = cffi.FFI()
         ffi.cdef("""

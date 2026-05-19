@@ -79,6 +79,7 @@ dev = [
     "mkdocstrings>=0.29.1,<1",
     "mypy>=1.18.2,<2",
     "nominal-api-protos>=0.1142.0",
+    "nominal-smartcard>=0.0.0",
     "nominal-tdms>=0.0.0",
     "pandas-stubs~=2.0",
     "pytest-cov>=5.0.0,<6",
@@ -94,15 +95,12 @@ dev = [
 
 [tool.uv.sources]
 nominal = { workspace = true }
+nominal-smartcard = { workspace = true }
 nominal-tdms = { workspace = true }
 
 [project.optional-dependencies]
 protos = ["nominal-api-protos>=0.1090.0"]
-smartcard = [
-    "cffi>=1.17.0",
-    "cryptography>=37.0.0",
-    "PyKCS11>=1.5.18",
-]
+smartcard = ["nominal-smartcard>=0.0.0"]
 tdms = ["nominal-tdms>=0.0.0"]
 # nominal-video wheels exist for:
 # - Windows x86_64 (AMD64)
@@ -178,7 +176,7 @@ ignore = [
 
 [tool.mypy]
 strict = true
-packages = ["nominal", "nominal.tdms"]
+packages = ["nominal", "nominal.tdms", "nominal.smartcard"]
 
 [[tool.mypy.overrides]]
 module = "nominal_api.*"
@@ -214,13 +212,13 @@ disable_error_code = ["no-untyped-def"]
 filterwarnings = [
     "error", # transform all warnings into errors, except ignore: ones.
 ]
-testpaths = ["tests"]
+testpaths = ["tests", "packages"]
 # make tests/e2e opt-in (they require a Nominal instance)
 norecursedirs = ["tests/e2e"]
 addopts = "--cov=nominal --cov-branch --cov-report=html --cov-report=term"
 
 [tool.coverage.run]
-omit = ["tests/*", "*__init__*", "nominal/__main__.py"]
+omit = ["tests/*", "packages/*/tests/*", "*__init__*", "nominal/__main__.py"]
 
 [tool.pyright]
 typeCheckingMode = "off"

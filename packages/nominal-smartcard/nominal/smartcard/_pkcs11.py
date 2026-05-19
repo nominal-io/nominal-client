@@ -131,9 +131,7 @@ class PyKCS11Backend(Pkcs11Backend):
         try:
             import PyKCS11
         except ImportError as e:
-            raise SmartcardConfigurationError(
-                "PyKCS11 is not installed. Run `pip install 'nominal[smartcard]'`."
-            ) from e
+            raise SmartcardConfigurationError("PyKCS11 is not installed. Run `pip install nominal-smartcard`.") from e
 
         lib = PyKCS11.PyKCS11Lib()
         try:

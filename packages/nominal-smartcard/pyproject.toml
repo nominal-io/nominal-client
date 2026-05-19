@@ -1,0 +1,32 @@
+[project]
+name = "nominal-smartcard"
+version = "1.143.0"
+description = "Smartcard / PIV authentication for the Nominal Python client"
+authors = [
+    { name = "Adithya Patil", email = "adithya.patil@nominal.io" },
+    { name = "Aaditya Watwe", email = "aaditya.watwe@nominal.io" },
+]
+license = "MIT"
+readme = { text = "Smartcard / PIV authentication for the Nominal Python client.", content-type = "text/markdown" }
+requires-python = ">=3.10,<4"
+dependencies = [
+    "nominal>=1.143.0",
+    "cffi>=1.17.0",
+    "cryptography>=37.0.0",
+    "PyKCS11>=1.5.18",
+]
+
+[project.urls]
+Homepage = "https://nominal.io"
+Documentation = "https://docs.nominal.io"
+Repository = "https://github.com/nominal-io/nominal-client"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+include = ["nominal/smartcard/**"]
+
+[tool.hatch.build.targets.wheel]
+include = ["nominal/smartcard/**"]

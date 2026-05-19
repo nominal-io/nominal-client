@@ -4,11 +4,11 @@ import threading
 from pathlib import Path
 
 import pytest
+from _helpers import _candidate, _FakeBackend, _make_der_cert
 
 from nominal.smartcard._errors import SmartcardCertificateSelectionError
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
-from tests.smartcard._helpers import _candidate, _FakeBackend, _make_der_cert
 
 # SmartcardSession
 
