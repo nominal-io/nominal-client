@@ -58,12 +58,19 @@ def upload_point_cloud(
     coordinate_system: str | None = None,
     resolution_mm: float | None = None,
     scan_pattern: str | None = None,
+    column_types: Mapping[str, str] | None = None,
 ) -> str:
     """Upload a CSV point cloud file and trigger spatial import into Dagger.
 
     The CSV must contain at minimum x, y, z columns (case-insensitive). The
     remaining columns are auto-classified as int/real/string by sampling the
     first ~1000 data rows.
+
+    Pass ``column_types`` to override inference for any column whose early
+    rows would mislead the classifier (e.g. a float column with an
+    integer-valued first row). Keys are CSV column names; values are
+    ``"int"``, ``"real"``, or ``"string"``. Geometry columns (x/y/z) are
+    silently ignored if listed. Unknown column names raise ``ValueError``.
 
     Returns:
         The spatial asset RID.
@@ -94,7 +101,7 @@ def upload_point_cloud(
     presigned_url = _presign_download(clients, s3_path)
 
     header_line, sample_lines = _read_csv_header_and_samples(path)
-    columns, archetype = _build_archetype(header_line, sample_lines)
+    columns, archetype = _build_archetype(header_line, sample_lines, column_types or {})
 
     token = clients.auth_header.removeprefix("Bearer ")
     dagger_client = AuthenticatedClient(base_url=_dagger_base_url(clients), token=token)
@@ -203,11 +210,29 @@ def _read_csv_header_and_samples(path: Path, n_samples: int = _TYPE_INFERENCE_SA
     return header, samples
 
 
-def _build_archetype(header_line: str, sample_lines: Sequence[str]) -> tuple[ColumnSelection, Archetype]:
+_VALID_COLUMN_TYPES = frozenset({"int", "real", "string"})
+
+
+def _build_archetype(
+    header_line: str,
+    sample_lines: Sequence[str],
+    column_type_overrides: Mapping[str, str] | None = None,
+) -> tuple[ColumnSelection, Archetype]:
+    overrides = column_type_overrides or {}
     if not header_line.strip():
         raise ValueError("CSV header is empty")
     headers = [h.strip() for h in header_line.split(",")]
     n_cols = len(headers)
+
+    header_set = set(headers)
+    unknown = [name for name in overrides if name not in header_set]
+    if unknown:
+        raise ValueError(
+            f"column_types references columns not in CSV header: {sorted(unknown)}; available columns: {headers}"
+        )
+    bad_types = {name: ty for name, ty in overrides.items() if ty not in _VALID_COLUMN_TYPES}
+    if bad_types:
+        raise ValueError(f"column_types values must be one of {sorted(_VALID_COLUMN_TYPES)}: got {bad_types}")
 
     parsed_samples: list[list[str]] = []
     for line in sample_lines:
@@ -226,8 +251,11 @@ def _build_archetype(header_line: str, sample_lines: Sequence[str]) -> tuple[Col
     for i, name in enumerate(headers):
         if i in geom_set:
             continue
-        col_values = [row[i] for row in parsed_samples]
-        kind = _classify_column(col_values)
+        # Caller-supplied type wins; fall through to sample-based inference.
+        kind = overrides.get(name)
+        if kind is None:
+            col_values = [row[i] for row in parsed_samples]
+            kind = _classify_column(col_values)
         # Reductions are pre-computed aggregations (per-partition Min /
         # Max / Mean / etc.) stored as separate columns at ingest time.
         # The renderer's hierarchical LOD pipeline samples them at coarse

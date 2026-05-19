@@ -170,6 +170,54 @@ def test_classify_column(values, expected):
     assert spatial._classify_column(values) == expected
 
 
+def test_build_archetype_override_promotes_int_to_real():
+    # First-row inference would tag `stress` as int; the override forces real
+    # without the caller having to feed in more sample rows.
+    header = "x,y,z,stress"
+    samples = ["1.0,2.0,3.0,1"]
+    columns, _ = spatial._build_archetype(header, samples, {"stress": "real"})
+    assert columns.real == [3]
+    assert columns.int_ == []
+
+
+def test_build_archetype_override_demotes_numeric_to_string():
+    header = "x,y,z,layer"
+    samples = ["1.0,2.0,3.0,7"]
+    columns, _ = spatial._build_archetype(header, samples, {"layer": "string"})
+    assert columns.string == [3]
+    assert columns.int_ == []
+
+
+def test_build_archetype_override_ignores_geometry_columns():
+    # Including x/y/z in the override is harmless — they always stay geometry.
+    header = "x,y,z,extra"
+    samples = ["1.0,2.0,3.0,42"]
+    columns, _ = spatial._build_archetype(header, samples, {"x": "real", "y": "real", "z": "real", "extra": "real"})
+    assert columns.geometry == [0, 1, 2]
+    assert columns.real == [3]
+
+
+def test_build_archetype_override_unknown_column_raises():
+    header = "x,y,z,stress"
+    with pytest.raises(ValueError, match="not in CSV header"):
+        spatial._build_archetype(header, ["1.0,2.0,3.0,1"], {"strss": "real"})
+
+
+def test_build_archetype_override_invalid_type_raises():
+    header = "x,y,z,stress"
+    with pytest.raises(ValueError, match="must be one of"):
+        spatial._build_archetype(header, ["1.0,2.0,3.0,1"], {"stress": "float64"})
+
+
+def test_build_archetype_partial_override_falls_through_to_inference():
+    # `stress` overridden to real; `idx` left to auto-inference (sees an int).
+    header = "x,y,z,stress,idx"
+    samples = ["1.0,2.0,3.0,1,0", "1.0,2.0,3.0,0.5,1"]
+    columns, _ = spatial._build_archetype(header, samples, {"stress": "real"})
+    assert columns.real == [3]
+    assert columns.int_ == [4]
+
+
 def test_dagger_base_url_appends_dagger():
     clients = MagicMock()
     clients._api_base_url = "https://api.gov.nominal.io"
