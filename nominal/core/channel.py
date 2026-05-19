@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import BinaryIO, Iterable, Mapping, NamedTuple, Protocol, cast, overload
 
 from nominal_api import (
@@ -250,8 +250,9 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         """Return the most recent ``(timestamp, value)`` for this channel within ``[start, end]``.
 
         Args:
-            start: Lower bound of the search window. If not present, searches starting from unix epoch.
-            end: Upper bound of the search window. If not present, searches until end of time.
+            start: Lower bound of the search window. Defaults to one hour before ``end``;
+                large query windows may be slower.
+            end: Upper bound of the search window. Defaults to the current UTC time at call time.
             tags: Tags to filter the channel by (exact-match). Group-by is not supported.
 
         Returns:
@@ -259,6 +260,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
 
         Raises:
             TypeError: If the channel is not a numeric (DOUBLE, INT) or string channel.
+            ValueError: If ``start`` is strictly after ``end``.
         """
         if self.data_type not in (ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING):
             raise TypeError(
@@ -266,8 +268,15 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
                 f"channel {self.name!r} has type {self.data_type}"
             )
 
-        api_start = (_SecondsNanos.from_flexible(start) if start else _MIN_TIMESTAMP).to_api()
-        api_end = (_SecondsNanos.from_flexible(end) if end else _MAX_TIMESTAMP).to_api()
+        end_ts = _SecondsNanos.from_flexible(end if end is not None else datetime.now(timezone.utc))
+        if start is not None:
+            start_ts = _SecondsNanos.from_flexible(start)
+        else:
+            start_ts = _SecondsNanos(max(0, end_ts.seconds - 3600), end_ts.nanos)
+        if start_ts > end_ts:
+            raise ValueError(f"start ({start!r}) must be at or before end ({end!r})")
+        api_start = start_ts.to_api()
+        api_end = end_ts.to_api()
 
         request = scout_compute_api.ComputeNodeRequest(
             start=api_start,
@@ -280,9 +289,10 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         try:
             response = self._clients.compute.compute(self._clients.auth_header, request)
         except ValueError as e:
-            # The generated conjure-python union constructor doesn't handle optional union members,
-            # raising this ValueError when the window is empty (fixed upstream in palantir/conjure-python#1050).
-            # Match exactly so we don't swallow unrelated ValueErrors.
+            # TODO(palantir/conjure-python#1050): empty single-point responses raise here
+            # instead of returning None. Match exactly so we don't swallow unrelated
+            # ValueErrors. Once fixed: delete this try/except and flip the
+            # `if point is None` branch below from `raise` to `return None`.
             if str(e) == "a union value must not be None":
                 return None
             raise

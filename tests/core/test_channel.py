@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,7 +8,7 @@ from conjure_python_client import ConjureDecoder
 from nominal_api import api, scout_compute_api
 
 from nominal.core.channel import Channel, ChannelDataType, LastValue
-from nominal.ts import _MAX_TIMESTAMP, _MIN_TIMESTAMP, _SecondsNanos
+from nominal.ts import _SecondsNanos
 
 
 def _make_response(value: scout_compute_api.Value, ts: datetime) -> scout_compute_api.ComputeNodeResponse:
@@ -41,48 +41,46 @@ def mock_channel(mock_clients):
     )
 
 
-def test_get_last_value_returns_float64(mock_channel: Channel, mock_clients: MagicMock):
-    """A float64 single-point response is returned as a LastValue with a float."""
+@pytest.mark.parametrize(
+    ("data_type", "value", "expected"),
+    [
+        # int64 is wire-encoded as a string to preserve precision; pick a value larger than the
+        # JS-safe-integer / float64-mantissa range so a regression that routes through float fails.
+        (ChannelDataType.DOUBLE, scout_compute_api.Value(float64_value=42.5), 42.5),
+        (ChannelDataType.INT, scout_compute_api.Value(int64_value="9007199254740993"), 9007199254740993),
+        (ChannelDataType.STRING, scout_compute_api.Value(string_value="hello"), "hello"),
+    ],
+    ids=["double", "int", "string"],
+)
+def test_get_last_value_returns_value(
+    mock_channel: Channel,
+    mock_clients: MagicMock,
+    data_type: ChannelDataType,
+    value: scout_compute_api.Value,
+    expected: float | int | str,
+):
+    """A single-point response is returned as a LastValue with the correctly-typed value."""
+    mock_channel.data_type = data_type
     ts = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
-    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=42.5), ts)
+    mock_clients.compute.compute.return_value = _make_response(value, ts)
 
     result = mock_channel.get_last_value()
 
-    assert result == LastValue(_ns(ts), 42.5)
-    assert isinstance(result.value, float)
+    assert result == LastValue(_ns(ts), expected)
+    assert type(result.value) is type(expected)
     assert isinstance(result.timestamp, int)
 
 
-def test_get_last_value_returns_int64_parsed_from_string(mock_channel: Channel, mock_clients: MagicMock):
-    """int64 is wire-encoded as a string; get_last_value parses it back to int."""
-    mock_channel.data_type = ChannelDataType.INT
-    ts = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
-    mock_clients.compute.compute.return_value = _make_response(
-        # int64_value type is Optional[str]
-        scout_compute_api.Value(int64_value="9007199254740993"),
-        ts,
-    )
-
-    result = mock_channel.get_last_value()
-
-    assert result == LastValue(_ns(ts), 9007199254740993)
-    assert isinstance(result.value, int)
-
-
-def test_get_last_value_returns_string(mock_channel: Channel, mock_clients: MagicMock):
-    """A string single-point response is returned as a LastValue with a str."""
-    mock_channel.data_type = ChannelDataType.STRING
-    ts = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
-    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(string_value="hello"), ts)
-
-    result = mock_channel.get_last_value()
-
-    assert result == LastValue(_ns(ts), "hello")
-
-
 def test_get_last_value_empty_window_returns_none(mock_channel: Channel, mock_clients: MagicMock):
-    """An empty window surfaces as the conjure 'a union value must not be None' ValueError; treated as no data."""
-    mock_clients.compute.compute.side_effect = ValueError("a union value must not be None")
+    """End-to-end: an empty single-point response goes through the real conjure decoder and is treated as no data."""
+
+    def _decode_empty_singlepoint(*_args, **_kwargs):
+        ConjureDecoder().decode(
+            {"type": "singlePoint", "singlePoint": None},
+            scout_compute_api.ComputeNodeResponse,
+        )
+
+    mock_clients.compute.compute.side_effect = _decode_empty_singlepoint
 
     result = mock_channel.get_last_value()
 
@@ -98,16 +96,22 @@ def test_get_last_value_unrelated_value_error_propagates(mock_channel: Channel, 
 
 
 def test_get_last_value_request_fields(mock_channel: Channel, mock_clients: MagicMock):
-    """Request carries the explicit start, the explicit end, last_value_point node, and channel identity."""
-    start = datetime(2026, 1, 2, 2, 54, 5, tzinfo=timezone.utc)
-    end = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    """Request carries the explicit start, the explicit end, last_value_point node, and channel identity.
+
+    Uses non-zero microsecond components on `start` and `end` to also exercise sub-second round-trip
+    from `datetime` -> `_SecondsNanos` -> `api.Timestamp.nanos` on the request side.
+    """
+    start = datetime(2026, 1, 2, 2, 54, 5, 123456, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 2, 3, 4, 5, 789012, tzinfo=timezone.utc)
     mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), end)
 
     mock_channel.get_last_value(start=start, end=end, tags={"a": "b"})
 
     _, request = mock_clients.compute.compute.call_args[0]
     assert request.start.seconds == int(start.timestamp())
+    assert request.start.nanos == start.microsecond * 1000
     assert request.end.seconds == int(end.timestamp())
+    assert request.end.nanos == end.microsecond * 1000
     # The compute node must be a SelectValue with last_value_point set.
     series = request.node.value.last_value_point
     assert series is not None
@@ -118,47 +122,56 @@ def test_get_last_value_request_fields(mock_channel: Channel, mock_clients: Magi
     assert {k: v.literal for k, v in data_source.tags.items()} == {"a": "b"}
 
 
-def test_get_last_value_defaults_to_full_time_range(mock_channel: Channel, mock_clients: MagicMock):
-    """Omitting both `start` and `end` searches the full `[_MIN_TIMESTAMP, _MAX_TIMESTAMP]` window."""
-    ts = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), ts)
-
-    mock_channel.get_last_value()
-
-    _, request = mock_clients.compute.compute.call_args[0]
-    expected_start = _MIN_TIMESTAMP.to_api()
-    expected_end = _MAX_TIMESTAMP.to_api()
-    assert request.start.seconds == expected_start.seconds
-    assert request.start.nanos == expected_start.nanos
-    assert request.end.seconds == expected_end.seconds
-    assert request.end.nanos == expected_end.nanos
-
-
-def test_get_last_value_start_only_defaults_end_to_max(mock_channel: Channel, mock_clients: MagicMock):
-    """Omitting `end` falls back to `_MAX_TIMESTAMP` for parity with `search_logs`."""
-    start = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), start)
-
-    mock_channel.get_last_value(start=start)
-
-    _, request = mock_clients.compute.compute.call_args[0]
-    expected_end = _MAX_TIMESTAMP.to_api()
-    assert request.start.seconds == int(start.timestamp())
-    assert request.end.seconds == expected_end.seconds
-    assert request.end.nanos == expected_end.nanos
-
-
-def test_get_last_value_end_only_defaults_start_to_min(mock_channel: Channel, mock_clients: MagicMock):
-    """Omitting `start` falls back to `_MIN_TIMESTAMP` for parity with `search_logs`."""
+def test_get_last_value_end_only_defaults_start_to_end_minus_one_hour(
+    mock_channel: Channel, mock_clients: MagicMock
+):
+    """Omitting `start` falls back to `end - 1hr` (anchored to the provided end, not wall-clock now)."""
     end = datetime(2026, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
     mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), end)
 
     mock_channel.get_last_value(end=end)
 
     _, request = mock_clients.compute.compute.call_args[0]
-    expected_start = _MIN_TIMESTAMP.to_api()
+    expected_start = _SecondsNanos.from_flexible(end - timedelta(hours=1)).to_api()
     assert request.start.seconds == expected_start.seconds
     assert request.start.nanos == expected_start.nanos
+    assert request.end.seconds == int(end.timestamp())
+
+
+def test_get_last_value_start_after_end_raises(mock_channel: Channel, mock_clients: MagicMock):
+    """`start > end` is rejected before any API call."""
+    start = datetime(2026, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="start .* must be at or before end"):
+        mock_channel.get_last_value(start=start, end=end)
+
+    mock_clients.compute.compute.assert_not_called()
+
+
+def test_get_last_value_zero_width_window_allowed(mock_channel: Channel, mock_clients: MagicMock):
+    """`start == end` is a legal "value at exactly T" query; the server decides whether a point exists."""
+    instant = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), instant)
+
+    mock_channel.get_last_value(start=instant, end=instant)
+
+    _, request = mock_clients.compute.compute.call_args[0]
+    assert request.start.seconds == int(instant.timestamp())
+    assert request.start.nanos == 0
+    assert request.end.seconds == int(instant.timestamp())
+    assert request.end.nanos == 0
+
+
+def test_get_last_value_default_start_clamps_at_epoch(mock_channel: Channel, mock_clients: MagicMock):
+    """When `end` is within the first hour of the unix epoch, the default-start clamp avoids negative seconds."""
+    end = datetime(1970, 1, 1, 0, 30, 0, tzinfo=timezone.utc)  # 30 minutes after epoch
+    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), end)
+
+    mock_channel.get_last_value(end=end)
+
+    _, request = mock_clients.compute.compute.call_args[0]
+    assert request.start.seconds == 0
+    assert request.start.nanos == 0
     assert request.end.seconds == int(end.timestamp())
 
 
@@ -199,9 +212,13 @@ def test_get_last_value_unhandled_value_variant_raises(mock_channel: Channel, mo
 
 
 def test_conjure_empty_singlepoint_error_message_unchanged():
-    """Pins the conjure decode-error string that `get_last_value` matches for empty windows.
+    """Pin on the conjure decode-error string that `Channel.get_last_value` matches.
 
-    Fails at CI if a `nominal-api` or `conjure-python-client` bump rewords the message.
+    If this test fails after a `nominal-api` or `conjure-python-client` bump, it likely
+    means the upstream fix from palantir/conjure-python#1050 has propagated, meaning
+    `ComputeNodeResponse.single_point` is now `None` on empty windows instead of raising.
+    In that case, remove the `try/except ValueError` workaround in `Channel.get_last_value`
+    along with this test.
     """
     payload = {"type": "singlePoint", "singlePoint": None}
     with pytest.raises(ValueError, match="^a union value must not be None$"):
