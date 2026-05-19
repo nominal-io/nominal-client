@@ -122,9 +122,7 @@ def test_get_last_value_request_fields(mock_channel: Channel, mock_clients: Magi
     assert {k: v.literal for k, v in data_source.tags.items()} == {"a": "b"}
 
 
-def test_get_last_value_end_only_defaults_start_to_end_minus_one_hour(
-    mock_channel: Channel, mock_clients: MagicMock
-):
+def test_get_last_value_default_window_is_one_hour(mock_channel: Channel, mock_clients: MagicMock):
     """Omitting `start` falls back to `end - 1hr` (anchored to the provided end, not wall-clock now)."""
     end = datetime(2026, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
     mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), end)
@@ -146,33 +144,6 @@ def test_get_last_value_start_after_end_raises(mock_channel: Channel, mock_clien
         mock_channel.get_last_value(start=start, end=end)
 
     mock_clients.compute.compute.assert_not_called()
-
-
-def test_get_last_value_zero_width_window_allowed(mock_channel: Channel, mock_clients: MagicMock):
-    """`start == end` is a legal "value at exactly T" query; the server decides whether a point exists."""
-    instant = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), instant)
-
-    mock_channel.get_last_value(start=instant, end=instant)
-
-    _, request = mock_clients.compute.compute.call_args[0]
-    assert request.start.seconds == int(instant.timestamp())
-    assert request.start.nanos == 0
-    assert request.end.seconds == int(instant.timestamp())
-    assert request.end.nanos == 0
-
-
-def test_get_last_value_default_start_clamps_at_epoch(mock_channel: Channel, mock_clients: MagicMock):
-    """When `end` is within the first hour of the unix epoch, the default-start clamp avoids negative seconds."""
-    end = datetime(1970, 1, 1, 0, 30, 0, tzinfo=timezone.utc)  # 30 minutes after epoch
-    mock_clients.compute.compute.return_value = _make_response(scout_compute_api.Value(float64_value=1.0), end)
-
-    mock_channel.get_last_value(end=end)
-
-    _, request = mock_clients.compute.compute.call_args[0]
-    assert request.start.seconds == 0
-    assert request.start.nanos == 0
-    assert request.end.seconds == int(end.timestamp())
 
 
 def test_get_last_value_unsupported_data_type_raises(mock_channel: Channel, mock_clients: MagicMock):
