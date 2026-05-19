@@ -17,6 +17,7 @@ from dagger_client.models import (
     ImportRequest,
     PutObjectSpaceRequest,
     RealMeasurement,
+    SamplerType,
 )
 from dagger_client.models import (
     FseAttributeTypeType0 as _FseTypeReal,
@@ -227,16 +228,37 @@ def _build_archetype(header_line: str, sample_lines: Sequence[str]) -> tuple[Col
             continue
         col_values = [row[i] for row in parsed_samples]
         kind = _classify_column(col_values)
+        # Reductions are pre-computed aggregations (per-partition Min /
+        # Max / Mean / etc.) stored as separate columns at ingest time.
+        # The renderer's hierarchical LOD pipeline samples them at coarse
+        # zoom levels — without them, the attribute can't drive ramp
+        # coloring or ValueRange filtering at all.
+        #
+        # Numeric attributes get Min + Max + Mean: Min/Max satisfy
+        # `VolumetricFilter::ValueRange` (which builds a two-sided
+        # filter), and any single reduction is enough to drive
+        # `ColorSource::Ramp` for Geometry coloring.
+        #
+        # String / bool attributes have no useful scalar aggregation,
+        # so we leave their reductions empty.
+        reductions: list[SamplerType] = []
         if kind == "int":
             int_indices.append(i)
             ty: object = _FseTypeInt.INT
+            reductions = [SamplerType.MIN, SamplerType.MAX, SamplerType.MEAN]
         elif kind == "real":
             real_indices.append(i)
             ty = _FseTypeReal(real=RealMeasurement.INDEPENDENTVALUE)
+            reductions = [SamplerType.MIN, SamplerType.MAX, SamplerType.MEAN]
         else:
             string_indices.append(i)
             ty = _FseTypeString.STRING
-        attributes.append(Attribute(header=FseHeader(name=name, ty=ty), reductions=[]))  # type: ignore[arg-type]
+        attributes.append(
+            Attribute(  # type: ignore[arg-type]
+                header=FseHeader(name=name, ty=ty),
+                reductions=reductions,
+            )
+        )
 
     columns = ColumnSelection(
         bool_=[],

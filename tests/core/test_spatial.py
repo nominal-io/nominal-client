@@ -72,6 +72,30 @@ def test_read_csv_header_and_samples_empty_raises(tmp_path: Path):
         spatial._read_csv_header_and_samples(csv)
 
 
+def test_build_archetype_numeric_attributes_get_min_max_mean_reductions():
+    # Without reductions on Int/Real attributes, the downstream renderer
+    # (volumesight) can't sample them at coarse LODs — so Geometry
+    # coloring falls back to solid white and ValueRange filter is a
+    # no-op. Min + Max satisfy `VolumetricFilter::ValueRange`'s two-sided
+    # filter; Mean rounds out the common aggregations.
+    from dagger_client.models import SamplerType
+
+    header = "x,y,z,intensity,laser_power,label"
+    samples = ["1.0,2.0,3.0,42,7.5,wall", "4.0,5.0,6.0,99,8.0,floor"]
+    _columns, archetype = spatial._build_archetype(header, samples)
+    by_name = {a.header.name: a for a in archetype.attributes}
+    # intensity is int → Min/Max/Mean
+    assert sorted(by_name["intensity"].reductions, key=str) == sorted(
+        [SamplerType.MIN, SamplerType.MAX, SamplerType.MEAN], key=str
+    )
+    # laser_power is real (mixed 7.5 / 8.0) → same set
+    assert sorted(by_name["laser_power"].reductions, key=str) == sorted(
+        [SamplerType.MIN, SamplerType.MAX, SamplerType.MEAN], key=str
+    )
+    # label is string → no scalar aggregation makes sense
+    assert by_name["label"].reductions == []
+
+
 def test_build_archetype_ouster_shape():
     # Mirrors the Ouster CSV produced by convert_ouster_dataset.
     header = "x,y,z,time,reflectivity,signal,near_infrared"
