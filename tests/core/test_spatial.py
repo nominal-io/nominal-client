@@ -90,11 +90,25 @@ def test_build_archetype_missing_data_row_classifies_as_string():
 
 def test_dagger_base_url_appends_dagger():
     clients = MagicMock()
-    clients._api_base_url = "https://api.gov.nominal.io/api"
+    clients._api_base_url = "https://api.gov.nominal.io"
     assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
 
 
 def test_dagger_base_url_strips_trailing_slash():
+    clients = MagicMock()
+    clients._api_base_url = "https://api.gov.nominal.io/"
+    assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
+
+
+def test_dagger_base_url_strips_trailing_api():
+    # NominalClient.create's docstring example uses "https://host/api"; the
+    # proxy is at /api/dagger regardless, so strip /api before appending.
+    clients = MagicMock()
+    clients._api_base_url = "https://api.gov.nominal.io/api"
+    assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
+
+
+def test_dagger_base_url_strips_trailing_api_with_slash():
     clients = MagicMock()
     clients._api_base_url = "https://api.gov.nominal.io/api/"
     assert spatial._dagger_base_url(clients) == "https://api.gov.nominal.io/api/dagger"
@@ -112,7 +126,7 @@ def _make_clients_mock(
     workspace.org = f"ri.scout.cerulean-staging.organization.{org_uuid}"
     clients.resolve_workspace.return_value = workspace
     clients.auth_header = "Bearer test-token-123"
-    clients._api_base_url = "https://api.nominal.test/api"
+    clients._api_base_url = "https://api.nominal.test"
     clients.header_provider = None
     presign_response = MagicMock()
     presign_response.url = "https://presigned.example/data.csv?sig=abc"
