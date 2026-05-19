@@ -1241,7 +1241,7 @@ requires-dist = [
     { name = "exceptiongroup", specifier = ">=1.3.0" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "nominal-api", specifier = "==0.1224.0" },
-    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1234.0" },
+    { name = "nominal-api-protos", marker = "extra == 'protos'", specifier = ">=0.1234.0,<0.1241.0" },
     { name = "nominal-streaming", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.8.2" },
     { name = "nominal-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-tdms" },
     { name = "nominal-video", marker = "(python_full_version >= '3.10' and platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'video') or (python_full_version >= '3.10' and platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'video')", specifier = "==0.1.9" },
@@ -1300,7 +1300,7 @@ wheels = [
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.1247.0"
+version = "0.1240.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
@@ -1308,8 +1308,9 @@ dependencies = [
     { name = "grpcio-tools" },
     { name = "protobuf" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/04/24/87894320fc34d7e6b4f78064611b2162fbd1fb4922463952508458d0eecd/nominal_api_protos-0.1240.0.tar.gz", hash = "sha256:db24aa550b73932bbcf91fab0ee4b1c2147aedd14b7ebd8060d1ec4ee8a7d03d", size = 215107, upload-time = "2026-05-14T17:29:00.257Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/94/8130f6bbcddc27494604062a83b20e4959ec85d30f76e0610b6f75bba23a/nominal_api_protos-0.1247.0-py3-none-any.whl", hash = "sha256:555a00d3bb675d065495df6445c180238a26d2a204de27dd3c6e09a44919581f", size = 285832, upload-time = "2026-05-19T17:49:45.273Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/b8/27f0aef2f847c3f21ae3a6d21477a1cfba6c7c21c161b7898ccad831fd67/nominal_api_protos-0.1240.0-py3-none-any.whl", hash = "sha256:50e8e54431410ce46df28b8d8f1e5053075aae0e4ecba3e878905faf82e3ae3e", size = 319733, upload-time = "2026-05-14T17:28:58.654Z" },
 ]
 
 [[package]]
