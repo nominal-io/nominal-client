@@ -1555,12 +1555,45 @@ class NominalClient:
             raise ValueError("workspace_rid is required to delete a container image")
         self._clients.registry.delete_image(self._clients.auth_header, rid, workspace_rid=effective_workspace)
 
+    @overload
     def create_containerized_extractor(
         self,
         name: str,
         *,
         description: str | None = None,
         docker_image: DockerImageSource,
+        container_image_rid: None = None,
+        inputs: Sequence[FileExtractionInput] = (),
+        parameters: Sequence[FileExtractionParameter] = (),
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+        timestamp_column: str,
+        timestamp_type: ts._AnyTimestampType,
+        file_output_format: FileOutputFormat | None = None,
+    ) -> ContainerizedExtractor: ...
+    @overload
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        docker_image: None = None,
+        container_image_rid: str,
+        inputs: Sequence[FileExtractionInput] = (),
+        parameters: Sequence[FileExtractionParameter] = (),
+        properties: Mapping[str, str] | None = None,
+        labels: Sequence[str] = (),
+        timestamp_column: str,
+        timestamp_type: ts._AnyTimestampType,
+        file_output_format: FileOutputFormat | None = None,
+    ) -> ContainerizedExtractor: ...
+    def create_containerized_extractor(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        docker_image: DockerImageSource | None = None,
+        container_image_rid: str | None = None,
         inputs: Sequence[FileExtractionInput] = (),
         parameters: Sequence[FileExtractionParameter] = (),
         properties: Mapping[str, str] | None = None,
@@ -1569,12 +1602,32 @@ class NominalClient:
         timestamp_type: ts._AnyTimestampType,
         file_output_format: FileOutputFormat | None = None,
     ) -> ContainerizedExtractor:
+        """Create a containerized extractor backed by an external image or self-hosted image RID.
+
+        Args:
+            name: Name of the containerized extractor.
+            description: Optional extractor description.
+            docker_image: External docker registry image source. Mutually exclusive with `container_image_rid`.
+            container_image_rid: Self-hosted container image RID returned by `upload_container_image_from_io`.
+                Mutually exclusive with `docker_image`.
+            inputs: File input definitions.
+            parameters: Parameter definitions.
+            properties: Metadata properties.
+            labels: Metadata labels.
+            timestamp_column: Output timestamp column name.
+            timestamp_type: Output timestamp type.
+            file_output_format: Output file format.
+        """
+        if (docker_image is None) == (container_image_rid is None):
+            raise ValueError("Exactly one of `docker_image` and `container_image_rid` must be provided")
+
         workspace_rid = self._clients.resolve_default_workspace_rid()
 
         req = ingest_api.RegisterContainerizedExtractorRequest(
             name=name,
             description=description,
-            image=docker_image._to_conjure(),
+            image=None if docker_image is None else docker_image._to_conjure(),
+            container_image_rid=container_image_rid,
             inputs=[file_extraction_input._to_conjure() for file_extraction_input in inputs],
             parameters=[file_extraction_parameter._to_conjure() for file_extraction_parameter in parameters],
             properties=dict(properties or {}),

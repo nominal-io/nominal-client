@@ -503,7 +503,19 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     @overload
     def add_containerized(
         self,
-        extractor: str | ContainerizedExtractor,
+        extractor: str,
+        sources: Mapping[str, PathLike],
+        tag: None = None,
+        *,
+        arguments: Mapping[str, str] | None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> DatasetFile: ...
+    @overload
+    def add_containerized(
+        self,
+        extractor: ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         tag: str | None = None,
         *,
@@ -513,7 +525,7 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
     @overload
     def add_containerized(
         self,
-        extractor: str | ContainerizedExtractor,
+        extractor: ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         tag: str | None = None,
         *,
@@ -539,8 +551,10 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             extractor: ContainerizedExtractor instance (or rid of one) to use for extracting and ingesting data.
             sources: Mapping of environment variables to source files to use with the extractor.
                 NOTE: these must match the registered inputs of the containerized extractor exactly
-            tag: Tag of the Docker container which hosts the extractor.
-                NOTE: if not provided, the default registered docker tag will be used.
+            tag: Tag of the external Docker image which hosts the extractor.
+                NOTE: self-hosted containerized extractors use their registered container image RID and do not support
+                    tag overrides.
+                NOTE: for external Docker images, if not provided, the default registered docker tag will be used.
             arguments: Mapping of key-value pairs of input arguments to the extractor.
             tags: Key-value pairs of tags to apply to all data ingested from the containerized extractor run.
             timestamp_column: the column in the dataset that contains the timestamp data.
@@ -560,12 +574,21 @@ class Dataset(DataSource, RefreshableMixin[scout_catalog.EnrichedDataset]):
             raise ValueError("Only one of `timestamp_column` and `timestamp_type` provided!")
 
         if isinstance(extractor, str):
+            if tag is not None:
+                raise ValueError(
+                    "`tag` cannot be provided when `extractor` is a RID; self-hosted extractors run by RID"
+                )
+            if timestamp_metadata is None:
+                raise ValueError("`timestamp_column` and `timestamp_type` are required when `extractor` is a RID")
             extractor = ContainerizedExtractor._from_conjure(
                 self._clients,
                 self._clients.containerized_extractors.get_containerized_extractor(
                     self._clients.auth_header, extractor
                 ),
             )
+        if extractor.container_image_rid is not None and tag is not None:
+            raise ValueError("`tag` cannot be provided for self-hosted containerized extractors")
+
         # Ensure all required inputs are present
         registered_inputs = set()
         for extractor_input in extractor.inputs:
@@ -949,7 +972,19 @@ class _DatasetWrapper(abc.ABC):
     def add_containerized(
         self,
         data_scope_name: str,
-        extractor: str | ContainerizedExtractor,
+        extractor: str,
+        sources: Mapping[str, PathLike],
+        *,
+        tag: None = None,
+        tags: Mapping[str, str] | None = None,
+        timestamp_column: str,
+        timestamp_type: _AnyTimestampType,
+    ) -> DatasetFile: ...
+    @overload
+    def add_containerized(
+        self,
+        data_scope_name: str,
+        extractor: ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
         tag: str | None = None,
@@ -959,7 +994,7 @@ class _DatasetWrapper(abc.ABC):
     def add_containerized(
         self,
         data_scope_name: str,
-        extractor: str | ContainerizedExtractor,
+        extractor: ContainerizedExtractor,
         sources: Mapping[str, PathLike],
         *,
         tag: str | None = None,
@@ -990,27 +1025,44 @@ class _DatasetWrapper(abc.ABC):
         `nominal.core.Dataset.add_containerized`.
         """
         dataset, scope_tags = self._get_dataset_scope(data_scope_name)
-        if timestamp_column is None and timestamp_type is None:
-            return dataset.add_containerized(
-                extractor,
-                sources,
-                tag=tag,
-                tags=_unify_tags(scope_tags, tags),
-            )
-        elif timestamp_column is not None and timestamp_type is not None:
-            return dataset.add_containerized(
-                extractor,
-                sources,
-                tag=tag,
-                tags=_unify_tags(scope_tags, tags),
-                timestamp_column=timestamp_column,
-                timestamp_type=timestamp_type,
-            )
-        else:
+        merged_tags = _unify_tags(scope_tags, tags)
+        if (timestamp_column is None) != (timestamp_type is None):
             raise ValueError(
                 "Only one of `timestamp_column` and `timestamp_type` were provided to `add_containerized`, "
                 "either both must or neither must be provided."
             )
+        if isinstance(extractor, str):
+            if tag is not None:
+                raise ValueError(
+                    "`tag` cannot be provided when `extractor` is a RID; self-hosted extractors run by RID"
+                )
+            if timestamp_column is None:
+                raise ValueError("`timestamp_column` and `timestamp_type` are required when `extractor` is a RID")
+            assert timestamp_type is not None
+            return dataset.add_containerized(
+                extractor,
+                sources,
+                tags=merged_tags,
+                timestamp_column=timestamp_column,
+                timestamp_type=timestamp_type,
+            )
+
+        if timestamp_column is None:
+            return dataset.add_containerized(
+                extractor,
+                sources,
+                tag=tag,
+                tags=merged_tags,
+            )
+        assert timestamp_type is not None
+        return dataset.add_containerized(
+            extractor,
+            sources,
+            tag=tag,
+            tags=merged_tags,
+            timestamp_column=timestamp_column,
+            timestamp_type=timestamp_type,
+        )
 
     def add_from_io(
         self,

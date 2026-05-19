@@ -11,6 +11,10 @@ from nominal.cli.containerized_extractor import containerized_extractor_cmd
 from nominal.core.client import WorkspaceSearchType
 from nominal.core.containerized_extractors import ContainerizedExtractor, DockerImageSource, TagDetails
 
+WORKSPACE_RID = "ri.workspace.default"
+EXTRACTOR_RID = "ri.extractor.test.1"
+CONTAINER_IMAGE_RID = "ri.container-image.test.1"
+
 
 def _docker_image() -> DockerImageSource:
     return DockerImageSource(
@@ -33,12 +37,12 @@ def _raw_docker_image() -> ingest_api.DockerImageSource:
 
 def _raw_extractor(
     *,
-    rid: str = "ri.extractor.test.1",
+    rid: str,
     name: str = "updated",
     description: str | None = "updated description",
     labels: list[str] | None = None,
     properties: dict[str, str] | None = None,
-    container_image_rid: str | None = "ri.container-image.test.1",
+    container_image_rid: str | None,
 ) -> ingest_api.ContainerizedExtractor:
     return ingest_api.ContainerizedExtractor(
         created_at="2026-05-13T00:00:00Z",
@@ -59,9 +63,9 @@ def _raw_extractor(
 def _extractor(
     *,
     clients: SimpleNamespace | None = None,
-    rid: str = "ri.extractor.test.1",
+    rid: str,
     name: str = "extractor",
-    container_image_rid: str | None = "ri.container-image.test.1",
+    container_image_rid: str | None,
 ) -> ContainerizedExtractor:
     return ContainerizedExtractor(
         rid=rid,
@@ -81,7 +85,7 @@ def _extractor(
 def _clients() -> SimpleNamespace:
     return SimpleNamespace(
         auth_header="Bearer token",
-        resolve_default_workspace_rid=MagicMock(return_value="ri.workspace.default"),
+        resolve_default_workspace_rid=MagicMock(return_value=WORKSPACE_RID),
         containerized_extractors=MagicMock(),
     )
 
@@ -169,7 +173,16 @@ def test_register_rejects_workspace_from_json() -> None:
 
 
 def test_search_emits_json_and_forwards_filters_to_client() -> None:
-    client = _client(search_containerized_extractors=MagicMock(return_value=[_extractor()]))
+    client = _client(
+        search_containerized_extractors=MagicMock(
+            return_value=[
+                _extractor(
+                    rid=EXTRACTOR_RID,
+                    container_image_rid=CONTAINER_IMAGE_RID,
+                )
+            ]
+        )
+    )
 
     result = _invoke(
         [
@@ -219,11 +232,17 @@ def test_search_emits_json_and_forwards_filters_to_client() -> None:
 def test_update_emits_updated_json_and_forwards_replacement_fields() -> None:
     clients = _clients()
     clients.containerized_extractors.update_containerized_extractor.return_value = _raw_extractor(
+        rid=EXTRACTOR_RID,
         name="updated",
         labels=["new"],
         properties={},
+        container_image_rid=CONTAINER_IMAGE_RID,
     )
-    extractor = _extractor(clients=clients)
+    extractor = _extractor(
+        clients=clients,
+        rid=EXTRACTOR_RID,
+        container_image_rid=CONTAINER_IMAGE_RID,
+    )
     client = _client(get_containerized_extractor=MagicMock(return_value=extractor))
 
     result = _invoke(
@@ -263,7 +282,11 @@ def test_update_emits_updated_json_and_forwards_replacement_fields() -> None:
 
 def test_archive_and_unarchive_emit_status_and_call_resource_methods() -> None:
     clients = _clients()
-    extractor = _extractor(clients=clients)
+    extractor = _extractor(
+        clients=clients,
+        rid=EXTRACTOR_RID,
+        container_image_rid=CONTAINER_IMAGE_RID,
+    )
     client = _client(get_containerized_extractor=MagicMock(return_value=extractor))
 
     archive_result = _invoke(
