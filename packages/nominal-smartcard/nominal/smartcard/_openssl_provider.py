@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-from nominal.smartcard._errors import SmartcardConfigurationError
+from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
 from nominal.smartcard._session import SmartcardSession
 
 # OSSL_STORE_INFO_get_type returns this value for private keys.
@@ -160,6 +160,15 @@ def _get_openssl_error(ffi: Any, lib: Any) -> str:
     return ffi.string(buf).decode("utf-8", errors="replace")  # type: ignore[no-any-return]
 
 
+def _raise_store_error(err: str, context: str) -> None:
+    """Raise the most specific PIN or configuration error for an OSSL_STORE failure."""
+    if "CKR_PIN_LOCKED" in err:
+        raise SmartcardPinLockedError(f"{context}: {err}")
+    if "CKR_PIN_INCORRECT" in err:
+        raise SmartcardPinError(f"{context}: {err}")
+    raise SmartcardConfigurationError(f"{context}: {err}")
+
+
 def _get_ssl_ctx_ptr(ffi: Any, ssl_context: ssl.SSLContext) -> Any:
     """Extract the SSL_CTX* pointer from a Python ssl.SSLContext.
 
@@ -221,9 +230,10 @@ def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str, pin: str | N
 
     if store == ffi.NULL:
         err = _get_openssl_error(ffi, lib)
-        raise SmartcardConfigurationError(
-            f"OSSL_STORE_open failed for URI {private_key_uri!r}: {err}. "
-            "Verify pkcs11-provider is installed and the PKCS#11 module path is correct."
+        _raise_store_error(
+            err,
+            f"OSSL_STORE_open failed for URI {private_key_uri!r} — "
+            "verify pkcs11-provider is installed and the PKCS#11 module path is correct",
         )
 
     pkey = ffi.NULL
@@ -233,7 +243,7 @@ def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str, pin: str | N
             if info == ffi.NULL:
                 if lib.OSSL_STORE_error(store):
                     err = _get_openssl_error(ffi, lib)
-                    raise SmartcardConfigurationError(f"OSSL_STORE_load error: {err}")
+                    _raise_store_error(err, "OSSL_STORE_load error")
                 continue
             if lib.OSSL_STORE_INFO_get_type(info) == _OSSL_STORE_INFO_PKEY:
                 pkey = lib.OSSL_STORE_INFO_get1_PKEY(info)

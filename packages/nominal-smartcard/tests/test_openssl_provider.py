@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.smartcard._errors import SmartcardConfigurationError
+from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
 from nominal.smartcard._openssl_provider import (
     OpenSslProviderBridge,
     _ensure_provider_loaded,
@@ -15,6 +15,7 @@ from nominal.smartcard._openssl_provider import (
     _get_ssl_ctx_ptr,
     _load_pkey_from_store,
     _load_x509_from_der,
+    _raise_store_error,
     _validate_library_binding,
 )
 
@@ -141,6 +142,29 @@ def test_load_pkey_from_store_pin_appended_without_trailing_paren() -> None:
         _load_pkey_from_store(ffi, lib, "pkcs11:object=mykey", pin="1234")
 
     ffi.new.assert_called_once_with("char[]", b"pkcs11:object=mykey?pin-value=1234")
+
+
+# _raise_store_error
+
+
+def test_raise_store_error_raises_pin_locked_error() -> None:
+    with pytest.raises(SmartcardPinLockedError):
+        _raise_store_error("CKR_PIN_LOCKED", "context")
+
+
+def test_raise_store_error_raises_pin_error_on_incorrect() -> None:
+    with pytest.raises(SmartcardPinError):
+        _raise_store_error("CKR_PIN_INCORRECT", "context")
+
+
+def test_raise_store_error_pin_locked_takes_priority_over_incorrect() -> None:
+    with pytest.raises(SmartcardPinLockedError):
+        _raise_store_error("CKR_PIN_LOCKED CKR_PIN_INCORRECT", "context")
+
+
+def test_raise_store_error_raises_configuration_error_for_other_errors() -> None:
+    with pytest.raises(SmartcardConfigurationError):
+        _raise_store_error("some other error", "context")
 
 
 # _load_x509_from_der

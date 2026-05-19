@@ -7,10 +7,6 @@ class SmartcardError(NominalError):
     """Base class for smartcard authentication errors."""
 
 
-class SmartcardDependencyError(SmartcardError):
-    """Required smartcard optional dependencies are not installed."""
-
-
 class SmartcardConfigurationError(SmartcardError):
     """Smartcard configuration or local machine setup is invalid."""
 
