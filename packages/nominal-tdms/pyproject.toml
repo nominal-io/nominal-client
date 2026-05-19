@@ -1,0 +1,29 @@
+[project]
+name = "nominal-tdms"
+version = "1.143.0"
+description = "TDMS integrations for the Nominal Python client"
+authors = [
+    { name = "Alexander Reynolds", email = "alex.reynolds@nominal.io" },
+    { name = "Alexander Hill", email = "alex.hill@nominal.io" },
+    { name = "JP", email = "jack@nominal.io" },
+    { name = "Drake Eidukas", email = "drake@nominal.io" },
+]
+license = "MIT"
+readme = { text = "TDMS integrations for the Nominal Python client.", content-type = "text/markdown" }
+requires-python = ">=3.10,<4"
+dependencies = ["nominal>=1.143.0", "nptdms>=1.9.0,<2"]
+
+[project.urls]
+Homepage = "https://nominal.io"
+Documentation = "https://docs.nominal.io"
+Repository = "https://github.com/nominal-io/nominal-client"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+include = ["nominal/tdms/**"]
+
+[tool.hatch.build.targets.wheel]
+include = ["nominal/tdms/**"]

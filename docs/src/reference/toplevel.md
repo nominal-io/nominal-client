@@ -7,7 +7,7 @@ Third-party integrations:
 
 [`nominal.thirdparty.matlab`](./thirdparty/matlab.md) - tools for working with matlab.  
 [`nominal.thirdparty.pandas`](./thirdparty/pandas.md) - tools for working with pandas.  
-[`nominal.thirdparty.tdms`](./thirdparty/tdms.md) - tools for ingesting tdms data.  
+[`nominal.tdms`](./thirdparty/tdms.md) - tools for ingesting tdms data, installed with `nominal-tdms`. 
 
 Experimental functionality:
 
