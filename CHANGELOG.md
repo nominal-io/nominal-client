@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.144.0](https://github.com/nominal-io/nominal-client/compare/v1.143.0...v1.144.0) (2026-05-19)
+
+
+### Features
+
+* split tdms namespace package to separate packages ([#789](https://github.com/nominal-io/nominal-client/issues/789)) ([95d7e85](https://github.com/nominal-io/nominal-client/commit/95d7e85fa5c5da8edb3dca91dc2c4a9718ae8277))
+
 ## [1.143.0](https://github.com/nominal-io/nominal-client/compare/v1.142.0...v1.143.0) (2026-05-11)
 
 
