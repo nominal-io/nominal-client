@@ -47,27 +47,37 @@ def test_classify(value, expected):
     assert spatial._classify(value) == expected
 
 
-def test_read_first_two_csv_lines(tmp_path: Path):
+def test_read_csv_header_and_samples(tmp_path: Path):
     csv = tmp_path / "pc.csv"
     csv.write_text("x,y,z,time,intensity\n1,2,3,1700000000.0,42\n4,5,6,1700000001.0,43\n")
-    header, first_data = spatial._read_first_two_csv_lines(csv)
+    header, samples = spatial._read_csv_header_and_samples(csv)
     assert header == "x,y,z,time,intensity"
-    assert first_data == "1,2,3,1700000000.0,42"
+    assert samples == ["1,2,3,1700000000.0,42", "4,5,6,1700000001.0,43"]
 
 
-def test_read_first_two_csv_lines_empty_raises(tmp_path: Path):
+def test_read_csv_header_and_samples_caps_at_n_samples(tmp_path: Path):
+    csv = tmp_path / "big.csv"
+    csv.write_text("x,y,z\n" + "\n".join(f"{i},{i},{i}" for i in range(50)) + "\n")
+    header, samples = spatial._read_csv_header_and_samples(csv, n_samples=10)
+    assert header == "x,y,z"
+    assert len(samples) == 10
+    assert samples[0] == "0,0,0"
+    assert samples[-1] == "9,9,9"
+
+
+def test_read_csv_header_and_samples_empty_raises(tmp_path: Path):
     csv = tmp_path / "empty.csv"
     csv.write_text("")
     with pytest.raises(ValueError, match="CSV is empty"):
-        spatial._read_first_two_csv_lines(csv)
+        spatial._read_csv_header_and_samples(csv)
 
 
 def test_build_archetype_ouster_shape():
     # Mirrors the Ouster CSV produced by convert_ouster_dataset.
     header = "x,y,z,time,reflectivity,signal,near_infrared"
-    data = "1.0,2.0,3.0,1700000000.0,42,17,9"
+    sample = ["1.0,2.0,3.0,1700000000.0,42,17,9"]
 
-    columns, archetype = spatial._build_archetype(header, data)
+    columns, archetype = spatial._build_archetype(header, sample)
 
     assert columns.geometry == [0, 1, 2]
     # 42, 17, 9 parse as int. 1700000000.0 parses as real.
@@ -81,11 +91,59 @@ def test_build_archetype_ouster_shape():
     assert names == ["time", "reflectivity", "signal", "near_infrared"]
 
 
-def test_build_archetype_missing_data_row_classifies_as_string():
-    columns, archetype = spatial._build_archetype("x,y,z,label", "")
-    # No data row → label classifies as string by virtue of empty value.
+def test_build_archetype_no_samples_classifies_as_string():
+    columns, _archetype = spatial._build_archetype("x,y,z,label", [])
+    # No data rows → defaults to string for non-geometry columns.
     assert columns.geometry == [0, 1, 2]
     assert columns.string == [3]
+
+
+def test_build_archetype_promotes_int_to_real_across_rows():
+    # `stress` is integer-valued in the first row but float in the second.
+    # The legacy single-row classifier mis-tagged this as int, which broke
+    # downstream dagger ingest. Sampling multiple rows promotes it to real.
+    header = "x,y,z,stress"
+    samples = ["1.0,2.0,3.0,1", "1.0,2.0,3.0,0.998"]
+    columns, _archetype = spatial._build_archetype(header, samples)
+    assert columns.real == [3]
+    assert columns.int_ == []
+
+
+def test_build_archetype_any_string_value_forces_string():
+    # A numeric-looking first row followed by a non-numeric row demotes the
+    # column to string rather than failing later on the server.
+    header = "x,y,z,label"
+    samples = ["1.0,2.0,3.0,1", "1.0,2.0,3.0,WALL-OUTER"]
+    columns, _archetype = spatial._build_archetype(header, samples)
+    assert columns.string == [3]
+    assert columns.int_ == [] and columns.real == []
+
+
+def test_build_archetype_handles_short_rows():
+    # Rows that have fewer commas than the header (trailing-empty fields)
+    # should be padded rather than crash.
+    header = "x,y,z,a,b"
+    samples = ["1,2,3,42", "4,5,6,43,extra"]
+    columns, _archetype = spatial._build_archetype(header, samples)
+    assert columns.geometry == [0, 1, 2]
+    # First row leaves column b empty (→ string default), second populates it.
+    assert columns.int_ == [3]
+    assert columns.string == [4]
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ([], "string"),
+        (["", "", ""], "string"),
+        (["1", "2", "3"], "int"),
+        (["1", "2.0", "3"], "real"),
+        (["1", "abc"], "string"),
+        (["1", "", "2.5"], "real"),
+    ],
+)
+def test_classify_column(values, expected):
+    assert spatial._classify_column(values) == expected
 
 
 def test_dagger_base_url_appends_dagger():

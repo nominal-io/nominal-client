@@ -61,8 +61,8 @@ def upload_point_cloud(
     """Upload a CSV point cloud file and trigger spatial import into Dagger.
 
     The CSV must contain at minimum x, y, z columns (case-insensitive). The
-    remaining columns are classified as int/real/string from the first data
-    row.
+    remaining columns are auto-classified as int/real/string by sampling the
+    first ~1000 data rows.
 
     Returns:
         The spatial asset RID.
@@ -92,8 +92,8 @@ def upload_point_cloud(
 
     presigned_url = _presign_download(clients, s3_path)
 
-    header_line, first_data_line = _read_first_two_csv_lines(path)
-    columns, archetype = _build_archetype(header_line, first_data_line)
+    header_line, sample_lines = _read_csv_header_and_samples(path)
+    columns, archetype = _build_archetype(header_line, sample_lines)
 
     token = clients.auth_header.removeprefix("Bearer ")
     dagger_client = AuthenticatedClient(base_url=_dagger_base_url(clients), token=token)
@@ -178,26 +178,42 @@ def _extract_rid_locator_uuid(rid: str) -> uuid.UUID:
     return uuid.UUID(locator)
 
 
-def _read_first_two_csv_lines(path: Path) -> tuple[str, str]:
+# Sample size for column type inference. Picked large enough that an
+# integer-valued first row for a float column (e.g. `stress=1` followed by
+# `stress=0.998`) gets promoted to real, but small enough to stay cheap on
+# multi-GB CSVs (only the first N rows are read, not the whole file).
+_TYPE_INFERENCE_SAMPLE_ROWS = 1000
+
+
+def _read_csv_header_and_samples(path: Path, n_samples: int = _TYPE_INFERENCE_SAMPLE_ROWS) -> tuple[str, list[str]]:
+    """Read the header row + up to n_samples non-empty data rows."""
     with path.open("r", newline="") as f:
         try:
             header = next(f).rstrip("\r\n")
         except StopIteration:
             raise ValueError(f"CSV is empty: {path}")
-        try:
-            first_data = next(f).rstrip("\r\n")
-        except StopIteration:
-            first_data = ""
-    return header, first_data
+        samples: list[str] = []
+        for line in f:
+            stripped = line.rstrip("\r\n")
+            if stripped:
+                samples.append(stripped)
+            if len(samples) >= n_samples:
+                break
+    return header, samples
 
 
-def _build_archetype(header_line: str, data_line: str) -> tuple[ColumnSelection, Archetype]:
+def _build_archetype(header_line: str, sample_lines: Sequence[str]) -> tuple[ColumnSelection, Archetype]:
     if not header_line.strip():
         raise ValueError("CSV header is empty")
     headers = [h.strip() for h in header_line.split(",")]
-    values = [v.strip() for v in data_line.split(",")] if data_line else []
-    if len(values) < len(headers):
-        values = values + [""] * (len(headers) - len(values))
+    n_cols = len(headers)
+
+    parsed_samples: list[list[str]] = []
+    for line in sample_lines:
+        row = [v.strip() for v in line.split(",")]
+        if len(row) < n_cols:
+            row = row + [""] * (n_cols - len(row))
+        parsed_samples.append(row)
 
     geometry_indices = _find_geometry_indices(headers)
     geom_set = set(geometry_indices)
@@ -209,7 +225,8 @@ def _build_archetype(header_line: str, data_line: str) -> tuple[ColumnSelection,
     for i, name in enumerate(headers):
         if i in geom_set:
             continue
-        kind = _classify(values[i])
+        col_values = [row[i] for row in parsed_samples]
+        kind = _classify_column(col_values)
         if kind == "int":
             int_indices.append(i)
             ty: object = _FseTypeInt.INT
@@ -231,6 +248,31 @@ def _build_archetype(header_line: str, data_line: str) -> tuple[ColumnSelection,
         string=string_indices,
     )
     return columns, Archetype(attributes=attributes)
+
+
+def _classify_column(values: Sequence[str]) -> str:
+    """Most permissive type that covers every non-empty sample value.
+
+    Any non-numeric value forces string. A mix of int- and float-looking
+    values promotes to real (so a column whose first row is "1" but later
+    rows are "0.998" classifies as real, not int). All-empty defaults to
+    string, matching the legacy single-row behavior for columns the sample
+    happens not to populate.
+    """
+    seen_real = False
+    nonempty = 0
+    for v in values:
+        if not v:
+            continue
+        nonempty += 1
+        kind = _classify(v)
+        if kind == "string":
+            return "string"
+        if kind == "real":
+            seen_real = True
+    if not nonempty:
+        return "string"
+    return "real" if seen_real else "int"
 
 
 def _find_geometry_indices(headers: Sequence[str]) -> list[int]:
