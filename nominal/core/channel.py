@@ -247,7 +247,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
         end: _InferrableTimestampType | None = None,
         tags: Mapping[str, str] | None = None,
     ) -> LastValue | None:
-        """Return the most recent ``(timestamp, value)`` for this channel within ``[start, end]``.
+        """Return the last ``(timestamp, value)`` for this channel within ``[start, end]``.
 
         Args:
             start: Lower bound of the search window. Defaults to one hour before ``end``;
