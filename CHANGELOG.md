@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.144.1](https://github.com/nominal-io/nominal-client/compare/v1.144.0...v1.144.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* add Apache 2.0 license and NOTICE file ([#714](https://github.com/nominal-io/nominal-client/issues/714)) ([324c8ca](https://github.com/nominal-io/nominal-client/commit/324c8ca6ff866094725c9ff89bd404011e56980e))
+* apache 2.0 the package metadata and subproject ([#793](https://github.com/nominal-io/nominal-client/issues/793)) ([c39d98d](https://github.com/nominal-io/nominal-client/commit/c39d98d5de3496610bfd063e61728ee9ccf72ea4))
+
 ## [1.144.0](https://github.com/nominal-io/nominal-client/compare/v1.143.0...v1.144.0) (2026-05-19)
 
 
