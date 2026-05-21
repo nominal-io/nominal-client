@@ -10,42 +10,52 @@ from nominal.smartcard import _pkcs11
 from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._pkcs11 import (
     NOMINAL_PKCS11_MODULE_ENV_VAR,
-    PyKCS11Backend,
+    DefaultPkcs11Backend,
     _build_pkcs11_uri,
     _pct_encode_pk11_pchar,
     discover_pkcs11_module,
 )
 
 
-def _make_mock_pykcs11_env():
-    """Return (mock_PyKCS11_module, mock_session)."""
-    PyKCS11 = MagicMock()
-    PyKCS11.CKF_SERIAL_SESSION = 4
-    PyKCS11.CKA_CLASS = 0
-    PyKCS11.CKO_CERTIFICATE = 1
-    PyKCS11.CKA_CERTIFICATE_TYPE = 0x80
-    PyKCS11.CKC_X_509 = 0
-    PyKCS11.CKA_LABEL = 3
-    PyKCS11.CKA_ID = 0x102
-    PyKCS11.CKA_VALUE = 0x11
+def _make_mock_pkcs11_env():
+    """Return (mock_pkcs11_module, mock_session)."""
+    mock_pkcs11 = MagicMock()
+    mock_pkcs11.exceptions.PKCS11Error = type("PKCS11Error", (Exception,), {})
 
-    token_info = MagicMock()
-    token_info.label = "CAC TOKEN     "
-
+    # Build cert object whose __getitem__ routes by attribute identity.
     cert_obj = MagicMock()
-    session = MagicMock()
-    session.findObjects.return_value = [cert_obj]
-    session.getAttributeValue.return_value = ["PIV Authentication", b"\x01", FAKE_DER]
 
-    lib = MagicMock()
-    lib.getSlotList.return_value = [0]
-    lib.getTokenInfo.return_value = token_info
-    lib.openSession.return_value = session
+    def _getitem(attr):
+        if attr is mock_pkcs11.Attribute.LABEL:
+            return "PIV Authentication"
+        if attr is mock_pkcs11.Attribute.ID:
+            return b"\x01"
+        if attr is mock_pkcs11.Attribute.VALUE:
+            return FAKE_DER
+        raise mock_pkcs11.exceptions.PKCS11Error(f"unknown attr: {attr}")
 
-    PyKCS11.PyKCS11Lib.return_value = lib
-    PyKCS11.PyKCS11Error = type("PyKCS11Error", (Exception,), {"value": 0})
+    cert_obj.__getitem__ = MagicMock(side_effect=_getitem)
 
-    return PyKCS11, session
+    mock_session = MagicMock()
+    mock_session.get_objects.return_value = [cert_obj]
+
+    session_cm = MagicMock()
+    session_cm.__enter__ = MagicMock(return_value=mock_session)
+    session_cm.__exit__ = MagicMock(return_value=False)
+
+    mock_token = MagicMock()
+    mock_token.label = "CAC TOKEN     "
+    mock_token.open.return_value = session_cm
+
+    mock_slot = MagicMock()
+    mock_slot.get_token.return_value = mock_token
+
+    mock_lib = MagicMock()
+    mock_lib.get_slots.return_value = [mock_slot]
+
+    mock_pkcs11.lib.return_value = mock_lib
+
+    return mock_pkcs11, mock_session
 
 
 # discover_pkcs11_module
@@ -132,16 +142,16 @@ def test_build_pkcs11_uri_with_object_type() -> None:
     assert _build_pkcs11_uri("CAC", b"\x01", object_type="private") == "pkcs11:token=CAC;id=%01;type=private"
 
 
-# PyKCS11Backend
+# DefaultPkcs11Backend
 
 
-def test_pykcs11_backend_list_certificate_candidates(tmp_path: Path) -> None:
-    mock_pykcs11, _ = _make_mock_pykcs11_env()
+def test_default_pkcs11_backend_list_certificate_candidates(tmp_path: Path) -> None:
+    mock_pkcs11, _ = _make_mock_pkcs11_env()
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
+    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+        backend = DefaultPkcs11Backend(module_path)
         candidates = backend.list_certificate_candidates()
 
     assert len(candidates) == 1
@@ -153,83 +163,97 @@ def test_pykcs11_backend_list_certificate_candidates(tmp_path: Path) -> None:
     assert c.der_certificate == FAKE_DER
 
 
-def test_pykcs11_backend_closes_session_after_listing_candidates(tmp_path: Path) -> None:
-    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
+def test_default_pkcs11_backend_session_closed_after_listing_candidates(tmp_path: Path) -> None:
+    mock_pkcs11, _ = _make_mock_pkcs11_env()
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
+    lib = mock_pkcs11.lib.return_value
+    token = lib.get_slots.return_value[0].get_token.return_value
+    session_cm = token.open.return_value
+
+    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+        backend = DefaultPkcs11Backend(module_path)
         backend.list_certificate_candidates()
 
-    mock_session.closeSession.assert_called_once()
+    session_cm.__exit__.assert_called_once()
 
 
-def test_pykcs11_backend_closes_session_with_no_certificate_candidates(tmp_path: Path) -> None:
-    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
-    mock_session.findObjects.return_value = []
+def test_default_pkcs11_backend_session_closed_with_no_certificate_candidates(tmp_path: Path) -> None:
+    mock_pkcs11, mock_session = _make_mock_pkcs11_env()
+    mock_session.get_objects.return_value = []
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
+    lib = mock_pkcs11.lib.return_value
+    token = lib.get_slots.return_value[0].get_token.return_value
+    session_cm = token.open.return_value
+
+    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+        backend = DefaultPkcs11Backend(module_path)
         assert backend.list_certificate_candidates() == []
 
-    mock_session.closeSession.assert_called_once()
+    session_cm.__exit__.assert_called_once()
 
 
-def test_pykcs11_backend_closes_session_when_certificate_lookup_fails(tmp_path: Path) -> None:
-    mock_pykcs11, mock_session = _make_mock_pykcs11_env()
-    mock_session.findObjects.side_effect = mock_pykcs11.PyKCS11Error("lookup failed")
+def test_default_pkcs11_backend_session_closed_when_certificate_lookup_fails(tmp_path: Path) -> None:
+    mock_pkcs11, mock_session = _make_mock_pkcs11_env()
+    mock_session.get_objects.side_effect = mock_pkcs11.exceptions.PKCS11Error("lookup failed")
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
+    lib = mock_pkcs11.lib.return_value
+    token = lib.get_slots.return_value[0].get_token.return_value
+    session_cm = token.open.return_value
+
+    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+        backend = DefaultPkcs11Backend(module_path)
         assert backend.list_certificate_candidates() == []
 
-    mock_session.closeSession.assert_called_once()
+    session_cm.__exit__.assert_called_once()
 
 
-def test_pykcs11_backend_skips_slots_that_fail_to_open(tmp_path: Path) -> None:
-    mock_pykcs11, _ = _make_mock_pykcs11_env()
-    lib = mock_pykcs11.PyKCS11Lib.return_value
-    lib.getSlotList.return_value = [0, 1]
-    good_session = lib.openSession.return_value
-    lib.openSession.side_effect = [good_session, mock_pykcs11.PyKCS11Error("no token")]
+def test_default_pkcs11_backend_skips_slots_that_fail_to_open(tmp_path: Path) -> None:
+    mock_pkcs11, _ = _make_mock_pkcs11_env()
+    lib = mock_pkcs11.lib.return_value
+
+    good_slot = lib.get_slots.return_value[0]
+    bad_slot = MagicMock()
+    bad_slot.get_token.side_effect = mock_pkcs11.exceptions.PKCS11Error("no token")
+    lib.get_slots.return_value = [good_slot, bad_slot]
 
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
+    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+        backend = DefaultPkcs11Backend(module_path)
         candidates = backend.list_certificate_candidates()
 
     assert len(candidates) == 1
 
 
-def test_pykcs11_backend_close_clears_lib(tmp_path: Path) -> None:
-    mock_pykcs11, _ = _make_mock_pykcs11_env()
+def test_default_pkcs11_backend_close_clears_lib(tmp_path: Path) -> None:
+    mock_pkcs11, _ = _make_mock_pkcs11_env()
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
+    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+        backend = DefaultPkcs11Backend(module_path)
         backend.list_certificate_candidates()  # populates _lib
         assert backend._lib is not None
         backend.close()
         assert backend._lib is None
 
 
-def test_pykcs11_backend_strips_trailing_whitespace_from_token_label(tmp_path: Path) -> None:
-    mock_pykcs11, _ = _make_mock_pykcs11_env()
-    lib = mock_pykcs11.PyKCS11Lib.return_value
-    lib.getTokenInfo.return_value.label = "  PADDED LABEL  "
+def test_default_pkcs11_backend_strips_trailing_whitespace_from_token_label(tmp_path: Path) -> None:
+    mock_pkcs11, _ = _make_mock_pkcs11_env()
+    lib = mock_pkcs11.lib.return_value
+    lib.get_slots.return_value[0].get_token.return_value.label = "  PADDED LABEL  "
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"PyKCS11": mock_pykcs11}):
-        backend = PyKCS11Backend(module_path)
+    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+        backend = DefaultPkcs11Backend(module_path)
         candidates = backend.list_certificate_candidates()
 
     assert len(candidates) == 1

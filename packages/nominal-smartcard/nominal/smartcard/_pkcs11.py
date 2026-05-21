@@ -118,8 +118,8 @@ def _build_pkcs11_uri(token_label: str, object_id_bytes: bytes, *, object_type: 
     return uri
 
 
-class PyKCS11Backend(Pkcs11Backend):
-    """PKCS#11 token backend backed by the PyKCS11 library."""
+class DefaultPkcs11Backend(Pkcs11Backend):
+    """PKCS#11 token backend backed by the python-pkcs11 library."""
 
     def __init__(self, module_path: Path) -> None:
         super().__init__(module_path)
@@ -129,14 +129,15 @@ class PyKCS11Backend(Pkcs11Backend):
         if self._lib is not None:
             return self._lib
         try:
-            import PyKCS11
+            import pkcs11
         except ImportError as e:
-            raise SmartcardConfigurationError("PyKCS11 is not installed. Run `pip install nominal-smartcard`.") from e
+            raise SmartcardConfigurationError(
+                "python-pkcs11 is not installed. Run `pip install nominal-smartcard`."
+            ) from e
 
-        lib = PyKCS11.PyKCS11Lib()
         try:
-            lib.load(str(self.module_path))
-        except PyKCS11.PyKCS11Error as e:
+            lib = pkcs11.lib(str(self.module_path))
+        except Exception as e:
             raise SmartcardConfigurationError(f"Failed to load PKCS#11 module {self.module_path}: {e}") from e
 
         self._lib = lib
@@ -144,38 +145,45 @@ class PyKCS11Backend(Pkcs11Backend):
 
     def list_certificate_candidates(self) -> list[CertificateCandidate]:
         lib = self._get_lib()
-        import PyKCS11
+        import pkcs11
+        from pkcs11 import Attribute, CertificateType, ObjectClass
 
         try:
-            slots = lib.getSlotList(tokenPresent=True)
-        except PyKCS11.PyKCS11Error as e:
+            slots = lib.get_slots(token_present=True)
+        except pkcs11.exceptions.PKCS11Error as e:
             raise SmartcardConfigurationError(f"Failed to list PKCS#11 slots: {e}") from e
 
         candidates: list[CertificateCandidate] = []
         for slot in slots:
-            session: Any = None
             try:
-                try:
-                    token_info = lib.getTokenInfo(slot)
-                    token_label = str(token_info.label).strip()
-                    session = lib.openSession(slot, PyKCS11.CKF_SERIAL_SESSION)
+                token = slot.get_token()
+                token_label = token.label.strip()
+                with token.open() as session:
+                    for cert_obj in session.get_objects(
+                        {
+                            Attribute.CLASS: ObjectClass.CERTIFICATE,
+                            Attribute.CERTIFICATE_TYPE: CertificateType.X_509,
+                        }
+                    ):
+                        try:
+                            label_raw = cert_obj[Attribute.LABEL]
+                            label = label_raw.strip() if isinstance(label_raw, str) else None
+                        except pkcs11.exceptions.PKCS11Error:
+                            label = None
 
-                    cert_objects = session.findObjects(
-                        [
-                            (PyKCS11.CKA_CLASS, PyKCS11.CKO_CERTIFICATE),
-                            (PyKCS11.CKA_CERTIFICATE_TYPE, PyKCS11.CKC_X_509),
-                        ]
-                    )
+                        try:
+                            object_id_bytes = cert_obj[Attribute.ID]
+                            if not isinstance(object_id_bytes, (bytes, bytearray)):
+                                object_id_bytes = bytes(object_id_bytes)
+                        except pkcs11.exceptions.PKCS11Error:
+                            object_id_bytes = b""
 
-                    for cert_obj in cert_objects:
-                        attrs = session.getAttributeValue(
-                            cert_obj,
-                            [PyKCS11.CKA_LABEL, PyKCS11.CKA_ID, PyKCS11.CKA_VALUE],
-                        )
-                        label_raw, id_raw, value_raw = attrs[0], attrs[1], attrs[2]
-                        label = str(label_raw).strip() if label_raw else None
-                        object_id_bytes = bytes(id_raw) if id_raw else b""
-                        der_certificate = bytes(value_raw) if value_raw else b""
+                        try:
+                            der_certificate = cert_obj[Attribute.VALUE]
+                            if not isinstance(der_certificate, (bytes, bytearray)):
+                                der_certificate = bytes(der_certificate)
+                        except pkcs11.exceptions.PKCS11Error:
+                            der_certificate = b""
 
                         object_id_str = object_id_bytes.hex() if object_id_bytes else None
                         piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str or "") if object_id_str else None
@@ -191,14 +199,8 @@ class PyKCS11Backend(Pkcs11Backend):
                                 der_certificate=der_certificate,
                             )
                         )
-                except PyKCS11.PyKCS11Error:
-                    pass  # Skip slots we can't access or that don't conform to expected structure
-            finally:
-                if session is not None:
-                    try:
-                        session.closeSession()
-                    except PyKCS11.PyKCS11Error:
-                        pass
+            except pkcs11.exceptions.PKCS11Error:
+                pass  # Skip slots we can't access or that don't conform to expected structure
 
         return candidates
 

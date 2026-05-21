@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nominal.smartcard._cert_selection import CertificateCandidate, select_piv_authentication_certificate
-from nominal.smartcard._pkcs11 import Pkcs11Backend, PyKCS11Backend, discover_pkcs11_module
+from nominal.smartcard._pkcs11 import DefaultPkcs11Backend, Pkcs11Backend, discover_pkcs11_module
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class SmartcardSessionManager:
     def __init__(
         self,
         *,
-        backend_factory: Callable[[Path], Pkcs11Backend] = PyKCS11Backend,
+        backend_factory: Callable[[Path], Pkcs11Backend] = DefaultPkcs11Backend,
     ) -> None:
         self._backend_factory = backend_factory
         self._lock = threading.Lock()
