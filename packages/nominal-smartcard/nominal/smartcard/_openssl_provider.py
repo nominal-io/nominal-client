@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import ssl
 import sys
 import threading
@@ -23,13 +24,58 @@ _provider_lock: threading.Lock = threading.Lock()
 _loaded_provider: Any = None  # kept alive for the process lifetime once loaded
 
 
+def _find_ssl_lib_path() -> str | None:
+    """Find the absolute path of the libssl shared library already loaded in this process.
+
+    On macOS, ``dlopen(None)`` (RTLD_DEFAULT) resolves OpenSSL symbols from the
+    macOS system OpenSSL stub embedded in the dyld shared cache rather than from
+    the homebrew / python.org libssl that Python's ``_ssl`` extension uses.
+    Passing ``SSL_CTX*`` pointers created by one OpenSSL to functions from the
+    other causes SIGSEGV because the two builds have incompatible struct layouts.
+
+    We enumerate dyld's image list to find whichever ``libssl`` dylib is already
+    loaded and has a real file path on disk.  The macOS system stub lives only
+    inside the shared cache (no corresponding file on disk), so the
+    ``os.path.exists`` check naturally excludes it while retaining the
+    homebrew / python.org dylib that Python's ssl module actually loaded.
+
+    On Linux, ``dlopen(None)`` typically works because there is usually only a
+    single system OpenSSL in the process namespace, so this function returns
+    ``None`` there and lets callers fall back to ``ffi.dlopen(None)``.
+    """
+    if sys.platform != "darwin":
+        return None
+    try:
+        libsystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+
+        image_count = libsystem._dyld_image_count
+        image_count.restype = ctypes.c_uint32
+
+        get_image_name = libsystem._dyld_get_image_name
+        get_image_name.restype = ctypes.c_char_p
+        get_image_name.argtypes = [ctypes.c_uint32]
+
+        for i in range(image_count()):
+            raw = get_image_name(i)
+            if raw and b"/libssl" in raw:
+                path = raw.decode("utf-8", errors="replace")
+                if os.path.exists(path):
+                    return path
+    except Exception:
+        pass
+    return None
+
+
 def _load_ffi() -> tuple[Any, Any]:
     """Lazily initialise the cffi bindings to libssl/libcrypto.
 
-    We open the process symbol namespace (None) so we reuse the exact libssl
-    instance already loaded by Python's ssl module.  Using a separate dlopen
-    path would create a second library instance, causing memory-layout
-    mismatches when we cast SSL_CTX* pointers across the boundary.
+    We explicitly load the same libssl shared library that Python's own ``_ssl``
+    extension module is linked against.  Using ``ffi.dlopen(None)`` (RTLD_DEFAULT)
+    is *not* safe on macOS: the process-namespace symbol lookup resolves to the
+    macOS system OpenSSL stub (a very old, ABI-incompatible version in the dyld
+    shared cache) rather than to the homebrew / python.org OpenSSL that created
+    the ``SSL_CTX*`` pointers we need to manipulate.  Passing those pointers to
+    functions from a mismatched OpenSSL causes SIGSEGV.
     """
     global _ffi, _lib
     with _ffi_lock:
@@ -94,25 +140,34 @@ def _load_ffi() -> tuple[Any, Any]:
             void          ERR_error_string_n(unsigned long e, char *buf, size_t len);
         """)
 
-        # Load from the process namespace so we reuse Python's already-loaded libssl.
-        lib = ffi.dlopen(None)
-        _validate_library_binding(ffi, lib)
+        ssl_lib_path = _find_ssl_lib_path()
+
+        # Load the exact libssl that Python's _ssl extension is linked against
+        # when we can identify it. Falling back to dlopen(None) is kept for
+        # Linux/unknown platforms where the process namespace is the best
+        # available option.
+        lib = ffi.dlopen(ssl_lib_path) if ssl_lib_path else ffi.dlopen(None)
+        _validate_library_binding(ffi, lib, ssl_lib_path=ssl_lib_path)
 
         _ffi = ffi
         _lib = lib
         return ffi, lib
 
 
-def _validate_library_binding(ffi: Any, lib: Any) -> None:
+def _validate_library_binding(ffi: Any, lib: Any, ssl_lib_path: str | None = None) -> None:
     """Verify that our cffi handle resolves to the same libssl Python's ssl module uses.
 
-    We compare the address of SSL_CTX_check_private_key as seen through ctypes
-    (which uses Python's already-loaded symbols) against what cffi resolved.
+    We compare the address of ``SSL_CTX_check_private_key`` as seen through ctypes
+    against what cffi resolved.  When ``ssl_lib_path`` is provided we load both via
+    that explicit path, guaranteeing an apples-to-apples comparison.  Without it we
+    fall back to the process namespace (``CDLL(None)``), which is correct on Linux
+    but unreliable on macOS (see ``_find_ssl_lib_path`` for details).
+
     A mismatch means two incompatible libssl instances are in the process; passing
     pointers between them would corrupt memory.
     """
     try:
-        ctypes_lib = ctypes.CDLL(None)
+        ctypes_lib = ctypes.CDLL(ssl_lib_path) if ssl_lib_path else ctypes.CDLL(None)
         ctypes_addr = ctypes.cast(ctypes_lib.SSL_CTX_check_private_key, ctypes.c_void_p).value
         cffi_addr = int(ffi.cast("uintptr_t", lib.SSL_CTX_check_private_key))
         if ctypes_addr != cffi_addr:

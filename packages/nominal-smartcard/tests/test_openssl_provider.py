@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import ssl
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinE
 from nominal.smartcard._openssl_provider import (
     OpenSslProviderBridge,
     _ensure_provider_loaded,
+    _find_ssl_lib_path,
     _get_openssl_error,
     _get_ssl_ctx_ptr,
     _load_pkey_from_store,
@@ -188,6 +190,34 @@ def test_load_x509_from_der_raises_on_truncated_der() -> None:
 
     with pytest.raises(SmartcardConfigurationError, match="Failed to parse DER certificate"):
         _load_x509_from_der(ffi, lib, b"\x30\x82")
+
+
+# _find_ssl_lib_path
+
+
+def test_find_ssl_lib_path_returns_none_on_non_darwin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert _find_ssl_lib_path() is None
+
+
+def test_find_ssl_lib_path_returns_none_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert _find_ssl_lib_path() is None
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only")
+def test_find_ssl_lib_path_returns_existing_file_on_macos() -> None:
+    path = _find_ssl_lib_path()
+    assert path is not None, "_find_ssl_lib_path() returned None on macOS (is libssl loaded?)"
+    assert "libssl" in path
+    assert Path(path).exists(), f"Returned path does not exist on disk: {path}"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only")
+def test_find_ssl_lib_path_dyld_exception_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If the dyld API raises unexpectedly, _find_ssl_lib_path returns None gracefully."""
+    monkeypatch.setattr(ctypes, "CDLL", MagicMock(side_effect=OSError("no libSystem")))
+    assert _find_ssl_lib_path() is None
 
 
 # _validate_library_binding
