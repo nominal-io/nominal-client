@@ -176,7 +176,7 @@ class DefaultPkcs11Backend(Pkcs11Backend):
                             if not isinstance(object_id_bytes, (bytes, bytearray)):
                                 object_id_bytes = bytes(object_id_bytes)
                         except pkcs11.exceptions.PKCS11Error:
-                            object_id_bytes = b""
+                            object_id_bytes = None
 
                         try:
                             der_certificate = cert_obj[Attribute.VALUE]
@@ -185,8 +185,11 @@ class DefaultPkcs11Backend(Pkcs11Backend):
                         except pkcs11.exceptions.PKCS11Error:
                             der_certificate = b""
 
-                        object_id_str = object_id_bytes.hex() if object_id_bytes else None
-                        piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str or "") if object_id_str else None
+                        if object_id_bytes is None:
+                            continue
+
+                        object_id_str = object_id_bytes.hex()
+                        piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str)
                         certificate_uri = _build_pkcs11_uri(token_label, object_id_bytes, object_type="cert")
                         private_key_uri = _build_pkcs11_uri(token_label, object_id_bytes, object_type="private")
 
@@ -197,6 +200,8 @@ class DefaultPkcs11Backend(Pkcs11Backend):
                                 certificate_uri=certificate_uri,
                                 private_key_uri=private_key_uri,
                                 der_certificate=der_certificate,
+                                token_label=token_label,
+                                object_id_bytes=object_id_bytes,
                             )
                         )
             except pkcs11.exceptions.PKCS11Error:

@@ -47,6 +47,8 @@ def _candidate(
     certificate_uri: str = "pkcs11:token=CAC;id=%01;type=cert",
     private_key_uri: str = "pkcs11:token=CAC;id=%01;type=private",
     der_certificate: bytes = FAKE_DER,
+    token_label: str = "CAC",
+    object_id_bytes: bytes | None = b"\x01",
 ) -> CertificateCandidate:
     return CertificateCandidate(
         label=label,
@@ -54,6 +56,8 @@ def _candidate(
         certificate_uri=certificate_uri,
         private_key_uri=private_key_uri,
         der_certificate=der_certificate,
+        token_label=token_label,
+        object_id_bytes=object_id_bytes,
     )
 
 
