@@ -32,14 +32,23 @@ class HeaderProvider(ABC):
 
 
 class SslContextProvider(ABC):
-    """Provides an ssl.SSLContext for transport-level mTLS auth.
-
-    Not tied to requests or gRPC. When the client migrates to gRPC, a ``create_grpc_credentials()``
-    method can be added here without changing existing implementations.
-    """
+    """Provides ssl.SSLContext and gRPC ChannelCredentials for transport-level mTLS auth."""
 
     @abstractmethod
     def create_ssl_context(self) -> ssl.SSLContext: ...
+
+    @abstractmethod
+    def create_grpc_channel_credentials(
+        self,
+        *,
+        root_certificates: bytes | None = None,
+        certificate_chain_pem: bytes | None = None,
+    ) -> Any:
+        """Return grpc.ChannelCredentials for smartcard-backed mTLS over gRPC.
+
+        The return type is ``Any`` so that grpcio is not a required import at definition time.
+        """
+        ...
 
 
 @dataclass(frozen=True)
