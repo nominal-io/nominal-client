@@ -140,7 +140,6 @@ def _make_grpc_provider(
     )
 
 
-
 def test_grpc_credentials_calls_grpc_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider = _make_grpc_provider(tmp_path, monkeypatch)
@@ -218,9 +217,7 @@ def test_grpc_credentials_pin_prompted_once(tmp_path: Path, monkeypatch: pytest.
     assert len(prompt_calls) == 1
 
 
-def test_grpc_credentials_signer_receives_correct_token_info(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_grpc_credentials_signer_receives_correct_token_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     candidate = _candidate(
         der_certificate=_make_der_cert(),
@@ -259,9 +256,7 @@ def test_grpc_credentials_signer_receives_correct_token_info(
     assert captured_signer[0]["object_id_bytes"] == b"\x02"
 
 
-def test_grpc_credentials_uses_custom_certificate_chain_pem(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_grpc_credentials_uses_custom_certificate_chain_pem(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider = _make_grpc_provider(tmp_path, monkeypatch)
 
@@ -274,9 +269,7 @@ def test_grpc_credentials_uses_custom_certificate_chain_pem(
     assert fake_ssl_fn.call_args.kwargs["certificate_chain"] == custom_chain
 
 
-def test_grpc_credentials_raises_on_missing_token_label(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_grpc_credentials_raises_on_missing_token_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     candidate = _candidate(
         der_certificate=_make_der_cert(),
@@ -298,9 +291,7 @@ def test_grpc_credentials_raises_on_missing_token_label(
         provider.create_grpc_channel_credentials()
 
 
-def test_grpc_credentials_raises_on_missing_object_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_grpc_credentials_raises_on_missing_object_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     candidate = _candidate(
         der_certificate=_make_der_cert(),
@@ -322,13 +313,9 @@ def test_grpc_credentials_raises_on_missing_object_id(
         provider.create_grpc_channel_credentials()
 
 
-def test_grpc_credentials_close_releases_signer(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_grpc_credentials_close_releases_signer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider = _make_grpc_provider(tmp_path, monkeypatch)
-
-    from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 
     fake_ssl_fn = MagicMock(return_value=MagicMock())
 
