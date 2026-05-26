@@ -14,17 +14,15 @@ from nominal.smartcard._transport import SmartcardSslContextProvider
 
 class _FakeBridge:
     def __init__(self) -> None:
-        self.calls: list[tuple[SmartcardSession, str]] = []
+        self.calls: list[SmartcardSession] = []
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
-    def build_ssl_context(self, *, session: SmartcardSession, pin: str) -> ssl.SSLContext:
-        self.calls.append((session, pin))
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+        self.calls.append(session)
         return self.context
 
 
-def _make_provider(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, pin: str = "123456"
-) -> tuple[SmartcardSslContextProvider, _FakeBridge]:
+def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[SmartcardSslContextProvider, _FakeBridge]:
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
@@ -33,7 +31,6 @@ def _make_provider(
     )
     bridge = _FakeBridge()
     provider = SmartcardSslContextProvider(
-        pin_provider=lambda prompt: pin,
         _session_manager=manager,
         _openssl_bridge=bridge,
     )
@@ -48,13 +45,6 @@ def test_ssl_context_provider_builds_ssl_context(tmp_path: Path, monkeypatch: py
     assert len(bridge.calls) == 1
 
 
-def test_ssl_context_provider_passes_pin_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("cryptography")
-    provider, bridge = _make_provider(tmp_path, monkeypatch, pin="secret")
-    provider.create_ssl_context()
-    assert bridge.calls[0][1] == "secret"
-
-
 def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     module_path = tmp_path / "opensc-pkcs11.so"
@@ -66,12 +56,11 @@ def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypat
     )
     bridge = _FakeBridge()
     provider = SmartcardSslContextProvider(
-        pin_provider=lambda prompt: "pin",
         _session_manager=manager,
         _openssl_bridge=bridge,
     )
     provider.create_ssl_context()
-    assert bridge.calls[0][0].certificate is certificate
+    assert bridge.calls[0].certificate is certificate
 
 
 def test_ssl_context_provider_caches_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

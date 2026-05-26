@@ -6,7 +6,9 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-from nominal.smartcard._cert_selection import CertificateCandidate
+import pkcs11
+
+from nominal.smartcard._cert_selection import PIV_AUTHENTICATION_SLOT, CertificateCandidate
 from nominal.smartcard._errors import SmartcardConfigurationError
 
 NOMINAL_PKCS11_MODULE_ENV_VAR = "NOMINAL_PKCS11_MODULE"
@@ -30,7 +32,7 @@ _WINDOWS_OPENSC_PATHS = (
 # Maps PKCS#11 CKA_ID (hex string) to PIV key reference slot label.
 # Per NIST SP 800-73-4 and OpenSC conventions.
 _OBJECT_ID_TO_PIV_SLOT: dict[str, str] = {
-    "01": "9A",  # PIV Authentication
+    "01": PIV_AUTHENTICATION_SLOT,  # PIV Authentication
     "02": "9C",  # Digital Signature
     "03": "9D",  # Key Management
     "04": "9E",  # Card Authentication
@@ -128,12 +130,6 @@ class DefaultPkcs11Backend(Pkcs11Backend):
     def _get_lib(self) -> Any:
         if self._lib is not None:
             return self._lib
-        try:
-            import pkcs11
-        except ImportError as e:
-            raise SmartcardConfigurationError(
-                "python-pkcs11 is not installed. Run `pip install nominal-smartcard`."
-            ) from e
 
         try:
             lib = pkcs11.lib(str(self.module_path))
@@ -145,8 +141,6 @@ class DefaultPkcs11Backend(Pkcs11Backend):
 
     def list_certificate_candidates(self) -> list[CertificateCandidate]:
         lib = self._get_lib()
-        import pkcs11
-        from pkcs11 import Attribute, CertificateType, ObjectClass
 
         try:
             slots = lib.get_slots(token_present=True)
@@ -161,25 +155,25 @@ class DefaultPkcs11Backend(Pkcs11Backend):
                 with token.open() as session:
                     for cert_obj in session.get_objects(
                         {
-                            Attribute.CLASS: ObjectClass.CERTIFICATE,
-                            Attribute.CERTIFICATE_TYPE: CertificateType.X_509,
+                            pkcs11.Attribute.CLASS: pkcs11.ObjectClass.CERTIFICATE,
+                            pkcs11.Attribute.CERTIFICATE_TYPE: pkcs11.CertificateType.X_509,
                         }
                     ):
                         try:
-                            label_raw = cert_obj[Attribute.LABEL]
+                            label_raw = cert_obj[pkcs11.Attribute.LABEL]
                             label = label_raw.strip() if isinstance(label_raw, str) else None
                         except pkcs11.exceptions.PKCS11Error:
                             label = None
 
                         try:
-                            object_id_bytes = cert_obj[Attribute.ID]
+                            object_id_bytes = cert_obj[pkcs11.Attribute.ID]
                             if not isinstance(object_id_bytes, (bytes, bytearray)):
                                 object_id_bytes = bytes(object_id_bytes)
                         except pkcs11.exceptions.PKCS11Error:
                             object_id_bytes = b""
 
                         try:
-                            der_certificate = cert_obj[Attribute.VALUE]
+                            der_certificate = cert_obj[pkcs11.Attribute.VALUE]
                             if not isinstance(der_certificate, (bytes, bytearray)):
                                 der_certificate = bytes(der_certificate)
                         except pkcs11.exceptions.PKCS11Error:
