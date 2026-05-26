@@ -3,20 +3,25 @@ from __future__ import annotations
 import ctypes
 import ssl
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
+from nominal.smartcard._errors import (
+    SmartcardConfigurationError,
+    SmartcardPinError,
+    SmartcardPinLockedError,
+    SmartcardProviderError,
+)
 from nominal.smartcard._openssl_provider import (
     OpenSslProviderBridge,
     _ensure_provider_loaded,
-    _find_ssl_lib_path,
     _get_openssl_error,
     _get_ssl_ctx_ptr,
     _load_pkey_from_store,
+    _load_python_ssl_library,
     _load_x509_from_der,
+    _python_ssl_extension_path,
     _raise_store_error,
     _validate_library_binding,
 )
@@ -128,22 +133,22 @@ def test_load_pkey_from_store_uri_unchanged_without_pin() -> None:
     lib.OSSL_STORE_open.return_value = ffi.NULL
     lib.ERR_get_error.return_value = 0
 
-    with pytest.raises(SmartcardConfigurationError):
+    with pytest.raises(SmartcardProviderError):
         _load_pkey_from_store(ffi, lib, "pkcs11:object=mykey")
 
     ffi.new.assert_called_once_with("char[]", b"pkcs11:object=mykey")
 
 
-def test_load_pkey_from_store_pin_appended_without_trailing_paren() -> None:
+def test_load_pkey_from_store_raises_config_error_on_open_failure() -> None:
     ffi = MagicMock()
     lib = MagicMock()
     lib.OSSL_STORE_open.return_value = ffi.NULL
     lib.ERR_get_error.return_value = 0
 
-    with pytest.raises(SmartcardConfigurationError):
-        _load_pkey_from_store(ffi, lib, "pkcs11:object=mykey", pin="1234")
+    with pytest.raises(SmartcardProviderError):
+        _load_pkey_from_store(ffi, lib, "pkcs11:object=mykey")
 
-    ffi.new.assert_called_once_with("char[]", b"pkcs11:object=mykey?pin-value=1234")
+    ffi.new.assert_called_once_with("char[]", b"pkcs11:object=mykey")
 
 
 # _raise_store_error
@@ -164,8 +169,8 @@ def test_raise_store_error_pin_locked_takes_priority_over_incorrect() -> None:
         _raise_store_error("CKR_PIN_LOCKED CKR_PIN_INCORRECT", "context")
 
 
-def test_raise_store_error_raises_configuration_error_for_other_errors() -> None:
-    with pytest.raises(SmartcardConfigurationError):
+def test_raise_store_error_raises_provider_error_for_other_errors() -> None:
+    with pytest.raises(SmartcardProviderError):
         _raise_store_error("some other error", "context")
 
 
@@ -192,32 +197,147 @@ def test_load_x509_from_der_raises_on_truncated_der() -> None:
         _load_x509_from_der(ffi, lib, b"\x30\x82")
 
 
-# _find_ssl_lib_path
+# _python_ssl_extension_path
 
 
-def test_find_ssl_lib_path_returns_none_on_non_darwin(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_python_ssl_extension_path_returns_ssl_module_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeSslModule:
+        __file__ = "/tmp/_ssl.test.so"
+
+    monkeypatch.setattr(ssl, "_ssl", FakeSslModule())
+
+    assert _python_ssl_extension_path() == "/tmp/_ssl.test.so"
+
+
+def test_python_ssl_extension_path_returns_none_without_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeSslModule:
+        pass
+
+    monkeypatch.setattr(ssl, "_ssl", FakeSslModule())
+
+    assert _python_ssl_extension_path() is None
+
+
+def test_python_ssl_extension_path_returns_none_when_ssl_has_no_ssl_attr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delattr(ssl, "_ssl", raising=False)
+
+    assert _python_ssl_extension_path() is None
+
+
+def test_python_ssl_extension_path_returns_none_when_file_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeSslModule:
+        __file__ = None
+
+    monkeypatch.setattr(ssl, "_ssl", FakeSslModule())
+
+    assert _python_ssl_extension_path() is None
+
+
+def test_python_ssl_extension_path_returns_none_when_file_is_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeSslModule:
+        __file__ = ""
+
+    monkeypatch.setattr(ssl, "_ssl", FakeSslModule())
+
+    assert _python_ssl_extension_path() is None
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only")
+def test_python_ssl_extension_path_resolves_openssl_symbols_on_macos() -> None:
+    path = _python_ssl_extension_path()
+    assert path is not None
+
+    ctypes_lib = ctypes.CDLL(path)
+    assert ctypes.cast(ctypes_lib.SSL_CTX_check_private_key, ctypes.c_void_p).value is not None
+
+
+# _load_python_ssl_library
+
+
+def test_load_python_ssl_library_returns_none_without_anchor_on_non_darwin(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
     monkeypatch.setattr(sys, "platform", "linux")
-    assert _find_ssl_lib_path() is None
+    monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: None)
+
+    assert _load_python_ssl_library(MagicMock()) is None
 
 
-def test_find_ssl_lib_path_returns_none_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "platform", "win32")
-    assert _find_ssl_lib_path() is None
+def test_load_python_ssl_library_raises_without_anchor_on_macos(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: None)
+
+    with pytest.raises(SmartcardConfigurationError, match="Could not locate Python's _ssl extension"):
+        _load_python_ssl_library(MagicMock())
+
+
+def test_load_python_ssl_library_raises_on_macos_dlopen_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: "/tmp/_ssl.test.so")
+
+    ffi = MagicMock()
+    ffi.dlopen.side_effect = OSError("boom")
+
+    with pytest.raises(SmartcardConfigurationError, match="Failed to load OpenSSL symbols"):
+        _load_python_ssl_library(ffi)
+
+
+def test_load_python_ssl_library_returns_none_on_non_darwin_dlopen_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: "/tmp/_ssl.test.so")
+
+    ffi = MagicMock()
+    ffi.dlopen.side_effect = OSError("no such file")
+
+    assert _load_python_ssl_library(ffi) is None
+
+
+def test_load_python_ssl_library_validates_and_returns_lib_when_anchor_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: "/tmp/_ssl.test.so")
+
+    fake_lib = MagicMock()
+    ffi = MagicMock()
+    ffi.dlopen.return_value = fake_lib
+
+    validated_paths: list[str | None] = []
+
+    def fake_validate(ffi: object, lib: object, python_ssl_path: str | None = None) -> None:
+        validated_paths.append(python_ssl_path)
+
+    monkeypatch.setattr(mod, "_validate_library_binding", fake_validate)
+
+    result = _load_python_ssl_library(ffi)
+
+    assert result is fake_lib
+    assert validated_paths == ["/tmp/_ssl.test.so"]
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only")
-def test_find_ssl_lib_path_returns_existing_file_on_macos() -> None:
-    path = _find_ssl_lib_path()
-    assert path is not None, "_find_ssl_lib_path() returned None on macOS (is libssl loaded?)"
-    assert "libssl" in path
-    assert Path(path).exists(), f"Returned path does not exist on disk: {path}"
+def test_load_python_ssl_library_anchors_cffi_to_python_ssl_on_macos() -> None:
+    pytest.importorskip("cffi")
+    import cffi
 
+    ffi = cffi.FFI()
+    ffi.cdef("""
+        typedef struct ssl_ctx_st SSL_CTX;
+        typedef struct ossl_provider_st OSSL_PROVIDER;
+        typedef struct ossl_lib_ctx_st OSSL_LIB_CTX;
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only")
-def test_find_ssl_lib_path_dyld_exception_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    """If the dyld API raises unexpectedly, _find_ssl_lib_path returns None gracefully."""
-    monkeypatch.setattr(ctypes, "CDLL", MagicMock(side_effect=OSError("no libSystem")))
-    assert _find_ssl_lib_path() is None
+        int SSL_CTX_check_private_key(const SSL_CTX *ctx);
+        OSSL_PROVIDER *OSSL_PROVIDER_load(OSSL_LIB_CTX *libctx, const char *name);
+        unsigned long ERR_get_error(void);
+    """)
+
+    assert _load_python_ssl_library(ffi) is not None
 
 
 # _validate_library_binding
@@ -240,6 +360,23 @@ def test_validate_library_binding_raises_on_address_mismatch(monkeypatch: pytest
         _validate_library_binding(ffi, lib)
 
 
+def test_validate_library_binding_uses_python_ssl_anchor(monkeypatch: pytest.MonkeyPatch) -> None:
+    ffi = MagicMock()
+    lib = MagicMock()
+
+    ffi.cast.return_value = 0x1000
+
+    mock_ctypes_result = MagicMock()
+    mock_ctypes_result.value = 0x1000
+    cdll = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(ctypes, "CDLL", cdll)
+    monkeypatch.setattr(ctypes, "cast", MagicMock(return_value=mock_ctypes_result))
+
+    _validate_library_binding(ffi, lib, python_ssl_path="/tmp/_ssl.test.so")
+
+    cdll.assert_called_once_with("/tmp/_ssl.test.so")
+
+
 def test_validate_library_binding_raises_when_symbol_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     ffi = MagicMock()
     lib = MagicMock()
@@ -247,7 +384,7 @@ def test_validate_library_binding_raises_when_symbol_not_found(monkeypatch: pyte
     # Simulate a platform where SSL_CTX_check_private_key isn't in the process namespace
     monkeypatch.setattr(ctypes, "CDLL", MagicMock(return_value=MagicMock(spec=[])))
 
-    with pytest.raises(SmartcardConfigurationError, match="SSL_CTX_check_private_key symbol not found"):
+    with pytest.raises(SmartcardConfigurationError, match="required OpenSSL symbol was not found"):
         _validate_library_binding(ffi, lib)
 
 

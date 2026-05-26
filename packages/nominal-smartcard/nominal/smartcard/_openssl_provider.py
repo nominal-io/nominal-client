@@ -1,19 +1,32 @@
 from __future__ import annotations
 
 import ctypes
-import os
 import ssl
 import sys
 import threading
 from dataclasses import dataclass
 from typing import Any
 
-from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
+import cffi as _cffi_module
+
+from nominal.smartcard._errors import (
+    SmartcardConfigurationError,
+    SmartcardPinError,
+    SmartcardPinLockedError,
+    SmartcardProviderError,
+)
 from nominal.smartcard._session import SmartcardSession
 
 # OSSL_STORE_INFO_get_type returns this value for private keys.
 _OSSL_STORE_INFO_PKEY = 4
 _PROVIDER_NAME = "pkcs11"
+_OPENSSL_VALIDATION_SYMBOLS = (
+    "SSL_CTX_check_private_key",  # libssl
+    "OSSL_PROVIDER_load",  # libcrypto, OpenSSL 3 provider API
+    "ERR_get_error",  # libcrypto error queue
+)
+_CKR_PIN_LOCKED = "CKR_PIN_LOCKED"
+_CKR_PIN_INCORRECT = "CKR_PIN_INCORRECT"
 
 # Deferred at module import; initialised once by _load_ffi().
 _ffi_lock: threading.Lock = threading.Lock()
@@ -24,70 +37,60 @@ _provider_lock: threading.Lock = threading.Lock()
 _loaded_provider: Any = None  # kept alive for the process lifetime once loaded
 
 
-def _find_ssl_lib_path() -> str | None:
-    """Find the absolute path of the libssl shared library already loaded in this process.
-
-    On macOS, ``dlopen(None)`` (RTLD_DEFAULT) resolves OpenSSL symbols from the
-    macOS system OpenSSL stub embedded in the dyld shared cache rather than from
-    the homebrew / python.org libssl that Python's ``_ssl`` extension uses.
-    Passing ``SSL_CTX*`` pointers created by one OpenSSL to functions from the
-    other causes SIGSEGV because the two builds have incompatible struct layouts.
-
-    We enumerate dyld's image list to find whichever ``libssl`` dylib is already
-    loaded and has a real file path on disk.  The macOS system stub lives only
-    inside the shared cache (no corresponding file on disk), so the
-    ``os.path.exists`` check naturally excludes it while retaining the
-    homebrew / python.org dylib that Python's ssl module actually loaded.
-
-    On Linux, ``dlopen(None)`` typically works because there is usually only a
-    single system OpenSSL in the process namespace, so this function returns
-    ``None`` there and lets callers fall back to ``ffi.dlopen(None)``.
-    """
-    if sys.platform != "darwin":
-        return None
-    try:
-        libsystem = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
-
-        image_count = libsystem._dyld_image_count
-        image_count.restype = ctypes.c_uint32
-
-        get_image_name = libsystem._dyld_get_image_name
-        get_image_name.restype = ctypes.c_char_p
-        get_image_name.argtypes = [ctypes.c_uint32]
-
-        for i in range(image_count()):
-            raw = get_image_name(i)
-            if raw and b"/libssl" in raw:
-                path = raw.decode("utf-8", errors="replace")
-                if os.path.exists(path):
-                    return path
-    except Exception:
-        pass
+def _python_ssl_extension_path() -> str | None:
+    """Return the filesystem path for CPython's ``_ssl`` extension, when available."""
+    path = getattr(getattr(ssl, "_ssl", None), "__file__", None)
+    if isinstance(path, str) and path:
+        return path
     return None
 
 
-def _load_ffi() -> tuple[Any, Any]:
-    """Lazily initialise the cffi bindings to libssl/libcrypto.
+def _load_python_ssl_library(ffi: Any) -> Any | None:
+    """Load OpenSSL symbols through Python's own ``_ssl`` extension.
 
-    We explicitly load the same libssl shared library that Python's own ``_ssl``
-    extension module is linked against.  Using ``ffi.dlopen(None)`` (RTLD_DEFAULT)
-    is *not* safe on macOS: the process-namespace symbol lookup resolves to the
-    macOS system OpenSSL stub (a very old, ABI-incompatible version in the dyld
-    shared cache) rather than to the homebrew / python.org OpenSSL that created
-    the ``SSL_CTX*`` pointers we need to manipulate.  Passing those pointers to
-    functions from a mismatched OpenSSL causes SIGSEGV.
+    CPython's ``ssl.SSLContext`` is backed by the OpenSSL instance linked into
+    the private ``_ssl`` extension. Resolving cffi symbols through that extension
+    lets the dynamic loader follow exactly the same dependency edges Python uses.
+
+    This matters most on macOS: ``dlopen(None)`` may resolve libssl symbols from
+    Apple's dyld shared-cache compatibility library rather than the Homebrew or
+    python.org OpenSSL that created the ``SSL_CTX*`` inside ``ssl.SSLContext``.
+    Passing an ``SSL_CTX*`` to functions from that other library can crash the
+    process. On Darwin, absence of a usable anchor is therefore fatal. On other
+    platforms we keep the older process-namespace fallback for unusual Python
+    builds that do not expose ``ssl._ssl.__file__``.
     """
+    ssl_extension_path = _python_ssl_extension_path()
+    if ssl_extension_path is None:
+        if sys.platform == "darwin":
+            raise SmartcardConfigurationError(
+                "Could not locate Python's _ssl extension. Refusing to bind OpenSSL "
+                "symbols without proving they match ssl.SSLContext."
+            )
+        return None
+
+    try:
+        lib = ffi.dlopen(ssl_extension_path)
+    except OSError as e:
+        if sys.platform == "darwin":
+            raise SmartcardConfigurationError(
+                "Failed to load OpenSSL symbols through Python's _ssl extension. "
+                "Refusing to bind OpenSSL symbols without proving they match ssl.SSLContext."
+            ) from e
+        return None
+
+    _validate_library_binding(ffi, lib, python_ssl_path=ssl_extension_path)
+    return lib
+
+
+def _load_ffi() -> tuple[Any, Any]:
+    """Lazily initialise the cffi bindings to libssl/libcrypto."""
     global _ffi, _lib
     with _ffi_lock:
         if _ffi is not None:
             return _ffi, _lib
 
-        try:
-            import cffi
-        except ImportError as e:
-            raise SmartcardConfigurationError("cffi is not installed. Run `pip install nominal-smartcard`.") from e
-
-        ffi = cffi.FFI()
+        ffi = _cffi_module.FFI()
         ffi.cdef("""
             /* Opaque handles */
             typedef struct ssl_ctx_st          SSL_CTX;
@@ -140,47 +143,48 @@ def _load_ffi() -> tuple[Any, Any]:
             void          ERR_error_string_n(unsigned long e, char *buf, size_t len);
         """)
 
-        ssl_lib_path = _find_ssl_lib_path()
-
-        # Load the exact libssl that Python's _ssl extension is linked against
-        # when we can identify it. Falling back to dlopen(None) is kept for
-        # Linux/unknown platforms where the process namespace is the best
-        # available option.
-        lib = ffi.dlopen(ssl_lib_path) if ssl_lib_path else ffi.dlopen(None)
-        _validate_library_binding(ffi, lib, ssl_lib_path=ssl_lib_path)
+        lib = _load_python_ssl_library(ffi)
+        if lib is None:
+            lib = ffi.dlopen(None)
+            _validate_library_binding(ffi, lib)
 
         _ffi = ffi
         _lib = lib
         return ffi, lib
 
 
-def _validate_library_binding(ffi: Any, lib: Any, ssl_lib_path: str | None = None) -> None:
-    """Verify that our cffi handle resolves to the same libssl Python's ssl module uses.
+def _validate_library_binding(ffi: Any, lib: Any, python_ssl_path: str | None = None) -> None:
+    """Verify that our cffi handle resolves to Python's OpenSSL symbols.
 
-    We compare the address of ``SSL_CTX_check_private_key`` as seen through ctypes
-    against what cffi resolved.  When ``ssl_lib_path`` is provided we load both via
-    that explicit path, guaranteeing an apples-to-apples comparison.  Without it we
-    fall back to the process namespace (``CDLL(None)``), which is correct on Linux
-    but unreliable on macOS (see ``_find_ssl_lib_path`` for details).
+    When ``python_ssl_path`` is provided, ``ctypes`` opens Python's private
+    ``_ssl`` extension and resolves symbols through the same dependency graph
+    that backs ``ssl.SSLContext``. Without it, this falls back to the process
+    namespace for platforms where that remains the best available option.
 
-    A mismatch means two incompatible libssl instances are in the process; passing
-    pointers between them would corrupt memory.
+    A mismatch means two incompatible OpenSSL instances are in the process;
+    passing pointers between them would corrupt memory.
     """
     try:
-        ctypes_lib = ctypes.CDLL(ssl_lib_path) if ssl_lib_path else ctypes.CDLL(None)
-        ctypes_addr = ctypes.cast(ctypes_lib.SSL_CTX_check_private_key, ctypes.c_void_p).value
-        cffi_addr = int(ffi.cast("uintptr_t", lib.SSL_CTX_check_private_key))
-        if ctypes_addr != cffi_addr:
-            raise SmartcardConfigurationError(
-                "The libssl instance loaded by cffi does not match the one Python's ssl module uses. "
-                "This would cause memory corruption. Ensure only one OpenSSL installation is active."
-            )
-    except AttributeError:
+        ctypes_lib = ctypes.CDLL(python_ssl_path) if python_ssl_path else ctypes.CDLL(None)
+        for symbol in _OPENSSL_VALIDATION_SYMBOLS:
+            ctypes_addr = ctypes.cast(getattr(ctypes_lib, symbol), ctypes.c_void_p).value
+            cffi_addr = int(ffi.cast("uintptr_t", getattr(lib, symbol)))
+            if ctypes_addr != cffi_addr:
+                raise SmartcardConfigurationError(
+                    f"The OpenSSL symbol {symbol!r} loaded by cffi does not match the expected OpenSSL symbols. "
+                    "This would cause memory corruption. Ensure only one OpenSSL installation is active."
+                )
+    except AttributeError as e:
         raise SmartcardConfigurationError(
-            "Failed to validate OpenSSL library binding: SSL_CTX_check_private_key symbol not "
-            "found in ctypes. This may indicate an unsupported platform or Python build. "
+            "Failed to validate OpenSSL library binding: a required OpenSSL symbol was not "
+            "found. This may indicate an unsupported platform or Python build. "
             "Use a standard CPython build."
-        )
+        ) from e
+    except OSError as e:
+        raise SmartcardConfigurationError(
+            "Failed to validate OpenSSL library binding: could not open library. "
+            "This may indicate an unsupported platform or Python build. Use a standard CPython build."
+        ) from e
 
 
 def _ensure_provider_loaded(ffi: Any, lib: Any) -> None:
@@ -212,16 +216,16 @@ def _get_openssl_error(ffi: Any, lib: Any) -> str:
         return "unknown error"
     buf = ffi.new("char[256]")
     lib.ERR_error_string_n(err, buf, 256)
-    return ffi.string(buf).decode("utf-8", errors="replace")  # type: ignore[no-any-return]
+    return ffi.string(buf).decode("utf-8", errors="replace")
 
 
 def _raise_store_error(err: str, context: str) -> None:
     """Raise the most specific PIN or configuration error for an OSSL_STORE failure."""
-    if "CKR_PIN_LOCKED" in err:
+    if _CKR_PIN_LOCKED in err:
         raise SmartcardPinLockedError(f"{context}: {err}")
-    if "CKR_PIN_INCORRECT" in err:
+    if _CKR_PIN_INCORRECT in err:
         raise SmartcardPinError(f"{context}: {err}")
-    raise SmartcardConfigurationError(f"{context}: {err}")
+    raise SmartcardProviderError(f"{context}: {err}")
 
 
 def _get_ssl_ctx_ptr(ffi: Any, ssl_context: ssl.SSLContext) -> Any:
@@ -266,17 +270,9 @@ def _get_ssl_ctx_ptr(ffi: Any, ssl_context: ssl.SSLContext) -> Any:
     return ffi.cast("SSL_CTX *", raw)
 
 
-def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str, pin: str | None = None) -> Any:
-    """Open a PKCS#11 URI via OSSL_STORE and return the first EVP_PKEY found.
-
-    When pin is provided it is embedded as ?pin-value=... so that pkcs11-provider
-    can authenticate its own PKCS#11 session independently of any PyKCS11 session.
-    This is necessary on real hardware tokens (DoD CAC, PIV) where C_Login state is
-    not shared across separate C_Initialize call chains.  The cffi buffer holding
-    the URI (including the PIN) is zeroed immediately after OSSL_STORE_open returns.
-    """
-    uri = private_key_uri if pin is None else f"{private_key_uri}?pin-value={pin}"
-    uri_bytes = uri.encode()
+def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str) -> Any:
+    """Open a PKCS#11 URI via OSSL_STORE and return the first EVP_PKEY found."""
+    uri_bytes = private_key_uri.encode()
     uri_buf = ffi.new("char[]", uri_bytes)
     try:
         store = lib.OSSL_STORE_open(uri_buf, ffi.NULL, ffi.NULL, ffi.NULL, ffi.NULL)
@@ -287,8 +283,8 @@ def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str, pin: str | N
         err = _get_openssl_error(ffi, lib)
         _raise_store_error(
             err,
-            f"OSSL_STORE_open failed for URI {private_key_uri!r} — "
-            "verify pkcs11-provider is installed and the PKCS#11 module path is correct",
+            f"OSSL_STORE_open failed for URI {private_key_uri!r}. "
+            "Verify pkcs11-provider is installed and the PKCS#11 module path is correct",
         )
 
     pkey = ffi.NULL
@@ -341,14 +337,14 @@ class OpenSslProviderBridge:
     Every subsequent TLS handshake runs entirely in compiled C.
     """
 
-    def build_ssl_context(self, *, session: SmartcardSession, pin: str) -> ssl.SSLContext:
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
         ffi, lib = _load_ffi()
         _ensure_provider_loaded(ffi, lib)
 
         pkey = ffi.NULL
         x509 = ffi.NULL
         try:
-            pkey = _load_pkey_from_store(ffi, lib, session.private_key_uri, pin)
+            pkey = _load_pkey_from_store(ffi, lib, session.private_key_uri)
             x509 = _load_x509_from_der(ffi, lib, session.certificate.der_certificate)
 
             ssl_ctx = self._make_base_ssl_context()
@@ -356,7 +352,7 @@ class OpenSslProviderBridge:
 
             # Sentinel: a freshly-created SSL_CTX must carry no certificate.
             # A non-NULL return means we read the wrong memory offset and must
-            # not proceed — the subsequent SSL_CTX_use_* calls would corrupt
+            # not proceed since the subsequent SSL_CTX_use_* calls would corrupt
             # whatever struct (if any) raw_ctx actually points at.
             if lib.SSL_CTX_get0_certificate(raw_ctx) != ffi.NULL:
                 raise SmartcardConfigurationError(

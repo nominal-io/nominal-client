@@ -150,7 +150,7 @@ def test_default_pkcs11_backend_list_certificate_candidates(tmp_path: Path) -> N
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+    with patch.object(_pkcs11, "pkcs11", mock_pkcs11):
         backend = DefaultPkcs11Backend(module_path)
         candidates = backend.list_certificate_candidates()
 
@@ -172,7 +172,7 @@ def test_default_pkcs11_backend_session_closed_after_listing_candidates(tmp_path
     token = lib.get_slots.return_value[0].get_token.return_value
     session_cm = token.open.return_value
 
-    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+    with patch.object(_pkcs11, "pkcs11", mock_pkcs11):
         backend = DefaultPkcs11Backend(module_path)
         backend.list_certificate_candidates()
 
@@ -189,7 +189,7 @@ def test_default_pkcs11_backend_session_closed_with_no_certificate_candidates(tm
     token = lib.get_slots.return_value[0].get_token.return_value
     session_cm = token.open.return_value
 
-    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+    with patch.object(_pkcs11, "pkcs11", mock_pkcs11):
         backend = DefaultPkcs11Backend(module_path)
         assert backend.list_certificate_candidates() == []
 
@@ -206,7 +206,7 @@ def test_default_pkcs11_backend_session_closed_when_certificate_lookup_fails(tmp
     token = lib.get_slots.return_value[0].get_token.return_value
     session_cm = token.open.return_value
 
-    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+    with patch.object(_pkcs11, "pkcs11", mock_pkcs11):
         backend = DefaultPkcs11Backend(module_path)
         assert backend.list_certificate_candidates() == []
 
@@ -225,7 +225,7 @@ def test_default_pkcs11_backend_skips_slots_that_fail_to_open(tmp_path: Path) ->
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+    with patch.object(_pkcs11, "pkcs11", mock_pkcs11):
         backend = DefaultPkcs11Backend(module_path)
         candidates = backend.list_certificate_candidates()
 
@@ -237,7 +237,7 @@ def test_default_pkcs11_backend_close_clears_lib(tmp_path: Path) -> None:
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+    with patch.object(_pkcs11, "pkcs11", mock_pkcs11):
         backend = DefaultPkcs11Backend(module_path)
         backend.list_certificate_candidates()  # populates _lib
         assert backend._lib is not None
@@ -252,7 +252,7 @@ def test_default_pkcs11_backend_strips_trailing_whitespace_from_token_label(tmp_
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
 
-    with patch.dict("sys.modules", {"pkcs11": mock_pkcs11}):
+    with patch.object(_pkcs11, "pkcs11", mock_pkcs11):
         backend = DefaultPkcs11Backend(module_path)
         candidates = backend.list_certificate_candidates()
 

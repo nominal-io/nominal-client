@@ -11,6 +11,10 @@ class SmartcardConfigurationError(SmartcardError):
     """Smartcard configuration or local machine setup is invalid."""
 
 
+class SmartcardProviderError(SmartcardError):
+    """The PKCS#11 provider returned an unexpected error that could not be classified."""
+
+
 class SmartcardCertificateSelectionError(SmartcardError):
     """The PIV Authentication certificate could not be selected deterministically."""
 

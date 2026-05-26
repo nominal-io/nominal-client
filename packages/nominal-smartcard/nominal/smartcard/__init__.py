@@ -4,6 +4,7 @@ from nominal.smartcard._errors import (
     SmartcardError,
     SmartcardPinError,
     SmartcardPinLockedError,
+    SmartcardProviderError,
 )
 from nominal.smartcard._transport import SmartcardSslContextProvider
 
@@ -13,5 +14,6 @@ __all__ = [
     "SmartcardError",
     "SmartcardPinError",
     "SmartcardPinLockedError",
+    "SmartcardProviderError",
     "SmartcardSslContextProvider",
 ]

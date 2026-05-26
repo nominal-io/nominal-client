@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import getpass
 import ssl
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from grpc.experimental import ssl_channel_credentials_with_custom_signer
 
 from nominal.core._utils.networking import SslContextProvider
-from nominal.smartcard._errors import SmartcardConfigurationError
+
+from nominal.smartcard._errors import SmartcardPinError, SmartcardPinLockedError, SmartcardProviderError
 from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
 
-PinProvider = Callable[[str], str]
+MAX_PIN_ATTEMPTS = 3
 
 
 @dataclass
@@ -32,7 +31,6 @@ class SmartcardSslContextProvider(SslContextProvider):
     after the first successful call.
     """
 
-    pin_provider: PinProvider = field(default=getpass.getpass, repr=False, compare=False)
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
     _openssl_bridge: OpenSslProviderBridge | None = field(default=None, repr=False, compare=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
@@ -60,9 +58,24 @@ class SmartcardSslContextProvider(SslContextProvider):
         with self._lock:
             if self._cached_ctx is None:
                 session = self.session_manager.get_session()
-                self._cached_ctx = self.openssl_bridge.build_ssl_context(
-                    session=session, pin=self.pin_provider("Card PIN: ")
-                )
+                for attempt in range(MAX_PIN_ATTEMPTS):
+                    remaining = MAX_PIN_ATTEMPTS - attempt - 1
+                    try:
+                        self._cached_ctx = self.openssl_bridge.build_ssl_context(session=session)
+                        break
+                    except SmartcardPinLockedError:
+                        raise SystemExit("Card PIN is locked. Contact your security administrator.")
+                    except (SmartcardPinError, SmartcardProviderError) as exc:
+                        if isinstance(exc, SmartcardPinError):
+                            base_message = "Incorrect PIN."
+                        else:
+                            base_message = (
+                                "Authentication failed. An unexpected error occurred which may "
+                                "indicate an incorrect PIN."
+                            )
+                        if remaining == 0:
+                            raise SystemExit(f"{base_message} No attempts remaining.")
+                        print(f"{base_message} {remaining} attempt(s) remaining, please try again.")
             return self._cached_ctx
 
     def create_grpc_channel_credentials(

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from cryptography import x509
+from cryptography.x509.oid import ExtendedKeyUsageOID
+
 from nominal.smartcard._errors import SmartcardCertificateSelectionError
 
 """Slot 9A is reserved for PIV Authentication keys on the smartcard."""
@@ -38,15 +41,6 @@ def _assert_client_auth_eku(candidate: CertificateCandidate) -> None:
             f"Certificate {candidate.label or candidate.certificate_uri!r} has no DER data; "
             "cannot verify ExtendedKeyUsage."
         )
-    try:
-        from cryptography import x509
-        from cryptography.x509.oid import ExtendedKeyUsageOID
-    except ImportError:
-        raise SmartcardCertificateSelectionError(
-            "The 'cryptography' library is required to validate certificate EKU. "
-            "Install it with: pip install nominal-smartcard"
-        )
-
     cert = x509.load_der_x509_certificate(candidate.der_certificate)
     try:
         eku = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
