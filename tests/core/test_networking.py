@@ -33,9 +33,6 @@ class _FakeSslContextProvider(SslContextProvider):
     def create_ssl_context(self):
         return self.ssl_context
 
-    def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
-        raise NotImplementedError
-
 
 def test_gzip_adapter_updates_content_length_after_compression() -> None:
     """Content-Length must reflect the compressed body size, not the original."""

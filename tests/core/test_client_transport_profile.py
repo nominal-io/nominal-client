@@ -12,9 +12,6 @@ class _FakeSslContextProvider(SslContextProvider):
     def create_ssl_context(self) -> ssl.SSLContext:
         return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
-    def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
-        raise NotImplementedError
-
 
 def test_from_profile_passes_explicit_ssl_context_provider_to_clients_bunch() -> None:
     profile = ConfigProfile(

@@ -23,9 +23,6 @@ class _FakeSslContextProvider(SslContextProvider):
     def create_ssl_context(self) -> ssl.SSLContext:
         return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
-    def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
-        raise NotImplementedError
-
 
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
     workspace = MagicMock()
