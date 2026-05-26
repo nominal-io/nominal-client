@@ -128,7 +128,7 @@ class Workspace(HasRid, RefreshableMixin[security_api_workspace.Workspace]):
         elif preferred_procedures is not None and preferred_refnames is not None:
             workspace_settings_req = security_api_workspace.WorkspaceSettings(
                 procedures=security_api_workspace.ProcedureSettings(
-                    v1=security_api_workspace.ProcedureSettingsV1(workspace_procedures=preferred_procedures)
+                    v1=security_api_workspace.ProcedureSettingsV1(workspace_procedures=[*preferred_procedures])
                 ),
                 ref_names=security_api_workspace.PreferredRefNameConfiguration(
                     v1=[
