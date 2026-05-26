@@ -42,14 +42,7 @@ class Workspace(HasRid, RefreshableMixin[security_api_workspace.Workspace]):
 
     @property
     def preferred_refnames(self) -> Mapping[str, DataSourceType]:
-        """Get list of preferred refnames for the given datasource type.
-
-        Args:
-            datasource_type: Optionally filter preferred refnames by datasource type
-
-        Returns:
-            List of preferred refnames for the given datasource type (or all preferred refnames if none provided)
-        """
+        """Get mapping of preferred refnames to their respective datasource types that they apply towards."""
         refname_settings = self._workspace_settings.ref_names
         if refname_settings is None:
             return {}
@@ -117,7 +110,7 @@ class Workspace(HasRid, RefreshableMixin[security_api_workspace.Workspace]):
             workspace.update(preferred_refnames={**workspace.preferred_refnames, "apples": DataSourceType.DATASET})
             ```
 
-        NOTE: If setting preferred procedures or preferred refnames, *both* must be set, or neither must be set.
+        NOTE: If setting preferred procedures or preferred refnames, *both* must be set, or *neither* must be set.
               Otherwise, setting one but not the other would clear out configuration for the other.
         """
         display_name_req = None
@@ -129,7 +122,8 @@ class Workspace(HasRid, RefreshableMixin[security_api_workspace.Workspace]):
             preferred_procedures is None and preferred_refnames is not None
         ):
             raise ValueError(
-                "Cannot set only preferred procedures or preferred refnames-- either both or neither must be provided!"
+                "Both preferred_procedures and preferred_refnames must be provided together, or neither should be "
+                "provided. This prevents accidentally clearing one setting when updating the other."
             )
         elif preferred_procedures is not None and preferred_refnames is not None:
             workspace_settings_req = security_api_workspace.WorkspaceSettings(

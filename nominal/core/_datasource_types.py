@@ -28,7 +28,7 @@ class DataSourceType(Enum):
             case "UNKNOWN":
                 return cls.UNKNOWN
             case _:
-                raise ValueError(f"Unknown datasource type: {datasource_type.name}")
+                raise ValueError(f"Unknown datasource type: {datasource_type.value}")
 
     def _to_conjure(self) -> api.DataSourceType:
         match self.value:
@@ -42,3 +42,5 @@ class DataSourceType(Enum):
                 return api.DataSourceType.SPATIAL
             case "UNKNOWN":
                 return api.DataSourceType.UNKNOWN
+            case _:
+                raise ValueError(f"Unknown datasource type: {self.value}")
