@@ -8,8 +8,12 @@ from typing import Any
 from grpc.experimental import ssl_channel_credentials_with_custom_signer
 
 from nominal.core._utils.networking import SslContextProvider
-
-from nominal.smartcard._errors import SmartcardPinError, SmartcardPinLockedError, SmartcardProviderError
+from nominal.smartcard._errors import (
+    SmartcardConfigurationError,
+    SmartcardPinError,
+    SmartcardPinLockedError,
+    SmartcardProviderError,
+)
 from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
@@ -86,23 +90,16 @@ class SmartcardSslContextProvider(SslContextProvider):
     ) -> Any:
         """Return ``grpc.ChannelCredentials`` for smartcard-backed mTLS over gRPC.
 
-        The private key never leaves the card; signing is performed via a PKCS#11 callback
-        on every TLS handshake.
-
         ``root_certificates`` is forwarded to gRPC as the trusted CA bundle. ``None`` causes
-        gRPC to use system roots.
-
-        ``certificate_chain_pem`` allows supplying additional intermediate certificates in PEM
-        format. When ``None`` (the default), only the leaf certificate from the card is used.
-
-        Both arguments are fixed on the first call; subsequent calls return the cached credentials.
+        gRPC to use system roots. ``certificate_chain_pem`` allows supplying additional
+        intermediate certificates in PEM format. When ``None`` (the default), only the leaf
+        certificate from the card is used.
         """
         with self._lock:
             if self._cached_grpc_credentials is not None:
                 return self._cached_grpc_credentials
 
             session = self.session_manager.get_session()
-            pin = self.pin_provider("Card PIN: ")
 
             token_label = session.certificate.token_label
             object_id_bytes = session.certificate.object_id_bytes
@@ -122,7 +119,6 @@ class SmartcardSslContextProvider(SslContextProvider):
                 module_path=session.module_path,
                 token_label=token_label,
                 object_id_bytes=object_id_bytes,
-                pin=pin,
             )
 
             if certificate_chain_pem is None:

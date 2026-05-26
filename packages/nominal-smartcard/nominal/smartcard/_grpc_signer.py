@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import getpass
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +22,13 @@ _ECDSA_ALGORITHMS: frozenset[grpc.experimental.PrivateKeySignatureAlgorithm] = f
     }
 )
 
+
 # Session-invalidating PKCS#11 errors that warrant clearing cached session state so that
 # the next sign() attempt can re-establish a fresh session (e.g. after card removal/reinsert).
+def _prompt_for_pin(prompt: str) -> str:
+    return getpass.getpass(prompt)
+
+
 _SESSION_INVALIDATING_ERRORS: tuple[str, ...] = (
     "DeviceRemoved",
     "TokenNotPresent",
@@ -86,12 +93,12 @@ class SmartcardPrivateKeySigner:
         module_path: Path,
         token_label: str,
         object_id_bytes: bytes,
-        pin: str,
+        pin_provider: Callable[[str], str] | None = None,
     ) -> None:
         self._module_path = module_path
         self._token_label = token_label
         self._object_id_bytes = object_id_bytes
-        self._pin = pin
+        self._pin_provider = pin_provider
         self._session: Any = None
         self._key: Any = None
         self._lock = threading.Lock()
@@ -135,8 +142,9 @@ class SmartcardPrivateKeySigner:
                 "Verify the smartcard is inserted and the token label is correct."
             )
 
+        pin_fn = self._pin_provider if self._pin_provider is not None else _prompt_for_pin
         try:
-            session = token.open(user_pin=self._pin)
+            session = token.open(user_pin=pin_fn("Card PIN: "))
         except _pkcs11_exc.PinIncorrect:
             raise SmartcardPinError(f"Incorrect PIN for token {self._token_label!r}.") from None
         except _pkcs11_exc.PinLocked:
@@ -212,7 +220,6 @@ class SmartcardPrivateKeySigner:
                     pass
                 self._session = None
                 self._key = None
-            self._pin = ""
 
     def __del__(self) -> None:
         try:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -23,13 +24,13 @@ def _make_signer(
     module_path: Path | None = None,
     token_label: str = "CAC",
     object_id_bytes: bytes = b"\x01",
-    pin: str = "123456",
+    pin_provider: Callable[[str], str] = lambda _: "123456",
 ) -> SmartcardPrivateKeySigner:
     return SmartcardPrivateKeySigner(
         module_path=module_path or Path("/fake/opensc-pkcs11.so"),
         token_label=token_label,
         object_id_bytes=object_id_bytes,
-        pin=pin,
+        pin_provider=pin_provider,
     )
 
 
@@ -248,25 +249,50 @@ def test_session_opened_once_across_multiple_sign_calls() -> None:
     token.open.assert_called_once()
 
 
-def test_pin_retained_during_session_for_recovery() -> None:
+def test_pin_provider_called_on_session_open() -> None:
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
-    signer = _make_signer(pin="secret")
+    prompt_calls: list[str] = []
+
+    def counting_provider(prompt: str) -> str:
+        prompt_calls.append(prompt)
+        return "123456"
+
+    signer = _make_signer(pin_provider=counting_provider)
 
     with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
-        signer.sign(b"data", _A.ECDSA_SECP256R1_SHA256, None)
+        signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
+        signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
 
-    assert signer._pin == "secret"
+    assert len(prompt_calls) == 1
 
 
-def test_pin_cleared_after_close() -> None:
+def test_pin_provider_called_again_after_device_removed() -> None:
+    import pkcs11.exceptions
+
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
-    signer = _make_signer(pin="secret")
+    prompt_calls: list[str] = []
+
+    def counting_provider(prompt: str) -> str:
+        prompt_calls.append(prompt)
+        return "123456"
+
+    signer = _make_signer(pin_provider=counting_provider)
 
     with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
-        signer.sign(b"data", _A.ECDSA_SECP256R1_SHA256, None)
+        signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
 
-    signer.close()
-    assert signer._pin == ""
+        key = pkcs11_mod.lib.return_value.get_slots.return_value[
+            0
+        ].get_token.return_value.open.return_value.get_key.return_value
+        key.sign.side_effect = pkcs11.exceptions.DeviceRemoved("card pulled")
+        with pytest.raises(SmartcardConfigurationError):
+            signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
+
+        key.sign.side_effect = None
+        key.sign.return_value = b"\x00" * 64
+        signer.sign(b"data3", _A.ECDSA_SECP256R1_SHA256, None)
+
+    assert len(prompt_calls) == 2
 
 
 def test_session_opened_concurrently_only_once(monkeypatch: pytest.MonkeyPatch) -> None:

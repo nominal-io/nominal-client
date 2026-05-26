@@ -120,13 +120,11 @@ def _make_grpc_provider(
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
+    monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda prompt: pin)
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
     )
-    return SmartcardSslContextProvider(
-        pin_provider=lambda prompt: pin,
-        _session_manager=manager,
-    )
+    return SmartcardSslContextProvider(_session_manager=manager)
 
 
 def test_grpc_credentials_calls_grpc_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,34 +176,6 @@ def test_grpc_credentials_cached(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert fake_ssl_fn.call_count == 1
 
 
-def test_grpc_credentials_pin_prompted_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("cryptography")
-    prompt_calls: list[str] = []
-
-    def counting_pin_provider(prompt: str) -> str:
-        prompt_calls.append(prompt)
-        return "123456"
-
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_text("")
-    monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    manager = SmartcardSessionManager(
-        backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
-    )
-    provider = SmartcardSslContextProvider(
-        pin_provider=counting_pin_provider,
-        _session_manager=manager,
-    )
-
-    fake_ssl_fn = MagicMock(return_value=MagicMock())
-
-    with patch("nominal.smartcard._transport.ssl_channel_credentials_with_custom_signer", fake_ssl_fn):
-        provider.create_grpc_channel_credentials()
-        provider.create_grpc_channel_credentials()
-
-    assert len(prompt_calls) == 1
-
-
 def test_grpc_credentials_signer_receives_correct_token_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     candidate = _candidate(
@@ -216,13 +186,11 @@ def test_grpc_credentials_signer_receives_correct_token_info(tmp_path: Path, mon
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
+    monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda prompt: "pin")
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [candidate]),
     )
-    provider = SmartcardSslContextProvider(
-        pin_provider=lambda prompt: "pin",
-        _session_manager=manager,
-    )
+    provider = SmartcardSslContextProvider(_session_manager=manager)
 
     captured_signer: list[dict[str, object]] = []
 
@@ -271,10 +239,7 @@ def test_grpc_credentials_raises_on_missing_token_label(tmp_path: Path, monkeypa
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [candidate]),
     )
-    provider = SmartcardSslContextProvider(
-        pin_provider=lambda prompt: "pin",
-        _session_manager=manager,
-    )
+    provider = SmartcardSslContextProvider(_session_manager=manager)
 
     with pytest.raises(SmartcardConfigurationError, match="token label"):
         provider.create_grpc_channel_credentials()
@@ -293,10 +258,7 @@ def test_grpc_credentials_raises_on_missing_object_id(tmp_path: Path, monkeypatc
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [candidate]),
     )
-    provider = SmartcardSslContextProvider(
-        pin_provider=lambda prompt: "pin",
-        _session_manager=manager,
-    )
+    provider = SmartcardSslContextProvider(_session_manager=manager)
 
     with pytest.raises(SmartcardConfigurationError, match="object ID"):
         provider.create_grpc_channel_credentials()
