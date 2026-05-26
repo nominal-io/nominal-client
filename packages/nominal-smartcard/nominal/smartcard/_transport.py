@@ -47,3 +47,6 @@ class SmartcardSslContextProvider(SslContextProvider):
                     session=session, pin=self.pin_provider("Card PIN: ")
                 )
             return self._cached_ctx
+
+    def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
+        raise NotImplementedError("gRPC channel credentials not yet implemented for smartcard auth")
