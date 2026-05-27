@@ -10,8 +10,7 @@ from _helpers import _candidate, _FakeBackend, _make_der_cert
 
 pytest.importorskip("cryptography")
 
-from nominal.smartcard._errors import SmartcardConfigurationError
-from nominal.smartcard._errors import SmartcardPinError, SmartcardProviderError
+from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardProviderError
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import SmartcardSslContextProvider
