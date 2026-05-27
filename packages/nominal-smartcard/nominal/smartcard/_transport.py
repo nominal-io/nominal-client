@@ -3,6 +3,7 @@ from __future__ import annotations
 import ssl
 import threading
 from dataclasses import dataclass, field
+from typing import Any
 
 from nominal.core._utils.networking import SslContextProvider
 from nominal.smartcard._errors import SmartcardPinError, SmartcardPinLockedError, SmartcardProviderError
@@ -58,7 +59,13 @@ class SmartcardSslContextProvider(SslContextProvider):
                             "Authentication failed. PIN entry may have been cancelled, or an unexpected "
                             "smartcard provider error occurred."
                         ) from exc
+            assert self._cached_ctx is not None
             return self._cached_ctx
 
-    def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
+    def create_grpc_channel_credentials(
+        self,
+        *,
+        root_certificates: bytes | None = None,
+        certificate_chain_pem: bytes | None = None,
+    ) -> Any:
         raise NotImplementedError("gRPC channel credentials not yet implemented for smartcard auth")

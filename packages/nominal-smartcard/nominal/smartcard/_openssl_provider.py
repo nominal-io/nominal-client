@@ -216,7 +216,7 @@ def _get_openssl_error(ffi: Any, lib: Any) -> str:
         return "unknown error"
     buf = ffi.new("char[256]")
     lib.ERR_error_string_n(err, buf, 256)
-    return ffi.string(buf).decode("utf-8", errors="replace")
+    return str(ffi.string(buf).decode("utf-8", errors="replace"))
 
 
 def _raise_store_error(err: str, context: str) -> None:
@@ -331,6 +331,8 @@ class _LockedSSLContext(ssl.SSLContext):
     session, which is not thread-safe. Serializing wrap_socket (which runs the
     full handshake) prevents concurrent access to the underlying token session.
     """
+
+    _wrap_lock: threading.Lock
 
     def __new__(cls, *args: Any, **kwargs: Any) -> _LockedSSLContext:
         instance: _LockedSSLContext = super().__new__(cls, *args, **kwargs)
