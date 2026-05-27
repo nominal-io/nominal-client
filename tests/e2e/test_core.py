@@ -311,3 +311,73 @@ def test_batch_add_channels(client: NominalClient, archive: ArchiveFn) -> None:
     assert channels["velocity"].unit == "m/s"
     assert channels["temperature"].unit == "degC"
     assert channels["status"].description == "system status"
+
+
+def test_run_create_workbook(client: NominalClient, archive: ArchiveFn) -> None:
+    """run.create_workbook produces a workbook scoped to the run and public by default."""
+    run = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
+    archive(run)
+
+    workbook = run.create_workbook(f"workbook-{uuid4()}", description="created from a run")
+    archive(workbook)
+
+    assert workbook.run_rids == (run.rid,)
+    assert workbook.asset_rids in (None, ())
+    assert workbook.description == "created from a run"
+    assert workbook.is_draft() is False
+
+
+def test_run_create_workbook_as_draft(client: NominalClient, archive: ArchiveFn) -> None:
+    """Passing is_draft=True creates a private (draft) workbook."""
+    run = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
+    archive(run)
+
+    workbook = run.create_workbook(f"workbook-{uuid4()}", is_draft=True)
+    archive(workbook)
+
+    assert workbook.is_draft() is True
+
+
+def test_asset_create_workbook(client: NominalClient, archive: ArchiveFn) -> None:
+    """asset.create_workbook produces a workbook scoped to the asset and public by default."""
+    asset = client.create_asset(f"asset-{uuid4()}")
+    archive(asset)
+
+    workbook = asset.create_workbook(f"workbook-{uuid4()}", description="created from an asset")
+    archive(workbook)
+
+    assert workbook.asset_rids == (asset.rid,)
+    assert workbook.run_rids in (None, ())
+    assert workbook.description == "created from an asset"
+    assert workbook.is_draft() is False
+
+
+def test_client_create_workbook_with_multiple_runs(client: NominalClient, archive: ArchiveFn) -> None:
+    """client.create_workbook accepts a sequence of runs and scopes the workbook to all of them."""
+    run_a = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
+    archive(run_a)
+    run_b = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
+    archive(run_b)
+
+    workbook = client.create_workbook(f"workbook-{uuid4()}", runs=[run_a, run_b])
+    archive(workbook)
+
+    assert workbook.run_rids is not None
+    assert set(workbook.run_rids) == {run_a.rid, run_b.rid}
+
+
+def test_client_create_workbook_with_assets(client: NominalClient, archive: ArchiveFn) -> None:
+    """client.create_workbook accepts a sequence of assets and scopes the workbook to them."""
+    asset = client.create_asset(f"asset-{uuid4()}")
+    archive(asset)
+
+    workbook = client.create_workbook(f"workbook-{uuid4()}", assets=[asset])
+    archive(workbook)
+
+    assert workbook.asset_rids == (asset.rid,)
+
+
+def test_client_create_workbook_requires_runs_or_assets(client: NominalClient) -> None:
+    """client.create_workbook raises ValueError when neither runs nor assets is provided."""
+    with pytest.raises(ValueError, match="at least one run or asset"):
+        client.create_workbook(f"workbook-{uuid4()}")
