@@ -321,8 +321,9 @@ def test_run_create_workbook(client: NominalClient, archive: ArchiveFn) -> None:
     workbook = run.create_workbook(f"workbook-{uuid4()}", description="created from a run")
     archive(workbook)
 
-    assert workbook.run_rids == (run.rid,)
-    assert workbook.asset_rids in (None, ())
+    assert workbook.run_rids is not None
+    assert list(workbook.run_rids) == [run.rid]
+    assert not workbook.asset_rids
     assert workbook.description == "created from a run"
     assert workbook.is_draft() is False
 
@@ -346,8 +347,9 @@ def test_asset_create_workbook(client: NominalClient, archive: ArchiveFn) -> Non
     workbook = asset.create_workbook(f"workbook-{uuid4()}", description="created from an asset")
     archive(workbook)
 
-    assert workbook.asset_rids == (asset.rid,)
-    assert workbook.run_rids in (None, ())
+    assert workbook.asset_rids is not None
+    assert list(workbook.asset_rids) == [asset.rid]
+    assert not workbook.run_rids
     assert workbook.description == "created from an asset"
     assert workbook.is_draft() is False
 
@@ -374,10 +376,22 @@ def test_client_create_workbook_with_assets(client: NominalClient, archive: Arch
     workbook = client.create_workbook(f"workbook-{uuid4()}", assets=[asset])
     archive(workbook)
 
-    assert workbook.asset_rids == (asset.rid,)
+    assert workbook.asset_rids is not None
+    assert list(workbook.asset_rids) == [asset.rid]
 
 
 def test_client_create_workbook_requires_runs_or_assets(client: NominalClient) -> None:
     """client.create_workbook raises ValueError when neither runs nor assets is provided."""
     with pytest.raises(ValueError, match="at least one run or asset"):
         client.create_workbook(f"workbook-{uuid4()}")
+
+
+def test_client_create_workbook_rejects_runs_and_assets_together(client: NominalClient, archive: ArchiveFn) -> None:
+    """client.create_workbook raises ValueError when both runs and assets are provided."""
+    run = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
+    archive(run)
+    asset = client.create_asset(f"asset-{uuid4()}")
+    archive(asset)
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        client.create_workbook(f"workbook-{uuid4()}", runs=[run], assets=[asset])

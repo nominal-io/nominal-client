@@ -1648,10 +1648,9 @@ class NominalClient:
         runs: Sequence[Run | str] | None = None,
         assets: Sequence[Asset | str] | None = None,
     ) -> Workbook:
-        """Create a blank workbook scoped to the given runs and/or assets.
+        """Create a blank workbook scoped to the given runs or assets.
 
-        At least one of `runs` or `assets` must be provided. Both may be provided together to create a workbook
-        spanning multiple data sources.
+        Exactly one of `runs` or `assets` must be provided; they are mutually exclusive.
 
         Args:
             title: Title of the workbook to create.

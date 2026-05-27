@@ -404,10 +404,12 @@ def _create_workbook(
     run_rids: Sequence[str] | None = None,
     asset_rids: Sequence[str] | None = None,
 ) -> Workbook:
-    """Create a blank workbook scoped to the given runs and/or assets.
+    """Create a blank workbook scoped to the given runs or assets.
 
-    At least one run rid or asset rid must be provided.
+    Exactly one of `run_rids` or `asset_rids` must be provided; they are mutually exclusive.
     """
+    if run_rids and asset_rids:
+        raise ValueError("`run_rids` and `asset_rids` are mutually exclusive; provide only one")
     if not run_rids and not asset_rids:
         raise ValueError("Must provide at least one run or asset to create a workbook")
 
