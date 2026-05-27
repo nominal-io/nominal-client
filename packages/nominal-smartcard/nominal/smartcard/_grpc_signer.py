@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from pkcs11 import ObjectClass
 from pkcs11.mechanisms import MGF, Mechanism
 
-from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
+from nominal.smartcard._errors import SmartcardConfigurationError
 
 _Algorithm = grpc.experimental.PrivateKeySignatureAlgorithm
 
@@ -25,9 +25,9 @@ _ECDSA_ALGORITHMS: frozenset[grpc.experimental.PrivateKeySignatureAlgorithm] = f
     }
 )
 
+MAX_PIN_ATTEMPTS = 3
 
-# Session-invalidating PKCS#11 errors that warrant clearing cached session state so that
-# the next sign() attempt can re-establish a fresh session (e.g. after card removal/reinsert).
+
 def _prompt_for_pin(prompt: str) -> str:
     return getpass.getpass(prompt)
 
@@ -56,10 +56,6 @@ _MECHANISM_TABLE: dict[grpc.experimental.PrivateKeySignatureAlgorithm, tuple[Mec
 }
 
 
-def _get_mechanism_table() -> dict[grpc.experimental.PrivateKeySignatureAlgorithm, tuple[Mechanism, Any]]:
-    return _MECHANISM_TABLE
-
-
 def _encode_ecdsa_der(raw_sig: bytes) -> bytes:
     """Convert a PKCS#11 raw ECDSA signature (r||s big-endian, equal halves) to DER ASN.1.
 
@@ -79,15 +75,15 @@ def _encode_ecdsa_der(raw_sig: bytes) -> bytes:
 class SmartcardPrivateKeySigner:
     """PKCS#11 signing callback for gRPC's custom signer TLS credentials.
 
-    Holds a persistent PKCS#11 session with C_Login state for the lifetime of the
-    associated gRPC channel. The private key never leaves the card; the only output is
-    the signature produced by the token during each TLS handshake.
+    Holds a persistent PKCS#11 session for the lifetime of the associated gRPC channel.
+    The private key never leaves the card; the only output is the signature produced by
+    the token during each TLS handshake.
 
     Pass ``signer.sign`` as ``private_key_sign_fn`` to
     ``grpc.experimental.ssl_channel_credentials_with_custom_signer``.
 
-    The PIN is retained in memory until :meth:`close` is called, enabling automatic
-    session recovery if the card is briefly removed and reinserted.
+    The authenticated session handle is cached after the first successful login,
+    enabling automatic session recovery if the card is briefly removed and reinserted.
     """
 
     def __init__(
@@ -142,18 +138,23 @@ class SmartcardPrivateKeySigner:
             )
 
         pin_fn = self._pin_provider if self._pin_provider is not None else _prompt_for_pin
-        try:
-            session = token.open(user_pin=pin_fn("Card PIN: "))
-        except _pkcs11_exc.PinIncorrect:
-            raise SmartcardPinError(f"Incorrect PIN for token {self._token_label!r}.") from None
-        except _pkcs11_exc.PinLocked:
-            raise SmartcardPinLockedError(
-                f"PIN is locked for token {self._token_label!r}. Too many incorrect attempts have been made."
-            ) from None
-        except _pkcs11_exc.PKCS11Error as e:
-            raise SmartcardConfigurationError(
-                f"Failed to open PKCS#11 session on token {self._token_label!r}: {e}"
-            ) from e
+        session: Any = None
+        for attempt in range(MAX_PIN_ATTEMPTS):
+            remaining = MAX_PIN_ATTEMPTS - attempt - 1
+            try:
+                session = token.open(user_pin=pin_fn("Card PIN: "))
+                break
+            except _pkcs11_exc.PinLocked:
+                raise SystemExit("Card PIN is locked. Contact your security administrator.")
+            except _pkcs11_exc.PinIncorrect:
+                if remaining == 0:
+                    raise SystemExit("Incorrect PIN. No attempts remaining.")
+                print(f"Incorrect PIN. {remaining} attempt(s) remaining, please try again.", flush=True)
+            except _pkcs11_exc.PKCS11Error as e:
+                raise SmartcardConfigurationError(
+                    f"Failed to open PKCS#11 session on token {self._token_label!r}: {e}"
+                ) from e
+        assert session is not None
 
         try:
             key = session.get_key(object_class=ObjectClass.PRIVATE_KEY, id=self._object_id_bytes)

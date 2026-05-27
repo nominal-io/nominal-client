@@ -13,8 +13,8 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from pkcs11.mechanisms import MGF, Mechanism
 
-from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
-from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner, _encode_ecdsa_der, _get_mechanism_table
+from nominal.smartcard._errors import SmartcardConfigurationError
+from nominal.smartcard._grpc_signer import MAX_PIN_ATTEMPTS, _MECHANISM_TABLE, SmartcardPrivateKeySigner, _encode_ecdsa_der
 
 pytest.importorskip("pkcs11")
 pytest.importorskip("cryptography")
@@ -124,7 +124,6 @@ def test_encode_ecdsa_der_rejects_empty() -> None:
 
 
 def test_mechanism_table_covers_all_nine_algorithms() -> None:
-    table = _get_mechanism_table()
     expected = {
         _A.RSA_PKCS1_SHA256,
         _A.RSA_PKCS1_SHA384,
@@ -136,34 +135,30 @@ def test_mechanism_table_covers_all_nine_algorithms() -> None:
         _A.ECDSA_SECP384R1_SHA384,
         _A.ECDSA_SECP521R1_SHA512,
     }
-    assert set(table.keys()) == expected
+    assert set(_MECHANISM_TABLE.keys()) == expected
 
 
 def test_rsa_pss_sha256_has_correct_params() -> None:
-    table = _get_mechanism_table()
-    mech, params = table[_A.RSA_PSS_RSAE_SHA256]
+    mech, params = _MECHANISM_TABLE[_A.RSA_PSS_RSAE_SHA256]
     assert mech == Mechanism.SHA256_RSA_PKCS_PSS
     assert params == (Mechanism.SHA256, MGF.SHA256, 32)
 
 
 def test_rsa_pss_sha384_has_correct_params() -> None:
-    table = _get_mechanism_table()
-    mech, params = table[_A.RSA_PSS_RSAE_SHA384]
+    mech, params = _MECHANISM_TABLE[_A.RSA_PSS_RSAE_SHA384]
     assert mech == Mechanism.SHA384_RSA_PKCS_PSS
     assert params == (Mechanism.SHA384, MGF.SHA384, 48)
 
 
 def test_rsa_pss_sha512_has_correct_params() -> None:
-    table = _get_mechanism_table()
-    mech, params = table[_A.RSA_PSS_RSAE_SHA512]
+    mech, params = _MECHANISM_TABLE[_A.RSA_PSS_RSAE_SHA512]
     assert mech == Mechanism.SHA512_RSA_PKCS_PSS
     assert params == (Mechanism.SHA512, MGF.SHA512, 64)
 
 
 def test_ecdsa_mechanisms_have_no_params() -> None:
-    table = _get_mechanism_table()
     for algo in (_A.ECDSA_SECP256R1_SHA256, _A.ECDSA_SECP384R1_SHA384, _A.ECDSA_SECP521R1_SHA512):
-        _, params = table[algo]
+        _, params = _MECHANISM_TABLE[algo]
         assert params is None, f"Expected no params for ECDSA algo 0x{algo:04x}"
 
 
@@ -329,22 +324,42 @@ def test_sign_unsupported_algorithm_raises() -> None:
         signer.sign(b"data", 0x9999, None)
 
 
-def test_pin_incorrect_raises_smartcard_pin_error() -> None:
+def test_pin_incorrect_exhausts_all_attempts_then_exits() -> None:
     pkcs11_mod = _fake_pkcs11_module(pin_error=pkcs11.exceptions.PinIncorrect)
     signer = _make_signer()
 
     with _patch_pkcs11(pkcs11_mod):
-        with pytest.raises(SmartcardPinError, match="Incorrect PIN"):
+        with pytest.raises(SystemExit, match="No attempts remaining"):
             signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
 
+    token = pkcs11_mod.lib.return_value.get_slots.return_value[0].get_token.return_value
+    assert token.open.call_count == MAX_PIN_ATTEMPTS
 
-def test_pin_locked_raises_smartcard_pin_locked_error() -> None:
+
+def test_pin_incorrect_once_then_correct_succeeds() -> None:
+    pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 256)
+    token = pkcs11_mod.lib.return_value.get_slots.return_value[0].get_token.return_value
+    session = token.open.return_value
+    token.open.side_effect = [pkcs11.exceptions.PinIncorrect("bad"), session]
+    signer = _make_signer()
+
+    with _patch_pkcs11(pkcs11_mod):
+        result = signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
+
+    assert result == b"\x00" * 256
+    assert token.open.call_count == 2
+
+
+def test_pin_locked_exits_immediately() -> None:
     pkcs11_mod = _fake_pkcs11_module(pin_error=pkcs11.exceptions.PinLocked)
     signer = _make_signer()
 
     with _patch_pkcs11(pkcs11_mod):
-        with pytest.raises(SmartcardPinLockedError, match="PIN is locked"):
+        with pytest.raises(SystemExit, match="locked"):
             signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
+
+    token = pkcs11_mod.lib.return_value.get_slots.return_value[0].get_token.return_value
+    assert token.open.call_count == 1
 
 
 def test_token_not_found_raises_configuration_error() -> None:

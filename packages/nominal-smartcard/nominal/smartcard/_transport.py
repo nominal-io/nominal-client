@@ -28,13 +28,14 @@ class SmartcardSslContextProvider(SslContextProvider):
     """ssl.SSLContext and gRPC ChannelCredentials provider for smartcard-backed mTLS.
 
     HTTP path: call ``create_ssl_context()`` to get an ``ssl.SSLContext`` backed by the
-    OpenSSL pkcs11-provider.
+    OpenSSL pkcs11-provider. PIN prompting is handled at C-level by pkcs11-provider.
 
     gRPC path: call ``create_grpc_channel_credentials()`` to get a ``grpc.ChannelCredentials``
     that uses a PKCS#11 signing callback so the private key never leaves the card.
+    PIN prompting happens on the first TLS handshake, with up to ``MAX_PIN_ATTEMPTS`` retries.
 
-    Both paths share the same session discovery and PIN prompt, each caching their result
-    after the first successful call.
+    Both paths share the same certificate discovery (via ``SmartcardSessionManager``),
+    each caching their result after the first successful call.
     """
 
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
