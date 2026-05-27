@@ -2,16 +2,34 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 from unittest.mock import MagicMock, patch
 
 import grpc.experimental
+import pkcs11.exceptions
 import pytest
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
 from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner, _encode_ecdsa_der, _get_mechanism_table
 
+pytest.importorskip("pkcs11")
+pytest.importorskip("cryptography")
+
 _A = grpc.experimental.PrivateKeySignatureAlgorithm
+
+
+@contextmanager
+def _patch_pkcs11(pkcs11_mod: MagicMock) -> Iterator[None]:
+    """Patch the module-level _pkcs11 and _pkcs11_exc names in _grpc_signer."""
+    with (
+        patch("nominal.smartcard._grpc_signer._pkcs11", pkcs11_mod),
+        patch("nominal.smartcard._grpc_signer._pkcs11_exc", pkcs11_mod.exceptions),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -42,8 +60,6 @@ def _fake_pkcs11_module(
     key_error: type[Exception] | None = None,
 ) -> MagicMock:
     """Build a mock pkcs11 module hierarchy: lib → slot → token → session → key."""
-    import pkcs11.exceptions
-
     key = MagicMock()
     if key_error is not None:
         key.sign.side_effect = key_error("sign failed")
@@ -79,7 +95,6 @@ def _fake_pkcs11_module(
 
 
 def test_encode_ecdsa_der_produces_valid_der() -> None:
-    pytest.importorskip("cryptography")
     # 64-byte raw P-256 signature: 32-byte r, 32-byte s
     r_bytes = b"\x01" * 32
     s_bytes = b"\x02" * 32
@@ -88,8 +103,6 @@ def test_encode_ecdsa_der_produces_valid_der() -> None:
     # DER SEQUENCE must start with 0x30
     assert der[0] == 0x30
     # Round-trip through decode_dss_signature to verify correctness
-    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-
     r, s = decode_dss_signature(der)
     assert r == int.from_bytes(r_bytes, "big")
     assert s == int.from_bytes(s_bytes, "big")
@@ -127,8 +140,6 @@ def test_mechanism_table_covers_all_nine_algorithms() -> None:
 
 
 def test_rsa_pss_sha256_has_correct_params() -> None:
-    from pkcs11.mechanisms import MGF, Mechanism
-
     table = _get_mechanism_table()
     mech, params = table[_A.RSA_PSS_RSAE_SHA256]
     assert mech == Mechanism.SHA256_RSA_PKCS_PSS
@@ -136,8 +147,6 @@ def test_rsa_pss_sha256_has_correct_params() -> None:
 
 
 def test_rsa_pss_sha384_has_correct_params() -> None:
-    from pkcs11.mechanisms import MGF, Mechanism
-
     table = _get_mechanism_table()
     mech, params = table[_A.RSA_PSS_RSAE_SHA384]
     assert mech == Mechanism.SHA384_RSA_PKCS_PSS
@@ -145,8 +154,6 @@ def test_rsa_pss_sha384_has_correct_params() -> None:
 
 
 def test_rsa_pss_sha512_has_correct_params() -> None:
-    from pkcs11.mechanisms import MGF, Mechanism
-
     table = _get_mechanism_table()
     mech, params = table[_A.RSA_PSS_RSAE_SHA512]
     assert mech == Mechanism.SHA512_RSA_PKCS_PSS
@@ -170,14 +177,13 @@ def test_sign_rsa_pkcs1_returns_raw_bytes() -> None:
     pkcs11_mod = _fake_pkcs11_module(sign_return=expected_sig)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         result = signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
 
     assert result == expected_sig
 
 
 def test_sign_ecdsa_secp384r1_returns_der_encoded() -> None:
-    pytest.importorskip("cryptography")
     # Simulate P-384 raw r||s output: 48 bytes each
     r_bytes = b"\x11" * 48
     s_bytes = b"\x22" * 48
@@ -185,25 +191,21 @@ def test_sign_ecdsa_secp384r1_returns_der_encoded() -> None:
     pkcs11_mod = _fake_pkcs11_module(sign_return=raw_sig)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         result = signer.sign(b"tls-transcript", _A.ECDSA_SECP384R1_SHA384, None)
 
     # Must be DER-encoded
     assert result[0] == 0x30
-    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-
     r, s = decode_dss_signature(result)
     assert r == int.from_bytes(r_bytes, "big")
     assert s == int.from_bytes(s_bytes, "big")
 
 
 def test_sign_passes_mechanism_param_to_key_sign() -> None:
-    from pkcs11.mechanisms import MGF, Mechanism
-
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 256)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         signer.sign(b"data", _A.RSA_PSS_RSAE_SHA256, None)
 
     key = pkcs11_mod.lib.return_value.get_slots.return_value[
@@ -217,12 +219,10 @@ def test_sign_passes_mechanism_param_to_key_sign() -> None:
 
 
 def test_sign_uses_correct_ecdsa_mechanism() -> None:
-    from pkcs11.mechanisms import Mechanism
-
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         signer.sign(b"data", _A.ECDSA_SECP256R1_SHA256, None)
 
     key = pkcs11_mod.lib.return_value.get_slots.return_value[
@@ -240,7 +240,7 @@ def test_session_opened_once_across_multiple_sign_calls() -> None:
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
         signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
         signer.sign(b"data3", _A.ECDSA_SECP256R1_SHA256, None)
@@ -259,7 +259,7 @@ def test_pin_provider_called_on_session_open() -> None:
 
     signer = _make_signer(pin_provider=counting_provider)
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
         signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
 
@@ -267,8 +267,6 @@ def test_pin_provider_called_on_session_open() -> None:
 
 
 def test_pin_provider_called_again_after_device_removed() -> None:
-    import pkcs11.exceptions
-
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     prompt_calls: list[str] = []
 
@@ -278,7 +276,7 @@ def test_pin_provider_called_again_after_device_removed() -> None:
 
     signer = _make_signer(pin_provider=counting_provider)
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
 
         key = pkcs11_mod.lib.return_value.get_slots.return_value[
@@ -304,7 +302,7 @@ def test_session_opened_concurrently_only_once(monkeypatch: pytest.MonkeyPatch) 
     def call() -> None:
         try:
             barrier.wait()
-            with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+            with _patch_pkcs11(pkcs11_mod):
                 signer.sign(b"data", _A.ECDSA_SECP256R1_SHA256, None)
         except Exception as e:
             errors.append(e)
@@ -332,23 +330,19 @@ def test_sign_unsupported_algorithm_raises() -> None:
 
 
 def test_pin_incorrect_raises_smartcard_pin_error() -> None:
-    import pkcs11.exceptions
-
     pkcs11_mod = _fake_pkcs11_module(pin_error=pkcs11.exceptions.PinIncorrect)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         with pytest.raises(SmartcardPinError, match="Incorrect PIN"):
             signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
 
 
 def test_pin_locked_raises_smartcard_pin_locked_error() -> None:
-    import pkcs11.exceptions
-
     pkcs11_mod = _fake_pkcs11_module(pin_error=pkcs11.exceptions.PinLocked)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         with pytest.raises(SmartcardPinLockedError, match="PIN is locked"):
             signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
 
@@ -357,14 +351,12 @@ def test_token_not_found_raises_configuration_error() -> None:
     pkcs11_mod = _fake_pkcs11_module(token_label="OTHER_TOKEN")
     signer = _make_signer(token_label="CAC")
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         with pytest.raises(SmartcardConfigurationError, match="not found"):
             signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
 
 
 def test_pkcs11_sign_error_raises_configuration_error() -> None:
-    import pkcs11.exceptions
-
     pkcs11_mod = _fake_pkcs11_module()
     key = pkcs11_mod.lib.return_value.get_slots.return_value[
         0
@@ -372,18 +364,16 @@ def test_pkcs11_sign_error_raises_configuration_error() -> None:
     key.sign.side_effect = pkcs11.exceptions.PKCS11Error("device error")
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         with pytest.raises(SmartcardConfigurationError, match="signing failed"):
             signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
 
 
 def test_session_cleared_on_device_removed_error() -> None:
-    import pkcs11.exceptions
-
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         signer.sign(b"data", _A.ECDSA_SECP256R1_SHA256, None)
         assert signer._session is not None
 
@@ -400,12 +390,10 @@ def test_session_cleared_on_device_removed_error() -> None:
 
 
 def test_session_re_established_after_device_removed() -> None:
-    import pkcs11.exceptions
-
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         # First sign succeeds, establishing a session.
         signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
 
@@ -437,7 +425,7 @@ def test_close_releases_session() -> None:
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         signer.sign(b"data", _A.ECDSA_SECP256R1_SHA256, None)
 
     session = pkcs11_mod.lib.return_value.get_slots.return_value[0].get_token.return_value.open.return_value
@@ -451,7 +439,7 @@ def test_close_idempotent() -> None:
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     signer = _make_signer()
 
-    with patch.dict("sys.modules", {"pkcs11": pkcs11_mod, "pkcs11.exceptions": pkcs11_mod.exceptions}):
+    with _patch_pkcs11(pkcs11_mod):
         signer.sign(b"data", _A.ECDSA_SECP256R1_SHA256, None)
 
     signer.close()

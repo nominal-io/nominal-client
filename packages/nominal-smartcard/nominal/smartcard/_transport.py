@@ -5,6 +5,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding
 from grpc.experimental import ssl_channel_credentials_with_custom_signer
 
 from nominal.core._utils.networking import SslContextProvider
@@ -127,9 +129,6 @@ class SmartcardSslContextProvider(SslContextProvider):
                         "Certificate DER data is empty; cannot build PEM chain for gRPC credentials. "
                         "The PKCS#11 token may not have returned a certificate value."
                     )
-                from cryptography import x509
-                from cryptography.hazmat.primitives.serialization import Encoding
-
                 cert = x509.load_der_x509_certificate(session.certificate.der_certificate)
                 certificate_chain_pem = cert.public_bytes(Encoding.PEM)
 

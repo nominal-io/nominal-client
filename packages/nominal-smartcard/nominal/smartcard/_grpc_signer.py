@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import grpc.experimental
+import pkcs11 as _pkcs11
+import pkcs11.exceptions as _pkcs11_exc
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+from pkcs11 import ObjectClass
 from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardPinLockedError
@@ -112,10 +115,6 @@ class SmartcardPrivateKeySigner:
         if self._session is not None:
             return self._session, self._key
 
-        import pkcs11 as _pkcs11
-        import pkcs11.exceptions as _pkcs11_exc
-        from pkcs11 import ObjectClass
-
         try:
             lib = _pkcs11.lib(str(self._module_path))
         except Exception as e:
@@ -191,8 +190,6 @@ class SmartcardPrivateKeySigner:
                 "over TLS 1.3."
             )
         mechanism, mechanism_param = entry
-
-        import pkcs11.exceptions as _pkcs11_exc
 
         with self._lock:
             _session, key = self._ensure_session_and_key()
