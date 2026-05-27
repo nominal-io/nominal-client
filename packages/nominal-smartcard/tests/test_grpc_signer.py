@@ -252,7 +252,7 @@ def test_session_opened_once_across_multiple_sign_calls() -> None:
     token.open.assert_called_once()
 
 
-def test_pin_prompted_once_on_session_open() -> None:
+def test_pin_prompted_in_connect_not_in_sign() -> None:
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     prompt_calls: list[str] = []
 
@@ -263,8 +263,9 @@ def test_pin_prompted_once_on_session_open() -> None:
     signer = _make_signer()
 
     with _patch_pkcs11(pkcs11_mod), patch("nominal.smartcard._grpc_signer._prompt_for_pin", counting_pin):
-        signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
-        signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
+        signer.connect()  # 1 prompt — session established
+        signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)  # uses cached session
+        signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)  # uses cached session
 
     assert len(prompt_calls) == 1
 
@@ -311,7 +312,7 @@ def test_pin_incorrect_exhausts_all_attempts_then_exits() -> None:
 
     with _patch_pkcs11(pkcs11_mod):
         with pytest.raises(SystemExit, match="No attempts remaining"):
-            signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
+            signer.connect()
 
     token = pkcs11_mod.lib.return_value.get_slots.return_value[0].get_token.return_value
     assert token.open.call_count == MAX_PIN_ATTEMPTS
@@ -325,9 +326,8 @@ def test_pin_incorrect_once_then_correct_succeeds() -> None:
     signer = _make_signer()
 
     with _patch_pkcs11(pkcs11_mod):
-        result = signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
+        signer.connect()
 
-    assert result == b"\x00" * 256
     assert token.open.call_count == 2
 
 
@@ -337,10 +337,35 @@ def test_pin_locked_exits_immediately() -> None:
 
     with _patch_pkcs11(pkcs11_mod):
         with pytest.raises(SystemExit, match="locked"):
-            signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
+            signer.connect()
 
     token = pkcs11_mod.lib.return_value.get_slots.return_value[0].get_token.return_value
     assert token.open.call_count == 1
+
+
+def test_pin_len_range_exhausts_all_attempts_then_exits() -> None:
+    pkcs11_mod = _fake_pkcs11_module(pin_error=pkcs11.exceptions.PinLenRange)
+    signer = _make_signer()
+
+    with _patch_pkcs11(pkcs11_mod):
+        with pytest.raises(SystemExit, match="Incorrect PIN. No attempts remaining"):
+            signer.connect()
+
+    token = pkcs11_mod.lib.return_value.get_slots.return_value[0].get_token.return_value
+    assert token.open.call_count == MAX_PIN_ATTEMPTS
+
+
+def test_pin_len_range_then_correct_succeeds() -> None:
+    pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 256)
+    token = pkcs11_mod.lib.return_value.get_slots.return_value[0].get_token.return_value
+    session = token.open.return_value
+    token.open.side_effect = [pkcs11.exceptions.PinLenRange("too short"), session]
+    signer = _make_signer()
+
+    with _patch_pkcs11(pkcs11_mod):
+        signer.connect()
+
+    assert token.open.call_count == 2
 
 
 def test_token_not_found_raises_configuration_error() -> None:
@@ -358,6 +383,22 @@ def test_pkcs11_sign_error_raises_configuration_error() -> None:
         0
     ].get_token.return_value.open.return_value.get_key.return_value
     key.sign.side_effect = pkcs11.exceptions.PKCS11Error("device error")
+    signer = _make_signer()
+
+    with _patch_pkcs11(pkcs11_mod):
+        with pytest.raises(SmartcardConfigurationError, match="signing failed"):
+            signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
+
+
+def test_pin_incorrect_from_sign_raises_configuration_error() -> None:
+    """Tokens that defer PIN verification to C_Sign surface as a signing error.
+    sign() does not retry — connect() must have been called beforehand.
+    """
+    pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
+    key = pkcs11_mod.lib.return_value.get_slots.return_value[
+        0
+    ].get_token.return_value.open.return_value.get_key.return_value
+    key.sign.side_effect = pkcs11.exceptions.PinIncorrect("deferred pin check")
     signer = _make_signer()
 
     with _patch_pkcs11(pkcs11_mod):

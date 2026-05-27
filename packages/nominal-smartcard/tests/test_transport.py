@@ -11,6 +11,7 @@ from _helpers import _candidate, _FakeBackend, _make_der_cert
 pytest.importorskip("cryptography")
 
 from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardProviderError
+from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import SmartcardSslContextProvider
@@ -44,6 +45,20 @@ class _PinErrorThenSuccessBridge(_FakeBridge):
         if len(self.calls) == 1:
             raise SmartcardPinError("CKR_PIN_INCORRECT")
         return self.context
+
+
+class _PinLenRangeErrorThenSuccessBridge(_FakeBridge):
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+        self.calls.append(session)
+        if len(self.calls) == 1:
+            raise SmartcardPinError("CKR_PIN_LEN_RANGE")
+        return self.context
+
+
+class _PinLenRangeAlwaysErrorBridge(_FakeBridge):
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+        self.calls.append(session)
+        raise SmartcardPinError("CKR_PIN_LEN_RANGE")
 
 
 def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[SmartcardSslContextProvider, _FakeBridge]:
@@ -104,6 +119,28 @@ def test_ssl_context_provider_retries_pin_errors(tmp_path: Path, monkeypatch: py
 
     assert ctx is pin_error_bridge.context
     assert len(pin_error_bridge.calls) == 2
+
+
+def test_ssl_context_provider_retries_pin_len_range_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
+    provider, _bridge = _make_provider(tmp_path, monkeypatch)
+    pin_len_range_bridge = _PinLenRangeErrorThenSuccessBridge()
+    provider._openssl_bridge = pin_len_range_bridge
+
+    ctx = provider.create_ssl_context()
+
+    assert ctx is pin_len_range_bridge.context
+    assert len(pin_len_range_bridge.calls) == 2
+
+
+def test_ssl_context_provider_exhausts_pin_len_range_attempts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
+    provider, _bridge = _make_provider(tmp_path, monkeypatch)
+    pin_len_range_bridge = _PinLenRangeAlwaysErrorBridge()
+    provider._openssl_bridge = pin_len_range_bridge
+
+    with pytest.raises(SystemExit, match="No attempts remaining"):
+        provider.create_ssl_context()
 
 
 def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,6 +214,7 @@ def _make_grpc_provider(
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
     monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda prompt: pin)
+    monkeypatch.setattr(SmartcardPrivateKeySigner, "connect", lambda self: None)
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
     )
@@ -239,14 +277,13 @@ def test_grpc_credentials_signer_receives_correct_token_info(tmp_path: Path, mon
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
     monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda prompt: "pin")
+    monkeypatch.setattr(SmartcardPrivateKeySigner, "connect", lambda self: None)
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [candidate]),
     )
     provider = SmartcardSslContextProvider(_session_manager=manager)
 
     captured_signer: list[dict[str, object]] = []
-
-    from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 
     original_signer_init = SmartcardPrivateKeySigner.__init__
 

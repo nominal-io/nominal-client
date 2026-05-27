@@ -123,6 +123,7 @@ class SmartcardSslContextProvider(SslContextProvider):
                 token_label=token_label,
                 object_id_bytes=object_id_bytes,
             )
+            signer.connect()
 
             if certificate_chain_pem is None:
                 if not session.certificate.der_certificate:

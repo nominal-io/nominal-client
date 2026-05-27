@@ -93,22 +93,41 @@ class SmartcardPrivateKeySigner:
         self._lock = threading.Lock()
 
     def _open_authenticated_session(self, token: Any) -> Any:
-        """Open a User session on ``token``, retrying on incorrect PIN up to MAX_PIN_ATTEMPTS times."""
-        for attempt in range(MAX_PIN_ATTEMPTS):
-            remaining = MAX_PIN_ATTEMPTS - attempt - 1
-            try:
-                return token.open(user_pin=_prompt_for_pin("Card PIN: "))
-            except _pkcs11_exc.PinLocked:
-                raise SystemExit("Card PIN is locked. Contact your security administrator.")
-            except _pkcs11_exc.PinIncorrect:
-                if remaining == 0:
-                    raise SystemExit("Incorrect PIN. No attempts remaining.")
-                print(f"Incorrect PIN. {remaining} attempt(s) remaining, please try again.", flush=True)
-            except _pkcs11_exc.PKCS11Error as e:
-                raise SmartcardConfigurationError(
-                    f"Failed to open PKCS#11 session on token {self._token_label!r}: {e}"
-                ) from e
-        raise AssertionError("unreachable")  # every loop iteration returns or raises
+        """Open a User session on ``token``. Propagates PinIncorrect and PinLocked to the caller."""
+        try:
+            return token.open(user_pin=_prompt_for_pin("Card PIN: "))
+        except (_pkcs11_exc.PinIncorrect, _pkcs11_exc.PinLocked, _pkcs11_exc.PinLenRange):
+            raise
+        except _pkcs11_exc.PKCS11Error as e:
+            raise SmartcardConfigurationError(
+                f"Failed to open PKCS#11 session on token {self._token_label!r}: {e}"
+            ) from e
+
+    def connect(self) -> None:
+        """Establish the authenticated PKCS#11 session, prompting for PIN if needed.
+
+        Must be called before the signer is handed to gRPC. The signing callback
+        (sign()) is invoked on every TLS handshake and must not block — PIN prompting
+        belongs here, at channel-setup time, not inside the handshake.
+
+        Retries up to MAX_PIN_ATTEMPTS times on incorrect PIN.
+        """
+        with self._lock:
+            for attempt in range(MAX_PIN_ATTEMPTS):
+                remaining = MAX_PIN_ATTEMPTS - attempt - 1
+                try:
+                    self._ensure_session_and_key()
+                    return
+                except _pkcs11_exc.PinLocked:
+                    raise SystemExit("Card PIN is locked. Contact your security administrator.")
+                except (_pkcs11_exc.PinIncorrect, _pkcs11_exc.PinLenRange):
+                    self._session = None
+                    self._key = None
+                    message = "Incorrect PIN."
+                    if remaining == 0:
+                        raise SystemExit(f"{message} No attempts remaining.")
+                    print(f"{message} {remaining} attempt(s) remaining, please try again.", flush=True)
+            raise AssertionError("unreachable")
 
     def _ensure_session_and_key(self) -> tuple[Any, Any]:
         """Open a PKCS#11 session, log in, and locate the private key object.
@@ -165,15 +184,7 @@ class SmartcardPrivateKeySigner:
         signature_algorithm: grpc.experimental.PrivateKeySignatureAlgorithm,
         on_complete: Any,
     ) -> bytes:
-        """Sign ``data_to_sign`` on the smartcard and return raw signature bytes.
-
-        This is the synchronous form of the gRPC ``CustomPrivateKeySign`` callback.
-        ``on_complete`` is intentionally unused — gRPC only calls it for the async form
-        (where the function returns a cancel callable instead of bytes).
-
-        Raises ``SmartcardConfigurationError`` on PKCS#11 errors, which gRPC treats as a
-        TLS handshake failure.
-        """
+        """Sign ``data_to_sign`` on the smartcard and return raw signature bytes."""
         entry = _MECHANISM_TABLE.get(signature_algorithm)
         if entry is None:
             raise SmartcardConfigurationError(
@@ -184,7 +195,7 @@ class SmartcardPrivateKeySigner:
         mechanism, mechanism_param = entry
 
         with self._lock:
-            _session, key = self._ensure_session_and_key()
+            _, key = self._ensure_session_and_key()
             try:
                 raw_sig: bytes = key.sign(data_to_sign, mechanism=mechanism, mechanism_param=mechanism_param)
             except _pkcs11_exc.PKCS11Error as e:

@@ -27,6 +27,7 @@ _OPENSSL_VALIDATION_SYMBOLS = (
 )
 _CKR_PIN_LOCKED = "CKR_PIN_LOCKED"
 _CKR_PIN_INCORRECT = "CKR_PIN_INCORRECT"
+_CKR_PIN_LEN_RANGE = "CKR_PIN_LEN_RANGE"
 
 # Deferred at module import; initialised once by _load_ffi().
 _ffi_lock: threading.Lock = threading.Lock()
@@ -224,6 +225,8 @@ def _raise_store_error(err: str, context: str) -> None:
     if _CKR_PIN_LOCKED in err:
         raise SmartcardPinLockedError(f"{context}: {err}")
     if _CKR_PIN_INCORRECT in err:
+        raise SmartcardPinError(f"{context}: {err}")
+    if _CKR_PIN_LEN_RANGE in err:
         raise SmartcardPinError(f"{context}: {err}")
     raise SmartcardProviderError(f"{context}: {err}")
 
