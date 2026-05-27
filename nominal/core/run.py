@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from types import MappingProxyType
@@ -11,7 +12,10 @@ from nominal_api import (
     scout,
     scout_asset_api,
     scout_assets,
+    scout_layout_api,
+    scout_notebook_api,
     scout_run_api,
+    scout_workbookcommon_api,
 )
 from typing_extensions import Self
 
@@ -420,6 +424,48 @@ class Run(HasRid, RefreshableMixin[scout_run_api.Run], _DatasetWrapper):
         rids = [rid_from_instance_or_string(a) for a in attachments]
         request = scout_run_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._clients.run.update_run_attachment(self._clients.auth_header, request, self.rid)
+
+    def create_workbook(
+        self,
+        title: str,
+        *,
+        description: str | None = None,
+        is_draft: bool = False,
+    ) -> Workbook:
+        """Create a blank workbook scoped to this run.
+
+        Args:
+            title: Title of the workbook to create.
+            description: Description of the workbook to create.
+            is_draft: Whether to create the workbook in draft state. Defaults to False, meaning the workbook is
+                visible to other users in the workspace.
+
+        Returns:
+            The created workbook.
+        """
+        request = scout_notebook_api.CreateNotebookRequest(
+            title=title,
+            description=description if description is not None else "",
+            is_draft=is_draft,
+            state_as_json="{}",
+            data_scope=scout_notebook_api.NotebookDataScope(run_rids=[self.rid]),
+            layout=scout_layout_api.WorkbookLayout(
+                v1=scout_layout_api.WorkbookLayoutV1(
+                    root_panel=scout_layout_api.Panel(
+                        tabbed=scout_layout_api.TabbedPanel(
+                            v1=scout_layout_api.TabbedPanelV1(id=str(uuid.uuid4()), tabs=[]),
+                        )
+                    )
+                )
+            ),
+            content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(
+                workbook=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
+            ),
+            event_refs=[],
+            workspace=self._clients.resolve_default_workspace_rid(),
+        )
+        raw_notebook = self._clients.notebook.create(self._clients.auth_header, request)
+        return Workbook._from_conjure(self._clients, raw_notebook)
 
     @warn_on_deprecated_argument(
         "include_archived",
