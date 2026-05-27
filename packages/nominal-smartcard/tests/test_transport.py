@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from _helpers import _candidate, _FakeBackend, _make_der_cert
 
+from nominal.smartcard._errors import SmartcardPinError, SmartcardProviderError
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import SmartcardSslContextProvider
@@ -19,6 +20,26 @@ class _FakeBridge:
 
     def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
         self.calls.append(session)
+        return self.context
+
+
+class _InterruptingBridge(_FakeBridge):
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+        self.calls.append(session)
+        raise KeyboardInterrupt
+
+
+class _ProviderErrorBridge(_FakeBridge):
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+        self.calls.append(session)
+        raise SmartcardProviderError("OSSL_STORE_load error: unknown error")
+
+
+class _PinErrorThenSuccessBridge(_FakeBridge):
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+        self.calls.append(session)
+        if len(self.calls) == 1:
+            raise SmartcardPinError("CKR_PIN_INCORRECT")
         return self.context
 
 
@@ -43,6 +64,44 @@ def test_ssl_context_provider_builds_ssl_context(tmp_path: Path, monkeypatch: py
     ctx = provider.create_ssl_context()
     assert ctx is bridge.context
     assert len(bridge.calls) == 1
+
+
+def test_ssl_context_provider_does_not_retry_keyboard_interrupt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("cryptography")
+    provider, _bridge = _make_provider(tmp_path, monkeypatch)
+    interrupting_bridge = _InterruptingBridge()
+    provider._openssl_bridge = interrupting_bridge
+
+    with pytest.raises(KeyboardInterrupt):
+        provider.create_ssl_context()
+
+    assert len(interrupting_bridge.calls) == 1
+
+
+def test_ssl_context_provider_does_not_retry_provider_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
+    provider, _bridge = _make_provider(tmp_path, monkeypatch)
+    provider_error_bridge = _ProviderErrorBridge()
+    provider._openssl_bridge = provider_error_bridge
+
+    with pytest.raises(SystemExit, match="PIN entry may have been cancelled"):
+        provider.create_ssl_context()
+
+    assert len(provider_error_bridge.calls) == 1
+
+
+def test_ssl_context_provider_retries_pin_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
+    provider, _bridge = _make_provider(tmp_path, monkeypatch)
+    pin_error_bridge = _PinErrorThenSuccessBridge()
+    provider._openssl_bridge = pin_error_bridge
+
+    ctx = provider.create_ssl_context()
+
+    assert ctx is pin_error_bridge.context
+    assert len(pin_error_bridge.calls) == 2
 
 
 def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
