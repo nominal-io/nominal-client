@@ -39,7 +39,7 @@ from nominal.core.dataset import Dataset, _create_dataset, _DatasetWrapper, _get
 from nominal.core.datasource import DataSource
 from nominal.core.event import Event, _create_event, _search_events
 from nominal.core.video import Video, _create_video, _get_video
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import Workbook, _create_workbook, _search_workbooks
 from nominal.ts import IntegralNanosecondsDuration, IntegralNanosecondsUTC, _SecondsNanos
 
 ScopeType: TypeAlias = Connection | Dataset | Video
@@ -658,6 +658,32 @@ class Asset(_DatasetWrapper, HasRid, RefreshableMixin[scout_asset_api.Asset]):
         rids = [rid_from_instance_or_string(a) for a in attachments]
         request = scout_asset_api.UpdateAttachmentsRequest(attachments_to_add=[], attachments_to_remove=rids)
         self._clients.assets.update_asset_attachments(self._clients.auth_header, request, self.rid)
+
+    def create_workbook(
+        self,
+        title: str,
+        *,
+        description: str | None = None,
+        is_draft: bool = False,
+    ) -> Workbook:
+        """Create a blank workbook scoped to this asset.
+
+        Args:
+            title: Title of the workbook to create.
+            description: Description of the workbook to create.
+            is_draft: Whether to create the workbook in draft state. Defaults to False, meaning the workbook is
+                visible to other users in the workspace.
+
+        Returns:
+            The created workbook.
+        """
+        return _create_workbook(
+            self._clients,
+            title=title,
+            description=description,
+            is_draft=is_draft,
+            asset_rids=[self.rid],
+        )
 
     def archive(self) -> None:
         """Archive this asset.

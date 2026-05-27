@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Iterable, Mapping, Protocol, Sequence
 
-from nominal_api import scout, scout_chartdefinition_api, scout_notebook_api, scout_workbookcommon_api
+from nominal_api import (
+    scout,
+    scout_chartdefinition_api,
+    scout_layout_api,
+    scout_notebook_api,
+    scout_workbookcommon_api,
+)
 from typing_extensions import Self, deprecated
 
 from nominal.core._clientsbunch import HasScoutParams
@@ -386,3 +393,47 @@ def _search_workbooks(
         archive_status=archive_status,
     )
     return list(_iter_search_workbooks(clients, query))
+
+
+def _create_workbook(
+    clients: Workbook._Clients,
+    *,
+    title: str,
+    description: str | None,
+    is_draft: bool,
+    run_rids: Sequence[str] | None = None,
+    asset_rids: Sequence[str] | None = None,
+) -> Workbook:
+    """Create a blank workbook scoped to the given runs and/or assets.
+
+    At least one run rid or asset rid must be provided.
+    """
+    if not run_rids and not asset_rids:
+        raise ValueError("Must provide at least one run or asset to create a workbook")
+
+    request = scout_notebook_api.CreateNotebookRequest(
+        title=title,
+        description=description if description is not None else "",
+        is_draft=is_draft,
+        state_as_json="{}",
+        data_scope=scout_notebook_api.NotebookDataScope(
+            run_rids=list(run_rids) if run_rids else None,
+            asset_rids=list(asset_rids) if asset_rids else None,
+        ),
+        layout=scout_layout_api.WorkbookLayout(
+            v1=scout_layout_api.WorkbookLayoutV1(
+                root_panel=scout_layout_api.Panel(
+                    tabbed=scout_layout_api.TabbedPanel(
+                        v1=scout_layout_api.TabbedPanelV1(id=str(uuid.uuid4()), tabs=[]),
+                    )
+                )
+            )
+        ),
+        content_v2=scout_workbookcommon_api.UnifiedWorkbookContent(
+            workbook=scout_workbookcommon_api.WorkbookContent(channel_variables={}, charts={}),
+        ),
+        event_refs=[],
+        workspace=clients.resolve_default_workspace_rid(),
+    )
+    raw_notebook = clients.notebook.create(clients.auth_header, request)
+    return Workbook._from_conjure(clients, raw_notebook)

@@ -101,7 +101,7 @@ from nominal.core.streaming_checklist import _iter_list_streaming_checklists
 from nominal.core.unit import Unit, _available_units
 from nominal.core.user import User
 from nominal.core.video import Video, _create_video
-from nominal.core.workbook import Workbook, _search_workbooks
+from nominal.core.workbook import Workbook, _create_workbook, _search_workbooks
 from nominal.core.workbook_template import WorkbookTemplate
 from nominal.core.workspace import Workspace
 from nominal.ts import (
@@ -1638,6 +1638,40 @@ class NominalClient:
             archive_status=effective_archive_status,
         )
         return list(self._iter_search_workbook_templates(query))
+
+    def create_workbook(
+        self,
+        title: str,
+        *,
+        description: str | None = None,
+        is_draft: bool = False,
+        runs: Sequence[Run | str] | None = None,
+        assets: Sequence[Asset | str] | None = None,
+    ) -> Workbook:
+        """Create a blank workbook scoped to the given runs and/or assets.
+
+        At least one of `runs` or `assets` must be provided. Both may be provided together to create a workbook
+        spanning multiple data sources.
+
+        Args:
+            title: Title of the workbook to create.
+            description: Description of the workbook to create.
+            is_draft: Whether to create the workbook in draft state. Defaults to False, meaning the workbook is
+                visible to other users in the workspace.
+            runs: Runs to visualize in the workbook. Accepts `Run` instances or rids.
+            assets: Assets to visualize in the workbook. Accepts `Asset` instances or rids.
+
+        Returns:
+            The created workbook.
+        """
+        return _create_workbook(
+            self._clients,
+            title=title,
+            description=description,
+            is_draft=is_draft,
+            run_rids=[rid_from_instance_or_string(r) for r in runs] if runs else None,
+            asset_rids=[rid_from_instance_or_string(a) for a in assets] if assets else None,
+        )
 
     @deprecated(
         "Calling `NominalClient.create_workbook_from_template` is deprecated and will be removed "
