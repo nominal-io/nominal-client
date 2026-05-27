@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import getpass
 import threading
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -31,13 +30,6 @@ MAX_PIN_ATTEMPTS = 3
 def _prompt_for_pin(prompt: str) -> str:
     return getpass.getpass(prompt)
 
-
-_SESSION_INVALIDATING_ERRORS: tuple[str, ...] = (
-    "DeviceRemoved",
-    "TokenNotPresent",
-    "SessionHandleInvalid",
-    "SessionClosed",
-)
 
 # Mapping from PrivateKeySignatureAlgorithm → (pkcs11.Mechanism, mechanism_param).
 # mechanism_param for RSA PSS is (hash_mechanism, mgf, salt_length) per python-pkcs11 conventions.
@@ -92,15 +84,31 @@ class SmartcardPrivateKeySigner:
         module_path: Path,
         token_label: str,
         object_id_bytes: bytes,
-        pin_provider: Callable[[str], str] | None = None,
     ) -> None:
         self._module_path = module_path
         self._token_label = token_label
         self._object_id_bytes = object_id_bytes
-        self._pin_provider = pin_provider
         self._session: Any = None
         self._key: Any = None
         self._lock = threading.Lock()
+
+    def _open_authenticated_session(self, token: Any) -> Any:
+        """Open a User session on ``token``, retrying on incorrect PIN up to MAX_PIN_ATTEMPTS times."""
+        for attempt in range(MAX_PIN_ATTEMPTS):
+            remaining = MAX_PIN_ATTEMPTS - attempt - 1
+            try:
+                return token.open(user_pin=_prompt_for_pin("Card PIN: "))
+            except _pkcs11_exc.PinLocked:
+                raise SystemExit("Card PIN is locked. Contact your security administrator.")
+            except _pkcs11_exc.PinIncorrect:
+                if remaining == 0:
+                    raise SystemExit("Incorrect PIN. No attempts remaining.")
+                print(f"Incorrect PIN. {remaining} attempt(s) remaining, please try again.", flush=True)
+            except _pkcs11_exc.PKCS11Error as e:
+                raise SmartcardConfigurationError(
+                    f"Failed to open PKCS#11 session on token {self._token_label!r}: {e}"
+                ) from e
+        raise AssertionError("unreachable")  # every loop iteration returns or raises
 
     def _ensure_session_and_key(self) -> tuple[Any, Any]:
         """Open a PKCS#11 session, log in, and locate the private key object.
@@ -137,24 +145,7 @@ class SmartcardPrivateKeySigner:
                 "Verify the smartcard is inserted and the token label is correct."
             )
 
-        pin_fn = self._pin_provider if self._pin_provider is not None else _prompt_for_pin
-        session: Any = None
-        for attempt in range(MAX_PIN_ATTEMPTS):
-            remaining = MAX_PIN_ATTEMPTS - attempt - 1
-            try:
-                session = token.open(user_pin=pin_fn("Card PIN: "))
-                break
-            except _pkcs11_exc.PinLocked:
-                raise SystemExit("Card PIN is locked. Contact your security administrator.")
-            except _pkcs11_exc.PinIncorrect:
-                if remaining == 0:
-                    raise SystemExit("Incorrect PIN. No attempts remaining.")
-                print(f"Incorrect PIN. {remaining} attempt(s) remaining, please try again.", flush=True)
-            except _pkcs11_exc.PKCS11Error as e:
-                raise SmartcardConfigurationError(
-                    f"Failed to open PKCS#11 session on token {self._token_label!r}: {e}"
-                ) from e
-        assert session is not None
+        session = self._open_authenticated_session(token)
 
         try:
             key = session.get_key(object_class=ObjectClass.PRIVATE_KEY, id=self._object_id_bytes)
@@ -197,11 +188,6 @@ class SmartcardPrivateKeySigner:
             try:
                 raw_sig: bytes = key.sign(data_to_sign, mechanism=mechanism, mechanism_param=mechanism_param)
             except _pkcs11_exc.PKCS11Error as e:
-                # Clear the cached session if the card was removed or the session became invalid,
-                # so the next sign() attempt can re-establish a fresh authenticated session.
-                if type(e).__name__ in _SESSION_INVALIDATING_ERRORS:
-                    self._session = None
-                    self._key = None
                 raise SmartcardConfigurationError(f"PKCS#11 signing failed ({signature_algorithm!r}): {e}") from e
 
         # PKCS#11 ECDSA returns raw r||s bytes; gRPC/BoringSSL expects DER-encoded ASN.1.

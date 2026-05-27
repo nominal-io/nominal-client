@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -14,12 +13,23 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError
-from nominal.smartcard._grpc_signer import MAX_PIN_ATTEMPTS, _MECHANISM_TABLE, SmartcardPrivateKeySigner, _encode_ecdsa_der
+from nominal.smartcard._grpc_signer import (
+    _MECHANISM_TABLE,
+    MAX_PIN_ATTEMPTS,
+    SmartcardPrivateKeySigner,
+    _encode_ecdsa_der,
+)
 
 pytest.importorskip("pkcs11")
 pytest.importorskip("cryptography")
 
 _A = grpc.experimental.PrivateKeySignatureAlgorithm
+
+
+@pytest.fixture(autouse=True)
+def _default_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Patch _prompt_for_pin so tests never block on getpass."""
+    monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda _: "123456")
 
 
 @contextmanager
@@ -42,13 +52,11 @@ def _make_signer(
     module_path: Path | None = None,
     token_label: str = "CAC",
     object_id_bytes: bytes = b"\x01",
-    pin_provider: Callable[[str], str] = lambda _: "123456",
 ) -> SmartcardPrivateKeySigner:
     return SmartcardPrivateKeySigner(
         module_path=module_path or Path("/fake/opensc-pkcs11.so"),
         token_label=token_label,
         object_id_bytes=object_id_bytes,
-        pin_provider=pin_provider,
     )
 
 
@@ -244,48 +252,21 @@ def test_session_opened_once_across_multiple_sign_calls() -> None:
     token.open.assert_called_once()
 
 
-def test_pin_provider_called_on_session_open() -> None:
+def test_pin_prompted_once_on_session_open() -> None:
     pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
     prompt_calls: list[str] = []
 
-    def counting_provider(prompt: str) -> str:
+    def counting_pin(prompt: str) -> str:
         prompt_calls.append(prompt)
         return "123456"
 
-    signer = _make_signer(pin_provider=counting_provider)
+    signer = _make_signer()
 
-    with _patch_pkcs11(pkcs11_mod):
+    with _patch_pkcs11(pkcs11_mod), patch("nominal.smartcard._grpc_signer._prompt_for_pin", counting_pin):
         signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
         signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
 
     assert len(prompt_calls) == 1
-
-
-def test_pin_provider_called_again_after_device_removed() -> None:
-    pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
-    prompt_calls: list[str] = []
-
-    def counting_provider(prompt: str) -> str:
-        prompt_calls.append(prompt)
-        return "123456"
-
-    signer = _make_signer(pin_provider=counting_provider)
-
-    with _patch_pkcs11(pkcs11_mod):
-        signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
-
-        key = pkcs11_mod.lib.return_value.get_slots.return_value[
-            0
-        ].get_token.return_value.open.return_value.get_key.return_value
-        key.sign.side_effect = pkcs11.exceptions.DeviceRemoved("card pulled")
-        with pytest.raises(SmartcardConfigurationError):
-            signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
-
-        key.sign.side_effect = None
-        key.sign.return_value = b"\x00" * 64
-        signer.sign(b"data3", _A.ECDSA_SECP256R1_SHA256, None)
-
-    assert len(prompt_calls) == 2
 
 
 def test_session_opened_concurrently_only_once(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -382,53 +363,6 @@ def test_pkcs11_sign_error_raises_configuration_error() -> None:
     with _patch_pkcs11(pkcs11_mod):
         with pytest.raises(SmartcardConfigurationError, match="signing failed"):
             signer.sign(b"data", _A.RSA_PKCS1_SHA256, None)
-
-
-def test_session_cleared_on_device_removed_error() -> None:
-    pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
-    signer = _make_signer()
-
-    with _patch_pkcs11(pkcs11_mod):
-        signer.sign(b"data", _A.ECDSA_SECP256R1_SHA256, None)
-        assert signer._session is not None
-
-        key = pkcs11_mod.lib.return_value.get_slots.return_value[
-            0
-        ].get_token.return_value.open.return_value.get_key.return_value
-        key.sign.side_effect = pkcs11.exceptions.DeviceRemoved("card pulled")
-
-        with pytest.raises(SmartcardConfigurationError):
-            signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
-
-    assert signer._session is None
-    assert signer._key is None
-
-
-def test_session_re_established_after_device_removed() -> None:
-    pkcs11_mod = _fake_pkcs11_module(sign_return=b"\x00" * 64)
-    signer = _make_signer()
-
-    with _patch_pkcs11(pkcs11_mod):
-        # First sign succeeds, establishing a session.
-        signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)
-
-        # Simulate card removal on the next sign.
-        key = pkcs11_mod.lib.return_value.get_slots.return_value[
-            0
-        ].get_token.return_value.open.return_value.get_key.return_value
-        key.sign.side_effect = pkcs11.exceptions.DeviceRemoved("card pulled")
-        with pytest.raises(SmartcardConfigurationError):
-            signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)
-
-        # Card reinserted: reset the mock to succeed again.
-        key.sign.side_effect = None
-        key.sign.return_value = b"\x00" * 64
-
-        # Recovery sign must succeed and re-open the session.
-        result = signer.sign(b"data3", _A.ECDSA_SECP256R1_SHA256, None)
-
-    assert signer._session is not None
-    assert result is not None
 
 
 # ---------------------------------------------------------------------------
