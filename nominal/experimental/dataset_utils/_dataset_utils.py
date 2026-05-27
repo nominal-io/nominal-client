@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 from nominal_api import scout_catalog
 
-from nominal.core import Dataset, NominalClient, User
+from nominal.core import Dataset, NominalClient, SslContextProvider, User
 
 
 def create_dataset_with_uuid(
@@ -74,6 +74,7 @@ def get_dataset_owner_rid(dataset: Dataset) -> str:
         auth_header=dataset._clients.auth_header,
         api_base_url=dataset._clients._api_base_url,  # type: ignore[attr-defined]
         dataset_rid=dataset.rid,
+        ssl_context_provider=dataset._clients.ssl_context_provider,
     )
     if owner_rid is None:
         raise ValueError(f"Could not resolve an owner for dataset {dataset.rid}")
@@ -88,16 +89,27 @@ def get_dataset_owner(dataset: Dataset) -> User:
     )
 
 
-def _lookup_dataset_owner_rid(*, auth_header: str, api_base_url: str, dataset_rid: str) -> str | None:
+def _lookup_dataset_owner_rid(
+    *,
+    auth_header: str,
+    api_base_url: str,
+    dataset_rid: str,
+    ssl_context_provider: SslContextProvider | None = None,
+) -> str | None:
     try:
-        import grpc  # type: ignore[import-untyped]
+        import grpc
         from nominal_api_protos.nominal.authorization.roles.v1 import roles_pb2, roles_pb2_grpc
     except ImportError as ex:
         raise ImportError("nominal[protos] is required to use experimental dataset owner lookup") from ex
 
     target = _api_base_url_to_grpc_target(api_base_url)
     metadata = (("authorization", auth_header),)
-    channel = grpc.secure_channel(target, grpc.ssl_channel_credentials())
+    credentials = (
+        ssl_context_provider.create_grpc_channel_credentials()
+        if ssl_context_provider is not None
+        else grpc.ssl_channel_credentials()
+    )
+    channel = grpc.secure_channel(target, credentials)
 
     with channel:
         stub = roles_pb2_grpc.RoleServiceStub(channel)  # type: ignore[no-untyped-call]
