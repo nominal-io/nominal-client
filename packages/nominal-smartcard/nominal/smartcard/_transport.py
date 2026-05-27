@@ -71,17 +71,17 @@ class SmartcardSslContextProvider(SslContextProvider):
                         break
                     except SmartcardPinLockedError:
                         raise SystemExit("Card PIN is locked. Contact your security administrator.")
-                    except (SmartcardPinError, SmartcardProviderError) as exc:
-                        if isinstance(exc, SmartcardPinError):
-                            base_message = "Incorrect PIN."
-                        else:
-                            base_message = (
-                                "Authentication failed. An unexpected error occurred which may "
-                                "indicate an incorrect PIN."
-                            )
+                    except SmartcardPinError:
+                        base_message = "Incorrect PIN."
                         if remaining == 0:
                             raise SystemExit(f"{base_message} No attempts remaining.")
                         print(f"{base_message} {remaining} attempt(s) remaining, please try again.")
+                    except SmartcardProviderError as exc:
+                        raise SystemExit(
+                            "Authentication failed. PIN entry may have been cancelled, or an unexpected "
+                            "smartcard provider error occurred."
+                        ) from exc
+            assert self._cached_ctx is not None
             return self._cached_ctx
 
     def create_grpc_channel_credentials(

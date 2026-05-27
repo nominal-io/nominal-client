@@ -216,7 +216,7 @@ def _get_openssl_error(ffi: Any, lib: Any) -> str:
         return "unknown error"
     buf = ffi.new("char[256]")
     lib.ERR_error_string_n(err, buf, 256)
-    return ffi.string(buf).decode("utf-8", errors="replace")
+    return str(ffi.string(buf).decode("utf-8", errors="replace"))
 
 
 def _raise_store_error(err: str, context: str) -> None:
@@ -323,6 +323,27 @@ def _load_x509_from_der(ffi: Any, lib: Any, der_cert: bytes) -> Any:
     return x509
 
 
+class _LockedSSLContext(ssl.SSLContext):
+    """ssl.SSLContext subclass that serializes concurrent wrap_socket calls.
+
+    A single SSL_CTX* with a PKCS#11-backed EVP_PKEY is shared across all threads.
+    Concurrent TLS handshakes invoke signing operations through the same PKCS#11
+    session, which is not thread-safe. Serializing wrap_socket (which runs the
+    full handshake) prevents concurrent access to the underlying token session.
+    """
+
+    _wrap_lock: threading.Lock
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> _LockedSSLContext:
+        instance: _LockedSSLContext = super().__new__(cls, *args, **kwargs)
+        instance._wrap_lock = threading.Lock()
+        return instance
+
+    def wrap_socket(self, *args: Any, **kwargs: Any) -> ssl.SSLSocket:
+        with self._wrap_lock:
+            return super().wrap_socket(*args, **kwargs)
+
+
 @dataclass(frozen=True)
 class OpenSslProviderBridge:
     """Bridge from Python ssl.SSLContext to OpenSSL's pkcs11-provider via cffi.
@@ -393,7 +414,7 @@ class OpenSslProviderBridge:
         ensures enterprise/government root CAs added to the OS store are trusted
         without requiring cffi-level changes.
         """
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx = _LockedSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = True
         ctx.verify_mode = ssl.CERT_REQUIRED
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
