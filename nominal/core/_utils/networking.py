@@ -6,7 +6,10 @@ import ssl
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Type, TypeVar
+
+if TYPE_CHECKING:
+    import grpc
 
 import requests
 import truststore
@@ -43,11 +46,8 @@ class SslContextProvider(ABC):
         *,
         root_certificates: bytes | None = None,
         certificate_chain_pem: bytes | None = None,
-    ) -> Any:
-        """Return grpc.ChannelCredentials for smartcard-backed mTLS over gRPC.
-
-        The return type is ``Any`` so that grpcio is not a required import at definition time.
-        """
+    ) -> grpc.ChannelCredentials:
+        """Return grpc.ChannelCredentials for smartcard-backed mTLS over gRPC."""
         ...
 
 

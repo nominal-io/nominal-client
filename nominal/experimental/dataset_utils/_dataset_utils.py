@@ -97,7 +97,7 @@ def _lookup_dataset_owner_rid(
     ssl_context_provider: SslContextProvider | None = None,
 ) -> str | None:
     try:
-        import grpc  # type: ignore[import-untyped]
+        import grpc
         from nominal_api_protos.nominal.authorization.roles.v1 import roles_pb2, roles_pb2_grpc
     except ImportError as ex:
         raise ImportError("nominal[protos] is required to use experimental dataset owner lookup") from ex
