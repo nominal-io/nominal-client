@@ -29,8 +29,13 @@ class Workspace(HasRid, RefreshableMixin[security_api_workspace.Workspace]):
     This is the name that users will see when selecting workspaces within the product.
     """
 
+    preferred_refnames: Mapping[str, DataSourceType]
+    """Mapping of preferred refnames to their respective datasource types they apply towards"""
+
+    preferred_procedure_rids: Sequence[str]
+    """Preferred procedure rids that are accessible from the application home page"""
+
     _clients: _Clients = field(repr=False)
-    _workspace_settings: security_api_workspace.WorkspaceSettings = field(repr=False)
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -39,39 +44,6 @@ class Workspace(HasRid, RefreshableMixin[security_api_workspace.Workspace]):
     def _get_latest_api(self) -> security_api_workspace.Workspace:
         """Retrieve the latest state of this Workspace from the API."""
         return self._clients.workspace.get_workspace(self._clients.auth_header, self.rid)
-
-    @property
-    def preferred_refnames(self) -> Mapping[str, DataSourceType]:
-        """Get mapping of preferred refnames to their respective datasource types that they apply towards."""
-        refname_settings = self._workspace_settings.ref_names
-        if refname_settings is None:
-            return {}
-
-        v1_preferred_refnames = refname_settings.v1
-        if v1_preferred_refnames is None:
-            return {}
-
-        return {
-            refname_and_type.name: DataSourceType._from_conjure(refname_and_type.type)
-            for refname_and_type in v1_preferred_refnames
-        }
-
-    @property
-    def preferred_procedure_rids(self) -> Sequence[str]:
-        """Get the list of preferred procedure rids.
-
-        Unlike other procedures which can only be kicked off from the procedures page, preferred procedures
-        may be kicked off from the homepage of the application
-        """
-        procedure_settings = self._workspace_settings.procedures
-        if procedure_settings is None:
-            return []
-
-        v1_preferred_procedures = procedure_settings.v1
-        if v1_preferred_procedures is None:
-            return []
-
-        return v1_preferred_procedures.workspace_procedures
 
     @overload
     def update(self, *, display_name: str | None = None) -> Self: ...
@@ -152,6 +124,42 @@ class Workspace(HasRid, RefreshableMixin[security_api_workspace.Workspace]):
             id=workspace.id,
             org=workspace.org,
             display_name=workspace.display_name,
+            preferred_refnames=_parse_preferred_refnames(workspace.settings),
+            preferred_procedure_rids=_parse_preferred_procedure_rids(workspace.settings),
             _clients=clients,
-            _workspace_settings=workspace.settings,
         )
+
+
+def _parse_preferred_refnames(
+    workspace_settings: security_api_workspace.WorkspaceSettings,
+) -> Mapping[str, DataSourceType]:
+    """Get mapping of preferred refnames to their respective datasource types that they apply towards."""
+    refname_settings = workspace_settings.ref_names
+    if refname_settings is None:
+        return {}
+
+    v1_preferred_refnames = refname_settings.v1
+    if v1_preferred_refnames is None:
+        return {}
+
+    return {
+        refname_and_type.name: DataSourceType._from_conjure(refname_and_type.type)
+        for refname_and_type in v1_preferred_refnames
+    }
+
+
+def _parse_preferred_procedure_rids(workspace_settings: security_api_workspace.WorkspaceSettings) -> Sequence[str]:
+    """Get the list of preferred procedure rids.
+
+    Unlike other procedures which can only be kicked off from the procedures page, preferred procedures
+    may be kicked off from the homepage of the application
+    """
+    procedure_settings = workspace_settings.procedures
+    if procedure_settings is None:
+        return []
+
+    v1_preferred_procedures = procedure_settings.v1
+    if v1_preferred_procedures is None:
+        return []
+
+    return v1_preferred_procedures.workspace_procedures
