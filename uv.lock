@@ -1273,6 +1273,7 @@ video = [
 dev = [
     { name = "black" },
     { name = "coverage", extra = ["toml"] },
+    { name = "grpcio" },
     { name = "ipykernel" },
     { name = "mkdocs" },
     { name = "mkdocs-click" },
@@ -1327,6 +1328,7 @@ provides-extras = ["protos", "smartcard", "tdms", "video"]
 dev = [
     { name = "black", specifier = ">=24.8.0,<25" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.0.0" },
+    { name = "grpcio", specifier = ">=1.80.0" },
     { name = "ipykernel", specifier = ">=6.30.0" },
     { name = "mkdocs", specifier = ">=1.6.1,<2" },
     { name = "mkdocs-click", specifier = ">=0.9.0" },

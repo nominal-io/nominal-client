@@ -3,7 +3,7 @@ from __future__ import annotations
 import click
 from conjure_python_client import ConjureHTTPError
 
-from nominal.core._utils.networking import SslContextProvider
+from nominal.core import SslContextProvider
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 
