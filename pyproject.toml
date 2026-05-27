@@ -200,7 +200,7 @@ module = "nominal_video"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "PyKCS11"
+module = ["pkcs11", "pkcs11.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
