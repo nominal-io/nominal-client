@@ -6,7 +6,10 @@ import ssl
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Type, TypeVar
+
+if TYPE_CHECKING:
+    import grpc
 
 import requests
 import truststore
@@ -29,6 +32,23 @@ GZIP_COMPRESSION_LEVEL = 1
 class HeaderProvider(ABC):
     @abstractmethod
     def headers(self) -> Mapping[str, str]: ...
+
+
+class SslContextProvider(ABC):
+    """Provides ssl.SSLContext and gRPC ChannelCredentials for transport-level mTLS auth."""
+
+    @abstractmethod
+    def create_ssl_context(self) -> ssl.SSLContext: ...
+
+    @abstractmethod
+    def create_grpc_channel_credentials(
+        self,
+        *,
+        root_certificates: bytes | None = None,
+        certificate_chain_pem: bytes | None = None,
+    ) -> "grpc.ChannelCredentials":
+        """Return grpc.ChannelCredentials for smartcard-backed mTLS over gRPC."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -108,9 +128,15 @@ class SslBypassRequestsAdapter(HTTPAdapter):
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
     __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
 
-    def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
+    def __init__(
+        self,
+        *args: Any,
+        enable_keep_alive: bool = False,
+        ssl_context: ssl.SSLContext | None = None,
+        **kwargs: Any,
+    ):
         self._enable_keep_alive = enable_keep_alive
-        self._ssl_context = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self._ssl_context = ssl_context if ssl_context is not None else ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -189,6 +215,7 @@ def create_conjure_service_client(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     header_provider: HeaderProvider | None = None,
+    ssl_context_provider: SslContextProvider | None = None,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
@@ -220,9 +247,8 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
-    # required since this session is shared across threads via ClientsBunch.
-    transport_adapter = NominalRequestsAdapter(max_retries=retry)
+    ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
+    transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
     session = HeaderProviderSession(header_provider)
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
@@ -246,6 +272,7 @@ def create_conjure_client_factory(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     header_provider: HeaderProvider | None = None,
+    ssl_context_provider: SslContextProvider | None = None,
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
@@ -259,6 +286,7 @@ def create_conjure_client_factory(
             service_config=service_config,
             return_none_for_unknown_union_types=return_none_for_unknown_union_types,
             header_provider=header_provider,
+            ssl_context_provider=ssl_context_provider,
         )
 
     return factory

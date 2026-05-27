@@ -36,6 +36,7 @@ from typing_extensions import Self
 from nominal._utils.dataclass_tools import LazyField
 from nominal.core._utils.networking import (
     HeaderProvider,
+    SslContextProvider,
     create_conjure_client_factory,
 )
 from nominal.core.exceptions import NominalConfigError
@@ -123,6 +124,7 @@ class ClientsBunch:
     workspace_rid: str | None
     app_base_url: str
     header_provider: HeaderProvider | None
+    ssl_context_provider: SslContextProvider | None
     _api_base_url: str = field(repr=False)
     _user_agent: str = field(repr=False)
     _token: str = field(repr=False)
@@ -249,6 +251,7 @@ class ClientsBunch:
         workspace_rid: str | None,
         *,
         header_provider: HeaderProvider | None = None,
+        ssl_context_provider: SslContextProvider | None = None,
     ) -> Self:
         app_base_url = api_base_url_to_app_base_url(base_url)
 
@@ -257,6 +260,7 @@ class ClientsBunch:
                 user_agent=agent,
                 service_config=cfg,
                 header_provider=header_provider,
+                ssl_context_provider=ssl_context_provider,
             )(service_class)
 
         return cls(
@@ -264,6 +268,7 @@ class ClientsBunch:
             workspace_rid=workspace_rid,
             app_base_url=app_base_url,
             header_provider=header_provider,
+            ssl_context_provider=ssl_context_provider,
             _api_base_url=base_url,
             _user_agent=agent,
             _token=token,
@@ -309,6 +314,8 @@ class HasScoutParams(Protocol):
     def app_base_url(self) -> str: ...
     @property
     def header_provider(self) -> HeaderProvider | None: ...
+    @property
+    def ssl_context_provider(self) -> SslContextProvider | None: ...
     def resolve_workspace(self, workspace_rid: str | None = None) -> security_api_workspace.Workspace: ...
     def resolve_default_workspace_rid(self) -> str: ...
 
