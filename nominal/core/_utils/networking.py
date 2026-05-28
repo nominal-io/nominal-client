@@ -34,54 +34,57 @@ class HeaderProvider(ABC):
     def headers(self) -> Mapping[str, str]: ...
 
 
-class TransportProvider(ABC):
-    """Controls transport-level authentication for Nominal API connections.
+class TransportProvider:
+    """Controls transport-level authentication for Nominal connections.
 
-    Implementations supply credentials for both the HTTP (requests) and gRPC transports.
-    The default HTTP path calls ``create_ssl_context()`` to build an ``ssl.SSLContext``
-    that is injected into the standard requests adapter. Implementations that need a
-    different TLS stack for API calls (e.g. Windows Schannel for CAC card auth) can
-    override ``create_http_adapter()`` to return a fully custom ``HTTPAdapter`` instead,
-    which is then mounted for the Nominal API URIs only.
+    Each transport has its own method; overriding one does not affect the others.
+    The defaults use a ``ThreadSafeSSLContext`` backed by the OS trust store for
+    HTTP and multipart, and ``grpc.ssl_channel_credentials()`` for gRPC.
+    Subclass and override only the transports that need customization.
     """
 
-    @abstractmethod
-    def create_ssl_context(self) -> ssl.SSLContext:
-        """Return an ``ssl.SSLContext`` for the requests HTTP adapter.
+    def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
+        """Return an ``HTTPAdapter`` for Nominal API calls.
 
-        Used by the default HTTP path and for non-API connections such as S3 multipart
-        uploads. Implementations that replace the API adapter via ``create_http_adapter()``
-        still need this for those non-API uses.
+        Default: ``NominalRequestsAdapter`` backed by a ``ThreadSafeSSLContext``. Override
+        to substitute a different TLS stack or to inject a custom ``ssl.SSLContext``.
         """
-        ...
+        return NominalRequestsAdapter(max_retries=max_retries)
 
-    @abstractmethod
+    def create_multipart_adapter(
+        self,
+        *,
+        max_retries: Retry,
+        pool_size: int,
+    ) -> HTTPAdapter:
+        """Return an ``HTTPAdapter`` for multipart upload/download sessions.
+
+        Default: ``NominalSslRequestsAdapter`` (no gzip) sized for ``pool_size`` workers.
+        Most providers can inherit this default because presigned object-store URLs
+        authenticate via query parameters, not client certificates.
+        """
+        return NominalSslRequestsAdapter(
+            max_retries=max_retries,
+            pool_connections=pool_size,
+            pool_maxsize=pool_size * 2,
+        )
+
     def create_grpc_channel_credentials(
         self,
         *,
         root_certificates: bytes | None = None,
         certificate_chain_pem: bytes | None = None,
     ) -> grpc.ChannelCredentials:
-        """Return ``grpc.ChannelCredentials`` for gRPC channel creation."""
-        ...
+        """Return ``grpc.ChannelCredentials`` for gRPC channel creation.
 
-    def create_http_adapter(
-        self,
-        *,
-        max_retries: Retry,
-    ) -> HTTPAdapter | None:
-        """Return a custom ``HTTPAdapter`` for Nominal API calls, or ``None`` to use the default.
-
-        Override this when the TLS stack for API traffic must be replaced entirely — for
-        example, on Windows where smartcard auth routes through Schannel rather than
-        OpenSSL + pkcs11-provider. The returned adapter is mounted for each service URI;
-        ``create_ssl_context()`` is not called for those URIs.
-
-        Note: ``HTTPAdapter(max_retries=...)`` only retries when urllib3 performs the send.
-        Implementations that bypass urllib3 must implement their own retry logic or
-        accept a single attempt per call.
+        Default: ``grpc.ssl_channel_credentials()`` using the system CA bundle.
         """
-        return None
+        import grpc
+
+        return grpc.ssl_channel_credentials(
+            root_certificates=root_certificates,
+            certificate_chain=certificate_chain_pem,
+        )
 
 
 @dataclass(frozen=True)
@@ -266,15 +269,13 @@ def create_conjure_service_client(
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
         header_provider: Additional default headers to attach to each request.
-        transport_provider: Optional transport provider for authentication. When its
-            ``create_requests_session()`` returns a non-None session it is used directly;
-            otherwise ``create_ssl_context()`` is called and the default adapter path is used.
+        transport_provider: Transport provider for authentication. Its ``create_http_adapter()``
+            builds the adapter mounted for each service URI. Defaults to ``TransportProvider()``
+            when not specified.
 
     Returns:
         Instantiated conjure client object to hit the API with
     """
-    verify = service_config.security.trust_store_path if service_config.security is not None else None
-
     # setup retry to match java remoting
     # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
     retry = RetryWithJitter(
@@ -284,25 +285,18 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    # Let the provider substitute a custom adapter when its TLS stack differs from the default
-    # (e.g. Windows Schannel for CAC card auth). If it returns None, fall through to the standard
-    # NominalRequestsAdapter backed by the provider's ssl_context (or a ThreadSafeSSLContext when
-    # no provider is given). The adapter is mounted only for the service URIs so that non-API
-    # traffic (e.g. S3 multipart uploads) is unaffected.
-    transport_adapter: HTTPAdapter = (
-        transport_provider.create_http_adapter(max_retries=retry)
-        if transport_provider is not None
-        else None
-    )
-    if transport_adapter is None:
-        ssl_context = transport_provider.create_ssl_context() if transport_provider is not None else None
-        transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
+    provider = transport_provider or TransportProvider()
+    transport_adapter = provider.create_http_adapter(max_retries=retry)
 
     session = HeaderProviderSession(header_provider)
+    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
+    if service_config.security is not None:
+        verify = service_config.security.trust_store_path
+    else:
+        verify = None
     for uri in service_config.uris:
         session.mount(uri, transport_adapter)
 
-    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     return service_class(  # type: ignore
         session,
         service_config.uris,
@@ -348,16 +342,16 @@ def create_multipart_request_session(
     """Create a requests Session configured for multipart uploads to S3.
 
     Each call produces an independent session safe for concurrent use across threads.
-    S3 pre-signed URLs use AWS auth and do not require client certificates, so this
-    session always uses the SSL context path regardless of the transport provider.
+    The transport provider's ``create_multipart_adapter()`` builds the adapter mounted
+    for ``https://``.
 
     Args:
         pool_size: Number of concurrent workers. Controls the number of cached host pools
             and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
         header_provider: Additional default headers to attach to every request issued by the session.
-        transport_provider: Optional transport provider for authentication. Its
-            ``create_ssl_context()`` is called to supply the TLS context for S3 connections.
+        transport_provider: Transport provider. Its ``create_multipart_adapter()`` supplies
+            the adapter. Defaults to ``TransportProvider()`` when not specified.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
@@ -367,15 +361,11 @@ def create_multipart_request_session(
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
-    ssl_context = transport_provider.create_ssl_context() if transport_provider is not None else None
-    session = HeaderProviderSession(header_provider)
-    adapter = NominalSslRequestsAdapter(
+    provider = transport_provider or TransportProvider()
+    adapter = provider.create_multipart_adapter(
         max_retries=retries,
-        # Match the number of cached host pools to the thread count to avoid LRU eviction.
-        pool_connections=pool_size,
-        # Double the per-host connection limit so retries/redirects don't discard connections.
-        pool_maxsize=pool_size * 2,
-        ssl_context=ssl_context,
+        pool_size=pool_size,
     )
+    session = HeaderProviderSession(header_provider)
     session.mount("https://", adapter)
     return session

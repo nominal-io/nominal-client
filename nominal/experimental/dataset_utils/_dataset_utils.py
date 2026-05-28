@@ -104,11 +104,8 @@ def _lookup_dataset_owner_rid(
 
     target = _api_base_url_to_grpc_target(api_base_url)
     metadata = (("authorization", auth_header),)
-    credentials = (
-        transport_provider.create_grpc_channel_credentials()
-        if transport_provider is not None
-        else grpc.ssl_channel_credentials()
-    )
+    provider = transport_provider or TransportProvider()
+    credentials = provider.create_grpc_channel_credentials()
     channel = grpc.secure_channel(target, credentials)
 
     with channel:
