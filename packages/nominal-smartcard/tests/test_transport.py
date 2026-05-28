@@ -73,9 +73,7 @@ def test_http_adapter_uses_pkcs11_ssl_context(tmp_path: Path, monkeypatch: pytes
     assert len(bridge.calls) == 1
 
 
-def test_multipart_adapter_does_not_use_pkcs11_ssl_context(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_multipart_adapter_does_not_use_pkcs11_ssl_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Object-store multipart traffic must not present a client certificate."""
     pytest.importorskip("cryptography")
     provider, bridge = _make_provider(tmp_path, monkeypatch)
@@ -88,9 +86,7 @@ def test_multipart_adapter_does_not_use_pkcs11_ssl_context(
     assert bridge.calls == []
 
 
-def test_http_adapter_does_not_retry_keyboard_interrupt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_http_adapter_does_not_retry_keyboard_interrupt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider, _bridge = _make_provider(tmp_path, monkeypatch)
     interrupting_bridge = _InterruptingBridge()
@@ -153,9 +149,7 @@ def test_http_adapter_caches_ssl_context(tmp_path: Path, monkeypatch: pytest.Mon
     assert len(bridge.calls) == 1
 
 
-def test_http_adapter_pin_prompted_once_across_threads(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_http_adapter_pin_prompted_once_across_threads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider, bridge = _make_provider(tmp_path, monkeypatch)
     barrier = threading.Barrier(10)
