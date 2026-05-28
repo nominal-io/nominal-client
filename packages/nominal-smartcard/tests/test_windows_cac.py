@@ -407,29 +407,3 @@ def test_create_requests_session_forwards_header_provider_on_windows(
 
     assert isinstance(session, WindowsCacSession)
     assert session._header_provider is hp
-
-
-def test_create_ssl_context_on_windows_returns_plain_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("cryptography")
-    from _helpers import _candidate, _FakeBackend, _make_der_cert
-
-    from nominal.core._utils.networking import ThreadSafeSSLContext
-    from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
-    from nominal.smartcard._session import SmartcardSessionManager
-    from nominal.smartcard._transport import SmartcardTransportProvider
-
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_text("")
-    monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    bridge = MagicMock()
-    manager = SmartcardSessionManager(
-        backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
-    )
-    provider = SmartcardTransportProvider(_session_manager=manager, _openssl_bridge=bridge)
-
-    with patch("nominal.smartcard._transport.platform") as mock_platform:
-        mock_platform.system.return_value = "Windows"
-        ctx = provider.create_ssl_context()
-
-    assert isinstance(ctx, ThreadSafeSSLContext)
-    bridge.build_ssl_context.assert_not_called()

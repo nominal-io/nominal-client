@@ -67,32 +67,24 @@ class SmartcardTransportProvider(TransportProvider):
     def create_ssl_context(self) -> ssl.SSLContext:
         with self._lock:
             if self._cached_ctx is None:
-                if platform.system() == "Windows":
-                    # pkcs11-provider is not available on Windows; smartcard REST calls route
-                    # through Windows Schannel via create_requests_session(). Return a plain
-                    # SSL context for non-mTLS uses such as S3 multipart uploads.
-                    from nominal.core._utils.networking import ThreadSafeSSLContext
-
-                    self._cached_ctx = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
-                else:
-                    session = self.session_manager.get_session()
-                    for attempt in range(MAX_PIN_ATTEMPTS):
-                        remaining = MAX_PIN_ATTEMPTS - attempt - 1
-                        try:
-                            self._cached_ctx = self.openssl_bridge.build_ssl_context(session=session)
-                            break
-                        except SmartcardPinLockedError:
-                            raise SystemExit("Card PIN is locked. Contact your security administrator.")
-                        except SmartcardPinError:
-                            base_message = "Incorrect PIN."
-                            if remaining == 0:
-                                raise SystemExit(f"{base_message} No attempts remaining.")
-                            print(f"{base_message} {remaining} attempt(s) remaining, please try again.")
-                        except SmartcardProviderError as exc:
-                            raise SystemExit(
-                                "Authentication failed. PIN entry may have been cancelled, or an unexpected "
-                                "smartcard provider error occurred."
-                            ) from exc
+                session = self.session_manager.get_session()
+                for attempt in range(MAX_PIN_ATTEMPTS):
+                    remaining = MAX_PIN_ATTEMPTS - attempt - 1
+                    try:
+                        self._cached_ctx = self.openssl_bridge.build_ssl_context(session=session)
+                        break
+                    except SmartcardPinLockedError:
+                        raise SystemExit("Card PIN is locked. Contact your security administrator.")
+                    except SmartcardPinError:
+                        base_message = "Incorrect PIN."
+                        if remaining == 0:
+                            raise SystemExit(f"{base_message} No attempts remaining.")
+                        print(f"{base_message} {remaining} attempt(s) remaining, please try again.")
+                    except SmartcardProviderError as exc:
+                        raise SystemExit(
+                            "Authentication failed. PIN entry may have been cancelled, or an unexpected "
+                            "smartcard provider error occurred."
+                        ) from exc
             assert self._cached_ctx is not None
             return self._cached_ctx
 

@@ -339,14 +339,26 @@ def create_multipart_request_session(
 
     Args:
         pool_size: Number of concurrent workers. Controls the number of cached host pools
-            and the per-host connection limit (2 * pool_size).
-        num_retries: Number of times to retry failed requests.
+            and the per-host connection limit (2 * pool_size). Ignored when the transport
+            provider supplies a custom session via ``create_requests_session()``.
+        num_retries: Number of times to retry failed requests. Ignored when the transport
+            provider supplies a custom session via ``create_requests_session()``.
         header_provider: Additional default headers to attach to every request issued by the session.
-        transport_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
-            When None, a ThreadSafeSSLContext is used.
+        transport_provider: Optional transport provider. When its ``create_requests_session()``
+            returns a non-None session it is used directly; otherwise ``create_ssl_context()``
+            is called and the default adapter path is used.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
+
+    # Let the provider substitute its own session when needed (e.g. Windows Schannel transport).
+    custom_session = (
+        transport_provider.create_requests_session(header_provider=header_provider)
+        if transport_provider is not None
+        else None
+    )
+    if custom_session is not None:
+        return custom_session
 
     retries = Retry(
         total=num_retries,
