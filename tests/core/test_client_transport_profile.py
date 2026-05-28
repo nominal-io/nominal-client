@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ssl
 from unittest.mock import MagicMock, patch, sentinel
 
 from nominal.config import ConfigProfile, NominalConfig
@@ -9,9 +8,6 @@ from nominal.core.client import NominalClient
 
 
 class _FakeTransportProvider(TransportProvider):
-    def create_ssl_context(self) -> ssl.SSLContext:
-        return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
     def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
         raise NotImplementedError
 

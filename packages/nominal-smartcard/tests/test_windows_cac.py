@@ -277,13 +277,17 @@ def test_close_disposes_net_client() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_create_http_adapter_returns_none_on_non_windows(
+def test_create_http_adapter_returns_pkcs11_adapter_on_non_windows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """On non-Windows, create_http_adapter returns a NominalRequestsAdapter backed by the pkcs11 SSL context."""
     pytest.importorskip("cryptography")
+    import ssl as _ssl
+
     from _helpers import _candidate, _FakeBackend, _make_der_cert
     from urllib3.util.retry import Retry
 
+    from nominal.core._utils.networking import NominalRequestsAdapter
     from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
     from nominal.smartcard._session import SmartcardSessionManager
     from nominal.smartcard._transport import SmartcardTransportProvider
@@ -294,13 +298,17 @@ def test_create_http_adapter_returns_none_on_non_windows(
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
     )
-    provider = SmartcardTransportProvider(_session_manager=manager)
+    fake_context = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
+    fake_bridge = MagicMock()
+    fake_bridge.build_ssl_context.return_value = fake_context
+    provider = SmartcardTransportProvider(_session_manager=manager, _openssl_bridge=fake_bridge)
 
     with patch("nominal.smartcard._transport.platform") as mock_platform:
         mock_platform.system.return_value = "Linux"
         result = provider.create_http_adapter(max_retries=Retry(0))
 
-    assert result is None
+    assert isinstance(result, NominalRequestsAdapter)
+    assert result._ssl_context is fake_context
 
 
 def test_create_http_adapter_returns_windows_cac_adapter_on_windows(
