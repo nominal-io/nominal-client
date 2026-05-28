@@ -6,12 +6,13 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-import requests
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
 from grpc.experimental import ssl_channel_credentials_with_custom_signer
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-from nominal.core._utils.networking import HeaderProvider, TransportProvider
+from nominal.core._utils.networking import ThreadSafeSSLContext, TransportProvider
 from nominal.smartcard._errors import (
     SmartcardConfigurationError,
     SmartcardPinError,
@@ -21,7 +22,7 @@ from nominal.smartcard._errors import (
 from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
-from nominal.smartcard._windows_cac import WindowsCacSession
+from nominal.smartcard._windows_cac import WindowsCacAdapter
 
 MAX_PIN_ATTEMPTS = 3
 
@@ -65,6 +66,10 @@ class SmartcardTransportProvider(TransportProvider):
         return OpenSslProviderBridge()
 
     def create_ssl_context(self) -> ssl.SSLContext:
+        if platform.system() == "Windows":
+            # On Windows, API traffic routes through WindowsCacAdapter (Schannel) and
+            # S3 pre-signed URLs use AWS auth — no client cert needed for either path.
+            return ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         with self._lock:
             if self._cached_ctx is None:
                 session = self.session_manager.get_session()
@@ -88,15 +93,11 @@ class SmartcardTransportProvider(TransportProvider):
             assert self._cached_ctx is not None
             return self._cached_ctx
 
-    def create_requests_session(
-        self,
-        *,
-        header_provider: HeaderProvider | None = None,
-    ) -> requests.Session | None:
-        """Return a WindowsCacSession on Windows; None elsewhere (uses default SSL context path)."""
+    def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter | None:
+        """Return a WindowsCacAdapter on Windows; None elsewhere (uses default SSL context path)."""
         if platform.system() != "Windows":
             return None
-        return WindowsCacSession(header_provider)
+        return WindowsCacAdapter(max_retries=max_retries)
 
     def create_grpc_channel_credentials(
         self,

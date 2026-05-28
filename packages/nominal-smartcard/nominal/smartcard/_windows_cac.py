@@ -6,12 +6,12 @@ import json
 import os
 import subprocess
 import sys
-from typing import Any
+from typing import Mapping
 
 import requests
-from requests.adapters import CaseInsensitiveDict
+from requests.adapters import CaseInsensitiveDict, HTTPAdapter
 
-from nominal.core._utils.networking import GZIP_COMPRESSION_LEVEL, HeaderProviderSession
+from nominal.core._utils.networking import GZIP_COMPRESSION_LEVEL
 
 NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR = "NOMINAL_WINDOWS_CERT_THUMBPRINT"
 NOMINAL_WINDOWS_REQUIRE_PRIVATE_KEY_PROOF_ENV_VAR = "NOMINAL_WINDOWS_REQUIRE_PRIVATE_KEY_PROOF"
@@ -272,8 +272,8 @@ def _cac_log(message: str) -> None:
     print(f"[nominal-cac] {message}", file=sys.stderr)
 
 
-class WindowsCacSession(HeaderProviderSession):
-    r"""requests.Session backed by Windows HttpClient + Schannel CAC transport.
+class WindowsCacAdapter(HTTPAdapter):
+    r"""requests HTTPAdapter backed by Windows HttpClient + Schannel CAC transport.
 
     Sends each HTTP request via a PowerShell subprocess that uses the Windows
     .NET HttpClient. The Windows certificate store (CurrentUser\My) supplies the
@@ -282,16 +282,23 @@ class WindowsCacSession(HeaderProviderSession):
 
     Request bodies are gzip-compressed before forwarding (mirroring the behaviour
     of NominalRequestsAdapter for the non-Windows path).
+
+    Note: retries are not supported — each request is a single attempt regardless
+    of the ``max_retries`` value passed at construction time.
     """
 
     def send(
         self,
         request: requests.PreparedRequest,
-        **kwargs: Any,
+        stream: bool = False,
+        timeout: float | tuple[float, float] | tuple[float, None] | None = None,
+        verify: bool | str = True,
+        cert: bytes | str | tuple[bytes | str, bytes | str] | None = None,
+        proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
         # Compress the request body, mirroring NominalRequestsAdapter for non-streaming requests.
         body = request.body
-        if body is not None and not kwargs.get("stream"):
+        if body is not None and not stream:
             raw: bytes = body if isinstance(body, bytes) else body.encode("utf-8")
             compressed = gzip.compress(raw, compresslevel=GZIP_COMPRESSION_LEVEL)
             request.headers["Content-Encoding"] = "gzip"
@@ -310,7 +317,7 @@ class WindowsCacSession(HeaderProviderSession):
 
         verbose = _env_flag(NOMINAL_WINDOWS_VERBOSE_CAC_LOG_ENV_VAR)
         require_proof = _env_flag(NOMINAL_WINDOWS_REQUIRE_PRIVATE_KEY_PROOF_ENV_VAR)
-        timeout_seconds = _timeout_to_seconds(kwargs.get("timeout"))
+        timeout_seconds = _timeout_to_seconds(timeout)
 
         envelope = {
             "method": request.method,

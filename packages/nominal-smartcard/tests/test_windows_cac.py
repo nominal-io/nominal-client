@@ -16,7 +16,7 @@ from nominal.smartcard._windows_cac import (
     NOMINAL_WINDOWS_REQUIRE_PRIVATE_KEY_PROOF_ENV_VAR,
     NOMINAL_WINDOWS_TEST_PIN_ENV_VAR,
     NOMINAL_WINDOWS_VERBOSE_CAC_LOG_ENV_VAR,
-    WindowsCacSession,
+    WindowsCacAdapter,
     _timeout_to_seconds,
 )
 
@@ -55,6 +55,16 @@ def _envelope_from_mock(mock_run: MagicMock) -> dict[str, Any]:
     return json.loads(mock_run.call_args.kwargs["input"])
 
 
+def _prepared(
+    method: str = "GET",
+    url: str = "https://api.example.com/",
+    body: bytes | str | None = None,
+    headers: dict[str, str] | None = None,
+) -> requests.PreparedRequest:
+    """Build a PreparedRequest for direct use with WindowsCacAdapter.send()."""
+    return requests.Request(method, url, data=body, headers=headers or {}).prepare()
+
+
 # ---------------------------------------------------------------------------
 # _timeout_to_seconds
 # ---------------------------------------------------------------------------
@@ -85,15 +95,15 @@ def test_timeout_tuple_all_small_clamps_to_300() -> None:
 
 
 # ---------------------------------------------------------------------------
-# WindowsCacSession.send — basic request/response
+# WindowsCacAdapter.send — basic request/response
 # ---------------------------------------------------------------------------
 
 
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_successful_get_returns_parsed_response(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload(status_code=200, body=b'{"ok": true}', url="https://api.example.com/test")
-    session = WindowsCacSession()
-    resp = session.get("https://api.example.com/test")
+    adapter = WindowsCacAdapter()
+    resp = adapter.send(_prepared("GET", "https://api.example.com/test"))
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
 
@@ -101,8 +111,8 @@ def test_successful_get_returns_parsed_response(mock_run: MagicMock) -> None:
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_response_headers_are_parsed(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload(headers={"Content-Type": "application/json", "X-Custom": "value"})
-    session = WindowsCacSession()
-    resp = session.get("https://api.example.com/")
+    adapter = WindowsCacAdapter()
+    resp = adapter.send(_prepared())
     assert resp.headers["Content-Type"] == "application/json"
     assert resp.headers["X-Custom"] == "value"
 
@@ -110,16 +120,16 @@ def test_response_headers_are_parsed(mock_run: MagicMock) -> None:
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_response_url_forwarded(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload(url="https://api.example.com/redirected")
-    session = WindowsCacSession()
-    resp = session.get("https://api.example.com/")
+    adapter = WindowsCacAdapter()
+    resp = adapter.send(_prepared())
     assert resp.url == "https://api.example.com/redirected"
 
 
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_non_200_status_code_preserved(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload(status_code=404, reason="Not Found")
-    session = WindowsCacSession()
-    resp = session.get("https://api.example.com/missing")
+    adapter = WindowsCacAdapter()
+    resp = adapter.send(_prepared("GET", "https://api.example.com/missing"))
     assert resp.status_code == 404
     assert resp.reason == "Not Found"
 
@@ -132,8 +142,8 @@ def test_non_200_status_code_preserved(mock_run: MagicMock) -> None:
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_post_body_is_gzip_compressed(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload()
-    session = WindowsCacSession()
-    session.post("https://api.example.com/", data=b"hello world" * 100)
+    adapter = WindowsCacAdapter()
+    adapter.send(_prepared("POST", body=b"hello world" * 100))
     envelope = _envelope_from_mock(mock_run)
     raw = gzip.decompress(base64.b64decode(envelope["body_b64"]))
     assert raw == b"hello world" * 100
@@ -142,8 +152,8 @@ def test_post_body_is_gzip_compressed(mock_run: MagicMock) -> None:
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_post_string_body_is_utf8_then_compressed(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload()
-    session = WindowsCacSession()
-    session.post("https://api.example.com/", data="héllo")
+    adapter = WindowsCacAdapter()
+    adapter.send(_prepared("POST", body="héllo"))
     envelope = _envelope_from_mock(mock_run)
     raw = gzip.decompress(base64.b64decode(envelope["body_b64"]))
     assert raw == "héllo".encode("utf-8")
@@ -152,8 +162,8 @@ def test_post_string_body_is_utf8_then_compressed(mock_run: MagicMock) -> None:
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_compression_headers_set_on_post(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload()
-    session = WindowsCacSession()
-    session.post("https://api.example.com/", data=b"payload")
+    adapter = WindowsCacAdapter()
+    adapter.send(_prepared("POST", body=b"payload"))
     envelope = _envelope_from_mock(mock_run)
     assert envelope["headers"].get("Content-Encoding") == "gzip"
 
@@ -161,8 +171,8 @@ def test_compression_headers_set_on_post(mock_run: MagicMock) -> None:
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_get_with_no_body_sends_empty_body_b64(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload()
-    session = WindowsCacSession()
-    session.get("https://api.example.com/")
+    adapter = WindowsCacAdapter()
+    adapter.send(_prepared())
     envelope = _envelope_from_mock(mock_run)
     assert envelope["body_b64"] == ""
 
@@ -176,19 +186,16 @@ def test_get_with_no_body_sends_empty_body_b64(mock_run: MagicMock) -> None:
 def test_restricted_headers_not_forwarded(mock_run: MagicMock) -> None:
     """Headers managed by the transport layer must not be duplicated in the PowerShell envelope."""
     mock_run.return_value = _ps_payload()
-    session = WindowsCacSession()
-    session.post(
-        "https://api.example.com/",
-        headers={
-            "Content-Length": "999",
-            "Host": "other.example.com",
-            "Connection": "close",
-            "Transfer-Encoding": "chunked",
-            "Accept-Encoding": "br",
-            "X-Custom": "keep",
-        },
-        data=b"body",
-    )
+    req = _prepared("POST", body=b"body", headers={"X-Custom": "keep"})
+    # Inject transport-managed headers directly onto the prepared request to simulate
+    # what urllib3 would have set, and verify they are stripped before PowerShell sees them.
+    req.headers["Content-Length"] = "999"
+    req.headers["Host"] = "other.example.com"
+    req.headers["Connection"] = "close"
+    req.headers["Transfer-Encoding"] = "chunked"
+    req.headers["Accept-Encoding"] = "br"
+    adapter = WindowsCacAdapter()
+    adapter.send(req)
     envelope = _envelope_from_mock(mock_run)
     forwarded = {k.lower() for k in envelope["headers"]}
     assert "content-length" not in forwarded
@@ -202,26 +209,18 @@ def test_restricted_headers_not_forwarded(mock_run: MagicMock) -> None:
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_user_agent_forwarded(mock_run: MagicMock) -> None:
     mock_run.return_value = _ps_payload()
-    session = WindowsCacSession()
-    session.headers["User-Agent"] = "nominal-test/1.0"
-    session.get("https://api.example.com/")
+    adapter = WindowsCacAdapter()
+    adapter.send(_prepared(headers={"User-Agent": "nominal-test/1.0"}))
     envelope = _envelope_from_mock(mock_run)
     assert envelope["headers"].get("User-Agent") == "nominal-test/1.0"
 
 
-# ---------------------------------------------------------------------------
-# HeaderProvider integration
-# ---------------------------------------------------------------------------
-
-
 @patch("nominal.smartcard._windows_cac.subprocess.run")
-def test_header_provider_headers_included(mock_run: MagicMock) -> None:
-    from nominal.core._utils.networking import StaticHeaderProvider
-
+def test_request_headers_forwarded_to_powershell(mock_run: MagicMock) -> None:
+    """Headers already on the prepared request (e.g. injected by HeaderProviderSession) reach PowerShell."""
     mock_run.return_value = _ps_payload()
-    provider = StaticHeaderProvider({"Authorization": "Bearer token123"})
-    session = WindowsCacSession(provider)
-    session.get("https://api.example.com/")
+    adapter = WindowsCacAdapter()
+    adapter.send(_prepared(headers={"Authorization": "Bearer token123"}))
     envelope = _envelope_from_mock(mock_run)
     assert envelope["headers"].get("Authorization") == "Bearer token123"
 
@@ -235,7 +234,7 @@ def test_header_provider_headers_included(mock_run: MagicMock) -> None:
 def test_cert_thumbprint_env_var_forwarded(mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR, "AABBCCDD")
     mock_run.return_value = _ps_payload()
-    WindowsCacSession().get("https://api.example.com/")
+    WindowsCacAdapter().send(_prepared())
     envelope = _envelope_from_mock(mock_run)
     assert envelope["cert_thumbprint"] == "AABBCCDD"
 
@@ -244,7 +243,7 @@ def test_cert_thumbprint_env_var_forwarded(mock_run: MagicMock, monkeypatch: pyt
 def test_require_private_key_proof_env_var_forwarded(mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(NOMINAL_WINDOWS_REQUIRE_PRIVATE_KEY_PROOF_ENV_VAR, "1")
     mock_run.return_value = _ps_payload()
-    WindowsCacSession().get("https://api.example.com/")
+    WindowsCacAdapter().send(_prepared())
     envelope = _envelope_from_mock(mock_run)
     assert envelope["require_private_key_proof"] is True
 
@@ -253,7 +252,7 @@ def test_require_private_key_proof_env_var_forwarded(mock_run: MagicMock, monkey
 def test_test_pin_env_var_forwarded(mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(NOMINAL_WINDOWS_TEST_PIN_ENV_VAR, "123456")
     mock_run.return_value = _ps_payload()
-    WindowsCacSession().get("https://api.example.com/")
+    WindowsCacAdapter().send(_prepared())
     envelope = _envelope_from_mock(mock_run)
     assert envelope["test_pin"] == "123456"
 
@@ -262,7 +261,7 @@ def test_test_pin_env_var_forwarded(mock_run: MagicMock, monkeypatch: pytest.Mon
 def test_verbose_flag_not_set_by_default(mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(NOMINAL_WINDOWS_VERBOSE_CAC_LOG_ENV_VAR, raising=False)
     mock_run.return_value = _ps_payload()
-    WindowsCacSession().get("https://api.example.com/")
+    WindowsCacAdapter().send(_prepared())
     envelope = _envelope_from_mock(mock_run)
     assert envelope["verbose_cac_log"] is False
 
@@ -271,7 +270,7 @@ def test_verbose_flag_not_set_by_default(mock_run: MagicMock, monkeypatch: pytes
 def test_verbose_flag_set_when_env_var_is_1(mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(NOMINAL_WINDOWS_VERBOSE_CAC_LOG_ENV_VAR, "1")
     mock_run.return_value = _ps_payload(cac_events=["bridge started"])
-    WindowsCacSession().get("https://api.example.com/")
+    WindowsCacAdapter().send(_prepared())
     envelope = _envelope_from_mock(mock_run)
     assert envelope["verbose_cac_log"] is True
 
@@ -289,7 +288,7 @@ def test_nonzero_exit_code_raises_ssl_error(mock_run: MagicMock) -> None:
     result.stderr = "certificate selection failed"
     mock_run.return_value = result
     with pytest.raises(requests.exceptions.SSLError, match="certificate selection failed"):
-        WindowsCacSession().get("https://api.example.com/")
+        WindowsCacAdapter().send(_prepared())
 
 
 @patch("nominal.smartcard._windows_cac.subprocess.run")
@@ -300,7 +299,7 @@ def test_nonzero_exit_code_uses_stdout_when_stderr_empty(mock_run: MagicMock) ->
     result.stderr = ""
     mock_run.return_value = result
     with pytest.raises(requests.exceptions.SSLError, match="stdout error detail"):
-        WindowsCacSession().get("https://api.example.com/")
+        WindowsCacAdapter().send(_prepared())
 
 
 @patch("nominal.smartcard._windows_cac.subprocess.run")
@@ -311,31 +310,32 @@ def test_invalid_json_response_raises_ssl_error(mock_run: MagicMock) -> None:
     result.stderr = ""
     mock_run.return_value = result
     with pytest.raises(requests.exceptions.SSLError, match="invalid JSON"):
-        WindowsCacSession().get("https://api.example.com/")
+        WindowsCacAdapter().send(_prepared())
 
 
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_subprocess_timeout_raises_requests_timeout(mock_run: MagicMock) -> None:
     mock_run.side_effect = subprocess.TimeoutExpired(cmd=["powershell.exe"], timeout=360)
     with pytest.raises(requests.exceptions.Timeout, match="timed out"):
-        WindowsCacSession().get("https://api.example.com/")
+        WindowsCacAdapter().send(_prepared())
 
 
 @patch("nominal.smartcard._windows_cac.subprocess.run")
 def test_os_error_raises_ssl_error(mock_run: MagicMock) -> None:
     mock_run.side_effect = OSError("No such file: powershell.exe")
     with pytest.raises(requests.exceptions.SSLError, match="powershell.exe"):
-        WindowsCacSession().get("https://api.example.com/")
+        WindowsCacAdapter().send(_prepared())
 
 
 # ---------------------------------------------------------------------------
-# SmartcardTransportProvider.create_requests_session platform routing
+# SmartcardTransportProvider.create_http_adapter platform routing
 # ---------------------------------------------------------------------------
 
 
-def test_create_requests_session_returns_none_on_non_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_http_adapter_returns_none_on_non_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     from _helpers import _candidate, _FakeBackend, _make_der_cert
+    from urllib3.util.retry import Retry
 
     from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
     from nominal.smartcard._session import SmartcardSessionManager
@@ -351,16 +351,17 @@ def test_create_requests_session_returns_none_on_non_windows(tmp_path: Path, mon
 
     with patch("nominal.smartcard._transport.platform") as mock_platform:
         mock_platform.system.return_value = "Linux"
-        result = provider.create_requests_session()
+        result = provider.create_http_adapter(max_retries=Retry(0))
 
     assert result is None
 
 
-def test_create_requests_session_returns_windows_cac_session_on_windows(
+def test_create_http_adapter_returns_windows_cac_adapter_on_windows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("cryptography")
     from _helpers import _candidate, _FakeBackend, _make_der_cert
+    from urllib3.util.retry import Retry
 
     from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
     from nominal.smartcard._session import SmartcardSessionManager
@@ -376,34 +377,6 @@ def test_create_requests_session_returns_windows_cac_session_on_windows(
 
     with patch("nominal.smartcard._transport.platform") as mock_platform:
         mock_platform.system.return_value = "Windows"
-        result = provider.create_requests_session()
+        result = provider.create_http_adapter(max_retries=Retry(0))
 
-    assert isinstance(result, WindowsCacSession)
-
-
-def test_create_requests_session_forwards_header_provider_on_windows(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    pytest.importorskip("cryptography")
-    from _helpers import _candidate, _FakeBackend, _make_der_cert
-
-    from nominal.core._utils.networking import StaticHeaderProvider
-    from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
-    from nominal.smartcard._session import SmartcardSessionManager
-    from nominal.smartcard._transport import SmartcardTransportProvider
-
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_text("")
-    monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    manager = SmartcardSessionManager(
-        backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
-    )
-    provider = SmartcardTransportProvider(_session_manager=manager)
-    hp = StaticHeaderProvider({"X-Test": "value"})
-
-    with patch("nominal.smartcard._transport.platform") as mock_platform:
-        mock_platform.system.return_value = "Windows"
-        session = provider.create_requests_session(header_provider=hp)
-
-    assert isinstance(session, WindowsCacSession)
-    assert session._header_provider is hp
+    assert isinstance(result, WindowsCacAdapter)
