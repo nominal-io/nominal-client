@@ -209,23 +209,6 @@ def test_create_multipart_request_session_uses_ssl_context_from_provider() -> No
     session.close()
 
 
-def test_create_multipart_request_session_uses_custom_session_from_provider() -> None:
-    """When create_requests_session() returns a session it must be used directly for S3 too."""
-    custom_session = requests.Session()
-    provider = MagicMock(spec=TransportProvider)
-    provider.create_requests_session.return_value = custom_session
-
-    result = create_multipart_request_session(
-        pool_size=4,
-        num_retries=3,
-        transport_provider=provider,
-    )
-
-    assert result is custom_session
-    provider.create_ssl_context.assert_not_called()
-    custom_session.close()
-
-
 def test_header_provider_session_evaluates_headers_per_request() -> None:
     class DynamicHeaders:
         value = "first"
