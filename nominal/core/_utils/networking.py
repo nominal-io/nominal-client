@@ -267,27 +267,35 @@ def create_conjure_service_client(
     Returns:
         Instantiated conjure client object to hit the API with
     """
-    # setup retry to match java remoting
-    # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
-    retry = RetryWithJitter(
-        total=service_config.max_num_retries,
-        connect=service_config.max_num_retries,  # Allow connection error retries
-        read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)
-        status_forcelist=[308, 429, 503],
-        backoff_factor=float(service_config.backoff_slot_size) / 1000,
+    verify = service_config.security.trust_store_path if service_config.security is not None else None
+
+    # Let the provider substitute its own session when needed (e.g. Windows Schannel transport).
+    custom_session = (
+        ssl_context_provider.create_requests_session(header_provider=header_provider)
+        if ssl_context_provider is not None
+        else None
     )
-    # If no ssl_context_provider is passed in, defaults to ThreadSafeSSLContext, which is
-    # required since this session is shared across threads via ClientsBunch.
-    ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
-    transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
-    session = HeaderProviderSession(header_provider)
-    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
-    if service_config.security is not None:
-        verify = service_config.security.trust_store_path
+    if custom_session is not None:
+        session = custom_session
     else:
-        verify = None
-    for uri in service_config.uris:
-        session.mount(uri, transport_adapter)
+        # setup retry to match java remoting
+        # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
+        retry = RetryWithJitter(
+            total=service_config.max_num_retries,
+            connect=service_config.max_num_retries,  # Allow connection error retries
+            read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)
+            status_forcelist=[308, 429, 503],
+            backoff_factor=float(service_config.backoff_slot_size) / 1000,
+        )
+        # If no ssl_context_provider is passed in, defaults to ThreadSafeSSLContext, which is
+        # required since this session is shared across threads via ClientsBunch.
+        ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
+        transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
+        session = HeaderProviderSession(header_provider)
+        for uri in service_config.uris:
+            session.mount(uri, transport_adapter)
+
+    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     return service_class(  # type: ignore
         session,
         service_config.uris,
