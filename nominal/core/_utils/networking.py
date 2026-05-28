@@ -38,15 +38,21 @@ class TransportProvider(ABC):
     """Controls transport-level authentication for Nominal API connections.
 
     Implementations supply credentials for both the HTTP (requests) and gRPC transports.
-    The default HTTP path builds an ``ssl.SSLContext`` that the requests adapter uses.
-    ``create_requests_session`` may return a fully custom ``requests.Session`` instead
-    so the caller never touches ``create_ssl_context`` if the provider needs to replace
-    the entire HTTP transport layer.
+    The default HTTP path calls ``create_ssl_context()`` to build an ``ssl.SSLContext``
+    that is injected into the standard requests adapter. Implementations that need a
+    different TLS stack for API calls (e.g. Windows Schannel for CAC card auth) can
+    override ``create_http_adapter()`` to return a fully custom ``HTTPAdapter`` instead,
+    which is then mounted for the Nominal API URIs only.
     """
 
     @abstractmethod
     def create_ssl_context(self) -> ssl.SSLContext:
-        """Return an ``ssl.SSLContext`` for the requests HTTP adapter."""
+        """Return an ``ssl.SSLContext`` for the requests HTTP adapter.
+
+        Used by the default HTTP path and for non-API connections such as S3 multipart
+        uploads. Implementations that replace the API adapter via ``create_http_adapter()``
+        still need this for those non-API uses.
+        """
         ...
 
     @abstractmethod
@@ -59,16 +65,21 @@ class TransportProvider(ABC):
         """Return ``grpc.ChannelCredentials`` for gRPC channel creation."""
         ...
 
-    def create_requests_session(
+    def create_http_adapter(
         self,
         *,
-        header_provider: HeaderProvider | None = None,
-    ) -> requests.Session | None:
-        """Return a custom ``requests.Session``, or ``None`` to use the default adapter path.
+        max_retries: Retry,
+    ) -> HTTPAdapter | None:
+        """Return a custom ``HTTPAdapter`` for Nominal API calls, or ``None`` to use the default.
 
-        Override this when the transport layer must be replaced entirely. When this returns a
-        non-``None`` session, ``create_conjure_service_client`` uses it directly and does
-        not call ``create_ssl_context`` or mount any adapters.
+        Override this when the TLS stack for API traffic must be replaced entirely — for
+        example, on Windows where smartcard auth routes through Schannel rather than
+        OpenSSL + pkcs11-provider. The returned adapter is mounted for each service URI;
+        ``create_ssl_context()`` is not called for those URIs.
+
+        Note: ``HTTPAdapter(max_retries=...)`` only retries when urllib3 performs the send.
+        Implementations that bypass urllib3 must implement their own retry logic or
+        accept a single attempt per call.
         """
         return None
 
@@ -264,32 +275,32 @@ def create_conjure_service_client(
     """
     verify = service_config.security.trust_store_path if service_config.security is not None else None
 
-    # Let the provider substitute its own session when needed (e.g. Windows Schannel transport).
-    custom_session = (
-        transport_provider.create_requests_session(header_provider=header_provider)
+    # setup retry to match java remoting
+    # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
+    retry = RetryWithJitter(
+        total=service_config.max_num_retries,
+        connect=service_config.max_num_retries,  # Allow connection error retries
+        read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)
+        status_forcelist=[308, 429, 503],
+        backoff_factor=float(service_config.backoff_slot_size) / 1000,
+    )
+    # Let the provider substitute a custom adapter when its TLS stack differs from the default
+    # (e.g. Windows Schannel for CAC card auth). If it returns None, fall through to the standard
+    # NominalRequestsAdapter backed by the provider's ssl_context (or a ThreadSafeSSLContext when
+    # no provider is given). The adapter is mounted only for the service URIs so that non-API
+    # traffic (e.g. S3 multipart uploads) is unaffected.
+    transport_adapter: HTTPAdapter = (
+        transport_provider.create_http_adapter(max_retries=retry)
         if transport_provider is not None
         else None
     )
-    if custom_session is not None:
-        session = custom_session
-    else:
-        # setup retry to match java remoting
-        # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
-        retry = RetryWithJitter(
-            total=service_config.max_num_retries,
-            connect=service_config.max_num_retries,  # Allow connection error retries
-            read=service_config.max_num_retries,  # Allow read error retries (e.g., RemoteDisconnected)
-            status_forcelist=[308, 429, 503],
-            backoff_factor=float(service_config.backoff_slot_size) / 1000,
-        )
-        # No custom session; build a standard adapter-based session. Falls back to a
-        # ThreadSafeSSLContext when no transport_provider is given, which is required
-        # since this session is shared across threads via ClientsBunch.
+    if transport_adapter is None:
         ssl_context = transport_provider.create_ssl_context() if transport_provider is not None else None
         transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
-        session = HeaderProviderSession(header_provider)
-        for uri in service_config.uris:
-            session.mount(uri, transport_adapter)
+
+    session = HeaderProviderSession(header_provider)
+    for uri in service_config.uris:
+        session.mount(uri, transport_adapter)
 
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     return service_class(  # type: ignore
@@ -337,31 +348,19 @@ def create_multipart_request_session(
     """Create a requests Session configured for multipart uploads to S3.
 
     Each call produces an independent session safe for concurrent use across threads.
-    When the transport provider supplies a custom session via ``create_requests_session()``,
-    that session is returned directly and the pool/retry arguments are ignored.
+    S3 pre-signed URLs use AWS auth and do not require client certificates, so this
+    session always uses the SSL context path regardless of the transport provider.
 
     Args:
         pool_size: Number of concurrent workers. Controls the number of cached host pools
-            and the per-host connection limit (2 * pool_size). Ignored when the transport
-            provider supplies a custom session via ``create_requests_session()``.
-        num_retries: Number of times to retry failed requests. Ignored when the transport
-            provider supplies a custom session via ``create_requests_session()``.
+            and the per-host connection limit (2 * pool_size).
+        num_retries: Number of times to retry failed requests.
         header_provider: Additional default headers to attach to every request issued by the session.
-        transport_provider: Optional transport provider for authentication. When its
-            ``create_requests_session()`` returns a non-None session it is used directly;
-            otherwise ``create_ssl_context()`` is called and the default adapter path is used.
+        transport_provider: Optional transport provider for authentication. Its
+            ``create_ssl_context()`` is called to supply the TLS context for S3 connections.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
-
-    # Let the provider substitute its own session when needed (e.g. Windows Schannel transport).
-    custom_session = (
-        transport_provider.create_requests_session(header_provider=header_provider)
-        if transport_provider is not None
-        else None
-    )
-    if custom_session is not None:
-        return custom_session
 
     retries = Retry(
         total=num_retries,
