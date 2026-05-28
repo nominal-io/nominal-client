@@ -9,6 +9,7 @@ import requests
 from conjure_python_client import ServiceConfiguration
 from conjure_python_client._http.configuration import SslConfiguration
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from nominal.core._utils.networking import (
     HeaderProviderSession,
@@ -27,12 +28,6 @@ def _prepared_request(body: object) -> requests.PreparedRequest:
 
 
 class _FakeTransportProvider(TransportProvider):
-    def __init__(self) -> None:
-        self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
-    def create_ssl_context(self):
-        return self.ssl_context
-
     def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
         raise NotImplementedError
 
@@ -120,14 +115,12 @@ def test_ssl_adapter_defaults_to_thread_safe_ssl_context_when_none_provided() ->
     assert isinstance(adapter._ssl_context, ThreadSafeSSLContext)
 
 
-def test_create_conjure_service_client_calls_create_ssl_context_exactly_once() -> None:
-    """The provider's create_ssl_context() must be called once at session build time, not per-request."""
+def test_create_conjure_service_client_calls_create_http_adapter_exactly_once() -> None:
+    """The provider's create_http_adapter() must be called once at session build time, not per-request."""
     service_class = MagicMock(return_value=sentinel.client)
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
     provider = MagicMock(spec=TransportProvider)
-    provider.create_ssl_context.return_value = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    # create_http_adapter must return None to fall through to the SSL context path.
-    provider.create_http_adapter.return_value = None
+    provider.create_http_adapter.return_value = MagicMock(spec=HTTPAdapter)
 
     create_conjure_service_client(
         service_class=service_class,
@@ -136,7 +129,7 @@ def test_create_conjure_service_client_calls_create_ssl_context_exactly_once() -
         transport_provider=provider,
     )
 
-    provider.create_ssl_context.assert_called_once_with()
+    provider.create_http_adapter.assert_called_once()
     service_class.call_args.args[0].close()
 
 
@@ -175,11 +168,11 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
     session.close()
 
 
-def test_create_conjure_service_client_uses_ssl_context_from_provider() -> None:
-    """API clients should use the ssl_context supplied by the provider."""
+def test_create_conjure_service_client_default_adapter_is_nominal_requests_adapter() -> None:
+    """The base TransportProvider default returns a NominalRequestsAdapter (gzip-enabled)."""
+    provider = _FakeTransportProvider()
     service_class = MagicMock(return_value=sentinel.client)
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
-    provider = _FakeTransportProvider()
 
     create_conjure_service_client(
         service_class=service_class,
@@ -189,13 +182,12 @@ def test_create_conjure_service_client_uses_ssl_context_from_provider() -> None:
     )
 
     session = service_class.call_args.args[0]
-    adapter = session.adapters["https://api.example.com"]
-    assert adapter._ssl_context is provider.ssl_context
+    assert isinstance(session.adapters["https://api.example.com"], NominalRequestsAdapter)
     session.close()
 
 
-def test_create_multipart_request_session_uses_ssl_context_from_provider() -> None:
-    """Object-store sessions should use the ssl_context supplied by the provider."""
+def test_create_multipart_request_session_default_adapter_is_ssl_adapter() -> None:
+    """The base TransportProvider default returns a NominalSslRequestsAdapter (no gzip)."""
     provider = _FakeTransportProvider()
 
     session = create_multipart_request_session(
@@ -205,13 +197,16 @@ def test_create_multipart_request_session_uses_ssl_context_from_provider() -> No
     )
 
     adapter = session.adapters["https://"]
-    assert adapter._ssl_context is provider.ssl_context
+    assert isinstance(adapter, NominalSslRequestsAdapter)
+    assert not isinstance(adapter, NominalRequestsAdapter)
     session.close()
 
 
-def test_create_multipart_request_session_ignores_http_adapter_hook() -> None:
-    """S3 sessions always use the SSL context path; create_http_adapter() is never called for S3."""
-    provider = _FakeTransportProvider()
+def test_create_multipart_request_session_uses_custom_adapter_from_provider() -> None:
+    """When create_multipart_adapter() returns an adapter it must be mounted for https://."""
+    custom_adapter = MagicMock(spec=HTTPAdapter)
+    provider = MagicMock(spec=TransportProvider)
+    provider.create_multipart_adapter.return_value = custom_adapter
 
     session = create_multipart_request_session(
         pool_size=4,
@@ -219,9 +214,23 @@ def test_create_multipart_request_session_ignores_http_adapter_hook() -> None:
         transport_provider=provider,
     )
 
-    # The adapter mounted for https:// must use the provider's SSL context.
-    adapter = session.adapters["https://"]
-    assert adapter._ssl_context is provider.ssl_context
+    assert session.adapters["https://"] is custom_adapter
+    provider.create_multipart_adapter.assert_called_once()
+    session.close()
+
+
+def test_create_multipart_request_session_does_not_call_http_adapter() -> None:
+    """Multipart sessions must not call create_http_adapter() — that's for API traffic only."""
+    provider = MagicMock(spec=TransportProvider)
+    provider.create_multipart_adapter.return_value = MagicMock(spec=HTTPAdapter)
+
+    session = create_multipart_request_session(
+        pool_size=4,
+        num_retries=3,
+        transport_provider=provider,
+    )
+
+    provider.create_http_adapter.assert_not_called()
     session.close()
 
 
@@ -293,12 +302,11 @@ def test_create_conjure_service_client_uses_custom_adapter_from_provider() -> No
     session = service_class.call_args.args[0]
     assert session.adapters["https://api.example.com"] is custom_adapter
     assert session.headers["User-Agent"] == "custom-agent"
-    provider.create_ssl_context.assert_not_called()
     session.close()
 
 
-def test_create_conjure_service_client_skips_ssl_context_when_custom_adapter_provided() -> None:
-    """When create_http_adapter() returns an adapter, create_ssl_context() must not be called."""
+def test_create_conjure_service_client_does_not_call_multipart_adapter() -> None:
+    """API clients must not consult create_multipart_adapter() — that's for object-store traffic."""
     service_class = MagicMock(return_value=sentinel.client)
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
 
@@ -312,7 +320,7 @@ def test_create_conjure_service_client_skips_ssl_context_when_custom_adapter_pro
         transport_provider=provider,
     )
 
-    provider.create_ssl_context.assert_not_called()
+    provider.create_multipart_adapter.assert_not_called()
     service_class.call_args.args[0].close()
 
 
@@ -340,21 +348,21 @@ def test_create_conjure_service_client_trust_store_passed_through_for_custom_ada
     _session.close()
 
 
-def test_create_conjure_service_client_default_http_adapter_falls_through_to_ssl_context() -> None:
-    """TransportProvider.create_http_adapter() default returns None, falling through to SSL context path."""
+def test_transport_provider_default_multipart_adapter_uses_thread_safe_ssl_context() -> None:
+    """The base class default multipart adapter is a NominalSslRequestsAdapter with a ThreadSafeSSLContext."""
     provider = _FakeTransportProvider()
-    service_class = MagicMock(return_value=sentinel.client)
-    service_config = ServiceConfiguration(uris=["https://api.example.com"])
 
-    create_conjure_service_client(
-        service_class=service_class,
-        user_agent="test",
-        service_config=service_config,
-        transport_provider=provider,
-    )
+    adapter = provider.create_multipart_adapter(max_retries=Retry(total=3), pool_size=5)
 
-    session = service_class.call_args.args[0]
-    # Default path: session has a NominalRequestsAdapter with the provider's SSL context.
-    adapter = session.adapters["https://api.example.com"]
-    assert adapter._ssl_context is provider.ssl_context
-    session.close()
+    assert isinstance(adapter, NominalSslRequestsAdapter)
+    assert isinstance(adapter._ssl_context, ThreadSafeSSLContext)
+
+
+def test_transport_provider_default_http_adapter_is_nominal_requests_adapter() -> None:
+    """The base class default HTTP adapter is a NominalRequestsAdapter (gzip-enabled)."""
+    provider = _FakeTransportProvider()
+
+    adapter = provider.create_http_adapter(max_retries=Retry(total=3))
+
+    assert isinstance(adapter, NominalRequestsAdapter)
+    assert isinstance(adapter._ssl_context, ThreadSafeSSLContext)

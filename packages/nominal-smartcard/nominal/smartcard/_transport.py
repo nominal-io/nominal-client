@@ -8,8 +8,10 @@ from typing import Any
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
 from grpc.experimental import ssl_channel_credentials_with_custom_signer
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-from nominal.core._utils.networking import TransportProvider
+from nominal.core._utils.networking import NominalRequestsAdapter, TransportProvider
 from nominal.smartcard._errors import (
     SmartcardConfigurationError,
     SmartcardPinError,
@@ -25,17 +27,20 @@ MAX_PIN_ATTEMPTS = 3
 
 @dataclass
 class SmartcardTransportProvider(TransportProvider):
-    """Transport provider that attaches smartcard-backed mTLS to all Nominal traffic.
+    """Transport provider that attaches smartcard-backed mTLS to Nominal API and gRPC traffic.
 
-    HTTP path: call ``create_ssl_context()`` to get an ``ssl.SSLContext`` backed by the
-    OpenSSL pkcs11-provider. PIN prompting is handled at C-level by pkcs11-provider.
+    HTTP path: ``create_http_adapter()`` returns a ``NominalRequestsAdapter`` backed by an
+    OpenSSL+pkcs11 ``ssl.SSLContext``. PIN prompting is handled at C-level by pkcs11-provider.
 
-    gRPC path: call ``create_grpc_channel_credentials()`` to get a ``grpc.ChannelCredentials``
-    that uses a PKCS#11 signing callback so the private key never leaves the card.
-    PIN prompting happens on the first TLS handshake, with up to ``MAX_PIN_ATTEMPTS`` retries.
+    gRPC path: ``create_grpc_channel_credentials()`` returns ``grpc.ChannelCredentials`` that
+    use a PKCS#11 signing callback so the private key never leaves the card. PIN prompting
+    happens on the first TLS handshake, with up to ``MAX_PIN_ATTEMPTS`` retries.
 
-    Both paths share the same certificate discovery (via ``SmartcardSessionManager``),
-    each caching their result after the first successful call.
+    Multipart path: inherits the base class default — a plain ``NominalSslRequestsAdapter``
+    with no client certificate, since S3 presigned URLs use AWS auth.
+
+    Both customised paths share certificate discovery (via ``SmartcardSessionManager``) and
+    each caches its result after the first successful call.
     """
 
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
@@ -61,29 +66,12 @@ class SmartcardTransportProvider(TransportProvider):
             return self._openssl_bridge
         return OpenSslProviderBridge()
 
-    def create_ssl_context(self) -> ssl.SSLContext:
-        with self._lock:
-            if self._cached_ctx is None:
-                session = self.session_manager.get_session()
-                for attempt in range(MAX_PIN_ATTEMPTS):
-                    remaining = MAX_PIN_ATTEMPTS - attempt - 1
-                    try:
-                        self._cached_ctx = self.openssl_bridge.build_ssl_context(session=session)
-                        break
-                    except SmartcardPinLockedError:
-                        raise SystemExit("Card PIN is locked. Contact your security administrator.")
-                    except SmartcardPinError:
-                        base_message = "Incorrect PIN."
-                        if remaining == 0:
-                            raise SystemExit(f"{base_message} No attempts remaining.")
-                        print(f"{base_message} {remaining} attempt(s) remaining, please try again.")
-                    except SmartcardProviderError as exc:
-                        raise SystemExit(
-                            "Authentication failed. PIN entry may have been cancelled, or an unexpected "
-                            "smartcard provider error occurred."
-                        ) from exc
-            assert self._cached_ctx is not None
-            return self._cached_ctx
+    def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
+        """Return a ``NominalRequestsAdapter`` backed by the smartcard ``ssl.SSLContext``."""
+        return NominalRequestsAdapter(
+            max_retries=max_retries,
+            ssl_context=self._build_pkcs11_ssl_context(),
+        )
 
     def create_grpc_channel_credentials(
         self,
@@ -152,3 +140,28 @@ class SmartcardTransportProvider(TransportProvider):
                 self._signer.close()
                 self._signer = None
             self._cached_grpc_credentials = None
+
+    def _build_pkcs11_ssl_context(self) -> ssl.SSLContext:
+        """Lazily build (and cache) the OpenSSL+pkcs11 SSL context, prompting for PIN on first use."""
+        with self._lock:
+            if self._cached_ctx is None:
+                session = self.session_manager.get_session()
+                for attempt in range(MAX_PIN_ATTEMPTS):
+                    remaining = MAX_PIN_ATTEMPTS - attempt - 1
+                    try:
+                        self._cached_ctx = self.openssl_bridge.build_ssl_context(session=session)
+                        break
+                    except SmartcardPinLockedError:
+                        raise SystemExit("Card PIN is locked. Contact your security administrator.")
+                    except SmartcardPinError:
+                        base_message = "Incorrect PIN."
+                        if remaining == 0:
+                            raise SystemExit(f"{base_message} No attempts remaining.")
+                        print(f"{base_message} {remaining} attempt(s) remaining, please try again.")
+                    except SmartcardProviderError as exc:
+                        raise SystemExit(
+                            "Authentication failed. PIN entry may have been cancelled, or an unexpected "
+                            "smartcard provider error occurred."
+                        ) from exc
+            assert self._cached_ctx is not None
+            return self._cached_ctx
