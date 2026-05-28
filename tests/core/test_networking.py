@@ -14,8 +14,8 @@ from nominal.core._utils.networking import (
     HeaderProviderSession,
     NominalRequestsAdapter,
     NominalSslRequestsAdapter,
-    TransportProvider,
     ThreadSafeSSLContext,
+    TransportProvider,
     create_conjure_service_client,
     create_multipart_request_session,
 )
@@ -133,7 +133,7 @@ def test_create_conjure_service_client_calls_create_ssl_context_exactly_once() -
         service_class=service_class,
         user_agent="test",
         service_config=service_config,
-        ssl_context_provider=provider,
+        transport_provider=provider,
     )
 
     provider.create_ssl_context.assert_called_once_with()
@@ -185,7 +185,7 @@ def test_create_conjure_service_client_uses_ssl_context_from_provider() -> None:
         service_class=service_class,
         user_agent="test",
         service_config=service_config,
-        ssl_context_provider=provider,
+        transport_provider=provider,
     )
 
     session = service_class.call_args.args[0]
@@ -201,7 +201,7 @@ def test_create_multipart_request_session_uses_ssl_context_from_provider() -> No
     session = create_multipart_request_session(
         pool_size=7,
         num_retries=3,
-        ssl_context_provider=provider,
+        transport_provider=provider,
     )
 
     adapter = session.adapters["https://"]
@@ -271,7 +271,7 @@ def test_create_conjure_service_client_uses_custom_session_from_provider() -> No
         service_class=service_class,
         user_agent="custom-agent",
         service_config=service_config,
-        ssl_context_provider=provider,
+        transport_provider=provider,
     )
 
     session_used = service_class.call_args.args[0]
@@ -296,7 +296,7 @@ def test_create_conjure_service_client_skips_adapter_mounting_for_custom_session
         service_class=service_class,
         user_agent="test",
         service_config=service_config,
-        ssl_context_provider=provider,
+        transport_provider=provider,
     )
 
     assert custom_session.adapters == original_adapters
@@ -319,7 +319,7 @@ def test_create_conjure_service_client_trust_store_passed_through_for_custom_ses
         service_class=service_class,
         user_agent="test",
         service_config=service_config,
-        ssl_context_provider=provider,
+        transport_provider=provider,
     )
 
     _session, _uris, _ct, _rt, verify, _rn = service_class.call_args.args
@@ -337,7 +337,7 @@ def test_create_conjure_service_client_default_returns_none_custom_session() -> 
         service_class=service_class,
         user_agent="test",
         service_config=service_config,
-        ssl_context_provider=provider,
+        transport_provider=provider,
     )
 
     session = service_class.call_args.args[0]

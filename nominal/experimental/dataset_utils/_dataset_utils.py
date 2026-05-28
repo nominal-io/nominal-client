@@ -74,7 +74,7 @@ def get_dataset_owner_rid(dataset: Dataset) -> str:
         auth_header=dataset._clients.auth_header,
         api_base_url=dataset._clients._api_base_url,  # type: ignore[attr-defined]
         dataset_rid=dataset.rid,
-        ssl_context_provider=dataset._clients.ssl_context_provider,
+        transport_provider=dataset._clients.transport_provider,
     )
     if owner_rid is None:
         raise ValueError(f"Could not resolve an owner for dataset {dataset.rid}")
@@ -94,7 +94,7 @@ def _lookup_dataset_owner_rid(
     auth_header: str,
     api_base_url: str,
     dataset_rid: str,
-    ssl_context_provider: TransportProvider | None = None,
+    transport_provider: TransportProvider | None = None,
 ) -> str | None:
     try:
         import grpc
@@ -105,8 +105,8 @@ def _lookup_dataset_owner_rid(
     target = _api_base_url_to_grpc_target(api_base_url)
     metadata = (("authorization", auth_header),)
     credentials = (
-        ssl_context_provider.create_grpc_channel_credentials()
-        if ssl_context_provider is not None
+        transport_provider.create_grpc_channel_credentials()
+        if transport_provider is not None
         else grpc.ssl_channel_credentials()
     )
     channel = grpc.secure_channel(target, credentials)

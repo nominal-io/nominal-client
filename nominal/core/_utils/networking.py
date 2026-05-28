@@ -38,20 +38,15 @@ class TransportProvider(ABC):
     """Controls transport-level authentication for Nominal API connections.
 
     Implementations supply credentials for both the HTTP (requests) and gRPC transports.
-    The default HTTP path builds an ``ssl.SSLContext`` that the requests adapter uses for
-    mTLS; on platforms where that is unavailable (e.g. Windows with a CAC card, where
-    pkcs11-provider does not exist), ``create_requests_session`` may return a fully
-    custom ``requests.Session`` instead so the caller never touches ``create_ssl_context``.
+    The default HTTP path builds an ``ssl.SSLContext`` that the requests adapter uses.
+    ``create_requests_session`` may return a fully custom ``requests.Session`` instead
+    so the caller never touches ``create_ssl_context`` if the provider needs to replace
+    the entire HTTP transport layer.
     """
 
     @abstractmethod
     def create_ssl_context(self) -> ssl.SSLContext:
-        """Return an ``ssl.SSLContext`` for the requests HTTP adapter.
-
-        Used by the default HTTP path and for non-mTLS connections such as S3 multipart
-        uploads. Implementations that replace the entire HTTP session via
-        ``create_requests_session`` still need this for those non-mTLS uses.
-        """
+        """Return an ``ssl.SSLContext`` for the requests HTTP adapter."""
         ...
 
     @abstractmethod
@@ -61,7 +56,7 @@ class TransportProvider(ABC):
         root_certificates: bytes | None = None,
         certificate_chain_pem: bytes | None = None,
     ) -> grpc.ChannelCredentials:
-        """Return ``grpc.ChannelCredentials`` for mTLS over gRPC."""
+        """Return ``grpc.ChannelCredentials`` for gRPC channel creation."""
         ...
 
     def create_requests_session(
@@ -71,10 +66,9 @@ class TransportProvider(ABC):
     ) -> requests.Session | None:
         """Return a custom ``requests.Session``, or ``None`` to use the default adapter path.
 
-        Override this when the transport layer must be replaced entirely — for example,
-        on Windows where smartcard auth routes through Schannel rather than OpenSSL +
-        pkcs11-provider. When this returns a non-``None`` session, ``create_conjure_service_client``
-        uses it directly and does not call ``create_ssl_context`` or mount any adapters.
+        Override this when the transport layer must be replaced entirely. When this returns a
+        non-``None`` session, ``create_conjure_service_client`` uses it directly and does
+        not call ``create_ssl_context`` or mount any adapters.
         """
         return None
 
@@ -243,7 +237,7 @@ def create_conjure_service_client(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     header_provider: HeaderProvider | None = None,
-    ssl_context_provider: TransportProvider | None = None,
+    transport_provider: TransportProvider | None = None,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
@@ -261,7 +255,7 @@ def create_conjure_service_client(
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
         header_provider: Additional default headers to attach to each request.
-        ssl_context_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
+        transport_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
             When None, a ThreadSafeSSLContext is used.
 
     Returns:
@@ -271,8 +265,8 @@ def create_conjure_service_client(
 
     # Let the provider substitute its own session when needed (e.g. Windows Schannel transport).
     custom_session = (
-        ssl_context_provider.create_requests_session(header_provider=header_provider)
-        if ssl_context_provider is not None
+        transport_provider.create_requests_session(header_provider=header_provider)
+        if transport_provider is not None
         else None
     )
     if custom_session is not None:
@@ -287,9 +281,9 @@ def create_conjure_service_client(
             status_forcelist=[308, 429, 503],
             backoff_factor=float(service_config.backoff_slot_size) / 1000,
         )
-        # If no ssl_context_provider is passed in, defaults to ThreadSafeSSLContext, which is
+        # If no transport_provider is passed in, defaults to ThreadSafeSSLContext, which is
         # required since this session is shared across threads via ClientsBunch.
-        ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
+        ssl_context = transport_provider.create_ssl_context() if transport_provider is not None else None
         transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
         session = HeaderProviderSession(header_provider)
         for uri in service_config.uris:
@@ -311,7 +305,7 @@ def create_conjure_client_factory(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     header_provider: HeaderProvider | None = None,
-    ssl_context_provider: TransportProvider | None = None,
+    transport_provider: TransportProvider | None = None,
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
@@ -325,7 +319,7 @@ def create_conjure_client_factory(
             service_config=service_config,
             return_none_for_unknown_union_types=return_none_for_unknown_union_types,
             header_provider=header_provider,
-            ssl_context_provider=ssl_context_provider,
+            transport_provider=transport_provider,
         )
 
     return factory
@@ -336,7 +330,7 @@ def create_multipart_request_session(
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
     header_provider: HeaderProvider | None = None,
-    ssl_context_provider: TransportProvider | None = None,
+    transport_provider: TransportProvider | None = None,
 ) -> requests.Session:
     """Create a requests Session configured for multipart uploads to S3.
 
@@ -348,7 +342,7 @@ def create_multipart_request_session(
             and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
         header_provider: Additional default headers to attach to every request issued by the session.
-        ssl_context_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
+        transport_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
             When None, a ThreadSafeSSLContext is used.
     """
     if pool_size <= 0:
@@ -359,7 +353,7 @@ def create_multipart_request_session(
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
-    ssl_context = ssl_context_provider.create_ssl_context() if ssl_context_provider is not None else None
+    ssl_context = transport_provider.create_ssl_context() if transport_provider is not None else None
     session = HeaderProviderSession(header_provider)
     adapter = NominalSslRequestsAdapter(
         max_retries=retries,
