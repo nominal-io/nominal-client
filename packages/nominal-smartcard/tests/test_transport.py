@@ -90,9 +90,7 @@ def test_http_adapter_uses_pkcs11_ssl_context(tmp_path: Path, monkeypatch: pytes
     assert len(bridge.calls) == 1
 
 
-def test_multipart_adapter_does_not_use_pkcs11_ssl_context(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_multipart_adapter_does_not_use_pkcs11_ssl_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Object-store multipart traffic must not present a client certificate."""
     provider, bridge = _make_provider(tmp_path, monkeypatch)
 

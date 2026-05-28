@@ -168,40 +168,6 @@ def test_create_conjure_service_client_passes_none_verify_when_security_is_absen
     session.close()
 
 
-def test_create_conjure_service_client_default_adapter_is_nominal_requests_adapter() -> None:
-    """The base TransportProvider default returns a NominalRequestsAdapter (gzip-enabled)."""
-    provider = _FakeTransportProvider()
-    service_class = MagicMock(return_value=sentinel.client)
-    service_config = ServiceConfiguration(uris=["https://api.example.com"])
-
-    create_conjure_service_client(
-        service_class=service_class,
-        user_agent="test",
-        service_config=service_config,
-        transport_provider=provider,
-    )
-
-    session = service_class.call_args.args[0]
-    assert isinstance(session.adapters["https://api.example.com"], NominalRequestsAdapter)
-    session.close()
-
-
-def test_create_multipart_request_session_default_adapter_is_ssl_adapter() -> None:
-    """The base TransportProvider default returns a NominalSslRequestsAdapter (no gzip)."""
-    provider = _FakeTransportProvider()
-
-    session = create_multipart_request_session(
-        pool_size=7,
-        num_retries=3,
-        transport_provider=provider,
-    )
-
-    adapter = session.adapters["https://"]
-    assert isinstance(adapter, NominalSslRequestsAdapter)
-    assert not isinstance(adapter, NominalRequestsAdapter)
-    session.close()
-
-
 def test_create_multipart_request_session_uses_custom_adapter_from_provider() -> None:
     """When create_multipart_adapter() returns an adapter it must be mounted for https://."""
     custom_adapter = MagicMock(spec=HTTPAdapter)
@@ -349,8 +315,8 @@ def test_create_conjure_service_client_trust_store_passed_through_for_custom_ada
 
 
 def test_transport_provider_default_multipart_adapter_uses_thread_safe_ssl_context() -> None:
-    """The base class default multipart adapter is a NominalSslRequestsAdapter with a ThreadSafeSSLContext."""
-    provider = _FakeTransportProvider()
+    """The default multipart adapter is a NominalSslRequestsAdapter with a ThreadSafeSSLContext."""
+    provider = TransportProvider()
 
     adapter = provider.create_multipart_adapter(max_retries=Retry(total=3), pool_size=5)
 
@@ -359,8 +325,8 @@ def test_transport_provider_default_multipart_adapter_uses_thread_safe_ssl_conte
 
 
 def test_transport_provider_default_http_adapter_is_nominal_requests_adapter() -> None:
-    """The base class default HTTP adapter is a NominalRequestsAdapter (gzip-enabled)."""
-    provider = _FakeTransportProvider()
+    """The default HTTP adapter is a NominalRequestsAdapter (gzip-enabled)."""
+    provider = TransportProvider()
 
     adapter = provider.create_http_adapter(max_retries=Retry(total=3))
 
