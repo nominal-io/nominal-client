@@ -166,6 +166,6 @@ def test_lookup_dataset_owner_rid_falls_back_to_default_ssl_credentials(monkeypa
         dataset_rid="ri.dataset.main.dataset.1",
     )
 
-    mock_grpc.ssl_channel_credentials.assert_called_once_with()
+    mock_grpc.ssl_channel_credentials.assert_called_once_with(root_certificates=None, certificate_chain=None)
     _target, credentials = mock_grpc.secure_channel.call_args.args
     assert credentials is mock_grpc.ssl_channel_credentials.return_value
