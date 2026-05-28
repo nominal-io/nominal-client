@@ -5,7 +5,10 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-from nominal.core._utils.networking import TransportProvider
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from nominal.core._utils.networking import NominalRequestsAdapter, TransportProvider
 from nominal.smartcard._errors import SmartcardPinError, SmartcardPinLockedError, SmartcardProviderError
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
@@ -15,7 +18,13 @@ MAX_PIN_ATTEMPTS = 3
 
 @dataclass
 class SmartcardTransportProvider(TransportProvider):
-    """Transport provider that attaches smartcard-backed mTLS to all Nominal traffic."""
+    """Transport provider that attaches smartcard-backed mTLS to Nominal API traffic.
+
+    The smartcard ``ssl.SSLContext`` is built lazily (with PIN-retry) and reused for every
+    API connection. Object-store multipart traffic inherits the default
+    ``create_multipart_adapter()`` from the base class because S3 presigned URLs use AWS
+    auth and do not need a client certificate.
+    """
 
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
     _openssl_bridge: OpenSslProviderBridge | None = field(default=None, repr=False, compare=False)
@@ -38,7 +47,23 @@ class SmartcardTransportProvider(TransportProvider):
             return self._openssl_bridge
         return OpenSslProviderBridge()
 
-    def create_ssl_context(self) -> ssl.SSLContext:
+    def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
+        """Return a ``NominalRequestsAdapter`` backed by the smartcard ``ssl.SSLContext``."""
+        return NominalRequestsAdapter(
+            max_retries=max_retries,
+            ssl_context=self._build_pkcs11_ssl_context(),
+        )
+
+    def create_grpc_channel_credentials(
+        self,
+        *,
+        root_certificates: bytes | None = None,
+        certificate_chain_pem: bytes | None = None,
+    ) -> Any:
+        raise NotImplementedError("gRPC channel credentials not yet implemented for smartcard auth")
+
+    def _build_pkcs11_ssl_context(self) -> ssl.SSLContext:
+        """Lazily build (and cache) the OpenSSL+pkcs11 SSL context, prompting for PIN on first use."""
         with self._lock:
             if self._cached_ctx is None:
                 session = self.session_manager.get_session()
@@ -61,11 +86,3 @@ class SmartcardTransportProvider(TransportProvider):
                         ) from exc
             assert self._cached_ctx is not None
             return self._cached_ctx
-
-    def create_grpc_channel_credentials(
-        self,
-        *,
-        root_certificates: bytes | None = None,
-        certificate_chain_pem: bytes | None = None,
-    ) -> Any:
-        raise NotImplementedError("gRPC channel credentials not yet implemented for smartcard auth")
