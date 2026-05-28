@@ -1,28 +1,19 @@
 from __future__ import annotations
 
-import datetime
 import gzip
 import io
 import ipaddress
 import os
 import re
 import threading
-import time
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
 import requests
-from requests.adapters import DEFAULT_CA_BUNDLE_PATH, CaseInsensitiveDict, HTTPAdapter
+from requests.adapters import CaseInsensitiveDict, HTTPAdapter
 from requests.utils import select_proxy
-from urllib3.exceptions import (
-    ConnectTimeoutError,
-    InsecureRequestWarning,
-    MaxRetryError,
-    ReadTimeoutError,
-    ResponseError,
-)
+from urllib3.exceptions import ConnectTimeoutError, MaxRetryError, ReadTimeoutError, ResponseError
 from urllib3.util.retry import Retry
 
 from nominal.core._utils.networking import GZIP_COMPRESSION_LEVEL
@@ -121,10 +112,16 @@ def _trust_config_from_verify(verify: bool | str | os.PathLike[str] | None) -> _
     if not verify:
         return _TrustConfig(cache_key=("insecure",), disable_server_certificate_validation=True)
 
-    cert_loc = DEFAULT_CA_BUNDLE_PATH if verify is True else os.fspath(verify)
-    cert_path = Path(cert_loc)
+    if verify is True:
+        # Let Schannel validate the server certificate using the Windows certificate store.
+        # On a standard CAC install the DoD root and intermediate CAs are already trusted
+        # there, so no custom Python-level callback is needed or desired.
+        return _TrustConfig(cache_key=("system",))
+
+    # Explicit custom CA bundle path — load it and install a Python validation callback.
+    cert_path = Path(os.fspath(verify))
     if not cert_path.exists():
-        raise OSError(f"Could not find a suitable TLS CA certificate bundle, invalid path: {cert_loc}")
+        raise OSError(f"Could not find a suitable TLS CA certificate bundle, invalid path: {verify}")
 
     stat = cert_path.stat()
     return _TrustConfig(
@@ -139,34 +136,19 @@ def _body_bytes_for_request(request: requests.PreparedRequest) -> tuple[bytes | 
     ``extra_headers`` contains any compression headers that must be merged into
     the forwarded header dict. This function never mutates ``request.headers``
     so that the same ``PreparedRequest`` can be re-sent without corruption.
-
-    Raises ``TypeError`` for unsupported body types (file-like objects,
-    generators) since the adapter requires the full body in memory.
-    Skips compression when the caller already set a ``Content-Encoding`` header
-    to avoid double-compressing a pre-encoded body.
+    Skips compression when the caller already set a ``Content-Encoding`` header.
     """
     body = request.body
     if body is None:
         return None, {}
 
-    if isinstance(body, bytes):
-        raw = body
-    elif isinstance(body, str):
-        raw = body.encode("utf-8")
-    else:
-        raise TypeError(
-            f"WindowsCacAdapter does not support non-bytes request bodies (got {type(body).__name__}). "
-            "Serialize the body to bytes before sending."
-        )
+    raw: bytes = body if isinstance(body, bytes) else body.encode("utf-8")
 
     # Don't double-compress if the caller already set Content-Encoding.
     if request.headers.get("Content-Encoding"):
         return raw, {}
 
     compressed = gzip.compress(raw, compresslevel=GZIP_COMPRESSION_LEVEL)
-    # Content-Length is intentionally omitted here; .NET's ByteArrayContent sets
-    # it automatically from the compressed bytes, and content-length is in
-    # _SKIP_HEADERS to prevent the Python-side value from conflicting.
     return compressed, {"Content-Encoding": "gzip"}
 
 
@@ -504,26 +486,11 @@ class WindowsCacAdapter(HTTPAdapter):
         cert: bytes | str | tuple[bytes | str, bytes | str] | None = None,
         proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
-        if cert is not None:
-            raise ValueError(
-                "WindowsCacAdapter does not support the cert parameter. "
-                "Client certificate selection is handled automatically via the Windows certificate store. "
-                "Use the NOMINAL_WINDOWS_CERT_THUMBPRINT environment variable to pin a specific certificate."
-            )
-
-        if not verify:
-            warnings.warn(
-                "Unverified HTTPS request is being made to host. Adding certificate verification is strongly advised.",
-                InsecureRequestWarning,
-                stacklevel=2,
-            )
-
         proxy_url = select_proxy(str(request.url), proxies)
         client = self._get_http_client(verify=verify, proxy_url=proxy_url)
         body_bytes, body_headers = _body_bytes_for_request(request)
         forwarded_headers = _forwardable_headers(request)
         forwarded_headers.update(body_headers)
-        start = time.perf_counter()
         status_code, reason, resp_headers, resp_body, final_url = _dotnet_send_with_retries(
             client=client,
             request=request,
@@ -541,9 +508,7 @@ class WindowsCacAdapter(HTTPAdapter):
         response.raw = _RawResponseBody(resp_body)
         response.url = final_url
         response.request = request
-        response.connection = self
         response.encoding = requests.utils.get_encoding_from_headers(response.headers)
-        response.elapsed = datetime.timedelta(seconds=time.perf_counter() - start)
         return response
 
     def close(self) -> None:

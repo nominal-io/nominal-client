@@ -301,24 +301,6 @@ def test_connection_error_from_dotnet_propagates(mock_send: MagicMock, adapter: 
 
 
 # ---------------------------------------------------------------------------
-# cert parameter rejection
-# ---------------------------------------------------------------------------
-
-
-@patch("nominal.smartcard._windows_cac._dotnet_send")
-def test_cert_argument_raises_value_error(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
-    mock_send.return_value = _dotnet_result()
-    with pytest.raises(ValueError, match="cert"):
-        adapter.send(_prepared(), cert=("/path/to/cert.pem", "/path/to/key.pem"))
-
-
-@patch("nominal.smartcard._windows_cac._dotnet_send")
-def test_cert_none_does_not_raise(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
-    mock_send.return_value = _dotnet_result()
-    adapter.send(_prepared(), cert=None)  # default value; must not raise
-
-
-# ---------------------------------------------------------------------------
 # Body compression guards
 # ---------------------------------------------------------------------------
 
@@ -333,15 +315,6 @@ def test_existing_content_encoding_skips_compression(mock_send: MagicMock, adapt
     # Body must be forwarded as-is; Content-Encoding must not be changed.
     assert body_bytes == raw
     assert forwarded_headers.get("Content-Encoding") == "gzip"
-
-
-@patch("nominal.smartcard._windows_cac._dotnet_send")
-def test_unsupported_body_type_raises_type_error(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
-    mock_send.return_value = _dotnet_result()
-    req = requests.Request("POST", "https://api.example.com/").prepare()
-    req.body = iter([b"chunk1", b"chunk2"])  # type: ignore[assignment]
-    with pytest.raises(TypeError, match="non-bytes"):
-        adapter.send(req)
 
 
 # ---------------------------------------------------------------------------
@@ -366,56 +339,29 @@ def test_retry_after_case_insensitive() -> None:
 
 
 # ---------------------------------------------------------------------------
-# response.elapsed is populated
-# ---------------------------------------------------------------------------
-
-
-@patch("nominal.smartcard._windows_cac._dotnet_send")
-def test_response_elapsed_is_timedelta(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
-    import datetime
-
-    mock_send.return_value = _dotnet_result()
-    resp = adapter.send(_prepared())
-    assert isinstance(resp.elapsed, datetime.timedelta)
-    assert resp.elapsed.total_seconds() >= 0
-
-
-# ---------------------------------------------------------------------------
-# verify=False emits InsecureRequestWarning
-# ---------------------------------------------------------------------------
-
-
-def test_verify_false_emits_insecure_request_warning() -> None:
-    import warnings
-
-    from urllib3.exceptions import InsecureRequestWarning
-
-    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        adapter = WindowsCacAdapter()
-        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                adapter.send(_prepared(), verify=False)
-
-    assert any(issubclass(w.category, InsecureRequestWarning) for w in caught)
-    adapter.close()
-
-
-# ---------------------------------------------------------------------------
 # Trust, proxy, redirect, and retry parity with requests adapters
 # ---------------------------------------------------------------------------
 
 
-def test_verify_false_builds_insecure_client() -> None:
-    import warnings
+def test_verify_true_uses_schannel_trust_store() -> None:
+    # verify=True must NOT load certifi or install a Python callback — Schannel's
+    # Windows trust store already contains DoD root CAs on a standard CAC install.
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared(), verify=True)
 
+    assert build.call_args.kwargs["ca_certificates"] is None
+    assert build.call_args.kwargs["disable_server_certificate_validation"] is False
+    adapter.close()
+
+
+def test_verify_false_builds_insecure_client() -> None:
     build = MagicMock()
     with patch("nominal.smartcard._windows_cac._build_http_client", build):
         isolated = WindowsCacAdapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                isolated.send(_prepared(), verify=False)
+            isolated.send(_prepared(), verify=False)
 
     assert build.call_args.kwargs["disable_server_certificate_validation"] is True
     assert build.call_args.kwargs["ca_certificates"] is None
