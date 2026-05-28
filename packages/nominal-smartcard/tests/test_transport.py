@@ -6,11 +6,15 @@ from pathlib import Path
 
 import pytest
 from _helpers import _candidate, _FakeBackend, _make_der_cert
+from urllib3.util.retry import Retry
 
+from nominal.core._utils.networking import NominalRequestsAdapter, NominalSslRequestsAdapter
 from nominal.smartcard._errors import SmartcardPinError, SmartcardProviderError
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import SmartcardTransportProvider
+
+_RETRY = Retry(total=0)
 
 
 class _FakeBridge:
@@ -58,15 +62,33 @@ def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Sma
     return provider, bridge
 
 
-def test_ssl_context_provider_builds_ssl_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_http_adapter_uses_pkcs11_ssl_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider, bridge = _make_provider(tmp_path, monkeypatch)
-    ctx = provider.create_ssl_context()
-    assert ctx is bridge.context
+
+    adapter = provider.create_http_adapter(max_retries=_RETRY)
+
+    assert isinstance(adapter, NominalRequestsAdapter)
+    assert adapter._ssl_context is bridge.context
     assert len(bridge.calls) == 1
 
 
-def test_ssl_context_provider_does_not_retry_keyboard_interrupt(
+def test_multipart_adapter_does_not_use_pkcs11_ssl_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Object-store multipart traffic must not present a client certificate."""
+    pytest.importorskip("cryptography")
+    provider, bridge = _make_provider(tmp_path, monkeypatch)
+
+    adapter = provider.create_multipart_adapter(max_retries=_RETRY, pool_size=4)
+
+    assert isinstance(adapter, NominalSslRequestsAdapter)
+    assert not isinstance(adapter, NominalRequestsAdapter)
+    assert adapter._ssl_context is not bridge.context
+    assert bridge.calls == []
+
+
+def test_http_adapter_does_not_retry_keyboard_interrupt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("cryptography")
@@ -75,36 +97,36 @@ def test_ssl_context_provider_does_not_retry_keyboard_interrupt(
     provider._openssl_bridge = interrupting_bridge
 
     with pytest.raises(KeyboardInterrupt):
-        provider.create_ssl_context()
+        provider.create_http_adapter(max_retries=_RETRY)
 
     assert len(interrupting_bridge.calls) == 1
 
 
-def test_ssl_context_provider_does_not_retry_provider_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_http_adapter_does_not_retry_provider_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider, _bridge = _make_provider(tmp_path, monkeypatch)
     provider_error_bridge = _ProviderErrorBridge()
     provider._openssl_bridge = provider_error_bridge
 
     with pytest.raises(SystemExit, match="PIN entry may have been cancelled"):
-        provider.create_ssl_context()
+        provider.create_http_adapter(max_retries=_RETRY)
 
     assert len(provider_error_bridge.calls) == 1
 
 
-def test_ssl_context_provider_retries_pin_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_http_adapter_retries_pin_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider, _bridge = _make_provider(tmp_path, monkeypatch)
     pin_error_bridge = _PinErrorThenSuccessBridge()
     provider._openssl_bridge = pin_error_bridge
 
-    ctx = provider.create_ssl_context()
+    adapter = provider.create_http_adapter(max_retries=_RETRY)
 
-    assert ctx is pin_error_bridge.context
+    assert adapter._ssl_context is pin_error_bridge.context
     assert len(pin_error_bridge.calls) == 2
 
 
-def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_http_adapter_passes_session_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
@@ -118,20 +140,22 @@ def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypat
         _session_manager=manager,
         _openssl_bridge=bridge,
     )
-    provider.create_ssl_context()
+    provider.create_http_adapter(max_retries=_RETRY)
     assert bridge.calls[0].certificate is certificate
 
 
-def test_ssl_context_provider_caches_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_http_adapter_caches_ssl_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
     provider, bridge = _make_provider(tmp_path, monkeypatch)
-    ctx1 = provider.create_ssl_context()
-    ctx2 = provider.create_ssl_context()
-    assert ctx1 is ctx2
+    adapter1 = provider.create_http_adapter(max_retries=_RETRY)
+    adapter2 = provider.create_http_adapter(max_retries=_RETRY)
+    assert adapter1._ssl_context is adapter2._ssl_context
     assert len(bridge.calls) == 1
 
 
-def test_ssl_context_provider_pin_prompted_once_across_threads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_http_adapter_pin_prompted_once_across_threads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     pytest.importorskip("cryptography")
     provider, bridge = _make_provider(tmp_path, monkeypatch)
     barrier = threading.Barrier(10)
@@ -140,9 +164,9 @@ def test_ssl_context_provider_pin_prompted_once_across_threads(tmp_path: Path, m
 
     def call() -> None:
         barrier.wait()
-        ctx = provider.create_ssl_context()
+        adapter = provider.create_http_adapter(max_retries=_RETRY)
         with lock:
-            results.append(ctx)
+            results.append(adapter._ssl_context)
 
     threads = [threading.Thread(target=call) for _ in range(10)]
     for t in threads:
@@ -157,7 +181,7 @@ def test_ssl_context_provider_pin_prompted_once_across_threads(tmp_path: Path, m
 # SmartcardTransportProvider property factory
 
 
-def test_ssl_context_provider_session_manager_defaults_to_shared(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_provider_session_manager_defaults_to_shared(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(SmartcardSessionManager, "_shared_manager", None)
     provider = SmartcardTransportProvider()
     assert provider.session_manager is SmartcardSessionManager.shared()
