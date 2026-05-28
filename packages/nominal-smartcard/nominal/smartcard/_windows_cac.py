@@ -186,6 +186,8 @@ $handler.AutomaticDecompression = (
     [System.Net.DecompressionMethods]::GZip -bor
     [System.Net.DecompressionMethods]::Deflate
 )
+# AutomaticDecompression causes HttpClient to add its own Accept-Encoding header and
+# decompress the response transparently. Do not forward Accept-Encoding from Python.
 
 if ($null -ne $selectedCertificate) {
     $handler.ClientCertificateOptions = [System.Net.Http.ClientCertificateOption]::Manual
@@ -297,10 +299,6 @@ class WindowsCacSession(HeaderProviderSession):
             body_b64 = base64.b64encode(compressed).decode("ascii")
         else:
             body_b64 = ""
-
-        # Accept-Encoding is set on the outgoing request so the server may compress its
-        # response; the PowerShell HttpClientHandler decompresses the response automatically.
-        request.headers["Accept-Encoding"] = "gzip, deflate"
 
         headers: dict[str, str] = {
             (k.decode("ascii", errors="replace") if isinstance(k, bytes) else str(k)): (
