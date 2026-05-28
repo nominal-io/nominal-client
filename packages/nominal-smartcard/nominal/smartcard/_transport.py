@@ -39,10 +39,10 @@ class SmartcardTransportProvider(TransportProvider):
 
     gRPC path: ``create_grpc_channel_credentials()`` returns ``grpc.ChannelCredentials`` that
     use a PKCS#11 signing callback so the private key never leaves the card. The same pkcs11
-    path is used on Windows and POSIX — gRPC does not route through Schannel.
+    path is used on all platforms since gRPC does not route through Schannel.
 
-    Multipart path: inherits the base class default — a plain ``NominalSslRequestsAdapter``
-    with no client certificate, since S3 presigned URLs use AWS auth on every OS.
+    Multipart path: inherits the base class default implementation with no client certificate
+    since S3 presigned URLs use AWS auth.
 
     Both customised paths share certificate discovery (via ``SmartcardSessionManager``) and
     each caches its result after the first successful call.
@@ -75,6 +75,7 @@ class SmartcardTransportProvider(TransportProvider):
         """Return a ``WindowsCacAdapter`` on Windows, a pkcs11-backed ``NominalRequestsAdapter`` elsewhere."""
         if platform.system() == "Windows":
             return WindowsCacAdapter(max_retries=max_retries)
+
         return NominalRequestsAdapter(
             max_retries=max_retries,
             ssl_context=self._build_pkcs11_ssl_context(),

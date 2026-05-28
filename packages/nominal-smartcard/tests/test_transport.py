@@ -102,9 +102,7 @@ def test_multipart_adapter_does_not_use_pkcs11_ssl_context(tmp_path: Path, monke
     assert bridge.calls == []
 
 
-def test_http_adapter_does_not_retry_keyboard_interrupt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_http_adapter_does_not_retry_keyboard_interrupt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider, _bridge = _make_provider(tmp_path, monkeypatch)
     interrupting_bridge = _InterruptingBridge()
     provider._openssl_bridge = interrupting_bridge
@@ -182,9 +180,7 @@ def test_http_adapter_caches_ssl_context(tmp_path: Path, monkeypatch: pytest.Mon
     assert len(bridge.calls) == 1
 
 
-def test_http_adapter_pin_prompted_once_across_threads(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_http_adapter_pin_prompted_once_across_threads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider, bridge = _make_provider(tmp_path, monkeypatch)
     barrier = threading.Barrier(10)
     results: list[ssl.SSLContext] = []

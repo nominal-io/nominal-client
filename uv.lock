@@ -291,7 +291,7 @@ name = "clr-loader"
 version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cffi", marker = "(platform_machine != 'armv7l' and platform_machine != 'x86_64' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_machine != 'arm64' and sys_platform == 'darwin') or (platform_python_implementation != 'CPython' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "cffi" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e4/46/7eea92b6aa2d68af78e049cbecec5f757f1aad44ecdecdc16bbad7eead51/clr_loader-0.3.1.tar.gz", hash = "sha256:2e073e9aaf49d1ae2f56ecba27987ad5fb68be4bcd9dd34a5bed8f0e4e128366", size = 86805, upload-time = "2026-04-18T17:49:44.287Z" }
 wheels = [
@@ -1400,7 +1400,7 @@ dependencies = [
     { name = "grpcio" },
     { name = "nominal" },
     { name = "python-pkcs11" },
-    { name = "pythonnet", marker = "sys_platform == 'win32'" },
+    { name = "pythonnet" },
 ]
 
 [package.metadata]
@@ -1410,7 +1410,7 @@ requires-dist = [
     { name = "grpcio", specifier = ">=1.80.0" },
     { name = "nominal", editable = "." },
     { name = "python-pkcs11", specifier = ">=0.7.0" },
-    { name = "pythonnet", marker = "sys_platform == 'win32'", specifier = ">=3.0.0" },
+    { name = "pythonnet", specifier = ">=3.0.0" },
 ]
 
 [[package]]
@@ -1990,7 +1990,7 @@ name = "pythonnet"
 version = "3.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "clr-loader", marker = "(platform_machine != 'armv7l' and platform_machine != 'x86_64' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_machine != 'arm64' and sys_platform == 'darwin') or (platform_python_implementation != 'CPython' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "clr-loader" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/05/57/da1992e44663b71365c6e842c8d7fa453d4ec45fb99a68cfee5b7e944d3c/pythonnet-3.1.0.tar.gz", hash = "sha256:7b34c382905d10a371509ffafd64cae0416305c28817738a9cd138336f4e9991", size = 250599, upload-time = "2026-05-23T20:30:21.578Z" }
 wheels = [

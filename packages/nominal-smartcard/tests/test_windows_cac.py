@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from urllib3.util.retry import Retry
 
 from nominal.smartcard._windows_cac import (
     NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR,
@@ -61,8 +62,9 @@ def test_timeout_none_returns_300() -> None:
     assert _timeout_to_seconds(None) == 300.0
 
 
-def test_timeout_scalar_below_300_clamps_to_300() -> None:
-    assert _timeout_to_seconds(10) == 300.0
+def test_timeout_scalar_below_300_preserved() -> None:
+    # Explicit timeouts must not be clamped upward; a caller that sets 10s wants 10s.
+    assert _timeout_to_seconds(10) == 10.0
 
 
 def test_timeout_scalar_above_300_returned() -> None:
@@ -77,8 +79,9 @@ def test_timeout_tuple_with_none_ignores_none() -> None:
     assert _timeout_to_seconds((None, 500)) == 500.0
 
 
-def test_timeout_tuple_all_small_clamps_to_300() -> None:
-    assert _timeout_to_seconds((5, 10)) == 300.0
+def test_timeout_tuple_small_uses_max() -> None:
+    # (connect, read) tuple: use the larger value; both under 300 must not clamp.
+    assert _timeout_to_seconds((5, 10)) == 10.0
 
 
 # ---------------------------------------------------------------------------
@@ -149,11 +152,59 @@ def test_compression_headers_set_on_post(mock_send: MagicMock, adapter: WindowsC
 
 
 @patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_body_bytes_does_not_mutate_prepared_request_headers(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    # Sending the same PreparedRequest twice must produce the same compressed body both times.
+    mock_send.return_value = _dotnet_result()
+    original_payload = b"re-send me"
+    req = _prepared("POST", body=original_payload)
+    assert "Content-Encoding" not in req.headers
+
+    adapter.send(req)
+    # Headers on the original request object must not have been mutated.
+    assert "Content-Encoding" not in req.headers
+
+    # A second send must still produce compressed bytes (not raw bytes with a stale gzip header).
+    mock_send.reset_mock()
+    mock_send.return_value = _dotnet_result()
+    adapter.send(req)
+    _, _, _, forwarded_headers2, body_bytes2, _ = _send_args(mock_send)
+    assert gzip.decompress(body_bytes2) == original_payload
+    assert forwarded_headers2.get("Content-Encoding") == "gzip"
+
+
+@patch("nominal.smartcard._windows_cac._dotnet_send")
 def test_get_with_no_body_sends_none_body_bytes(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
     mock_send.return_value = _dotnet_result()
     adapter.send(_prepared())
     _, _, _, _, body_bytes, _ = _send_args(mock_send)
     assert body_bytes is None
+
+
+@patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_stream_flag_does_not_suppress_compression(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    # stream=True controls response buffering (which is always buffered in this adapter),
+    # not request body compression. The body must still be gzip-compressed.
+    mock_send.return_value = _dotnet_result()
+    req = _prepared("POST", body=b'{"export": true}', headers={"Content-Type": "application/json"})
+
+    adapter.send(req, stream=True)
+
+    _, _, _, forwarded_headers, body_bytes, _ = _send_args(mock_send)
+    assert isinstance(body_bytes, bytes)
+    assert gzip.decompress(body_bytes) == b'{"export": true}'
+    assert forwarded_headers.get("Content-Encoding") == "gzip"
+    assert forwarded_headers["Content-Type"] == "application/json"
+
+
+@patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_response_raw_is_file_like_for_streaming_call(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    mock_send.return_value = _dotnet_result(body=b"streamed bytes")
+
+    resp = adapter.send(_prepared(), stream=True)
+
+    assert resp.raw.read() == b"streamed bytes"
+    resp.raw.decode_content = True
+    assert resp.raw.decode_content is True
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +272,15 @@ def test_none_timeout_defaults_to_300(mock_send: MagicMock, adapter: WindowsCacA
     assert timeout_seconds == 300.0
 
 
+@patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_short_explicit_timeout_respected(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    # Explicit short timeouts must not be silently inflated to 300s.
+    mock_send.return_value = _dotnet_result()
+    adapter.send(_prepared(), timeout=5)
+    _, _, _, _, _, timeout_seconds = _send_args(mock_send)
+    assert timeout_seconds == 5.0
+
+
 # ---------------------------------------------------------------------------
 # Error propagation
 # ---------------------------------------------------------------------------
@@ -241,6 +301,236 @@ def test_connection_error_from_dotnet_propagates(mock_send: MagicMock, adapter: 
 
 
 # ---------------------------------------------------------------------------
+# cert parameter rejection
+# ---------------------------------------------------------------------------
+
+
+@patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_cert_argument_raises_value_error(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    mock_send.return_value = _dotnet_result()
+    with pytest.raises(ValueError, match="cert"):
+        adapter.send(_prepared(), cert=("/path/to/cert.pem", "/path/to/key.pem"))
+
+
+@patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_cert_none_does_not_raise(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    mock_send.return_value = _dotnet_result()
+    adapter.send(_prepared(), cert=None)  # default value; must not raise
+
+
+# ---------------------------------------------------------------------------
+# Body compression guards
+# ---------------------------------------------------------------------------
+
+
+@patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_existing_content_encoding_skips_compression(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    mock_send.return_value = _dotnet_result()
+    raw = b"\x1f\x8b already-compressed"
+    req = _prepared("POST", body=raw, headers={"Content-Encoding": "gzip"})
+    adapter.send(req)
+    _, _, _, forwarded_headers, body_bytes, _ = _send_args(mock_send)
+    # Body must be forwarded as-is; Content-Encoding must not be changed.
+    assert body_bytes == raw
+    assert forwarded_headers.get("Content-Encoding") == "gzip"
+
+
+@patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_unsupported_body_type_raises_type_error(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    mock_send.return_value = _dotnet_result()
+    req = requests.Request("POST", "https://api.example.com/").prepare()
+    req.body = iter([b"chunk1", b"chunk2"])  # type: ignore[assignment]
+    with pytest.raises(TypeError, match="non-bytes"):
+        adapter.send(req)
+
+
+# ---------------------------------------------------------------------------
+# Retry-After header case-insensitivity
+# ---------------------------------------------------------------------------
+
+
+def test_retry_after_case_insensitive() -> None:
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
+        adapter = WindowsCacAdapter(max_retries=Retry(total=1, status_forcelist=[429]))
+        with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
+            # Return lowercase "retry-after" to verify case-insensitive lookup.
+            mock_send.side_effect = [
+                _dotnet_result(status_code=429, headers={"retry-after": "1"}),
+                _dotnet_result(status_code=200),
+            ]
+            response = adapter.send(_prepared("GET", "https://api.example.com/rate"))
+
+    assert response.status_code == 200
+    assert mock_send.call_count == 2
+    adapter.close()
+
+
+# ---------------------------------------------------------------------------
+# response.elapsed is populated
+# ---------------------------------------------------------------------------
+
+
+@patch("nominal.smartcard._windows_cac._dotnet_send")
+def test_response_elapsed_is_timedelta(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    import datetime
+
+    mock_send.return_value = _dotnet_result()
+    resp = adapter.send(_prepared())
+    assert isinstance(resp.elapsed, datetime.timedelta)
+    assert resp.elapsed.total_seconds() >= 0
+
+
+# ---------------------------------------------------------------------------
+# verify=False emits InsecureRequestWarning
+# ---------------------------------------------------------------------------
+
+
+def test_verify_false_emits_insecure_request_warning() -> None:
+    import warnings
+
+    from urllib3.exceptions import InsecureRequestWarning
+
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                adapter.send(_prepared(), verify=False)
+
+    assert any(issubclass(w.category, InsecureRequestWarning) for w in caught)
+    adapter.close()
+
+
+# ---------------------------------------------------------------------------
+# Trust, proxy, redirect, and retry parity with requests adapters
+# ---------------------------------------------------------------------------
+
+
+def test_verify_false_builds_insecure_client() -> None:
+    import warnings
+
+    build = MagicMock()
+    with patch("nominal.smartcard._windows_cac._build_http_client", build):
+        isolated = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                isolated.send(_prepared(), verify=False)
+
+    assert build.call_args.kwargs["disable_server_certificate_validation"] is True
+    assert build.call_args.kwargs["ca_certificates"] is None
+    isolated.close()
+
+
+def test_verify_path_loads_ca_bundle_for_dotnet_client(tmp_path: Path) -> None:
+    ca_bundle = tmp_path / "ca.pem"
+    ca_bundle.write_text("-----BEGIN CERTIFICATE-----\nY2VydA==\n-----END CERTIFICATE-----\n")
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared(), verify=str(ca_bundle))
+
+    assert build.call_args.kwargs["ca_certificates"] == (b"cert",)
+    assert build.call_args.kwargs["disable_server_certificate_validation"] is False
+    adapter.close()
+
+
+def test_missing_verify_path_matches_requests_oserror(adapter: WindowsCacAdapter) -> None:
+    with pytest.raises(OSError, match="invalid path"):
+        adapter.send(_prepared(), verify="/does/not/exist.pem")
+
+
+def test_proxy_mapping_selects_proxy_for_request_url() -> None:
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared("GET", "https://api.example.com/test"), proxies={"https": "http://proxy:8080"})
+
+    assert build.call_args.kwargs["proxy_url"] == "http://proxy:8080"
+    adapter.close()
+
+
+def test_no_proxy_mapping_uses_direct_client() -> None:
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared())
+
+    assert build.call_args.kwargs["proxy_url"] is None
+    adapter.close()
+
+
+def test_http_client_reused_for_same_trust_and_proxy() -> None:
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared())
+            adapter.send(_prepared())
+
+    build.assert_called_once()
+    adapter.close()
+
+
+def test_status_forcelist_retries_then_returns_success() -> None:
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
+        adapter = WindowsCacAdapter(max_retries=Retry(total=1, status_forcelist=[503]))
+        with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
+            mock_send.side_effect = [
+                _dotnet_result(status_code=503, reason="Unavailable"),
+                _dotnet_result(status_code=200, reason="OK", body=b"done"),
+            ]
+            response = adapter.send(_prepared("GET", "https://api.example.com/retry"))
+
+    assert response.status_code == 200
+    assert response.content == b"done"
+    assert mock_send.call_count == 2
+    adapter.close()
+
+
+def test_connection_error_retries_then_returns_success() -> None:
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
+        adapter = WindowsCacAdapter(max_retries=Retry(total=1, connect=1))
+        with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
+            mock_send.side_effect = [
+                requests.exceptions.ConnectionError("refused"),
+                _dotnet_result(status_code=200, reason="OK"),
+            ]
+            response = adapter.send(_prepared("GET", "https://api.example.com/retry"))
+
+    assert response.status_code == 200
+    assert mock_send.call_count == 2
+    adapter.close()
+
+
+def test_connection_error_retry_exhaustion_attaches_request() -> None:
+    prepared = _prepared("GET", "https://api.example.com/fail")
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
+        adapter = WindowsCacAdapter(max_retries=Retry(total=0))
+        with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
+            mock_send.side_effect = requests.exceptions.ConnectionError("refused")
+            with pytest.raises(requests.exceptions.ConnectionError) as exc_info:
+                adapter.send(prepared)
+
+    # The raised exception must carry the original PreparedRequest so callers
+    # can inspect it (e.g. for logging or retry-after handling).
+    assert exc_info.value.request is prepared
+    adapter.close()
+
+
+def test_timeout_retry_exhaustion_attaches_request() -> None:
+    prepared = _prepared("GET", "https://api.example.com/slow")
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
+        adapter = WindowsCacAdapter(max_retries=Retry(total=0))
+        with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
+            mock_send.side_effect = requests.exceptions.Timeout("timed out")
+            with pytest.raises(requests.exceptions.Timeout) as exc_info:
+                adapter.send(prepared)
+
+    assert exc_info.value.request is prepared
+    adapter.close()
+
+
+# ---------------------------------------------------------------------------
 # Certificate thumbprint env var
 # ---------------------------------------------------------------------------
 
@@ -248,15 +538,21 @@ def test_connection_error_from_dotnet_propagates(mock_send: MagicMock, adapter: 
 def test_cert_thumbprint_env_var_passed_to_build_http_client(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR, "AABBCCDD")
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as mock_build:
-        WindowsCacAdapter()
-    mock_build.assert_called_once_with(cert_thumbprint="AABBCCDD")
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared())
+    assert mock_build.call_args.kwargs["cert_thumbprint"] == "AABBCCDD"
+    adapter.close()
 
 
 def test_no_thumbprint_env_var_passes_none(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR, raising=False)
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as mock_build:
-        WindowsCacAdapter()
-    mock_build.assert_called_once_with(cert_thumbprint=None)
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared())
+    assert mock_build.call_args.kwargs["cert_thumbprint"] is None
+    adapter.close()
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +564,8 @@ def test_close_disposes_net_client() -> None:
     mock_client = MagicMock()
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=mock_client):
         adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared())
     adapter.close()
     mock_client.Dispose.assert_called_once()
 
