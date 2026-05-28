@@ -351,7 +351,6 @@ def test_verify_true_uses_schannel_trust_store() -> None:
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared(), verify=True)
 
-    assert build.call_args.kwargs["ca_certificates"] is None
     assert build.call_args.kwargs["disable_server_certificate_validation"] is False
     adapter.close()
 
@@ -364,11 +363,14 @@ def test_verify_false_builds_insecure_client() -> None:
             isolated.send(_prepared(), verify=False)
 
     assert build.call_args.kwargs["disable_server_certificate_validation"] is True
-    assert build.call_args.kwargs["ca_certificates"] is None
     isolated.close()
 
 
-def test_verify_path_loads_ca_bundle_for_dotnet_client(tmp_path: Path) -> None:
+def test_verify_path_defers_to_schannel(tmp_path: Path) -> None:
+    # On a standard CAC install the Windows trust store already has DoD root CAs.
+    # Any truthy verify value (including a CA bundle path injected by
+    # requests.Session.merge_environment_settings()) is treated identically to
+    # verify=True — we always defer to Schannel and never load Python-level certs.
     ca_bundle = tmp_path / "ca.pem"
     ca_bundle.write_text("-----BEGIN CERTIFICATE-----\nY2VydA==\n-----END CERTIFICATE-----\n")
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
@@ -376,14 +378,15 @@ def test_verify_path_loads_ca_bundle_for_dotnet_client(tmp_path: Path) -> None:
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared(), verify=str(ca_bundle))
 
-    assert build.call_args.kwargs["ca_certificates"] == (b"cert",)
     assert build.call_args.kwargs["disable_server_certificate_validation"] is False
     adapter.close()
 
 
-def test_missing_verify_path_matches_requests_oserror(adapter: WindowsCacAdapter) -> None:
-    with pytest.raises(OSError, match="invalid path"):
-        adapter.send(_prepared(), verify="/does/not/exist.pem")
+def test_verify_nonexistent_path_still_defers_to_schannel(adapter: WindowsCacAdapter) -> None:
+    # Even a non-existent path is truthy, so Schannel handles validation — no OSError.
+    with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+        response = adapter.send(_prepared(), verify="/does/not/exist.pem")
+    assert response.status_code == 200
 
 
 def test_proxy_mapping_selects_proxy_for_request_url() -> None:

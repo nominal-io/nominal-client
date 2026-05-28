@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import gzip
 import io
-import ipaddress
 import os
-import re
 import threading
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Mapping
 
 import requests
@@ -29,7 +26,6 @@ _SKIP_HEADERS: frozenset[str] = frozenset(
 @dataclass(frozen=True)
 class _TrustConfig:
     cache_key: tuple[Any, ...]
-    ca_certificates: tuple[bytes, ...] | None = None
     disable_server_certificate_validation: bool = False
 
 
@@ -52,12 +48,6 @@ class _RetryResponse:
         return None
 
 
-_PEM_CERTIFICATE_PATTERN = re.compile(
-    rb"-----BEGIN CERTIFICATE-----\s*(?P<body>.*?)\s*-----END CERTIFICATE-----",
-    re.DOTALL,
-)
-
-
 def _timeout_to_seconds(timeout: object) -> float:
     """Convert a requests-style timeout to a float number of seconds.
 
@@ -74,60 +64,17 @@ def _timeout_to_seconds(timeout: object) -> float:
     return float(timeout)
 
 
-def _certificate_blobs_from_file(path: Path) -> tuple[bytes, ...]:
-    import base64
-    import binascii
-
-    data = path.read_bytes()
-    matches = list(_PEM_CERTIFICATE_PATTERN.finditer(data))
-    if not matches:
-        return (data,) if data else ()
-
-    blobs: list[bytes] = []
-    for match in matches:
-        b64 = re.sub(rb"\s+", b"", match.group("body"))
-        try:
-            blobs.append(base64.b64decode(b64, validate=True))
-        except binascii.Error as exc:
-            raise OSError(f"Could not parse TLS CA certificate bundle: {path}") from exc
-    return tuple(blobs)
-
-
-def _certificate_blobs_from_path(path: Path) -> tuple[bytes, ...]:
-    if path.is_dir():
-        blobs: list[bytes] = []
-        for child in sorted(path.iterdir()):
-            if child.is_file():
-                try:
-                    blobs.extend(_certificate_blobs_from_file(child))
-                except OSError:
-                    continue
-        if not blobs:
-            raise OSError(f"Could not find any TLS CA certificates in directory: {path}")
-        return tuple(blobs)
-    return _certificate_blobs_from_file(path)
-
-
 def _trust_config_from_verify(verify: bool | str | os.PathLike[str] | None) -> _TrustConfig:
+    # Any falsy value → disable server certificate validation entirely.
+    # Any truthy value (True, a CA bundle path, etc.) → let Schannel validate using the
+    # Windows certificate store. DoD root CAs are already installed there on a standard
+    # CAC system, so no custom Python-level callback is needed. Note that
+    # requests.Session.merge_environment_settings() may replace verify=True with the
+    # REQUESTS_CA_BUNDLE env-var path before calling the adapter; we intentionally ignore
+    # that path and always defer to Schannel.
     if not verify:
         return _TrustConfig(cache_key=("insecure",), disable_server_certificate_validation=True)
-
-    if verify is True:
-        # Let Schannel validate the server certificate using the Windows certificate store.
-        # On a standard CAC install the DoD root and intermediate CAs are already trusted
-        # there, so no custom Python-level callback is needed or desired.
-        return _TrustConfig(cache_key=("system",))
-
-    # Explicit custom CA bundle path — load it and install a Python validation callback.
-    cert_path = Path(os.fspath(verify))
-    if not cert_path.exists():
-        raise OSError(f"Could not find a suitable TLS CA certificate bundle, invalid path: {verify}")
-
-    stat = cert_path.stat()
-    return _TrustConfig(
-        cache_key=("ca-bundle", str(cert_path.resolve()), stat.st_mtime_ns, stat.st_size),
-        ca_certificates=_certificate_blobs_from_path(cert_path),
-    )
+    return _TrustConfig(cache_key=("system",))
 
 
 def _body_bytes_for_request(request: requests.PreparedRequest) -> tuple[bytes | None, dict[str, str]]:
@@ -162,58 +109,6 @@ def _forwardable_headers(request: requests.PreparedRequest) -> dict[str, str]:
     return headers
 
 
-def _configure_server_certificate_validation(
-    *,
-    clr_module: Any,
-    handler: Any,
-    ca_certificates: tuple[bytes, ...] | None,
-    disable_server_certificate_validation: bool,
-) -> None:
-    if disable_server_certificate_validation:
-        handler.ServerCertificateCustomValidationCallback = lambda *_args: True
-        return
-    if ca_certificates is None:
-        return
-
-    clr_module.AddReference("System.Security")
-    from cryptography import x509
-    from cryptography.x509 import verification
-    from System.Net.Security import SslPolicyErrors  # type: ignore[import]
-    from System.Security.Cryptography.X509Certificates import X509ContentType  # type: ignore[import]
-
-    roots = [x509.load_der_x509_certificate(blob) for blob in ca_certificates]
-    store = verification.Store(roots)
-    certificate_missing = int(SslPolicyErrors.RemoteCertificateNotAvailable)
-
-    def certificate_from_dotnet(certificate: Any) -> x509.Certificate:
-        return x509.load_der_x509_certificate(bytes(certificate.Export(X509ContentType.Cert)))
-
-    def subject_for_request(request: Any) -> x509.DNSName | x509.IPAddress:
-        host = str(request.RequestUri.Host)
-        try:
-            return x509.IPAddress(ipaddress.ip_address(host))
-        except ValueError:
-            return x509.DNSName(host)
-
-    def validate_server_certificate(_request: Any, certificate: Any, chain: Any, errors: Any) -> bool:
-        if int(errors) & certificate_missing:
-            return False
-        try:
-            if chain is not None:
-                intermediates = [certificate_from_dotnet(element.Certificate) for element in chain.ChainElements]
-            else:
-                intermediates = []
-            leaf = certificate_from_dotnet(certificate)
-            intermediates = [intermediate for intermediate in intermediates if intermediate != leaf]
-            verifier = verification.PolicyBuilder().store(store).build_server_verifier(subject_for_request(_request))
-            verifier.verify(leaf, intermediates)
-            return True
-        except Exception:
-            return False
-
-    handler.ServerCertificateCustomValidationCallback = validate_server_certificate
-
-
 def _configure_client_certificate(*, clr_module: Any, handler: Any, cert_thumbprint: str | None) -> None:
     from System.Net.Http import ClientCertificateOption  # type: ignore[import]
 
@@ -246,7 +141,6 @@ def _configure_client_certificate(*, clr_module: Any, handler: Any, cert_thumbpr
 def _build_http_client(
     *,
     cert_thumbprint: str | None = None,
-    ca_certificates: tuple[bytes, ...] | None = None,
     disable_server_certificate_validation: bool = False,
     proxy_url: str | None = None,
 ) -> Any:
@@ -261,10 +155,8 @@ def _build_http_client(
             ``CurrentUser\My`` is attached manually to the handler. When omitted,
             ``ClientCertificateOption.Automatic`` lets Schannel select the correct
             CAC certificate for each TLS handshake automatically.
-        ca_certificates: Optional DER-encoded CA certificates loaded from the
-            caller's ``verify`` bundle.
-        disable_server_certificate_validation: Whether to accept any server
-            certificate, matching ``requests`` when ``verify=False``.
+        disable_server_certificate_validation: When True, accepts any server
+            certificate (equivalent to ``verify=False``).
         proxy_url: Optional proxy URL selected from the ``proxies`` mapping.
     """
     import clr  # noqa: PLC0415
@@ -285,12 +177,9 @@ def _build_http_client(
     # from Python (it is listed in _SKIP_HEADERS).
     handler.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
 
-    _configure_server_certificate_validation(
-        clr_module=clr,
-        handler=handler,
-        ca_certificates=ca_certificates,
-        disable_server_certificate_validation=disable_server_certificate_validation,
-    )
+    if disable_server_certificate_validation:
+        handler.ServerCertificateCustomValidationCallback = lambda *_args: True
+
     _configure_client_certificate(clr_module=clr, handler=handler, cert_thumbprint=cert_thumbprint)
 
     client = HttpClient(handler)
@@ -431,6 +320,10 @@ class WindowsCacAdapter(HTTPAdapter):
     ``ClientCertificateOption.Automatic``; Schannel handles PIN prompting natively
     via the Windows credential UI so no PIN handling is required in Python.
 
+    Server certificate validation is always performed by Schannel using the Windows
+    trust store. DoD root CAs are already present there on a standard CAC install.
+    Pass ``verify=False`` to disable validation entirely (not recommended).
+
     Certificate selection:
         By default Schannel automatically selects the appropriate client-auth
         certificate for each TLS handshake. To pin a specific certificate, set the
@@ -443,8 +336,8 @@ class WindowsCacAdapter(HTTPAdapter):
         pooling. Call ``close()`` to dispose it when the adapter is no longer needed.
 
     Compression:
-        Non-streaming request bodies are gzip-compressed before sending, mirroring
-        the behaviour of ``NominalRequestsAdapter`` on non-Windows platforms.
+        Request bodies are gzip-compressed before sending, mirroring the behaviour
+        of ``NominalRequestsAdapter`` on non-Windows platforms.
 
     Retries:
         The adapter honors the ``Retry`` instance passed as ``max_retries`` for
@@ -470,7 +363,6 @@ class WindowsCacAdapter(HTTPAdapter):
             if client is None:
                 client = _build_http_client(
                     cert_thumbprint=self._cert_thumbprint,
-                    ca_certificates=trust_config.ca_certificates,
                     disable_server_certificate_validation=trust_config.disable_server_certificate_validation,
                     proxy_url=proxy_url,
                 )
