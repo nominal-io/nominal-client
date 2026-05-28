@@ -5,7 +5,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-from nominal.core._utils.networking import SslContextProvider
+from nominal.core._utils.networking import TransportProvider
 from nominal.smartcard._errors import SmartcardPinError, SmartcardPinLockedError, SmartcardProviderError
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
@@ -14,8 +14,8 @@ MAX_PIN_ATTEMPTS = 3
 
 
 @dataclass
-class SmartcardSslContextProvider(SslContextProvider):
-    """ssl.SSLContext provider that will attach smartcard-backed mTLS to all Nominal traffic."""
+class SmartcardTransportProvider(TransportProvider):
+    """Transport provider that attaches smartcard-backed mTLS to all Nominal traffic."""
 
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
     _openssl_bridge: OpenSslProviderBridge | None = field(default=None, repr=False, compare=False)
@@ -23,7 +23,7 @@ class SmartcardSslContextProvider(SslContextProvider):
     _cached_ctx: ssl.SSLContext | None = field(default=None, repr=False, compare=False)
 
     @classmethod
-    def create(cls) -> SmartcardSslContextProvider:
+    def create(cls) -> SmartcardTransportProvider:
         return cls()
 
     @property

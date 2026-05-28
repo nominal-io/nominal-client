@@ -10,7 +10,7 @@ from _helpers import _candidate, _FakeBackend, _make_der_cert
 from nominal.smartcard._errors import SmartcardPinError, SmartcardProviderError
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
-from nominal.smartcard._transport import SmartcardSslContextProvider
+from nominal.smartcard._transport import SmartcardTransportProvider
 
 
 class _FakeBridge:
@@ -43,7 +43,7 @@ class _PinErrorThenSuccessBridge(_FakeBridge):
         return self.context
 
 
-def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[SmartcardSslContextProvider, _FakeBridge]:
+def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[SmartcardTransportProvider, _FakeBridge]:
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
@@ -51,7 +51,7 @@ def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Sma
         backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
     )
     bridge = _FakeBridge()
-    provider = SmartcardSslContextProvider(
+    provider = SmartcardTransportProvider(
         _session_manager=manager,
         _openssl_bridge=bridge,
     )
@@ -114,7 +114,7 @@ def test_ssl_context_provider_passes_session_to_bridge(tmp_path: Path, monkeypat
         backend_factory=lambda path: _FakeBackend(path, [certificate]),
     )
     bridge = _FakeBridge()
-    provider = SmartcardSslContextProvider(
+    provider = SmartcardTransportProvider(
         _session_manager=manager,
         _openssl_bridge=bridge,
     )
@@ -154,10 +154,10 @@ def test_ssl_context_provider_pin_prompted_once_across_threads(tmp_path: Path, m
     assert all(ctx is bridge.context for ctx in results)
 
 
-# SmartcardSslContextProvider property factory
+# SmartcardTransportProvider property factory
 
 
 def test_ssl_context_provider_session_manager_defaults_to_shared(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(SmartcardSessionManager, "_shared_manager", None)
-    provider = SmartcardSslContextProvider()
+    provider = SmartcardTransportProvider()
     assert provider.session_manager is SmartcardSessionManager.shared()
