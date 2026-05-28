@@ -126,8 +126,8 @@ def test_create_conjure_service_client_calls_create_ssl_context_exactly_once() -
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
     provider = MagicMock(spec=TransportProvider)
     provider.create_ssl_context.return_value = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    # create_requests_session must return None to fall through to the SSL context path.
-    provider.create_requests_session.return_value = None
+    # create_http_adapter must return None to fall through to the SSL context path.
+    provider.create_http_adapter.return_value = None
 
     create_conjure_service_client(
         service_class=service_class,
@@ -209,21 +209,20 @@ def test_create_multipart_request_session_uses_ssl_context_from_provider() -> No
     session.close()
 
 
-def test_create_multipart_request_session_uses_custom_session_from_provider() -> None:
-    """When create_requests_session() returns a session it must be used directly for S3 too."""
-    custom_session = requests.Session()
-    provider = MagicMock(spec=TransportProvider)
-    provider.create_requests_session.return_value = custom_session
+def test_create_multipart_request_session_ignores_http_adapter_hook() -> None:
+    """S3 sessions always use the SSL context path; create_http_adapter() is never called for S3."""
+    provider = _FakeTransportProvider()
 
-    result = create_multipart_request_session(
+    session = create_multipart_request_session(
         pool_size=4,
         num_retries=3,
         transport_provider=provider,
     )
 
-    assert result is custom_session
-    provider.create_ssl_context.assert_not_called()
-    custom_session.close()
+    # The adapter mounted for https:// must use the provider's SSL context.
+    adapter = session.adapters["https://"]
+    assert adapter._ssl_context is provider.ssl_context
+    session.close()
 
 
 def test_header_provider_session_evaluates_headers_per_request() -> None:
@@ -275,14 +274,14 @@ def test_header_provider_session_can_override_session_default_headers() -> None:
     session.close()
 
 
-def test_create_conjure_service_client_uses_custom_session_from_provider() -> None:
-    """When create_requests_session() returns a session, it must be used directly without SSL context."""
+def test_create_conjure_service_client_uses_custom_adapter_from_provider() -> None:
+    """When create_http_adapter() returns an adapter it must be mounted for the service URI."""
     service_class = MagicMock(return_value=sentinel.client)
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
 
-    custom_session = requests.Session()
+    custom_adapter = MagicMock(spec=HTTPAdapter)
     provider = MagicMock(spec=TransportProvider)
-    provider.create_requests_session.return_value = custom_session
+    provider.create_http_adapter.return_value = custom_adapter
 
     create_conjure_service_client(
         service_class=service_class,
@@ -291,23 +290,20 @@ def test_create_conjure_service_client_uses_custom_session_from_provider() -> No
         transport_provider=provider,
     )
 
-    session_used = service_class.call_args.args[0]
-    assert session_used is custom_session
-    assert session_used.headers["User-Agent"] == "custom-agent"
+    session = service_class.call_args.args[0]
+    assert session.adapters["https://api.example.com"] is custom_adapter
+    assert session.headers["User-Agent"] == "custom-agent"
     provider.create_ssl_context.assert_not_called()
-    custom_session.close()
+    session.close()
 
 
-def test_create_conjure_service_client_skips_adapter_mounting_for_custom_session() -> None:
-    """A provider-supplied session must not have adapters mounted on it by the caller."""
+def test_create_conjure_service_client_skips_ssl_context_when_custom_adapter_provided() -> None:
+    """When create_http_adapter() returns an adapter, create_ssl_context() must not be called."""
     service_class = MagicMock(return_value=sentinel.client)
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
 
-    custom_session = requests.Session()
-    original_adapters = dict(custom_session.adapters)
-
     provider = MagicMock(spec=TransportProvider)
-    provider.create_requests_session.return_value = custom_session
+    provider.create_http_adapter.return_value = MagicMock(spec=HTTPAdapter)
 
     create_conjure_service_client(
         service_class=service_class,
@@ -316,12 +312,12 @@ def test_create_conjure_service_client_skips_adapter_mounting_for_custom_session
         transport_provider=provider,
     )
 
-    assert custom_session.adapters == original_adapters
-    custom_session.close()
+    provider.create_ssl_context.assert_not_called()
+    service_class.call_args.args[0].close()
 
 
-def test_create_conjure_service_client_trust_store_passed_through_for_custom_session() -> None:
-    """The trust store path from ServiceConfiguration must be forwarded even when using a custom session."""
+def test_create_conjure_service_client_trust_store_passed_through_for_custom_adapter() -> None:
+    """The trust store path from ServiceConfiguration must be forwarded even when using a custom adapter."""
     service_class = MagicMock(return_value=sentinel.client)
     from conjure_python_client._http.configuration import SslConfiguration
 
@@ -330,7 +326,7 @@ def test_create_conjure_service_client_trust_store_passed_through_for_custom_ses
         uris=["https://api.example.com"],
     )
     provider = MagicMock(spec=TransportProvider)
-    provider.create_requests_session.return_value = requests.Session()
+    provider.create_http_adapter.return_value = MagicMock(spec=HTTPAdapter)
 
     create_conjure_service_client(
         service_class=service_class,
@@ -344,8 +340,8 @@ def test_create_conjure_service_client_trust_store_passed_through_for_custom_ses
     _session.close()
 
 
-def test_create_conjure_service_client_default_returns_none_custom_session() -> None:
-    """TransportProvider.create_requests_session() default returns None, falling through to SSL context path."""
+def test_create_conjure_service_client_default_http_adapter_falls_through_to_ssl_context() -> None:
+    """TransportProvider.create_http_adapter() default returns None, falling through to SSL context path."""
     provider = _FakeTransportProvider()
     service_class = MagicMock(return_value=sentinel.client)
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
@@ -358,7 +354,7 @@ def test_create_conjure_service_client_default_returns_none_custom_session() -> 
     )
 
     session = service_class.call_args.args[0]
-    # Default path: session has an adapter with the provider's SSL context.
+    # Default path: session has a NominalRequestsAdapter with the provider's SSL context.
     adapter = session.adapters["https://api.example.com"]
     assert adapter._ssl_context is provider.ssl_context
     session.close()
