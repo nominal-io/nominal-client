@@ -185,7 +185,9 @@ def _build_http_client(
     client = HttpClient(handler)
     # Infinite timeout on the shared client; per-request timeouts are enforced via
     # CancellationTokenSource in _dotnet_send so the client can be reused safely.
-    client.Timeout = TimeSpan.InfiniteTimeSpan
+    # TimeSpan.FromMilliseconds(-1) is the cross-framework sentinel for "no timeout"
+    # (TimeSpan.InfiniteTimeSpan was only added in .NET 6).
+    client.Timeout = TimeSpan.FromMilliseconds(-1)
     return client
 
 
