@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ssl
 import sys
 from unittest.mock import MagicMock
 
@@ -19,9 +18,6 @@ from nominal.experimental.dataset_utils._dataset_utils import (
 class _FakeGrpcTransportProvider(TransportProvider):
     def __init__(self) -> None:
         self.credentials = MagicMock(name="custom-grpc-credentials")
-
-    def create_ssl_context(self) -> ssl.SSLContext:
-        return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
     def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
         return self.credentials

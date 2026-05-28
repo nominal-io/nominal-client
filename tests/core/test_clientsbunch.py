@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ssl
 from dataclasses import fields
 from typing import cast
 from unittest.mock import MagicMock
@@ -20,9 +19,6 @@ from nominal.experimental import as_user
 
 
 class _FakeTransportProvider(TransportProvider):
-    def create_ssl_context(self) -> ssl.SSLContext:
-        return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
     def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
         raise NotImplementedError
 
