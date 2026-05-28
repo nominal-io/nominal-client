@@ -137,7 +137,7 @@ class NominalClient:
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
-        ssl_context_provider: TransportProvider | None = None,
+        transport_provider: TransportProvider | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
@@ -147,7 +147,7 @@ class NominalClient:
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
-            ssl_context_provider: Optional ssl.SSLContext provider to use for the session.
+            transport_provider: Optional ssl.SSLContext provider to use for the session.
         """
         config = NominalConfig.from_yaml()
         prof = config.get_profile(profile)
@@ -158,7 +158,7 @@ class NominalClient:
             trust_store_path=trust_store_path,
             connect_timeout=connect_timeout,
             extra_headers=extra_headers,
-            ssl_context_provider=ssl_context_provider,
+            transport_provider=transport_provider,
             _profile=profile,
         )
         return client
@@ -173,7 +173,7 @@ class NominalClient:
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
-        ssl_context_provider: TransportProvider | None = None,
+        transport_provider: TransportProvider | None = None,
         _profile: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
@@ -187,7 +187,7 @@ class NominalClient:
                 certifi's trust store is used.
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
-            ssl_context_provider: Optional ssl.SSLContext provider to use for the session.
+            transport_provider: Optional ssl.SSLContext provider to use for the session.
         """
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
@@ -205,7 +205,7 @@ class NominalClient:
                 token,
                 workspace_rid,
                 header_provider=normalize_header_provider(extra_headers),
-                ssl_context_provider=ssl_context_provider,
+                transport_provider=transport_provider,
             ),
             _profile=_profile,
         )
@@ -220,7 +220,7 @@ class NominalClient:
         *,
         workspace_rid: str | None = None,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
-        ssl_context_provider: TransportProvider | None = None,
+        transport_provider: TransportProvider | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform.
 
@@ -232,7 +232,7 @@ class NominalClient:
         workspace_rid: Optional workspace RID to pin the client to for operations that require a single
             workspace. If not provided, those operations resolve a default workspace client-side when needed.
         extra_headers: Extra request headers, either as a mapping or HeaderProvider.
-        ssl_context_provider: Optional ssl.SSLContext provider to use for the session.
+        transport_provider: Optional ssl.SSLContext provider to use for the session.
         """
         if token is None:
             token = _config.get_token(base_url)
@@ -243,7 +243,7 @@ class NominalClient:
             connect_timeout=connect_timeout,
             workspace_rid=workspace_rid,
             extra_headers=extra_headers,
-            ssl_context_provider=ssl_context_provider,
+            transport_provider=transport_provider,
         )
 
     def __repr__(self) -> str:
@@ -1001,7 +1001,7 @@ class NominalClient:
             file_type,
             self._clients.upload,
             header_provider=self._clients.header_provider,
-            ssl_context_provider=self._clients.ssl_context_provider,
+            transport_provider=self._clients.transport_provider,
         )
         request = attachments_api.CreateAttachmentRequest(
             description=description or "",
