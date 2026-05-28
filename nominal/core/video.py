@@ -17,7 +17,7 @@ from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import HasRid, RefreshableMixin
 from nominal.core._utils.multipart import path_upload_name, upload_multipart_io
-from nominal.core._utils.networking import HeaderProvider, SslContextProvider
+from nominal.core._utils.networking import HeaderProvider, TransportProvider
 from nominal.core.exceptions import NominalIngestError, NominalIngestFailed
 from nominal.core.filetype import FileType, FileTypes
 from nominal.core.video_file import VideoFile
@@ -431,7 +431,7 @@ def _upload_frame_timestamps(
     upload_client: upload_api.UploadService,
     frame_timestamps: Sequence[IntegralNanosecondsUTC],
     header_provider: HeaderProvider | None = None,
-    ssl_context_provider: SslContextProvider | None = None,
+    ssl_context_provider: TransportProvider | None = None,
 ) -> str:
     """Uploads per-frame video timestamps to S3 and provides a path to the uploaded resource."""
     # Dump timestamp array into an in-memory file-like IO object
@@ -461,7 +461,7 @@ def _build_video_file_timestamp_manifest(
     start: datetime | IntegralNanosecondsUTC | None = None,
     frame_timestamps: Sequence[IntegralNanosecondsUTC] | None = None,
     header_provider: HeaderProvider | None = None,
-    ssl_context_provider: SslContextProvider | None = None,
+    ssl_context_provider: TransportProvider | None = None,
 ) -> scout_video_api.VideoFileTimestampManifest:
     if None not in (start, frame_timestamps):
         raise ValueError("Only one of 'start' or 'frame_timestamps' are allowed")

@@ -3,7 +3,7 @@ from __future__ import annotations
 import click
 from conjure_python_client import ConjureHTTPError
 
-from nominal.core import SslContextProvider
+from nominal.core import TransportProvider
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 
@@ -13,7 +13,7 @@ def validate_token_url(
     base_url: str,
     workspace_rid: str | None,
     *,
-    ssl_context_provider: SslContextProvider | None = None,
+    ssl_context_provider: TransportProvider | None = None,
 ) -> None:
     """Ensure the user sets a valid configuration before letting them import the client."""
     docs_link = "https://docs.nominal.io/core/sdk/python-client/authentication"

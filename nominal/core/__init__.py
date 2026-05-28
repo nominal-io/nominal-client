@@ -1,7 +1,7 @@
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
-from nominal.core._utils.networking import HeaderProvider, SslContextProvider
+from nominal.core._utils.networking import HeaderProvider, TransportProvider
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
 from nominal.core.attachment import Attachment
@@ -63,7 +63,7 @@ __all__ = [
     "FileType",
     "FileTypes",
     "HeaderProvider",
-    "SslContextProvider",
+    "TransportProvider",
     "IngestWaitType",
     "LinkDict",
     "LogPoint",

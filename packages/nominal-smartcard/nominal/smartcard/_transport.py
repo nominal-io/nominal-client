@@ -9,7 +9,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
 from grpc.experimental import ssl_channel_credentials_with_custom_signer
 
-from nominal.core._utils.networking import SslContextProvider
+from nominal.core._utils.networking import TransportProvider
 from nominal.smartcard._errors import (
     SmartcardConfigurationError,
     SmartcardPinError,
@@ -24,8 +24,8 @@ MAX_PIN_ATTEMPTS = 3
 
 
 @dataclass
-class SmartcardSslContextProvider(SslContextProvider):
-    """ssl.SSLContext and gRPC ChannelCredentials provider for smartcard-backed mTLS.
+class SmartcardTransportProvider(TransportProvider):
+    """Transport provider that attaches smartcard-backed mTLS to all Nominal traffic.
 
     HTTP path: call ``create_ssl_context()`` to get an ``ssl.SSLContext`` backed by the
     OpenSSL pkcs11-provider. PIN prompting is handled at C-level by pkcs11-provider.
@@ -46,7 +46,7 @@ class SmartcardSslContextProvider(SslContextProvider):
     _signer: SmartcardPrivateKeySigner | None = field(default=None, repr=False, compare=False)
 
     @classmethod
-    def create(cls) -> SmartcardSslContextProvider:
+    def create(cls) -> SmartcardTransportProvider:
         return cls()
 
     @property
