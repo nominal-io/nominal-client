@@ -13,13 +13,13 @@ from nominal.core._clientsbunch import (
     ClientsBunch,
     api_base_url_to_app_base_url,
 )
-from nominal.core._utils.networking import SslContextProvider
+from nominal.core._utils.networking import TransportProvider
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 from nominal.experimental import as_user
 
 
-class _FakeSslContextProvider(SslContextProvider):
+class _FakeTransportProvider(TransportProvider):
     def create_ssl_context(self) -> ssl.SSLContext:
         return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
@@ -257,7 +257,7 @@ def test_experimental_as_user_propagates_non_none_ssl_context_provider(monkeypat
     """as_user must forward a non-None ssl_context_provider so the impersonated client uses the same transport."""
     monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
 
-    provider = _FakeSslContextProvider()
+    provider = _FakeTransportProvider()
     client = NominalClient(
         _clients=ClientsBunch.from_config(
             ServiceConfiguration(uris=["https://api.nominal.test"]),

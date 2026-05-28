@@ -46,7 +46,7 @@ from nominal.core._utils.api_tools import (
 from nominal.core._utils.multipart import (
     upload_multipart_io,
 )
-from nominal.core._utils.networking import HeaderProvider, SslContextProvider, normalize_header_provider
+from nominal.core._utils.networking import HeaderProvider, TransportProvider, normalize_header_provider
 from nominal.core._utils.pagination_tools import (
     search_assets_paginated,
     search_checklists_paginated,
@@ -137,7 +137,7 @@ class NominalClient:
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
-        ssl_context_provider: SslContextProvider | None = None,
+        ssl_context_provider: TransportProvider | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a named profile in the Nominal config.
 
@@ -173,7 +173,7 @@ class NominalClient:
         trust_store_path: str | None = None,
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
-        ssl_context_provider: SslContextProvider | None = None,
+        ssl_context_provider: TransportProvider | None = None,
         _profile: str | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
@@ -220,7 +220,7 @@ class NominalClient:
         *,
         workspace_rid: str | None = None,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
-        ssl_context_provider: SslContextProvider | None = None,
+        ssl_context_provider: TransportProvider | None = None,
     ) -> Self:
         """Create a connection to the Nominal platform.
 

@@ -14,7 +14,7 @@ from nominal.core._utils.networking import (
     HeaderProviderSession,
     NominalRequestsAdapter,
     NominalSslRequestsAdapter,
-    SslContextProvider,
+    TransportProvider,
     ThreadSafeSSLContext,
     create_conjure_service_client,
     create_multipart_request_session,
@@ -26,7 +26,7 @@ def _prepared_request(body: object) -> requests.PreparedRequest:
     return requests.Request("POST", "https://example.com", data=body).prepare()
 
 
-class _FakeSslContextProvider(SslContextProvider):
+class _FakeTransportProvider(TransportProvider):
     def __init__(self) -> None:
         self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
@@ -124,7 +124,7 @@ def test_create_conjure_service_client_calls_create_ssl_context_exactly_once() -
     """The provider's create_ssl_context() must be called once at session build time, not per-request."""
     service_class = MagicMock(return_value=sentinel.client)
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
-    provider = MagicMock(spec=SslContextProvider)
+    provider = MagicMock(spec=TransportProvider)
     provider.create_ssl_context.return_value = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
     create_conjure_service_client(
@@ -177,7 +177,7 @@ def test_create_conjure_service_client_uses_ssl_context_from_provider() -> None:
     """API clients should use the ssl_context supplied by the provider."""
     service_class = MagicMock(return_value=sentinel.client)
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
-    provider = _FakeSslContextProvider()
+    provider = _FakeTransportProvider()
 
     create_conjure_service_client(
         service_class=service_class,
@@ -194,7 +194,7 @@ def test_create_conjure_service_client_uses_ssl_context_from_provider() -> None:
 
 def test_create_multipart_request_session_uses_ssl_context_from_provider() -> None:
     """Object-store sessions should use the ssl_context supplied by the provider."""
-    provider = _FakeSslContextProvider()
+    provider = _FakeTransportProvider()
 
     session = create_multipart_request_session(
         pool_size=7,

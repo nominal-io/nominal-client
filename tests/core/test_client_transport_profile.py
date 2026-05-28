@@ -4,11 +4,11 @@ import ssl
 from unittest.mock import MagicMock, patch, sentinel
 
 from nominal.config import ConfigProfile, NominalConfig
-from nominal.core._utils.networking import SslContextProvider
+from nominal.core._utils.networking import TransportProvider
 from nominal.core.client import NominalClient
 
 
-class _FakeSslContextProvider(SslContextProvider):
+class _FakeTransportProvider(TransportProvider):
     def create_ssl_context(self) -> ssl.SSLContext:
         return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
@@ -23,7 +23,7 @@ def test_from_profile_passes_explicit_ssl_context_provider_to_clients_bunch() ->
         workspace_rid="ri.workspace.test.workspace.123",
     )
     config = NominalConfig(version=2, profiles={"cac": profile})
-    provider = _FakeSslContextProvider()
+    provider = _FakeTransportProvider()
 
     with (
         patch("nominal.config.NominalConfig.from_yaml", return_value=config),
@@ -36,7 +36,7 @@ def test_from_profile_passes_explicit_ssl_context_provider_to_clients_bunch() ->
 
 
 def test_from_token_passes_ssl_context_provider_to_clients_bunch() -> None:
-    provider = _FakeSslContextProvider()
+    provider = _FakeTransportProvider()
 
     with patch("nominal.core.client.ClientsBunch.from_config", return_value=sentinel.clients) as from_config:
         client = NominalClient.from_token(
