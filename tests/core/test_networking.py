@@ -126,6 +126,8 @@ def test_create_conjure_service_client_calls_create_ssl_context_exactly_once() -
     service_config = ServiceConfiguration(uris=["https://api.example.com"])
     provider = MagicMock(spec=TransportProvider)
     provider.create_ssl_context.return_value = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    # create_requests_session must return None to fall through to the SSL context path.
+    provider.create_requests_session.return_value = None
 
     create_conjure_service_client(
         service_class=service_class,
@@ -253,4 +255,93 @@ def test_header_provider_session_can_override_session_default_headers() -> None:
     prepared = session.prepare_request(requests.Request("GET", "https://example.com"))
 
     assert prepared.headers["User-Agent"] == "provider-agent"
+    session.close()
+
+
+def test_create_conjure_service_client_uses_custom_session_from_provider() -> None:
+    """When create_requests_session() returns a session, it must be used directly without SSL context."""
+    service_class = MagicMock(return_value=sentinel.client)
+    service_config = ServiceConfiguration(uris=["https://api.example.com"])
+
+    custom_session = requests.Session()
+    provider = MagicMock(spec=TransportProvider)
+    provider.create_requests_session.return_value = custom_session
+
+    create_conjure_service_client(
+        service_class=service_class,
+        user_agent="custom-agent",
+        service_config=service_config,
+        ssl_context_provider=provider,
+    )
+
+    session_used = service_class.call_args.args[0]
+    assert session_used is custom_session
+    assert session_used.headers["User-Agent"] == "custom-agent"
+    provider.create_ssl_context.assert_not_called()
+    custom_session.close()
+
+
+def test_create_conjure_service_client_skips_adapter_mounting_for_custom_session() -> None:
+    """A provider-supplied session must not have adapters mounted on it by the caller."""
+    service_class = MagicMock(return_value=sentinel.client)
+    service_config = ServiceConfiguration(uris=["https://api.example.com"])
+
+    custom_session = requests.Session()
+    original_adapters = dict(custom_session.adapters)
+
+    provider = MagicMock(spec=TransportProvider)
+    provider.create_requests_session.return_value = custom_session
+
+    create_conjure_service_client(
+        service_class=service_class,
+        user_agent="test",
+        service_config=service_config,
+        ssl_context_provider=provider,
+    )
+
+    assert custom_session.adapters == original_adapters
+    custom_session.close()
+
+
+def test_create_conjure_service_client_trust_store_passed_through_for_custom_session() -> None:
+    """The trust store path from ServiceConfiguration must be forwarded even when using a custom session."""
+    service_class = MagicMock(return_value=sentinel.client)
+    from conjure_python_client._http.configuration import SslConfiguration
+
+    service_config = ServiceConfiguration(
+        security=SslConfiguration(trust_store_path="/etc/ssl/ca.pem"),
+        uris=["https://api.example.com"],
+    )
+    provider = MagicMock(spec=TransportProvider)
+    provider.create_requests_session.return_value = requests.Session()
+
+    create_conjure_service_client(
+        service_class=service_class,
+        user_agent="test",
+        service_config=service_config,
+        ssl_context_provider=provider,
+    )
+
+    _session, _uris, _ct, _rt, verify, _rn = service_class.call_args.args
+    assert verify == "/etc/ssl/ca.pem"
+    _session.close()
+
+
+def test_create_conjure_service_client_default_returns_none_custom_session() -> None:
+    """TransportProvider.create_requests_session() default returns None, falling through to SSL context path."""
+    provider = _FakeTransportProvider()
+    service_class = MagicMock(return_value=sentinel.client)
+    service_config = ServiceConfiguration(uris=["https://api.example.com"])
+
+    create_conjure_service_client(
+        service_class=service_class,
+        user_agent="test",
+        service_config=service_config,
+        ssl_context_provider=provider,
+    )
+
+    session = service_class.call_args.args[0]
+    # Default path: session has an adapter with the provider's SSL context.
+    adapter = session.adapters["https://api.example.com"]
+    assert adapter._ssl_context is provider.ssl_context
     session.close()
