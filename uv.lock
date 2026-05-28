@@ -287,6 +287,18 @@ wheels = [
 ]
 
 [[package]]
+name = "clr-loader"
+version = "0.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi", marker = "(platform_machine != 'armv7l' and platform_machine != 'x86_64' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_machine != 'arm64' and sys_platform == 'darwin') or (platform_python_implementation != 'CPython' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/46/7eea92b6aa2d68af78e049cbecec5f757f1aad44ecdecdc16bbad7eead51/clr_loader-0.3.1.tar.gz", hash = "sha256:2e073e9aaf49d1ae2f56ecba27987ad5fb68be4bcd9dd34a5bed8f0e4e128366", size = 86805, upload-time = "2026-04-18T17:49:44.287Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/da/ec1a6e36624000b6df0dd61183c42342ee5814c073315e802cadaad04d2f/clr_loader-0.3.1-py3-none-any.whl", hash = "sha256:cbad189de20d202a7d621956b0fc38049e13c9bf7ca2923441eff725cd121aa1", size = 55730, upload-time = "2026-04-18T17:49:42.99Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1388,6 +1400,7 @@ dependencies = [
     { name = "grpcio" },
     { name = "nominal" },
     { name = "python-pkcs11" },
+    { name = "pythonnet", marker = "sys_platform == 'win32'" },
 ]
 
 [package.metadata]
@@ -1397,6 +1410,7 @@ requires-dist = [
     { name = "grpcio", specifier = ">=1.80.0" },
     { name = "nominal", editable = "." },
     { name = "python-pkcs11", specifier = ">=0.7.0" },
+    { name = "pythonnet", marker = "sys_platform == 'win32'", specifier = ">=3.0.0" },
 ]
 
 [[package]]
@@ -1969,6 +1983,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/de/51/43be836fb48a87e8589adddd47fbee86c0b0c09b9edd60ea267cc7fefc55/python_pkcs11-0.9.4-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:7081ec0a3456a40abcde382c8b64048b922076391e9ae90a272a970c96dc10c8", size = 1783570, upload-time = "2026-04-13T13:32:37.357Z" },
     { url = "https://files.pythonhosted.org/packages/b3/05/492e46d0f60bccebed71f4e3429a55842ad5989e07d9ad98989d762d9455/python_pkcs11-0.9.4-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:16aba462e30169a9898f51532297aad94f13ee944873fa48eb2504b6efaf373d", size = 1830078, upload-time = "2026-04-13T13:32:38.897Z" },
     { url = "https://files.pythonhosted.org/packages/53/ef/4b95b463e48fd2474e6c51446ea45d9b7042b8a67b5abc1e06bfbfbc8595/python_pkcs11-0.9.4-cp314-cp314-win_amd64.whl", hash = "sha256:d13f9a6b76d56ff5628a85530aab7b021e9f90e3300be985423b69301c6aae38", size = 280929, upload-time = "2026-04-13T13:32:40.712Z" },
+]
+
+[[package]]
+name = "pythonnet"
+version = "3.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "clr-loader", marker = "(platform_machine != 'armv7l' and platform_machine != 'x86_64' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation != 'CPython' and sys_platform == 'linux') or (platform_machine != 'arm64' and sys_platform == 'darwin') or (platform_python_implementation != 'CPython' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/05/57/da1992e44663b71365c6e842c8d7fa453d4ec45fb99a68cfee5b7e944d3c/pythonnet-3.1.0.tar.gz", hash = "sha256:7b34c382905d10a371509ffafd64cae0416305c28817738a9cd138336f4e9991", size = 250599, upload-time = "2026-05-23T20:30:21.578Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/4b/52414f442624d2589f5374a48c08d5ae94f24bea67fc13a20a752884e5b7/pythonnet-3.1.0-cp310.cp311.cp312.cp313.cp314-none-any.whl", hash = "sha256:698dd88edc198819ad63b624a6ebe76208c7b46e4fe13626f65e484f0358d6ba", size = 217578, upload-time = "2026-05-23T20:30:19.527Z" },
+    { url = "https://files.pythonhosted.org/packages/db/67/031124fdcb937c266a3265118525bbf6dc13b8c79786d6a7290aecb6e7bb/pythonnet-3.1.0-cp310.cp311.cp312.cp313.cp314-none-win32.win_amd64.whl", hash = "sha256:7bdd4de03df3547a48122a3989265c8b31d5be0d19dadffa009eec7df8085e0b", size = 1644898, upload-time = "2026-05-23T20:30:16.213Z" },
 ]
 
 [[package]]
