@@ -209,9 +209,11 @@ def test_create_multipart_request_session_uses_ssl_context_from_provider() -> No
     session.close()
 
 
-def test_create_multipart_request_session_ignores_http_adapter_hook() -> None:
-    """S3 sessions always use the SSL context path; create_http_adapter() is never called for S3."""
-    provider = _FakeTransportProvider()
+def test_create_multipart_request_session_uses_custom_adapter_from_provider() -> None:
+    """When create_http_adapter() returns an adapter it must be mounted for https://."""
+    custom_adapter = MagicMock(spec=HTTPAdapter)
+    provider = MagicMock(spec=TransportProvider)
+    provider.create_http_adapter.return_value = custom_adapter
 
     session = create_multipart_request_session(
         pool_size=4,
@@ -219,9 +221,8 @@ def test_create_multipart_request_session_ignores_http_adapter_hook() -> None:
         transport_provider=provider,
     )
 
-    # The adapter mounted for https:// must use the provider's SSL context.
-    adapter = session.adapters["https://"]
-    assert adapter._ssl_context is provider.ssl_context
+    assert session.adapters["https://"] is custom_adapter
+    provider.create_ssl_context.assert_not_called()
     session.close()
 
 
