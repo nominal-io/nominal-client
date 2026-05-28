@@ -255,8 +255,9 @@ def create_conjure_service_client(
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
         header_provider: Additional default headers to attach to each request.
-        transport_provider: Optional provider for a custom ssl.SSLContext (e.g. for mTLS).
-            When None, a ThreadSafeSSLContext is used.
+        transport_provider: Optional transport provider for authentication. When its
+            ``create_requests_session()`` returns a non-None session it is used directly;
+            otherwise ``create_ssl_context()`` is called and the default adapter path is used.
 
     Returns:
         Instantiated conjure client object to hit the API with
@@ -281,8 +282,9 @@ def create_conjure_service_client(
             status_forcelist=[308, 429, 503],
             backoff_factor=float(service_config.backoff_slot_size) / 1000,
         )
-        # If no transport_provider is passed in, defaults to ThreadSafeSSLContext, which is
-        # required since this session is shared across threads via ClientsBunch.
+        # No custom session; build a standard adapter-based session. Falls back to a
+        # ThreadSafeSSLContext when no transport_provider is given, which is required
+        # since this session is shared across threads via ClientsBunch.
         ssl_context = transport_provider.create_ssl_context() if transport_provider is not None else None
         transport_adapter = NominalRequestsAdapter(max_retries=retry, ssl_context=ssl_context)
         session = HeaderProviderSession(header_provider)
@@ -334,8 +336,9 @@ def create_multipart_request_session(
 ) -> requests.Session:
     """Create a requests Session configured for multipart uploads to S3.
 
-    Each call produces an independent session with its own ThreadSafeSSLContext
-    and connection pool, safe for concurrent use across threads.
+    Each call produces an independent session safe for concurrent use across threads.
+    When the transport provider supplies a custom session via ``create_requests_session()``,
+    that session is returned directly and the pool/retry arguments are ignored.
 
     Args:
         pool_size: Number of concurrent workers. Controls the number of cached host pools
@@ -344,9 +347,9 @@ def create_multipart_request_session(
         num_retries: Number of times to retry failed requests. Ignored when the transport
             provider supplies a custom session via ``create_requests_session()``.
         header_provider: Additional default headers to attach to every request issued by the session.
-        transport_provider: Optional transport provider. When its ``create_requests_session()``
-            returns a non-None session it is used directly; otherwise ``create_ssl_context()``
-            is called and the default adapter path is used.
+        transport_provider: Optional transport provider for authentication. When its
+            ``create_requests_session()`` returns a non-None session it is used directly;
+            otherwise ``create_ssl_context()`` is called and the default adapter path is used.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
