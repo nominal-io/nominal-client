@@ -34,26 +34,20 @@ class HeaderProvider(ABC):
     def headers(self) -> Mapping[str, str]: ...
 
 
-class TransportProvider(ABC):
+class TransportProvider:
     """Controls transport-level authentication for Nominal connections.
 
-    Subclasses supply HTTP, multipart, and gRPC transport components. Each transport
-    has its own method; overriding one does not affect the others. The base class
-    provides standard defaults for HTTP and multipart that use a ``ThreadSafeSSLContext``,
-    so providers only override the transport they need to customize. ``gRPC`` has no
-    default and must be implemented by subclasses.
+    Each transport has its own method; overriding one does not affect the others.
+    The defaults use a ``ThreadSafeSSLContext`` backed by the OS trust store for
+    HTTP and multipart, and ``grpc.ssl_channel_credentials()`` for gRPC.
+    Subclass and override only the transports that need customization.
     """
 
     def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
         """Return an ``HTTPAdapter`` for Nominal API calls.
 
         Default: ``NominalRequestsAdapter`` backed by a ``ThreadSafeSSLContext``. Override
-        to substitute a different TLS stack (e.g. Windows Schannel for CAC card auth) or
-        to inject a custom ``ssl.SSLContext``.
-
-        Note: ``HTTPAdapter(max_retries=...)`` only retries when urllib3 performs the send.
-        Implementations that bypass urllib3 must implement their own retry logic or
-        accept a single attempt per call.
+        to substitute a different TLS stack or to inject a custom ``ssl.SSLContext``.
         """
         return NominalRequestsAdapter(max_retries=max_retries)
 
@@ -65,11 +59,9 @@ class TransportProvider(ABC):
     ) -> HTTPAdapter:
         """Return an ``HTTPAdapter`` for multipart upload/download sessions.
 
-        Default: ``NominalSslRequestsAdapter`` (no gzip compression) backed by a
-        ``ThreadSafeSSLContext``, sized for ``pool_size`` concurrent workers. Override
-        only when the multipart transport must differ from the system default — most
-        providers (including smartcard-mTLS) inherit this because object-store
-        presigned URLs use their own auth and do not need a client certificate.
+        Default: ``NominalSslRequestsAdapter`` (no gzip) sized for ``pool_size`` workers.
+        Most providers can inherit this default because presigned object-store URLs
+        authenticate via query parameters, not client certificates.
         """
         return NominalSslRequestsAdapter(
             max_retries=max_retries,
@@ -77,15 +69,22 @@ class TransportProvider(ABC):
             pool_maxsize=pool_size * 2,
         )
 
-    @abstractmethod
     def create_grpc_channel_credentials(
         self,
         *,
         root_certificates: bytes | None = None,
         certificate_chain_pem: bytes | None = None,
     ) -> grpc.ChannelCredentials:
-        """Return ``grpc.ChannelCredentials`` for gRPC channel creation."""
-        ...
+        """Return ``grpc.ChannelCredentials`` for gRPC channel creation.
+
+        Default: ``grpc.ssl_channel_credentials()`` using the system CA bundle.
+        """
+        import grpc
+
+        return grpc.ssl_channel_credentials(
+            root_certificates=root_certificates,
+            certificate_chain=certificate_chain_pem,
+        )
 
 
 @dataclass(frozen=True)
@@ -270,15 +269,13 @@ def create_conjure_service_client(
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
         header_provider: Additional default headers to attach to each request.
-        transport_provider: Optional transport provider for authentication. When supplied,
-            its ``create_http_adapter()`` builds the adapter mounted for each service URI.
-            When ``None``, the default ``NominalRequestsAdapter`` is used.
+        transport_provider: Transport provider for authentication. Its ``create_http_adapter()``
+            builds the adapter mounted for each service URI. Defaults to ``TransportProvider()``
+            when not specified.
 
     Returns:
         Instantiated conjure client object to hit the API with
     """
-    verify = service_config.security.trust_store_path if service_config.security is not None else None
-
     # setup retry to match java remoting
     # https://github.com/palantir/http-remoting/tree/3.12.0#quality-of-service-retry-failover-throttling
     retry = RetryWithJitter(
@@ -288,17 +285,18 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    transport_adapter = (
-        transport_provider.create_http_adapter(max_retries=retry)
-        if transport_provider is not None
-        else NominalRequestsAdapter(max_retries=retry)
-    )
+    provider = transport_provider or TransportProvider()
+    transport_adapter = provider.create_http_adapter(max_retries=retry)
 
     session = HeaderProviderSession(header_provider)
+    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
+    if service_config.security is not None:
+        verify = service_config.security.trust_store_path
+    else:
+        verify = None
     for uri in service_config.uris:
         session.mount(uri, transport_adapter)
 
-    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     return service_class(  # type: ignore
         session,
         service_config.uris,
@@ -341,20 +339,19 @@ def create_multipart_request_session(
     header_provider: HeaderProvider | None = None,
     transport_provider: TransportProvider | None = None,
 ) -> requests.Session:
-    """Create a requests Session configured for multipart uploads and downloads.
+    """Create a requests Session configured for multipart uploads to S3.
 
     Each call produces an independent session safe for concurrent use across threads.
-    When a transport provider is supplied, its ``create_multipart_adapter()`` builds
-    the adapter mounted for ``https://``; otherwise the default ``NominalSslRequestsAdapter``
-    is used.
+    The transport provider's ``create_multipart_adapter()`` builds the adapter mounted
+    for ``https://``.
 
     Args:
         pool_size: Number of concurrent workers. Controls the number of cached host pools
             and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
         header_provider: Additional default headers to attach to every request issued by the session.
-        transport_provider: Optional transport provider. Its ``create_multipart_adapter()``
-            supplies the adapter; when ``None`` the default ``NominalSslRequestsAdapter`` is used.
+        transport_provider: Transport provider. Its ``create_multipart_adapter()`` supplies
+            the adapter. Defaults to ``TransportProvider()`` when not specified.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
@@ -364,18 +361,11 @@ def create_multipart_request_session(
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
-    if transport_provider is not None:
-        transport_adapter = transport_provider.create_multipart_adapter(
-            max_retries=retries, pool_size=pool_size,
-        )
-    else:
-        transport_adapter = NominalSslRequestsAdapter(
-            max_retries=retries,
-            # Match the number of cached host pools to the thread count to avoid LRU eviction.
-            pool_connections=pool_size,
-            # Double the per-host connection limit so retries/redirects don't discard connections.
-            pool_maxsize=pool_size * 2,
-        )
+    provider = transport_provider or TransportProvider()
+    adapter = provider.create_multipart_adapter(
+        max_retries=retries,
+        pool_size=pool_size,
+    )
     session = HeaderProviderSession(header_provider)
-    session.mount("https://", transport_adapter)
+    session.mount("https://", adapter)
     return session
