@@ -164,8 +164,18 @@ def _build_http_client(
     clr.AddReference("System.Net.Http")
 
     from System import TimeSpan  # type: ignore[import]
-    from System.Net import DecompressionMethods, WebProxy  # type: ignore[import]
+    from System.Net import DecompressionMethods, SecurityProtocolType, ServicePointManager, WebProxy  # type: ignore[import]
     from System.Net.Http import HttpClient, HttpClientHandler  # type: ignore[import]
+
+    # .NET Framework's HttpClientHandler uses HttpWebRequest internally, which
+    # respects ServicePointManager.SecurityProtocol. Force TLS 1.2 minimum so
+    # that modern servers (which disable TLS 1.0/1.1) don't reject the handshake.
+    # Tls13 (12288) is only available on .NET Framework 4.8+ / .NET Core 3+;
+    # OR-in its numeric value so we get it for free when the OS supports it.
+    try:
+        ServicePointManager.SecurityProtocol = SecurityProtocolType(3072 | 12288)  # Tls12 | Tls13
+    except Exception:
+        ServicePointManager.SecurityProtocol = SecurityProtocolType(3072)  # Tls12
 
     handler = HttpClientHandler()
     handler.AllowAutoRedirect = False
