@@ -173,7 +173,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         with MultipartFileDownloader.create(
             max_part_retries=num_retries,
             header_provider=self._clients.header_provider,
-            ssl_context_provider=self._clients.ssl_context_provider,
+            transport_provider=self._clients.transport_provider,
         ) as dl:
             return dl.download_file(item)
 
@@ -230,7 +230,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         with MultipartFileDownloader.create(
             max_part_retries=num_retries,
             header_provider=self._clients.header_provider,
-            ssl_context_provider=self._clients.ssl_context_provider,
+            transport_provider=self._clients.transport_provider,
         ) as dl:
             results = dl.download_files(items)
 
@@ -250,7 +250,7 @@ class DatasetFile(RefreshableMixin[scout_catalog.DatasetFile]):
         with MultipartFileDownloader.create(
             max_workers=1,
             header_provider=self._clients.header_provider,
-            ssl_context_provider=self._clients.ssl_context_provider,
+            transport_provider=self._clients.transport_provider,
         ) as downloader:
             size, _ = downloader._head_or_probe(self._presigned_url_provider())
             return size

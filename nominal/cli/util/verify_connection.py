@@ -13,13 +13,13 @@ def validate_token_url(
     base_url: str,
     workspace_rid: str | None,
     *,
-    ssl_context_provider: TransportProvider | None = None,
+    transport_provider: TransportProvider | None = None,
 ) -> None:
     """Ensure the user sets a valid configuration before letting them import the client."""
     docs_link = "https://docs.nominal.io/core/sdk/python-client/authentication"
     status_code = 200
     err_msg = ""
-    client = NominalClient.create(base_url, token, ssl_context_provider=ssl_context_provider)
+    client = NominalClient.create(base_url, token, transport_provider=transport_provider)
 
     # first, validate that the api key is correct for the tenant / org by fetching the
     # current user using the api key

@@ -74,7 +74,7 @@ def mock_dataset():
 
 
 def test_get_dataset_owner_rid_uses_role_service_lookup(monkeypatch: pytest.MonkeyPatch, mock_dataset: Dataset):
-    def fake_lookup(*, auth_header: str, api_base_url: str, dataset_rid: str, ssl_context_provider=None) -> str | None:
+    def fake_lookup(*, auth_header: str, api_base_url: str, dataset_rid: str, transport_provider=None) -> str | None:
         assert auth_header is mock_dataset._clients.auth_header
         assert api_base_url is mock_dataset._clients._api_base_url  # type: ignore[attr-defined]
         assert dataset_rid == mock_dataset.rid
@@ -117,28 +117,28 @@ def test_api_base_url_to_grpc_target_strips_scheme_and_api_suffix() -> None:
     assert _api_base_url_to_grpc_target("http://localhost:8080/api") == "localhost:8080"
 
 
-def test_get_dataset_owner_rid_passes_ssl_context_provider_to_lookup(
+def test_get_dataset_owner_rid_passes_transport_provider_to_lookup(
     monkeypatch: pytest.MonkeyPatch, mock_dataset: Dataset
 ) -> None:
-    """get_dataset_owner_rid must forward dataset._clients.ssl_context_provider to _lookup_dataset_owner_rid."""
+    """get_dataset_owner_rid must forward dataset._clients.transport_provider to _lookup_dataset_owner_rid."""
     provider = _FakeGrpcTransportProvider()
-    mock_dataset._clients.ssl_context_provider = provider  # type: ignore[attr-defined]
+    mock_dataset._clients.transport_provider = provider  # type: ignore[attr-defined]
 
     captured: dict = {}
 
-    def fake_lookup(*, auth_header, api_base_url, dataset_rid, ssl_context_provider=None):
-        captured["ssl_context_provider"] = ssl_context_provider
+    def fake_lookup(*, auth_header, api_base_url, dataset_rid, transport_provider=None):
+        captured["transport_provider"] = transport_provider
         return "ri.authn.user.owner"
 
     monkeypatch.setattr("nominal.experimental.dataset_utils._dataset_utils._lookup_dataset_owner_rid", fake_lookup)
 
     get_dataset_owner_rid(mock_dataset)
 
-    assert captured["ssl_context_provider"] is provider
+    assert captured["transport_provider"] is provider
 
 
 def test_lookup_dataset_owner_rid_uses_provider_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When ssl_context_provider is given, create_grpc_channel_credentials() must be used for the gRPC channel."""
+    """When transport_provider is given, create_grpc_channel_credentials() must be used for the gRPC channel."""
     provider = _FakeGrpcTransportProvider()
     mock_grpc, patches = _make_mock_grpc_env()
 
@@ -149,7 +149,7 @@ def test_lookup_dataset_owner_rid_uses_provider_credentials(monkeypatch: pytest.
         auth_header="Bearer test",
         api_base_url="https://api.example.com",
         dataset_rid="ri.dataset.main.dataset.1",
-        ssl_context_provider=provider,
+        transport_provider=provider,
     )
 
     mock_grpc.ssl_channel_credentials.assert_not_called()
@@ -158,7 +158,7 @@ def test_lookup_dataset_owner_rid_uses_provider_credentials(monkeypatch: pytest.
 
 
 def test_lookup_dataset_owner_rid_falls_back_to_default_ssl_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Without ssl_context_provider, grpc.ssl_channel_credentials() must be used as the fallback."""
+    """Without transport_provider, grpc.ssl_channel_credentials() must be used as the fallback."""
     mock_grpc, patches = _make_mock_grpc_env()
 
     for name, mod in patches.items():
