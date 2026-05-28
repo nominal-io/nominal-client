@@ -16,7 +16,7 @@ import requests
 from typing_extensions import Self
 
 from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
-from nominal.core._utils.networking import HeaderProvider, SslContextProvider, create_multipart_request_session
+from nominal.core._utils.networking import HeaderProvider, TransportProvider, create_multipart_request_session
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class MultipartFileDownloader:
         timeout: float = 30.0,
         max_part_retries: int = 3,
         header_provider: HeaderProvider | None = None,
-        ssl_context_provider: SslContextProvider | None = None,
+        ssl_context_provider: TransportProvider | None = None,
     ) -> Self:
         """Factor for MultipartFileDownloader
 

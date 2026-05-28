@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nominal.core import SslContextProvider
+from nominal.core import TransportProvider
 from nominal.core.dataset import Dataset, DatasetBounds
 from nominal.core.user import User
 from nominal.experimental.dataset_utils import get_dataset_owner, get_dataset_owner_rid
@@ -16,7 +16,7 @@ from nominal.experimental.dataset_utils._dataset_utils import (
 )
 
 
-class _FakeGrpcSslContextProvider(SslContextProvider):
+class _FakeGrpcTransportProvider(TransportProvider):
     def __init__(self) -> None:
         self.credentials = MagicMock(name="custom-grpc-credentials")
 
@@ -121,7 +121,7 @@ def test_get_dataset_owner_rid_passes_ssl_context_provider_to_lookup(
     monkeypatch: pytest.MonkeyPatch, mock_dataset: Dataset
 ) -> None:
     """get_dataset_owner_rid must forward dataset._clients.ssl_context_provider to _lookup_dataset_owner_rid."""
-    provider = _FakeGrpcSslContextProvider()
+    provider = _FakeGrpcTransportProvider()
     mock_dataset._clients.ssl_context_provider = provider  # type: ignore[attr-defined]
 
     captured: dict = {}
@@ -139,7 +139,7 @@ def test_get_dataset_owner_rid_passes_ssl_context_provider_to_lookup(
 
 def test_lookup_dataset_owner_rid_uses_provider_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """When ssl_context_provider is given, create_grpc_channel_credentials() must be used for the gRPC channel."""
-    provider = _FakeGrpcSslContextProvider()
+    provider = _FakeGrpcTransportProvider()
     mock_grpc, patches = _make_mock_grpc_env()
 
     for name, mod in patches.items():

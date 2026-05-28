@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 from nominal_api import scout_catalog
 
-from nominal.core import Dataset, NominalClient, SslContextProvider, User
+from nominal.core import Dataset, NominalClient, TransportProvider, User
 
 
 def create_dataset_with_uuid(
@@ -94,7 +94,7 @@ def _lookup_dataset_owner_rid(
     auth_header: str,
     api_base_url: str,
     dataset_rid: str,
-    ssl_context_provider: SslContextProvider | None = None,
+    ssl_context_provider: TransportProvider | None = None,
 ) -> str | None:
     try:
         import grpc
