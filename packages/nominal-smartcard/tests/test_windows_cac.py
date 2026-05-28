@@ -3,8 +3,6 @@ from __future__ import annotations
 import base64
 import gzip
 import json
-import platform
-import ssl
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -335,11 +333,9 @@ def test_os_error_raises_ssl_error(mock_run: MagicMock) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_create_requests_session_returns_none_on_non_windows(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_create_requests_session_returns_none_on_non_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
-    from _helpers import _FakeBackend, _candidate, _make_der_cert
+    from _helpers import _candidate, _FakeBackend, _make_der_cert
 
     from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
     from nominal.smartcard._session import SmartcardSessionManager
@@ -364,7 +360,7 @@ def test_create_requests_session_returns_windows_cac_session_on_windows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("cryptography")
-    from _helpers import _FakeBackend, _candidate, _make_der_cert
+    from _helpers import _candidate, _FakeBackend, _make_der_cert
 
     from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
     from nominal.smartcard._session import SmartcardSessionManager
@@ -389,7 +385,7 @@ def test_create_requests_session_forwards_header_provider_on_windows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("cryptography")
-    from _helpers import _FakeBackend, _candidate, _make_der_cert
+    from _helpers import _candidate, _FakeBackend, _make_der_cert
 
     from nominal.core._utils.networking import StaticHeaderProvider
     from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
@@ -413,11 +409,9 @@ def test_create_requests_session_forwards_header_provider_on_windows(
     assert session._header_provider is hp
 
 
-def test_create_ssl_context_on_windows_returns_plain_context(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_create_ssl_context_on_windows_returns_plain_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("cryptography")
-    from _helpers import _FakeBackend, _candidate, _make_der_cert
+    from _helpers import _candidate, _FakeBackend, _make_der_cert
 
     from nominal.core._utils.networking import ThreadSafeSSLContext
     from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import platform
 import ssl
 import threading
 from dataclasses import dataclass, field
 from typing import Any
 
+import requests
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
 from grpc.experimental import ssl_channel_credentials_with_custom_signer
 
-from nominal.core._utils.networking import TransportProvider
+from nominal.core._utils.networking import HeaderProvider, TransportProvider
 from nominal.smartcard._errors import (
     SmartcardConfigurationError,
     SmartcardPinError,
@@ -19,6 +21,7 @@ from nominal.smartcard._errors import (
 from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
+from nominal.smartcard._windows_cac import WindowsCacSession
 
 MAX_PIN_ATTEMPTS = 3
 
@@ -64,26 +67,44 @@ class SmartcardTransportProvider(TransportProvider):
     def create_ssl_context(self) -> ssl.SSLContext:
         with self._lock:
             if self._cached_ctx is None:
-                session = self.session_manager.get_session()
-                for attempt in range(MAX_PIN_ATTEMPTS):
-                    remaining = MAX_PIN_ATTEMPTS - attempt - 1
-                    try:
-                        self._cached_ctx = self.openssl_bridge.build_ssl_context(session=session)
-                        break
-                    except SmartcardPinLockedError:
-                        raise SystemExit("Card PIN is locked. Contact your security administrator.")
-                    except SmartcardPinError:
-                        base_message = "Incorrect PIN."
-                        if remaining == 0:
-                            raise SystemExit(f"{base_message} No attempts remaining.")
-                        print(f"{base_message} {remaining} attempt(s) remaining, please try again.")
-                    except SmartcardProviderError as exc:
-                        raise SystemExit(
-                            "Authentication failed. PIN entry may have been cancelled, or an unexpected "
-                            "smartcard provider error occurred."
-                        ) from exc
+                if platform.system() == "Windows":
+                    # pkcs11-provider is not available on Windows; smartcard REST calls route
+                    # through Windows Schannel via create_requests_session(). Return a plain
+                    # SSL context for non-mTLS uses such as S3 multipart uploads.
+                    from nominal.core._utils.networking import ThreadSafeSSLContext
+
+                    self._cached_ctx = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                else:
+                    session = self.session_manager.get_session()
+                    for attempt in range(MAX_PIN_ATTEMPTS):
+                        remaining = MAX_PIN_ATTEMPTS - attempt - 1
+                        try:
+                            self._cached_ctx = self.openssl_bridge.build_ssl_context(session=session)
+                            break
+                        except SmartcardPinLockedError:
+                            raise SystemExit("Card PIN is locked. Contact your security administrator.")
+                        except SmartcardPinError:
+                            base_message = "Incorrect PIN."
+                            if remaining == 0:
+                                raise SystemExit(f"{base_message} No attempts remaining.")
+                            print(f"{base_message} {remaining} attempt(s) remaining, please try again.")
+                        except SmartcardProviderError as exc:
+                            raise SystemExit(
+                                "Authentication failed. PIN entry may have been cancelled, or an unexpected "
+                                "smartcard provider error occurred."
+                            ) from exc
             assert self._cached_ctx is not None
             return self._cached_ctx
+
+    def create_requests_session(
+        self,
+        *,
+        header_provider: HeaderProvider | None = None,
+    ) -> requests.Session | None:
+        """Return a WindowsCacSession on Windows; None elsewhere (uses default SSL context path)."""
+        if platform.system() != "Windows":
+            return None
+        return WindowsCacSession(header_provider)
 
     def create_grpc_channel_credentials(
         self,

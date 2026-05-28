@@ -6,12 +6,12 @@ import json
 import os
 import subprocess
 import sys
-from typing import Any, Mapping
+from typing import Any
 
 import requests
 from requests.adapters import CaseInsensitiveDict
 
-from nominal.core._utils.networking import GZIP_COMPRESSION_LEVEL, HeaderProvider, HeaderProviderSession
+from nominal.core._utils.networking import GZIP_COMPRESSION_LEVEL, HeaderProviderSession
 
 NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR = "NOMINAL_WINDOWS_CERT_THUMBPRINT"
 NOMINAL_WINDOWS_REQUIRE_PRIVATE_KEY_PROOF_ENV_VAR = "NOMINAL_WINDOWS_REQUIRE_PRIVATE_KEY_PROOF"
@@ -46,7 +46,8 @@ function Add-CacEvent {
 }
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Add-CacEvent ("bridge started; process64={0}; powershell={1}" -f [Environment]::Is64BitProcess, $PSVersionTable.PSVersion)
+Add-CacEvent ("bridge started; process64={0}; powershell={1}" -f `
+    [Environment]::Is64BitProcess, $PSVersionTable.PSVersion)
 
 function Find-ClientAuthCertificate {
     param([string]$RequestedThumbprint)
@@ -68,7 +69,8 @@ function Find-ClientAuthCertificate {
             if ($matches.Count -lt 1) {
                 throw "Could not find client certificate thumbprint $thumbprint in CurrentUser\My."
             }
-            Add-CacEvent ("certificate selected: subject={0}; thumbprint={1}; not_after={2:o}" -f $matches[0].Subject, $matches[0].Thumbprint, $matches[0].NotAfter)
+            Add-CacEvent ("certificate selected: subject={0}; thumbprint={1}; not_after={2:o}" -f `
+                $matches[0].Subject, $matches[0].Thumbprint, $matches[0].NotAfter)
             return $matches[0]
         }
 
@@ -84,7 +86,8 @@ function Find-ClientAuthCertificate {
             throw "Could not find a CurrentUser\My client-auth certificate with a private key."
         }
         Add-CacEvent ("certificate candidates found: {0}" -f $candidates.Count)
-        Add-CacEvent ("certificate selected: subject={0}; thumbprint={1}; not_after={2:o}" -f $candidates[0].Subject, $candidates[0].Thumbprint, $candidates[0].NotAfter)
+        Add-CacEvent ("certificate selected: subject={0}; thumbprint={1}; not_after={2:o}" -f `
+            $candidates[0].Subject, $candidates[0].Thumbprint, $candidates[0].NotAfter)
         return $candidates[0]
     } finally {
         $store.Close()
@@ -148,7 +151,8 @@ function Assert-PrivateKeyUsable {
         }
     }
 
-    $ecdsa = [System.Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::GetECDsaPrivateKey($Certificate)
+    $ecdsa = [System.Security.Cryptography.X509Certificates.ECDsaCertificateExtensions]::GetECDsaPrivateKey(
+        $Certificate)
     if ($null -ne $ecdsa) {
         try {
             Add-CacEvent ("private-key object type: {0}" -f $ecdsa.GetType().FullName)
@@ -267,10 +271,10 @@ def _cac_log(message: str) -> None:
 
 
 class WindowsCacSession(HeaderProviderSession):
-    """requests.Session backed by Windows HttpClient + Schannel CAC transport.
+    r"""requests.Session backed by Windows HttpClient + Schannel CAC transport.
 
     Sends each HTTP request via a PowerShell subprocess that uses the Windows
-    .NET HttpClient. The Windows certificate store (CurrentUser\\My) supplies the
+    .NET HttpClient. The Windows certificate store (CurrentUser\My) supplies the
     CAC certificate automatically; Schannel handles PIN prompting natively through
     the Windows credential UI, so no PIN entry is required in Python.
 
@@ -338,6 +342,7 @@ class WindowsCacSession(HeaderProviderSession):
                     "-EncodedCommand",
                     encoded_command,
                 ],
+                check=False,
                 input=json.dumps(envelope),
                 text=True,
                 capture_output=True,
@@ -345,8 +350,7 @@ class WindowsCacSession(HeaderProviderSession):
             )
         except subprocess.TimeoutExpired as exc:
             raise requests.exceptions.Timeout(
-                f"Windows CAC request timed out after {timeout_seconds:g}s: "
-                f"{request.method} {request.url}"
+                f"Windows CAC request timed out after {timeout_seconds:g}s: {request.method} {request.url}"
             ) from exc
         except OSError as exc:
             raise requests.exceptions.SSLError(
