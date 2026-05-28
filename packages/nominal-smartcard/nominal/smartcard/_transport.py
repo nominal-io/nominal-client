@@ -124,22 +124,25 @@ class SmartcardSslContextProvider(SslContextProvider):
                 object_id_bytes=object_id_bytes,
             )
             signer.connect()
+            try:
+                if certificate_chain_pem is None:
+                    if not session.certificate.der_certificate:
+                        raise SmartcardConfigurationError(
+                            "Certificate DER data is empty; cannot build PEM chain for gRPC credentials. "
+                            "The PKCS#11 token may not have returned a certificate value."
+                        )
+                    cert = x509.load_der_x509_certificate(session.certificate.der_certificate)
+                    certificate_chain_pem = cert.public_bytes(Encoding.PEM)
 
-            if certificate_chain_pem is None:
-                if not session.certificate.der_certificate:
-                    raise SmartcardConfigurationError(
-                        "Certificate DER data is empty; cannot build PEM chain for gRPC credentials. "
-                        "The PKCS#11 token may not have returned a certificate value."
-                    )
-                cert = x509.load_der_x509_certificate(session.certificate.der_certificate)
-                certificate_chain_pem = cert.public_bytes(Encoding.PEM)
-
+                self._cached_grpc_credentials = ssl_channel_credentials_with_custom_signer(
+                    private_key_sign_fn=signer.sign,
+                    root_certificates=root_certificates,
+                    certificate_chain=certificate_chain_pem,
+                )
+            except:
+                signer.close()
+                raise
             self._signer = signer
-            self._cached_grpc_credentials = ssl_channel_credentials_with_custom_signer(
-                private_key_sign_fn=signer.sign,
-                root_certificates=root_certificates,
-                certificate_chain=certificate_chain_pem,
-            )
             return self._cached_grpc_credentials
 
     def close(self) -> None:
