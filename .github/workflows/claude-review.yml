@@ -60,10 +60,6 @@ jobs:
           # with the issue context pre-loaded
           include_fix_links: "true"
 
-          # Dump Claude Code's full output to the Actions log so we can
-          # surface the review's full reasoning and tool I/O in logs (the action hides this by default).
-          show_full_output: "true"
-
           # Enables Claude to read CI/Actions results. Required IN ADDITION to the job-level
           # `actions: read` permission above — the two are complementary, not redundant.
           additional_permissions: |
@@ -132,8 +128,9 @@ jobs:
 
           # Configurations:
           #   - Pinning the review model explicitly (bump deliberately as newer models ship)
-          #   - Setting max turns to 50 to bound cost while leaving headroom for the deeper
-          #     /code-review + thermo-nuclear pass. This measures total round trips between github and claude
+          #   - max-turns is a safety ceiling, not a target (a turn = one github<->claude round trip).
+          #     Observed real runs use ~25-30 turns; 100 just prevents truncation on unusually large
+          #     PRs. The signal to watch is a run actually HITTING the cap, not the number itself.
           #   - Setting explicit tools that may be used during the review without any further authorization
           #   - `Bash(gh api:*)` is granted so Claude can 👍 prior reviewers' comments via the reactions
           #     API (paired with `issues: write` above). Note it's broad: gh api can reach any endpoint
@@ -142,5 +139,5 @@ jobs:
           #     skill; without it the Skill tool is blocked and the skill silently never loads.
           claude_args: |
             --model claude-opus-4-8
-            --max-turns 50
+            --max-turns 100
             --allowedTools "Skill,mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*),mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(ls:*),Bash(find:*),Bash(wc:*),WebFetch,WebSearch"
