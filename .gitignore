@@ -180,4 +180,10 @@ uv.toml
 *migration_utils_output_*.txt
 
 # AI
-.claude
+# Ignore local Claude config (settings.local.json, worktrees) but track shared project skills.
+.claude/*
+!.claude/skills/thermo-nuclear-code-quality-review
+
+#Ignore local agents config (settings.local.json, worktrees) but track shared project skills.
+.agents/*
+!.agents/skills/thermo-nuclear-code-quality-review
