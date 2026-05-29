@@ -3,7 +3,9 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generic, TypeVar
+from typing import Generic
+
+from typing_extensions import TypeVar
 
 from nominal.core import NominalClient
 from nominal.core._utils.api_tools import HasRid

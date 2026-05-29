@@ -23,13 +23,22 @@ def _raw_workspace(rid: str) -> MagicMock:
     workspace.rid = rid
     workspace.id = rid.rsplit(".", 1)[-1]
     workspace.org = "test-org"
+    workspace.display_name = "test-display"
     return workspace
 
 
 def test_workspace_rid_for_search_returns_workspace_object_rid_immediately() -> None:
     """Passing a Workspace object should return its RID without any further client lookups."""
     client, clients = _make_client()
-    workspace = Workspace(rid="ri.workspace.main.workspace.manual", id="manual", org="test-org")
+    workspace = Workspace(
+        rid="ri.workspace.main.workspace.manual",
+        id="manual",
+        org="test-org",
+        display_name="test-display",
+        preferred_refnames={},
+        preferred_procedure_rids=[],
+        _clients=clients,
+    )
 
     assert client._workspace_rid_for_search(workspace) == workspace.rid
 

@@ -1,3 +1,4 @@
+from nominal.core._datasource_types import DataSourceType
 from nominal.core._event_types import EventType, SearchEventOriginType
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
 from nominal.core._utils.api_tools import LinkDict
@@ -47,6 +48,7 @@ __all__ = [
     "ChannelDataType",
     "Checklist",
     "CheckViolation",
+    "Comment",
     "Connection",
     "ContainerizedExtractor",
     "DataReview",
@@ -54,6 +56,7 @@ __all__ = [
     "Dataset",
     "DatasetFile",
     "DataSource",
+    "DataSourceType",
     "DataStream",
     "DockerImageSource",
     "Event",
@@ -67,7 +70,6 @@ __all__ = [
     "LinkDict",
     "LogPoint",
     "LogStream",
-    "Comment",
     "NominalClient",
     "poll_until_ingestion_completed",
     "Run",
