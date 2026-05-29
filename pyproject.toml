@@ -209,7 +209,7 @@ module = "cffi"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "grpc"
+module = ["grpc", "grpc.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

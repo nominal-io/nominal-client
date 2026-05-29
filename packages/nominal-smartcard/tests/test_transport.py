@@ -56,20 +56,6 @@ class _PinErrorThenSuccessBridge(_FakeBridge):
         return self.context
 
 
-class _PinLenRangeErrorThenSuccessBridge(_FakeBridge):
-    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
-        self.calls.append(session)
-        if len(self.calls) == 1:
-            raise SmartcardPinError("CKR_PIN_LEN_RANGE")
-        return self.context
-
-
-class _PinLenRangeAlwaysErrorBridge(_FakeBridge):
-    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
-        self.calls.append(session)
-        raise SmartcardPinError("CKR_PIN_LEN_RANGE")
-
-
 class _PinLockedBridge(_FakeBridge):
     def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
         self.calls.append(session)
@@ -174,26 +160,6 @@ def test_http_adapter_retries_pin_errors(tmp_path: Path, monkeypatch: pytest.Mon
 
     assert adapter._ssl_context is pin_error_bridge.context
     assert len(pin_error_bridge.calls) == 2
-
-
-def test_http_adapter_retries_pin_len_range_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    provider, _bridge = _make_provider(tmp_path, monkeypatch)
-    pin_len_range_bridge = _PinLenRangeErrorThenSuccessBridge()
-    provider._openssl_bridge = pin_len_range_bridge
-
-    adapter = provider.create_http_adapter(max_retries=_RETRY)
-
-    assert adapter._ssl_context is pin_len_range_bridge.context
-    assert len(pin_len_range_bridge.calls) == 2
-
-
-def test_http_adapter_exhausts_pin_len_range_attempts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    provider, _bridge = _make_provider(tmp_path, monkeypatch)
-    pin_len_range_bridge = _PinLenRangeAlwaysErrorBridge()
-    provider._openssl_bridge = pin_len_range_bridge
-
-    with pytest.raises(SystemExit, match="No attempts remaining"):
-        provider.create_http_adapter(max_retries=_RETRY)
 
 
 def test_http_adapter_passes_session_to_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

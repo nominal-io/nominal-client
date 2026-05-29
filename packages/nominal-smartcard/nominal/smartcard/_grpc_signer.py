@@ -6,10 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import grpc.experimental
-import pkcs11 as _pkcs11
-import pkcs11.exceptions as _pkcs11_exc
+import pkcs11
+import pkcs11.exceptions
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
-from pkcs11 import ObjectClass
 from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError
@@ -96,9 +95,9 @@ class SmartcardPrivateKeySigner:
         """Open a User session on ``token``. Propagates PinIncorrect and PinLocked to the caller."""
         try:
             return token.open(user_pin=_prompt_for_pin("Card PIN: "))
-        except (_pkcs11_exc.PinIncorrect, _pkcs11_exc.PinLocked, _pkcs11_exc.PinLenRange):
+        except (pkcs11.exceptions.PinIncorrect, pkcs11.exceptions.PinLocked, pkcs11.exceptions.PinLenRange):
             raise
-        except _pkcs11_exc.PKCS11Error as e:
+        except pkcs11.exceptions.PKCS11Error as e:
             raise SmartcardConfigurationError(
                 f"Failed to open PKCS#11 session on token {self._token_label!r}: {e}"
             ) from e
@@ -107,8 +106,7 @@ class SmartcardPrivateKeySigner:
         """Establish the authenticated PKCS#11 session, prompting for PIN if needed.
 
         Must be called before the signer is handed to gRPC. The signing callback
-        (sign()) is invoked on every TLS handshake and must not block — PIN prompting
-        belongs here, at channel-setup time, not inside the handshake.
+        (sign()) is invoked on every TLS handshake and must not block.
 
         Retries up to MAX_PIN_ATTEMPTS times on incorrect PIN.
         """
@@ -118,9 +116,9 @@ class SmartcardPrivateKeySigner:
                 try:
                     self._ensure_session_and_key()
                     return
-                except _pkcs11_exc.PinLocked:
+                except pkcs11.exceptions.PinLocked:
                     raise SystemExit("Card PIN is locked. Contact your security administrator.")
-                except (_pkcs11_exc.PinIncorrect, _pkcs11_exc.PinLenRange):
+                except (pkcs11.exceptions.PinIncorrect, pkcs11.exceptions.PinLenRange):
                     self._session = None
                     self._key = None
                     message = "Incorrect PIN."
@@ -139,13 +137,13 @@ class SmartcardPrivateKeySigner:
             return self._session, self._key
 
         try:
-            lib = _pkcs11.lib(str(self._module_path))
+            lib = pkcs11.lib(str(self._module_path))
         except Exception as e:
             raise SmartcardConfigurationError(f"Failed to load PKCS#11 module {self._module_path}: {e}") from e
 
         try:
             slots = lib.get_slots(token_present=True)
-        except _pkcs11_exc.PKCS11Error as e:
+        except pkcs11.exceptions.PKCS11Error as e:
             raise SmartcardConfigurationError(f"Failed to list PKCS#11 slots: {e}") from e
 
         token = None
@@ -155,7 +153,7 @@ class SmartcardPrivateKeySigner:
                 if t.label.strip() == self._token_label:
                     token = t
                     break
-            except _pkcs11_exc.PKCS11Error:
+            except pkcs11.exceptions.PKCS11Error:
                 continue
 
         if token is None:
@@ -167,7 +165,7 @@ class SmartcardPrivateKeySigner:
         session = self._open_authenticated_session(token)
 
         try:
-            key = session.get_key(object_class=ObjectClass.PRIVATE_KEY, id=self._object_id_bytes)
+            key = session.get_key(object_class=pkcs11.ObjectClass.PRIVATE_KEY, id=self._object_id_bytes)
         except Exception as e:
             session.close()
             raise SmartcardConfigurationError(
@@ -198,7 +196,7 @@ class SmartcardPrivateKeySigner:
             _, key = self._ensure_session_and_key()
             try:
                 raw_sig: bytes = key.sign(data_to_sign, mechanism=mechanism, mechanism_param=mechanism_param)
-            except _pkcs11_exc.PKCS11Error as e:
+            except pkcs11.exceptions.PKCS11Error as e:
                 raise SmartcardConfigurationError(f"PKCS#11 signing failed ({signature_algorithm!r}): {e}") from e
 
         # PKCS#11 ECDSA returns raw r||s bytes; gRPC/BoringSSL expects DER-encoded ASN.1.

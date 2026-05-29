@@ -30,16 +30,15 @@ class SmartcardTransportProvider(TransportProvider):
     """Transport provider that attaches smartcard-backed mTLS to Nominal API and gRPC traffic.
 
     HTTP path: ``create_http_adapter()`` returns a ``NominalRequestsAdapter`` backed by an
-    OpenSSL+pkcs11 ``ssl.SSLContext``. PIN prompting is handled at C-level by pkcs11-provider.
+    OpenSSL+pkcs11 ``ssl.SSLContext``.
 
     gRPC path: ``create_grpc_channel_credentials()`` returns ``grpc.ChannelCredentials`` that
-    use a PKCS#11 signing callback so the private key never leaves the card. PIN prompting
-    happens on the first TLS handshake, with up to ``MAX_PIN_ATTEMPTS`` retries.
+    use a PKCS#11 signing callback.
 
-    Multipart path: inherits the base class default — a plain ``NominalSslRequestsAdapter``
-    with no client certificate, since S3 presigned URLs use AWS auth.
+    Multipart path: inherits a plain ``NominalSslRequestsAdapter`` with no client certificate,
+    since S3 presigned URLs use AWS auth.
 
-    Both customised paths share certificate discovery (via ``SmartcardSessionManager``) and
+    Both overridden paths share certificate discovery (via ``SmartcardSessionManager``) and
     each caches its result after the first successful call.
     """
 

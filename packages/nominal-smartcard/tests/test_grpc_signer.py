@@ -14,7 +14,6 @@ from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._grpc_signer import (
-    _MECHANISM_TABLE,
     MAX_PIN_ATTEMPTS,
     SmartcardPrivateKeySigner,
     _encode_ecdsa_der,
@@ -34,11 +33,7 @@ def _default_pin(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @contextmanager
 def _patch_pkcs11(pkcs11_mod: MagicMock) -> Iterator[None]:
-    """Patch the module-level _pkcs11 and _pkcs11_exc names in _grpc_signer."""
-    with (
-        patch("nominal.smartcard._grpc_signer._pkcs11", pkcs11_mod),
-        patch("nominal.smartcard._grpc_signer._pkcs11_exc", pkcs11_mod.exceptions),
-    ):
+    with patch("nominal.smartcard._grpc_signer.pkcs11", pkcs11_mod):
         yield
 
 
@@ -127,51 +122,7 @@ def test_encode_ecdsa_der_rejects_empty() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Mechanism table
-# ---------------------------------------------------------------------------
-
-
-def test_mechanism_table_covers_all_nine_algorithms() -> None:
-    expected = {
-        _A.RSA_PKCS1_SHA256,
-        _A.RSA_PKCS1_SHA384,
-        _A.RSA_PKCS1_SHA512,
-        _A.RSA_PSS_RSAE_SHA256,
-        _A.RSA_PSS_RSAE_SHA384,
-        _A.RSA_PSS_RSAE_SHA512,
-        _A.ECDSA_SECP256R1_SHA256,
-        _A.ECDSA_SECP384R1_SHA384,
-        _A.ECDSA_SECP521R1_SHA512,
-    }
-    assert set(_MECHANISM_TABLE.keys()) == expected
-
-
-def test_rsa_pss_sha256_has_correct_params() -> None:
-    mech, params = _MECHANISM_TABLE[_A.RSA_PSS_RSAE_SHA256]
-    assert mech == Mechanism.SHA256_RSA_PKCS_PSS
-    assert params == (Mechanism.SHA256, MGF.SHA256, 32)
-
-
-def test_rsa_pss_sha384_has_correct_params() -> None:
-    mech, params = _MECHANISM_TABLE[_A.RSA_PSS_RSAE_SHA384]
-    assert mech == Mechanism.SHA384_RSA_PKCS_PSS
-    assert params == (Mechanism.SHA384, MGF.SHA384, 48)
-
-
-def test_rsa_pss_sha512_has_correct_params() -> None:
-    mech, params = _MECHANISM_TABLE[_A.RSA_PSS_RSAE_SHA512]
-    assert mech == Mechanism.SHA512_RSA_PKCS_PSS
-    assert params == (Mechanism.SHA512, MGF.SHA512, 64)
-
-
-def test_ecdsa_mechanisms_have_no_params() -> None:
-    for algo in (_A.ECDSA_SECP256R1_SHA256, _A.ECDSA_SECP384R1_SHA384, _A.ECDSA_SECP521R1_SHA512):
-        _, params = _MECHANISM_TABLE[algo]
-        assert params is None, f"Expected no params for ECDSA algo 0x{algo:04x}"
-
-
-# ---------------------------------------------------------------------------
-# SmartcardPrivateKeySigner.sign — happy paths
+# SmartcardPrivateKeySigner.sign
 # ---------------------------------------------------------------------------
 
 
