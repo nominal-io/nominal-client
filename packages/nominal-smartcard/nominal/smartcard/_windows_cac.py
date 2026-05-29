@@ -164,7 +164,12 @@ def _build_http_client(
     clr.AddReference("System.Net.Http")
 
     from System import TimeSpan  # type: ignore[import]
-    from System.Net import DecompressionMethods, SecurityProtocolType, ServicePointManager, WebProxy  # type: ignore[import]
+    from System.Net import (  # type: ignore[import]
+        DecompressionMethods,
+        SecurityProtocolType,
+        ServicePointManager,
+        WebProxy,
+    )
     from System.Net.Http import HttpClient, HttpClientHandler  # type: ignore[import]
 
     # .NET Framework's HttpClientHandler uses HttpWebRequest internally, which

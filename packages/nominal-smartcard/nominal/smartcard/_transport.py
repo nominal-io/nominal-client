@@ -23,6 +23,7 @@ from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
 from nominal.smartcard._windows_cac import WindowsCacAdapter
+from nominal.smartcard._windows_cng_signer import WindowsCngSigner
 
 MAX_PIN_ATTEMPTS = 3
 
@@ -37,15 +38,16 @@ class SmartcardTransportProvider(TransportProvider):
       - Linux/macOS: returns a ``NominalRequestsAdapter`` backed by an OpenSSL+pkcs11
         ``ssl.SSLContext``. PIN prompting is handled at C-level by pkcs11-provider.
 
-    gRPC path: ``create_grpc_channel_credentials()`` returns ``grpc.ChannelCredentials`` that
-    use a PKCS#11 signing callback so the private key never leaves the card. The same pkcs11
-    path is used on all platforms since gRPC does not route through Schannel.
+    gRPC path: ``create_grpc_channel_credentials()`` returns ``grpc.ChannelCredentials`` backed
+    by a custom signing callback so the private key never leaves the card:
+      - Windows: ``WindowsCngSigner`` — signs via Windows CNG; no PKCS#11 or OpenSC DLL needed.
+      - Linux/macOS: ``SmartcardPrivateKeySigner`` — signs via python-pkcs11 + OpenSC.
 
     Multipart path: inherits the base class default implementation with no client certificate
     since S3 presigned URLs use AWS auth.
 
-    Both customised paths share certificate discovery (via ``SmartcardSessionManager``) and
-    each caches its result after the first successful call.
+    Both customised paths share certificate discovery (via ``SmartcardSessionManager`` on
+    non-Windows) and each caches its result after the first successful call.
     """
 
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
@@ -53,7 +55,7 @@ class SmartcardTransportProvider(TransportProvider):
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _cached_ctx: ssl.SSLContext | None = field(default=None, repr=False, compare=False)
     _cached_grpc_credentials: Any | None = field(default=None, repr=False, compare=False)
-    _signer: SmartcardPrivateKeySigner | None = field(default=None, repr=False, compare=False)
+    _signer: SmartcardPrivateKeySigner | WindowsCngSigner | None = field(default=None, repr=False, compare=False)
 
     @classmethod
     def create(cls) -> SmartcardTransportProvider:
@@ -93,56 +95,106 @@ class SmartcardTransportProvider(TransportProvider):
         gRPC to use system roots. ``certificate_chain_pem`` allows supplying additional
         intermediate certificates in PEM format. When ``None`` (the default), only the leaf
         certificate from the card is used.
+
+        Platform behaviour:
+          - Windows: uses ``WindowsCngSigner`` — signs via Windows CNG / Schannel so no
+            OpenSC or PKCS#11 DLL is needed. The private key never leaves the card; Windows
+            handles PIN prompting natively via the smart card UI.
+          - Linux/macOS: uses ``SmartcardPrivateKeySigner`` backed by python-pkcs11 + OpenSC.
         """
         with self._lock:
             if self._cached_grpc_credentials is not None:
                 return self._cached_grpc_credentials
 
-            session = self.session_manager.get_session()
-
-            token_label = session.certificate.token_label
-            object_id_bytes = session.certificate.object_id_bytes
-
-            if not token_label:
-                raise SmartcardConfigurationError(
-                    "Could not determine token label for the selected certificate. "
-                    "The PKCS#11 token may not have reported a label."
-                )
-            if object_id_bytes is None:
-                raise SmartcardConfigurationError(
-                    "Could not determine object ID for the selected certificate. "
-                    "The PKCS#11 token may not have reported a CKA_ID attribute."
-                )
-
-            signer = SmartcardPrivateKeySigner(
-                module_path=session.module_path,
-                token_label=token_label,
-                object_id_bytes=object_id_bytes,
-            )
-            signer.connect()
-            try:
-                if certificate_chain_pem is None:
-                    if not session.certificate.der_certificate:
-                        raise SmartcardConfigurationError(
-                            "Certificate DER data is empty; cannot build PEM chain for gRPC credentials. "
-                            "The PKCS#11 token may not have returned a certificate value."
-                        )
-                    cert = x509.load_der_x509_certificate(session.certificate.der_certificate)
-                    certificate_chain_pem = cert.public_bytes(Encoding.PEM)
-
-                self._cached_grpc_credentials = ssl_channel_credentials_with_custom_signer(
-                    private_key_sign_fn=signer.sign,
+            if platform.system() == "Windows":
+                self._cached_grpc_credentials = self._create_grpc_credentials_windows(
                     root_certificates=root_certificates,
-                    certificate_chain=certificate_chain_pem,
+                    certificate_chain_pem=certificate_chain_pem,
                 )
-            except:
-                signer.close()
-                raise
-            self._signer = signer
+            else:
+                self._cached_grpc_credentials = self._create_grpc_credentials_pkcs11(
+                    root_certificates=root_certificates,
+                    certificate_chain_pem=certificate_chain_pem,
+                )
             return self._cached_grpc_credentials
 
+    def _create_grpc_credentials_windows(
+        self,
+        *,
+        root_certificates: bytes | None,
+        certificate_chain_pem: bytes | None,
+    ) -> Any:
+        """Build gRPC credentials using Windows CNG — no PKCS#11 required."""
+        signer = WindowsCngSigner.from_environment()
+        signer.connect()
+        try:
+            if certificate_chain_pem is None:
+                cert = x509.load_der_x509_certificate(signer.der_certificate)
+                certificate_chain_pem = cert.public_bytes(Encoding.PEM)
+
+            credentials = ssl_channel_credentials_with_custom_signer(
+                private_key_sign_fn=signer.sign,
+                root_certificates=root_certificates,
+                certificate_chain=certificate_chain_pem,
+            )
+        except:
+            signer.close()
+            raise
+        self._signer = signer
+        return credentials
+
+    def _create_grpc_credentials_pkcs11(
+        self,
+        *,
+        root_certificates: bytes | None,
+        certificate_chain_pem: bytes | None,
+    ) -> Any:
+        """Build gRPC credentials using the PKCS#11 signer (Linux/macOS)."""
+        session = self.session_manager.get_session()
+
+        token_label = session.certificate.token_label
+        object_id_bytes = session.certificate.object_id_bytes
+
+        if not token_label:
+            raise SmartcardConfigurationError(
+                "Could not determine token label for the selected certificate. "
+                "The PKCS#11 token may not have reported a label."
+            )
+        if object_id_bytes is None:
+            raise SmartcardConfigurationError(
+                "Could not determine object ID for the selected certificate. "
+                "The PKCS#11 token may not have reported a CKA_ID attribute."
+            )
+
+        signer = SmartcardPrivateKeySigner(
+            module_path=session.module_path,
+            token_label=token_label,
+            object_id_bytes=object_id_bytes,
+        )
+        signer.connect()
+        try:
+            if certificate_chain_pem is None:
+                if not session.certificate.der_certificate:
+                    raise SmartcardConfigurationError(
+                        "Certificate DER data is empty; cannot build PEM chain for gRPC credentials. "
+                        "The PKCS#11 token may not have returned a certificate value."
+                    )
+                cert = x509.load_der_x509_certificate(session.certificate.der_certificate)
+                certificate_chain_pem = cert.public_bytes(Encoding.PEM)
+
+            credentials = ssl_channel_credentials_with_custom_signer(
+                private_key_sign_fn=signer.sign,
+                root_certificates=root_certificates,
+                certificate_chain=certificate_chain_pem,
+            )
+        except:
+            signer.close()
+            raise
+        self._signer = signer
+        return credentials
+
     def close(self) -> None:
-        """Release PKCS#11 session resources held by the gRPC signer."""
+        """Release resources held by the gRPC signer (PKCS#11 session or CNG key handle)."""
         with self._lock:
             if self._signer is not None:
                 self._signer.close()
