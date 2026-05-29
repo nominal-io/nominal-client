@@ -10,7 +10,6 @@ import requests
 from urllib3.util.retry import Retry
 
 from nominal.smartcard._windows_cac import (
-    NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR,
     WindowsCacAdapter,
     _timeout_to_seconds,
 )
@@ -480,30 +479,6 @@ def test_timeout_retry_exhaustion_attaches_request() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Certificate thumbprint env var
-# ---------------------------------------------------------------------------
-
-
-def test_cert_thumbprint_env_var_passed_to_build_http_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR, "AABBCCDD")
-    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as mock_build:
-        adapter = WindowsCacAdapter()
-        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
-            adapter.send(_prepared())
-    assert mock_build.call_args.kwargs["cert_thumbprint"] == "AABBCCDD"
-    adapter.close()
-
-
-def test_no_thumbprint_env_var_passes_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR, raising=False)
-    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as mock_build:
-        adapter = WindowsCacAdapter()
-        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
-            adapter.send(_prepared())
-    assert mock_build.call_args.kwargs["cert_thumbprint"] is None
-    adapter.close()
-
-
 # ---------------------------------------------------------------------------
 # close() disposes the .NET client
 # ---------------------------------------------------------------------------

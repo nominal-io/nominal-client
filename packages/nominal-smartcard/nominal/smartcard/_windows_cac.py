@@ -4,7 +4,6 @@ import gzip
 import io
 import os
 import threading
-from dataclasses import dataclass
 from typing import Any, Mapping
 
 import requests
@@ -13,20 +12,12 @@ from requests.utils import select_proxy
 from urllib3.exceptions import ConnectTimeoutError, MaxRetryError, ReadTimeoutError, ResponseError
 from urllib3.util.retry import Retry
 
-from nominal.core._utils.networking import GZIP_COMPRESSION_LEVEL
-
-NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR = "NOMINAL_WINDOWS_CERT_THUMBPRINT"
+_GZIP_COMPRESSION_LEVEL = 1
 
 # Headers that .NET HttpClient manages internally; must not be forwarded by Python.
 _SKIP_HEADERS: frozenset[str] = frozenset(
     {"content-length", "host", "connection", "transfer-encoding", "accept-encoding"}
 )
-
-
-@dataclass(frozen=True)
-class _TrustConfig:
-    cache_key: tuple[Any, ...]
-    disable_server_certificate_validation: bool = False
 
 
 class _RawResponseBody(io.BytesIO):
@@ -64,19 +55,6 @@ def _timeout_to_seconds(timeout: object) -> float:
     return float(timeout)
 
 
-def _trust_config_from_verify(verify: bool | str | os.PathLike[str] | None) -> _TrustConfig:
-    # Any falsy value → disable server certificate validation entirely.
-    # Any truthy value (True, a CA bundle path, etc.) → let Schannel validate using the
-    # Windows certificate store. DoD root CAs are already installed there on a standard
-    # CAC system, so no custom Python-level callback is needed. Note that
-    # requests.Session.merge_environment_settings() may replace verify=True with the
-    # REQUESTS_CA_BUNDLE env-var path before calling the adapter; we intentionally ignore
-    # that path and always defer to Schannel.
-    if not verify:
-        return _TrustConfig(cache_key=("insecure",), disable_server_certificate_validation=True)
-    return _TrustConfig(cache_key=("system",))
-
-
 def _body_bytes_for_request(request: requests.PreparedRequest) -> tuple[bytes | None, dict[str, str]]:
     """Return ``(body_bytes, extra_headers)`` for the outgoing request.
 
@@ -95,7 +73,7 @@ def _body_bytes_for_request(request: requests.PreparedRequest) -> tuple[bytes | 
     if request.headers.get("Content-Encoding"):
         return raw, {}
 
-    compressed = gzip.compress(raw, compresslevel=GZIP_COMPRESSION_LEVEL)
+    compressed = gzip.compress(raw, compresslevel=_GZIP_COMPRESSION_LEVEL)
     return compressed, {"Content-Encoding": "gzip"}
 
 
@@ -109,38 +87,8 @@ def _forwardable_headers(request: requests.PreparedRequest) -> dict[str, str]:
     return headers
 
 
-def _configure_client_certificate(*, clr_module: Any, handler: Any, cert_thumbprint: str | None) -> None:
-    from System.Net.Http import ClientCertificateOption  # type: ignore[import]
-
-    if not cert_thumbprint:
-        handler.ClientCertificateOptions = ClientCertificateOption.Automatic
-        return
-
-    clr_module.AddReference("System.Security")
-    from System.Security.Cryptography.X509Certificates import (  # type: ignore[import]
-        OpenFlags,
-        StoreLocation,
-        StoreName,
-        X509FindType,
-        X509Store,
-    )
-
-    store = X509Store(StoreName.My, StoreLocation.CurrentUser)
-    store.Open(OpenFlags.ReadOnly)
-    try:
-        thumbprint = cert_thumbprint.replace(" ", "").upper()
-        matches = store.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, False)
-        if matches.Count < 1:
-            raise RuntimeError(f"Could not find certificate thumbprint {thumbprint!r} in CurrentUser\\My")
-        handler.ClientCertificateOptions = ClientCertificateOption.Manual
-        handler.ClientCertificates.Add(matches[0])
-    finally:
-        store.Close()
-
-
 def _build_http_client(
     *,
-    cert_thumbprint: str | None = None,
     disable_server_certificate_validation: bool = False,
     proxy_url: str | None = None,
 ) -> Any:
@@ -150,11 +98,6 @@ def _build_http_client(
     non-Windows platforms without raising ``ImportError``.
 
     Args:
-        cert_thumbprint: Optional thumbprint of the certificate to use (spaces
-            ignored, case-insensitive). When supplied the matching certificate in
-            ``CurrentUser\My`` is attached manually to the handler. When omitted,
-            ``ClientCertificateOption.Automatic`` lets Schannel select the correct
-            CAC certificate for each TLS handshake automatically.
         disable_server_certificate_validation: When True, accepts any server
             certificate (equivalent to ``verify=False``).
         proxy_url: Optional proxy URL selected from the ``proxies`` mapping.
@@ -195,7 +138,9 @@ def _build_http_client(
     if disable_server_certificate_validation:
         handler.ServerCertificateCustomValidationCallback = lambda *_args: True
 
-    _configure_client_certificate(clr_module=clr, handler=handler, cert_thumbprint=cert_thumbprint)
+    from System.Net.Http import ClientCertificateOption  # type: ignore[import]
+
+    handler.ClientCertificateOptions = ClientCertificateOption.Automatic
 
     client = HttpClient(handler)
     # Infinite timeout on the shared client; per-request timeouts are enforced via
@@ -341,12 +286,6 @@ class WindowsCacAdapter(HTTPAdapter):
     trust store. DoD root CAs are already present there on a standard CAC install.
     Pass ``verify=False`` to disable validation entirely (not recommended).
 
-    Certificate selection:
-        By default Schannel automatically selects the appropriate client-auth
-        certificate for each TLS handshake. To pin a specific certificate, set the
-        ``NOMINAL_WINDOWS_CERT_THUMBPRINT`` environment variable to its thumbprint
-        (spaces ignored, case-insensitive) before constructing the adapter.
-
     Lifecycle:
         The underlying ``HttpClient`` is created once at construction time and
         reused across all requests, following .NET best practices for connection
@@ -363,7 +302,6 @@ class WindowsCacAdapter(HTTPAdapter):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._cert_thumbprint = os.environ.get(NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR) or None
         self._net_clients: dict[tuple[Any, ...], Any] = {}
         self._net_clients_lock = threading.Lock()
         # Schannel prompts for PIN on the first TLS handshake. If multiple threads race to send
@@ -379,14 +317,16 @@ class WindowsCacAdapter(HTTPAdapter):
         verify: bool | str | os.PathLike[str] | None,
         proxy_url: str | None,
     ) -> Any:
-        trust_config = _trust_config_from_verify(verify)
-        cache_key = (*trust_config.cache_key, proxy_url)
+        # Any falsy verify → disable validation; truthy → let Schannel use the Windows trust store.
+        # requests may replace verify=True with a CA bundle path via REQUESTS_CA_BUNDLE; we ignore
+        # that path and always defer to Schannel.
+        disable_validation = not verify
+        cache_key = (disable_validation, proxy_url)
         with self._net_clients_lock:
             client = self._net_clients.get(cache_key)
             if client is None:
                 client = _build_http_client(
-                    cert_thumbprint=self._cert_thumbprint,
-                    disable_server_certificate_validation=trust_config.disable_server_certificate_validation,
+                    disable_server_certificate_validation=disable_validation,
                     proxy_url=proxy_url,
                 )
                 self._net_clients[cache_key] = client
