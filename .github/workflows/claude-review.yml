@@ -60,6 +60,12 @@ jobs:
           # with the issue context pre-loaded
           include_fix_links: "true"
 
+          # TEMPORARY (verification): dump Claude Code's full output to the Actions log so we can
+          # confirm the Skill tool fires and inspect any permission denials. Remove once the
+          # thermo-nuclear skill invocation is verified — it surfaces the review's full reasoning
+          # and tool I/O in logs (the action hides this by default).
+          show_full_output: "true"
+
           # Enables Claude to read CI/Actions results. Required IN ADDITION to the job-level
           # `actions: read` permission above — the two are complementary, not redundant.
           additional_permissions: |
