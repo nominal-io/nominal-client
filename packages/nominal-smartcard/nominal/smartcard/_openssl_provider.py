@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-import cffi as _cffi_module
+import cffi
 
 from nominal.smartcard._errors import (
     SmartcardConfigurationError,
@@ -91,7 +91,7 @@ def _load_ffi() -> tuple[Any, Any]:
         if _ffi is not None:
             return _ffi, _lib
 
-        ffi = _cffi_module.FFI()
+        ffi = cffi.FFI()
         ffi.cdef("""
             /* Opaque handles */
             typedef struct ssl_ctx_st          SSL_CTX;

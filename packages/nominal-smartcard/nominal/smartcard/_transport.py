@@ -38,13 +38,12 @@ class SmartcardTransportProvider(TransportProvider):
         ``ssl.SSLContext``. PIN prompting is handled at C-level by pkcs11-provider.
 
     gRPC path: ``create_grpc_channel_credentials()`` returns ``grpc.ChannelCredentials`` that
-    use a PKCS#11 signing callback so the private key never leaves the card. The same pkcs11
-    path is used on all platforms since gRPC does not route through Schannel.
+    use a PKCS#11 signing callback.
 
-    Multipart path: inherits the base class default implementation with no client certificate
+    Multipart path: inherits a plain ``NominalSslRequestsAdapter`` with no client certificate,
     since S3 presigned URLs use AWS auth.
 
-    Both customised paths share certificate discovery (via ``SmartcardSessionManager``) and
+    Both overridden paths share certificate discovery (via ``SmartcardSessionManager``) and
     each caches its result after the first successful call.
     """
 

@@ -7,7 +7,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID
 
 from nominal.smartcard._errors import SmartcardCertificateSelectionError
 
-"""Slot 9A is reserved for PIV Authentication keys on the smartcard."""
+# Slot 9A is reserved for PIV Authentication keys on the smartcard.
 PIV_AUTHENTICATION_SLOT = "9A"
 
 
