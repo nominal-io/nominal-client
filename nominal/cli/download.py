@@ -9,10 +9,11 @@ import datetime
 import logging
 import pathlib
 import warnings
-from typing import TYPE_CHECKING, Any, List, Mapping, Optional, Sequence
+from typing import Any, List, Mapping, Optional, Sequence
 
 import click
 import pandas as pd
+import polars as pl
 from rich.box import ASCII, HORIZONTALS
 from rich.console import Console
 from rich.panel import Panel
@@ -24,9 +25,7 @@ from rich.table import Column, Table
 from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import Asset, Channel, Dataset, Event, NominalClient, Run
 from nominal.experimental.logging.rich_log_handler import configure_rich_logging
-
-if TYPE_CHECKING:
-    import polars as pl
+from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
 
 logger = logging.getLogger(__name__)
 
@@ -459,8 +458,6 @@ class DataDownloader(abc.ABC):
 
         # 7) Download
         dataset_prefix = dataset.rid.split(".")[-1]
-        from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
-
         exporter = PolarsExportHandler(
             self._client, points_per_dataframe=points_per_file, channels_per_request=channels_per_request
         )
