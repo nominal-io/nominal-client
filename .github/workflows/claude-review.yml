@@ -112,6 +112,10 @@ jobs:
             - Never comment to praise, agree, or say something is fine. Positive notes go in the
               overview, once.
             - Never flag anything a linter, formatter, or type-checker already catches (ruff, mypy).
+            - Never run tests, linters, type-checkers, or builds, and never edit files: this is a
+              read-only, static review and CI already runs ruff/mypy/tests. If verifying a claim
+              would require running code, note the gap in the review rather than attempting the
+              call (it will be denied and waste turns).
             - Never restate a point a prior reviewer (human or bot) already made. Instead, add a
               👍 reaction to their comment via the GitHub reactions API (`gh api --method POST
               /repos/{owner}/{repo}/issues/comments/{id}/reactions -f content=+1`, or the
