@@ -180,7 +180,7 @@ class DefaultPkcs11Backend(Pkcs11Backend):
                             der_certificate = b""
 
                         object_id_str = object_id_bytes.hex() if object_id_bytes else None
-                        piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str or "") if object_id_str else None
+                        piv_slot = _OBJECT_ID_TO_PIV_SLOT.get(object_id_str) if object_id_str else None
                         certificate_uri = _build_pkcs11_uri(token_label, object_id_bytes, object_type="cert")
                         private_key_uri = _build_pkcs11_uri(token_label, object_id_bytes, object_type="private")
 

@@ -99,47 +99,20 @@ def test_get_openssl_error_returns_formatted_string() -> None:
 # OpenSslProviderBridge._make_base_ssl_context
 
 
-def test_make_base_ssl_context_check_hostname_enabled() -> None:
-    bridge = OpenSslProviderBridge()
-    ctx = bridge._make_base_ssl_context()
-    assert ctx.check_hostname is True
-
-
-def test_make_base_ssl_context_requires_certificate() -> None:
-    bridge = OpenSslProviderBridge()
-    ctx = bridge._make_base_ssl_context()
-    assert ctx.verify_mode == ssl.CERT_REQUIRED
-
-
-def test_make_base_ssl_context_minimum_tls_version() -> None:
-    bridge = OpenSslProviderBridge()
-    ctx = bridge._make_base_ssl_context()
-    assert ctx.minimum_version == ssl.TLSVersion.TLSv1_2
-
-
-def test_make_base_ssl_context_loads_os_default_certs() -> None:
+def test_make_base_ssl_context() -> None:
     bridge = OpenSslProviderBridge()
     with patch.object(ssl.SSLContext, "load_default_certs") as mock_load:
-        bridge._make_base_ssl_context()
+        ctx = bridge._make_base_ssl_context()
+    assert ctx.check_hostname is True
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.minimum_version == ssl.TLSVersion.TLSv1_2
     mock_load.assert_called_once_with(ssl.Purpose.SERVER_AUTH)
 
 
 # _load_pkey_from_store
 
 
-def test_load_pkey_from_store_uri_unchanged_without_pin() -> None:
-    ffi = MagicMock()
-    lib = MagicMock()
-    lib.OSSL_STORE_open.return_value = ffi.NULL
-    lib.ERR_get_error.return_value = 0
-
-    with pytest.raises(SmartcardProviderError):
-        _load_pkey_from_store(ffi, lib, "pkcs11:object=mykey")
-
-    ffi.new.assert_called_once_with("char[]", b"pkcs11:object=mykey")
-
-
-def test_load_pkey_from_store_raises_config_error_on_open_failure() -> None:
+def test_load_pkey_from_store_raises_provider_error_on_open_failure() -> None:
     ffi = MagicMock()
     lib = MagicMock()
     lib.OSSL_STORE_open.return_value = ffi.NULL

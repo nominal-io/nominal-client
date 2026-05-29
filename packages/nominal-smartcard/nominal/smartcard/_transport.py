@@ -3,7 +3,6 @@ from __future__ import annotations
 import ssl
 import threading
 from dataclasses import dataclass, field
-from typing import Any
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -53,14 +52,6 @@ class SmartcardTransportProvider(TransportProvider):
             max_retries=max_retries,
             ssl_context=self._build_pkcs11_ssl_context(),
         )
-
-    def create_grpc_channel_credentials(
-        self,
-        *,
-        root_certificates: bytes | None = None,
-        certificate_chain_pem: bytes | None = None,
-    ) -> Any:
-        raise NotImplementedError("gRPC channel credentials not yet implemented for smartcard auth")
 
     def _build_pkcs11_ssl_context(self) -> ssl.SSLContext:
         """Lazily build (and cache) the OpenSSL+pkcs11 SSL context, prompting for PIN on first use."""
