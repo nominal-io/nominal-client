@@ -13,6 +13,8 @@ from urllib3.exceptions import ConnectTimeoutError, MaxRetryError, ReadTimeoutEr
 from urllib3.util.retry import Retry
 
 _GZIP_COMPRESSION_LEVEL = 1
+_TLS12 = 3072  # SecurityProtocolType.Tls12
+_TLS13 = 12288  # SecurityProtocolType.Tls13; only available on .NET 4.8+ / .NET Core 3+
 
 # Headers that .NET HttpClient manages internally; must not be forwarded by Python.
 _SKIP_HEADERS: frozenset[str] = frozenset(
@@ -87,19 +89,10 @@ def _forwardable_headers(request: requests.PreparedRequest) -> dict[str, str]:
     return headers
 
 
-def _build_http_client(
-    *,
-    disable_server_certificate_validation: bool = False,
-    proxy_url: str | None = None,
-) -> Any:
+def _build_http_client(*, proxy_url: str | None = None) -> Any:
     r"""Create and return a .NET ``System.Net.Http.HttpClient`` for Schannel CAC auth.
 
-    All pythonnet / .NET imports happen here so this module can be imported on
-    non-Windows platforms without raising ``ImportError``.
-
     Args:
-        disable_server_certificate_validation: When True, accepts any server
-            certificate (equivalent to ``verify=False``).
         proxy_url: Optional proxy URL selected from the ``proxies`` mapping.
     """
     import clr  # noqa: PLC0415
@@ -115,15 +108,10 @@ def _build_http_client(
     )
     from System.Net.Http import HttpClient, HttpClientHandler  # type: ignore[import]
 
-    # .NET Framework's HttpClientHandler uses HttpWebRequest internally, which
-    # respects ServicePointManager.SecurityProtocol. Force TLS 1.2 minimum so
-    # that modern servers (which disable TLS 1.0/1.1) don't reject the handshake.
-    # Tls13 (12288) is only available on .NET Framework 4.8+ / .NET Core 3+;
-    # OR-in its numeric value so we get it for free when the OS supports it.
     try:
-        ServicePointManager.SecurityProtocol = SecurityProtocolType(3072 | 12288)  # Tls12 | Tls13
+        ServicePointManager.SecurityProtocol = SecurityProtocolType(_TLS12 | _TLS13)
     except Exception:
-        ServicePointManager.SecurityProtocol = SecurityProtocolType(3072)  # Tls12
+        ServicePointManager.SecurityProtocol = SecurityProtocolType(_TLS12)
 
     handler = HttpClientHandler()
     handler.AllowAutoRedirect = False
@@ -134,9 +122,6 @@ def _build_http_client(
     # decompress the response transparently. Accept-Encoding must not be forwarded
     # from Python (it is listed in _SKIP_HEADERS).
     handler.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
-
-    if disable_server_certificate_validation:
-        handler.ServerCertificateCustomValidationCallback = lambda *_args: True
 
     from System.Net.Http import ClientCertificateOption  # type: ignore[import]
 
@@ -311,25 +296,12 @@ class WindowsCacAdapter(HTTPAdapter):
         self._tls_warm_lock = threading.Lock()
         self._tls_warm_event = threading.Event()
 
-    def _get_http_client(
-        self,
-        *,
-        verify: bool | str | os.PathLike[str] | None,
-        proxy_url: str | None,
-    ) -> Any:
-        # Any falsy verify → disable validation; truthy → let Schannel use the Windows trust store.
-        # requests may replace verify=True with a CA bundle path via REQUESTS_CA_BUNDLE; we ignore
-        # that path and always defer to Schannel.
-        disable_validation = not verify
-        cache_key = (disable_validation, proxy_url)
+    def _get_http_client(self, *, proxy_url: str | None) -> Any:
         with self._net_clients_lock:
-            client = self._net_clients.get(cache_key)
+            client = self._net_clients.get(proxy_url)
             if client is None:
-                client = _build_http_client(
-                    disable_server_certificate_validation=disable_validation,
-                    proxy_url=proxy_url,
-                )
-                self._net_clients[cache_key] = client
+                client = _build_http_client(proxy_url=proxy_url)
+                self._net_clients[proxy_url] = client
             return client
 
     def send(
@@ -342,7 +314,7 @@ class WindowsCacAdapter(HTTPAdapter):
         proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
         proxy_url = select_proxy(str(request.url), proxies)
-        client = self._get_http_client(verify=verify, proxy_url=proxy_url)
+        client = self._get_http_client(proxy_url=proxy_url)
         body_bytes, body_headers = _body_bytes_for_request(request)
         forwarded_headers = _forwardable_headers(request)
         forwarded_headers.update(body_headers)
