@@ -10,7 +10,9 @@ on:
     # types together review every non-draft PR exactly once. Dropping `opened` would silently
     # skip every PR opened directly in a ready-for-review state.
     types: [opened, ready_for_review]
-    branches: ["main"]
+    # TEST-ONLY (throwaway branch): added the feature branch so a PR based on it fires the
+    # workflow. Do NOT merge this line — production should only trigger on PRs into main.
+    branches: ["main", "deidukas/update-claude-actions"]
 
 # Serialize reviews per PR; don't cancel in-flight runs (they may have
 # half-posted tracking comments).
