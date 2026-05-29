@@ -164,7 +164,12 @@ def _build_http_client(
     clr.AddReference("System.Net.Http")
 
     from System import TimeSpan  # type: ignore[import]
-    from System.Net import DecompressionMethods, SecurityProtocolType, ServicePointManager, WebProxy  # type: ignore[import]
+    from System.Net import (  # type: ignore[import]
+        DecompressionMethods,
+        SecurityProtocolType,
+        ServicePointManager,
+        WebProxy,
+    )
     from System.Net.Http import HttpClient, HttpClientHandler  # type: ignore[import]
 
     # .NET Framework's HttpClientHandler uses HttpWebRequest internally, which
@@ -361,6 +366,12 @@ class WindowsCacAdapter(HTTPAdapter):
         self._cert_thumbprint = os.environ.get(NOMINAL_WINDOWS_CERT_THUMBPRINT_ENV_VAR) or None
         self._net_clients: dict[tuple[Any, ...], Any] = {}
         self._net_clients_lock = threading.Lock()
+        # Schannel prompts for PIN on the first TLS handshake. If multiple threads race to send
+        # their first request concurrently, each in-flight handshake triggers a separate prompt.
+        # Serialize only the very first request so the PIN is cached before threads run freely.
+        self._tls_warmed = False
+        self._tls_warm_lock = threading.Lock()
+        self._tls_warm_event = threading.Event()
 
     def _get_http_client(
         self,
@@ -395,6 +406,25 @@ class WindowsCacAdapter(HTTPAdapter):
         body_bytes, body_headers = _body_bytes_for_request(request)
         forwarded_headers = _forwardable_headers(request)
         forwarded_headers.update(body_headers)
+
+        if not self._tls_warmed:
+            with self._tls_warm_lock:
+                if not self._tls_warmed:
+                    try:
+                        status_code, reason, resp_headers, resp_body, final_url = _dotnet_send_with_retries(
+                            client=client,
+                            request=request,
+                            headers=forwarded_headers,
+                            body_bytes=body_bytes,
+                            timeout_seconds=_timeout_to_seconds(timeout),
+                            retries=self.max_retries,
+                        )
+                    finally:
+                        self._tls_warmed = True
+                        self._tls_warm_event.set()
+                    return self._build_response(request, status_code, reason, resp_headers, resp_body, final_url)
+            self._tls_warm_event.wait()
+
         status_code, reason, resp_headers, resp_body, final_url = _dotnet_send_with_retries(
             client=client,
             request=request,
@@ -404,6 +434,17 @@ class WindowsCacAdapter(HTTPAdapter):
             retries=self.max_retries,
         )
 
+        return self._build_response(request, status_code, reason, resp_headers, resp_body, final_url)
+
+    def _build_response(
+        self,
+        request: requests.PreparedRequest,
+        status_code: int,
+        reason: str,
+        resp_headers: dict[str, str],
+        resp_body: bytes,
+        final_url: str,
+    ) -> requests.Response:
         response = requests.Response()
         response.status_code = status_code
         response.reason = reason
