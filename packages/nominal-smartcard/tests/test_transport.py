@@ -12,11 +12,10 @@ from urllib3.util.retry import Retry
 pytest.importorskip("cryptography")
 
 from nominal.core._utils.networking import NominalRequestsAdapter, NominalSslRequestsAdapter
-from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardPinError, SmartcardProviderError
-from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
+from nominal.smartcard._errors import SmartcardPinError, SmartcardPinLockedError, SmartcardProviderError
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
-from nominal.smartcard._transport import SmartcardTransportProvider
+from nominal.smartcard._transport import MAX_PIN_ATTEMPTS, SmartcardTransportProvider
 
 _RETRY = Retry(total=0)
 
@@ -51,18 +50,16 @@ class _PinErrorThenSuccessBridge(_FakeBridge):
         return self.context
 
 
-class _PinLenRangeErrorThenSuccessBridge(_FakeBridge):
+class _PinLockedBridge(_FakeBridge):
     def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
         self.calls.append(session)
-        if len(self.calls) == 1:
-            raise SmartcardPinError("CKR_PIN_LEN_RANGE")
-        return self.context
+        raise SmartcardPinLockedError("CKR_PIN_LOCKED")
 
 
-class _PinLenRangeAlwaysErrorBridge(_FakeBridge):
+class _AlwaysPinErrorBridge(_FakeBridge):
     def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
         self.calls.append(session)
-        raise SmartcardPinError("CKR_PIN_LEN_RANGE")
+        raise SmartcardPinError("CKR_PIN_INCORRECT")
 
 
 def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[SmartcardTransportProvider, _FakeBridge]:
@@ -124,6 +121,30 @@ def test_http_adapter_does_not_retry_provider_errors(tmp_path: Path, monkeypatch
         provider.create_http_adapter(max_retries=_RETRY)
 
     assert len(provider_error_bridge.calls) == 1
+
+
+def test_http_adapter_exits_on_pin_locked_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
+    provider, _bridge = _make_provider(tmp_path, monkeypatch)
+    pin_locked_bridge = _PinLockedBridge()
+    provider._openssl_bridge = pin_locked_bridge
+
+    with pytest.raises(SystemExit, match="Card PIN is locked"):
+        provider.create_http_adapter(max_retries=_RETRY)
+
+    assert len(pin_locked_bridge.calls) == 1
+
+
+def test_http_adapter_exits_after_all_pin_attempts_exhausted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("cryptography")
+    provider, _bridge = _make_provider(tmp_path, monkeypatch)
+    always_error_bridge = _AlwaysPinErrorBridge()
+    provider._openssl_bridge = always_error_bridge
+
+    with pytest.raises(SystemExit, match="No attempts remaining"):
+        provider.create_http_adapter(max_retries=_RETRY)
+
+    assert len(always_error_bridge.calls) == MAX_PIN_ATTEMPTS
 
 
 def test_http_adapter_retries_pin_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

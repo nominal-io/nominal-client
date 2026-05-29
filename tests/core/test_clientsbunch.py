@@ -7,20 +7,15 @@ from unittest.mock import MagicMock
 import pytest
 from conjure_python_client import ServiceConfiguration
 
+from nominal.core import TransportProvider
 from nominal.core._clientsbunch import (
     ON_BEHALF_OF_USER_RID_HEADER,
     ClientsBunch,
     api_base_url_to_app_base_url,
 )
-from nominal.core._utils.networking import TransportProvider
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 from nominal.experimental import as_user
-
-
-class _FakeTransportProvider(TransportProvider):
-    def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
-        raise NotImplementedError
 
 
 def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
@@ -253,7 +248,7 @@ def test_experimental_as_user_propagates_non_none_transport_provider(monkeypatch
     """as_user must forward a non-None transport_provider so the impersonated client uses the same transport."""
     monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
 
-    provider = _FakeTransportProvider()
+    provider = TransportProvider()
     client = NominalClient(
         _clients=ClientsBunch.from_config(
             ServiceConfiguration(uris=["https://api.nominal.test"]),

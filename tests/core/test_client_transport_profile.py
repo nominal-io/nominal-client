@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, sentinel
+from unittest.mock import patch, sentinel
 
 from nominal.config import ConfigProfile, NominalConfig
-from nominal.core._utils.networking import TransportProvider
+from nominal.core import TransportProvider
 from nominal.core.client import NominalClient
-
-
-class _FakeTransportProvider(TransportProvider):
-    def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
-        raise NotImplementedError
 
 
 def test_from_profile_passes_explicit_transport_provider_to_clients_bunch() -> None:
@@ -19,7 +14,7 @@ def test_from_profile_passes_explicit_transport_provider_to_clients_bunch() -> N
         workspace_rid="ri.workspace.test.workspace.123",
     )
     config = NominalConfig(version=2, profiles={"cac": profile})
-    provider = _FakeTransportProvider()
+    provider = TransportProvider()
 
     with (
         patch("nominal.config.NominalConfig.from_yaml", return_value=config),
@@ -32,7 +27,7 @@ def test_from_profile_passes_explicit_transport_provider_to_clients_bunch() -> N
 
 
 def test_from_token_passes_transport_provider_to_clients_bunch() -> None:
-    provider = _FakeTransportProvider()
+    provider = TransportProvider()
 
     with patch("nominal.core.client.ClientsBunch.from_config", return_value=sentinel.clients) as from_config:
         client = NominalClient.from_token(
@@ -51,7 +46,7 @@ def test_from_profile_defaults_transport_provider_to_none() -> None:
 
     with (
         patch("nominal.config.NominalConfig.from_yaml", return_value=config),
-        patch("nominal.core.client.ClientsBunch.from_config", return_value=MagicMock()) as from_config,
+        patch("nominal.core.client.ClientsBunch.from_config", return_value=sentinel.clients) as from_config,
     ):
         NominalClient.from_profile("default")
 

@@ -11,12 +11,12 @@ from conjure_python_client._http.configuration import SslConfiguration
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from nominal.core import TransportProvider
 from nominal.core._utils.networking import (
     HeaderProviderSession,
     NominalRequestsAdapter,
     NominalSslRequestsAdapter,
     ThreadSafeSSLContext,
-    TransportProvider,
     create_conjure_service_client,
     create_multipart_request_session,
 )
@@ -25,11 +25,6 @@ from nominal.core.exceptions import HeaderConflictError
 
 def _prepared_request(body: object) -> requests.PreparedRequest:
     return requests.Request("POST", "https://example.com", data=body).prepare()
-
-
-class _FakeTransportProvider(TransportProvider):
-    def create_grpc_channel_credentials(self, *, root_certificates=None, certificate_chain_pem=None):
-        raise NotImplementedError
 
 
 def test_gzip_adapter_updates_content_length_after_compression() -> None:
@@ -271,30 +266,9 @@ def test_create_conjure_service_client_uses_custom_adapter_from_provider() -> No
     session.close()
 
 
-def test_create_conjure_service_client_does_not_call_multipart_adapter() -> None:
-    """API clients must not consult create_multipart_adapter() — that's for object-store traffic."""
-    service_class = MagicMock(return_value=sentinel.client)
-    service_config = ServiceConfiguration(uris=["https://api.example.com"])
-
-    provider = MagicMock(spec=TransportProvider)
-    provider.create_http_adapter.return_value = MagicMock(spec=HTTPAdapter)
-
-    create_conjure_service_client(
-        service_class=service_class,
-        user_agent="test",
-        service_config=service_config,
-        transport_provider=provider,
-    )
-
-    provider.create_multipart_adapter.assert_not_called()
-    service_class.call_args.args[0].close()
-
-
 def test_create_conjure_service_client_trust_store_passed_through_for_custom_adapter() -> None:
     """The trust store path from ServiceConfiguration must be forwarded even when using a custom adapter."""
     service_class = MagicMock(return_value=sentinel.client)
-    from conjure_python_client._http.configuration import SslConfiguration
-
     service_config = ServiceConfiguration(
         security=SslConfiguration(trust_store_path="/etc/ssl/ca.pem"),
         uris=["https://api.example.com"],

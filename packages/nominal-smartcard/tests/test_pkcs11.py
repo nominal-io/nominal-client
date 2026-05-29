@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,7 +18,7 @@ from nominal.smartcard._pkcs11 import (
 )
 
 
-def _make_mock_pkcs11_env():
+def _make_mock_pkcs11_env() -> tuple[Any, Any]:
     """Return (mock_pkcs11_module, mock_session)."""
     mock_pkcs11 = MagicMock()
     mock_pkcs11.exceptions.PKCS11Error = type("PKCS11Error", (Exception,), {})

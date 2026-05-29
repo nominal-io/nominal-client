@@ -4,6 +4,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
 
 from nominal.smartcard._cert_selection import CertificateCandidate, select_piv_authentication_certificate
 from nominal.smartcard._pkcs11 import DefaultPkcs11Backend, Pkcs11Backend, discover_pkcs11_module
@@ -32,8 +33,8 @@ class SmartcardSessionManager:
     desired process-wide behavior while tests and other callers can still inject a dedicated manager.
     """
 
-    _shared_lock = threading.Lock()
-    _shared_manager: SmartcardSessionManager | None = None
+    _shared_lock: ClassVar[threading.Lock] = threading.Lock()
+    _shared_manager: ClassVar[SmartcardSessionManager | None] = None
 
     def __init__(
         self,

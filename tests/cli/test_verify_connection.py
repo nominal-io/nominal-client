@@ -34,7 +34,7 @@ def test_validate_token_url_accepts_valid_credentials() -> None:
 
 
 def test_validate_token_url_passes_transport_provider() -> None:
-    """Validation should use the same ssl context provider as the profile being validated."""
+    """Validation should use the same transport provider as the profile being validated."""
     client = MagicMock()
     transport_provider = MagicMock()
 
