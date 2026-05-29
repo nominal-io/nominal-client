@@ -181,9 +181,15 @@ uv.toml
 
 # AI
 # Ignore local Claude config (settings.local.json, worktrees) but track shared project skills.
+# A nested negation has no effect while its parent dir stays excluded, so re-include the
+# skills dir, re-exclude its contents, then re-include the specific skill.
 .claude/*
+!.claude/skills/
+.claude/skills/*
 !.claude/skills/thermo-nuclear-code-quality-review
 
-#Ignore local agents config (settings.local.json, worktrees) but track shared project skills.
+# Agent-neutral skills home (Codex, Cursor, etc. read here; .claude/skills symlinks into it).
 .agents/*
+!.agents/skills/
+.agents/skills/*
 !.agents/skills/thermo-nuclear-code-quality-review
