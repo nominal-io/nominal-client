@@ -124,12 +124,13 @@ jobs:
 
           # Configurations:
           #   - Pinning the review model explicitly (bump deliberately as newer models ship)
-          #   - Setting max turns to 25 to bound cost. This measures total number of round trips between github and claude
+          #   - Setting max turns to 50 to bound cost while leaving headroom for the deeper
+          #     /code-review + thermo-nuclear pass. This measures total round trips between github and claude
           #   - Setting explicit tools that may be used during the review without any further authorization
           #   - `Bash(gh api:*)` is granted so Claude can 👍 prior reviewers' comments via the reactions
           #     API (paired with `issues: write` above). Note it's broad: gh api can reach any endpoint
           #     the token's scopes allow, so keep the permissions block tight.
           claude_args: |
             --model claude-opus-4-8
-            --max-turns 25
+            --max-turns 50
             --allowedTools "mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*),mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(ls:*),Bash(find:*),Bash(wc:*),WebFetch,WebSearch"
