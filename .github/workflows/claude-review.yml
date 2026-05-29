@@ -69,8 +69,8 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request by running /code-review --comment, applying the
-            thermo-nuclear-code-quality-review skill as its structural lens.
+            Review this pull request by running /code-review --comment and invoking the
+            thermo-nuclear-code-quality-review skill (via the Skill tool) as its structural lens.
             These checks layer on top of the plugin's defaults; also follow any AGENTS.md /
             CLAUDE.md conventions you find in the repo. This is ONE review — the skill provides the
             analytical lens, but the rules below govern output and OVERRIDE the skill's own
@@ -134,7 +134,9 @@ jobs:
           #   - `Bash(gh api:*)` is granted so Claude can 👍 prior reviewers' comments via the reactions
           #     API (paired with `issues: write` above). Note it's broad: gh api can reach any endpoint
           #     the token's scopes allow, so keep the permissions block tight.
+          #   - `Skill` is granted so the review can invoke the thermo-nuclear-code-quality-review
+          #     skill; without it the Skill tool is blocked and the skill silently never loads.
           claude_args: |
             --model claude-opus-4-8
             --max-turns 50
-            --allowedTools "mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*),mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(ls:*),Bash(find:*),Bash(wc:*),WebFetch,WebSearch"
+            --allowedTools "Skill,mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*),mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(ls:*),Bash(find:*),Bash(wc:*),WebFetch,WebSearch"
