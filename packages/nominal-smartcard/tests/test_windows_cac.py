@@ -337,6 +337,26 @@ def test_retry_after_case_insensitive() -> None:
     adapter.close()
 
 
+def test_retry_after_duration_is_honored_for_lowercase_header() -> None:
+    # Not just that a retry happens, but that the server's Retry-After *delay* is actually used.
+    # urllib3 looks up "Retry-After" case-sensitively, so a lowercase (HTTP/2) header must be
+    # surfaced through a case-insensitive mapping or the delay is silently dropped to backoff.
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
+        adapter = WindowsCacAdapter(max_retries=Retry(total=1, status_forcelist=[503], backoff_factor=0))
+        with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
+            mock_send.side_effect = [
+                _dotnet_result(status_code=503, headers={"retry-after": "7"}),
+                _dotnet_result(status_code=200),
+            ]
+            with patch("urllib3.util.retry.time.sleep") as mock_sleep:
+                response = adapter.send(_prepared("GET", "https://api.example.com/rate"))
+
+    assert response.status_code == 200
+    # With backoff_factor=0, any non-zero sleep can only have come from honoring Retry-After: 7.
+    assert mock_sleep.call_args.args[0] == 7.0
+    adapter.close()
+
+
 # ---------------------------------------------------------------------------
 # Trust, proxy, redirect, and retry parity with requests adapters
 # ---------------------------------------------------------------------------
@@ -350,26 +370,28 @@ def test_verify_true_uses_schannel_trust_store() -> None:
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared(), verify=True)
 
-    assert build.call_args.kwargs["disable_server_certificate_validation"] is False
+    assert "disable_server_certificate_validation" not in build.call_args.kwargs
     adapter.close()
 
 
-def test_verify_false_builds_insecure_client() -> None:
-    build = MagicMock()
-    with patch("nominal.smartcard._windows_cac._build_http_client", build):
+def test_verify_false_does_not_disable_schannel_validation() -> None:
+    # verify=False is intentionally ignored: there is no insecure-client path. Schannel
+    # always validates against the Windows trust store. This locks in that security property
+    # so a future change can't silently reintroduce a validation bypass.
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
         isolated = WindowsCacAdapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             isolated.send(_prepared(), verify=False)
 
-    assert build.call_args.kwargs["disable_server_certificate_validation"] is True
+    assert "disable_server_certificate_validation" not in build.call_args.kwargs
     isolated.close()
 
 
 def test_verify_path_defers_to_schannel(tmp_path: Path) -> None:
     # On a standard CAC install the Windows trust store already has DoD root CAs.
-    # Any truthy verify value (including a CA bundle path injected by
-    # requests.Session.merge_environment_settings()) is treated identically to
-    # verify=True — we always defer to Schannel and never load Python-level certs.
+    # Any verify value (including a CA bundle path injected by
+    # requests.Session.merge_environment_settings()) is treated identically — we always
+    # defer to Schannel and never load Python-level certs.
     ca_bundle = tmp_path / "ca.pem"
     ca_bundle.write_text("-----BEGIN CERTIFICATE-----\nY2VydA==\n-----END CERTIFICATE-----\n")
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
@@ -377,7 +399,7 @@ def test_verify_path_defers_to_schannel(tmp_path: Path) -> None:
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared(), verify=str(ca_bundle))
 
-    assert build.call_args.kwargs["disable_server_certificate_validation"] is False
+    assert "disable_server_certificate_validation" not in build.call_args.kwargs
     adapter.close()
 
 
@@ -492,6 +514,47 @@ def test_close_disposes_net_client() -> None:
             adapter.send(_prepared())
     adapter.close()
     mock_client.Dispose.assert_called_once()
+
+
+def test_send_after_close_raises() -> None:
+    # A closed adapter must not silently rebuild a client (which would re-prompt for PIN).
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
+        adapter = WindowsCacAdapter()
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared())
+    adapter.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        adapter.send(_prepared())
+
+
+# ---------------------------------------------------------------------------
+# TLS warm-up: only mark warmed on success (one PIN prompt, no re-prompt storm)
+# ---------------------------------------------------------------------------
+
+
+def test_warmup_marks_warmed_only_on_success(adapter: WindowsCacAdapter) -> None:
+    assert adapter._tls_warmed is False
+    with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+        adapter.send(_prepared())
+    assert adapter._tls_warmed is True
+
+
+def test_warmup_failure_does_not_mark_warmed(adapter: WindowsCacAdapter) -> None:
+    # If the first request fails (e.g. the user dismisses the PIN dialog), the gate must stay
+    # shut so the next request re-serializes instead of letting a burst each re-prompt.
+    with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
+        mock_send.side_effect = [
+            requests.exceptions.ConnectionError("first handshake failed"),
+            _dotnet_result(status_code=200),
+        ]
+        with pytest.raises(requests.exceptions.ConnectionError):
+            adapter.send(_prepared())
+        assert adapter._tls_warmed is False
+
+        # The next request must still go through the serialized warm-up and, on success, open the gate.
+        response = adapter.send(_prepared())
+    assert response.status_code == 200
+    assert adapter._tls_warmed is True
 
 
 # ---------------------------------------------------------------------------

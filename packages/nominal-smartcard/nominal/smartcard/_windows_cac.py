@@ -13,8 +13,6 @@ from urllib3.exceptions import ConnectTimeoutError, MaxRetryError, ReadTimeoutEr
 from urllib3.util.retry import Retry
 
 _GZIP_COMPRESSION_LEVEL = 1
-_TLS12 = 3072  # SecurityProtocolType.Tls12
-_TLS13 = 12288  # SecurityProtocolType.Tls13; only available on .NET 4.8+ / .NET Core 3+
 
 # Headers that .NET HttpClient manages internally; must not be forwarded by Python.
 _SKIP_HEADERS: frozenset[str] = frozenset(
@@ -23,11 +21,19 @@ _SKIP_HEADERS: frozenset[str] = frozenset(
 
 
 class _RawResponseBody(io.BytesIO):
-    """BytesIO variant that supports urllib3's decode_content attribute."""
+    """BytesIO that duck-types as a urllib3 response body for ``response.raw`` consumers.
+
+    Streaming endpoints set ``raw.decode_content`` and may call ``raw.read(decode_content=...)``;
+    plain ``BytesIO.read`` rejects that keyword. The body is already decompressed by .NET, so we
+    accept and ignore ``decode_content``/``cache_content`` to match urllib3's ``read`` signature.
+    """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.decode_content: bool = False
+
+    def read(self, amt: int | None = None, decode_content: bool | None = None, cache_content: bool = False) -> bytes:  # type: ignore[override]
+        return super().read(amt)
 
 
 class _RetryResponse:
@@ -100,18 +106,8 @@ def _build_http_client(*, proxy_url: str | None = None) -> Any:
     clr.AddReference("System.Net.Http")
 
     from System import TimeSpan  # type: ignore[import]
-    from System.Net import (  # type: ignore[import]
-        DecompressionMethods,
-        SecurityProtocolType,
-        ServicePointManager,
-        WebProxy,
-    )
+    from System.Net import DecompressionMethods, WebProxy  # type: ignore[import]
     from System.Net.Http import HttpClient, HttpClientHandler  # type: ignore[import]
-
-    try:
-        ServicePointManager.SecurityProtocol = SecurityProtocolType(_TLS12 | _TLS13)
-    except Exception:
-        ServicePointManager.SecurityProtocol = SecurityProtocolType(_TLS12)
 
     handler = HttpClientHandler()
     handler.AllowAutoRedirect = False
@@ -179,15 +175,15 @@ def _dotnet_send(
         for header in net_response.Content.Headers:
             resp_headers[header.Key] = ", ".join(str(v) for v in header.Value)
 
+        # Redirects are disabled (AllowAutoRedirect=False), so the final URL is always the
+        # URL we sent; return it directly rather than reaching through RequestMessage.
         return (
             int(net_response.StatusCode),
             net_response.ReasonPhrase or "",
             resp_headers,
             body,
-            str(net_response.RequestMessage.RequestUri.AbsoluteUri),
+            url,
         )
-    except requests.exceptions.RequestException:
-        raise
     except Exception as exc:
         if cts.IsCancellationRequested:
             raise requests.exceptions.Timeout(
@@ -244,8 +240,12 @@ def _dotnet_send_with_retries(
             retries.sleep()
             continue
 
-        retry_response = _RetryResponse(status=status_code, headers=resp_headers)
-        has_retry_after = any(k.lower() == "retry-after" for k in resp_headers)
+        # urllib3's get_retry_after does a case-sensitive headers.get("Retry-After"); a plain
+        # dict keyed by the server's casing (lowercase under HTTP/2) would drop the delay and
+        # silently fall back to backoff. CaseInsensitiveDict makes the lookup case-insensitive.
+        retry_headers = CaseInsensitiveDict(resp_headers)
+        retry_response = _RetryResponse(status=status_code, headers=retry_headers)
+        has_retry_after = "retry-after" in retry_headers
         if retries.is_retry(method, status_code, has_retry_after=has_retry_after):
             try:
                 retries = retries.increment(method=method, url=url, response=retry_response)  # type: ignore[arg-type]
@@ -267,9 +267,16 @@ class WindowsCacAdapter(HTTPAdapter):
     ``ClientCertificateOption.Automatic``; Schannel handles PIN prompting natively
     via the Windows credential UI so no PIN handling is required in Python.
 
+    Certificate selection is delegated to Schannel by design: it filters
+    ``CurrentUser\My`` by the server's acceptable-CA list and client-auth usage. This
+    differs from the non-Windows path, which explicitly pins PIV slot 9A. On a card
+    exposing multiple client-auth certs Schannel's choice is opaque, but ``.Automatic``
+    is the standard CAC approach and correct for the common single-auth-cert case.
+
     Server certificate validation is always performed by Schannel using the Windows
     trust store. DoD root CAs are already present there on a standard CAC install.
-    Pass ``verify=False`` to disable validation entirely (not recommended).
+    The ``verify`` argument is ignored: there is no validation-bypass path, so
+    ``verify=False`` does not weaken the connection.
 
     Lifecycle:
         The underlying ``HttpClient`` is created once at construction time and
@@ -283,18 +290,25 @@ class WindowsCacAdapter(HTTPAdapter):
     Retries:
         The adapter honors the ``Retry`` instance passed as ``max_retries`` for
         transport failures and retryable HTTP status codes.
+
+    Limitations:
+        - Responses are fully buffered into memory; ``stream=True`` does not yield a true
+          streaming body, so very large downloads are materialized in full. (This adapter
+          carries Nominal API traffic; S3 presigned transfers use a different adapter.)
+        - ``Set-Cookie`` is not extracted into the session cookie jar. The Nominal API uses
+          header-based auth, so no cookie state is relied upon.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._net_clients: dict[tuple[Any, ...], Any] = {}
+        self._net_clients: dict[Any, Any] = {}
         self._net_clients_lock = threading.Lock()
+        self._closed = False
         # Schannel prompts for PIN on the first TLS handshake. If multiple threads race to send
         # their first request concurrently, each in-flight handshake triggers a separate prompt.
-        # Serialize only the very first request so the PIN is cached before threads run freely.
+        # Serialize the first request so the PIN is cached once before threads run freely.
         self._tls_warmed = False
         self._tls_warm_lock = threading.Lock()
-        self._tls_warm_event = threading.Event()
 
     def _get_http_client(self, *, proxy_url: str | None) -> Any:
         with self._net_clients_lock:
@@ -313,39 +327,45 @@ class WindowsCacAdapter(HTTPAdapter):
         cert: bytes | str | tuple[bytes | str, bytes | str] | None = None,
         proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
+        if self._closed:
+            raise RuntimeError("WindowsCacAdapter is closed and cannot send requests.")
         proxy_url = select_proxy(str(request.url), proxies)
         client = self._get_http_client(proxy_url=proxy_url)
         body_bytes, body_headers = _body_bytes_for_request(request)
         forwarded_headers = _forwardable_headers(request)
         forwarded_headers.update(body_headers)
+        timeout_seconds = _timeout_to_seconds(timeout)
 
+        # Serialize the first request so Schannel prompts for and caches the PIN exactly once.
+        # We mark the adapter warmed only after a request *succeeds*: a failed or cancelled first
+        # attempt (e.g. the user dismisses the PIN dialog) must not open the gate, or the next
+        # burst of threads would each trigger a fresh prompt. The lock holds other callers until
+        # the warming request finishes; if it raises, the next caller becomes the new warmer.
         if not self._tls_warmed:
             with self._tls_warm_lock:
                 if not self._tls_warmed:
-                    try:
-                        status_code, reason, resp_headers, resp_body, final_url = _dotnet_send_with_retries(
-                            client=client,
-                            request=request,
-                            headers=forwarded_headers,
-                            body_bytes=body_bytes,
-                            timeout_seconds=_timeout_to_seconds(timeout),
-                            retries=self.max_retries,
-                        )
-                    finally:
-                        self._tls_warmed = True
-                        self._tls_warm_event.set()
-                    return self._build_response(request, status_code, reason, resp_headers, resp_body, final_url)
-            self._tls_warm_event.wait()
+                    response = self._send_once(client, request, forwarded_headers, body_bytes, timeout_seconds)
+                    self._tls_warmed = True
+                    return response
 
+        return self._send_once(client, request, forwarded_headers, body_bytes, timeout_seconds)
+
+    def _send_once(
+        self,
+        client: Any,
+        request: requests.PreparedRequest,
+        headers: dict[str, str],
+        body_bytes: bytes | None,
+        timeout_seconds: float,
+    ) -> requests.Response:
         status_code, reason, resp_headers, resp_body, final_url = _dotnet_send_with_retries(
             client=client,
             request=request,
-            headers=forwarded_headers,
+            headers=headers,
             body_bytes=body_bytes,
-            timeout_seconds=_timeout_to_seconds(timeout),
+            timeout_seconds=timeout_seconds,
             retries=self.max_retries,
         )
-
         return self._build_response(request, status_code, reason, resp_headers, resp_body, final_url)
 
     def _build_response(
@@ -371,6 +391,7 @@ class WindowsCacAdapter(HTTPAdapter):
     def close(self) -> None:
         """Dispose the underlying .NET ``HttpClient`` and release its connections."""
         with self._net_clients_lock:
+            self._closed = True
             clients = list(self._net_clients.values())
             self._net_clients.clear()
         for client in clients:
