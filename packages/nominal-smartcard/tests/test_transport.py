@@ -12,7 +12,13 @@ from urllib3.util.retry import Retry
 pytest.importorskip("cryptography")
 
 from nominal.core._utils.networking import NominalRequestsAdapter, NominalSslRequestsAdapter
-from nominal.smartcard._errors import SmartcardPinError, SmartcardPinLockedError, SmartcardProviderError
+from nominal.smartcard._errors import (
+    SmartcardConfigurationError,
+    SmartcardPinError,
+    SmartcardPinLockedError,
+    SmartcardProviderError,
+)
+from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import MAX_PIN_ATTEMPTS, SmartcardTransportProvider
@@ -48,6 +54,20 @@ class _PinErrorThenSuccessBridge(_FakeBridge):
         if len(self.calls) == 1:
             raise SmartcardPinError("CKR_PIN_INCORRECT")
         return self.context
+
+
+class _PinLenRangeErrorThenSuccessBridge(_FakeBridge):
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+        self.calls.append(session)
+        if len(self.calls) == 1:
+            raise SmartcardPinError("CKR_PIN_LEN_RANGE")
+        return self.context
+
+
+class _PinLenRangeAlwaysErrorBridge(_FakeBridge):
+    def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
+        self.calls.append(session)
+        raise SmartcardPinError("CKR_PIN_LEN_RANGE")
 
 
 class _PinLockedBridge(_FakeBridge):
@@ -99,9 +119,7 @@ def test_multipart_adapter_does_not_use_pkcs11_ssl_context(tmp_path: Path, monke
     assert bridge.calls == []
 
 
-def test_http_adapter_does_not_retry_keyboard_interrupt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_http_adapter_does_not_retry_keyboard_interrupt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider, _bridge = _make_provider(tmp_path, monkeypatch)
     interrupting_bridge = _InterruptingBridge()
     provider._openssl_bridge = interrupting_bridge
@@ -203,9 +221,7 @@ def test_http_adapter_caches_ssl_context(tmp_path: Path, monkeypatch: pytest.Mon
     assert len(bridge.calls) == 1
 
 
-def test_http_adapter_pin_prompted_once_across_threads(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_http_adapter_pin_prompted_once_across_threads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider, bridge = _make_provider(tmp_path, monkeypatch)
     barrier = threading.Barrier(10)
     results: list[ssl.SSLContext] = []
