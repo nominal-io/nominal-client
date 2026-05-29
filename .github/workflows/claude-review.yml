@@ -60,6 +60,10 @@ jobs:
           # with the issue context pre-loaded
           include_fix_links: "true"
 
+          # Dump Claude Code's full output to the Actions log so we can
+          # surface the review's full reasoning and tool I/O in logs (the action hides this by default).
+          show_full_output: "true"
+
           # Enables Claude to read CI/Actions results. Required IN ADDITION to the job-level
           # `actions: read` permission above — the two are complementary, not redundant.
           additional_permissions: |
@@ -69,8 +73,8 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request by running /code-review --comment, applying the
-            thermo-nuclear-code-quality-review skill as its structural lens.
+            Review this pull request by running /code-review --comment and invoking the
+            thermo-nuclear-code-quality-review skill (via the Skill tool) as its structural lens.
             These checks layer on top of the plugin's defaults; also follow any AGENTS.md /
             CLAUDE.md conventions you find in the repo. This is ONE review — the skill provides the
             analytical lens, but the rules below govern output and OVERRIDE the skill's own
@@ -112,6 +116,10 @@ jobs:
             - Never comment to praise, agree, or say something is fine. Positive notes go in the
               overview, once.
             - Never flag anything a linter, formatter, or type-checker already catches (ruff, mypy).
+            - Never run tests, linters, type-checkers, or builds, and never edit files: this is a
+              read-only, static review and CI already runs ruff/mypy/tests. If verifying a claim
+              would require running code, note the gap in the review rather than attempting the
+              call (it will be denied and waste turns).
             - Never restate a point a prior reviewer (human or bot) already made. Instead, add a
               👍 reaction to their comment via the GitHub reactions API (`gh api --method POST
               /repos/{owner}/{repo}/issues/comments/{id}/reactions -f content=+1`, or the
@@ -130,7 +138,9 @@ jobs:
           #   - `Bash(gh api:*)` is granted so Claude can 👍 prior reviewers' comments via the reactions
           #     API (paired with `issues: write` above). Note it's broad: gh api can reach any endpoint
           #     the token's scopes allow, so keep the permissions block tight.
+          #   - `Skill` is granted so the review can invoke the thermo-nuclear-code-quality-review
+          #     skill; without it the Skill tool is blocked and the skill silently never loads.
           claude_args: |
             --model claude-opus-4-8
             --max-turns 50
-            --allowedTools "mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*),mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(ls:*),Bash(find:*),Bash(wc:*),WebFetch,WebSearch"
+            --allowedTools "Skill,mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh api:*),mcp__github__get_pull_request_comments,mcp__github__get_pull_request_reviews,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(cat:*),Bash(ls:*),Bash(find:*),Bash(wc:*),WebFetch,WebSearch"
