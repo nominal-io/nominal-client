@@ -35,8 +35,8 @@ dependencies = [
     "python-dateutil>=2.8.2",
     "pyyaml>=6.0",
     "requests>=2.32.0",
-    # Explicitly specifying urllib3 version to handle CVE present in earlier versions
-    "urllib3>=2.6.3",
+    # urllib3>=2.7.0 fixes CVE-2026-21441, CVE-2026-44431
+    "urllib3>=2.7.0",
     # CLI dependencies
     "click>=8,<9",
     "rich>=14.1.0",
