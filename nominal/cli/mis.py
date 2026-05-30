@@ -23,7 +23,10 @@ def read_mis(mis_path: Path, sheet: str | None) -> pd.DataFrame:
     is_excel = str.lower(mis_path.suffix) in (".xlsx", ".xls")
     is_csv = str.lower(mis_path.suffix) == ".csv"
     if is_excel:
-        excel_file = pd.ExcelFile(mis_path)
+        try:
+            excel_file = pd.ExcelFile(mis_path)
+        except ImportError as e:
+            raise ImportError("Excel MIS files require the 'mis' extra: pip install 'nominal[mis]'") from e
         if sheet is None:
             if len(excel_file.sheet_names) > 1:
                 sheet_names_str = [str(name) for name in excel_file.sheet_names]
