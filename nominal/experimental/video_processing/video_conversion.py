@@ -4,7 +4,10 @@ import logging
 import pathlib
 import shlex
 
-import ffmpeg
+try:
+    import ffmpeg
+except ImportError as e:
+    raise ImportError("Video processing requires the 'video' extra: pip install 'nominal[video]'") from e
 
 from nominal.core._types import PathLike
 from nominal.experimental.video_processing.resolution import (
