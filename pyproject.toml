@@ -87,10 +87,6 @@ nominal-tdms = { workspace = true }
 mis = ["openpyxl>=3.1.0"]
 protos = ["nominal-api-protos>=0.1090.0"]
 tdms = ["nominal-tdms>=1.143.0"]
-# nominal-video wheels exist for:
-# - Windows x86_64 (AMD64)
-# - macOS arm64
-# - Linux x86_64 and aarch64
 # To be conservative and prevent installation on unsupported architectures, we explicitly list only the exact platforms supported.
 video = [
     "ffmpeg-python>=0.2.0",
