@@ -61,9 +61,7 @@ members = ["packages/*"]
 
 [dependency-groups]
 dev = [
-    "black>=24.8.0,<25",
     "coverage[toml]>=7.0.0",
-    "ipykernel>=6.30.0",
     "mkdocs-click>=0.9.0",
     "mkdocs-material>=9.5.34,<10",
     "mkdocs>=1.6.1,<2",
@@ -78,7 +76,6 @@ dev = [
     "types-python-dateutil>=2.9.0.20250822",
     "types-pyyaml>=6.0.12.20240808,<7",
     "types-requests>=2.32.0.20240712,<3",
-    "types-tabulate>=0.9.0.20240106,<0.10",
     "types-tabulate>=0.9.0.20241207,<0.10",
 ]
 
