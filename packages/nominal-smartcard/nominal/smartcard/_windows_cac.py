@@ -21,8 +21,7 @@ _SKIP_HEADERS: frozenset[str] = frozenset(
 
 
 class _RawResponseBody(io.BytesIO):
-    """BytesIO that duck-types as a urllib3 response body for ``response.raw`` consumers.
-
+    """
     Streaming endpoints set ``raw.decode_content`` and may call ``raw.read(decode_content=...)``;
     plain ``BytesIO.read`` rejects that keyword. The body is already decompressed by .NET, so we
     accept and ignore ``decode_content``/``cache_content`` to match urllib3's ``read`` signature.
@@ -134,8 +133,7 @@ def _build_http_client(*, proxy_url: str | None = None) -> Any:
     handler.ClientCertificateOptions = ClientCertificateOption.Automatic
 
     client = HttpClient(handler)
-    # Infinite timeout on the shared client; per-request timeouts are enforced via
-    # CancellationTokenSource in _dotnet_send so the client can be reused safely.
+
     # TimeSpan.FromMilliseconds(-1) is the cross-framework sentinel for "no timeout"
     # (TimeSpan.InfiniteTimeSpan was only added in .NET 6).
     client.Timeout = TimeSpan.FromMilliseconds(-1)
