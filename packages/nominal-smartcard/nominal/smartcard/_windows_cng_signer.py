@@ -185,13 +185,33 @@ def _sign_with_cert(
     from System.Security.Cryptography import HashAlgorithmName, RSASignaturePadding  # type: ignore[import]
 
     data_net = Array[Byte](data_to_sign)
-    key = cert.PrivateKey  # RSACng or ECDsaCng for CNG storage-provider certs
 
     if pub_key_oid == _OID_RSA:
-        return _sign_rsa(key, data_net, signature_algorithm, HashAlgorithmName, RSASignaturePadding)
+        # GetRSAPrivateKey() returns RSACng for CNG-backed keys (e.g. smart card KSP).
+        # cert.PrivateKey returns the legacy RSACryptoServiceProvider which fails with
+        # "Invalid provider type specified" for CNG storage providers.
+        key = cert.GetRSAPrivateKey()
+        if key is None:
+            raise SmartcardConfigurationError(
+                "Certificate has no RSA private key accessible via CNG. "
+                "Ensure the smart card is inserted and the Windows Smart Card service is running."
+            )
+        try:
+            return _sign_rsa(key, data_net, signature_algorithm, HashAlgorithmName, RSASignaturePadding)
+        finally:
+            key.Dispose()
 
     if pub_key_oid == _OID_EC:
-        return _sign_ecdsa(key, data_net, signature_algorithm, HashAlgorithmName)
+        key = cert.GetECDsaPrivateKey()
+        if key is None:
+            raise SmartcardConfigurationError(
+                "Certificate has no ECDSA private key accessible via CNG. "
+                "Ensure the smart card is inserted and the Windows Smart Card service is running."
+            )
+        try:
+            return _sign_ecdsa(key, data_net, signature_algorithm, HashAlgorithmName)
+        finally:
+            key.Dispose()
 
     raise SmartcardConfigurationError(
         f"Unsupported public key algorithm OID {pub_key_oid!r}. Only RSA and ECDSA certificates are supported."
