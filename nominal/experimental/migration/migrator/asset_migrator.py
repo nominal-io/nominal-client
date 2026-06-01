@@ -9,6 +9,7 @@ from nominal_api import scout_asset_api
 from nominal.core import NominalClient
 from nominal.core._event_types import SearchEventOriginType
 from nominal.core.asset import Asset
+from nominal.core.run import Run
 from nominal.core.workbook import Workbook
 from nominal.experimental.migration.config.migration_data_config import MigrationDatasetConfig
 from nominal.experimental.migration.migrator.attachment_migrator import AttachmentMigrator
@@ -88,7 +89,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             self._copy_asset_attachments(source_asset, new_asset)
 
         if options.include_workbooks:
-            self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs, options.workbook_rids_allowlist)
+            self._copy_asset_and_run_workbooks(
+                source_asset, new_asset, options.include_runs, options.workbook_rids_allowlist
+            )
         return new_asset
 
     def _get_resource_name(self, resource: Asset) -> str:
@@ -232,8 +235,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
         workbook_rids_allowlist: frozenset[str] | None = None,
     ) -> None:
         workbook_migrator = WorkbookMigrator(self.ctx)
-        asset_workbooks = source_asset.search_workbooks(include_drafts=True)
-        for workbook in asset_workbooks:
+        for workbook in source_asset.search_workbooks(include_drafts=True):
             if workbook_rids_allowlist is not None and workbook.rid not in workbook_rids_allowlist:
                 logger.debug("Skipping workbook %s (rid: %s): not in allowlist", workbook.title, workbook.rid)
                 continue
@@ -253,22 +255,35 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                 if dest_run_rid is None:
                     logger.warning("Run %s not found in migration state", source_run.rid)
                     continue
-                for workbook in source_run.search_workbooks(include_drafts=True):
-                    if workbook_rids_allowlist is not None and workbook.rid not in workbook_rids_allowlist:
-                        logger.debug("Skipping workbook %s (rid: %s): not in allowlist", workbook.title, workbook.rid)
-                        continue
-                    if not workbook.run_rids:
-                        continue
-                    if len(workbook.run_rids) == 1:
-                        workbook_migrator.copy_from(
-                            workbook,
-                            WorkbookCopyOptions(
-                                source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid},
-                                source_to_destination_run_rid_mapping={source_run.rid: dest_run_rid},
-                            ),
-                        )
-                    else:
-                        self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids))
+                self._copy_run_workbooks(
+                    source_run, source_asset, new_asset, dest_run_rid, workbook_migrator, workbook_rids_allowlist
+                )
+
+    def _copy_run_workbooks(
+        self,
+        source_run: Run,
+        source_asset: Asset,
+        new_asset: Asset,
+        dest_run_rid: str,
+        workbook_migrator: WorkbookMigrator,
+        workbook_rids_allowlist: frozenset[str] | None,
+    ) -> None:
+        for workbook in source_run.search_workbooks(include_drafts=True):
+            if workbook_rids_allowlist is not None and workbook.rid not in workbook_rids_allowlist:
+                logger.debug("Skipping workbook %s (rid: %s): not in allowlist", workbook.title, workbook.rid)
+                continue
+            if not workbook.run_rids:
+                continue
+            if len(workbook.run_rids) == 1:
+                workbook_migrator.copy_from(
+                    workbook,
+                    WorkbookCopyOptions(
+                        source_to_destination_asset_rid_mapping={source_asset.rid: new_asset.rid},
+                        source_to_destination_run_rid_mapping={source_run.rid: dest_run_rid},
+                    ),
+                )
+            else:
+                self._enqueue_multi_run_workbook(workbook, list(workbook.run_rids))
 
     def _enqueue_multi_asset_workbook(self, workbook: Workbook, source_asset_rids: list[str]) -> None:
         missing = [

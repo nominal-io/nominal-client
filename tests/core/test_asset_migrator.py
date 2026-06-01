@@ -315,9 +315,9 @@ class TestAssetMigratorWorkbookRouting:
         a1 = _asset_rid(1)
         r1 = _run_rid(1)
         new_r1 = _run_rid(101)
-        wb_asset = _wb_rid(1)       # allowlisted
-        wb_run_allowed = _wb_rid(2) # allowlisted
-        wb_run_blocked = _wb_rid(3) # not allowlisted
+        wb_asset = _wb_rid(1)  # allowlisted
+        wb_run_allowed = _wb_rid(2)  # allowlisted
+        wb_run_blocked = _wb_rid(3)  # not allowlisted
 
         ctx = _make_context(source_asset_rids=frozenset([a1]))
         ctx.migration_state.record_mapping(ResourceType.RUN, r1, new_r1)
