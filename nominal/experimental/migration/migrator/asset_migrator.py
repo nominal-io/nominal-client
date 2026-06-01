@@ -37,6 +37,7 @@ class AssetCopyOptions(ResourceCopyOptions):
     include_video: bool = False
     include_checklists: bool = False
     include_workbooks: bool = True
+    workbook_rids_allowlist: frozenset[str] | None = None
 
 
 class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
@@ -87,7 +88,7 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
             self._copy_asset_attachments(source_asset, new_asset)
 
         if options.include_workbooks:
-            self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs)
+            self._copy_asset_and_run_workbooks(source_asset, new_asset, options.include_runs, options.workbook_rids_allowlist)
         return new_asset
 
     def _get_resource_name(self, resource: Asset) -> str:
@@ -223,10 +224,19 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     source_asset.rid,
                 )
 
-    def _copy_asset_and_run_workbooks(self, source_asset: Asset, new_asset: Asset, include_runs: bool) -> None:
+    def _copy_asset_and_run_workbooks(
+        self,
+        source_asset: Asset,
+        new_asset: Asset,
+        include_runs: bool,
+        workbook_rids_allowlist: frozenset[str] | None = None,
+    ) -> None:
         workbook_migrator = WorkbookMigrator(self.ctx)
         asset_workbooks = source_asset.search_workbooks(include_drafts=True)
         for workbook in asset_workbooks:
+            if workbook_rids_allowlist is not None and workbook.rid not in workbook_rids_allowlist:
+                logger.debug("Skipping workbook %s (rid: %s): not in allowlist", workbook.title, workbook.rid)
+                continue
             if not workbook.asset_rids:
                 continue
             if len(workbook.asset_rids) == 1:
@@ -244,6 +254,9 @@ class AssetMigrator(Migrator[Asset, AssetCopyOptions]):
                     logger.warning("Run %s not found in migration state", source_run.rid)
                     continue
                 for workbook in source_run.search_workbooks(include_drafts=True):
+                    if workbook_rids_allowlist is not None and workbook.rid not in workbook_rids_allowlist:
+                        logger.debug("Skipping workbook %s (rid: %s): not in allowlist", workbook.title, workbook.rid)
+                        continue
                     if not workbook.run_rids:
                         continue
                     if len(workbook.run_rids) == 1:

@@ -443,6 +443,7 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     - All child resources exist on the destination with RID mappings in state
     - Metadata (name, description, labels, properties) is preserved for each resource
     - Resources are correctly linked to the migrated destination asset
+    - Workbooks not in source_workbook_rids are excluded from migration
     """
     # --- source setup ---
     start = datetime(2024, 1, 1)
@@ -459,9 +460,21 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     source_workbook = _create_source_workbook(source_client, register_cleanup, source_asset)
     source_run_b = _create_source_run(source_client, register_cleanup, source_asset, start, end)
     source_multi_run_wb = _create_multi_run_workbook(source_client, register_cleanup, source_run, source_run_b)
+    wb_excluded = _create_source_workbook(source_client, register_cleanup, source_asset)
 
     # --- migrate ---
-    runner = _make_runner(_make_resources(source_asset), _no_files_config(), dest_client, tmp_path / "state.json")
+    # source_workbook_rids restricts migration to the two intended workbooks; wb_excluded is omitted.
+    resources = MigrationResources(
+        source_assets={
+            source_asset.rid: AssetResources(
+                asset=source_asset,
+                source_workbook_templates=[],
+                source_workbook_rids=frozenset([source_workbook.rid, source_multi_run_wb.rid]),
+            )
+        },
+        source_standalone_templates=[],
+    )
+    runner = _make_runner(resources, _no_files_config(), dest_client, tmp_path / "state.json")
     runner.run_migration()
     state = runner.migration_state
 
@@ -538,6 +551,9 @@ def test_migrate_asset_maximal(  # noqa: PLR0915
     dest_multi_run_wb = dest_client.get_workbook(dest_multi_run_wb_rid)
     register_cleanup(dest_multi_run_wb.archive)
     _assert_workbook_migrated_multi_run(source_multi_run_wb, dest_multi_run_wb, [dest_run, dest_run_b])
+
+    # --- workbook allowlist: excluded workbook is absent from migration state ---
+    assert state.get_mapped_rid(ResourceType.WORKBOOK, wb_excluded.rid) is None
 
 
 def test_migrate_asset_minimal(
