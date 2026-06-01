@@ -106,8 +106,18 @@ def _build_http_client(*, proxy_url: str | None = None) -> Any:
     clr.AddReference("System.Net.Http")
 
     from System import TimeSpan  # type: ignore[import]
-    from System.Net import DecompressionMethods, WebProxy  # type: ignore[import]
+    from System.Net import DecompressionMethods, SecurityProtocolType, ServicePointManager, WebProxy  # type: ignore[import]
     from System.Net.Http import HttpClient, HttpClientHandler  # type: ignore[import]
+
+    # .NET Framework's HttpClient delegates to HttpWebRequest internally, and its default
+    # security protocol is TLS 1.0/1.1 on older framework versions, which modern servers
+    # reject. Explicitly opt in to TLS 1.2 (and 1.3 when available) globally.
+    _tls_flags = int(SecurityProtocolType.Tls12)
+    try:
+        _tls_flags |= int(SecurityProtocolType.Tls13)
+    except AttributeError:
+        pass
+    ServicePointManager.SecurityProtocol = SecurityProtocolType(_tls_flags)
 
     handler = HttpClientHandler()
     handler.AllowAutoRedirect = False
