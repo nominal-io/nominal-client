@@ -75,14 +75,20 @@ class WindowsCngSigner:
         return cls(cert_thumbprint=thumbprint)
 
     def connect(self) -> None:
-        r"""Load the signing certificate from ``CurrentUser\My``.
+        r"""Load the signing certificate from ``CurrentUser\My`` and prime the CNG key.
 
         Must be called before ``sign()``. Idempotent.
+
+        Performs a warmup sign to trigger PIN entry (if required) and initialize the CNG
+        key handle before gRPC calls ``sign()`` from its internal handshake thread.
+        Windows may not be able to show the CAC PIN dialog from gRPC's native thread, so
+        we do it here in the caller's thread instead.
         """
         with self._lock:
             if self._cert is not None:
                 return
             self._cert, self._der_bytes, self._pub_key_oid = _load_cert(self._cert_thumbprint)
+            _warmup_sign(self._cert, self._pub_key_oid)
 
     @property
     def der_certificate(self) -> bytes:
@@ -103,7 +109,16 @@ class WindowsCngSigner:
             pub_key_oid = self._pub_key_oid
         if cert is None or pub_key_oid is None:
             raise SmartcardConfigurationError("WindowsCngSigner.connect() has not been called yet.")
-        return _sign_with_cert(cert, pub_key_oid, data_to_sign, signature_algorithm)
+        try:
+            return _sign_with_cert(cert, pub_key_oid, data_to_sign, signature_algorithm)
+        except SmartcardConfigurationError:
+            raise
+        except Exception as exc:
+            # Wrap .NET exceptions so the real cause is visible — gRPC would otherwise
+            # silently swallow them as SSL_ERROR_SSL/PRIVATE_KEY_OPERATION_FAILED.
+            raise SmartcardConfigurationError(
+                f"Windows CNG signing failed (algorithm={signature_algorithm!r}): {type(exc).__name__}: {exc}"
+            ) from exc
 
     def close(self) -> None:
         with self._lock:
@@ -121,6 +136,28 @@ class WindowsCngSigner:
             self.close()
         except Exception:
             pass
+
+
+def _warmup_sign(cert: Any, pub_key_oid: str) -> None:
+    r"""Perform a test sign to prime the CNG key and trigger the Windows PIN prompt (if required).
+
+    gRPC calls ``sign()`` from an internal native thread where the Windows smart card PIN
+    dialog may not appear (or the key handle may not be initialized). Calling this in
+    ``connect()`` — on the caller's thread — ensures PIN entry happens before the first
+    TLS handshake.
+
+    Raises ``SmartcardConfigurationError`` if the key is inaccessible.
+    """
+    algo = _Algorithm.RSA_PKCS1_SHA256 if pub_key_oid == _OID_RSA else _Algorithm.ECDSA_SECP256R1_SHA256
+    try:
+        _sign_with_cert(cert, pub_key_oid, b"\x00" * 32, algo)
+    except SmartcardConfigurationError:
+        raise
+    except Exception as exc:
+        raise SmartcardConfigurationError(
+            f"Windows CNG key warmup failed — the private key may be inaccessible or "
+            f"PIN entry was cancelled: {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def _load_cert(cert_thumbprint: str | None) -> tuple[Any, bytes, str]:
