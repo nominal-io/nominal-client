@@ -48,12 +48,11 @@ class SmartcardTransportProvider(TransportProvider):
     _signers: list[Any] = field(default_factory=list, repr=False, compare=False)
 
     @classmethod
-    def create(cls, *, windows_cert_thumbprint: str | None = None) -> SmartcardTransportProvider:
+    def create(cls) -> SmartcardTransportProvider:
         """Return the platform-appropriate smartcard transport provider.
 
         On Windows, raises ``SmartcardConfigurationError`` — Windows support requires the
-        nominal-smartcard Windows build. ``windows_cert_thumbprint`` is reserved for the
-        Windows implementation and has no effect here.
+        nominal-smartcard Windows build.
         """
         import platform
 
