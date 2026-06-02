@@ -21,7 +21,12 @@ from nominal.smartcard._errors import (
 from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
-from nominal.smartcard._transport import MAX_PIN_ATTEMPTS, SmartcardTransportProvider
+from nominal.smartcard._transport import (
+    MAX_PIN_ATTEMPTS,
+    SmartcardTransportProvider,
+    _Pkcs11SmartcardTransportProvider,
+    _WindowsSmartcardTransportProvider,
+)
 from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
 
 _RETRY = Retry(total=0)
@@ -69,7 +74,9 @@ class _AlwaysPinErrorBridge(_FakeBridge):
         raise SmartcardPinError("CKR_PIN_INCORRECT")
 
 
-def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[SmartcardTransportProvider, _FakeBridge]:
+def _make_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[_Pkcs11SmartcardTransportProvider, _FakeBridge]:
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
@@ -77,7 +84,7 @@ def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Sma
         backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
     )
     bridge = _FakeBridge()
-    provider = SmartcardTransportProvider(
+    provider = _Pkcs11SmartcardTransportProvider(
         _session_manager=manager,
         _openssl_bridge=bridge,
     )
@@ -184,7 +191,7 @@ def test_http_adapter_passes_session_to_bridge(tmp_path: Path, monkeypatch: pyte
         backend_factory=lambda path: _FakeBackend(path, [certificate]),
     )
     bridge = _FakeBridge()
-    provider = SmartcardTransportProvider(
+    provider = _Pkcs11SmartcardTransportProvider(
         _session_manager=manager,
         _openssl_bridge=bridge,
     )
@@ -222,12 +229,12 @@ def test_http_adapter_pin_prompted_once_across_threads(tmp_path: Path, monkeypat
     assert all(ctx is bridge.context for ctx in results)
 
 
-# SmartcardTransportProvider property factory
+# _Pkcs11SmartcardTransportProvider property defaults
 
 
 def test_provider_session_manager_defaults_to_shared(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(SmartcardSessionManager, "_shared_manager", None)
-    provider = SmartcardTransportProvider()
+    provider = _Pkcs11SmartcardTransportProvider()
     assert provider.session_manager is SmartcardSessionManager.shared()
 
 
@@ -241,7 +248,7 @@ def _make_grpc_provider(
     monkeypatch: pytest.MonkeyPatch,
     *,
     pin: str = "123456",
-) -> SmartcardTransportProvider:
+) -> _Pkcs11SmartcardTransportProvider:
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
@@ -250,7 +257,7 @@ def _make_grpc_provider(
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
     )
-    return SmartcardTransportProvider(_session_manager=manager)
+    return _Pkcs11SmartcardTransportProvider(_session_manager=manager)
 
 
 def test_grpc_credentials_calls_grpc_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -326,7 +333,7 @@ def test_grpc_credentials_signer_receives_correct_token_info(tmp_path: Path, mon
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [candidate]),
     )
-    provider = SmartcardTransportProvider(_session_manager=manager)
+    provider = _Pkcs11SmartcardTransportProvider(_session_manager=manager)
 
     captured_signer: list[dict[str, object]] = []
 
@@ -371,7 +378,7 @@ def test_grpc_credentials_raises_on_missing_token_label(tmp_path: Path, monkeypa
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [candidate]),
     )
-    provider = SmartcardTransportProvider(_session_manager=manager)
+    provider = _Pkcs11SmartcardTransportProvider(_session_manager=manager)
 
     with pytest.raises(SmartcardConfigurationError, match="token label"):
         provider.create_grpc_channel_credentials()
@@ -389,7 +396,7 @@ def test_grpc_credentials_raises_on_missing_object_id(tmp_path: Path, monkeypatc
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [candidate]),
     )
-    provider = SmartcardTransportProvider(_session_manager=manager)
+    provider = _Pkcs11SmartcardTransportProvider(_session_manager=manager)
 
     with pytest.raises(SmartcardConfigurationError, match="object ID"):
         provider.create_grpc_channel_credentials()
@@ -412,9 +419,10 @@ def test_grpc_credentials_close_releases_signer(tmp_path: Path, monkeypatch: pyt
     assert provider._cached_grpc_credentials == {}
 
 
+
 def test_windows_grpc_credentials_use_shared_windows_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     identity = _make_windows_identity()
-    provider = SmartcardTransportProvider(_windows_identity=identity)
+    provider = _WindowsSmartcardTransportProvider(_windows_identity=identity)
 
     class FakeWindowsCngSigner:
         instances: list[FakeWindowsCngSigner] = []
@@ -443,11 +451,7 @@ def test_windows_grpc_credentials_use_shared_windows_identity(monkeypatch: pytes
     fake_ssl_fn = MagicMock(return_value=fake_creds)
 
     monkeypatch.setattr("nominal.smartcard._windows_cng_signer.WindowsCngSigner", FakeWindowsCngSigner)
-    with (
-        patch("nominal.smartcard._transport.platform") as mock_platform,
-        patch("nominal.smartcard._transport.ssl_channel_credentials_with_custom_signer", fake_ssl_fn),
-    ):
-        mock_platform.system.return_value = "Windows"
+    with patch("nominal.smartcard._transport.ssl_channel_credentials_with_custom_signer", fake_ssl_fn):
         http_adapter = provider.create_http_adapter(max_retries=_RETRY)
         grpc_creds = provider.create_grpc_channel_credentials(root_certificates=b"root")
 

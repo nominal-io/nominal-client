@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import platform
 import ssl
 import threading
+from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -32,37 +32,100 @@ MAX_PIN_ATTEMPTS = 3
 class SmartcardTransportProvider(TransportProvider):
     r"""Transport provider that attaches smartcard-backed mTLS to Nominal API and gRPC traffic.
 
-    HTTP path: ``create_http_adapter()`` branches on platform:
-      - Windows: selects one certificate from ``CurrentUser\My`` and returns a
-        ``WindowsCacAdapter`` (Schannel) using that exact identity.
-      - Linux/macOS: returns a ``NominalRequestsAdapter`` backed by an OpenSSL+pkcs11
-        ``ssl.SSLContext``. PIN prompting is handled at C-level by pkcs11-provider.
+    Use ``SmartcardTransportProvider.create()`` to obtain an instance; the factory selects
+    the platform-appropriate subclass automatically.
 
-    gRPC path: ``create_grpc_channel_credentials()`` returns ``grpc.ChannelCredentials`` that
-    use the same Windows certificate through CNG on Windows, and a PKCS#11 signing
-    callback on Linux/macOS.
+    Subclasses implement ``create_http_adapter()`` and ``_build_grpc_credentials()``.
+    Shared gRPC credential caching (keyed on root-CA / certificate-chain pair) lives here.
 
     Multipart path: inherits a plain ``NominalSslRequestsAdapter`` with no client certificate,
     since S3 presigned URLs use AWS auth.
-
-    Both overridden paths cache the selected identity and transport credentials after the
-    first successful call.
     """
 
-    _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
-    _openssl_bridge: OpenSslProviderBridge | None = field(default=None, repr=False, compare=False)
-    _windows_cert_thumbprint: str | None = None
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
-    _cached_ctx: ssl.SSLContext | None = field(default=None, repr=False, compare=False)
     _cached_grpc_credentials: dict[tuple[bytes | None, bytes | None], Any] = field(
         default_factory=dict, repr=False, compare=False
     )
     _signers: list[Any] = field(default_factory=list, repr=False, compare=False)
-    _windows_identity: WindowsCertificateIdentity | None = field(default=None, repr=False, compare=False)
 
     @classmethod
     def create(cls, *, windows_cert_thumbprint: str | None = None) -> SmartcardTransportProvider:
-        return cls(_windows_cert_thumbprint=windows_cert_thumbprint)
+        """Return the platform-appropriate smartcard transport provider.
+
+        On Windows, returns a ``_WindowsSmartcardTransportProvider`` backed by Schannel/CNG.
+        On Linux/macOS, returns a ``_Pkcs11SmartcardTransportProvider`` backed by pkcs11-provider.
+        ``windows_cert_thumbprint`` selects a specific certificate from ``CurrentUser\\My`` on
+        Windows and has no effect on other platforms.
+        """
+        import platform
+
+        if platform.system() == "Windows":
+            return _WindowsSmartcardTransportProvider(_windows_cert_thumbprint=windows_cert_thumbprint)
+        return _Pkcs11SmartcardTransportProvider()
+
+    def create_grpc_channel_credentials(
+        self,
+        *,
+        root_certificates: bytes | None = None,
+        certificate_chain_pem: bytes | None = None,
+    ) -> Any:
+        """Return ``grpc.ChannelCredentials`` for smartcard-backed mTLS over gRPC.
+
+        ``root_certificates`` is forwarded to gRPC as the trusted CA bundle. ``None`` causes
+        gRPC to use system roots. ``certificate_chain_pem`` allows supplying additional
+        intermediate certificates in PEM format. When ``None`` (the default), only the leaf
+        certificate from the selected certificate is used.
+
+        Credentials are cached per ``(root_certificates, certificate_chain_pem)`` pair.
+        """
+        cache_key = (root_certificates, certificate_chain_pem)
+        with self._lock:
+            cached = self._cached_grpc_credentials.get(cache_key)
+            if cached is not None:
+                return cached
+            credentials, signer = self._build_grpc_credentials(
+                root_certificates=root_certificates,
+                certificate_chain_pem=certificate_chain_pem,
+            )
+            self._cached_grpc_credentials[cache_key] = credentials
+            self._signers.append(signer)
+            return credentials
+
+    @abstractmethod
+    def _build_grpc_credentials(
+        self,
+        *,
+        root_certificates: bytes | None,
+        certificate_chain_pem: bytes | None,
+    ) -> tuple[Any, Any]:
+        """Build and return ``(credentials, signer)`` for this platform. Called under ``_lock``."""
+
+    def close(self) -> None:
+        """Release smartcard resources held by gRPC signers."""
+        with self._lock:
+            signers = list(self._signers)
+            self._signers.clear()
+            self._cached_grpc_credentials.clear()
+        for signer in signers:
+            signer.close()
+
+
+@dataclass
+class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
+    """PKCS#11 transport provider for Linux and macOS.
+
+    HTTP path: ``create_http_adapter()`` returns a ``NominalRequestsAdapter`` backed by an
+    OpenSSL+pkcs11 ``ssl.SSLContext``. PIN prompting is handled at C-level by pkcs11-provider.
+
+    gRPC path: ``_build_grpc_credentials()`` returns credentials backed by a PKCS#11 signing
+    callback.
+
+    Both overridden paths cache the result after the first successful call.
+    """
+
+    _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
+    _openssl_bridge: OpenSslProviderBridge | None = field(default=None, repr=False, compare=False)
+    _cached_ctx: ssl.SSLContext | None = field(default=None, repr=False, compare=False)
 
     @property
     def session_manager(self) -> SmartcardSessionManager:
@@ -81,104 +144,13 @@ class SmartcardTransportProvider(TransportProvider):
         return OpenSslProviderBridge()
 
     def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
-        """Return a ``WindowsCacAdapter`` on Windows, a pkcs11-backed ``NominalRequestsAdapter`` elsewhere."""
-        if platform.system() == "Windows":
-            from nominal.smartcard._windows_cac import WindowsCacAdapter
-
-            identity = self._get_windows_identity()
-            return WindowsCacAdapter(max_retries=max_retries, client_certificate=identity.certificate)
-
+        """Return a ``NominalRequestsAdapter`` backed by the smartcard ``ssl.SSLContext``."""
         return NominalRequestsAdapter(
             max_retries=max_retries,
             ssl_context=self._build_pkcs11_ssl_context(),
         )
 
-    def create_grpc_channel_credentials(
-        self,
-        *,
-        root_certificates: bytes | None = None,
-        certificate_chain_pem: bytes | None = None,
-    ) -> Any:
-        """Return ``grpc.ChannelCredentials`` for smartcard-backed mTLS over gRPC.
-
-        ``root_certificates`` is forwarded to gRPC as the trusted CA bundle. ``None`` causes
-        gRPC to use system roots. ``certificate_chain_pem`` allows supplying additional
-        intermediate certificates in PEM format. When ``None`` (the default), only the leaf
-        certificate from the selected certificate is used.
-        """
-        cache_key = (root_certificates, certificate_chain_pem)
-        with self._lock:
-            cached_credentials = self._cached_grpc_credentials.get(cache_key)
-            if cached_credentials is not None:
-                return cached_credentials
-
-            if platform.system() == "Windows":
-                credentials, signer = self._create_grpc_credentials_windows(
-                    root_certificates=root_certificates,
-                    certificate_chain_pem=certificate_chain_pem,
-                )
-            else:
-                credentials, signer = self._create_grpc_credentials_pkcs11(
-                    root_certificates=root_certificates,
-                    certificate_chain_pem=certificate_chain_pem,
-                )
-            self._cached_grpc_credentials[cache_key] = credentials
-            self._signers.append(signer)
-            return credentials
-
-    def close(self) -> None:
-        """Release smartcard resources held by gRPC signers and cached Windows identities."""
-        with self._lock:
-            signers = list(self._signers)
-            self._signers.clear()
-            self._cached_grpc_credentials.clear()
-            windows_identity = self._windows_identity
-            self._windows_identity = None
-        for signer in signers:
-            signer.close()
-        if windows_identity is not None:
-            windows_identity.close()
-
-    def _get_windows_identity(self) -> WindowsCertificateIdentity:
-        with self._lock:
-            if self._windows_identity is None:
-                from nominal.smartcard._windows_cert_store import WindowsCertificateSelector
-
-                self._windows_identity = WindowsCertificateSelector.from_environment(
-                    cert_thumbprint=self._windows_cert_thumbprint
-                ).select()
-            return self._windows_identity
-
-    def _create_grpc_credentials_windows(
-        self,
-        *,
-        root_certificates: bytes | None,
-        certificate_chain_pem: bytes | None,
-    ) -> tuple[Any, Any]:
-        from nominal.smartcard._windows_cng_signer import WindowsCngSigner
-
-        identity = self._get_windows_identity()
-        signer = WindowsCngSigner(identity=identity)
-        signer.connect()
-        try:
-            if certificate_chain_pem is None:
-                certificate_chain_pem = _pem_from_der_certificate(
-                    identity.der_certificate,
-                    empty_message=(
-                        "Windows certificate DER data is empty; cannot build PEM chain for gRPC credentials."
-                    ),
-                )
-            credentials = ssl_channel_credentials_with_custom_signer(
-                private_key_sign_fn=signer.sign,
-                root_certificates=root_certificates,
-                certificate_chain=certificate_chain_pem,
-            )
-        except:
-            signer.close()
-            raise
-        return credentials, signer
-
-    def _create_grpc_credentials_pkcs11(
+    def _build_grpc_credentials(
         self,
         *,
         root_certificates: bytes | None,
@@ -187,7 +159,6 @@ class SmartcardTransportProvider(TransportProvider):
         from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 
         session = self.session_manager.get_session()
-
         token_label = session.certificate.token_label
         object_id_bytes = session.certificate.object_id_bytes
 
@@ -251,6 +222,77 @@ class SmartcardTransportProvider(TransportProvider):
                         ) from exc
             assert self._cached_ctx is not None
             return self._cached_ctx
+
+
+@dataclass
+class _WindowsSmartcardTransportProvider(SmartcardTransportProvider):
+    r"""Windows CNG/Schannel transport provider.
+
+    HTTP path: ``create_http_adapter()`` selects one certificate from ``CurrentUser\My`` and
+    returns a ``WindowsCacAdapter`` (Schannel) using that exact identity.
+
+    gRPC path: ``_build_grpc_credentials()`` returns credentials backed by Windows CNG signing.
+
+    The selected certificate identity is lazily loaded and cached after the first call.
+    """
+
+    _windows_cert_thumbprint: str | None = None
+    _windows_identity: WindowsCertificateIdentity | None = field(default=None, repr=False, compare=False)
+
+    def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
+        """Return a ``WindowsCacAdapter`` backed by the selected Windows certificate."""
+        from nominal.smartcard._windows_cac import WindowsCacAdapter
+
+        identity = self._get_windows_identity()
+        return WindowsCacAdapter(max_retries=max_retries, client_certificate=identity.certificate)
+
+    def _build_grpc_credentials(
+        self,
+        *,
+        root_certificates: bytes | None,
+        certificate_chain_pem: bytes | None,
+    ) -> tuple[Any, Any]:
+        from nominal.smartcard._windows_cng_signer import WindowsCngSigner
+
+        identity = self._get_windows_identity()
+        signer = WindowsCngSigner(identity=identity)
+        signer.connect()
+        try:
+            if certificate_chain_pem is None:
+                certificate_chain_pem = _pem_from_der_certificate(
+                    identity.der_certificate,
+                    empty_message=(
+                        "Windows certificate DER data is empty; cannot build PEM chain for gRPC credentials."
+                    ),
+                )
+            credentials = ssl_channel_credentials_with_custom_signer(
+                private_key_sign_fn=signer.sign,
+                root_certificates=root_certificates,
+                certificate_chain=certificate_chain_pem,
+            )
+        except:
+            signer.close()
+            raise
+        return credentials, signer
+
+    def close(self) -> None:
+        """Release Windows certificate identity and gRPC signers."""
+        with self._lock:
+            windows_identity = self._windows_identity
+            self._windows_identity = None
+        super().close()
+        if windows_identity is not None:
+            windows_identity.close()
+
+    def _get_windows_identity(self) -> WindowsCertificateIdentity:
+        with self._lock:
+            if self._windows_identity is None:
+                from nominal.smartcard._windows_cert_store import WindowsCertificateSelector
+
+                self._windows_identity = WindowsCertificateSelector.from_environment(
+                    cert_thumbprint=self._windows_cert_thumbprint
+                ).select()
+            return self._windows_identity
 
 
 def _pem_from_der_certificate(der_certificate: bytes, *, empty_message: str) -> bytes:
