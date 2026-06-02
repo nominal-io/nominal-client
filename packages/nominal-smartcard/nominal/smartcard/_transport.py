@@ -57,10 +57,8 @@ class SmartcardTransportProvider(TransportProvider):
         import platform
 
         if platform.system() == "Windows":
-            raise SmartcardConfigurationError(
-                "Windows smartcard authentication is not supported in this build. "
-                "Use the nominal-smartcard Windows build."
-            )
+            raise SmartcardConfigurationError("Windows smartcard authentication is not supported yet.")
+
         return _Pkcs11SmartcardTransportProvider()
 
     def create_grpc_channel_credentials(

@@ -67,14 +67,6 @@ class SmartcardPrivateKeySigner:
     """PKCS#11 signing callback for gRPC's custom signer TLS credentials.
 
     Holds a persistent PKCS#11 session for the lifetime of the associated gRPC channel.
-    The private key never leaves the card; the only output is the signature produced by
-    the token during each TLS handshake.
-
-    Pass ``signer.sign`` as ``private_key_sign_fn`` to
-    ``grpc.experimental.ssl_channel_credentials_with_custom_signer``.
-
-    The authenticated session handle is cached after the first successful login,
-    enabling automatic session recovery if the card is briefly removed and reinserted.
     """
 
     def __init__(
@@ -125,7 +117,6 @@ class SmartcardPrivateKeySigner:
                     if remaining == 0:
                         raise SystemExit(f"{message} No attempts remaining.")
                     print(f"{message} {remaining} attempt(s) remaining, please try again.", flush=True)
-            raise AssertionError("unreachable")
 
     def _ensure_session_and_key(self) -> tuple[Any, Any]:
         """Open a PKCS#11 session, log in, and locate the private key object.
@@ -199,7 +190,6 @@ class SmartcardPrivateKeySigner:
             except pkcs11.exceptions.PKCS11Error as e:
                 raise SmartcardConfigurationError(f"PKCS#11 signing failed ({signature_algorithm!r}): {e}") from e
 
-        # PKCS#11 ECDSA returns raw r||s bytes; gRPC/BoringSSL expects DER-encoded ASN.1.
         if signature_algorithm in _ECDSA_ALGORITHMS:
             return _encode_ecdsa_der(raw_sig)
         return raw_sig
