@@ -3,12 +3,22 @@ from __future__ import annotations
 import ssl
 import threading
 from dataclasses import dataclass, field
+from typing import Any
 
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding
+from grpc.experimental import ssl_channel_credentials_with_custom_signer
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from nominal.core._utils.networking import NominalRequestsAdapter, TransportProvider
-from nominal.smartcard._errors import SmartcardPinError, SmartcardPinLockedError, SmartcardProviderError
+from nominal.smartcard._errors import (
+    SmartcardConfigurationError,
+    SmartcardPinError,
+    SmartcardPinLockedError,
+    SmartcardProviderError,
+)
+from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._openssl_provider import OpenSslProviderBridge
 from nominal.smartcard._session import SmartcardSessionManager
 
@@ -17,18 +27,27 @@ MAX_PIN_ATTEMPTS = 3
 
 @dataclass
 class SmartcardTransportProvider(TransportProvider):
-    """Transport provider that attaches smartcard-backed mTLS to Nominal API traffic.
+    """Transport provider that attaches smartcard-backed mTLS to Nominal API and gRPC traffic.
 
-    The smartcard ``ssl.SSLContext`` is built lazily (with PIN-retry) and reused for every
-    API connection. Object-store multipart traffic inherits the default
-    ``create_multipart_adapter()`` from the base class because S3 presigned URLs use AWS
-    auth and do not need a client certificate.
+    HTTP path: ``create_http_adapter()`` returns a ``NominalRequestsAdapter`` backed by an
+    OpenSSL+pkcs11 ``ssl.SSLContext``.
+
+    gRPC path: ``create_grpc_channel_credentials()`` returns ``grpc.ChannelCredentials`` that
+    use a PKCS#11 signing callback.
+
+    Multipart path: inherits a plain ``NominalSslRequestsAdapter`` with no client certificate,
+    since S3 presigned URLs use AWS auth.
+
+    Both overridden paths share certificate discovery (via ``SmartcardSessionManager``) and
+    each caches its result after the first successful call.
     """
 
     _session_manager: SmartcardSessionManager | None = field(default=None, repr=False, compare=False)
     _openssl_bridge: OpenSslProviderBridge | None = field(default=None, repr=False, compare=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _cached_ctx: ssl.SSLContext | None = field(default=None, repr=False, compare=False)
+    _cached_grpc_credentials: Any | None = field(default=None, repr=False, compare=False)
+    _signer: SmartcardPrivateKeySigner | None = field(default=None, repr=False, compare=False)
 
     @classmethod
     def create(cls) -> SmartcardTransportProvider:
@@ -52,6 +71,74 @@ class SmartcardTransportProvider(TransportProvider):
             max_retries=max_retries,
             ssl_context=self._build_pkcs11_ssl_context(),
         )
+
+    def create_grpc_channel_credentials(
+        self,
+        *,
+        root_certificates: bytes | None = None,
+        certificate_chain_pem: bytes | None = None,
+    ) -> Any:
+        """Return ``grpc.ChannelCredentials`` for smartcard-backed mTLS over gRPC.
+
+        ``root_certificates`` is forwarded to gRPC as the trusted CA bundle. ``None`` causes
+        gRPC to use system roots. ``certificate_chain_pem`` allows supplying additional
+        intermediate certificates in PEM format. When ``None`` (the default), only the leaf
+        certificate from the card is used.
+        """
+        with self._lock:
+            if self._cached_grpc_credentials is not None:
+                return self._cached_grpc_credentials
+
+            session = self.session_manager.get_session()
+
+            token_label = session.certificate.token_label
+            object_id_bytes = session.certificate.object_id_bytes
+
+            if not token_label:
+                raise SmartcardConfigurationError(
+                    "Could not determine token label for the selected certificate. "
+                    "The PKCS#11 token may not have reported a label."
+                )
+            if object_id_bytes is None:
+                raise SmartcardConfigurationError(
+                    "Could not determine object ID for the selected certificate. "
+                    "The PKCS#11 token may not have reported a CKA_ID attribute."
+                )
+
+            signer = SmartcardPrivateKeySigner(
+                module_path=session.module_path,
+                token_label=token_label,
+                object_id_bytes=object_id_bytes,
+            )
+            signer.connect()
+            try:
+                if certificate_chain_pem is None:
+                    if not session.certificate.der_certificate:
+                        raise SmartcardConfigurationError(
+                            "Certificate DER data is empty; cannot build PEM chain for gRPC credentials. "
+                            "The PKCS#11 token may not have returned a certificate value."
+                        )
+                    cert = x509.load_der_x509_certificate(session.certificate.der_certificate)
+                    certificate_chain_pem = cert.public_bytes(Encoding.PEM)
+
+                self._cached_grpc_credentials = ssl_channel_credentials_with_custom_signer(
+                    private_key_sign_fn=signer.sign,
+                    root_certificates=root_certificates,
+                    certificate_chain=certificate_chain_pem,
+                )
+            except:
+                signer.close()
+                raise
+            self._signer = signer
+            return self._cached_grpc_credentials
+
+    def close(self) -> None:
+        """Release PKCS#11 session resources held by the gRPC signer."""
+        with self._lock:
+            if self._signer is not None:
+                self._signer.close()
+                self._signer = None
+            self._cached_grpc_credentials = None
 
     def _build_pkcs11_ssl_context(self) -> ssl.SSLContext:
         """Lazily build (and cache) the OpenSSL+pkcs11 SSL context, prompting for PIN on first use."""

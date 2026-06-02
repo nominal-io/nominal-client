@@ -13,6 +13,7 @@ dependencies = [
     "nominal>=1.143.0",
     "cffi>=1.17.0",
     "cryptography>=37.0.0",
+    "grpcio>=1.80.0",
     "python-pkcs11>=0.7.0",
 ]
 

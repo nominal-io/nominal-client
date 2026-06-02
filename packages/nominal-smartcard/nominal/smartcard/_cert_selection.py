@@ -20,6 +20,8 @@ class CertificateCandidate:
     certificate_uri: str
     private_key_uri: str
     der_certificate: bytes = b""
+    token_label: str = ""
+    object_id_bytes: bytes | None = None
 
     @property
     def is_piv_authentication_candidate(self) -> bool:

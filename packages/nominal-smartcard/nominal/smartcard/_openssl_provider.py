@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-import cffi as _cffi_module
+import cffi
 
 from nominal.smartcard._errors import (
     SmartcardConfigurationError,
@@ -27,6 +27,7 @@ _OPENSSL_VALIDATION_SYMBOLS = (
 )
 _CKR_PIN_LOCKED = "CKR_PIN_LOCKED"
 _CKR_PIN_INCORRECT = "CKR_PIN_INCORRECT"
+_CKR_PIN_LEN_RANGE = "CKR_PIN_LEN_RANGE"
 
 # Deferred at module import; initialised once by _load_ffi().
 _ffi_lock: threading.Lock = threading.Lock()
@@ -90,7 +91,7 @@ def _load_ffi() -> tuple[Any, Any]:
         if _ffi is not None:
             return _ffi, _lib
 
-        ffi = _cffi_module.FFI()
+        ffi = cffi.FFI()
         ffi.cdef("""
             /* Opaque handles */
             typedef struct ssl_ctx_st          SSL_CTX;
@@ -224,6 +225,8 @@ def _raise_store_error(err: str, context: str) -> None:
     if _CKR_PIN_LOCKED in err:
         raise SmartcardPinLockedError(f"{context}: {err}")
     if _CKR_PIN_INCORRECT in err:
+        raise SmartcardPinError(f"{context}: {err}")
+    if _CKR_PIN_LEN_RANGE in err:
         raise SmartcardPinError(f"{context}: {err}")
     raise SmartcardProviderError(f"{context}: {err}")
 

@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+import getpass
+import threading
+from pathlib import Path
+from typing import Any
+
+import grpc.experimental
+import pkcs11
+import pkcs11.exceptions
+from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+from pkcs11.mechanisms import MGF, Mechanism
+
+from nominal.smartcard._errors import SmartcardConfigurationError
+
+_Algorithm = grpc.experimental.PrivateKeySignatureAlgorithm
+
+_ECDSA_ALGORITHMS: frozenset[grpc.experimental.PrivateKeySignatureAlgorithm] = frozenset(
+    {
+        _Algorithm.ECDSA_SECP256R1_SHA256,
+        _Algorithm.ECDSA_SECP384R1_SHA384,
+        _Algorithm.ECDSA_SECP521R1_SHA512,
+    }
+)
+
+MAX_PIN_ATTEMPTS = 3
+
+
+def _prompt_for_pin(prompt: str) -> str:
+    return getpass.getpass(prompt)
+
+
+# Mapping from PrivateKeySignatureAlgorithm → (pkcs11.Mechanism, mechanism_param).
+# mechanism_param for RSA PSS is (hash_mechanism, mgf, salt_length) per python-pkcs11 conventions.
+# TLS 1.3 mandates salt length == hash length (RFC 8446 §4.2.3).
+# For all other mechanisms, mechanism_param is None.
+_MECHANISM_TABLE: dict[grpc.experimental.PrivateKeySignatureAlgorithm, tuple[Mechanism, Any]] = {
+    _Algorithm.RSA_PKCS1_SHA256: (Mechanism.SHA256_RSA_PKCS, None),
+    _Algorithm.RSA_PKCS1_SHA384: (Mechanism.SHA384_RSA_PKCS, None),
+    _Algorithm.RSA_PKCS1_SHA512: (Mechanism.SHA512_RSA_PKCS, None),
+    _Algorithm.RSA_PSS_RSAE_SHA256: (Mechanism.SHA256_RSA_PKCS_PSS, (Mechanism.SHA256, MGF.SHA256, 32)),
+    _Algorithm.RSA_PSS_RSAE_SHA384: (Mechanism.SHA384_RSA_PKCS_PSS, (Mechanism.SHA384, MGF.SHA384, 48)),
+    _Algorithm.RSA_PSS_RSAE_SHA512: (Mechanism.SHA512_RSA_PKCS_PSS, (Mechanism.SHA512, MGF.SHA512, 64)),
+    _Algorithm.ECDSA_SECP256R1_SHA256: (Mechanism.ECDSA_SHA256, None),
+    _Algorithm.ECDSA_SECP384R1_SHA384: (Mechanism.ECDSA_SHA384, None),
+    _Algorithm.ECDSA_SECP521R1_SHA512: (Mechanism.ECDSA_SHA512, None),
+}
+
+
+def _encode_ecdsa_der(raw_sig: bytes) -> bytes:
+    """Convert a PKCS#11 raw ECDSA signature (r||s big-endian, equal halves) to DER ASN.1.
+
+    BoringSSL expects DER-encoded SEQUENCE { INTEGER r, INTEGER s } in the TLS CertificateVerify
+    message. PKCS#11 returns the two integers as equal-length concatenated big-endian byte strings.
+    """
+    if len(raw_sig) == 0 or len(raw_sig) % 2 != 0:
+        raise SmartcardConfigurationError(
+            f"Unexpected ECDSA signature length {len(raw_sig)}; expected a non-empty even number of bytes."
+        )
+    half = len(raw_sig) // 2
+    r = int.from_bytes(raw_sig[:half], "big")
+    s = int.from_bytes(raw_sig[half:], "big")
+    return encode_dss_signature(r, s)
+
+
+class SmartcardPrivateKeySigner:
+    """PKCS#11 signing callback for gRPC's custom signer TLS credentials.
+
+    Holds a persistent PKCS#11 session for the lifetime of the associated gRPC channel.
+    The private key never leaves the card; the only output is the signature produced by
+    the token during each TLS handshake.
+
+    Pass ``signer.sign`` as ``private_key_sign_fn`` to
+    ``grpc.experimental.ssl_channel_credentials_with_custom_signer``.
+
+    The authenticated session handle is cached after the first successful login,
+    enabling automatic session recovery if the card is briefly removed and reinserted.
+    """
+
+    def __init__(
+        self,
+        *,
+        module_path: Path,
+        token_label: str,
+        object_id_bytes: bytes,
+    ) -> None:
+        self._module_path = module_path
+        self._token_label = token_label
+        self._object_id_bytes = object_id_bytes
+        self._session: Any = None
+        self._key: Any = None
+        self._lock = threading.Lock()
+
+    def _open_authenticated_session(self, token: Any) -> Any:
+        """Open a User session on ``token``. Propagates PinIncorrect and PinLocked to the caller."""
+        try:
+            return token.open(user_pin=_prompt_for_pin("Card PIN: "))
+        except (pkcs11.exceptions.PinIncorrect, pkcs11.exceptions.PinLocked, pkcs11.exceptions.PinLenRange):
+            raise
+        except pkcs11.exceptions.PKCS11Error as e:
+            raise SmartcardConfigurationError(
+                f"Failed to open PKCS#11 session on token {self._token_label!r}: {e}"
+            ) from e
+
+    def connect(self) -> None:
+        """Establish the authenticated PKCS#11 session, prompting for PIN if needed.
+
+        Must be called before the signer is handed to gRPC. The signing callback
+        (sign()) is invoked on every TLS handshake and must not block.
+
+        Retries up to MAX_PIN_ATTEMPTS times on incorrect PIN.
+        """
+        with self._lock:
+            for attempt in range(MAX_PIN_ATTEMPTS):
+                remaining = MAX_PIN_ATTEMPTS - attempt - 1
+                try:
+                    self._ensure_session_and_key()
+                    return
+                except pkcs11.exceptions.PinLocked:
+                    raise SystemExit("Card PIN is locked. Contact your security administrator.")
+                except (pkcs11.exceptions.PinIncorrect, pkcs11.exceptions.PinLenRange):
+                    self._session = None
+                    self._key = None
+                    message = "Incorrect PIN."
+                    if remaining == 0:
+                        raise SystemExit(f"{message} No attempts remaining.")
+                    print(f"{message} {remaining} attempt(s) remaining, please try again.", flush=True)
+            raise AssertionError("unreachable")
+
+    def _ensure_session_and_key(self) -> tuple[Any, Any]:
+        """Open a PKCS#11 session, log in, and locate the private key object.
+
+        Idempotent: returns cached (session, key) after first successful call.
+        Must be called under self._lock.
+        """
+        if self._session is not None:
+            return self._session, self._key
+
+        try:
+            lib = pkcs11.lib(str(self._module_path))
+        except Exception as e:
+            raise SmartcardConfigurationError(f"Failed to load PKCS#11 module {self._module_path}: {e}") from e
+
+        try:
+            slots = lib.get_slots(token_present=True)
+        except pkcs11.exceptions.PKCS11Error as e:
+            raise SmartcardConfigurationError(f"Failed to list PKCS#11 slots: {e}") from e
+
+        token = None
+        for slot in slots:
+            try:
+                t = slot.get_token()
+                if t.label.strip() == self._token_label:
+                    token = t
+                    break
+            except pkcs11.exceptions.PKCS11Error:
+                continue
+
+        if token is None:
+            raise SmartcardConfigurationError(
+                f"PKCS#11 token {self._token_label!r} not found. "
+                "Verify the smartcard is inserted and the token label is correct."
+            )
+
+        session = self._open_authenticated_session(token)
+
+        try:
+            key = session.get_key(object_class=pkcs11.ObjectClass.PRIVATE_KEY, id=self._object_id_bytes)
+        except Exception as e:
+            session.close()
+            raise SmartcardConfigurationError(
+                f"Private key with id={self._object_id_bytes.hex()!r} not found on token {self._token_label!r}: {e}"
+            ) from e
+
+        self._session = session
+        self._key = key
+        return session, key
+
+    def sign(
+        self,
+        data_to_sign: bytes,
+        signature_algorithm: grpc.experimental.PrivateKeySignatureAlgorithm,
+        on_complete: Any,
+    ) -> bytes:
+        """Sign ``data_to_sign`` on the smartcard and return raw signature bytes."""
+        entry = _MECHANISM_TABLE.get(signature_algorithm)
+        if entry is None:
+            raise SmartcardConfigurationError(
+                f"Unsupported TLS signature algorithm {signature_algorithm!r}. "
+                "The smartcard signer supports RSA PKCS#1, RSA PSS, and ECDSA with SHA-256/384/512 "
+                "over TLS 1.3."
+            )
+        mechanism, mechanism_param = entry
+
+        with self._lock:
+            _, key = self._ensure_session_and_key()
+            try:
+                raw_sig: bytes = key.sign(data_to_sign, mechanism=mechanism, mechanism_param=mechanism_param)
+            except pkcs11.exceptions.PKCS11Error as e:
+                raise SmartcardConfigurationError(f"PKCS#11 signing failed ({signature_algorithm!r}): {e}") from e
+
+        # PKCS#11 ECDSA returns raw r||s bytes; gRPC/BoringSSL expects DER-encoded ASN.1.
+        if signature_algorithm in _ECDSA_ALGORITHMS:
+            return _encode_ecdsa_der(raw_sig)
+        return raw_sig
+
+    def close(self) -> None:
+        with self._lock:
+            if self._session is not None:
+                try:
+                    self._session.close()
+                except Exception:
+                    pass
+                self._session = None
+                self._key = None
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
