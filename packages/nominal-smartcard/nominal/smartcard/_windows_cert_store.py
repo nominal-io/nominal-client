@@ -66,12 +66,12 @@ def _normalize_thumbprint(thumbprint: str | None) -> str | None:
 
 def _load_windows_certificate(cert_thumbprint: str | None) -> WindowsCertificateIdentity:
     r"""Open ``CurrentUser\My`` and select exactly one client-auth certificate."""
-    import clr  # noqa: PLC0415
+    import clr  # type: ignore[import-untyped]  # noqa: PLC0415
 
     clr.AddReference("System.Security")
 
-    from System import DateTime  # type: ignore[import]
-    from System.Security.Cryptography.X509Certificates import (  # type: ignore[import]
+    from System import DateTime  # type: ignore[import-not-found]
+    from System.Security.Cryptography.X509Certificates import (  # type: ignore[import-not-found]
         OpenFlags,
         StoreLocation,
         StoreName,
@@ -144,7 +144,7 @@ def _has_client_auth_eku(cert: Any) -> bool:
 
 
 def _has_digital_signature_key_usage(cert: Any) -> bool:
-    from System.Security.Cryptography.X509Certificates import X509KeyUsageFlags  # type: ignore[import]
+    from System.Security.Cryptography.X509Certificates import X509KeyUsageFlags
 
     saw_key_usage = False
     for extension in cert.Extensions:

@@ -50,7 +50,7 @@ class SmartcardTransportProvider(TransportProvider):
 
     @classmethod
     def create(cls, *, windows_cert_thumbprint: str | None = None) -> SmartcardTransportProvider:
-        """Return the platform-appropriate smartcard transport provider.
+        r"""Return the platform-appropriate smartcard transport provider.
 
         On Windows, returns a ``_WindowsSmartcardTransportProvider`` backed by Schannel/CNG.
         On Linux/macOS, returns a ``_Pkcs11SmartcardTransportProvider`` backed by pkcs11-provider.

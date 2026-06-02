@@ -621,7 +621,7 @@ def test_create_http_adapter_returns_pkcs11_adapter_on_non_windows(
     from nominal.core._utils.networking import NominalRequestsAdapter
     from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
     from nominal.smartcard._session import SmartcardSessionManager
-    from nominal.smartcard._transport import SmartcardTransportProvider
+    from nominal.smartcard._transport import _Pkcs11SmartcardTransportProvider
 
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
@@ -632,11 +632,9 @@ def test_create_http_adapter_returns_pkcs11_adapter_on_non_windows(
     fake_context = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
     fake_bridge = MagicMock()
     fake_bridge.build_ssl_context.return_value = fake_context
-    provider = SmartcardTransportProvider(_session_manager=manager, _openssl_bridge=fake_bridge)
+    provider = _Pkcs11SmartcardTransportProvider(_session_manager=manager, _openssl_bridge=fake_bridge)
 
-    with patch("nominal.smartcard._transport.platform") as mock_platform:
-        mock_platform.system.return_value = "Linux"
-        result = provider.create_http_adapter(max_retries=Retry(0))
+    result = provider.create_http_adapter(max_retries=Retry(0))
 
     assert isinstance(result, NominalRequestsAdapter)
     assert result._ssl_context is fake_context
@@ -646,7 +644,7 @@ def test_create_http_adapter_returns_windows_cac_adapter_on_windows() -> None:
     pytest.importorskip("cryptography")
     from urllib3.util.retry import Retry
 
-    from nominal.smartcard._transport import SmartcardTransportProvider
+    from nominal.smartcard._transport import _WindowsSmartcardTransportProvider
     from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
 
     selected_certificate = MagicMock(name="selected_windows_certificate")
@@ -659,11 +657,9 @@ def test_create_http_adapter_returns_windows_cac_adapter_on_windows() -> None:
         not_after="2099-01-01",
         public_key_oid="1.2.840.113549.1.1.1",
     )
-    provider = SmartcardTransportProvider(_windows_identity=identity)
+    provider = _WindowsSmartcardTransportProvider(_windows_identity=identity)
 
-    with patch("nominal.smartcard._transport.platform") as mock_platform:
-        mock_platform.system.return_value = "Windows"
-        result = provider.create_http_adapter(max_retries=Retry(0))
+    result = provider.create_http_adapter(max_retries=Retry(0))
 
     assert isinstance(result, WindowsCacAdapter)
     assert result._client_certificate is selected_certificate

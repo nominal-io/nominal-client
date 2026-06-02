@@ -95,8 +95,8 @@ def _sign_with_cert(
     signature_algorithm: grpc.experimental.PrivateKeySignatureAlgorithm,
 ) -> bytes:
     """Dispatch signing to the RSA or ECDSA CNG key attached to ``cert``."""
-    from System import Array, Byte  # type: ignore[import]
-    from System.Security.Cryptography import HashAlgorithmName, RSASignaturePadding  # type: ignore[import]
+    from System import Array, Byte  # type: ignore[import-not-found]
+    from System.Security.Cryptography import HashAlgorithmName, RSASignaturePadding  # type: ignore[import-not-found]
 
     data_net = Array[Byte](data_to_sign)
 

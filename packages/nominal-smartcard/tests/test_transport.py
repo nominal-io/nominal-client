@@ -23,7 +23,6 @@ from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import (
     MAX_PIN_ATTEMPTS,
-    SmartcardTransportProvider,
     _Pkcs11SmartcardTransportProvider,
     _WindowsSmartcardTransportProvider,
 )
@@ -417,7 +416,6 @@ def test_grpc_credentials_close_releases_signer(tmp_path: Path, monkeypatch: pyt
 
     assert provider._signers == []
     assert provider._cached_grpc_credentials == {}
-
 
 
 def test_windows_grpc_credentials_use_shared_windows_identity(monkeypatch: pytest.MonkeyPatch) -> None:

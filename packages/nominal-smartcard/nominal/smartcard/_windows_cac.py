@@ -33,7 +33,7 @@ class _RawResponseBody(io.BytesIO):
         super().__init__(*args, **kwargs)
         self.decode_content: bool = False
 
-    def read(self, amt: int | None = None, decode_content: bool | None = None, cache_content: bool = False) -> bytes:  # type: ignore[override]
+    def read(self, amt: int | None = None, decode_content: bool | None = None, cache_content: bool = False) -> bytes:
         return super().read(amt)
 
 
@@ -48,7 +48,7 @@ class _RetryResponse:
         return None
 
 
-def _timeout_to_seconds(timeout: object) -> float:
+def _timeout_to_seconds(timeout: float | tuple[float | None, float | None] | None) -> float:
     """Convert a requests-style timeout to a float number of seconds.
 
     ``None`` maps to the 300-second default for this adapter. Explicit values
@@ -134,13 +134,13 @@ def _build_http_client(*, client_certificate: Any, proxy_url: str | None = None)
         client_certificate: Selected .NET ``X509Certificate2`` client certificate.
         proxy_url: Optional proxy URL selected from the ``proxies`` mapping.
     """
-    import clr  # noqa: PLC0415
+    import clr  # type: ignore[import-untyped]  # noqa: PLC0415
 
     clr.AddReference("System.Net.Http")
 
-    from System import TimeSpan  # type: ignore[import]
-    from System.Net import DecompressionMethods, WebProxy  # type: ignore[import]
-    from System.Net.Http import ClientCertificateOption, HttpClient, HttpClientHandler  # type: ignore[import]
+    from System import TimeSpan  # type: ignore[import-not-found]
+    from System.Net import DecompressionMethods, WebProxy  # type: ignore[import-not-found]
+    from System.Net.Http import ClientCertificateOption, HttpClient, HttpClientHandler  # type: ignore[import-not-found]
 
     handler = HttpClientHandler()
     handler.AllowAutoRedirect = False
@@ -179,9 +179,9 @@ def _dotnet_send(
         requests.exceptions.Timeout: when the per-request timeout elapses.
         requests.exceptions.ConnectionError: on any other transport failure.
     """
-    from System import Array, Byte, Uri  # type: ignore[import]
-    from System.Net.Http import ByteArrayContent, HttpMethod, HttpRequestMessage  # type: ignore[import]
-    from System.Threading import CancellationTokenSource  # type: ignore[import]
+    from System import Array, Byte, Uri
+    from System.Net.Http import ByteArrayContent, HttpMethod, HttpRequestMessage
+    from System.Threading import CancellationTokenSource  # type: ignore[import-not-found]
 
     message = HttpRequestMessage(HttpMethod(method), Uri(url))
     if body_bytes is not None:
@@ -252,7 +252,7 @@ def _dotnet_send_with_retries(
             )
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
             retry_error = (
-                ReadTimeoutError(None, url, str(exc))
+                ReadTimeoutError(None, url, str(exc))  # type: ignore[arg-type]
                 if isinstance(exc, requests.exceptions.Timeout)
                 else ConnectTimeoutError(None, str(exc))
             )
@@ -261,7 +261,7 @@ def _dotnet_send_with_retries(
             except MaxRetryError as max_exc:
                 # Retry budget exhausted: attach the PreparedRequest and re-raise the
                 # original exception so callers can inspect exc.request and the message.
-                exc.request = request  # type: ignore[attr-defined]
+                exc.request = request
                 raise exc from max_exc
             except Exception:
                 # Retry.increment may reraise the urllib3 error directly (e.g.
@@ -408,7 +408,7 @@ class WindowsCacAdapter(HTTPAdapter):
         response.status_code = status_code
         response.reason = reason
         response.headers = CaseInsensitiveDict(resp_headers)
-        response._content = resp_body  # type: ignore[attr-defined]
+        response._content = resp_body
         response.raw = _RawResponseBody(resp_body)
         response.url = final_url
         response.request = request
@@ -423,4 +423,4 @@ class WindowsCacAdapter(HTTPAdapter):
             self._net_clients.clear()
         for client in clients:
             client.Dispose()
-        super().close()
+        super().close()  # type: ignore[no-untyped-call]
