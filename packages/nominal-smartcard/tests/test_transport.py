@@ -22,6 +22,7 @@ from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import MAX_PIN_ATTEMPTS, SmartcardTransportProvider
+from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
 
 _RETRY = Retry(total=0)
 
@@ -81,6 +82,18 @@ def _make_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Sma
         _openssl_bridge=bridge,
     )
     return provider, bridge
+
+
+def _make_windows_identity() -> WindowsCertificateIdentity:
+    return WindowsCertificateIdentity(
+        certificate=MagicMock(name="windows_certificate"),
+        der_certificate=_make_der_cert(),
+        thumbprint="AABBCC",
+        subject="CN=Test",
+        issuer="CN=Issuer",
+        not_after="2099-01-01",
+        public_key_oid="1.2.840.113549.1.1.1",
+    )
 
 
 def test_http_adapter_uses_pkcs11_ssl_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -286,6 +299,19 @@ def test_grpc_credentials_cached(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert fake_ssl_fn.call_count == 1
 
 
+def test_grpc_credentials_cache_is_keyed_by_trust_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = _make_grpc_provider(tmp_path, monkeypatch)
+
+    fake_ssl_fn = MagicMock(side_effect=[MagicMock(name="creds1"), MagicMock(name="creds2")])
+
+    with patch("nominal.smartcard._transport.ssl_channel_credentials_with_custom_signer", fake_ssl_fn):
+        creds1 = provider.create_grpc_channel_credentials(root_certificates=b"root-a")
+        creds2 = provider.create_grpc_channel_credentials(root_certificates=b"root-b")
+
+    assert creds1 is not creds2
+    assert fake_ssl_fn.call_count == 2
+
+
 def test_grpc_credentials_signer_receives_correct_token_info(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     candidate = _candidate(
         der_certificate=_make_der_cert(),
@@ -377,10 +403,60 @@ def test_grpc_credentials_close_releases_signer(tmp_path: Path, monkeypatch: pyt
     with patch("nominal.smartcard._transport.ssl_channel_credentials_with_custom_signer", fake_ssl_fn):
         provider.create_grpc_channel_credentials()
 
-    assert provider._signer is not None
-    assert provider._cached_grpc_credentials is not None
+    assert len(provider._signers) == 1
+    assert provider._cached_grpc_credentials
 
     provider.close()
 
-    assert provider._signer is None
-    assert provider._cached_grpc_credentials is None
+    assert provider._signers == []
+    assert provider._cached_grpc_credentials == {}
+
+
+def test_windows_grpc_credentials_use_shared_windows_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    identity = _make_windows_identity()
+    provider = SmartcardTransportProvider(_windows_identity=identity)
+
+    class FakeWindowsCngSigner:
+        instances: list[FakeWindowsCngSigner] = []
+
+        def __init__(self, *, identity: WindowsCertificateIdentity) -> None:
+            self.identity = identity
+            self.connected = False
+            self.closed = False
+            FakeWindowsCngSigner.instances.append(self)
+
+        def connect(self) -> None:
+            self.connected = True
+
+        @property
+        def der_certificate(self) -> bytes:
+            return self.identity.der_certificate
+
+        def sign(self, data_to_sign: bytes, signature_algorithm: object, on_complete: object) -> bytes:
+            del data_to_sign, signature_algorithm, on_complete
+            return b"signature"
+
+        def close(self) -> None:
+            self.closed = True
+
+    fake_creds = MagicMock()
+    fake_ssl_fn = MagicMock(return_value=fake_creds)
+
+    monkeypatch.setattr("nominal.smartcard._windows_cng_signer.WindowsCngSigner", FakeWindowsCngSigner)
+    with (
+        patch("nominal.smartcard._transport.platform") as mock_platform,
+        patch("nominal.smartcard._transport.ssl_channel_credentials_with_custom_signer", fake_ssl_fn),
+    ):
+        mock_platform.system.return_value = "Windows"
+        http_adapter = provider.create_http_adapter(max_retries=_RETRY)
+        grpc_creds = provider.create_grpc_channel_credentials(root_certificates=b"root")
+
+    assert http_adapter._client_certificate is identity.certificate
+    assert grpc_creds is fake_creds
+    assert FakeWindowsCngSigner.instances[0].identity is identity
+    assert FakeWindowsCngSigner.instances[0].connected is True
+    assert fake_ssl_fn.call_args.kwargs["certificate_chain"].startswith(b"-----BEGIN CERTIFICATE-----")
+    assert fake_ssl_fn.call_args.kwargs["root_certificates"] == b"root"
+
+    provider.close()
+    assert FakeWindowsCngSigner.instances[0].closed is True

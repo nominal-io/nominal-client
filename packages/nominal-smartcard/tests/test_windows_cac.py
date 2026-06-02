@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import gzip
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -9,6 +12,7 @@ import pytest
 import requests
 from urllib3.util.retry import Retry
 
+from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._windows_cac import (
     WindowsCacAdapter,
     _timeout_to_seconds,
@@ -44,12 +48,42 @@ def _prepared(
 def adapter() -> WindowsCacAdapter:
     """A WindowsCacAdapter with the .NET client creation mocked out."""
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        yield WindowsCacAdapter()
+        yield _make_adapter()
+
+
+def _make_adapter(*args: Any, **kwargs: Any) -> WindowsCacAdapter:
+    kwargs.setdefault("client_certificate", MagicMock(name="client_certificate"))
+    return WindowsCacAdapter(*args, **kwargs)
 
 
 def _send_args(mock_dotnet_send: MagicMock) -> tuple[Any, str, str, dict, bytes | None, float]:
     """Extract (client, method, url, headers, body_bytes, timeout_seconds) from the last call."""
     return mock_dotnet_send.call_args.args
+
+
+def test_smartcard_package_import_does_not_require_pkcs11_or_cffi() -> None:
+    code = textwrap.dedent(
+        """
+        import importlib.abc
+        import sys
+
+        class Blocker(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname == "pkcs11" or fullname.startswith("pkcs11.") or fullname == "cffi":
+                    raise ModuleNotFoundError(f"blocked optional dependency: {fullname}")
+                return None
+
+        for module_name in list(sys.modules):
+            if module_name == "pkcs11" or module_name.startswith("pkcs11.") or module_name == "cffi":
+                del sys.modules[module_name]
+        sys.meta_path.insert(0, Blocker())
+
+        import nominal.smartcard
+
+        nominal.smartcard.SmartcardTransportProvider.create()
+        """
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 # ---------------------------------------------------------------------------
@@ -180,18 +214,16 @@ def test_get_with_no_body_sends_none_body_bytes(mock_send: MagicMock, adapter: W
 
 
 @patch("nominal.smartcard._windows_cac._dotnet_send")
-def test_stream_flag_does_not_suppress_compression(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
-    # stream=True controls response buffering (which is always buffered in this adapter),
-    # not request body compression. The body must still be gzip-compressed.
+def test_stream_flag_suppresses_request_compression(mock_send: MagicMock, adapter: WindowsCacAdapter) -> None:
+    # Match NominalRequestsAdapter: stream=True leaves request bodies untouched.
     mock_send.return_value = _dotnet_result()
     req = _prepared("POST", body=b'{"export": true}', headers={"Content-Type": "application/json"})
 
     adapter.send(req, stream=True)
 
     _, _, _, forwarded_headers, body_bytes, _ = _send_args(mock_send)
-    assert isinstance(body_bytes, bytes)
-    assert gzip.decompress(body_bytes) == b'{"export": true}'
-    assert forwarded_headers.get("Content-Encoding") == "gzip"
+    assert body_bytes == b'{"export": true}'
+    assert "Content-Encoding" not in forwarded_headers
     assert forwarded_headers["Content-Type"] == "application/json"
 
 
@@ -323,7 +355,7 @@ def test_existing_content_encoding_skips_compression(mock_send: MagicMock, adapt
 
 def test_retry_after_case_insensitive() -> None:
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        adapter = WindowsCacAdapter(max_retries=Retry(total=1, status_forcelist=[429]))
+        adapter = _make_adapter(max_retries=Retry(total=1, status_forcelist=[429]))
         with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
             # Return lowercase "retry-after" to verify case-insensitive lookup.
             mock_send.side_effect = [
@@ -342,7 +374,7 @@ def test_retry_after_duration_is_honored_for_lowercase_header() -> None:
     # urllib3 looks up "Retry-After" case-sensitively, so a lowercase (HTTP/2) header must be
     # surfaced through a case-insensitive mapping or the delay is silently dropped to backoff.
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        adapter = WindowsCacAdapter(max_retries=Retry(total=1, status_forcelist=[503], backoff_factor=0))
+        adapter = _make_adapter(max_retries=Retry(total=1, status_forcelist=[503], backoff_factor=0))
         with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
             mock_send.side_effect = [
                 _dotnet_result(status_code=503, headers={"retry-after": "7"}),
@@ -366,7 +398,7 @@ def test_verify_true_uses_schannel_trust_store() -> None:
     # verify=True must NOT load certifi or install a Python callback — Schannel's
     # Windows trust store already contains DoD root CAs on a standard CAC install.
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
-        adapter = WindowsCacAdapter()
+        adapter = _make_adapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared(), verify=True)
 
@@ -379,7 +411,7 @@ def test_verify_false_does_not_disable_schannel_validation() -> None:
     # always validates against the Windows trust store. This locks in that security property
     # so a future change can't silently reintroduce a validation bypass.
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
-        isolated = WindowsCacAdapter()
+        isolated = _make_adapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             isolated.send(_prepared(), verify=False)
 
@@ -387,32 +419,35 @@ def test_verify_false_does_not_disable_schannel_validation() -> None:
     isolated.close()
 
 
-def test_verify_path_defers_to_schannel(tmp_path: Path) -> None:
-    # On a standard CAC install the Windows trust store already has DoD root CAs.
-    # Any verify value (including a CA bundle path injected by
-    # requests.Session.merge_environment_settings()) is treated identically — we always
-    # defer to Schannel and never load Python-level certs.
-    ca_bundle = tmp_path / "ca.pem"
-    ca_bundle.write_text("-----BEGIN CERTIFICATE-----\nY2VydA==\n-----END CERTIFICATE-----\n")
+def test_default_certifi_verify_path_defers_to_schannel() -> None:
+    import certifi
+
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
-        adapter = WindowsCacAdapter()
+        adapter = _make_adapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
-            adapter.send(_prepared(), verify=str(ca_bundle))
+            adapter.send(_prepared(), verify=certifi.where())
 
     assert "disable_server_certificate_validation" not in build.call_args.kwargs
     adapter.close()
 
 
-def test_verify_nonexistent_path_still_defers_to_schannel(adapter: WindowsCacAdapter) -> None:
-    # Even a non-existent path is truthy, so Schannel handles validation — no OSError.
+def test_custom_verify_path_raises_clear_error(tmp_path: Path, adapter: WindowsCacAdapter) -> None:
+    ca_bundle = tmp_path / "ca.pem"
+    ca_bundle.write_text("-----BEGIN CERTIFICATE-----\nY2VydA==\n-----END CERTIFICATE-----\n")
     with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
-        response = adapter.send(_prepared(), verify="/does/not/exist.pem")
-    assert response.status_code == 200
+        with pytest.raises(SmartcardConfigurationError, match="cannot honor a custom Python CA bundle"):
+            adapter.send(_prepared(), verify=str(ca_bundle))
+
+
+def test_verify_nonexistent_path_raises_clear_error(adapter: WindowsCacAdapter) -> None:
+    with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+        with pytest.raises(SmartcardConfigurationError, match="cannot honor a custom Python CA bundle"):
+            adapter.send(_prepared(), verify="/does/not/exist.pem")
 
 
 def test_proxy_mapping_selects_proxy_for_request_url() -> None:
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
-        adapter = WindowsCacAdapter()
+        adapter = _make_adapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared("GET", "https://api.example.com/test"), proxies={"https": "http://proxy:8080"})
 
@@ -422,7 +457,7 @@ def test_proxy_mapping_selects_proxy_for_request_url() -> None:
 
 def test_no_proxy_mapping_uses_direct_client() -> None:
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
-        adapter = WindowsCacAdapter()
+        adapter = _make_adapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared())
 
@@ -432,7 +467,7 @@ def test_no_proxy_mapping_uses_direct_client() -> None:
 
 def test_http_client_reused_for_same_trust_and_proxy() -> None:
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
-        adapter = WindowsCacAdapter()
+        adapter = _make_adapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared())
             adapter.send(_prepared())
@@ -441,9 +476,20 @@ def test_http_client_reused_for_same_trust_and_proxy() -> None:
     adapter.close()
 
 
+def test_http_client_build_receives_client_certificate() -> None:
+    client_certificate = MagicMock(name="selected_certificate")
+    with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()) as build:
+        adapter = WindowsCacAdapter(client_certificate=client_certificate)
+        with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
+            adapter.send(_prepared())
+
+    assert build.call_args.kwargs["client_certificate"] is client_certificate
+    adapter.close()
+
+
 def test_status_forcelist_retries_then_returns_success() -> None:
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        adapter = WindowsCacAdapter(max_retries=Retry(total=1, status_forcelist=[503]))
+        adapter = _make_adapter(max_retries=Retry(total=1, status_forcelist=[503]))
         with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
             mock_send.side_effect = [
                 _dotnet_result(status_code=503, reason="Unavailable"),
@@ -459,7 +505,7 @@ def test_status_forcelist_retries_then_returns_success() -> None:
 
 def test_connection_error_retries_then_returns_success() -> None:
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        adapter = WindowsCacAdapter(max_retries=Retry(total=1, connect=1))
+        adapter = _make_adapter(max_retries=Retry(total=1, connect=1))
         with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
             mock_send.side_effect = [
                 requests.exceptions.ConnectionError("refused"),
@@ -475,7 +521,7 @@ def test_connection_error_retries_then_returns_success() -> None:
 def test_connection_error_retry_exhaustion_attaches_request() -> None:
     prepared = _prepared("GET", "https://api.example.com/fail")
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        adapter = WindowsCacAdapter(max_retries=Retry(total=0))
+        adapter = _make_adapter(max_retries=Retry(total=0))
         with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
             mock_send.side_effect = requests.exceptions.ConnectionError("refused")
             with pytest.raises(requests.exceptions.ConnectionError) as exc_info:
@@ -490,7 +536,7 @@ def test_connection_error_retry_exhaustion_attaches_request() -> None:
 def test_timeout_retry_exhaustion_attaches_request() -> None:
     prepared = _prepared("GET", "https://api.example.com/slow")
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        adapter = WindowsCacAdapter(max_retries=Retry(total=0))
+        adapter = _make_adapter(max_retries=Retry(total=0))
         with patch("nominal.smartcard._windows_cac._dotnet_send") as mock_send:
             mock_send.side_effect = requests.exceptions.Timeout("timed out")
             with pytest.raises(requests.exceptions.Timeout) as exc_info:
@@ -509,7 +555,7 @@ def test_timeout_retry_exhaustion_attaches_request() -> None:
 def test_close_disposes_net_client() -> None:
     mock_client = MagicMock()
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=mock_client):
-        adapter = WindowsCacAdapter()
+        adapter = _make_adapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared())
     adapter.close()
@@ -519,7 +565,7 @@ def test_close_disposes_net_client() -> None:
 def test_send_after_close_raises() -> None:
     # A closed adapter must not silently rebuild a client (which would re-prompt for PIN).
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
-        adapter = WindowsCacAdapter()
+        adapter = _make_adapter()
         with patch("nominal.smartcard._windows_cac._dotnet_send", return_value=_dotnet_result()):
             adapter.send(_prepared())
     adapter.close()
@@ -596,31 +642,29 @@ def test_create_http_adapter_returns_pkcs11_adapter_on_non_windows(
     assert result._ssl_context is fake_context
 
 
-def test_create_http_adapter_returns_windows_cac_adapter_on_windows(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_create_http_adapter_returns_windows_cac_adapter_on_windows() -> None:
     pytest.importorskip("cryptography")
-    from _helpers import _candidate, _FakeBackend, _make_der_cert
     from urllib3.util.retry import Retry
 
-    from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
-    from nominal.smartcard._session import SmartcardSessionManager
     from nominal.smartcard._transport import SmartcardTransportProvider
+    from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
 
-    module_path = tmp_path / "opensc-pkcs11.so"
-    module_path.write_text("")
-    monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    manager = SmartcardSessionManager(
-        backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
+    selected_certificate = MagicMock(name="selected_windows_certificate")
+    identity = WindowsCertificateIdentity(
+        certificate=selected_certificate,
+        der_certificate=b"unused",
+        thumbprint="AABBCC",
+        subject="CN=Test",
+        issuer="CN=Issuer",
+        not_after="2099-01-01",
+        public_key_oid="1.2.840.113549.1.1.1",
     )
-    provider = SmartcardTransportProvider(_session_manager=manager)
+    provider = SmartcardTransportProvider(_windows_identity=identity)
 
-    with (
-        patch("nominal.smartcard._transport.platform") as mock_platform,
-        patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()),
-    ):
+    with patch("nominal.smartcard._transport.platform") as mock_platform:
         mock_platform.system.return_value = "Windows"
         result = provider.create_http_adapter(max_retries=Retry(0))
 
     assert isinstance(result, WindowsCacAdapter)
+    assert result._client_certificate is selected_certificate
     result.close()

@@ -8,10 +8,10 @@ from typing import Any
 import grpc.experimental
 import pkcs11
 import pkcs11.exceptions
-from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError
+from nominal.smartcard._signature_utils import encode_ecdsa_der as _encode_ecdsa_der
 
 _Algorithm = grpc.experimental.PrivateKeySignatureAlgorithm
 
@@ -45,22 +45,6 @@ _MECHANISM_TABLE: dict[grpc.experimental.PrivateKeySignatureAlgorithm, tuple[Mec
     _Algorithm.ECDSA_SECP384R1_SHA384: (Mechanism.ECDSA_SHA384, None),
     _Algorithm.ECDSA_SECP521R1_SHA512: (Mechanism.ECDSA_SHA512, None),
 }
-
-
-def _encode_ecdsa_der(raw_sig: bytes) -> bytes:
-    """Convert a PKCS#11 raw ECDSA signature (r||s big-endian, equal halves) to DER ASN.1.
-
-    BoringSSL expects DER-encoded SEQUENCE { INTEGER r, INTEGER s } in the TLS CertificateVerify
-    message. PKCS#11 returns the two integers as equal-length concatenated big-endian byte strings.
-    """
-    if len(raw_sig) == 0 or len(raw_sig) % 2 != 0:
-        raise SmartcardConfigurationError(
-            f"Unexpected ECDSA signature length {len(raw_sig)}; expected a non-empty even number of bytes."
-        )
-    half = len(raw_sig) // 2
-    r = int.from_bytes(raw_sig[:half], "big")
-    s = int.from_bytes(raw_sig[half:], "big")
-    return encode_dss_signature(r, s)
 
 
 class SmartcardPrivateKeySigner:

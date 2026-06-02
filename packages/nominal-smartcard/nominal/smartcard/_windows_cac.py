@@ -12,6 +12,8 @@ from requests.utils import select_proxy
 from urllib3.exceptions import ConnectTimeoutError, MaxRetryError, ReadTimeoutError, ResponseError
 from urllib3.util.retry import Retry
 
+from nominal.smartcard._errors import SmartcardConfigurationError
+
 _GZIP_COMPRESSION_LEVEL = 1
 
 # Headers that .NET HttpClient manages internally; must not be forwarded by Python.
@@ -21,8 +23,8 @@ _SKIP_HEADERS: frozenset[str] = frozenset(
 
 
 class _RawResponseBody(io.BytesIO):
-    """
-    Streaming endpoints set ``raw.decode_content`` and may call ``raw.read(decode_content=...)``;
+    """Streaming endpoints set ``raw.decode_content`` and may call ``raw.read(decode_content=...)``;
+
     plain ``BytesIO.read`` rejects that keyword. The body is already decompressed by .NET, so we
     accept and ignore ``decode_content``/``cache_content`` to match urllib3's ``read`` signature.
     """
@@ -62,7 +64,9 @@ def _timeout_to_seconds(timeout: object) -> float:
     return float(timeout)
 
 
-def _body_bytes_for_request(request: requests.PreparedRequest) -> tuple[bytes | None, dict[str, str]]:
+def _body_bytes_for_request(
+    request: requests.PreparedRequest, *, stream: bool = False
+) -> tuple[bytes | None, dict[str, str]]:
     """Return ``(body_bytes, extra_headers)`` for the outgoing request.
 
     ``extra_headers`` contains any compression headers that must be merged into
@@ -73,6 +77,8 @@ def _body_bytes_for_request(request: requests.PreparedRequest) -> tuple[bytes | 
     body = request.body
     if body is None:
         return None, {}
+    if stream:
+        return body if isinstance(body, bytes) else body.encode("utf-8"), {}
 
     raw: bytes = body if isinstance(body, bytes) else body.encode("utf-8")
 
@@ -94,10 +100,38 @@ def _forwardable_headers(request: requests.PreparedRequest) -> dict[str, str]:
     return headers
 
 
-def _build_http_client(*, proxy_url: str | None = None) -> Any:
+def _assert_supported_verify(verify: bool | str | os.PathLike[str] | None) -> None:
+    if verify is None or verify is True or verify is False:
+        return
+
+    try:
+        verify_path = os.path.abspath(os.fspath(verify))
+    except TypeError as exc:
+        raise SmartcardConfigurationError(
+            f"Windows CAC transport only supports Schannel's Windows trust store. Unsupported verify value: {verify!r}."
+        ) from exc
+
+    try:
+        import certifi  # noqa: PLC0415
+
+        default_certifi_path = os.path.abspath(certifi.where())
+    except Exception:
+        default_certifi_path = None
+    if verify_path == default_certifi_path:
+        return
+
+    raise SmartcardConfigurationError(
+        "Windows CAC transport uses Schannel and cannot honor a custom Python CA bundle "
+        f"({verify_path}). Import that CA into the Windows certificate store, or omit trust_store_path "
+        "so Schannel validates against Windows trust."
+    )
+
+
+def _build_http_client(*, client_certificate: Any, proxy_url: str | None = None) -> Any:
     r"""Create and return a .NET ``System.Net.Http.HttpClient`` for Schannel CAC auth.
 
     Args:
+        client_certificate: Selected .NET ``X509Certificate2`` client certificate.
         proxy_url: Optional proxy URL selected from the ``proxies`` mapping.
     """
     import clr  # noqa: PLC0415
@@ -105,18 +139,8 @@ def _build_http_client(*, proxy_url: str | None = None) -> Any:
     clr.AddReference("System.Net.Http")
 
     from System import TimeSpan  # type: ignore[import]
-    from System.Net import DecompressionMethods, SecurityProtocolType, ServicePointManager, WebProxy  # type: ignore[import]
-    from System.Net.Http import HttpClient, HttpClientHandler  # type: ignore[import]
-
-    # .NET Framework's HttpClient delegates to HttpWebRequest internally, and its default
-    # security protocol is TLS 1.0/1.1 on older framework versions, which modern servers
-    # reject. Explicitly opt in to TLS 1.2 (and 1.3 when available) globally.
-    _tls_flags = int(SecurityProtocolType.Tls12)
-    try:
-        _tls_flags |= int(SecurityProtocolType.Tls13)
-    except AttributeError:
-        pass
-    ServicePointManager.SecurityProtocol = SecurityProtocolType(_tls_flags)
+    from System.Net import DecompressionMethods, WebProxy  # type: ignore[import]
+    from System.Net.Http import ClientCertificateOption, HttpClient, HttpClientHandler  # type: ignore[import]
 
     handler = HttpClientHandler()
     handler.AllowAutoRedirect = False
@@ -128,9 +152,8 @@ def _build_http_client(*, proxy_url: str | None = None) -> Any:
     # from Python (it is listed in _SKIP_HEADERS).
     handler.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
 
-    from System.Net.Http import ClientCertificateOption  # type: ignore[import]
-
-    handler.ClientCertificateOptions = ClientCertificateOption.Automatic
+    handler.ClientCertificateOptions = ClientCertificateOption.Manual
+    handler.ClientCertificates.Add(client_certificate)
 
     client = HttpClient(handler)
 
@@ -270,21 +293,15 @@ class WindowsCacAdapter(HTTPAdapter):
     r"""requests HTTPAdapter backed by the Windows .NET HttpClient + Schannel CAC transport.
 
     Uses pythonnet to call ``System.Net.Http.HttpClient`` directly — no subprocess
-    overhead, no PowerShell bridge, no per-request process spawning. The Windows
-    certificate store (``CurrentUser\My``) supplies the CAC certificate through
-    ``ClientCertificateOption.Automatic``; Schannel handles PIN prompting natively
-    via the Windows credential UI so no PIN handling is required in Python.
-
-    Certificate selection is delegated to Schannel by design: it filters
-    ``CurrentUser\My`` by the server's acceptable-CA list and client-auth usage. This
-    differs from the non-Windows path, which explicitly pins PIV slot 9A. On a card
-    exposing multiple client-auth certs Schannel's choice is opaque, but ``.Automatic``
-    is the standard CAC approach and correct for the common single-auth-cert case.
+    overhead, no PowerShell bridge, no per-request process spawning. The transport
+    provider selects one Windows client-auth certificate and passes it here; Schannel
+    performs the TLS handshake and PIN prompting through the Windows credential UI.
 
     Server certificate validation is always performed by Schannel using the Windows
     trust store. DoD root CAs are already present there on a standard CAC install.
-    The ``verify`` argument is ignored: there is no validation-bypass path, so
-    ``verify=False`` does not weaken the connection.
+    The default certifi ``verify`` path is accepted for compatibility with the core
+    client, but custom CA bundle paths are rejected because they cannot be honored by
+    this Schannel-backed adapter. ``verify=False`` does not weaken the connection.
 
     Lifecycle:
         The underlying ``HttpClient`` is created once at construction time and
@@ -307,7 +324,8 @@ class WindowsCacAdapter(HTTPAdapter):
           header-based auth, so no cookie state is relied upon.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, client_certificate: Any, **kwargs: Any) -> None:
+        self._client_certificate = client_certificate
         super().__init__(*args, **kwargs)
         self._net_clients: dict[Any, Any] = {}
         self._net_clients_lock = threading.Lock()
@@ -322,7 +340,7 @@ class WindowsCacAdapter(HTTPAdapter):
         with self._net_clients_lock:
             client = self._net_clients.get(proxy_url)
             if client is None:
-                client = _build_http_client(proxy_url=proxy_url)
+                client = _build_http_client(client_certificate=self._client_certificate, proxy_url=proxy_url)
                 self._net_clients[proxy_url] = client
             return client
 
@@ -337,9 +355,10 @@ class WindowsCacAdapter(HTTPAdapter):
     ) -> requests.Response:
         if self._closed:
             raise RuntimeError("WindowsCacAdapter is closed and cannot send requests.")
+        _assert_supported_verify(verify)
         proxy_url = select_proxy(str(request.url), proxies)
         client = self._get_http_client(proxy_url=proxy_url)
-        body_bytes, body_headers = _body_bytes_for_request(request)
+        body_bytes, body_headers = _body_bytes_for_request(request, stream=stream)
         forwarded_headers = _forwardable_headers(request)
         forwarded_headers.update(body_headers)
         timeout_seconds = _timeout_to_seconds(timeout)
