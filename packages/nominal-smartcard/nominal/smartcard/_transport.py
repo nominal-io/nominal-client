@@ -193,7 +193,7 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
                 root_certificates=root_certificates,
                 certificate_chain=certificate_chain_pem,
             )
-        except:
+        except Exception:
             signer.close()
             raise
         return credentials, signer
@@ -270,7 +270,7 @@ class _WindowsSmartcardTransportProvider(SmartcardTransportProvider):
                 root_certificates=root_certificates,
                 certificate_chain=certificate_chain_pem,
             )
-        except:
+        except Exception:
             signer.close()
             raise
         return credentials, signer

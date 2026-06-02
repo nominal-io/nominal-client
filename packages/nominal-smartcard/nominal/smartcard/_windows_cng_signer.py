@@ -67,12 +67,6 @@ class WindowsCngSigner:
         with self._lock:
             self._connected = False
 
-    def __del__(self) -> None:
-        try:
-            self.close()
-        except Exception:
-            pass
-
 
 def _warmup_sign(cert: Any, public_key_oid: str) -> None:
     r"""Perform a test sign to trigger Windows PIN entry before gRPC's handshake thread."""

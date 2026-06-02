@@ -156,6 +156,7 @@ def _has_digital_signature_key_usage(cert: Any) -> bool:
         if key_usages is None:
             return False
         return (int(key_usages) & int(X509KeyUsageFlags.DigitalSignature)) != 0
+    # No KeyUsage extension present: per RFC 5280 §4.2.1.3, all usages are permitted.
     return not saw_key_usage
 
 
