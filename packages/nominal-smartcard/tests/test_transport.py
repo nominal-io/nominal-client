@@ -21,7 +21,7 @@ from nominal.smartcard._errors import (
 from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
 from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
 from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
-from nominal.smartcard._transport import MAX_PIN_ATTEMPTS, SmartcardTransportProvider, _Pkcs11SmartcardTransportProvider
+from nominal.smartcard._transport import MAX_PIN_ATTEMPTS, _Pkcs11SmartcardTransportProvider
 
 _RETRY = Retry(total=0)
 
