@@ -11,7 +11,8 @@ Third-party integrations:
 Third-party integrations (separate packages):
 
 [`nominal.tdms`](./thirdparty/tdms.md) - tools for ingesting tdms data (package `nominal-tdms`).  
-[`nominal.smartcard`](./smartcard.md) - smartcard / PIV authentication (package `nominal-smartcard)`.
+[`nominal.smartcard`](./smartcard.md) - smartcard / PIV authentication (package `nominal-smartcard`).  
+
 
 Experimental functionality:
 
