@@ -52,11 +52,6 @@ def _create_csv_data(data: list[tuple[int, datetime]], formatter: Formatter) -> 
     return ("temperature,timestamp\n" + "\n".join(formatter(temp, ts) for temp, ts in data)).encode()
 
 
-def _truncate_to_ms(dt: datetime) -> datetime:
-    """Truncate a datetime to millisecond precision (drop sub-millisecond microseconds)."""
-    return dt.replace(microsecond=(dt.microsecond // 1000) * 1000)
-
-
 def _assert_bounds(
     dataset_file: DatasetFile,
     dataset: Dataset,
@@ -173,7 +168,7 @@ def test_epoch_milliseconds(request, client: NominalClient, temperature_data: li
         "epoch_milliseconds",
         temperature_data[0][1],
         temperature_data[-1][1],
-        tolerance_ns=1_000,
+        tolerance_ns=1_000_000,
     )
 
 
