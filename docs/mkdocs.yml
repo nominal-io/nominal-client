@@ -2,7 +2,7 @@ site_name: "Nominal Python SDK: Function Reference"
 repo_url: "https://github.com/nominal-io/nominal-client"
 repo_name: "nominal-io/nominal-client"
 site_dir: site
-watch: [mkdocs.yml, ../README.md, ../CHANGELOG.md, ../nominal]
+watch: [mkdocs.yml, ../README.md, ../CHANGELOG.md, ../nominal, ../packages]
 copyright: Copyright &copy; 2024 Nominal, Inc.
 edit_uri: edit/main/docs/
 docs_dir: src
@@ -31,6 +31,8 @@ nav:
         - matlab: reference/thirdparty/matlab.md
         - pandas: reference/thirdparty/pandas.md
         - tdms: reference/thirdparty/tdms.md
+      - Packages:
+        - Smartcard: reference/smartcard.md
       - Experimental:
         - Compute: reference/experimental/compute.md
         - Logging: reference/experimental/logging.md
