@@ -53,7 +53,7 @@ def _load_python_ssl_library(ffi: Any) -> Any | None:
     the private ``_ssl`` extension. Resolving cffi symbols through that extension
     lets the dynamic loader follow exactly the same dependency edges Python uses.
 
-    This matters most on macOS: ``dlopen(None)`` may resolve libssl symbols from
+    Specifically on MacOS, ``dlopen(None)`` may resolve libssl symbols from
     Apple's dyld shared-cache compatibility library rather than the Homebrew or
     python.org OpenSSL that created the ``SSL_CTX*`` inside ``ssl.SSLContext``.
     Passing an ``SSL_CTX*`` to functions from that other library can crash the

@@ -30,10 +30,20 @@ def _prompt_for_pin(prompt: str) -> str:
     return getpass.getpass(prompt)
 
 
-# Mapping from PrivateKeySignatureAlgorithm → (pkcs11.Mechanism, mechanism_param).
+def _pin_prompt(token: Any, token_label: str) -> str:
+    """Build a PIN prompt that identifies the token and its slot."""
+    location = ""
+    try:
+        slot = token.slot
+        description = (slot.slot_description or "").strip()
+        location = f" (Slot {slot.slot_id} - {description})" if description else f" (Slot {slot.slot_id})"
+    except Exception:
+        pass
+    return f"Enter PIN for {token_label!r}{location}: "
+
+
+# Mapping from PrivateKeySignatureAlgorithm to (pkcs11.Mechanism, mechanism_param).
 # mechanism_param for RSA PSS is (hash_mechanism, mgf, salt_length) per python-pkcs11 conventions.
-# TLS 1.3 mandates salt length == hash length (RFC 8446 §4.2.3).
-# For all other mechanisms, mechanism_param is None.
 _MECHANISM_TABLE: dict[grpc.experimental.PrivateKeySignatureAlgorithm, tuple[Mechanism, Any]] = {
     _Algorithm.RSA_PKCS1_SHA256: (Mechanism.SHA256_RSA_PKCS, None),
     _Algorithm.RSA_PKCS1_SHA384: (Mechanism.SHA384_RSA_PKCS, None),
@@ -86,7 +96,7 @@ class SmartcardPrivateKeySigner:
     def _open_authenticated_session(self, token: Any) -> Any:
         """Open a User session on ``token``. Propagates PinIncorrect and PinLocked to the caller."""
         try:
-            return token.open(user_pin=_prompt_for_pin("Card PIN: "))
+            return token.open(user_pin=_prompt_for_pin(_pin_prompt(token, self._token_label)))
         except (pkcs11.exceptions.PinIncorrect, pkcs11.exceptions.PinLocked, pkcs11.exceptions.PinLenRange):
             raise
         except pkcs11.exceptions.PKCS11Error as e:
@@ -171,9 +181,13 @@ class SmartcardPrivateKeySigner:
         self,
         data_to_sign: bytes,
         signature_algorithm: grpc.experimental.PrivateKeySignatureAlgorithm,
-        on_complete: Any,
+        _on_complete: grpc.experimental.PrivateKeySignOnComplete,
     ) -> bytes:
-        """Sign ``data_to_sign`` on the smartcard and return raw signature bytes."""
+        """Sign ``data_to_sign`` on the smartcard and return raw signature bytes.
+
+        Implements gRPC's ``CustomPrivateKeySign`` contract. We sign synchronously and return the
+        bytes directly, so ``_on_complete`` (the async-completion callback) is accepted but unused.
+        """
         entry = _MECHANISM_TABLE.get(signature_algorithm)
         if entry is None:
             raise SmartcardConfigurationError(
