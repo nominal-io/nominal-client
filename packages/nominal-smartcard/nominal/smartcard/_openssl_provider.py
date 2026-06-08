@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import ssl
 import sys
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import cffi
@@ -20,6 +22,9 @@ from nominal.smartcard._session import SmartcardSession
 # OSSL_STORE_INFO_get_type returns this value for private keys.
 _OSSL_STORE_INFO_PKEY = 4
 _PROVIDER_NAME = "pkcs11"
+
+# `pkcs11-module-path` is set in openssl.cnf but can be overridden.
+_PKCS11_MODULE_ENV_VAR = "PKCS11_PROVIDER_MODULE"
 _OPENSSL_VALIDATION_SYMBOLS = (
     "SSL_CTX_check_private_key",  # libssl
     "OSSL_PROVIDER_load",  # libcrypto, OpenSSL 3 provider API
@@ -53,7 +58,7 @@ def _load_python_ssl_library(ffi: Any) -> Any | None:
     the private ``_ssl`` extension. Resolving cffi symbols through that extension
     lets the dynamic loader follow exactly the same dependency edges Python uses.
 
-    This matters most on macOS: ``dlopen(None)`` may resolve libssl symbols from
+    Specifically on MacOS, ``dlopen(None)`` may resolve libssl symbols from
     Apple's dyld shared-cache compatibility library rather than the Homebrew or
     python.org OpenSSL that created the ``SSL_CTX*`` inside ``ssl.SSLContext``.
     Passing an ``SSL_CTX*`` to functions from that other library can crash the
@@ -188,7 +193,7 @@ def _validate_library_binding(ffi: Any, lib: Any, python_ssl_path: str | None = 
         ) from e
 
 
-def _ensure_provider_loaded(ffi: Any, lib: Any) -> None:
+def _ensure_provider_loaded(ffi: Any, lib: Any, module_path: Path) -> None:
     """Load the named OpenSSL provider once and keep it loaded for process lifetime.
 
     The provider must outlive every SSLContext built from it: the EVP_PKEY installed
@@ -201,6 +206,8 @@ def _ensure_provider_loaded(ffi: Any, lib: Any) -> None:
     with _provider_lock:
         if _loaded_provider is not None:
             return
+        os.environ.setdefault(_PKCS11_MODULE_ENV_VAR, str(module_path))
+
         provider = lib.OSSL_PROVIDER_load(ffi.NULL, _PROVIDER_NAME.encode())
         if provider == ffi.NULL:
             err = _get_openssl_error(ffi, lib)
@@ -277,10 +284,7 @@ def _load_pkey_from_store(ffi: Any, lib: Any, private_key_uri: str) -> Any:
     """Open a PKCS#11 URI via OSSL_STORE and return the first EVP_PKEY found."""
     uri_bytes = private_key_uri.encode()
     uri_buf = ffi.new("char[]", uri_bytes)
-    try:
-        store = lib.OSSL_STORE_open(uri_buf, ffi.NULL, ffi.NULL, ffi.NULL, ffi.NULL)
-    finally:
-        ffi.buffer(uri_buf)[:] = bytes(len(uri_bytes) + 1)
+    store = lib.OSSL_STORE_open(uri_buf, ffi.NULL, ffi.NULL, ffi.NULL, ffi.NULL)
 
     if store == ffi.NULL:
         err = _get_openssl_error(ffi, lib)
@@ -363,7 +367,7 @@ class OpenSslProviderBridge:
 
     def build_ssl_context(self, *, session: SmartcardSession) -> ssl.SSLContext:
         ffi, lib = _load_ffi()
-        _ensure_provider_loaded(ffi, lib)
+        _ensure_provider_loaded(ffi, lib, session.module_path)
 
         pkey = ffi.NULL
         x509 = ffi.NULL

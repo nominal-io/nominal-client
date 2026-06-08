@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import platform
 import ssl
 import threading
 from abc import abstractmethod
@@ -49,18 +50,10 @@ class SmartcardTransportProvider(TransportProvider):
 
     @classmethod
     def create(cls) -> SmartcardTransportProvider:
-        """Return the platform-appropriate smartcard transport provider.
-
-        On Windows, raises ``SmartcardConfigurationError`` — Windows support requires the
-        nominal-smartcard Windows build.
-        """
-        import platform
-
+        """Return the platform-appropriate smartcard transport provider."""
         if platform.system() == "Windows":
-            raise SmartcardConfigurationError(
-                "Windows smartcard authentication is not supported in this build. "
-                "Use the nominal-smartcard Windows build."
-            )
+            raise SmartcardConfigurationError("Windows smartcard authentication is not supported yet.")
+
         return _Pkcs11SmartcardTransportProvider()
 
     def create_grpc_channel_credentials(

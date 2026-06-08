@@ -33,8 +33,6 @@ def _assert_client_auth_eku(candidate: CertificateCandidate) -> None:
 
     RFC 5280 and TLS 1.3 (RFC 8446 §4.4.2.1) require id-kp-clientAuth
     (OID 1.3.6.1.5.5.7.3.2) for certificates used in client authentication.
-    A server that enforces EKU will reject a cert missing this OID; catching
-    it here produces a clear diagnostic instead of a cryptic TLS handshake failure.
     """
     if not candidate.der_certificate:
         raise SmartcardCertificateSelectionError(

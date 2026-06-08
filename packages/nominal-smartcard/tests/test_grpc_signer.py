@@ -17,6 +17,7 @@ from nominal.smartcard._grpc_signer import (
     MAX_PIN_ATTEMPTS,
     SmartcardPrivateKeySigner,
     _encode_ecdsa_der,
+    _pin_prompt,
 )
 
 pytest.importorskip("pkcs11")
@@ -385,3 +386,31 @@ def test_close_idempotent() -> None:
 
     signer.close()
     signer.close()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# _pin_prompt
+# ---------------------------------------------------------------------------
+
+
+def test_pin_prompt_includes_slot_id_and_description() -> None:
+    token = MagicMock()
+    token.slot.slot_id = 0
+    token.slot.slot_description = "Yubico YubiKey OTP+FIDO+CCID"
+
+    assert _pin_prompt(token, "CAC") == "Enter PIN for 'CAC' (Slot 0 - Yubico YubiKey OTP+FIDO+CCID): "
+
+
+def test_pin_prompt_omits_description_when_blank() -> None:
+    token = MagicMock()
+    token.slot.slot_id = 3
+    token.slot.slot_description = "   "
+
+    assert _pin_prompt(token, "CAC") == "Enter PIN for 'CAC' (Slot 3): "
+
+
+def test_pin_prompt_falls_back_to_label_when_slot_unavailable() -> None:
+    token = MagicMock()
+    type(token).slot = property(lambda _: (_ for _ in ()).throw(pkcs11.exceptions.PKCS11Error("no slot")))
+
+    assert _pin_prompt(token, "CAC") == "Enter PIN for 'CAC': "

@@ -24,13 +24,8 @@ _MACOS_OPENSC_PATHS = (
     "/opt/homebrew/lib/opensc-pkcs11.so",
     "/usr/local/lib/opensc-pkcs11.so",
 )
-_WINDOWS_OPENSC_PATHS = (
-    r"C:\Program Files\OpenSC Project\OpenSC\pkcs11\opensc-pkcs11.dll",
-    r"C:\Program Files (x86)\OpenSC Project\OpenSC\pkcs11\opensc-pkcs11.dll",
-)
 
 # Maps PKCS#11 CKA_ID (hex string) to PIV key reference slot label.
-# Per NIST SP 800-73-4 and OpenSC conventions.
 _OBJECT_ID_TO_PIV_SLOT: dict[str, str] = {
     "01": PIV_AUTHENTICATION_SLOT,  # PIV Authentication
     "02": "9C",  # Digital Signature
@@ -65,8 +60,6 @@ def _platform_default_paths() -> tuple[str, ...]:
     system = platform.system()
     if system == "Darwin":
         return _MACOS_OPENSC_PATHS
-    if system == "Windows":
-        return _WINDOWS_OPENSC_PATHS
     if system == "Linux":
         return _LINUX_OPENSC_PATHS
 
