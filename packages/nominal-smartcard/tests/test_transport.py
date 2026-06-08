@@ -27,6 +27,7 @@ from nominal.smartcard._transport import (
     _WindowsSmartcardTransportProvider,
 )
 from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
+from nominal.smartcard._windows_cng_signer import _OID_RSA
 
 _RETRY = Retry(total=0)
 
@@ -98,7 +99,7 @@ def _make_windows_identity() -> WindowsCertificateIdentity:
         subject="CN=Test",
         issuer="CN=Issuer",
         not_after="2099-01-01",
-        public_key_oid="1.2.840.113549.1.1.1",
+        public_key_oid=_OID_RSA,
     )
 
 
@@ -448,6 +449,7 @@ def test_windows_grpc_credentials_use_shared_windows_identity(monkeypatch: pytes
     fake_creds = MagicMock()
     fake_ssl_fn = MagicMock(return_value=fake_creds)
 
+    # _transport imports WindowsCngSigner lazily from its source module, so patch it there.
     monkeypatch.setattr("nominal.smartcard._windows_cng_signer.WindowsCngSigner", FakeWindowsCngSigner)
     with patch("nominal.smartcard._transport.ssl_channel_credentials_with_custom_signer", fake_ssl_fn):
         http_adapter = provider.create_http_adapter(max_retries=_RETRY)
@@ -462,3 +464,16 @@ def test_windows_grpc_credentials_use_shared_windows_identity(monkeypatch: pytes
 
     provider.close()
     assert FakeWindowsCngSigner.instances[0].closed is True
+
+
+def test_windows_close_disposes_shared_identity() -> None:
+    identity = _make_windows_identity()
+    provider = _WindowsSmartcardTransportProvider(_windows_identity=identity)
+
+    provider.close()
+
+    identity.certificate.Dispose.assert_called_once_with()
+    assert provider._windows_identity is None
+    # Idempotent: a second close must not re-dispose or raise.
+    provider.close()
+    identity.certificate.Dispose.assert_called_once_with()

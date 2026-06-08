@@ -5,7 +5,7 @@ from typing import Any
 
 import grpc.experimental
 
-from nominal.smartcard._errors import SmartcardConfigurationError
+from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardRuntimeError
 from nominal.smartcard._signature_utils import encode_ecdsa_der
 from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
 
@@ -51,17 +51,20 @@ class WindowsCngSigner:
         del on_complete
         with self._lock:
             if not self._connected:
-                raise SmartcardConfigurationError("WindowsCngSigner.connect() has not been called yet.")
-            cert = self._identity.certificate
-            public_key_oid = self._identity.public_key_oid
-        try:
-            return _sign_with_cert(cert, public_key_oid, data_to_sign, signature_algorithm)
-        except SmartcardConfigurationError:
-            raise
-        except Exception as exc:
-            raise SmartcardConfigurationError(
-                f"Windows CNG signing failed (algorithm={signature_algorithm!r}): {type(exc).__name__}: {exc}"
-            ) from exc
+                raise SmartcardRuntimeError("WindowsCngSigner.connect() has not been called yet.")
+            try:
+                return _sign_with_cert(
+                    self._identity.certificate,
+                    self._identity.public_key_oid,
+                    data_to_sign,
+                    signature_algorithm,
+                )
+            except SmartcardConfigurationError:
+                raise
+            except Exception as exc:
+                raise SmartcardConfigurationError(
+                    f"Windows CNG signing failed (algorithm={signature_algorithm!r}): {type(exc).__name__}: {exc}"
+                ) from exc
 
     def close(self) -> None:
         with self._lock:
@@ -89,13 +92,23 @@ def _sign_with_cert(
     signature_algorithm: grpc.experimental.PrivateKeySignatureAlgorithm,
 ) -> bytes:
     """Dispatch signing to the RSA or ECDSA CNG key attached to ``cert``."""
+    import clr  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    clr.AddReference("System.Core")
+
     from System import Array, Byte  # type: ignore[import-not-found]
     from System.Security.Cryptography import HashAlgorithmName, RSASignaturePadding  # type: ignore[import-not-found]
+    from System.Security.Cryptography.X509Certificates import (  # type: ignore[import-not-found]
+        ECDsaCertificateExtensions,
+        RSACertificateExtensions,
+    )
 
     data_net = Array[Byte](data_to_sign)
 
     if public_key_oid == _OID_RSA:
-        key = cert.GetRSAPrivateKey()
+        # GetRSAPrivateKey is a C# extension method; pythonnet does not expose extension
+        # methods as instance methods, so call it statically with the cert as first arg.
+        key = RSACertificateExtensions.GetRSAPrivateKey(cert)
         if key is None:
             raise SmartcardConfigurationError(
                 "Certificate has no RSA private key accessible via CNG. "
@@ -107,7 +120,7 @@ def _sign_with_cert(
             key.Dispose()
 
     if public_key_oid == _OID_EC:
-        key = cert.GetECDsaPrivateKey()
+        key = ECDsaCertificateExtensions.GetECDsaPrivateKey(cert)
         if key is None:
             raise SmartcardConfigurationError(
                 "Certificate has no ECDSA private key accessible via CNG. "

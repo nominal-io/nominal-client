@@ -5,10 +5,12 @@ import io
 import os
 import threading
 from typing import Any, Mapping
+from urllib.parse import urlsplit, urlunsplit
 
+import certifi
 import requests
 from requests.adapters import CaseInsensitiveDict, HTTPAdapter
-from requests.utils import select_proxy
+from requests.utils import get_auth_from_url, select_proxy
 from urllib3.exceptions import ConnectTimeoutError, MaxRetryError, ReadTimeoutError, ResponseError
 from urllib3.util.retry import Retry
 
@@ -23,9 +25,10 @@ _SKIP_HEADERS: frozenset[str] = frozenset(
 
 
 class _RawResponseBody(io.BytesIO):
-    """Streaming endpoints set ``raw.decode_content`` and may call ``raw.read(decode_content=...)``;
+    """A ``BytesIO`` that tolerates the extra keyword arguments urllib3 passes to ``read``.
 
-    plain ``BytesIO.read`` rejects that keyword. The body is already decompressed by .NET, so we
+    Streaming endpoints set ``raw.decode_content`` and may call ``raw.read(decode_content=...)``,
+    but plain ``BytesIO.read`` rejects that keyword. The body is already decompressed by .NET, so we
     accept and ignore ``decode_content``/``cache_content`` to match urllib3's ``read`` signature.
     """
 
@@ -112,8 +115,6 @@ def _assert_supported_verify(verify: bool | str | os.PathLike[str] | None) -> No
         ) from exc
 
     try:
-        import certifi  # noqa: PLC0415
-
         default_certifi_path = os.path.abspath(certifi.where())
     except Exception:
         default_certifi_path = None
@@ -125,6 +126,31 @@ def _assert_supported_verify(verify: bool | str | os.PathLike[str] | None) -> No
         f"({verify_path}). Import that CA into the Windows certificate store, or omit trust_store_path "
         "so Schannel validates against Windows trust."
     )
+
+
+def _enable_modern_tls() -> None:
+    r"""Ensure TLS 1.2 (and 1.3 when available) is enabled for the process."""
+    from System.Net import SecurityProtocolType, ServicePointManager  # type: ignore[import-not-found]
+
+    protocol = SecurityProtocolType.Tls12
+    tls13 = getattr(SecurityProtocolType, "Tls13", None)
+    if tls13 is not None:
+        protocol |= tls13
+    # OR the modern protocols onto whatever is already enabled rather than replacing it.
+    ServicePointManager.SecurityProtocol |= protocol
+
+
+def _build_web_proxy(proxy_url: str, *, WebProxy: Any, NetworkCredential: Any) -> Any:
+    r"""Build a .NET ``WebProxy`` from a requests-style proxy URL, forwarding embedded credentials."""
+    username, password = get_auth_from_url(proxy_url)
+    parts = urlsplit(proxy_url)
+
+    # Strip any "userinfo@" prefix so WebProxy receives only scheme://host:port.
+    address = urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, parts.query, parts.fragment))
+    proxy = WebProxy(address)
+    if username or password:
+        proxy.Credentials = NetworkCredential(username, password)
+    return proxy
 
 
 def _build_http_client(*, client_certificate: Any, proxy_url: str | None = None) -> Any:
@@ -139,14 +165,16 @@ def _build_http_client(*, client_certificate: Any, proxy_url: str | None = None)
     clr.AddReference("System.Net.Http")
 
     from System import TimeSpan  # type: ignore[import-not-found]
-    from System.Net import DecompressionMethods, WebProxy  # type: ignore[import-not-found]
+    from System.Net import DecompressionMethods, NetworkCredential, WebProxy
     from System.Net.Http import ClientCertificateOption, HttpClient, HttpClientHandler  # type: ignore[import-not-found]
+
+    _enable_modern_tls()
 
     handler = HttpClientHandler()
     handler.AllowAutoRedirect = False
     handler.UseProxy = proxy_url is not None
     if proxy_url is not None:
-        handler.Proxy = WebProxy(proxy_url)
+        handler.Proxy = _build_web_proxy(proxy_url, WebProxy=WebProxy, NetworkCredential=NetworkCredential)
     # AutomaticDecompression causes .NET to add its own Accept-Encoding header and
     # decompress the response transparently. Accept-Encoding must not be forwarded
     # from Python (it is listed in _SKIP_HEADERS).
@@ -206,8 +234,6 @@ def _dotnet_send(
         for header in net_response.Content.Headers:
             resp_headers[header.Key] = ", ".join(str(v) for v in header.Value)
 
-        # Redirects are disabled (AllowAutoRedirect=False), so the final URL is always the
-        # URL we sent; return it directly rather than reaching through RequestMessage.
         return (
             int(net_response.StatusCode),
             net_response.ReasonPhrase or "",
@@ -271,9 +297,6 @@ def _dotnet_send_with_retries(
             retries.sleep()
             continue
 
-        # urllib3's get_retry_after does a case-sensitive headers.get("Retry-After"); a plain
-        # dict keyed by the server's casing (lowercase under HTTP/2) would drop the delay and
-        # silently fall back to backoff. CaseInsensitiveDict makes the lookup case-insensitive.
         retry_headers = CaseInsensitiveDict(resp_headers)
         retry_response = _RetryResponse(status=status_code, headers=retry_headers)
         has_retry_after = "retry-after" in retry_headers
@@ -292,36 +315,9 @@ def _dotnet_send_with_retries(
 class WindowsCacAdapter(HTTPAdapter):
     r"""requests HTTPAdapter backed by the Windows .NET HttpClient + Schannel CAC transport.
 
-    Uses pythonnet to call ``System.Net.Http.HttpClient`` directly — no subprocess
-    overhead, no PowerShell bridge, no per-request process spawning. The transport
+    Uses pythonnet to call ``System.Net.Http.HttpClient`` directly. The transport
     provider selects one Windows client-auth certificate and passes it here; Schannel
     performs the TLS handshake and PIN prompting through the Windows credential UI.
-
-    Server certificate validation is always performed by Schannel using the Windows
-    trust store. DoD root CAs are already present there on a standard CAC install.
-    The default certifi ``verify`` path is accepted for compatibility with the core
-    client, but custom CA bundle paths are rejected because they cannot be honored by
-    this Schannel-backed adapter. ``verify=False`` does not weaken the connection.
-
-    Lifecycle:
-        The underlying ``HttpClient`` is created once at construction time and
-        reused across all requests, following .NET best practices for connection
-        pooling. Call ``close()`` to dispose it when the adapter is no longer needed.
-
-    Compression:
-        Request bodies are gzip-compressed before sending, mirroring the behaviour
-        of ``NominalRequestsAdapter`` on non-Windows platforms.
-
-    Retries:
-        The adapter honors the ``Retry`` instance passed as ``max_retries`` for
-        transport failures and retryable HTTP status codes.
-
-    Limitations:
-        - Responses are fully buffered into memory; ``stream=True`` does not yield a true
-          streaming body, so very large downloads are materialized in full. (This adapter
-          carries Nominal API traffic; S3 presigned transfers use a different adapter.)
-        - ``Set-Cookie`` is not extracted into the session cookie jar. The Nominal API uses
-          header-based auth, so no cookie state is relied upon.
     """
 
     def __init__(self, *args: Any, client_certificate: Any, **kwargs: Any) -> None:
@@ -330,9 +326,6 @@ class WindowsCacAdapter(HTTPAdapter):
         self._net_clients: dict[Any, Any] = {}
         self._net_clients_lock = threading.Lock()
         self._closed = False
-        # Schannel prompts for PIN on the first TLS handshake. If multiple threads race to send
-        # their first request concurrently, each in-flight handshake triggers a separate prompt.
-        # Serialize the first request so the PIN is cached once before threads run freely.
         self._tls_warmed = False
         self._tls_warm_lock = threading.Lock()
 

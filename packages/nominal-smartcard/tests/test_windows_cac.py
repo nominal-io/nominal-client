@@ -5,7 +5,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,6 +15,7 @@ from urllib3.util.retry import Retry
 from nominal.smartcard._errors import SmartcardConfigurationError
 from nominal.smartcard._windows_cac import (
     WindowsCacAdapter,
+    _build_web_proxy,
     _timeout_to_seconds,
 )
 
@@ -45,7 +46,7 @@ def _prepared(
 
 
 @pytest.fixture
-def adapter() -> WindowsCacAdapter:
+def adapter() -> Iterator[WindowsCacAdapter]:
     """A WindowsCacAdapter with the .NET client creation mocked out."""
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
         yield _make_adapter()
@@ -370,7 +371,6 @@ def test_retry_after_case_insensitive() -> None:
 
 
 def test_retry_after_duration_is_honored_for_lowercase_header() -> None:
-    # Not just that a retry happens, but that the server's Retry-After *delay* is actually used.
     # urllib3 looks up "Retry-After" case-sensitively, so a lowercase (HTTP/2) header must be
     # surfaced through a case-insensitive mapping or the delay is silently dropped to backoff.
     with patch("nominal.smartcard._windows_cac._build_http_client", return_value=MagicMock()):
@@ -646,6 +646,7 @@ def test_create_http_adapter_returns_windows_cac_adapter_on_windows() -> None:
 
     from nominal.smartcard._transport import _WindowsSmartcardTransportProvider
     from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
+    from nominal.smartcard._windows_cng_signer import _OID_RSA
 
     selected_certificate = MagicMock(name="selected_windows_certificate")
     identity = WindowsCertificateIdentity(
@@ -655,7 +656,7 @@ def test_create_http_adapter_returns_windows_cac_adapter_on_windows() -> None:
         subject="CN=Test",
         issuer="CN=Issuer",
         not_after="2099-01-01",
-        public_key_oid="1.2.840.113549.1.1.1",
+        public_key_oid=_OID_RSA,
     )
     provider = _WindowsSmartcardTransportProvider(_windows_identity=identity)
 
@@ -664,3 +665,46 @@ def test_create_http_adapter_returns_windows_cac_adapter_on_windows() -> None:
     assert isinstance(result, WindowsCacAdapter)
     assert result._client_certificate is selected_certificate
     result.close()
+
+
+# ---------------------------------------------------------------------------
+# _build_web_proxy — embedded proxy credentials are forwarded to the .NET WebProxy
+# ---------------------------------------------------------------------------
+
+
+class _FakeWebProxy:
+    def __init__(self, address: str) -> None:
+        self.address = address
+        self.Credentials: Any = None
+
+
+class _FakeNetworkCredential:
+    def __init__(self, username: str, password: str) -> None:
+        self.username = username
+        self.password = password
+
+
+def test_build_web_proxy_without_credentials_passes_address_through() -> None:
+    proxy = _build_web_proxy("http://proxy.corp:8080", WebProxy=_FakeWebProxy, NetworkCredential=_FakeNetworkCredential)
+    assert proxy.address == "http://proxy.corp:8080"
+    assert proxy.Credentials is None
+
+
+def test_build_web_proxy_forwards_embedded_credentials() -> None:
+    # The stock requests adapter would emit Proxy-Authorization for this URL; the Windows adapter
+    # must instead attach the (percent-decoded) credentials to the WebProxy.
+    proxy = _build_web_proxy(
+        "http://user:p%40ss@proxy.corp:8080", WebProxy=_FakeWebProxy, NetworkCredential=_FakeNetworkCredential
+    )
+    assert proxy.address == "http://proxy.corp:8080"  # userinfo stripped from the address
+    assert isinstance(proxy.Credentials, _FakeNetworkCredential)
+    assert proxy.Credentials.username == "user"
+    assert proxy.Credentials.password == "p@ss"
+
+
+def test_build_web_proxy_preserves_ipv6_host() -> None:
+    proxy = _build_web_proxy(
+        "http://user:pass@[::1]:3128", WebProxy=_FakeWebProxy, NetworkCredential=_FakeNetworkCredential
+    )
+    assert proxy.address == "http://[::1]:3128"
+    assert proxy.Credentials.username == "user"

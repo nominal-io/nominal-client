@@ -11,7 +11,7 @@ import pkcs11.exceptions
 from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError
-from nominal.smartcard._signature_utils import encode_ecdsa_der as _encode_ecdsa_der
+from nominal.smartcard._signature_utils import encode_ecdsa_der
 
 _Algorithm = grpc.experimental.PrivateKeySignatureAlgorithm
 
@@ -189,7 +189,7 @@ class SmartcardPrivateKeySigner:
                 raise SmartcardConfigurationError(f"PKCS#11 signing failed ({signature_algorithm!r}): {e}") from e
 
         if signature_algorithm in _ECDSA_ALGORITHMS:
-            return _encode_ecdsa_der(raw_sig)
+            return encode_ecdsa_der(raw_sig)
         return raw_sig
 
     def close(self) -> None:
