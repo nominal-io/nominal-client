@@ -140,9 +140,7 @@ def test_build_pkcs11_uri_empty_id() -> None:
 
 
 def test_build_pkcs11_uri_with_object_type() -> None:
-    assert (
-        _build_pkcs11_uri("CAC", b"\x01", object_type="private") == "pkcs11:token=CAC;id=%01;type=private"
-    )
+    assert _build_pkcs11_uri("CAC", b"\x01", object_type="private") == "pkcs11:token=CAC;id=%01;type=private"
 
 
 # DefaultPkcs11Backend
