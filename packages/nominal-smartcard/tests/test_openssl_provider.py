@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import ssl
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -85,7 +87,7 @@ def test_get_openssl_error_returns_unknown_when_no_error() -> None:
 def test_get_openssl_error_returns_formatted_string() -> None:
     ffi = MagicMock()
     lib = MagicMock()
-    lib.ERR_get_error.return_value = 42
+    lib.ERR_get_error.side_effect = [42, 0]
     fake_buf = MagicMock()
     ffi.new.return_value = fake_buf
     ffi.string.return_value = b"error:1234:some library:some function:some reason"
@@ -158,16 +160,6 @@ def test_load_x509_from_der_raises_on_invalid_der() -> None:
 
     with pytest.raises(SmartcardConfigurationError, match="Failed to parse DER certificate"):
         _load_x509_from_der(ffi, lib, b"\xff\xff\xff\xff")
-
-
-def test_load_x509_from_der_raises_on_truncated_der() -> None:
-    ffi = MagicMock()
-    lib = MagicMock()
-    lib.d2i_X509.return_value = ffi.NULL
-    lib.ERR_get_error.return_value = 0
-
-    with pytest.raises(SmartcardConfigurationError, match="Failed to parse DER certificate"):
-        _load_x509_from_der(ffi, lib, b"\x30\x82")
 
 
 # _python_ssl_extension_path
@@ -375,7 +367,7 @@ def test_ensure_provider_loaded_raises_when_load_fails(monkeypatch: pytest.Monke
     lib.ERR_get_error.return_value = 0
 
     with pytest.raises(SmartcardConfigurationError, match="Failed to load OpenSSL provider"):
-        _ensure_provider_loaded(ffi, lib)
+        _ensure_provider_loaded(ffi, lib, Path("/fake/opensc-pkcs11.so"))
 
 
 def test_ensure_provider_loaded_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -386,6 +378,36 @@ def test_ensure_provider_loaded_is_idempotent(monkeypatch: pytest.MonkeyPatch) -
 
     ffi = MagicMock()
     lib = MagicMock()
-    _ensure_provider_loaded(ffi, lib)
+    _ensure_provider_loaded(ffi, lib, Path("/fake/opensc-pkcs11.so"))
 
     lib.OSSL_PROVIDER_load.assert_not_called()
+
+
+def test_ensure_provider_loaded_publishes_module_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
+    monkeypatch.setattr(mod, "_loaded_provider", None)
+    monkeypatch.delenv(mod._PKCS11_MODULE_ENV_VAR, raising=False)
+
+    ffi = MagicMock()
+    lib = MagicMock()
+    lib.OSSL_PROVIDER_load.return_value = object()
+
+    _ensure_provider_loaded(ffi, lib, Path("/fake/opensc-pkcs11.so"))
+
+    assert os.environ[mod._PKCS11_MODULE_ENV_VAR] == "/fake/opensc-pkcs11.so"
+
+
+def test_ensure_provider_loaded_respects_preset_module_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    import nominal.smartcard._openssl_provider as mod
+
+    monkeypatch.setattr(mod, "_loaded_provider", None)
+    monkeypatch.setenv(mod._PKCS11_MODULE_ENV_VAR, "/preset/module.so")
+
+    ffi = MagicMock()
+    lib = MagicMock()
+    lib.OSSL_PROVIDER_load.return_value = object()
+
+    _ensure_provider_loaded(ffi, lib, Path("/fake/opensc-pkcs11.so"))
+
+    assert os.environ[mod._PKCS11_MODULE_ENV_VAR] == "/preset/module.so"
