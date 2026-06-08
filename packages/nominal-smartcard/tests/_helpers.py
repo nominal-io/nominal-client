@@ -3,8 +3,8 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 
-from nominal.smartcard._cert_selection import CertificateCandidate
-from nominal.smartcard._pkcs11 import Pkcs11Backend
+from nominal.smartcard.pkcs11._cert_selection import CertificateCandidate
+from nominal.smartcard.pkcs11._discovery import Pkcs11Backend
 
 # Minimal DER stub — not a valid X.509 certificate.
 # Use _make_der_cert() when the test needs a parseable cert (e.g. EKU checks).
@@ -44,10 +44,10 @@ def _candidate(
     *,
     label: str = "PIV Authentication",
     slot: str | None = "9A",
-    certificate_uri: str = "pkcs11:token=CAC;id=%01;type=cert",
-    private_key_uri: str = "pkcs11:token=CAC;id=%01;type=private",
+    certificate_uri: str = "pkcs11:token=SMARTCARD;id=%01;type=cert",
+    private_key_uri: str = "pkcs11:token=SMARTCARD;id=%01;type=private",
     der_certificate: bytes = FAKE_DER,
-    token_label: str = "CAC",
+    token_label: str = "SMARTCARD",
     object_id_bytes: bytes | None = b"\x01",
 ) -> CertificateCandidate:
     return CertificateCandidate(

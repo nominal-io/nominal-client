@@ -111,7 +111,7 @@ def _assert_supported_verify(verify: bool | str | os.PathLike[str] | None) -> No
         verify_path = os.path.abspath(os.fspath(verify))
     except TypeError as exc:
         raise SmartcardConfigurationError(
-            f"Windows CAC transport only supports Schannel's Windows trust store. Unsupported verify value: {verify!r}."
+            f"Windows smartcard transport only supports Schannel's Windows trust store. Unsupported verify value: {verify!r}."
         ) from exc
 
     try:
@@ -122,7 +122,7 @@ def _assert_supported_verify(verify: bool | str | os.PathLike[str] | None) -> No
         return
 
     raise SmartcardConfigurationError(
-        "Windows CAC transport uses Schannel and cannot honor a custom Python CA bundle "
+        "Windows smartcard transport uses Schannel and cannot honor a custom Python CA bundle "
         f"({verify_path}). Import that CA into the Windows certificate store, or omit trust_store_path "
         "so Schannel validates against Windows trust."
     )
@@ -154,7 +154,7 @@ def _build_web_proxy(proxy_url: str, *, WebProxy: Any, NetworkCredential: Any) -
 
 
 def _build_http_client(*, client_certificate: Any, proxy_url: str | None = None) -> Any:
-    r"""Create and return a .NET ``System.Net.Http.HttpClient`` for Schannel CAC auth.
+    r"""Create and return a .NET ``System.Net.Http.HttpClient`` for Schannel smartcard auth.
 
     Args:
         client_certificate: Selected .NET ``X509Certificate2`` client certificate.
@@ -244,9 +244,9 @@ def _dotnet_send(
     except Exception as exc:
         if cts.IsCancellationRequested:
             raise requests.exceptions.Timeout(
-                f"Windows CAC request timed out after {timeout_seconds:g}s: {method} {url}"
+                f"Windows smartcard request timed out after {timeout_seconds:g}s: {method} {url}"
             ) from exc
-        raise requests.exceptions.ConnectionError(f"Windows CAC request failed: {method} {url}: {exc}") from exc
+        raise requests.exceptions.ConnectionError(f"Windows smartcard request failed: {method} {url}: {exc}") from exc
     finally:
         cts.Dispose()
         if net_response is not None:
@@ -312,8 +312,8 @@ def _dotnet_send_with_retries(
         return status_code, reason, resp_headers, resp_body, final_url
 
 
-class WindowsCacAdapter(HTTPAdapter):
-    r"""requests HTTPAdapter backed by the Windows .NET HttpClient + Schannel CAC transport.
+class WindowsHttpAdapter(HTTPAdapter):
+    r"""requests HTTPAdapter backed by the Windows .NET HttpClient + Schannel smartcard transport.
 
     Uses pythonnet to call ``System.Net.Http.HttpClient`` directly. The transport
     provider selects one Windows client-auth certificate and passes it here; Schannel
@@ -347,7 +347,7 @@ class WindowsCacAdapter(HTTPAdapter):
         proxies: Mapping[str, str] | None = None,
     ) -> requests.Response:
         if self._closed:
-            raise RuntimeError("WindowsCacAdapter is closed and cannot send requests.")
+            raise RuntimeError("WindowsHttpAdapter is closed and cannot send requests.")
         _assert_supported_verify(verify)
         proxy_url = select_proxy(str(request.url), proxies)
         client = self._get_http_client(proxy_url=proxy_url)

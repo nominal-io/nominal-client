@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from _helpers import FAKE_DER
 
-from nominal.smartcard import _pkcs11
+from nominal.smartcard.pkcs11 import _discovery as _pkcs11
 from nominal.smartcard._errors import SmartcardConfigurationError
-from nominal.smartcard._pkcs11 import (
+from nominal.smartcard.pkcs11._discovery import (
     NOMINAL_PKCS11_MODULE_ENV_VAR,
     DefaultPkcs11Backend,
     _build_pkcs11_uri,
@@ -45,7 +45,7 @@ def _make_mock_pkcs11_env() -> tuple[Any, Any]:
     session_cm.__exit__ = MagicMock(return_value=False)
 
     mock_token = MagicMock()
-    mock_token.label = "CAC TOKEN     "
+    mock_token.label = "SMARTCARD TOKEN     "
     mock_token.open.return_value = session_cm
 
     mock_slot = MagicMock()
@@ -97,7 +97,7 @@ def test_discover_pkcs11_module_raises_when_no_platform_path_exists(
 
 
 def test_pct_encode_pk11_pchar_passes_safe_alphanumeric() -> None:
-    assert _pct_encode_pk11_pchar("CAC") == "CAC"
+    assert _pct_encode_pk11_pchar("SMARTCARD") == "SMARTCARD"
 
 
 def test_pct_encode_pk11_pchar_encodes_space() -> None:
@@ -132,15 +132,15 @@ def test_build_pkcs11_uri_single_byte() -> None:
 
 
 def test_build_pkcs11_uri_multi_byte() -> None:
-    assert _build_pkcs11_uri("CAC", b"\x0a\xff") == "pkcs11:token=CAC;id=%0a%ff"
+    assert _build_pkcs11_uri("SMARTCARD", b"\x0a\xff") == "pkcs11:token=SMARTCARD;id=%0a%ff"
 
 
 def test_build_pkcs11_uri_empty_id() -> None:
-    assert _build_pkcs11_uri("CAC", b"") == "pkcs11:token=CAC;id="
+    assert _build_pkcs11_uri("SMARTCARD", b"") == "pkcs11:token=SMARTCARD;id="
 
 
 def test_build_pkcs11_uri_with_object_type() -> None:
-    assert _build_pkcs11_uri("CAC", b"\x01", object_type="private") == "pkcs11:token=CAC;id=%01;type=private"
+    assert _build_pkcs11_uri("SMARTCARD", b"\x01", object_type="private") == "pkcs11:token=SMARTCARD;id=%01;type=private"
 
 
 # DefaultPkcs11Backend
@@ -159,8 +159,8 @@ def test_default_pkcs11_backend_list_certificate_candidates(tmp_path: Path) -> N
     c = candidates[0]
     assert c.label == "PIV Authentication"
     assert c.slot == "9A"
-    assert c.certificate_uri == "pkcs11:token=CAC%20TOKEN;id=%01;type=cert"
-    assert c.private_key_uri == "pkcs11:token=CAC%20TOKEN;id=%01;type=private"
+    assert c.certificate_uri == "pkcs11:token=SMARTCARD%20TOKEN;id=%01;type=cert"
+    assert c.private_key_uri == "pkcs11:token=SMARTCARD%20TOKEN;id=%01;type=private"
     assert c.der_certificate == FAKE_DER
 
 

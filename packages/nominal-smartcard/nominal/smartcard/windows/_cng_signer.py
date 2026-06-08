@@ -7,7 +7,7 @@ import grpc.experimental
 
 from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardRuntimeError
 from nominal.smartcard._signature_utils import encode_ecdsa_der
-from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
+from nominal.smartcard.windows._cert_store import WindowsCertificateIdentity
 
 _Algorithm = grpc.experimental.PrivateKeySignatureAlgorithm
 

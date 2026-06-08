@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError
-from nominal.smartcard._grpc_signer import (
+from nominal.smartcard.pkcs11._grpc_signer import (
     MAX_PIN_ATTEMPTS,
     SmartcardPrivateKeySigner,
     _pin_prompt,
@@ -28,12 +28,12 @@ _A = grpc.experimental.PrivateKeySignatureAlgorithm
 @pytest.fixture(autouse=True)
 def _default_pin(monkeypatch: pytest.MonkeyPatch) -> None:
     """Patch _prompt_for_pin so tests never block on getpass."""
-    monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda _: "123456")
+    monkeypatch.setattr("nominal.smartcard.pkcs11._grpc_signer._prompt_for_pin", lambda _: "123456")
 
 
 @contextmanager
 def _patch_pkcs11(pkcs11_mod: MagicMock) -> Iterator[None]:
-    with patch("nominal.smartcard._grpc_signer.pkcs11", pkcs11_mod):
+    with patch("nominal.smartcard.pkcs11._grpc_signer.pkcs11", pkcs11_mod):
         yield
 
 
@@ -45,7 +45,7 @@ def _patch_pkcs11(pkcs11_mod: MagicMock) -> Iterator[None]:
 def _make_signer(
     *,
     module_path: Path | None = None,
-    token_label: str = "CAC",
+    token_label: str = "SMARTCARD",
     object_id_bytes: bytes = b"\x01",
 ) -> SmartcardPrivateKeySigner:
     return SmartcardPrivateKeySigner(
@@ -57,7 +57,7 @@ def _make_signer(
 
 def _fake_pkcs11_module(
     *,
-    token_label: str = "CAC",
+    token_label: str = "SMARTCARD",
     sign_return: bytes = b"\x00" * 64,
     pin_error: type[Exception] | None = None,
     key_error: type[Exception] | None = None,
@@ -184,7 +184,7 @@ def test_pin_prompted_in_connect_not_in_sign() -> None:
 
     signer = _make_signer()
 
-    with _patch_pkcs11(pkcs11_mod), patch("nominal.smartcard._grpc_signer._prompt_for_pin", counting_pin):
+    with _patch_pkcs11(pkcs11_mod), patch("nominal.smartcard.pkcs11._grpc_signer._prompt_for_pin", counting_pin):
         signer.connect()  # 1 prompt — session established
         signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)  # uses cached session
         signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)  # uses cached session
@@ -292,7 +292,7 @@ def test_pin_len_range_then_correct_succeeds() -> None:
 
 def test_token_not_found_raises_configuration_error() -> None:
     pkcs11_mod = _fake_pkcs11_module(token_label="OTHER_TOKEN")
-    signer = _make_signer(token_label="CAC")
+    signer = _make_signer(token_label="SMARTCARD")
 
     with _patch_pkcs11(pkcs11_mod):
         with pytest.raises(SmartcardConfigurationError, match="not found"):
@@ -368,7 +368,7 @@ def test_pin_prompt_includes_slot_id_and_description() -> None:
     token.slot.slot_id = 0
     token.slot.slot_description = "Yubico YubiKey OTP+FIDO+CCID"
 
-    assert _pin_prompt(token, "CAC") == "Enter PIN for 'CAC' (Slot 0 - Yubico YubiKey OTP+FIDO+CCID): "
+    assert _pin_prompt(token, "SMARTCARD") == "Enter PIN for 'SMARTCARD' (Slot 0 - Yubico YubiKey OTP+FIDO+CCID): "
 
 
 def test_pin_prompt_omits_description_when_blank() -> None:
@@ -376,11 +376,11 @@ def test_pin_prompt_omits_description_when_blank() -> None:
     token.slot.slot_id = 3
     token.slot.slot_description = "   "
 
-    assert _pin_prompt(token, "CAC") == "Enter PIN for 'CAC' (Slot 3): "
+    assert _pin_prompt(token, "SMARTCARD") == "Enter PIN for 'SMARTCARD' (Slot 3): "
 
 
 def test_pin_prompt_falls_back_to_label_when_slot_unavailable() -> None:
     token = MagicMock()
     type(token).slot = property(lambda _: (_ for _ in ()).throw(pkcs11.exceptions.PKCS11Error("no slot")))
 
-    assert _pin_prompt(token, "CAC") == "Enter PIN for 'CAC': "
+    assert _pin_prompt(token, "SMARTCARD") == "Enter PIN for 'SMARTCARD': "

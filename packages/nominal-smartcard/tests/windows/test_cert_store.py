@@ -8,7 +8,7 @@ from typing import Any, Iterator
 import pytest
 
 from nominal.smartcard._errors import SmartcardConfigurationError
-from nominal.smartcard._windows_cert_store import (
+from nominal.smartcard.windows._cert_store import (
     _OID_CLIENT_AUTH,
     _OID_ENHANCED_KEY_USAGE,
     _OID_KEY_USAGE,
@@ -19,7 +19,7 @@ from nominal.smartcard._windows_cert_store import (
     _select_certificate,
     _to_identity,
 )
-from nominal.smartcard._windows_cng_signer import _OID_RSA
+from nominal.smartcard.windows._cng_signer import _OID_RSA
 
 _DOTNET_MODULE_NAMES = (
     "System",
@@ -59,8 +59,8 @@ def _fake_dotnet_key_usage_flags() -> Iterator[None]:
                 sys.modules[name] = module
 
 
-# clientAuth / EKU / KeyUsage OIDs are imported from _windows_cert_store and the RSA public-key
-# OID (_OID_RSA) from _windows_cng_signer; only OIDs with no source-side definition live here.
+# clientAuth / EKU / KeyUsage OIDs are imported from _cert_store and the RSA public-key
+# OID (_OID_RSA) from _cng_signer; only OIDs with no source-side definition live here.
 _OID_EMAIL_PROTECTION = "1.3.6.1.5.5.7.3.4"
 
 # X509KeyUsageFlags bit values (the .NET public-API encoding the selection logic relies on).
@@ -151,7 +151,7 @@ def _piv_auth_cert(**overrides: Any) -> _FakeCert:
 
 
 def _signature_cert(**overrides: Any) -> _FakeCert:
-    """A CAC digital-signature cert that also carries clientAuth (no Smart Card Logon)."""
+    """A smartcard digital-signature cert that also carries clientAuth (no Smart Card Logon)."""
     defaults: dict[str, Any] = dict(
         extensions=[
             _eku(_OID_CLIENT_AUTH, _OID_EMAIL_PROTECTION),
@@ -164,7 +164,7 @@ def _signature_cert(**overrides: Any) -> _FakeCert:
 
 
 def _encryption_cert(**overrides: Any) -> _FakeCert:
-    """A CAC key-management cert: clientAuth but keyEncipherment only (no digitalSignature)."""
+    """A smartcard key-management cert: clientAuth but keyEncipherment only (no digitalSignature)."""
     defaults: dict[str, Any] = dict(
         extensions=[_eku(_OID_CLIENT_AUTH, _OID_EMAIL_PROTECTION), _key_usage(_KU_KEY_ENCIPHERMENT)],
         subject="CN=Encryption",
@@ -256,7 +256,7 @@ def test_unusable_without_client_auth_eku() -> None:
 
 
 def test_unusable_without_digital_signature_key_usage() -> None:
-    # The CAC encryption certificate: clientAuth EKU but keyEncipherment-only key usage.
+    # The smartcard encryption certificate: clientAuth EKU but keyEncipherment-only key usage.
     assert _is_usable_client_certificate(_encryption_cert(), _NOW) is False
 
 
@@ -296,8 +296,8 @@ def test_select_no_usable_certificate_raises() -> None:
         _select_certificate([_encryption_cert(), _piv_auth_cert(not_after=_YEAR_AGO)], now=_NOW)
 
 
-def test_select_prefers_smartcard_logon_cert_on_real_cac() -> None:
-    # The headline CAC scenario: the PIV Authentication cert AND the digital-signature cert
+def test_select_prefers_smartcard_logon_cert_on_real_smartcard() -> None:
+    # The headline smartcard scenario: the PIV Authentication cert AND the digital-signature cert
     # both pass the client-auth filter. The Smart Card Logon EKU breaks the tie toward the
     # PIV Authentication certificate — the same identity the PKCS#11 path selects via slot 9A.
     piv = _piv_auth_cert()

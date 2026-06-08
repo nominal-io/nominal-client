@@ -22,7 +22,7 @@ class WindowsCertificateIdentity:
 
     The ``certificate`` field is a .NET ``X509Certificate2`` whose private key
     remains managed by Windows. It is shared by the Windows HTTP adapter and the
-    Windows CNG gRPC signer so every transport presents the same CAC identity.
+    Windows CNG gRPC signer so every transport presents the same smartcard identity.
     """
 
     certificate: Any
@@ -56,7 +56,7 @@ def select_windows_certificate() -> WindowsCertificateIdentity:
     r"""Open ``CurrentUser\My`` and select the client-auth certificate to authenticate with.
 
     Shared by the Windows HTTP adapter and the Windows CNG gRPC signer so every
-    transport presents the same CAC identity.
+    transport presents the same smartcard identity.
     """
     import clr  # type: ignore[import-untyped]  # noqa: PLC0415
 
@@ -94,7 +94,7 @@ def _select_certificate(certificates: Any, *, now: Any) -> WindowsCertificateIde
     if not usable:
         raise SmartcardConfigurationError(
             "No unexpired client-auth certificate with an accessible private key was found in CurrentUser\\My. "
-            "Insert your CAC/smart card and ensure the Windows Smart Card service is running."
+            "Insert your smart card and ensure the Windows Smart Card service is running."
         )
 
     logon = [identity for cert, identity in usable if _has_eku(cert, _OID_SMARTCARD_LOGON)]

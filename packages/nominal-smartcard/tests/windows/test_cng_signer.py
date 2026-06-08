@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nominal.smartcard._errors import SmartcardConfigurationError, SmartcardRuntimeError
-from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
-from nominal.smartcard._windows_cng_signer import _OID_RSA, WindowsCngSigner, _Algorithm, _sign_ecdsa, _sign_rsa
+from nominal.smartcard.windows._cert_store import WindowsCertificateIdentity
+from nominal.smartcard.windows._cng_signer import _OID_RSA, WindowsCngSigner, _Algorithm, _sign_ecdsa, _sign_rsa
 
 # ---------------------------------------------------------------------------
 # _sign_rsa
@@ -82,8 +82,8 @@ def test_sign_ecdsa_rejects_rsa_algorithm() -> None:
 # WindowsCngSigner public surface (connect / sign / close)
 # ---------------------------------------------------------------------------
 
-_SIGN = "nominal.smartcard._windows_cng_signer._sign_with_cert"
-_WARMUP = "nominal.smartcard._windows_cng_signer._warmup_sign"
+_SIGN = "nominal.smartcard.windows._cng_signer._sign_with_cert"
+_WARMUP = "nominal.smartcard.windows._cng_signer._warmup_sign"
 
 
 def _make_signer(public_key_oid: str = _OID_RSA) -> tuple[WindowsCngSigner, WindowsCertificateIdentity]:

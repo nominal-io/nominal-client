@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from _helpers import _candidate, _make_der_cert
 
-from nominal.smartcard._cert_selection import _assert_client_auth_eku, select_piv_authentication_certificate
+from nominal.smartcard.pkcs11._cert_selection import _assert_client_auth_eku, select_piv_authentication_certificate
 from nominal.smartcard._errors import SmartcardCertificateSelectionError
 
 # CertificateCandidate.is_piv_authentication_candidate

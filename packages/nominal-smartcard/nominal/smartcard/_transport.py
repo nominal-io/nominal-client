@@ -22,9 +22,9 @@ from nominal.smartcard._errors import (
 )
 
 if TYPE_CHECKING:
-    from nominal.smartcard._openssl_provider import OpenSslProviderBridge
-    from nominal.smartcard._session import SmartcardSessionManager
-    from nominal.smartcard._windows_cert_store import WindowsCertificateIdentity
+    from nominal.smartcard.pkcs11._openssl_provider import OpenSslProviderBridge
+    from nominal.smartcard.pkcs11._session import SmartcardSessionManager
+    from nominal.smartcard.windows._cert_store import WindowsCertificateIdentity
 
 MAX_PIN_ATTEMPTS = 3
 
@@ -125,7 +125,7 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
     def session_manager(self) -> SmartcardSessionManager:
         if self._session_manager is not None:
             return self._session_manager
-        from nominal.smartcard._session import SmartcardSessionManager
+        from nominal.smartcard.pkcs11._session import SmartcardSessionManager
 
         return SmartcardSessionManager.shared()
 
@@ -133,7 +133,7 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
     def openssl_bridge(self) -> OpenSslProviderBridge:
         if self._openssl_bridge is not None:
             return self._openssl_bridge
-        from nominal.smartcard._openssl_provider import OpenSslProviderBridge
+        from nominal.smartcard.pkcs11._openssl_provider import OpenSslProviderBridge
 
         return OpenSslProviderBridge()
 
@@ -150,7 +150,7 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
         root_certificates: bytes | None,
         certificate_chain_pem: bytes | None,
     ) -> tuple[Any, Any]:
-        from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
+        from nominal.smartcard.pkcs11._grpc_signer import SmartcardPrivateKeySigner
 
         session = self.session_manager.get_session()
         token_label = session.certificate.token_label
@@ -223,9 +223,9 @@ class _WindowsSmartcardTransportProvider(SmartcardTransportProvider):
     r"""Windows transport provider backed by Schannel (HTTP) and Windows CNG (gRPC).
 
     A single Windows client-auth certificate is selected once from ``CurrentUser\My``
-    and shared by both transports so every connection presents the same CAC identity.
+    and shared by both transports so every connection presents the same smartcard identity.
 
-    HTTP path: ``create_http_adapter()`` returns a ``WindowsCacAdapter`` that drives the
+    HTTP path: ``create_http_adapter()`` returns a ``WindowsHttpAdapter`` that drives the
     .NET ``HttpClient`` over Schannel. PIN prompting is handled by the Windows credential UI.
 
     gRPC path: ``_build_grpc_credentials()`` returns credentials backed by a
@@ -239,10 +239,10 @@ class _WindowsSmartcardTransportProvider(SmartcardTransportProvider):
 
     @property
     def windows_identity(self) -> WindowsCertificateIdentity:
-        """Lazily select (and cache) the shared Windows CAC certificate."""
+        """Lazily select (and cache) the shared Windows smartcard certificate."""
         with self._lock:
             if self._windows_identity is None:
-                from nominal.smartcard._windows_cert_store import select_windows_certificate
+                from nominal.smartcard.windows._cert_store import select_windows_certificate
 
                 self._windows_identity = select_windows_certificate()
             return self._windows_identity
@@ -257,10 +257,10 @@ class _WindowsSmartcardTransportProvider(SmartcardTransportProvider):
             identity.close()
 
     def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
-        """Return a ``WindowsCacAdapter`` backed by the shared Windows certificate."""
-        from nominal.smartcard._windows_cac import WindowsCacAdapter
+        """Return a ``WindowsHttpAdapter`` backed by the shared Windows certificate."""
+        from nominal.smartcard.windows._http_adapter import WindowsHttpAdapter
 
-        return WindowsCacAdapter(
+        return WindowsHttpAdapter(
             max_retries=max_retries,
             client_certificate=self.windows_identity.certificate,
         )
@@ -271,7 +271,7 @@ class _WindowsSmartcardTransportProvider(SmartcardTransportProvider):
         root_certificates: bytes | None,
         certificate_chain_pem: bytes | None,
     ) -> tuple[Any, Any]:
-        from nominal.smartcard._windows_cng_signer import WindowsCngSigner
+        from nominal.smartcard.windows._cng_signer import WindowsCngSigner
 
         signer = WindowsCngSigner(identity=self.windows_identity)
         signer.connect()
