@@ -619,9 +619,9 @@ def test_create_http_adapter_returns_pkcs11_adapter_on_non_windows(
     from urllib3.util.retry import Retry
 
     from nominal.core._utils.networking import NominalRequestsAdapter
+    from nominal.smartcard._transport import _Pkcs11SmartcardTransportProvider
     from nominal.smartcard.pkcs11._discovery import NOMINAL_PKCS11_MODULE_ENV_VAR
     from nominal.smartcard.pkcs11._session import SmartcardSessionManager
-    from nominal.smartcard._transport import _Pkcs11SmartcardTransportProvider
 
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")

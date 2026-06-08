@@ -8,8 +8,8 @@ from typing import Any
 
 import pkcs11
 
-from nominal.smartcard.pkcs11._cert_selection import PIV_AUTHENTICATION_SLOT, CertificateCandidate
 from nominal.smartcard._errors import SmartcardConfigurationError
+from nominal.smartcard.pkcs11._cert_selection import PIV_AUTHENTICATION_SLOT, CertificateCandidate
 
 NOMINAL_PKCS11_MODULE_ENV_VAR = "NOMINAL_PKCS11_MODULE"
 

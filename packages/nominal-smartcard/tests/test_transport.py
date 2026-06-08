@@ -18,14 +18,14 @@ from nominal.smartcard._errors import (
     SmartcardPinLockedError,
     SmartcardProviderError,
 )
-from nominal.smartcard.pkcs11._grpc_signer import SmartcardPrivateKeySigner
-from nominal.smartcard.pkcs11._discovery import NOMINAL_PKCS11_MODULE_ENV_VAR
-from nominal.smartcard.pkcs11._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard._transport import (
     MAX_PIN_ATTEMPTS,
     _Pkcs11SmartcardTransportProvider,
     _WindowsSmartcardTransportProvider,
 )
+from nominal.smartcard.pkcs11._discovery import NOMINAL_PKCS11_MODULE_ENV_VAR
+from nominal.smartcard.pkcs11._grpc_signer import SmartcardPrivateKeySigner
+from nominal.smartcard.pkcs11._session import SmartcardSession, SmartcardSessionManager
 from nominal.smartcard.windows._cert_store import WindowsCertificateIdentity
 from nominal.smartcard.windows._cng_signer import _OID_RSA
 

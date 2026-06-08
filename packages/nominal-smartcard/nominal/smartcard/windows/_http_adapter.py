@@ -111,7 +111,7 @@ def _assert_supported_verify(verify: bool | str | os.PathLike[str] | None) -> No
         verify_path = os.path.abspath(os.fspath(verify))
     except TypeError as exc:
         raise SmartcardConfigurationError(
-            f"Windows smartcard transport only supports Schannel's Windows trust store. Unsupported verify value: {verify!r}."
+            f"Smartcard transport only supports Schannel's Windows trust store. Unsupported verify value: {verify!r}."
         ) from exc
 
     try:

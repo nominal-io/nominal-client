@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from _helpers import FAKE_DER
 
-from nominal.smartcard.pkcs11 import _discovery as _pkcs11
 from nominal.smartcard._errors import SmartcardConfigurationError
+from nominal.smartcard.pkcs11 import _discovery as _pkcs11
 from nominal.smartcard.pkcs11._discovery import (
     NOMINAL_PKCS11_MODULE_ENV_VAR,
     DefaultPkcs11Backend,
@@ -140,7 +140,9 @@ def test_build_pkcs11_uri_empty_id() -> None:
 
 
 def test_build_pkcs11_uri_with_object_type() -> None:
-    assert _build_pkcs11_uri("SMARTCARD", b"\x01", object_type="private") == "pkcs11:token=SMARTCARD;id=%01;type=private"
+    assert (
+        _build_pkcs11_uri("SMARTCARD", b"\x01", object_type="private") == "pkcs11:token=SMARTCARD;id=%01;type=private"
+    )
 
 
 # DefaultPkcs11Backend
