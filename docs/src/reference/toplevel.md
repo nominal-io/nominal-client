@@ -7,7 +7,12 @@ Third-party integrations:
 
 [`nominal.thirdparty.matlab`](./thirdparty/matlab.md) - tools for working with matlab.  
 [`nominal.thirdparty.pandas`](./thirdparty/pandas.md) - tools for working with pandas.  
-[`nominal.tdms`](./thirdparty/tdms.md) - tools for ingesting tdms data, installed with `nominal-tdms`. 
+
+Third-party integrations (separate packages):
+
+[`nominal.tdms`](./thirdparty/tdms.md) - tools for ingesting tdms data (package `nominal-tdms`).  
+[`nominal.smartcard`](./smartcard.md) - smartcard / PIV authentication (package `nominal-smartcard`).  
+
 
 Experimental functionality:
 
