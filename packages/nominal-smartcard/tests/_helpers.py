@@ -44,10 +44,10 @@ def _candidate(
     *,
     label: str = "PIV Authentication",
     slot: str | None = "9A",
-    certificate_uri: str = "pkcs11:token=SMARTCARD;id=%01;type=cert",
-    private_key_uri: str = "pkcs11:token=SMARTCARD;id=%01;type=private",
+    certificate_uri: str = "pkcs11:token=CAC;id=%01;type=cert",
+    private_key_uri: str = "pkcs11:token=CAC;id=%01;type=private",
     der_certificate: bytes = FAKE_DER,
-    token_label: str = "SMARTCARD",
+    token_label: str = "CAC",
     object_id_bytes: bytes | None = b"\x01",
 ) -> CertificateCandidate:
     return CertificateCandidate(
