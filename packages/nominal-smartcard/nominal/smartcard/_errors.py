@@ -11,6 +11,10 @@ class SmartcardConfigurationError(SmartcardError):
     """Smartcard configuration or local machine setup is invalid."""
 
 
+class SmartcardRuntimeError(SmartcardError):
+    """A smartcard transport object was used incorrectly, e.g. an operation invoked in an invalid state."""
+
+
 class SmartcardProviderError(SmartcardError):
     """The PKCS#11 provider returned an unexpected error that could not be classified."""
 

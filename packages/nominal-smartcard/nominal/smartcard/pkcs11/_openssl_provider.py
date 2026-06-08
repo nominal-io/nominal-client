@@ -17,7 +17,7 @@ from nominal.smartcard._errors import (
     SmartcardPinLockedError,
     SmartcardProviderError,
 )
-from nominal.smartcard._session import SmartcardSession
+from nominal.smartcard.pkcs11._session import SmartcardSession
 
 # OSSL_STORE_INFO_get_type returns this value for private keys.
 _OSSL_STORE_INFO_PKEY = 4

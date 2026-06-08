@@ -3,8 +3,8 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 
-from nominal.smartcard._cert_selection import CertificateCandidate
-from nominal.smartcard._pkcs11 import Pkcs11Backend
+from nominal.smartcard.pkcs11._cert_selection import CertificateCandidate
+from nominal.smartcard.pkcs11._discovery import Pkcs11Backend
 
 # Minimal DER stub — not a valid X.509 certificate.
 # Use _make_der_cert() when the test needs a parseable cert (e.g. EKU checks).

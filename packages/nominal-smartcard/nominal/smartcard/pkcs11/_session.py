@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
-from nominal.smartcard._cert_selection import CertificateCandidate, select_piv_authentication_certificate
-from nominal.smartcard._pkcs11 import DefaultPkcs11Backend, Pkcs11Backend, discover_pkcs11_module
+from nominal.smartcard.pkcs11._cert_selection import CertificateCandidate, select_piv_authentication_certificate
+from nominal.smartcard.pkcs11._discovery import DefaultPkcs11Backend, Pkcs11Backend, discover_pkcs11_module
 
 
 @dataclass(frozen=True)

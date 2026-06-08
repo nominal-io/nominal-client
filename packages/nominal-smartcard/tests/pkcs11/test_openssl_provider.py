@@ -15,7 +15,7 @@ from nominal.smartcard._errors import (
     SmartcardPinLockedError,
     SmartcardProviderError,
 )
-from nominal.smartcard._openssl_provider import (
+from nominal.smartcard.pkcs11._openssl_provider import (
     OpenSslProviderBridge,
     _ensure_provider_loaded,
     _get_openssl_error,
@@ -220,7 +220,7 @@ def test_python_ssl_extension_path_resolves_openssl_symbols_on_macos() -> None:
 
 
 def test_load_python_ssl_library_returns_none_without_anchor_on_non_darwin(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: None)
@@ -229,7 +229,7 @@ def test_load_python_ssl_library_returns_none_without_anchor_on_non_darwin(monke
 
 
 def test_load_python_ssl_library_raises_without_anchor_on_macos(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: None)
@@ -239,7 +239,7 @@ def test_load_python_ssl_library_raises_without_anchor_on_macos(monkeypatch: pyt
 
 
 def test_load_python_ssl_library_raises_on_macos_dlopen_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: "/tmp/_ssl.test.so")
@@ -252,7 +252,7 @@ def test_load_python_ssl_library_raises_on_macos_dlopen_failure(monkeypatch: pyt
 
 
 def test_load_python_ssl_library_returns_none_on_non_darwin_dlopen_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: "/tmp/_ssl.test.so")
@@ -264,7 +264,7 @@ def test_load_python_ssl_library_returns_none_on_non_darwin_dlopen_failure(monke
 
 
 def test_load_python_ssl_library_validates_and_returns_lib_when_anchor_found(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(mod, "_python_ssl_extension_path", lambda: "/tmp/_ssl.test.so")
@@ -357,7 +357,7 @@ def test_validate_library_binding_raises_when_symbol_not_found(monkeypatch: pyte
 
 
 def test_ensure_provider_loaded_raises_when_load_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     monkeypatch.setattr(mod, "_loaded_provider", None)
 
@@ -371,7 +371,7 @@ def test_ensure_provider_loaded_raises_when_load_fails(monkeypatch: pytest.Monke
 
 
 def test_ensure_provider_loaded_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     sentinel = object()
     monkeypatch.setattr(mod, "_loaded_provider", sentinel)
@@ -384,7 +384,7 @@ def test_ensure_provider_loaded_is_idempotent(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_ensure_provider_loaded_publishes_module_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     monkeypatch.setattr(mod, "_loaded_provider", None)
     monkeypatch.delenv(mod._PKCS11_MODULE_ENV_VAR, raising=False)
@@ -399,7 +399,7 @@ def test_ensure_provider_loaded_publishes_module_path(monkeypatch: pytest.Monkey
 
 
 def test_ensure_provider_loaded_respects_preset_module_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    import nominal.smartcard._openssl_provider as mod
+    import nominal.smartcard.pkcs11._openssl_provider as mod
 
     monkeypatch.setattr(mod, "_loaded_provider", None)
     monkeypatch.setenv(mod._PKCS11_MODULE_ENV_VAR, "/preset/module.so")

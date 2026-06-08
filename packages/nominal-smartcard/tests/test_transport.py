@@ -18,10 +18,16 @@ from nominal.smartcard._errors import (
     SmartcardPinLockedError,
     SmartcardProviderError,
 )
-from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
-from nominal.smartcard._pkcs11 import NOMINAL_PKCS11_MODULE_ENV_VAR
-from nominal.smartcard._session import SmartcardSession, SmartcardSessionManager
-from nominal.smartcard._transport import MAX_PIN_ATTEMPTS, _Pkcs11SmartcardTransportProvider
+from nominal.smartcard._transport import (
+    MAX_PIN_ATTEMPTS,
+    _Pkcs11SmartcardTransportProvider,
+    _WindowsSmartcardTransportProvider,
+)
+from nominal.smartcard.pkcs11._discovery import NOMINAL_PKCS11_MODULE_ENV_VAR
+from nominal.smartcard.pkcs11._grpc_signer import SmartcardPrivateKeySigner
+from nominal.smartcard.pkcs11._session import SmartcardSession, SmartcardSessionManager
+from nominal.smartcard.windows._cert_store import WindowsCertificateIdentity
+from nominal.smartcard.windows._cng_signer import _OID_RSA
 
 _RETRY = Retry(total=0)
 
@@ -83,6 +89,18 @@ def _make_provider(
         _openssl_bridge=bridge,
     )
     return provider, bridge
+
+
+def _make_windows_identity() -> WindowsCertificateIdentity:
+    return WindowsCertificateIdentity(
+        certificate=MagicMock(name="windows_certificate"),
+        der_certificate=_make_der_cert(),
+        thumbprint="AABBCC",
+        subject="CN=Test",
+        issuer="CN=Issuer",
+        not_after="2099-01-01",
+        public_key_oid=_OID_RSA,
+    )
 
 
 def test_http_adapter_uses_pkcs11_ssl_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -234,7 +252,7 @@ def _make_grpc_provider(
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda prompt: pin)
+    monkeypatch.setattr("nominal.smartcard.pkcs11._grpc_signer._prompt_for_pin", lambda prompt: pin)
     monkeypatch.setattr(SmartcardPrivateKeySigner, "connect", lambda self: None)
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [_candidate(der_certificate=_make_der_cert())]),
@@ -310,7 +328,7 @@ def test_grpc_credentials_signer_receives_correct_token_info(tmp_path: Path, mon
     module_path = tmp_path / "opensc-pkcs11.so"
     module_path.write_text("")
     monkeypatch.setenv(NOMINAL_PKCS11_MODULE_ENV_VAR, str(module_path))
-    monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda prompt: "pin")
+    monkeypatch.setattr("nominal.smartcard.pkcs11._grpc_signer._prompt_for_pin", lambda prompt: "pin")
     monkeypatch.setattr(SmartcardPrivateKeySigner, "connect", lambda self: None)
     manager = SmartcardSessionManager(
         backend_factory=lambda path: _FakeBackend(path, [candidate]),
@@ -399,3 +417,63 @@ def test_grpc_credentials_close_releases_signer(tmp_path: Path, monkeypatch: pyt
 
     assert provider._signers == []
     assert provider._cached_grpc_credentials == {}
+
+
+def test_windows_grpc_credentials_use_shared_windows_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    identity = _make_windows_identity()
+    provider = _WindowsSmartcardTransportProvider(_windows_identity=identity)
+
+    class FakeWindowsCngSigner:
+        instances: list[FakeWindowsCngSigner] = []
+
+        def __init__(self, *, identity: WindowsCertificateIdentity) -> None:
+            self.identity = identity
+            self.connected = False
+            self.closed = False
+            FakeWindowsCngSigner.instances.append(self)
+
+        def connect(self) -> None:
+            self.connected = True
+
+        @property
+        def der_certificate(self) -> bytes:
+            return self.identity.der_certificate
+
+        def sign(self, data_to_sign: bytes, signature_algorithm: object, on_complete: object) -> bytes:
+            del data_to_sign, signature_algorithm, on_complete
+            return b"signature"
+
+        def close(self) -> None:
+            self.closed = True
+
+    fake_creds = MagicMock()
+    fake_ssl_fn = MagicMock(return_value=fake_creds)
+
+    # _transport imports WindowsCngSigner lazily from its source module, so patch it there.
+    monkeypatch.setattr("nominal.smartcard.windows._cng_signer.WindowsCngSigner", FakeWindowsCngSigner)
+    with patch("nominal.smartcard._transport.ssl_channel_credentials_with_custom_signer", fake_ssl_fn):
+        http_adapter = provider.create_http_adapter(max_retries=_RETRY)
+        grpc_creds = provider.create_grpc_channel_credentials(root_certificates=b"root")
+
+    assert http_adapter._client_certificate is identity.certificate
+    assert grpc_creds is fake_creds
+    assert FakeWindowsCngSigner.instances[0].identity is identity
+    assert FakeWindowsCngSigner.instances[0].connected is True
+    assert fake_ssl_fn.call_args.kwargs["certificate_chain"].startswith(b"-----BEGIN CERTIFICATE-----")
+    assert fake_ssl_fn.call_args.kwargs["root_certificates"] == b"root"
+
+    provider.close()
+    assert FakeWindowsCngSigner.instances[0].closed is True
+
+
+def test_windows_close_disposes_shared_identity() -> None:
+    identity = _make_windows_identity()
+    provider = _WindowsSmartcardTransportProvider(_windows_identity=identity)
+
+    provider.close()
+
+    identity.certificate.Dispose.assert_called_once_with()
+    assert provider._windows_identity is None
+    # Idempotent: a second close must not re-dispose or raise.
+    provider.close()
+    identity.certificate.Dispose.assert_called_once_with()

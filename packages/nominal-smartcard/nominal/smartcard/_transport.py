@@ -22,8 +22,9 @@ from nominal.smartcard._errors import (
 )
 
 if TYPE_CHECKING:
-    from nominal.smartcard._openssl_provider import OpenSslProviderBridge
-    from nominal.smartcard._session import SmartcardSessionManager
+    from nominal.smartcard.pkcs11._openssl_provider import OpenSslProviderBridge
+    from nominal.smartcard.pkcs11._session import SmartcardSessionManager
+    from nominal.smartcard.windows._cert_store import WindowsCertificateIdentity
 
 MAX_PIN_ATTEMPTS = 3
 
@@ -52,7 +53,7 @@ class SmartcardTransportProvider(TransportProvider):
     def create(cls) -> SmartcardTransportProvider:
         """Return the platform-appropriate smartcard transport provider."""
         if platform.system() == "Windows":
-            raise SmartcardConfigurationError("Windows smartcard authentication is not supported yet.")
+            return _WindowsSmartcardTransportProvider()
 
         return _Pkcs11SmartcardTransportProvider()
 
@@ -124,7 +125,7 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
     def session_manager(self) -> SmartcardSessionManager:
         if self._session_manager is not None:
             return self._session_manager
-        from nominal.smartcard._session import SmartcardSessionManager
+        from nominal.smartcard.pkcs11._session import SmartcardSessionManager
 
         return SmartcardSessionManager.shared()
 
@@ -132,7 +133,7 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
     def openssl_bridge(self) -> OpenSslProviderBridge:
         if self._openssl_bridge is not None:
             return self._openssl_bridge
-        from nominal.smartcard._openssl_provider import OpenSslProviderBridge
+        from nominal.smartcard.pkcs11._openssl_provider import OpenSslProviderBridge
 
         return OpenSslProviderBridge()
 
@@ -149,7 +150,7 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
         root_certificates: bytes | None,
         certificate_chain_pem: bytes | None,
     ) -> tuple[Any, Any]:
-        from nominal.smartcard._grpc_signer import SmartcardPrivateKeySigner
+        from nominal.smartcard.pkcs11._grpc_signer import SmartcardPrivateKeySigner
 
         session = self.session_manager.get_session()
         token_label = session.certificate.token_label
@@ -186,7 +187,7 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
                 root_certificates=root_certificates,
                 certificate_chain=certificate_chain_pem,
             )
-        except:
+        except Exception:
             signer.close()
             raise
         return credentials, signer
@@ -215,6 +216,83 @@ class _Pkcs11SmartcardTransportProvider(SmartcardTransportProvider):
                         ) from exc
             assert self._cached_ctx is not None
             return self._cached_ctx
+
+
+@dataclass
+class _WindowsSmartcardTransportProvider(SmartcardTransportProvider):
+    r"""Windows transport provider backed by Schannel (HTTP) and Windows CNG (gRPC).
+
+    A single Windows client-auth certificate is selected once from ``CurrentUser\My``
+    and shared by both transports so every connection presents the same smartcard identity.
+
+    HTTP path: ``create_http_adapter()`` returns a ``WindowsHttpAdapter`` that drives the
+    .NET ``HttpClient`` over Schannel. PIN prompting is handled by the Windows credential UI.
+
+    gRPC path: ``_build_grpc_credentials()`` returns credentials backed by a
+    ``WindowsCngSigner`` whose private key stays managed by Windows/CNG.
+
+    Multipart path: inherits the default ``NominalSslRequestsAdapter`` (no client
+    certificate), since S3 presigned URLs use AWS auth and validate against system trust.
+    """
+
+    _windows_identity: WindowsCertificateIdentity | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def windows_identity(self) -> WindowsCertificateIdentity:
+        """Lazily select (and cache) the shared Windows smartcard certificate."""
+        with self._lock:
+            if self._windows_identity is None:
+                from nominal.smartcard.windows._cert_store import select_windows_certificate
+
+                self._windows_identity = select_windows_certificate()
+            return self._windows_identity
+
+    def close(self) -> None:
+        """Release gRPC signers and dispose the shared Windows certificate handle."""
+        super().close()
+        with self._lock:
+            identity = self._windows_identity
+            self._windows_identity = None
+        if identity is not None:
+            identity.close()
+
+    def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
+        """Return a ``WindowsHttpAdapter`` backed by the shared Windows certificate."""
+        from nominal.smartcard.windows._http_adapter import WindowsHttpAdapter
+
+        return WindowsHttpAdapter(
+            max_retries=max_retries,
+            client_certificate=self.windows_identity.certificate,
+        )
+
+    def _build_grpc_credentials(
+        self,
+        *,
+        root_certificates: bytes | None,
+        certificate_chain_pem: bytes | None,
+    ) -> tuple[Any, Any]:
+        from nominal.smartcard.windows._cng_signer import WindowsCngSigner
+
+        signer = WindowsCngSigner(identity=self.windows_identity)
+        signer.connect()
+        try:
+            if certificate_chain_pem is None:
+                certificate_chain_pem = _pem_from_der_certificate(
+                    signer.der_certificate,
+                    empty_message=(
+                        "Certificate DER data is empty; cannot build PEM chain for gRPC credentials. "
+                        "The Windows certificate store may not have returned a certificate value."
+                    ),
+                )
+            credentials = ssl_channel_credentials_with_custom_signer(
+                private_key_sign_fn=signer.sign,
+                root_certificates=root_certificates,
+                certificate_chain=certificate_chain_pem,
+            )
+        except Exception:
+            signer.close()
+            raise
+        return credentials, signer
 
 
 def _pem_from_der_certificate(der_certificate: bytes, *, empty_message: str) -> bytes:

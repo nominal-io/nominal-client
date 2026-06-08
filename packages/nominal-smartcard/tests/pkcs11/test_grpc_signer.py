@@ -13,10 +13,9 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from pkcs11.mechanisms import MGF, Mechanism
 
 from nominal.smartcard._errors import SmartcardConfigurationError
-from nominal.smartcard._grpc_signer import (
+from nominal.smartcard.pkcs11._grpc_signer import (
     MAX_PIN_ATTEMPTS,
     SmartcardPrivateKeySigner,
-    _encode_ecdsa_der,
     _pin_prompt,
 )
 
@@ -29,12 +28,12 @@ _A = grpc.experimental.PrivateKeySignatureAlgorithm
 @pytest.fixture(autouse=True)
 def _default_pin(monkeypatch: pytest.MonkeyPatch) -> None:
     """Patch _prompt_for_pin so tests never block on getpass."""
-    monkeypatch.setattr("nominal.smartcard._grpc_signer._prompt_for_pin", lambda _: "123456")
+    monkeypatch.setattr("nominal.smartcard.pkcs11._grpc_signer._prompt_for_pin", lambda _: "123456")
 
 
 @contextmanager
 def _patch_pkcs11(pkcs11_mod: MagicMock) -> Iterator[None]:
-    with patch("nominal.smartcard._grpc_signer.pkcs11", pkcs11_mod):
+    with patch("nominal.smartcard.pkcs11._grpc_signer.pkcs11", pkcs11_mod):
         yield
 
 
@@ -91,35 +90,6 @@ def _fake_pkcs11_module(
     pkcs11_mod.exceptions = pkcs11.exceptions
     pkcs11_mod.ObjectClass = __import__("pkcs11").ObjectClass
     return pkcs11_mod
-
-
-# ---------------------------------------------------------------------------
-# _encode_ecdsa_der
-# ---------------------------------------------------------------------------
-
-
-def test_encode_ecdsa_der_produces_valid_der() -> None:
-    # 64-byte raw P-256 signature: 32-byte r, 32-byte s
-    r_bytes = b"\x01" * 32
-    s_bytes = b"\x02" * 32
-    raw = r_bytes + s_bytes
-    der = _encode_ecdsa_der(raw)
-    # DER SEQUENCE must start with 0x30
-    assert der[0] == 0x30
-    # Round-trip through decode_dss_signature to verify correctness
-    r, s = decode_dss_signature(der)
-    assert r == int.from_bytes(r_bytes, "big")
-    assert s == int.from_bytes(s_bytes, "big")
-
-
-def test_encode_ecdsa_der_rejects_odd_length() -> None:
-    with pytest.raises(SmartcardConfigurationError, match="Unexpected ECDSA signature length"):
-        _encode_ecdsa_der(b"\x01" * 63)
-
-
-def test_encode_ecdsa_der_rejects_empty() -> None:
-    with pytest.raises(SmartcardConfigurationError, match="Unexpected ECDSA signature length"):
-        _encode_ecdsa_der(b"")
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +184,7 @@ def test_pin_prompted_in_connect_not_in_sign() -> None:
 
     signer = _make_signer()
 
-    with _patch_pkcs11(pkcs11_mod), patch("nominal.smartcard._grpc_signer._prompt_for_pin", counting_pin):
+    with _patch_pkcs11(pkcs11_mod), patch("nominal.smartcard.pkcs11._grpc_signer._prompt_for_pin", counting_pin):
         signer.connect()  # 1 prompt — session established
         signer.sign(b"data1", _A.ECDSA_SECP256R1_SHA256, None)  # uses cached session
         signer.sign(b"data2", _A.ECDSA_SECP256R1_SHA256, None)  # uses cached session

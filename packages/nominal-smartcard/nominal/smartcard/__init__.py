@@ -7,6 +7,7 @@ from nominal.smartcard._errors import (
     SmartcardPinError,
     SmartcardPinLockedError,
     SmartcardProviderError,
+    SmartcardRuntimeError,
 )
 from nominal.smartcard._transport import SmartcardTransportProvider
 
@@ -17,5 +18,6 @@ __all__ = [
     "SmartcardPinError",
     "SmartcardPinLockedError",
     "SmartcardProviderError",
+    "SmartcardRuntimeError",
     "SmartcardTransportProvider",
 ]

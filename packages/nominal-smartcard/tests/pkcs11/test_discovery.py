@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from _helpers import FAKE_DER
 
-from nominal.smartcard import _pkcs11
 from nominal.smartcard._errors import SmartcardConfigurationError
-from nominal.smartcard._pkcs11 import (
+from nominal.smartcard.pkcs11 import _discovery as _pkcs11
+from nominal.smartcard.pkcs11._discovery import (
     NOMINAL_PKCS11_MODULE_ENV_VAR,
     DefaultPkcs11Backend,
     _build_pkcs11_uri,
