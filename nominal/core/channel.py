@@ -195,7 +195,9 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
 
         def request_factory(page_token: scout_compute_api.PageToken | None) -> scout_compute_api.ComputeNodeRequest:
             return scout_compute_api.ComputeNodeRequest(
-                context=scout_compute_api.Context(frame_references={}, variables={}, function_variables={}),
+                context=scout_compute_api.Context(
+                    dataset_references={}, frame_references={}, variables={}, function_variables={}
+                ),
                 start=api_start,
                 end=api_end,
                 node=scout_compute_api.ComputableNode(
@@ -357,6 +359,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
                 )
             ),
             context=scout_compute_api.Context(
+                dataset_references={},
                 frame_references={},
                 variables={},
                 function_variables={},
@@ -405,6 +408,7 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
             start_time=start,
             end_time=end,
             context=scout_compute_api.Context(
+                dataset_references={},
                 frame_references={},
                 variables={},
                 function_variables={},
