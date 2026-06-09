@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.145.0](https://github.com/nominal-io/nominal-client/compare/v1.144.1...v1.145.0) (2026-06-02)
+
+
+### Features
+
+* allow for excluded workbooks in asset migration ([#804](https://github.com/nominal-io/nominal-client/issues/804)) ([568136b](https://github.com/nominal-io/nominal-client/commit/568136b90486be19e454dc011cc838dc8314065f))
+
 ## [1.144.1](https://github.com/nominal-io/nominal-client/compare/v1.144.0...v1.144.1) (2026-05-21)
 
 
