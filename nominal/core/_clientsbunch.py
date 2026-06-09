@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -34,6 +34,7 @@ from nominal_api import (
 from typing_extensions import Self
 
 from nominal._utils.dataclass_tools import LazyField
+from nominal.core._grpc import GrpcClient
 from nominal.core._utils.networking import (
     HeaderProvider,
     create_conjure_client_factory,
@@ -118,6 +119,38 @@ class ProtoWriteService(Service):
 
 
 @dataclass(frozen=True)
+class RoleServiceClient:
+    _grpc: GrpcClient = field(repr=False)
+
+    def get_resource_roles(self, resource_rid: str) -> Any:
+        try:
+            from nominal.protos.authorization.roles.v1 import roles_pb2, roles_pb2_grpc
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use Role Service gRPC APIs") from ex
+
+        return self._grpc.invoke(
+            roles_pb2_grpc.RoleServiceStub,
+            lambda stub: stub.GetResourceRoles,
+            roles_pb2.GetResourceRolesRequest(resource=resource_rid),
+        )
+
+    def get_resource_owner_rid(self, resource_rid: str) -> str | None:
+        try:
+            from nominal.protos.authorization.roles.v1 import roles_pb2
+        except ImportError as ex:
+            raise ImportError("nominal[protos] is required to use Role Service gRPC APIs") from ex
+
+        response = self.get_resource_roles(resource_rid)
+        for assignment in response.role_assignments:
+            if assignment.role != roles_pb2.ROLE_OWNER:
+                continue
+            user_rid = assignment.user_rid
+            if user_rid:
+                return str(user_rid)
+        return None
+
+
+@dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
     workspace_rid: str | None
@@ -164,6 +197,7 @@ class ClientsBunch:
     workspace: security_api_workspace.WorkspaceService
     containerized_extractors: ingest_api.ContainerizedExtractorService
     secrets: secrets_api.SecretService
+    roles: RoleServiceClient
 
     def _fetch_default_workspace(self) -> security_api_workspace.Workspace:
         """Fetch the workspace object this client should treat as its default.
@@ -297,6 +331,15 @@ class ClientsBunch:
             workspace=client_factory(security_api_workspace.WorkspaceService),
             containerized_extractors=client_factory(ingest_api.ContainerizedExtractorService),
             secrets=client_factory(secrets_api.SecretService),
+            roles=RoleServiceClient(
+                GrpcClient(
+                    auth_header=f"Bearer {token}",
+                    api_base_url=base_url,
+                    service_config=cfg,
+                    user_agent=agent,
+                    header_provider=header_provider,
+                )
+            ),
         )
 
 

@@ -5,16 +5,16 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nominal_api_protos.nominal_write_pb2 import (
-    Series,
-    StructPoints,
-    WriteRequestNominal,
-)
 
 from nominal.core._stream.batch_processor_proto import process_batch
 from nominal.core._stream.write_stream import BatchItem, DataItem, PointType, WriteStream, infer_point_type
 from nominal.core.connection import StreamingConnection
 from nominal.core.dataset import Dataset
+from nominal.protos.write.nominal_write_pb2 import (
+    Series,
+    StructPoints,
+    WriteRequestNominal,
+)
 from nominal.ts import IntegralNanosecondsUTC, _SecondsNanos
 
 DataBatch = list[DataItem]
@@ -26,7 +26,7 @@ def dt_to_nano(dt: datetime) -> IntegralNanosecondsUTC:
 
 @pytest.fixture(autouse=True)
 def mock_channel():
-    with patch("nominal_api_protos.nominal_write_pb2.Channel", autospec=True) as mock:
+    with patch("nominal.protos.write.nominal_write_pb2.Channel", autospec=True) as mock:
         mock.return_value = MagicMock()
         mock.return_value.name = ""
         yield mock

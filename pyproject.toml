@@ -79,7 +79,7 @@ dev = [
     "mkdocstrings-python>=1.16.10,<2",
     "mkdocstrings>=0.29.1,<1",
     "mypy>=1.18.2,<2",
-    "nominal-api-protos>=0.1142.0",
+    "nominal-api-protos>=0.1261.0",
     "nominal-tdms>=0.0.0",
     "pandas-stubs~=2.0",
     "pytest-cov>=5.0.0,<6",
@@ -98,7 +98,7 @@ nominal = { workspace = true }
 nominal-tdms = { workspace = true }
 
 [project.optional-dependencies]
-protos = ["nominal-api-protos>=0.1090.0"]
+protos = ["nominal-api-protos>=0.1261.0"]
 tdms = ["nominal-tdms>=0.0.0"]
 # nominal-video wheels exist for:
 # - Windows x86_64 (AMD64)

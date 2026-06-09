@@ -9,7 +9,7 @@ from typing import Any, Sequence, cast
 from google.protobuf.timestamp_pb2 import Timestamp
 
 try:
-    from nominal_api_protos.nominal_write_pb2 import (
+    from nominal.protos.write.nominal_write_pb2 import (
         ArrayPoints,
         DoubleArrayPoint,
         DoubleArrayPoints,
@@ -27,7 +27,7 @@ try:
         StructPoints,
         WriteRequestNominal,
     )
-    from nominal_api_protos.nominal_write_pb2 import (
+    from nominal.protos.write.nominal_write_pb2 import (
         Channel as NominalChannel,
     )
 except ModuleNotFoundError:
