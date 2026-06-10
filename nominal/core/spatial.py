@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence, cast
 
 from dagger_client import AuthenticatedClient
 from dagger_client.api.import_ import post_import
@@ -175,7 +175,7 @@ def _scan_pattern_enum(scan_pattern: str | None) -> scout_spatial_api.ScanPatter
     if scan_pattern is None:
         return None
     try:
-        return getattr(scout_spatial_api.ScanPattern, scan_pattern)
+        return cast(scout_spatial_api.ScanPattern, getattr(scout_spatial_api.ScanPattern, scan_pattern))
     except AttributeError:
         valid = [name for name in dir(scout_spatial_api.ScanPattern) if name.isupper()]
         raise ValueError(f"Invalid scan_pattern: {scan_pattern}. Valid values: {valid}") from None
@@ -292,7 +292,7 @@ def _build_archetype(
         reductions: list[SamplerType] = []
         if kind == "int":
             int_indices.append(i)
-            ty: object = _FseTypeInt.INT
+            ty: _FseTypeInt | _FseTypeReal | _FseTypeString = _FseTypeInt.INT
             reductions = [SamplerType.MIN, SamplerType.MAX]
         elif kind == "real":
             real_indices.append(i)
@@ -302,7 +302,7 @@ def _build_archetype(
             string_indices.append(i)
             ty = _FseTypeString.STRING
         attributes.append(
-            Attribute(  # type: ignore[arg-type]
+            Attribute(
                 header=FseHeader(name=name, ty=ty),
                 reductions=reductions,
             )
