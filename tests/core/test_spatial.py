@@ -85,9 +85,7 @@ def test_build_archetype_attaches_reductions_per_attribute_type():
     _columns, archetype = spatial._build_archetype(header, samples)
     by_name = {a.header.name: a for a in archetype.attributes}
     # intensity is int → Min/Max only (Mean is not valid with Int attributes).
-    assert sorted(by_name["intensity"].reductions, key=str) == sorted(
-        [SamplerType.MIN, SamplerType.MAX], key=str
-    )
+    assert sorted(by_name["intensity"].reductions, key=str) == sorted([SamplerType.MIN, SamplerType.MAX], key=str)
     # laser_power is real (mixed 7.5 / 8.0) → Min/Max/Mean.
     assert sorted(by_name["laser_power"].reductions, key=str) == sorted(
         [SamplerType.MIN, SamplerType.MAX, SamplerType.MEAN], key=str
@@ -216,6 +214,11 @@ def test_build_archetype_partial_override_falls_through_to_inference():
     columns, _ = spatial._build_archetype(header, samples, {"stress": "real"})
     assert columns.real == [3]
     assert columns.int_ == [4]
+
+
+def test_scan_pattern_enum_rejects_invalid_value():
+    with pytest.raises(ValueError, match="Invalid scan_pattern"):
+        spatial._scan_pattern_enum("SIDEWAYS")
 
 
 def test_dagger_base_url_appends_dagger():

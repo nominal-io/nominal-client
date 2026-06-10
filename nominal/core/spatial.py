@@ -72,8 +72,15 @@ def upload_point_cloud(
     ``"int"``, ``"real"``, or ``"string"``. Geometry columns (x/y/z) are
     silently ignored if listed. Unknown column names raise ``ValueError``.
 
+    ``scan_pattern`` must be one of ``"FLASH"``, ``"MECHANICAL"``,
+    ``"ROTATING"``, ``"SOLID_STATE"``, or ``"UNKNOWN"``.
+
     Returns:
         The spatial asset RID.
+
+    Raises:
+        ValueError: If ``scan_pattern`` is not one of the values supported by
+            ``nominal_api.scout_spatial_api.ScanPattern``.
     """
     path = Path(path)
     if not path.exists():
@@ -81,6 +88,8 @@ def upload_point_cloud(
 
     if name is None:
         name = path.stem
+
+    scan_pattern_value = _scan_pattern_enum(scan_pattern)
 
     clients = client._clients
 
@@ -142,7 +151,7 @@ def upload_point_cloud(
             sensor_model=sensor_model,
             coordinate_system=coordinate_system,
             resolution_mm=resolution_mm,
-            scan_pattern=(getattr(scout_spatial_api.ScanPattern, scan_pattern) if scan_pattern is not None else None),
+            scan_pattern=scan_pattern_value,
         )
     )
 
@@ -160,6 +169,16 @@ def upload_point_cloud(
 
     spatial = clients.spatial.create(clients.auth_header, create_request)
     return spatial.rid
+
+
+def _scan_pattern_enum(scan_pattern: str | None) -> scout_spatial_api.ScanPattern | None:
+    if scan_pattern is None:
+        return None
+    try:
+        return getattr(scout_spatial_api.ScanPattern, scan_pattern)
+    except AttributeError:
+        valid = [name for name in dir(scout_spatial_api.ScanPattern) if name.isupper()]
+        raise ValueError(f"Invalid scan_pattern: {scan_pattern}. Valid values: {valid}") from None
 
 
 def _presign_download(clients: ClientsBunch, s3_path: str) -> str:
