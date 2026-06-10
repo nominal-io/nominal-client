@@ -1,14 +1,75 @@
 from __future__ import annotations
 
 import csv
+import importlib
 import logging
 import struct
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import numpy as np
+import numpy.typing as npt
 
 logger = logging.getLogger(__name__)
+
+MIN_VALID_NAV_TIMESTAMP = 1e9
+MIN_VALID_POINT_DISTANCE_M = 0.1
+FloatArray = npt.NDArray[np.float64]
+BoolArray = npt.NDArray[np.bool_]
+
+
+def _validate_conversion_options(min_valid_point_distance_m: float, progress_log_interval_scans: int | None) -> None:
+    if min_valid_point_distance_m < 0:
+        raise ValueError("min_valid_point_distance_m must be non-negative")
+    if progress_log_interval_scans is not None and progress_log_interval_scans <= 0:
+        raise ValueError("progress_log_interval_scans must be positive or None")
+
+
+def _load_yaml() -> Any:
+    try:
+        import yaml
+    except ImportError as e:
+        raise ImportError(
+            f"Missing required dependencies for Ouster conversion: {e}. Install with: pip install nominal[ouster]"
+        ) from e
+    return yaml
+
+
+def _load_ouster_sdk() -> tuple[Any, Any, Any]:
+    try:
+        core = importlib.import_module("ouster.sdk.core")
+        pcap = importlib.import_module("ouster.sdk.pcap")
+    except ImportError as e:
+        raise ImportError(
+            f"Missing required dependencies for Ouster conversion: {e}. Install with: pip install nominal[ouster]"
+        ) from e
+    return core.ChanField, core.XYZLut, pcap.PcapScanSource
+
+
+def _ensure_ouster_sdk() -> None:
+    _load_ouster_sdk()
+
+
+def _raise_missing_file(reason: str) -> NoReturn:
+    raise FileNotFoundError(reason)
+
+
+def _skip_missing_file(reason: str, skipped: list[str], fail_on_missing_files: bool) -> None:
+    if fail_on_missing_files:
+        _raise_missing_file(reason)
+    skipped.append(reason)
+    logger.warning("Skipping %s", reason)
+
+
+def _log_conversion_summary(csv_paths: list[Path], skipped: list[str], n_sensors: int) -> None:
+    if skipped:
+        logger.warning(
+            "Ouster conversion skipped %d/%d sensor(s): %s",
+            len(skipped),
+            n_sensors,
+            "; ".join(skipped),
+        )
+    logger.info("Ouster conversion produced %d/%d CSV file(s)", len(csv_paths), n_sensors)
 
 
 def convert_ouster_dataset(
@@ -17,6 +78,9 @@ def convert_ouster_dataset(
     output_dir: Path | None = None,
     apply_nav: bool = True,
     max_scans: int | None = None,
+    fail_on_missing_files: bool = False,
+    min_valid_point_distance_m: float = MIN_VALID_POINT_DISTANCE_M,
+    progress_log_interval_scans: int | None = 100,
 ) -> list[Path]:
     """Convert an Ouster PCAP dataset directory into CSV point cloud files.
 
@@ -30,6 +94,12 @@ def convert_ouster_dataset(
         output_dir: Directory for output CSVs. Defaults to dataset_dir.
         apply_nav: Whether to apply nav pose corrections. Default True.
         max_scans: Limit number of scans per sensor (useful for testing).
+        fail_on_missing_files: Raise instead of skipping when a PCAP or
+            metadata file referenced by data.yaml is missing.
+        min_valid_point_distance_m: Drop points closer than this distance from
+            the origin. Defaults to 0.1m to filter zero/near-zero returns.
+        progress_log_interval_scans: Log conversion progress every N scans.
+            Set to None to disable periodic progress logs.
 
     Returns:
         List of paths to generated CSV files, one per sensor.
@@ -38,10 +108,9 @@ def convert_ouster_dataset(
         FileNotFoundError: If data.yaml is not found in dataset_dir.
         ImportError: If ouster-sdk or pyyaml is not installed.
     """
-    try:
-        import yaml
-    except ImportError:
-        raise ImportError("pyyaml is required for Ouster conversion: pip install nominal[ouster]")
+    yaml = _load_yaml()
+    _ensure_ouster_sdk()
+    _validate_conversion_options(min_valid_point_distance_m, progress_log_interval_scans)
 
     if output_dir is None:
         output_dir = dataset_dir
@@ -55,7 +124,9 @@ def convert_ouster_dataset(
 
     ouster_daqs = manifest.get("ousterDaqs", [])
     if not ouster_daqs:
-        raise ValueError(f"No ousterDaqs entries in {data_yaml}")
+        raise ValueError(
+            f"No 'ousterDaqs' entries found in {data_yaml}. Expected at least one Ouster DAQ configuration."
+        )
 
     logger.info(
         "Dataset: %s | Location: %s | Vehicle: %s-%s | Sensors: %d",
@@ -77,15 +148,16 @@ def convert_ouster_dataset(
             logger.info("No navdata2.daq found, importing in lidar frame")
 
     csv_paths: list[Path] = []
+    skipped: list[str] = []
     for i, daq in enumerate(ouster_daqs):
         pcap_path = dataset_dir / daq["pcap"]
         meta_path = _find_metadata(dataset_dir, daq)
 
         if not pcap_path.exists():
-            logger.warning("Skipping %s (not found)", pcap_path.name)
+            _skip_missing_file(f"{pcap_path.name} (PCAP not found)", skipped, fail_on_missing_files)
             continue
         if meta_path is None:
-            logger.warning("Skipping %s (metadata not found)", daq["info"])
+            _skip_missing_file(f"{daq['info']} (metadata not found)", skipped, fail_on_missing_files)
             continue
 
         parts = pcap_path.stem.split(".")
@@ -108,8 +180,12 @@ def convert_ouster_dataset(
             manifest.get("playbackStartGmt", 0.0),
             sensor_offset,
             max_scans,
+            min_valid_point_distance_m,
+            progress_log_interval_scans,
         )
         csv_paths.append(out_csv)
+
+    _log_conversion_summary(csv_paths, skipped, len(ouster_daqs))
 
     return csv_paths
 
@@ -119,7 +195,8 @@ def convert_ouster_dataset(
 
 def _parse_buf3(path: Path) -> tuple[list[str], list[dict[str, float]]]:
     data = path.read_bytes()
-    assert data[:4] == b"buf3", f"Not a buf3 file: {path}"
+    if data[:4] != b"buf3":
+        raise ValueError(f"Invalid buf3 file format in {path}: expected 'buf3' magic bytes, got {data[:4]!r}")
 
     offset = 9  # magic(4) + flags(4) + null(1)
 
@@ -150,6 +227,9 @@ def _parse_buf3(path: Path) -> tuple[list[str], list[dict[str, float]]]:
         offset += 4
         n = count - 1
         if n <= 0 or offset + n * 2 + n * 8 > len(data):
+            logger.warning(
+                "Invalid buf3 record at offset %d: count=%d, remaining_bytes=%d", offset, count, len(data) - offset
+            )
             break
         indices = struct.unpack_from(f"<{n}H", data, offset)
         offset += n * 2
@@ -174,7 +254,7 @@ class _NavTrajectory:
         poses = []
         for rec in records:
             ts = rec.get("_timestamp", 0.0)
-            if ts < 1e9:
+            if ts < MIN_VALID_NAV_TIMESTAMP:
                 continue
             tx = rec.get("navdata2tranrelx", 0.0)
             ty = rec.get("navdata2tranrely", 0.0)
@@ -185,12 +265,14 @@ class _NavTrajectory:
             poses.append((ts, tx, ty, tz, roll, pitch, yaw))
 
         poses.sort(key=lambda p: p[0])
-        self.timestamps = np.array([p[0] for p in poses])
-        self.translations = np.array([(p[1], p[2], p[3]) for p in poses])
-        self.rpys = np.array([(p[4], p[5], p[6]) for p in poses])
+        self.timestamps: FloatArray = np.array([p[0] for p in poses], dtype=np.float64)
+        self.translations: FloatArray = np.array([(p[1], p[2], p[3]) for p in poses], dtype=np.float64)
+        self.rpys: FloatArray = np.array([(p[4], p[5], p[6]) for p in poses], dtype=np.float64)
+        if len(poses) == 0:
+            raise ValueError("Nav data contains no valid poses with timestamps >= 1e9")
         logger.info("Nav: %d poses, %.3f – %.3f s", len(poses), self.timestamps[0], self.timestamps[-1])
 
-    def interpolate(self, t: float) -> tuple[np.ndarray, np.ndarray]:
+    def interpolate(self, t: float) -> tuple[FloatArray, FloatArray]:
         if t <= self.timestamps[0]:
             return self.translations[0], self.rpys[0]
         if t >= self.timestamps[-1]:
@@ -206,7 +288,7 @@ class _NavTrajectory:
 # -- Coordinate transforms ----------------------------------------------------
 
 
-def _rotation_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
+def _rotation_matrix(roll: float, pitch: float, yaw: float) -> FloatArray:
     cr, sr = np.cos(roll), np.sin(roll)
     cp, sp = np.cos(pitch), np.sin(pitch)
     cy, sy = np.cos(yaw), np.sin(yaw)
@@ -222,20 +304,20 @@ def _rotation_matrix(roll: float, pitch: float, yaw: float) -> np.ndarray:
 _FRD_FLU = np.diag([1.0, -1.0, -1.0])
 
 
-def _rotation_frd_to_flu(roll: float, pitch: float, yaw: float) -> np.ndarray:
-    result: np.ndarray = _FRD_FLU @ _rotation_matrix(roll, pitch, yaw) @ _FRD_FLU
+def _rotation_frd_to_flu(roll: float, pitch: float, yaw: float) -> FloatArray:
+    result: FloatArray = _FRD_FLU @ _rotation_matrix(roll, pitch, yaw) @ _FRD_FLU
     return result
 
 
-def _translation_frd_to_flu(t_frd: np.ndarray) -> np.ndarray:
-    result: np.ndarray = _FRD_FLU @ t_frd
+def _translation_frd_to_flu(t_frd: FloatArray) -> FloatArray:
+    result: FloatArray = _FRD_FLU @ t_frd
     return result
 
 
 # -- Sensor offset parsing ----------------------------------------------------
 
 
-def _parse_ouster_params(path: Path) -> tuple[np.ndarray, np.ndarray] | None:
+def _parse_ouster_params(path: Path) -> tuple[FloatArray, FloatArray] | None:
     vals: dict[str, float] = {}
     for raw_line in path.read_text().splitlines():
         line = raw_line.strip()
@@ -250,8 +332,11 @@ def _parse_ouster_params(path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     if "sensorX" not in vals:
         return None
 
-    trans = np.array([vals.get("sensorX", 0.0), vals.get("sensorY", 0.0), vals.get("sensorZ", 0.0)])
-    rpy = np.array([vals.get("sensorRoll", 0.0), vals.get("sensorPitch", 0.0), vals.get("sensorYaw", 0.0)])
+    trans = np.array([vals.get("sensorX", 0.0), vals.get("sensorY", 0.0), vals.get("sensorZ", 0.0)], dtype=np.float64)
+    rpy = np.array(
+        [vals.get("sensorRoll", 0.0), vals.get("sensorPitch", 0.0), vals.get("sensorYaw", 0.0)],
+        dtype=np.float64,
+    )
     return trans, rpy
 
 
@@ -303,11 +388,11 @@ def _build_structured_metadata(meta_path: Path) -> str:
 
 
 def _apply_transforms(
-    pts: np.ndarray,
-    sensor_offset: tuple[np.ndarray, np.ndarray] | None,
+    pts: FloatArray,
+    sensor_offset: tuple[FloatArray, FloatArray] | None,
     nav: _NavTrajectory | None,
     frame_gmt: float,
-) -> np.ndarray:
+) -> FloatArray:
     if sensor_offset is not None:
         s_trans_frd, s_rpy = sensor_offset
         r_s = _rotation_frd_to_flu(s_rpy[0], s_rpy[1], s_rpy[2])
@@ -323,10 +408,10 @@ def _apply_transforms(
 
 def _write_scan_points(
     writer: Any,
-    pts: np.ndarray,
-    refl: np.ndarray,
-    signal: np.ndarray,
-    near_ir: np.ndarray,
+    pts: FloatArray,
+    refl: FloatArray,
+    signal: FloatArray,
+    near_ir: FloatArray,
     time_rel: float,
 ) -> None:
     for j in range(len(pts)):
@@ -343,20 +428,27 @@ def _write_scan_points(
         )
 
 
+def _valid_point_mask(pts: FloatArray, min_valid_point_distance_m: float) -> BoolArray:
+    result: BoolArray = np.linalg.norm(pts, axis=1) > min_valid_point_distance_m
+    return result
+
+
+def _should_log_progress(scan_count: int, progress_log_interval_scans: int | None) -> bool:
+    return progress_log_interval_scans is not None and scan_count % progress_log_interval_scans == 0
+
+
 def _convert_sensor(
     pcap_path: Path,
     meta_path: Path,
     out_csv: Path,
     nav: _NavTrajectory | None,
     playback_start_gmt: float,
-    sensor_offset: tuple[np.ndarray, np.ndarray] | None,
+    sensor_offset: tuple[FloatArray, FloatArray] | None,
     max_scans: int | None,
+    min_valid_point_distance_m: float,
+    progress_log_interval_scans: int | None,
 ) -> int:
-    try:
-        from ouster.sdk.core import ChanField, XYZLut
-        from ouster.sdk.pcap import PcapScanSource
-    except ImportError:
-        raise ImportError("ouster-sdk is required for PCAP conversion: pip install nominal[ouster]")
+    ChanField, XYZLut, PcapScanSource = _load_ouster_sdk()
 
     logger.info("Loading metadata: %s", meta_path.name)
     meta_json = _build_structured_metadata(meta_path)
@@ -382,6 +474,9 @@ def _convert_sensor(
                     break
 
                 scan = scan_set[0]
+                if scan is None:
+                    scan_count += 1
+                    continue
                 xyz = xyzlut(scan)
                 refl = scan.field(ChanField.REFLECTIVITY).astype(np.float64).reshape(-1)
                 sig = scan.field(ChanField.SIGNAL).astype(np.float64).reshape(-1)
@@ -401,7 +496,7 @@ def _convert_sensor(
                 time_rel = frame_gmt - playback_start_gmt
 
                 pts = xyz.reshape(-1, 3)
-                valid = np.linalg.norm(pts, axis=1) > 0.1
+                valid = _valid_point_mask(pts, min_valid_point_distance_m)
                 pts, refl, sig, nir = pts[valid], refl[valid], sig[valid], nir[valid]
 
                 pts = _apply_transforms(pts, sensor_offset, nav, frame_gmt)
@@ -409,7 +504,7 @@ def _convert_sensor(
 
                 total_points += len(pts)
                 scan_count += 1
-                if scan_count % 10 == 0:
+                if _should_log_progress(scan_count, progress_log_interval_scans):
                     logger.info("%d scans, %d points...", scan_count, total_points)
 
     finally:
