@@ -3,6 +3,7 @@ import importlib.metadata
 import click
 
 from nominal.cli import attachment, config, dataset, download, mis, run
+from nominal.experimental.migration.migration_cli import migrate_cmd
 
 
 @click.group(context_settings={"show_default": True, "help_option_names": ("-h", "--help")})
@@ -17,3 +18,4 @@ nom.add_command(dataset.dataset_cmd)
 nom.add_command(download.download_cmd)
 nom.add_command(mis.mis_cmd)
 nom.add_command(run.run_cmd)
+nom.add_command(migrate_cmd)
