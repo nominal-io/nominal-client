@@ -41,7 +41,8 @@ def _load_ouster_sdk() -> tuple[Any, Any, Any]:
         pcap = importlib.import_module("ouster.sdk.pcap")
     except ImportError as e:
         raise ImportError(
-            f"Missing required dependencies for Ouster conversion: {e}. Install with: pip install nominal[ouster]"
+            f"Missing required dependencies for Ouster conversion: {e}. Install with: pip install nominal[ouster] "
+            "ouster-sdk"
         ) from e
     return core.ChanField, core.XYZLut, pcap.PcapScanSource
 

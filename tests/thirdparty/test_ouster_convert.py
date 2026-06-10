@@ -278,5 +278,5 @@ def test_write_scan_points_formats_rows():
 def test_ensure_ouster_sdk_reports_optional_dependency(monkeypatch):
     monkeypatch.setitem(sys.modules, "ouster", None)
 
-    with pytest.raises(ImportError, match="pip install nominal\\[ouster\\]"):
+    with pytest.raises(ImportError, match="pip install nominal\\[ouster\\] ouster-sdk"):
         _convert._ensure_ouster_sdk()
