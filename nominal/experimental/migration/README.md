@@ -39,7 +39,7 @@ nom config profile add <profile-name> \
 
 ```sh
 nom migrate prep \
-  --source-profile SOURCE \
+  --profile SOURCE \
   --name my_migration \
   --output my_migration.yml
 ```

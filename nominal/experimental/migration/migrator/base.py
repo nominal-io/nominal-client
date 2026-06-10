@@ -11,7 +11,7 @@ from nominal.experimental.migration.migrator.context import MigrationContext
 from nominal.experimental.migration.resource_type import ResourceType
 
 Resource = TypeVar("Resource", bound=HasRid)
-CopyOptions = TypeVar("CopyOptions", bound="ResourceCopyOptions", default="ResourceCopyOptions")
+CopyOptions = TypeVar("CopyOptions", bound="ResourceCopyOptions")
 
 
 @dataclass(frozen=True)
