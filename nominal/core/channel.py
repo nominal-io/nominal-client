@@ -3,8 +3,8 @@ from __future__ import annotations
 import enum
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import BinaryIO, Iterable, Mapping, Protocol, cast, overload
+from datetime import datetime, timezone
+from typing import BinaryIO, Iterable, Mapping, NamedTuple, Protocol, cast, overload
 
 from nominal_api import (
     api,
@@ -35,6 +35,17 @@ from nominal.ts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class LastValue(NamedTuple):
+    """Result of `Channel.get_last_value`.
+
+    `value` is `float` for DOUBLE channels, `int` for INT channels, and `str` for STRING channels.
+    `timestamp` is integer nanoseconds since the unix epoch (UTC).
+    """
+
+    timestamp: IntegralNanosecondsUTC
+    value: float | int | str
 
 
 class ChannelDataType(enum.Enum):
@@ -228,6 +239,77 @@ class Channel(RefreshableMixin[timeseries_channelmetadata_api.ChannelMetadata]):
                     yield LogPoint._from_compute_api(log, timestamp)
             else:
                 raise RuntimeError(f"Expected response type to be `paged_log`, received: `{resp.type}`")
+
+    def get_last_value(
+        self,
+        *,
+        start: _InferrableTimestampType | None = None,
+        end: _InferrableTimestampType | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> LastValue | None:
+        """Return the last ``(timestamp, value)`` for this channel within ``[start, end]``.
+
+        Args:
+            start: Lower bound of the search window. Defaults to one hour before ``end``;
+                large query windows may be slower.
+            end: Upper bound of the search window. Defaults to the current UTC time at call time.
+            tags: Tags to filter the channel by (exact-match). Group-by is not supported.
+
+        Returns:
+            See ``LastValue``. Returns ``None`` if the window is empty.
+
+        Raises:
+            TypeError: If the channel is not a numeric (DOUBLE, INT) or string channel.
+            ValueError: If ``start`` is strictly after ``end``.
+        """
+        if self.data_type not in (ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING):
+            raise TypeError(
+                f"get_last_value only supports numeric (DOUBLE, INT) and STRING channels; "
+                f"channel {self.name!r} has type {self.data_type}"
+            )
+
+        end_ts = _SecondsNanos.from_flexible(end if end is not None else datetime.now(timezone.utc))
+        if start is not None:
+            start_ts = _SecondsNanos.from_flexible(start)
+        else:
+            start_ts = _SecondsNanos(end_ts.seconds - 3600, end_ts.nanos)
+        if start_ts > end_ts:
+            raise ValueError(f"start ({start!r}) must be at or before end ({end!r})")
+        api_start = start_ts.to_api()
+        api_end = end_ts.to_api()
+
+        request = scout_compute_api.ComputeNodeRequest(
+            start=api_start,
+            end=api_end,
+            node=scout_compute_api.ComputableNode(
+                value=scout_compute_api.SelectValue(last_value_point=self._to_compute_series(tags=tags)),
+            ),
+            context=scout_compute_api.Context(frame_references={}, variables={}, function_variables={}),
+        )
+        try:
+            response = self._clients.compute.compute(self._clients.auth_header, request)
+        except ValueError as e:
+            # TODO(palantir/conjure-python#1050): empty single-point responses raise here
+            # instead of returning None. Match exactly so we don't swallow unrelated
+            # ValueErrors. Once fixed: delete this try/except and flip the
+            # `if point is None` branch below from `raise` to `return None`.
+            if str(e) == "a union value must not be None":
+                return None
+            raise
+
+        point = response.single_point
+        if point is None:
+            raise RuntimeError(f"Expected response type to be `single_point`, received: `{response.type}`")
+        ts = _SecondsNanos.from_api(point.timestamp).to_nanoseconds()
+        v = point.value
+        if v.float64_value is not None:
+            return LastValue(ts, v.float64_value)
+        if v.int64_value is not None:
+            # int64 is wire-encoded as a string to preserve precision across JSON
+            return LastValue(ts, int(v.int64_value))
+        if v.string_value is not None:
+            return LastValue(ts, v.string_value)
+        raise RuntimeError(f"Unexpected value variant in `single_point` response: `{v.type}`")
 
     def get_available_tags(
         self,
