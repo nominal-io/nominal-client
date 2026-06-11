@@ -28,7 +28,7 @@ jobs:
       - name: Determine package from tag
         id: package
         run: |
-          TAG="${{ github.event.inputs.tag || env.GITHUB_REF_NAME }}"
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
           if [[ "$TAG" == v* ]]; then
             echo "name=nominal" >> "$GITHUB_OUTPUT"
           else

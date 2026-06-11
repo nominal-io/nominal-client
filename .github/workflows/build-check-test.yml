@@ -71,6 +71,8 @@ jobs:
         run: |
           python3 -m json.tool release-please-config.json
           python3 -m json.tool .release-please-manifest.json
+      # Validates config structure only — targets the PR branch, not main,
+      # so the computed version bump is not meaningful here.
       - name: Dry-run release-please
         run: |
           TARGET="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
