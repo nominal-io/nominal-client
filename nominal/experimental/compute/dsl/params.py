@@ -57,14 +57,14 @@ def _threshold_operator_to_conjure(operator: ThresholdOperatorLiteral) -> scout_
     return mapping[operator]
 
 
-def _rolling_operation_to_conjure(operator: RollingOperationLiteral) -> scout_compute_api.NumericAggregation:
+def _rolling_operation_to_conjure(operator: RollingOperationLiteral) -> scout_compute_api.NumericAggregationOperator:
     mapping = {
-        "mean": scout_compute_api.NumericAggregation(average=scout_compute_api.Average()),
-        "sum": scout_compute_api.NumericAggregation(sum=scout_compute_api.Summation()),
-        "min": scout_compute_api.NumericAggregation(min=scout_compute_api.Minimum()),
-        "max": scout_compute_api.NumericAggregation(max=scout_compute_api.Maximum()),
-        "count": scout_compute_api.NumericAggregation(count=scout_compute_api.Count()),
-        "std": scout_compute_api.NumericAggregation(standard_deviation=scout_compute_api.StandardDeviation()),
+        "mean": scout_compute_api.NumericAggregationOperator(average=scout_compute_api.Average()),
+        "sum": scout_compute_api.NumericAggregationOperator(sum=scout_compute_api.Summation()),
+        "min": scout_compute_api.NumericAggregationOperator(min=scout_compute_api.Minimum()),
+        "max": scout_compute_api.NumericAggregationOperator(max=scout_compute_api.Maximum()),
+        "count": scout_compute_api.NumericAggregationOperator(count=scout_compute_api.Count()),
+        "std": scout_compute_api.NumericAggregationOperator(standard_deviation=scout_compute_api.StandardDeviation()),
     }
     return mapping[operator]
 
