@@ -1,5 +1,10 @@
 name: Publish PyPI
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to simulate (e.g. nominal-tdms-v1.143.1)'
+        required: true
   push:
     tags:
       - "v*.*.*"
@@ -23,13 +28,14 @@ jobs:
       - name: Determine package from tag
         id: package
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${{ github.event.inputs.tag || env.GITHUB_REF_NAME }}"
           if [[ "$TAG" == v* ]]; then
             echo "name=nominal" >> "$GITHUB_OUTPUT"
           else
             echo "name=${TAG%-v*}" >> "$GITHUB_OUTPUT"
           fi
-      - name: Build and publish to PyPI
-        run: |
-          uv build --package ${{ steps.package.outputs.name }}
-          uv publish --trusted-publishing always
+      - name: Build package
+        run: uv build --package ${{ steps.package.outputs.name }}
+      - name: Publish to PyPI
+        if: github.event_name == 'push'
+        run: uv publish --trusted-publishing always

@@ -60,3 +60,20 @@ jobs:
           cache-dependency-glob: "uv.lock"
       - name: Build all packages
         run: uv build --all-packages
+
+  validate-release-config:
+    runs-on: depot-ubuntu-24.04-small
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate release config JSON
+        run: |
+          python3 -m json.tool release-please-config.json
+          python3 -m json.tool .release-please-manifest.json
+      - name: Dry-run release-please
+        run: |
+          npx release-please release-pr \
+            --dry-run \
+            --repo-url nominal-io/nominal-client \
+            --config-file release-please-config.json \
+            --manifest-file .release-please-manifest.json \
+            --token ${{ github.token }}
