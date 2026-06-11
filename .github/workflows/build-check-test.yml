@@ -65,16 +65,21 @@ jobs:
     runs-on: depot-ubuntu-24.04-small
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Validate release config JSON
         run: |
           python3 -m json.tool release-please-config.json
           python3 -m json.tool .release-please-manifest.json
       - name: Dry-run release-please
         run: |
+          TARGET="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
           npx release-please release-pr \
             --dry-run \
             --local \
+            --local-path . \
             --repo-url nominal-io/nominal-client \
             --config-file release-please-config.json \
             --manifest-file .release-please-manifest.json \
+            --target-branch "$TARGET" \
             --token ${{ github.token }}
