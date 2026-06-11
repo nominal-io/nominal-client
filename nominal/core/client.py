@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import logging
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
@@ -171,6 +172,7 @@ class NominalClient:
         connect_timeout: timedelta | float = DEFAULT_CONNECT_TIMEOUT,
         extra_headers: HeaderProvider | Mapping[str, str] | None = None,
         _profile: str | None = None,
+        _workspace_warning_emitted: bool = False,
     ) -> Self:
         """Create a connection to the Nominal platform from a token.
 
@@ -184,6 +186,13 @@ class NominalClient:
             connect_timeout: Request connection timeout.
             extra_headers: Extra request headers, either as a mapping or HeaderProvider.
         """
+        if workspace_rid is None and not _workspace_warning_emitted:
+            warnings.warn(
+                "NominalClient will soon require a workspace RID. "
+                "Any client which doesn't have a workspace RID specified will fail.",
+                UserWarning,
+                stacklevel=2,
+            )
         trust_store_path = certifi.where() if trust_store_path is None else trust_store_path
         timeout_seconds = connect_timeout.total_seconds() if isinstance(connect_timeout, timedelta) else connect_timeout
         cfg = ServiceConfiguration(
