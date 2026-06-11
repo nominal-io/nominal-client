@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import dataclasses
 import logging
 from typing import Callable
 
@@ -24,16 +25,7 @@ logger = logging.getLogger(__name__)
 def _make_asset_fn(
     asset_resources: AssetResources, asset_migrator: AssetMigrator, asset_copy_options: AssetCopyOptions
 ) -> Callable[[], None]:
-    options = AssetCopyOptions(
-        dataset_config=asset_copy_options.dataset_config,
-        include_attachments=asset_copy_options.include_attachments,
-        include_events=asset_copy_options.include_events,
-        include_runs=asset_copy_options.include_runs,
-        include_video=asset_copy_options.include_video,
-        include_checklists=asset_copy_options.include_checklists,
-        include_workbooks=asset_copy_options.include_workbooks,
-        workbook_rids_allowlist=asset_resources.source_workbook_rids,
-    )
+    options = dataclasses.replace(asset_copy_options, workbook_rids_allowlist=asset_resources.source_workbook_rids)
 
     def fn() -> None:
         asset_migrator.copy_from(asset_resources.asset, options)
