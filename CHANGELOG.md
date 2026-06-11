@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.145.1](https://github.com/nominal-io/nominal-client/compare/v1.145.0...v1.145.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* add missing allowlist link for parallel migration ([#812](https://github.com/nominal-io/nominal-client/issues/812)) ([61e334c](https://github.com/nominal-io/nominal-client/commit/61e334c1843cf4570e70be87a47a67fef652dba6))
+* some minor bugs in migration prep cli ([#810](https://github.com/nominal-io/nominal-client/issues/810)) ([13b1ce4](https://github.com/nominal-io/nominal-client/commit/13b1ce4c390250f5f5d5cd1243bc417335ad4848))
+
 ## [1.145.0](https://github.com/nominal-io/nominal-client/compare/v1.144.1...v1.145.0) (2026-06-02)
 
 
