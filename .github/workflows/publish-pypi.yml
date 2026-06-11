@@ -3,8 +3,7 @@ on:
   push:
     tags:
       - "v*.*.*"
-    branches:
-      - main
+      - "*-v*.*.*"
 
 permissions:
   contents: read
@@ -21,7 +20,16 @@ jobs:
           version: "0.8.x"
           enable-cache: false
           cache-dependency-glob: "uv.lock"
-      - name: Build and Publish Package to PYPI
+      - name: Determine package from tag
+        id: package
         run: |
-          uv build --all-packages
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" == v* ]]; then
+            echo "name=nominal" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${TAG%-v*}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and publish to PyPI
+        run: |
+          uv build --package ${{ steps.package.outputs.name }}
           uv publish --trusted-publishing always
