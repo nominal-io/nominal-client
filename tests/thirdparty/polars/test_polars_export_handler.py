@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -625,14 +626,14 @@ def test_generate_presigned_link_raises_after_max_retries(mock_client, monkeypat
 # -- _wait_until_materialized / _served_size --
 
 
-def test_wait_until_materialized_returns_when_object_is_complete(mock_client, monkeypatch):
-    """Once the served size reaches the expected size, the wait returns without raising."""
+def test_wait_until_materialized_returns_etag_when_object_is_complete(mock_client, monkeypatch):
+    """Once the served size reaches the expected size, the wait returns the probed ETag."""
     resp = MagicMock(status_code=206)
-    resp.headers = {"Content-Range": "bytes 0-0/100"}
+    resp.headers = {"Content-Range": "bytes 0-0/100", "ETag": "abc123"}
     monkeypatch.setattr(peh.requests, "get", lambda *a, **k: resp)
 
     handler = PolarsExportHandler(client=mock_client)
-    handler._wait_until_materialized("https://s3/export", expected_size=100)  # does not raise
+    assert handler._wait_until_materialized("https://s3/export", expected_size=100) == "abc123"
 
 
 def test_wait_until_materialized_raises_on_timeout(mock_client, monkeypatch):
@@ -653,7 +654,56 @@ def test_served_size_returns_none_on_request_error(mock_client, monkeypatch):
         raise requests.ConnectionError("connection reset")
 
     monkeypatch.setattr(peh.requests, "get", _boom)
-    assert PolarsExportHandler._served_size("https://s3/export") is None
+    assert PolarsExportHandler._served_size("https://s3/export") == (None, None)
+
+
+def test_served_size_returns_size_and_etag(mock_client, monkeypatch):
+    """A successful ranged probe returns the full object size (from Content-Range) and the ETag."""
+    resp = MagicMock(status_code=206)
+    resp.headers = {"Content-Range": "bytes 0-0/4096", "ETag": "deadbeef"}
+    monkeypatch.setattr(peh.requests, "get", lambda *a, **k: resp)
+
+    assert PolarsExportHandler._served_size("https://s3/export") == (4096, "deadbeef")
+
+
+def test_presigned_url_provider_returns_metadata_and_bounds_link_concurrency(mock_client, monkeypatch):
+    """The provider's fetch returns a PresignedURL with size+etag, and the semaphore caps concurrent link gen."""
+    import concurrent.futures
+    import threading
+
+    handler = PolarsExportHandler(client=mock_client)
+    # The fetch builds an export request via job.export_request(datasource); an empty channel list
+    # keeps that construction trivial without a real datasource.
+    datasource = MagicMock()
+    datasource.get_channels.return_value = []
+    job = _job("ri.datasource.x.dsa", "a")
+
+    # Track how many link generations run concurrently; sleep so overlap is observable.
+    concurrency = {"cur": 0, "max": 0}
+    lock = threading.Lock()
+
+    def _fake_gen(_request):
+        with lock:
+            concurrency["cur"] += 1
+            concurrency["max"] = max(concurrency["max"], concurrency["cur"])
+        time.sleep(0.02)
+        with lock:
+            concurrency["cur"] -= 1
+        resp = MagicMock()
+        resp.presigned_url.url = "https://s3/export"
+        resp.file_size_bytes = 4096
+        return resp
+
+    monkeypatch.setattr(handler, "_generate_presigned_link", _fake_gen)
+    monkeypatch.setattr(handler, "_wait_until_materialized", lambda _url, _size: "etag-1")
+
+    semaphore = threading.BoundedSemaphore(2)
+    providers = [handler._presigned_url_provider(job, datasource, semaphore) for _ in range(8)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda p: p.get(), providers))
+
+    assert all(r.total_size == 4096 and r.etag == "etag-1" and r.url == "https://s3/export" for r in results)
+    assert concurrency["max"] <= 2
 
 
 # -- export_to_files --
