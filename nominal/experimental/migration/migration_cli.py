@@ -13,6 +13,7 @@ from nominal.cli.util.global_decorators import client_options, global_options
 from nominal.core import ArchiveStatusFilter, Asset, Checklist, NominalClient, Workbook
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.experimental import as_user
+from nominal.experimental.migration.channel_sync import ChannelSyncOptions, sync_missing_channel_data
 from nominal.experimental.migration.config.migration_data_config import AssetInclusionConfig, MigrationDatasetConfig
 from nominal.experimental.migration.config.migration_resources import AssetResources, MigrationResources
 from nominal.experimental.migration.migration_decorators import migration_client_options
@@ -566,6 +567,110 @@ def copy(
 
     if set_to_demo_workbook and not dry_run:
         _update_demo_workbooks(target_client, runner)
+
+
+def _parse_tags(tag: Sequence[str]) -> dict[str, str]:
+    """Parse repeated ``--tag key=value`` options into a dict."""
+    tags: dict[str, str] = {}
+    for item in tag:
+        key, sep, value = item.partition("=")
+        if not sep or not key:
+            raise click.BadParameter(f"--tag must be key=value, got {item!r}")
+        tags[key] = value
+    return tags
+
+
+@migrate_cmd.command(
+    name="sync-channels",
+    help="Backfill the channel data a destination dataset is missing, from a source dataset.",
+)
+@migration_client_options
+@global_options
+@click.option("--source-dataset-rid", required=True, help="RID of the source dataset to copy data from.")
+@click.option("--destination-dataset-rid", required=True, help="RID of the destination dataset to fill.")
+@click.option("--start", required=True, help="Window start (ISO-8601, or epoch nanoseconds).")
+@click.option("--end", required=True, help="Window end (ISO-8601, or epoch nanoseconds).")
+@click.option(
+    "--bucket-seconds",
+    default=3600.0,
+    show_default=True,
+    type=click.FloatRange(min=0, min_open=True),
+    help="Detection bucket width in seconds.",
+)
+@click.option(
+    "--tag",
+    multiple=True,
+    help="Datascope tag filter as key=value (repeatable). Applied to detection, export, and upload.",
+)
+@click.option(
+    "--max-retries",
+    default=2,
+    show_default=True,
+    type=click.IntRange(min=0),
+    help="Times to re-stream a still-short range after the first attempt.",
+)
+@click.option(
+    "--settle-seconds",
+    default=30.0,
+    show_default=True,
+    type=click.FloatRange(min=0),
+    help="Wait for asynchronous ingestion to settle before re-detecting.",
+)
+@click.option(
+    "--output-dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory for exported CSVs. A temporary directory is used (and cleaned up) when omitted.",
+)
+def sync_channels(
+    clients: tuple[NominalClient, NominalClient],
+    source_dataset_rid: str,
+    destination_dataset_rid: str,
+    start: str,
+    end: str,
+    bucket_seconds: float,
+    tag: tuple[str, ...],
+    max_retries: int,
+    settle_seconds: float,
+    output_dir: Path | None,
+) -> None:
+    # Imported lazily so timestamp parsing stays out of the module import path.
+    from nominal.ts import _SecondsNanos
+
+    source_client, destination_client = clients
+    source_dataset = source_client.get_dataset(source_dataset_rid)
+    destination_dataset = destination_client.get_dataset(destination_dataset_rid)
+
+    start_ns = _SecondsNanos.from_flexible(start).to_nanoseconds()
+    end_ns = _SecondsNanos.from_flexible(end).to_nanoseconds()
+    tags = _parse_tags(tag)
+    options = ChannelSyncOptions(
+        bucket=int(bucket_seconds * 1_000_000_000),
+        tags=tags or None,
+        max_retries=max_retries,
+        settle_seconds=settle_seconds,
+        output_dir=output_dir,
+    )
+
+    report = sync_missing_channel_data(source_dataset, source_client, destination_dataset, start_ns, end_ns, options)
+
+    logger.info(
+        "Sync complete: examined=%d skipped_unsupported=%d missing=%d synced=%d points_streamed=%d still_short=%d",
+        report.channels_examined,
+        report.channels_skipped_unsupported,
+        report.channels_missing,
+        report.channels_synced,
+        report.points_streamed,
+        len(report.still_short),
+    )
+    for entry in report.still_short:
+        logger.warning(
+            "Still short: channel=%r tags=%s range=[%d, %d)",
+            entry.channel,
+            entry.tags,
+            entry.time_range[0],
+            entry.time_range[1],
+        )
 
 
 def _categorize_workbooks(workbooks: Sequence[Workbook]) -> tuple[set[str], set[str]]:
