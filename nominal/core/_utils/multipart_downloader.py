@@ -21,36 +21,54 @@ from nominal.core._utils.networking import HeaderProvider, create_multipart_requ
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class PresignedURL:
+    """A fetched presigned URL plus any object metadata discovered while fetching it.
+
+    When ``total_size`` is known up front (e.g. the export service returns the authoritative file
+    size, or a readiness probe already learned it), the downloader skips its own size/ETag probe,
+    saving a round-trip per file. Providers that don't know the size ahead of time return just the
+    url and the downloader probes as before.
+    """
+
+    url: str
+    total_size: int | None = None
+    etag: str | None = None
+
+
 @dataclasses.dataclass
 class PresignedURLProvider:
     """Thread-safe presigned URL cache that refreshes on schedule or when invalidated."""
 
-    fetch_fn: Callable[[], str]
-    """Function used to fetch a fresh presigned URL when the current one expires"""
+    fetch_fn: Callable[[], PresignedURL]
+    """Function used to fetch a fresh presigned URL (and any known metadata) when the current one expires"""
     ttl_secs: float
     """Time-to-Live for the presigned URLs"""
     skew_secs: float
     """Buffer around TTL to ensure that URLs are still fresh by the time they are used"""
 
-    # Pair of url + deadline, where the deadline is the latest monotonic clock time we consider the URL valid for
-    _stamped_url: tuple[str, float] | None = dataclasses.field(default=None, repr=False)
+    # Pair of presigned + deadline, where the deadline is the latest monotonic clock time we consider it valid for
+    _stamped: tuple[PresignedURL, float] | None = dataclasses.field(default=None, repr=False)
     _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock, repr=False)
 
-    def get_url(self, *, force: bool = False) -> str:
+    def get(self, *, force: bool = False) -> PresignedURL:
         now = time.monotonic()
         with self._lock:
-            if force or self._stamped_url is None or now >= self._stamped_url[1]:
-                url = self.fetch_fn()
+            if force or self._stamped is None or now >= self._stamped[1]:
+                presigned = self.fetch_fn()
                 deadline = now + max(0.0, self.ttl_secs - self.skew_secs)
-                self._stamped_url = (url, deadline)
-                logger.debug("Refreshed presigned url with deadline of %f ('%s')", deadline, url)
+                self._stamped = (presigned, deadline)
+                logger.debug("Refreshed presigned url with deadline of %f ('%s')", deadline, presigned.url)
 
-            return self._stamped_url[0]
+            return self._stamped[0]
+
+    def get_url(self, *, force: bool = False) -> str:
+        return self.get(force=force).url
 
     def invalidate(self) -> None:
         with self._lock:
             logger.info("Invalidating presigned URL")
-            self._stamped_url = None
+            self._stamped = None
 
 
 @dataclass(frozen=True)
@@ -185,19 +203,23 @@ class MultipartFileDownloader:
         for it in items:
             self._check_destination(it.destination)
 
-        # Probe & preallocate files to generate a plan
-        plans: list[_PlannedDownload] = []
-        for it in items:
-            if it.destination in plan_failures:
-                continue
-
+        # Probe & preallocate files to generate plans. Planning is multi-threaded on the shared pool:
+        # each file's link generation and (possibly long) S3 materialization wait happen concurrently
+        # rather than one file at a time. This is a barrier -- all planning completes before any byte
+        # download starts -- so reusing the download pool here cannot deadlock against _run_downloads.
+        plan_by_dest: dict[pathlib.Path, _PlannedDownload] = {}
+        plan_futs = {self._pool.submit(self._plan_and_preallocate, it): it for it in items}
+        for fut in as_completed(plan_futs):
+            it = plan_futs[fut]
             try:
-                plan = self._plan_item(it)
-                self._preallocate(it.destination, plan.total_size)
-                plans.append(plan)
+                plan_by_dest[it.destination] = fut.result()
             except Exception as ex:
                 plan_failures[it.destination] = ex
                 logger.error("Planning failed for %s", it.destination, exc_info=ex)
+
+        # Rebuild in input order so downstream submission/logging is deterministic regardless of the
+        # order planning futures happened to complete in.
+        plans = [plan_by_dest[it.destination] for it in items if it.destination in plan_by_dest]
 
         if plan_failures:
             logger.warning("Failed to plan downloads for %d files!", len(plan_failures))
@@ -306,12 +328,27 @@ class MultipartFileDownloader:
         raise RuntimeError("Could not determine object size/ETag (presigned URL kept failing)")
 
     def _plan_item(self, item: DownloadItem) -> _PlannedDownload:
+        # If the provider already knows the object size (e.g. an export service returned it), skip
+        # the size/ETag probe entirely -- one fewer round-trip per file, which adds up over many files.
+        presigned = item.provider.get()
+        if presigned.total_size is not None:
+            return _PlannedDownload(item=item, total_size=presigned.total_size, etag=presigned.etag)
         total_size, etag = self._head_or_probe(item.provider)
         return _PlannedDownload(
             item=item,
             total_size=total_size,
             etag=etag,
         )
+
+    def _plan_and_preallocate(self, item: DownloadItem) -> _PlannedDownload:
+        """Fetch the presigned link, probe size/etag if needed, and preallocate the destination file.
+
+        Runs on the download pool so link generation + the (possibly long) materialization wait
+        baked into the provider's fetch happen concurrently across files rather than one at a time.
+        """
+        plan = self._plan_item(item)
+        self._preallocate(item.destination, plan.total_size)
+        return plan
 
     # ---- IO helpers ----
 
