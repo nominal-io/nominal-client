@@ -410,11 +410,11 @@ def _create_compute_request_buckets(
 ) -> scout_compute_api.ComputeNodeRequest:
     return scout_compute_api.ComputeNodeRequest(
         context=scout_compute_api.Context(
-            frame_references={},
+            dataset_references={},
             variables={
                 k: scout_compute_api.VariableValue(
                     compute_node=scout_compute_api.ComputeNodeWithContext(
-                        context=scout_compute_api.Context(frame_references={}, variables={}, function_variables={}),
+                        context=scout_compute_api.Context(dataset_references={}, variables={}, function_variables={}),
                         series_node=_to_compute_node(v),
                     )
                 )
