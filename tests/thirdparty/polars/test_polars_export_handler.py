@@ -750,10 +750,15 @@ class _FakeDownloader:
     def __exit__(self, *_args):
         return False
 
-    def download_files(self, items):
+    def download_files_pipelined(self, items, *, on_file_planned=None, on_file_complete=None):
         type(self).last_items = list(items)
         if type(self).fail:
             return DownloadResults(succeeded=[], failed={items[0].destination: RuntimeError("boom")})
+        for it in items:
+            if on_file_planned is not None:
+                on_file_planned(it.destination)
+            if on_file_complete is not None:
+                on_file_complete(it.destination)
         return DownloadResults(succeeded=[it.destination for it in items], failed={})
 
 
