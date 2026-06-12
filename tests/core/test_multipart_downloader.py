@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Sequence, cast
+from typing import Iterator, Sequence, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,25 +11,33 @@ import requests
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
     MultipartFileDownloader,
+    PresignedURL,
     PresignedURLProvider,
     _DataChunkBounds,
     _PlannedDownload,
 )
 
 
-def _provider() -> PresignedURLProvider:
-    return PresignedURLProvider(fetch_fn=lambda: "https://example.com/file", ttl_secs=60.0, skew_secs=0.0)
+def _provider(presigned: PresignedURL | None = None) -> PresignedURLProvider:
+    presigned = presigned or PresignedURL(url="https://example.com/file")
+    return PresignedURLProvider(fetch_fn=lambda: presigned, ttl_secs=60.0, skew_secs=0.0)
 
 
 @pytest.fixture
-def downloader() -> MultipartFileDownloader:
-    return MultipartFileDownloader(
-        max_workers=1,
-        timeout=30.0,
-        max_part_retries=3,
-        _session=MagicMock(spec=["head", "get", "close"]),
-        _pool=MagicMock(spec=["submit", "shutdown"]),
-    )
+def downloader() -> Iterator[MultipartFileDownloader]:
+    # A real pool is needed because download_files now plans (and pre-allocates) on the pool in
+    # parallel; the HTTP session stays mocked since these tests patch _plan_item / _run_downloads.
+    pool = ThreadPoolExecutor(max_workers=2)
+    try:
+        yield MultipartFileDownloader(
+            max_workers=2,
+            timeout=30.0,
+            max_part_retries=3,
+            _session=MagicMock(spec=["head", "get", "close"]),
+            _pool=pool,
+        )
+    finally:
+        pool.shutdown(wait=True)
 
 
 @pytest.fixture
@@ -41,10 +50,10 @@ def test_presigned_url_provider_caches_until_invalidated() -> None:
     """URL is reused across calls until invalidate() is called, then a fresh URL is fetched."""
     calls = 0
 
-    def fetch() -> str:
+    def fetch() -> PresignedURL:
         nonlocal calls
         calls += 1
-        return f"https://example.com/file/{calls}"
+        return PresignedURL(url=f"https://example.com/file/{calls}")
 
     provider = PresignedURLProvider(fetch_fn=fetch, ttl_secs=60.0, skew_secs=0.0)
 
@@ -158,6 +167,34 @@ def test_download_files_planning_failure_excluded_from_succeeded(
     assert list(results.succeeded) == []
     assert results.failed == {item.destination: error}
     assert not item.destination.exists()
+
+
+# ---- _plan_item PresignedURL passthrough tests ----
+
+
+def test_plan_item_skips_probe_when_size_known(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
+    """When the provider already knows the object size, planning uses it and skips the HEAD/GET probe."""
+    provider = _provider(PresignedURL(url="https://example.com/f", total_size=123, etag="abc"))
+    item = DownloadItem(provider=provider, destination=tmp_path / "f.bin", part_size=4)
+
+    with patch.object(downloader, "_head_or_probe", side_effect=AssertionError("should not probe")) as probe:
+        plan = downloader._plan_item(item)
+
+    assert plan.total_size == 123
+    assert plan.etag == "abc"
+    probe.assert_not_called()
+
+
+def test_plan_item_probes_when_size_unknown(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
+    """When the provider doesn't know the size, planning falls back to the HEAD/GET probe."""
+    item = DownloadItem(provider=_provider(), destination=tmp_path / "f.bin", part_size=4)
+
+    with patch.object(downloader, "_head_or_probe", return_value=(64, "etag")) as probe:
+        plan = downloader._plan_item(item)
+
+    assert plan.total_size == 64
+    assert plan.etag == "etag"
+    probe.assert_called_once()
 
 
 # ---- _write_part tests ----
