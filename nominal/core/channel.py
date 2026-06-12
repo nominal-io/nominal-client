@@ -461,6 +461,10 @@ def _batch_check_channels_have_data(
     Returns a tuple of:
         - channels confirmed to have data (series_count > 0)
         - names of channels with underconstrained tags (series_count > 1)
+
+    NOTE: request may fail if rate limits are breached, too many series are queried, bounds are invalid
+        (such as end < start), timeouts are reached, or otherwise if tag filters are invalid or contradictory.
+        This will raise various ConjureHttpError exceptions.
     """
     time_range = api.Range(start=start, end=end)
     request = datasource_api.BatchGetSeriesCountRequest(
@@ -548,6 +552,7 @@ def filter_channels_with_data(
                 try:
                     matched, underconstrained = future.result()
                 except Exception:
+                    # Series count calculations may fail for a myriad of reasons, such as
                     # A single-channel request that failed is already a retry (or was submitted
                     # that way by the caller via batch_size=1); don't retry indefinitely.
                     if len(batch) == 1:
