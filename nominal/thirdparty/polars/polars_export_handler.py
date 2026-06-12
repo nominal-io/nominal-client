@@ -105,6 +105,60 @@ def _is_transient_error(exc: Exception) -> bool:
     return isinstance(exc, requests.RequestException)
 
 
+@dataclasses.dataclass
+class _PlanningProfile:
+    """Thread-safe accumulator for per-file planning timings, to diagnose where planning time goes.
+
+    The presigned planning phase has three distinct, serial-per-file costs that the parallel planner
+    runs concurrently across files: waiting for a link-generation slot (`semaphore`), the link
+    generation backend call itself (`link`), and polling S3 until the object is materialized
+    (`materialize`). Recording them separately lets `log_summary` attribute slow planning to the
+    right cause rather than lumping it into one number.
+    """
+
+    _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
+    _semaphore: list[float] = dataclasses.field(default_factory=list)
+    _link: list[float] = dataclasses.field(default_factory=list)
+    _materialize: list[float] = dataclasses.field(default_factory=list)
+
+    def record(self, *, semaphore_s: float, link_s: float, materialize_s: float) -> None:
+        with self._lock:
+            self._semaphore.append(semaphore_s)
+            self._link.append(link_s)
+            self._materialize.append(materialize_s)
+
+    def log_summary(self) -> None:
+        """Log an INFO-level breakdown of total/avg/max time spent in each planning phase."""
+        with self._lock:
+            count = len(self._link)
+            if not count:
+                return
+
+            def stats(samples: list[float]) -> tuple[float, float, float]:
+                return sum(samples), sum(samples) / len(samples), max(samples)
+
+            sem_total, sem_avg, sem_max = stats(self._semaphore)
+            link_total, link_avg, link_max = stats(self._link)
+            mat_total, mat_avg, mat_max = stats(self._materialize)
+
+        logger.info(
+            "Planning profile over %d file(s) [wall-clock is lower due to parallelism]: "
+            "link-gen total=%.1fs avg=%.2fs max=%.2fs | "
+            "materialize-wait total=%.1fs avg=%.2fs max=%.2fs | "
+            "semaphore-wait total=%.1fs avg=%.2fs max=%.2fs",
+            count,
+            link_total,
+            link_avg,
+            link_max,
+            mat_total,
+            mat_avg,
+            mat_max,
+            sem_total,
+            sem_avg,
+            sem_max,
+        )
+
+
 def _extract_bucket_counts(
     response: scout_compute_api.ComputeNodeResponse,
 ) -> Sequence[tuple[IntegralNanosecondsUTC, int]]:
@@ -1039,7 +1093,10 @@ class PolarsExportHandler:
         # compute queries) generate concurrently while the downloader plans files in parallel, keeping
         # us under the backend's concurrent-query limit. Byte downloads stay fully parallel.
         link_semaphore = threading.BoundedSemaphore(self._max_concurrent_links)
-        items = self._build_download_items(export_jobs, output_dir, file_prefix, link_semaphore)
+        # Records per-file planning timings (semaphore wait / link gen / materialization) so we can
+        # report where the planning phase spends its time -- summarized at INFO once downloads finish.
+        profile = _PlanningProfile()
+        items = self._build_download_items(export_jobs, output_dir, file_prefix, link_semaphore, profile)
         if not items:
             logger.warning("No export jobs computed-- returning")
             return []
@@ -1055,6 +1112,7 @@ class PolarsExportHandler:
             ) as downloader,
         ):
             results = downloader.download_files(items)
+        profile.log_summary()
 
         if results.failed:
             for dest, ex in results.failed.items():
@@ -1095,6 +1153,7 @@ class PolarsExportHandler:
         output_dir: pathlib.Path,
         file_prefix: str,
         link_semaphore: threading.BoundedSemaphore,
+        profile: _PlanningProfile,
     ) -> list[DownloadItem]:
         """Build one :class:`DownloadItem` per export job -- a 1:1 file:job (and thus file:dataframe) map."""
         # Resolve each datasource once (cached) since many jobs share a datasource.
@@ -1105,7 +1164,7 @@ class PolarsExportHandler:
         for slice_idx, time_slice in enumerate(sorted(export_jobs.keys())):
             for job_idx, job in enumerate(export_jobs[time_slice]):
                 destination = output_dir / self._file_name(file_prefix, job, slice_idx, job_idx)
-                provider = self._presigned_url_provider(job, datasources[job.datasource_rid], link_semaphore)
+                provider = self._presigned_url_provider(job, datasources[job.datasource_rid], link_semaphore, profile)
                 items.append(DownloadItem(provider=provider, destination=destination, part_size=DEFAULT_CHUNK_SIZE))
         return items
 
@@ -1115,7 +1174,11 @@ class PolarsExportHandler:
         return f"{file_prefix}_{datasource_short}_s{slice_idx:04d}_g{job_idx:03d}.csv.gz"
 
     def _presigned_url_provider(
-        self, job: _ExportJob, datasource: DataSource, link_semaphore: threading.BoundedSemaphore
+        self,
+        job: _ExportJob,
+        datasource: DataSource,
+        link_semaphore: threading.BoundedSemaphore,
+        profile: _PlanningProfile,
     ) -> PresignedURLProvider:
         # Build the export request lazily on first fetch (it issues a get_channels call), then memoize
         # so re-signing on expiry doesn't rebuild it.
@@ -1126,20 +1189,32 @@ class PolarsExportHandler:
             if cached_request is None:
                 cached_request = job.export_request(datasource)
             # Hold a slot across the (retrying) link generation so concurrent compute queries stay
-            # bounded; release it before the S3 readiness wait, which isn't a query.
+            # bounded; release it before the S3 readiness wait, which isn't a query. Time each phase
+            # separately so slow planning can be attributed to queueing, link gen, or the S3 wait.
+            acquire_start = time.monotonic()
             with link_semaphore:
+                semaphore_s = time.monotonic() - acquire_start
+                link_start = time.monotonic()
                 response = self._generate_presigned_link(cached_request)
+                link_s = time.monotonic() - link_start
             url = response.presigned_url.url
-            logger.debug(
-                "Presigned export link ready (channels=%d, %.2f MB)",
-                len(job.channel_names),
-                response.file_size_bytes / 1e6,
-            )
             # Large exports are written to S3 asynchronously; wait until the object is fully
             # materialized so the downloader never captures a partial (header-only) file. The same
             # probe yields the size (authoritative from file_size_bytes) and ETag, which we pass to
             # the downloader so it can skip its own size/ETag probe -- one fewer round-trip per file.
+            materialize_start = time.monotonic()
             etag = self._wait_until_materialized(url, response.file_size_bytes)
+            materialize_s = time.monotonic() - materialize_start
+
+            profile.record(semaphore_s=semaphore_s, link_s=link_s, materialize_s=materialize_s)
+            logger.debug(
+                "Planned %d-channel %.2f MB export: link-gen %.2fs, materialize %.2fs, semaphore-wait %.2fs",
+                len(job.channel_names),
+                response.file_size_bytes / 1e6,
+                link_s,
+                materialize_s,
+                semaphore_s,
+            )
             return PresignedURL(url=url, total_size=response.file_size_bytes, etag=etag)
 
         return PresignedURLProvider(fetch_fn=fetch, ttl_secs=DEFAULT_URL_TTL_SECS, skew_secs=DEFAULT_URL_SKEW_SECS)
