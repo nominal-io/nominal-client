@@ -3,14 +3,24 @@ import concurrent.futures
 import dataclasses
 import datetime
 import logging
+import pathlib
+import random
+import time
 from typing import Iterator, Mapping, Sequence
 
+import requests
 from nominal_api import api, scout_compute_api, scout_dataexport_api
 from typing_extensions import Self
 
 import polars as pl
 from nominal._utils import LogTiming
 from nominal._utils.iterator_tools import batched
+from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
+from nominal.core._utils.multipart_downloader import (
+    DownloadItem,
+    MultipartFileDownloader,
+    PresignedURLProvider,
+)
 from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
 from nominal.core.datasource import DataSource
@@ -53,7 +63,38 @@ _EXPORTABLE_DATA_TYPES: frozenset[ChannelDataType] = frozenset(
 DEFAULT_EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
 _INTERNAL_TS_COL = "__nmnl_ts__"  # internal join key, chosen to avoid collision with channel names
 
+# Presigned (write-to-disk) export tuning. Presigned links are long-lived: a generous TTL means each
+# link is fetched once and not proactively re-signed mid-download. Re-signing is not free -- each link
+# is a *fresh* server-side export that can produce a different S3 object/ETag -- so we size the TTL so
+# it effectively never happens (the downloader still re-signs once on a 403).
+DEFAULT_URL_TTL_SECS = 3600.0
+DEFAULT_URL_SKEW_SECS = 60.0
+
+# Each presigned link is a server-side export *compute query*; transient failures (5xx / 429, most
+# commonly Compute:ConcurrentQueriesExceeded backpressure) are retried with jittered exponential
+# backoff that grows to ~30s -- patient enough to ride out shared-limit contention.
+DEFAULT_MAX_LINK_RETRIES = 8
+_MAX_LINK_RETRY_BACKOFF_SECS = 30.0
+
+# Large exports are materialized to S3 asynchronously: the link is returned with the final
+# `file_size_bytes` before the object is fully written, and its served size grows until complete. We
+# poll until served size reaches `file_size_bytes` before downloading so we never capture a partial
+# (header-only) file.
+DEFAULT_READINESS_TIMEOUT_SECS = 600.0
+
 logger = logging.getLogger(__name__)
+
+
+class ExportNotReadyError(RuntimeError):
+    """Raised when an export's S3 object is not fully materialized before the readiness timeout."""
+
+
+def _is_transient_error(exc: Exception) -> bool:
+    """True for errors worth retrying: HTTP 5xx/429 (incl. ConjureHTTPError) or network-level errors."""
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status, int):
+        return status == 429 or status >= 500
+    return isinstance(exc, requests.RequestException)
 
 
 def _extract_bucket_counts(
@@ -897,3 +938,254 @@ class PolarsExportHandler:
                             logger.warning("Dataframe empty after merging...")
                         else:
                             yield merged_df.rename({_INTERNAL_TS_COL: time_column})
+
+    def export_to_files(
+        self,
+        channels: Sequence[Channel],
+        start: IntegralNanosecondsUTC,
+        end: IntegralNanosecondsUTC,
+        output_dir: str | pathlib.Path,
+        *,
+        tags: Mapping[str, str] | None = None,
+        batch_duration: datetime.timedelta | None = None,
+        timestamp_type: _AnyExportableTimestampType = "epoch_seconds",
+        buckets: int | None = None,
+        resolution: IntegralNanosecondsDuration | None = None,
+        file_prefix: str = "export",
+    ) -> list[pathlib.Path]:
+        """Export the given channels to gzipped CSV files in ``output_dir`` and return the written paths.
+
+        Unlike :meth:`export`, which streams CSV through the Nominal API server and merges everything
+        into in-memory DataFrames, this asks the export service for an S3 **presigned link** per request
+        (``generate_export_channel_data_presigned_link``) and downloads each file **straight to disk**
+        using parallel ranged GETs. This lifts the API-proxy size ceiling and is much faster for large
+        exports.
+
+        It reuses the exact same planning phase as :meth:`export`: each planned export request maps to
+        one file, so an export of more than ``channels_per_request`` channels (or across multiple
+        datasources) produces several column-partitioned ``.csv.gz`` files covering the same
+        timestamps. The files are not merged -- each is a standalone gzipped CSV.
+
+        LOG / UNKNOWN channels are filtered out with a warning; only DOUBLE, INT, and STRING channels
+        flow through the export pipeline.
+
+        Args:
+            channels: Channels to export.
+            start: Start of the export range (nanoseconds UTC).
+            end: End of the export range (nanoseconds UTC).
+            output_dir: Directory to write files into. Created if it does not exist.
+            tags: Key-value pairs used to filter channel data server-side.
+            batch_duration: Explicit per-batch time window. If omitted, one is computed from total
+                channel rate and ``points_per_dataframe``.
+            timestamp_type: Output timestamp representation (``epoch_seconds``, ``iso8601``, etc.).
+            buckets: Decimate each channel to at most this many buckets per request. Mutually exclusive
+                with ``resolution``.
+            resolution: Decimate each channel to samples at this interval (nanoseconds). Mutually
+                exclusive with ``buckets``.
+            file_prefix: Prefix for written file names.
+
+        Returns:
+            The list of written file paths, sorted.
+
+        Raises:
+            ExportNotReadyError: If an export's S3 object is not fully materialized before the
+                readiness timeout.
+            RuntimeError: If any file fails to download.
+        """
+        output_dir = pathlib.Path(output_dir)
+        if not channels:
+            logger.warning("No channels requested for export-- returning")
+            return []
+        if None not in (buckets, resolution):
+            raise ValueError("Cannot export data decimated with both buckets and resolution")
+
+        # Exclude channels with unsupported data types
+        supported_channels = [ch for ch in channels if ch.data_type in _EXPORTABLE_DATA_TYPES]
+        unsupported = len(channels) - len(supported_channels)
+        if unsupported:
+            logger.warning("Could not determine datatypes of %d channels -- ignoring for export", unsupported)
+
+        batch_duration = self._clamp_batch_duration_for_resolution(batch_duration, resolution)
+
+        # Plan first (the only blocking step); rate estimation is internally multi-threaded. The
+        # existing planner already maps each export request to exactly one file.
+        export_jobs = self._compute_export_jobs(
+            supported_channels, _TimeRange(start, end), timestamp_type, tags or {}, buckets, resolution, batch_duration
+        )
+        items = self._build_download_items(export_jobs, output_dir, file_prefix)
+        if not items:
+            logger.warning("No export jobs computed-- returning")
+            return []
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Exporting %d channels into %d file(s) under %s", len(supported_channels), len(items), output_dir)
+        with (
+            LogTiming(f"Downloaded {len(items)} export file(s)"),
+            MultipartFileDownloader.create(
+                max_workers=self._num_workers,
+                # No header_provider: the links are genuinely pre-signed (auth is in the URL), so the
+                # readiness probe and the downloads are both header-less and consistent.
+            ) as downloader,
+        ):
+            results = downloader.download_files(items)
+
+        if results.failed:
+            for dest, ex in results.failed.items():
+                logger.error("Failed to export %s", dest, exc_info=ex)
+            raise RuntimeError(f"Failed to export {len(results.failed)} of {len(items)} file(s)")
+
+        return sorted(results.succeeded)
+
+    def _clamp_batch_duration_for_resolution(
+        self, batch_duration: datetime.timedelta | None, resolution: IntegralNanosecondsDuration | None
+    ) -> datetime.timedelta | None:
+        """Clamp ``batch_duration`` so decimated exports stay within the backend bucket limit."""
+        if resolution is None:
+            return batch_duration
+
+        # If the batch duration is larger than this and data is downsampled with the given resolution,
+        # the export would exceed the backend bucket limit and fail.
+        computed = datetime.timedelta(seconds=(resolution * MAX_NUM_BUCKETS) / 1e9)
+        if batch_duration is None:
+            logger.info(
+                "Manually setting batch_duration to %fs (resolution=%dns)", computed.total_seconds(), resolution
+            )
+            return computed
+        elif computed < batch_duration:
+            logger.warning(
+                "Configured batch_duration of %fs would result in failing exports with resolution=%dns. "
+                "Setting batch_duration to %fs instead.",
+                batch_duration.total_seconds(),
+                resolution,
+                computed.total_seconds(),
+            )
+            return computed
+        return batch_duration
+
+    def _build_download_items(
+        self,
+        export_jobs: Mapping[_TimeRange, Sequence[_ExportJob]],
+        output_dir: pathlib.Path,
+        file_prefix: str,
+    ) -> list[DownloadItem]:
+        """Build one :class:`DownloadItem` per export job -- a 1:1 file:job (and thus file:dataframe) map."""
+        # Resolve each datasource once (cached) since many jobs share a datasource.
+        datasource_rids = {job.datasource_rid for jobs in export_jobs.values() for job in jobs}
+        datasources = {rid: self._client.get_datasource(rid) for rid in datasource_rids}
+
+        items: list[DownloadItem] = []
+        for slice_idx, time_slice in enumerate(sorted(export_jobs.keys())):
+            for job_idx, job in enumerate(export_jobs[time_slice]):
+                destination = output_dir / self._file_name(file_prefix, job, slice_idx, job_idx)
+                provider = self._presigned_url_provider(job, datasources[job.datasource_rid])
+                items.append(DownloadItem(provider=provider, destination=destination, part_size=DEFAULT_CHUNK_SIZE))
+        return items
+
+    @staticmethod
+    def _file_name(file_prefix: str, job: _ExportJob, slice_idx: int, job_idx: int) -> str:
+        datasource_short = job.datasource_rid.split(".")[-1]
+        return f"{file_prefix}_{datasource_short}_s{slice_idx:04d}_g{job_idx:03d}.csv.gz"
+
+    def _presigned_url_provider(self, job: _ExportJob, datasource: DataSource) -> PresignedURLProvider:
+        # Build the export request lazily on first fetch (it issues a get_channels call), then memoize
+        # so re-signing on expiry doesn't rebuild it.
+        cached_request: scout_dataexport_api.ExportDataRequest | None = None
+
+        def fetch() -> str:
+            nonlocal cached_request
+            if cached_request is None:
+                cached_request = job.export_request(datasource)
+            response = self._generate_presigned_link(cached_request)
+            url = response.presigned_url.url
+            logger.debug(
+                "Presigned export link ready (channels=%d, %.2f MB)",
+                len(job.channel_names),
+                response.file_size_bytes / 1e6,
+            )
+            # Large exports are written to S3 asynchronously; wait until the object is fully
+            # materialized so the downloader never captures a partial (header-only) file. The
+            # downloader re-measures the (now-complete) size itself via its ranged-GET probe.
+            self._wait_until_materialized(url, response.file_size_bytes)
+            return url
+
+        return PresignedURLProvider(fetch_fn=fetch, ttl_secs=DEFAULT_URL_TTL_SECS, skew_secs=DEFAULT_URL_SKEW_SECS)
+
+    def _generate_presigned_link(
+        self, request: scout_dataexport_api.ExportDataRequest
+    ) -> scout_dataexport_api.GeneratePresignedLinkResponse:
+        """Generate a presigned export link, retrying transient (5xx / 429 / network) failures.
+
+        Each link is a separate server-side compute query, so a transient backend error on one file
+        shouldn't fail the whole export; non-transient errors (e.g. 4xx) are raised immediately. The
+        dominant transient here is ``Compute:ConcurrentQueriesExceeded`` -- pure backpressure -- so we
+        retry with exponential backoff plus full jitter to de-correlate concurrent workers.
+        """
+        delay = 0.5
+        for attempt in range(DEFAULT_MAX_LINK_RETRIES):
+            try:
+                return self._client._clients.dataexport.generate_export_channel_data_presigned_link(
+                    self._client._clients.auth_header, request
+                )
+            except Exception as exc:
+                if attempt == DEFAULT_MAX_LINK_RETRIES - 1 or not _is_transient_error(exc):
+                    raise
+                # Full jitter (sleep in [0, delay]) spreads concurrent retriers across the window.
+                sleep_secs = random.uniform(0, delay)
+                logger.warning(
+                    "Presigned link generation failed (attempt %d/%d), retrying in %.1fs: %s",
+                    attempt + 1,
+                    DEFAULT_MAX_LINK_RETRIES,
+                    sleep_secs,
+                    exc,
+                )
+                time.sleep(sleep_secs)
+                delay = min(delay * 2, _MAX_LINK_RETRY_BACKOFF_SECS)
+        raise AssertionError("unreachable")  # loop either returns or raises
+
+    def _wait_until_materialized(self, url: str, expected_size: int) -> None:
+        """Block until the object served at ``url`` reaches ``expected_size`` bytes.
+
+        The presigned export endpoint returns the authoritative final ``file_size_bytes`` before the
+        S3 object is fully written; its served size grows until complete. Polling avoids downloading a
+        partially-written file. Empty exports (tiny ``expected_size``) satisfy this immediately.
+
+        Raises:
+            ExportNotReadyError: if the object never reaches ``expected_size`` before the readiness
+                timeout -- failing loudly here beats proceeding into ranged GETs past EOF, which S3
+                answers with an opaque 416.
+        """
+        deadline = time.monotonic() + DEFAULT_READINESS_TIMEOUT_SECS
+        delay = 0.5
+        while True:
+            served = self._served_size(url)
+            if served is not None and served >= expected_size:
+                return
+            if time.monotonic() >= deadline:
+                raise ExportNotReadyError(
+                    f"Export object not fully materialized after {DEFAULT_READINESS_TIMEOUT_SECS:.0f}s "
+                    f"(served={served}, expected={expected_size} bytes): {url}"
+                )
+            time.sleep(delay)
+            delay = min(delay * 2, 5.0)
+
+    @staticmethod
+    def _served_size(url: str) -> int | None:
+        """Return the full object size S3 currently reports for ``url`` via a ranged probe (``None`` if unknown).
+
+        The probe streams (and closes) the 1-byte body so we never buffer a response body just to read
+        headers.
+        """
+        try:
+            resp = requests.get(url, headers={"Range": "bytes=0-0"}, timeout=30.0, stream=True)
+        except requests.RequestException:
+            return None
+        try:
+            if resp.status_code not in (200, 206):
+                return None
+            content_range = resp.headers.get("Content-Range")
+            if content_range:
+                return int(content_range.split("/")[-1])
+            content_length = resp.headers.get("Content-Length")
+            return int(content_length) if content_length is not None else None
+        finally:
+            resp.close()
