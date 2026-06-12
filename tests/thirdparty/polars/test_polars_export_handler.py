@@ -5,14 +5,20 @@ import datetime
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 from nominal_api import api, scout_compute_api
 
+from nominal.core._utils.multipart_downloader import DownloadResults
 from nominal.core.channel import ChannelDataType
+from nominal.thirdparty.polars import polars_export_handler as peh
 from nominal.thirdparty.polars.polars_export_handler import (
+    ExportNotReadyError,
     PolarsExportHandler,
     _batch_channel_points_per_second,
     _build_channel_groups,
+    _ExportJob,
     _extract_bucket_counts,
+    _is_transient_error,
     _peak_points_per_second,
     _TimeRange,
 )
@@ -523,3 +529,189 @@ def test_compute_export_jobs_subdivides_large_channel_into_sub_slices(
     for a, b in zip(sub_ranges, sub_ranges[1:]):
         assert a.end_time == b.start_time
     assert all(r.duration_ns() < parent_slice.duration_ns() for r in sub_ranges)
+
+
+# -- presigned write-to-disk export (export_to_files) --
+
+
+def _make_transient_error(status: int = 503) -> Exception:
+    """Build an exception that `_is_transient_error` treats as transient (has `.response.status_code`)."""
+    exc = RuntimeError("transient backend error")
+    exc.response = MagicMock(status_code=status)  # type: ignore[attr-defined]
+    return exc
+
+
+def _job(datasource_rid: str, name: str) -> _ExportJob:
+    return _ExportJob(
+        datasource_rid=datasource_rid,
+        channel_names=[name],
+        channel_types={name: ChannelDataType.DOUBLE},
+        time_slice=_TimeRange(0, TEN_SECONDS_NS),
+        tags={},
+    )
+
+
+# -- _is_transient_error --
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+def test_is_transient_error_true_for_5xx_and_429(status):
+    assert _is_transient_error(_make_transient_error(status))
+
+
+@pytest.mark.parametrize("status", [400, 401, 404])
+def test_is_transient_error_false_for_4xx(status):
+    assert not _is_transient_error(_make_transient_error(status))
+
+
+def test_is_transient_error_true_for_network_error():
+    assert _is_transient_error(requests.ConnectionError("connection reset"))
+
+
+def test_is_transient_error_false_for_plain_exception():
+    assert not _is_transient_error(ValueError("not a network error"))
+
+
+# -- _file_name --
+
+
+def test_file_name_uses_short_rid_and_gz_extension():
+    job = _job("ri.datasource.x.abc123", "a")
+    assert PolarsExportHandler._file_name("export", job, 3, 7) == "export_abc123_s0003_g007.csv.gz"
+
+
+# -- _generate_presigned_link --
+
+
+def test_generate_presigned_link_retries_transient_then_succeeds(mock_client, monkeypatch):
+    """A transient (5xx/429) failure is retried; the eventual success is returned."""
+    monkeypatch.setattr(peh.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(peh.random, "uniform", lambda _a, _b: 0.0)
+    response = MagicMock()
+    endpoint = mock_client._clients.dataexport.generate_export_channel_data_presigned_link
+    endpoint.side_effect = [_make_transient_error(), response]
+
+    handler = PolarsExportHandler(client=mock_client)
+    assert handler._generate_presigned_link(MagicMock()) is response
+    assert endpoint.call_count == 2
+
+
+def test_generate_presigned_link_raises_immediately_on_non_transient(mock_client, monkeypatch):
+    """A non-transient error (e.g. 4xx / programming error) is not retried."""
+    monkeypatch.setattr(peh.time, "sleep", lambda _s: None)
+    endpoint = mock_client._clients.dataexport.generate_export_channel_data_presigned_link
+    endpoint.side_effect = ValueError("bad request")
+
+    handler = PolarsExportHandler(client=mock_client)
+    with pytest.raises(ValueError):
+        handler._generate_presigned_link(MagicMock())
+    assert endpoint.call_count == 1
+
+
+def test_generate_presigned_link_raises_after_max_retries(mock_client, monkeypatch):
+    """Persistent transient failures exhaust the retry budget and re-raise."""
+    monkeypatch.setattr(peh.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(peh.random, "uniform", lambda _a, _b: 0.0)
+    monkeypatch.setattr(peh, "DEFAULT_MAX_LINK_RETRIES", 3)
+    endpoint = mock_client._clients.dataexport.generate_export_channel_data_presigned_link
+    endpoint.side_effect = _make_transient_error()
+
+    handler = PolarsExportHandler(client=mock_client)
+    with pytest.raises(RuntimeError):
+        handler._generate_presigned_link(MagicMock())
+    assert endpoint.call_count == 3
+
+
+# -- _wait_until_materialized / _served_size --
+
+
+def test_wait_until_materialized_returns_when_object_is_complete(mock_client, monkeypatch):
+    """Once the served size reaches the expected size, the wait returns without raising."""
+    resp = MagicMock(status_code=206)
+    resp.headers = {"Content-Range": "bytes 0-0/100"}
+    monkeypatch.setattr(peh.requests, "get", lambda *a, **k: resp)
+
+    handler = PolarsExportHandler(client=mock_client)
+    handler._wait_until_materialized("https://s3/export", expected_size=100)  # does not raise
+
+
+def test_wait_until_materialized_raises_on_timeout(mock_client, monkeypatch):
+    """If the object never reaches the expected size, ExportNotReadyError is raised at the deadline."""
+    monkeypatch.setattr(peh, "DEFAULT_READINESS_TIMEOUT_SECS", 0.0)
+    monkeypatch.setattr(peh.time, "sleep", lambda _s: None)
+    resp = MagicMock(status_code=206)
+    resp.headers = {"Content-Range": "bytes 0-0/10"}  # served (10) < expected (1000)
+    monkeypatch.setattr(peh.requests, "get", lambda *a, **k: resp)
+
+    handler = PolarsExportHandler(client=mock_client)
+    with pytest.raises(ExportNotReadyError):
+        handler._wait_until_materialized("https://s3/export", expected_size=1000)
+
+
+def test_served_size_returns_none_on_request_error(mock_client, monkeypatch):
+    def _boom(*_a, **_k):
+        raise requests.ConnectionError("connection reset")
+
+    monkeypatch.setattr(peh.requests, "get", _boom)
+    assert PolarsExportHandler._served_size("https://s3/export") is None
+
+
+# -- export_to_files --
+
+
+class _FakeDownloader:
+    """Stand-in for MultipartFileDownloader that records items and reports a configured outcome."""
+
+    last_items: list = []
+    fail: bool = False
+
+    @classmethod
+    def create(cls, **_kwargs):
+        return cls()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def download_files(self, items):
+        type(self).last_items = list(items)
+        if type(self).fail:
+            return DownloadResults(succeeded=[], failed={items[0].destination: RuntimeError("boom")})
+        return DownloadResults(succeeded=[it.destination for it in items], failed={})
+
+
+def test_export_to_files_writes_one_file_per_job(mock_client, make_channel, monkeypatch, tmp_path):
+    """Each planned _ExportJob maps to exactly one written .csv.gz file (1:1 file:dataframe)."""
+    jobs = {_TimeRange(0, TEN_SECONDS_NS): [_job("ri.datasource.x.dsa", "a"), _job("ri.datasource.x.dsa", "b")]}
+    monkeypatch.setattr(PolarsExportHandler, "_compute_export_jobs", lambda *a, **k: jobs)
+    _FakeDownloader.fail = False
+    monkeypatch.setattr(peh, "MultipartFileDownloader", _FakeDownloader)
+
+    handler = PolarsExportHandler(client=mock_client)
+    paths = handler.export_to_files([make_channel("a"), make_channel("b")], 0, TEN_SECONDS_NS, tmp_path / "out")
+
+    assert len(paths) == 2
+    assert paths == sorted(paths)
+    assert all(p.name.endswith(".csv.gz") for p in paths)
+    assert (tmp_path / "out").is_dir()
+    # One download item per job, each destined for a distinct file under the output dir.
+    assert len(_FakeDownloader.last_items) == 2
+    assert {it.destination.parent for it in _FakeDownloader.last_items} == {tmp_path / "out"}
+
+
+def test_export_to_files_empty_channels_returns_empty(mock_client, tmp_path):
+    handler = PolarsExportHandler(client=mock_client)
+    assert handler.export_to_files([], 0, TEN_SECONDS_NS, tmp_path) == []
+
+
+def test_export_to_files_raises_when_downloads_fail(mock_client, make_channel, monkeypatch, tmp_path):
+    jobs = {_TimeRange(0, TEN_SECONDS_NS): [_job("ri.datasource.x.dsa", "a")]}
+    monkeypatch.setattr(PolarsExportHandler, "_compute_export_jobs", lambda *a, **k: jobs)
+    _FakeDownloader.fail = True
+    monkeypatch.setattr(peh, "MultipartFileDownloader", _FakeDownloader)
+
+    handler = PolarsExportHandler(client=mock_client)
+    with pytest.raises(RuntimeError):
+        handler.export_to_files([make_channel("a")], 0, TEN_SECONDS_NS, tmp_path / "out")
