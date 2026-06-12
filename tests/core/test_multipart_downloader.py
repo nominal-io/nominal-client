@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Iterator, Sequence, cast
+from typing import Callable, Iterator, Sequence, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -100,7 +100,9 @@ def test_download_file_returns_path_on_success(tmp_path: Path, downloader: Multi
     item = DownloadItem(provider=_provider(), destination=tmp_path / "ok.bin", part_size=4)
 
     with (
-        patch.object(downloader, "_plan_item", lambda item: _PlannedDownload(item=item, total_size=4, etag=None)),
+        patch.object(
+            downloader, "_plan_item", lambda item, session=None: _PlannedDownload(item=item, total_size=4, etag=None)
+        ),
         patch.object(downloader, "_run_downloads", lambda plans, *, collect_errors: {}),
     ):
         result = downloader.download_file(item)
@@ -115,7 +117,9 @@ def test_download_file_raises_on_execution_failure(tmp_path: Path, downloader: M
     error = RuntimeError("download failed")
 
     with (
-        patch.object(downloader, "_plan_item", lambda item: _PlannedDownload(item=item, total_size=4, etag=None)),
+        patch.object(
+            downloader, "_plan_item", lambda item, session=None: _PlannedDownload(item=item, total_size=4, etag=None)
+        ),
         patch.object(downloader, "_run_downloads", lambda plans, *, collect_errors: {item.destination: error}),
         pytest.raises(RuntimeError, match="download failed"),
     ):
@@ -131,7 +135,7 @@ def test_download_files_execution_failure_excluded_from_succeeded(
     failed_item = DownloadItem(provider=_provider(), destination=tmp_path / "failed.bin", part_size=4)
     error = RuntimeError("download failed")
 
-    def _make_plan(item: DownloadItem) -> _PlannedDownload:
+    def _make_plan(item: DownloadItem, session: object = None) -> _PlannedDownload:
         return _PlannedDownload(item=item, total_size=4, etag=None)
 
     def _exec_downloads(plans: Sequence[_PlannedDownload], *, collect_errors: bool) -> dict[Path, Exception]:
@@ -158,11 +162,80 @@ def test_download_files_planning_failure_excluded_from_succeeded(
     item = DownloadItem(provider=_provider(), destination=tmp_path / "file.bin", part_size=4)
     error = RuntimeError("head request failed")
 
-    def _failing_plan(_: DownloadItem) -> _PlannedDownload:
+    def _failing_plan(_item: DownloadItem, _session: object = None) -> _PlannedDownload:
         raise error
 
     with patch.object(downloader, "_plan_item", _failing_plan):
         results = downloader.download_files([item])
+
+    assert list(results.succeeded) == []
+    assert results.failed == {item.destination: error}
+    assert not item.destination.exists()
+
+
+# ---- download_files_pipelined tests ----
+
+
+def _plan_returning(total_size: int) -> Callable[..., _PlannedDownload]:
+    """A _plan_item stand-in that returns a fixed-size plan (ignoring the link/probe)."""
+
+    def _plan(item: DownloadItem, session: object = None) -> _PlannedDownload:
+        return _PlannedDownload(item=item, total_size=total_size, etag=None)
+
+    return _plan
+
+
+def test_pipelined_fires_callbacks_once_per_file(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
+    """Each file is reported planned once and complete once; all files succeed."""
+    items = [DownloadItem(provider=_provider(), destination=tmp_path / f"f{i}.bin", part_size=4) for i in range(3)]
+    planned: list[Path] = []
+    completed: list[Path] = []
+
+    with (
+        patch.object(downloader, "_plan_item", _plan_returning(8)),  # 8 bytes / 4 = 2 parts each
+        patch.object(downloader, "_fetch_range_bytes", lambda *a, **k: None),
+    ):
+        results = downloader.download_files_pipelined(
+            items, on_file_planned=planned.append, on_file_complete=completed.append
+        )
+
+    assert sorted(results.succeeded) == sorted(it.destination for it in items)
+    assert results.failed == {}
+    assert sorted(planned) == sorted(it.destination for it in items)
+    assert sorted(completed) == sorted(it.destination for it in items)
+
+
+def test_pipelined_part_failure_recorded_and_cleaned_up(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
+    """A part failure fails only its file (recorded + artifact deleted); other files still succeed."""
+    ok = DownloadItem(provider=_provider(), destination=tmp_path / "ok.bin", part_size=4)
+    bad = DownloadItem(provider=_provider(), destination=tmp_path / "bad.bin", part_size=4)
+
+    def _fetch(provider: object, start: int, end: int, etag: str | None, destination: Path) -> None:
+        if destination == bad.destination:
+            raise RuntimeError("boom")
+
+    with (
+        patch.object(downloader, "_plan_item", _plan_returning(8)),
+        patch.object(downloader, "_fetch_range_bytes", _fetch),
+    ):
+        results = downloader.download_files_pipelined([ok, bad])
+
+    assert list(results.succeeded) == [ok.destination]
+    assert bad.destination in results.failed
+    assert ok.destination.exists()
+    assert not bad.destination.exists()
+
+
+def test_pipelined_planning_failure_recorded(tmp_path: Path, downloader: MultipartFileDownloader) -> None:
+    """A planning failure is recorded in failed and the file never downloads."""
+    item = DownloadItem(provider=_provider(), destination=tmp_path / "f.bin", part_size=4)
+    error = RuntimeError("link generation failed")
+
+    def _failing_plan(_item: DownloadItem, _session: object = None) -> _PlannedDownload:
+        raise error
+
+    with patch.object(downloader, "_plan_item", _failing_plan):
+        results = downloader.download_files_pipelined([item])
 
     assert list(results.succeeded) == []
     assert results.failed == {item.destination: error}
