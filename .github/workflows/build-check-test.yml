@@ -64,6 +64,7 @@ jobs:
   validate-release-config:
     runs-on: depot-ubuntu-24.04-small
     steps:
+      # fetch-depth: 0 required — release-please walks the full commit history to compute version bumps
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
