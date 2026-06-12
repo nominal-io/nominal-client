@@ -7,10 +7,10 @@ import multiprocessing
 import pathlib
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Callable, Iterable, Mapping, Sequence, Type
+from typing import Any, Callable, Iterable, Mapping, Sequence, Type
 
 import requests
 from typing_extensions import Self
@@ -127,6 +127,9 @@ class MultipartFileDownloader:
     _session: requests.Session = field(repr=False)
     _pool: ThreadPoolExecutor = field(repr=False)
     _closed: bool = field(default=False, repr=False)
+    # Retained so download_files_pipelined can build a *separate* session for its planning pool,
+    # keeping planning probes off the download session's connection pool.
+    _header_provider: HeaderProvider | None = field(default=None, repr=False)
 
     @classmethod
     def create(
@@ -156,7 +159,15 @@ class MultipartFileDownloader:
 
         session = create_multipart_request_session(pool_size=max_workers, header_provider=header_provider)
         pool = ThreadPoolExecutor(max_workers=max_workers)
-        return cls(max_workers, timeout, max_part_retries, _session=session, _pool=pool, _closed=False)
+        return cls(
+            max_workers,
+            timeout,
+            max_part_retries,
+            _session=session,
+            _pool=pool,
+            _closed=False,
+            _header_provider=header_provider,
+        )
 
     # ---- lifecycle ----
 
@@ -249,6 +260,161 @@ class MultipartFileDownloader:
 
         return DownloadResults(all_successes, all_failures)
 
+    def download_files_pipelined(
+        self,
+        items: Sequence[DownloadItem],
+        *,
+        on_file_planned: Callable[[pathlib.Path], None] | None = None,
+        on_file_complete: Callable[[pathlib.Path], None] | None = None,
+    ) -> DownloadResults:
+        """Download many files, pipelining link-generation with downloads.
+
+        Unlike :meth:`download_files` (which plans every file before any download starts), this starts
+        a file's byte downloads as soon as its own link is fetched, size is probed, and the file is
+        preallocated. Planning runs on a *dedicated* pool with its *own* HTTP session while part
+        downloads run on the shared download pool/session, so the two never contend -- a file begins
+        downloading immediately while other links are still being generated, and per-part parallelism
+        is preserved. (Providers that already know the object size skip the planning probe entirely,
+        so the planning session is only exercised when a size must be discovered.)
+
+        Args:
+            items: The files to download.
+            on_file_planned: Optional callback invoked with each destination once its presigned link
+                is fetched, size probed, and the file preallocated (i.e. ready to download).
+            on_file_complete: Optional callback invoked with each destination as soon as that file
+                finishes downloading successfully. Both callbacks run on the calling thread (not a
+                worker), so they are serialized and safe to drive a progress display.
+
+        Returns:
+            A :class:`DownloadResults` partitioning destinations into succeeded and failed. Files that
+            fail (destination validation, link/size planning, or any part download) are recorded in
+            ``failed`` and their partial artifacts deleted, mirroring :meth:`download_files`.
+        """
+        failures: dict[pathlib.Path, Exception] = {}
+
+        # A dedicated planning pool keeps the slow, server-side link-generation + preallocation off
+        # the download pool's FIFO queue, so part downloads are never stuck behind pending plans. It
+        # also gets its *own* HTTP session so planning probes don't share (and oversubscribe) the
+        # download session's connection pool. Futures are tracked as Future[Any] because planning and
+        # part-download futures share one pending set and are dispatched by membership in plan_futs.
+        plan_session = create_multipart_request_session(
+            pool_size=self.max_workers, header_provider=self._header_provider
+        )
+        with (
+            plan_session,
+            ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="presign-plan") as plan_pool,
+        ):
+            plan_futs: dict[Future[Any], DownloadItem] = {}
+            for it in items:
+                try:
+                    self._check_destination(it.destination)
+                except Exception as ex:
+                    failures[it.destination] = ex
+                    logger.error("Invalid destination %s", it.destination, exc_info=ex)
+                    continue
+                plan_futs[plan_pool.submit(self._plan_and_preallocate, it, plan_session)] = it
+
+            # Reactively drive a growing set of futures: planning futures resolve into per-file part
+            # futures (submitted to the download pool), which we add back into the pending set.
+            part_futs: dict[Future[Any], tuple[pathlib.Path, int]] = {}
+            remaining_parts: dict[pathlib.Path, int] = {}
+            succeeded: list[pathlib.Path] = []
+            pending: set[Future[Any]] = set(plan_futs)
+
+            while pending:
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    if fut in plan_futs:
+                        self._handle_plan_complete(
+                            fut, plan_futs, part_futs, remaining_parts, failures, pending, on_file_planned
+                        )
+                    else:
+                        self._handle_part_complete(
+                            fut, part_futs, remaining_parts, failures, succeeded, on_file_complete
+                        )
+
+        logger.info("Successfully downloaded %d files (%d total, %d failed)", len(succeeded), len(items), len(failures))
+        self._cleanup_failed_artifacts(failures)
+        return DownloadResults(succeeded, failures)
+
+    def _handle_plan_complete(
+        self,
+        fut: Future[Any],
+        plan_futs: dict[Future[Any], DownloadItem],
+        part_futs: dict[Future[Any], tuple[pathlib.Path, int]],
+        remaining_parts: dict[pathlib.Path, int],
+        failures: dict[pathlib.Path, Exception],
+        pending: set[Future[Any]],
+        on_file_planned: Callable[[pathlib.Path], None] | None,
+    ) -> None:
+        """Resolve a completed planning future and submit the file's part-download futures."""
+        item = plan_futs.pop(fut)
+        try:
+            plan = fut.result()  # link + size probe + preallocation already done on the planning pool
+        except Exception as ex:
+            failures[item.destination] = ex
+            logger.error("Planning failed for %s", item.destination, exc_info=ex)
+            return
+
+        if on_file_planned is not None:
+            on_file_planned(item.destination)
+
+        chunk_bounds = list(plan.ranges())
+        remaining_parts[item.destination] = len(chunk_bounds)
+        for data_chunk in chunk_bounds:
+            part_fut = self._pool.submit(
+                self._fetch_range_bytes,
+                plan.item.provider,
+                data_chunk.start_bytes,
+                data_chunk.end_bytes,
+                plan.etag,
+                item.destination,
+            )
+            part_futs[part_fut] = (item.destination, data_chunk.start_bytes)
+            pending.add(part_fut)
+
+    def _handle_part_complete(
+        self,
+        fut: Future[Any],
+        part_futs: dict[Future[Any], tuple[pathlib.Path, int]],
+        remaining_parts: dict[pathlib.Path, int],
+        failures: dict[pathlib.Path, Exception],
+        succeeded: list[pathlib.Path],
+        on_file_complete: Callable[[pathlib.Path], None] | None,
+    ) -> None:
+        """Resolve a completed part-download future, firing on_file_complete on the last part."""
+        dest, start = part_futs.pop(fut)
+        # A prior part for this destination already failed (and cancelled the rest); ignore.
+        if dest in failures:
+            return
+        try:
+            fut.result()
+        except Exception as ex:
+            logger.error("Failed part for %s @%d", dest, start, exc_info=ex)
+            failures[dest] = ex
+            # Cancel any not-yet-started parts for this destination to avoid wasted work.
+            for part_fut, (other_dest, _) in part_futs.items():
+                if other_dest == dest:
+                    part_fut.cancel()
+            return
+
+        remaining_parts[dest] -= 1
+        if remaining_parts[dest] == 0:
+            succeeded.append(dest)
+            logger.debug("Completed download for %s", dest)
+            if on_file_complete is not None:
+                on_file_complete(dest)
+
+    def _cleanup_failed_artifacts(self, failures: Mapping[pathlib.Path, Exception]) -> None:
+        """Delete partially-written files for any failed downloads."""
+        if not failures:
+            return
+        logger.warning("Clearing out artifacts from %d failed file downloads", len(failures))
+        for file in failures:
+            if file.exists():
+                logger.info("Removing failed artifact %s", file)
+                file.unlink()
+
     def _run_downloads(
         self, plans: Sequence[_PlannedDownload], *, collect_errors: bool
     ) -> dict[pathlib.Path, Exception]:
@@ -295,22 +461,28 @@ class MultipartFileDownloader:
 
     # ---- planning helpers ----
 
-    def _head_or_probe(self, provider: PresignedURLProvider) -> tuple[int, str | None]:
+    def _head_or_probe(
+        self, provider: PresignedURLProvider, session: requests.Session | None = None
+    ) -> tuple[int, str | None]:
         """Discover (total_size, etag). Refresh once if the current URL is stale.
 
         Within platforms that support ETag (notably, AWS), this will typically be some hash or metadata
         that can be used as a trivial check that the file being downloaded has not changed substantially.
         This ETag may not be present on all platforms, in which case, None will be provided and any subsequent
         checks will assume the file is not changing during downloads.
+
+        ``session`` lets the pipelined planning pool probe on its own session rather than the shared
+        download session; defaults to the download session.
         """
+        session = session or self._session
         for attempt in range(3):
             url = provider.get_url(force=(attempt > 0))
 
-            r = self._session.head(url, timeout=self.timeout)
+            r = session.head(url, timeout=self.timeout)
             if r.ok and "Content-Length" in r.headers:
                 return int(r.headers["Content-Length"]), r.headers.get("ETag")
 
-            r = self._session.get(url, headers={"Range": "bytes=0-0"}, timeout=self.timeout)
+            r = session.get(url, headers={"Range": "bytes=0-0"}, timeout=self.timeout)
             if r.ok:
                 total = (
                     int(r.headers["Content-Range"].split("/")[-1])
@@ -327,26 +499,28 @@ class MultipartFileDownloader:
 
         raise RuntimeError("Could not determine object size/ETag (presigned URL kept failing)")
 
-    def _plan_item(self, item: DownloadItem) -> _PlannedDownload:
+    def _plan_item(self, item: DownloadItem, session: requests.Session | None = None) -> _PlannedDownload:
         # If the provider already knows the object size (e.g. an export service returned it), skip
         # the size/ETag probe entirely -- one fewer round-trip per file, which adds up over many files.
         presigned = item.provider.get()
         if presigned.total_size is not None:
             return _PlannedDownload(item=item, total_size=presigned.total_size, etag=presigned.etag)
-        total_size, etag = self._head_or_probe(item.provider)
+        total_size, etag = self._head_or_probe(item.provider, session)
         return _PlannedDownload(
             item=item,
             total_size=total_size,
             etag=etag,
         )
 
-    def _plan_and_preallocate(self, item: DownloadItem) -> _PlannedDownload:
+    def _plan_and_preallocate(self, item: DownloadItem, session: requests.Session | None = None) -> _PlannedDownload:
         """Fetch the presigned link, probe size/etag if needed, and preallocate the destination file.
 
-        Runs on the download pool so link generation + the (possibly long) materialization wait
-        baked into the provider's fetch happen concurrently across files rather than one at a time.
+        Runs on a worker thread so link generation + the (possibly long) materialization wait baked
+        into the provider's fetch happen concurrently across files rather than one at a time. ``session``
+        is the session used for any size probe (the pipelined path passes its dedicated planning
+        session; otherwise the shared download session is used).
         """
-        plan = self._plan_item(item)
+        plan = self._plan_item(item, session)
         self._preallocate(item.destination, plan.total_size)
         return plan
 
