@@ -21,6 +21,7 @@ from nominal.core._utils.multipart import DEFAULT_CHUNK_SIZE
 from nominal.core._utils.multipart_downloader import (
     DownloadItem,
     MultipartFileDownloader,
+    PresignedURL,
     PresignedURLProvider,
 )
 from nominal.core.bounds import Bounds
@@ -126,18 +127,19 @@ class DatasetFile(RefreshableConjureMixin[scout_catalog.DatasetFile]):
         return self
 
     def _presigned_url_provider(self, ttl_secs: float = 60.0, skew_secs: float = 15.0) -> PresignedURLProvider:
-        def fetch() -> str:
-            return self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
+        def fetch() -> PresignedURL:
+            uri = self._clients.catalog.get_dataset_file_uri(self._clients.auth_header, self.dataset_rid, self.id).uri
+            return PresignedURL(url=uri)
 
         return PresignedURLProvider(fetch_fn=fetch, ttl_secs=ttl_secs, skew_secs=skew_secs)
 
     def _origin_presigned_url_provider(
         self, origin_path: str, ttl_secs: float = 60.0, skew_secs: float = 15.0
     ) -> PresignedURLProvider:
-        def fetch() -> str:
+        def fetch() -> PresignedURL:
             for uri in self._clients.catalog.get_origin_file_uris(self._clients.auth_header, self.dataset_rid, self.id):
                 if uri.path == origin_path:
-                    return uri.uri
+                    return PresignedURL(url=uri.uri)
 
             raise ValueError(f"No such origin path: {origin_path}")
 
