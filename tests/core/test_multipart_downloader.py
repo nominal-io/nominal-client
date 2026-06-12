@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Sequence, cast
+from typing import Callable, Iterator, Sequence, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,15 @@ from nominal.core._utils.multipart_downloader import (
 
 def _provider() -> PresignedURLProvider:
     return PresignedURLProvider(fetch_fn=lambda: "https://example.com/file", ttl_secs=60.0, skew_secs=0.0)
+
+
+def _plan_returning(total_size: int) -> Callable[[DownloadItem], _PlannedDownload]:
+    """A _plan_item replacement that returns a fixed-size plan for any item."""
+
+    def _make(item: DownloadItem) -> _PlannedDownload:
+        return _PlannedDownload(item=item, total_size=total_size, etag=None)
+
+    return _make
 
 
 @pytest.fixture
@@ -158,6 +168,117 @@ def test_download_files_planning_failure_excluded_from_succeeded(
     assert list(results.succeeded) == []
     assert results.failed == {item.destination: error}
     assert not item.destination.exists()
+
+
+# ---- download_files_pipelined tests ----
+
+
+@pytest.fixture
+def pipelined_downloader() -> Iterator[MultipartFileDownloader]:
+    """A downloader backed by a real thread pool so the pipelined reactive loop actually runs."""
+    dl = MultipartFileDownloader(
+        max_workers=4,
+        timeout=30.0,
+        max_part_retries=3,
+        _session=MagicMock(spec=["head", "get", "close"]),
+        _pool=ThreadPoolExecutor(max_workers=4),
+    )
+    try:
+        yield dl
+    finally:
+        dl.close()
+
+
+def test_pipelined_success_fires_callbacks_once_per_file(
+    tmp_path: Path, pipelined_downloader: MultipartFileDownloader
+) -> None:
+    """All files download, each preallocated file exists, and both callbacks fire once per file."""
+    items = [DownloadItem(provider=_provider(), destination=tmp_path / f"f{i}.bin", part_size=4) for i in range(3)]
+    planned: list[Path] = []
+    completed: list[Path] = []
+
+    with (
+        patch.object(pipelined_downloader, "_plan_item", _plan_returning(8)),  # 8 bytes / 4 = 2 parts each
+        patch.object(pipelined_downloader, "_fetch_range_bytes", lambda *a, **k: None),
+    ):
+        results = pipelined_downloader.download_files_pipelined(
+            items, on_file_planned=planned.append, on_file_complete=completed.append
+        )
+
+    expected = sorted(it.destination for it in items)
+    assert sorted(results.succeeded) == expected
+    assert results.failed == {}
+    assert sorted(planned) == expected
+    assert sorted(completed) == expected
+    assert all(it.destination.exists() for it in items)
+
+
+def test_pipelined_part_failure_recorded_and_cleaned_up(
+    tmp_path: Path, pipelined_downloader: MultipartFileDownloader
+) -> None:
+    """A part-download failure is recorded in failed, excludes the file from succeeded, and deletes its artifact."""
+    ok = DownloadItem(provider=_provider(), destination=tmp_path / "ok.bin", part_size=4)
+    bad = DownloadItem(provider=_provider(), destination=tmp_path / "bad.bin", part_size=4)
+    error = RuntimeError("part failed")
+    completed: list[Path] = []
+
+    def _fetch(provider: PresignedURLProvider, start: int, end: int, etag: str | None, destination: Path) -> None:
+        if destination == bad.destination:
+            raise error
+
+    with (
+        patch.object(pipelined_downloader, "_plan_item", _plan_returning(8)),
+        patch.object(pipelined_downloader, "_fetch_range_bytes", _fetch),
+    ):
+        results = pipelined_downloader.download_files_pipelined([ok, bad], on_file_complete=completed.append)
+
+    assert list(results.succeeded) == [ok.destination]
+    assert results.failed == {bad.destination: error}
+    assert completed == [ok.destination]
+    assert ok.destination.exists()
+    assert not bad.destination.exists()
+
+
+def test_pipelined_planning_failure_does_not_block_others(
+    tmp_path: Path, pipelined_downloader: MultipartFileDownloader
+) -> None:
+    """A link/size planning failure for one file is captured without preventing other files from downloading."""
+    ok = DownloadItem(provider=_provider(), destination=tmp_path / "ok.bin", part_size=4)
+    bad = DownloadItem(provider=_provider(), destination=tmp_path / "bad.bin", part_size=4)
+    error = RuntimeError("planning failed")
+
+    def _plan_item(item: DownloadItem) -> _PlannedDownload:
+        if item.destination == bad.destination:
+            raise error
+        return _PlannedDownload(item=item, total_size=8, etag=None)
+
+    with (
+        patch.object(pipelined_downloader, "_plan_item", _plan_item),
+        patch.object(pipelined_downloader, "_fetch_range_bytes", lambda *a, **k: None),
+    ):
+        results = pipelined_downloader.download_files_pipelined([ok, bad])
+
+    assert list(results.succeeded) == [ok.destination]
+    assert results.failed == {bad.destination: error}
+    assert ok.destination.exists()
+    assert not bad.destination.exists()
+
+
+def test_pipelined_invalid_destination_captured(tmp_path: Path, pipelined_downloader: MultipartFileDownloader) -> None:
+    """An invalid destination is captured per-file rather than aborting the whole batch."""
+    ok = DownloadItem(provider=_provider(), destination=tmp_path / "ok.bin", part_size=4)
+    bad = DownloadItem(provider=_provider(), destination=tmp_path / "missing" / "bad.bin", part_size=4)
+
+    with (
+        patch.object(pipelined_downloader, "_plan_item", _plan_returning(8)),
+        patch.object(pipelined_downloader, "_fetch_range_bytes", lambda *a, **k: None),
+    ):
+        results = pipelined_downloader.download_files_pipelined([ok, bad])
+
+    assert list(results.succeeded) == [ok.destination]
+    assert set(results.failed) == {bad.destination}
+    assert isinstance(results.failed[bad.destination], FileNotFoundError)
+    assert ok.destination.exists()
 
 
 # ---- _write_part tests ----
