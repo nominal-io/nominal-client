@@ -410,7 +410,7 @@ def _construct_export_request(
         start_time=start,
         end_time=end,
         context=scout_compute_api.Context(
-            frame_references={},
+            dataset_references={},
             variables={},
             function_variables={},
         ),

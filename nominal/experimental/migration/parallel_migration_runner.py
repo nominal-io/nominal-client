@@ -51,20 +51,24 @@ def run_parallel_migration(runner: MigrationRunner, max_workers: int) -> None:
         setattr(ctx, "destination_client_resolver", runner.destination_client_resolver)
     asset_migrator = AssetMigrator(ctx)
     template_migrator = WorkbookTemplateMigrator(ctx)
-    asset_copy_options = AssetCopyOptions(
-        dataset_config=runner.dataset_config,
-        include_attachments=True,
-        include_events=True,
-        include_runs=True,
-        include_video=True,
-        include_checklists=True,
-    )
-
     asset_tasks = [
         MigrationTask(
             rid=rid,
             label="asset",
-            fn=_make_asset_fn(asset_resources, asset_migrator, asset_copy_options),
+            fn=_make_asset_fn(
+                asset_resources,
+                asset_migrator,
+                AssetCopyOptions(
+                    dataset_config=runner.dataset_config,
+                    include_attachments=runner.asset_inclusion_config.include_attachments,
+                    include_events=runner.asset_inclusion_config.include_events,
+                    include_runs=runner.asset_inclusion_config.include_runs,
+                    include_video=runner.asset_inclusion_config.include_video,
+                    include_checklists=runner.asset_inclusion_config.include_checklists,
+                    include_workbooks=runner.asset_inclusion_config.include_workbooks,
+                    workbook_rids_allowlist=asset_resources.source_workbook_rids,
+                ),
+            ),
         )
         for rid, asset_resources in runner.migration_resources.source_assets.items()
     ]

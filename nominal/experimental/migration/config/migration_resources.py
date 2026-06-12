@@ -11,6 +11,7 @@ from nominal.core.workbook_template import WorkbookTemplate
 class AssetResources:
     asset: Asset
     source_workbook_templates: Sequence[WorkbookTemplate]
+    source_workbook_rids: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)

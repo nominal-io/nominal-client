@@ -241,6 +241,111 @@ class TestAssetMigratorWorkbookRouting:
         assert len(state.skipped_resources) == 1
         assert a_out in state.skipped_resources[0].reason
 
+    # ---------------------------------------------------------------------------
+    # Workbook allowlist
+    # ---------------------------------------------------------------------------
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_allowlist_none_copies_all_asset_workbooks(self, mock_wm_cls: MagicMock) -> None:
+        """When allowlist is None, all single-asset workbooks are copied (default behaviour preserved)."""
+        a1 = _asset_rid(1)
+        wb1, wb2 = _wb_rid(1), _wb_rid(2)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [
+            _stub_workbook(wb1, asset_rids=[a1]),
+            _stub_workbook(wb2, asset_rids=[a1]),
+        ]
+        source_asset.list_runs.return_value = []
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(
+            source_asset, new_asset, include_runs=False, workbook_rids_allowlist=None
+        )
+
+        assert mock_wm_cls.return_value.copy_from.call_count == 2
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_allowlist_skips_non_allowlisted_asset_workbooks(self, mock_wm_cls: MagicMock) -> None:
+        """Only workbooks whose RID is in the allowlist are copied; others are silently skipped."""
+        a1 = _asset_rid(1)
+        wb1, wb2 = _wb_rid(1), _wb_rid(2)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [
+            _stub_workbook(wb1, asset_rids=[a1]),
+            _stub_workbook(wb2, asset_rids=[a1]),
+        ]
+        source_asset.list_runs.return_value = []
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(
+            source_asset, new_asset, include_runs=False, workbook_rids_allowlist=frozenset([wb1])
+        )
+
+        mock_wm = mock_wm_cls.return_value
+        assert mock_wm.copy_from.call_count == 1
+        assert mock_wm.copy_from.call_args[0][0].rid == wb1
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_allowlist_empty_skips_all_workbooks(self, mock_wm_cls: MagicMock) -> None:
+        """An empty frozenset allowlist causes all workbooks to be skipped."""
+        a1 = _asset_rid(1)
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [
+            _stub_workbook(_wb_rid(1), asset_rids=[a1]),
+            _stub_workbook(_wb_rid(2), asset_rids=[a1]),
+        ]
+        source_asset.list_runs.return_value = []
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(
+            source_asset, new_asset, include_runs=False, workbook_rids_allowlist=frozenset()
+        )
+
+        mock_wm_cls.return_value.copy_from.assert_not_called()
+
+    @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
+    def test_allowlist_applies_to_run_workbooks(self, mock_wm_cls: MagicMock) -> None:
+        """Allowlist filters run-level workbooks with the same logic as asset-level workbooks."""
+        a1 = _asset_rid(1)
+        r1 = _run_rid(1)
+        new_r1 = _run_rid(101)
+        wb_asset = _wb_rid(1)  # allowlisted
+        wb_run_allowed = _wb_rid(2)  # allowlisted
+        wb_run_blocked = _wb_rid(3)  # not allowlisted
+
+        ctx = _make_context(source_asset_rids=frozenset([a1]))
+        ctx.migration_state.record_mapping(ResourceType.RUN, r1, new_r1)
+
+        source_asset = _make_source_asset(rid=a1)
+        new_asset = _make_dest_asset()
+        source_asset.search_workbooks.return_value = [_stub_workbook(wb_asset, asset_rids=[a1])]
+
+        run1 = MagicMock()
+        run1.rid = r1
+        run1.search_workbooks.return_value = [
+            _stub_workbook(wb_run_allowed, run_rids=[r1]),
+            _stub_workbook(wb_run_blocked, run_rids=[r1]),
+        ]
+        source_asset.list_runs.return_value = [run1]
+
+        AssetMigrator(ctx)._copy_asset_and_run_workbooks(
+            source_asset,
+            new_asset,
+            include_runs=True,
+            workbook_rids_allowlist=frozenset([wb_asset, wb_run_allowed]),
+        )
+
+        mock_wm = mock_wm_cls.return_value
+        assert mock_wm.copy_from.call_count == 2
+        copied_rids = {c[0][0].rid for c in mock_wm.copy_from.call_args_list}
+        assert copied_rids == {wb_asset, wb_run_allowed}
+
     @patch("nominal.experimental.migration.migrator.asset_migrator.WorkbookMigrator")
     def test_multi_run_workbook_always_enqueued_single_run_uses_copy_from(self, mock_wm_cls: MagicMock) -> None:
         """Single-run workbooks go to copy_from; multi-run workbooks are always enqueued

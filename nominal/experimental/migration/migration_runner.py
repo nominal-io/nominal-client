@@ -107,6 +107,7 @@ class MigrationRunner:
                         include_video=self.asset_inclusion_config.include_video,
                         include_checklists=self.asset_inclusion_config.include_checklists,
                         include_workbooks=self.asset_inclusion_config.include_workbooks,
+                        workbook_rids_allowlist=asset_resources.source_workbook_rids,
                     ),
                 )
 

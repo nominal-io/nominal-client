@@ -593,6 +593,8 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
             all_assets.add(asset_rid)
 
     logger.info("  Auto-created assets: %d", len(auto_created_assets))
+    for rid in sorted(auto_created_assets)[:3]:
+        logger.info("    e.g. %s", rid)
     logger.info("  All assets: %d", len(all_assets))
 
     datasets = client.search_datasets()
@@ -603,25 +605,23 @@ def prep(client: NominalClient, migration_name: str, output_path: Path) -> None:
 
     logger.info("  Total videos: %d", len(videos))
 
-    channel_count = 0
-
     for asset_rid in all_assets:
         asset = client.get_asset(asset_rid)
         for _data_scope, dataset in asset.list_datasets():
             datasets_with_assets.add(dataset.rid)
-            channel_count += sum(1 for _ in dataset.search_channels())
 
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
-    logger.info("  Total channels: %d", channel_count)
 
     workbook_templates = client.search_workbook_templates(archive_status=ArchiveStatusFilter.NOT_ARCHIVED)
     logger.info("  Workbook templates (non-archived): %d", len(workbook_templates))
+    logger.info("  Workbooks with multiple asset/runs: %d", len(workbooks_with_multi_asset_run))
 
     orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
 
     logger.info("Out-of-scope migration numbers:")
-    logger.info("  Workbooks with multiple asset/runs: %d", len(workbooks_with_multi_asset_run))
     logger.info("  Orphaned datasets: %d", len(orphaned_datasets))
+    for rid in sorted(orphaned_datasets)[:3]:
+        logger.info("    e.g. %s", rid)
 
     streaming_checklists = client.list_streaming_checklists()
     logger.info("  Streaming checklists: %d", len(streaming_checklists))
