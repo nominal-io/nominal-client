@@ -6,7 +6,10 @@ import ssl
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Type, TypeVar
+
+if TYPE_CHECKING:
+    import grpc
 
 import requests
 import truststore
@@ -29,6 +32,59 @@ GZIP_COMPRESSION_LEVEL = 1
 class HeaderProvider(ABC):
     @abstractmethod
     def headers(self) -> Mapping[str, str]: ...
+
+
+class TransportProvider:
+    """Controls transport-level authentication for Nominal connections.
+
+    Each transport has its own method; overriding one does not affect the others.
+    The defaults use a ``ThreadSafeSSLContext`` backed by the OS trust store for
+    HTTP and multipart, and ``grpc.ssl_channel_credentials()`` for gRPC.
+    Subclass and override only the transports that need customization.
+    """
+
+    def create_http_adapter(self, *, max_retries: Retry) -> HTTPAdapter:
+        """Return an ``HTTPAdapter`` for Nominal API calls.
+
+        Default: ``NominalRequestsAdapter`` backed by a ``ThreadSafeSSLContext``. Override
+        to substitute a different TLS stack or to inject a custom ``ssl.SSLContext``.
+        """
+        return NominalRequestsAdapter(max_retries=max_retries)
+
+    def create_multipart_adapter(
+        self,
+        *,
+        max_retries: Retry,
+        pool_size: int,
+    ) -> HTTPAdapter:
+        """Return an ``HTTPAdapter`` for multipart upload/download sessions.
+
+        Default: ``NominalSslRequestsAdapter`` (no gzip) sized for ``pool_size`` workers.
+        Most providers can inherit this default because presigned object-store URLs
+        authenticate via query parameters, not client certificates.
+        """
+        return NominalSslRequestsAdapter(
+            max_retries=max_retries,
+            pool_connections=pool_size,
+            pool_maxsize=pool_size * 2,
+        )
+
+    def create_grpc_channel_credentials(
+        self,
+        *,
+        root_certificates: bytes | None = None,
+        certificate_chain_pem: bytes | None = None,
+    ) -> grpc.ChannelCredentials:
+        """Return ``grpc.ChannelCredentials`` for gRPC channel creation.
+
+        Default: ``grpc.ssl_channel_credentials()`` using the system CA bundle.
+        """
+        import grpc
+
+        return grpc.ssl_channel_credentials(
+            root_certificates=root_certificates,
+            certificate_chain=certificate_chain_pem,
+        )
 
 
 @dataclass(frozen=True)
@@ -99,18 +155,24 @@ class ThreadSafeSSLContext(truststore.SSLContext):
             return super().wrap_socket(*args, **kwargs)
 
 
-class SslBypassRequestsAdapter(HTTPAdapter):
+class NominalSslRequestsAdapter(HTTPAdapter):
     """Transport adapter that uses the OS trust store via truststore.
 
-    All sessions use a ThreadSafeSSLContext, which is safe to share across threads.
+    If a SSL context is not provided, sessions use a ThreadSafeSSLContext, which is safe to share across threads.
     """
 
     ENABLE_KEEP_ALIVE_ATTR = "_enable_keep_alive"
     __attrs__ = [*HTTPAdapter.__attrs__, ENABLE_KEEP_ALIVE_ATTR]
 
-    def __init__(self, *args: Any, enable_keep_alive: bool = False, **kwargs: Any):
+    def __init__(
+        self,
+        *args: Any,
+        enable_keep_alive: bool = False,
+        ssl_context: ssl.SSLContext | None = None,
+        **kwargs: Any,
+    ):
         self._enable_keep_alive = enable_keep_alive
-        self._ssl_context = ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        self._ssl_context = ssl_context if ssl_context is not None else ThreadSafeSSLContext(ssl.PROTOCOL_TLS_CLIENT)
         super().__init__(*args, **kwargs)
 
     def init_poolmanager(
@@ -139,7 +201,7 @@ class SslBypassRequestsAdapter(HTTPAdapter):
         super().__setstate__(state)  # type: ignore[misc]
 
 
-class NominalRequestsAdapter(SslBypassRequestsAdapter):
+class NominalRequestsAdapter(NominalSslRequestsAdapter):
     """Adapter used with `requests` library for sending gzip-compressed data."""
 
     ACCEPT_ENCODING = "Accept-Encoding"
@@ -189,6 +251,7 @@ def create_conjure_service_client(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     header_provider: HeaderProvider | None = None,
+    transport_provider: TransportProvider | None = None,
 ) -> T:
     """Wrapper around logic found in the conjure_python_client for creating conjure clients
     that automatically gzip data being sent to services.
@@ -206,7 +269,9 @@ def create_conjure_service_client(
         return_none_for_unknown_union_types: If true, returns None instead of raising an exception when an unknown
             union type is encountered during decoding API responses.
         header_provider: Additional default headers to attach to each request.
-        enable_keep_alive: If true, enable keep alive in connections with the service.
+        transport_provider: Transport provider for authentication. Its ``create_http_adapter()``
+            builds the adapter mounted for each service URI. Defaults to ``TransportProvider()``
+            when not specified.
 
     Returns:
         Instantiated conjure client object to hit the API with
@@ -220,9 +285,9 @@ def create_conjure_service_client(
         status_forcelist=[308, 429, 503],
         backoff_factor=float(service_config.backoff_slot_size) / 1000,
     )
-    # No ssl_context passed: defaults to ThreadSafeSSLContext, which is
-    # required since this session is shared across threads via ClientsBunch.
-    transport_adapter = NominalRequestsAdapter(max_retries=retry)
+    provider = transport_provider or TransportProvider()
+    transport_adapter = provider.create_http_adapter(max_retries=retry)
+
     session = HeaderProviderSession(header_provider)
     session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
     if service_config.security is not None:
@@ -231,6 +296,7 @@ def create_conjure_service_client(
         verify = None
     for uri in service_config.uris:
         session.mount(uri, transport_adapter)
+
     return service_class(  # type: ignore
         session,
         service_config.uris,
@@ -246,6 +312,7 @@ def create_conjure_client_factory(
     service_config: ServiceConfiguration,
     return_none_for_unknown_union_types: bool = False,
     header_provider: HeaderProvider | None = None,
+    transport_provider: TransportProvider | None = None,
 ) -> Callable[[Type[T]], T]:
     """Create factory method for creating conjure clients given the respective conjure service type
 
@@ -259,6 +326,7 @@ def create_conjure_client_factory(
             service_config=service_config,
             return_none_for_unknown_union_types=return_none_for_unknown_union_types,
             header_provider=header_provider,
+            transport_provider=transport_provider,
         )
 
     return factory
@@ -269,17 +337,21 @@ def create_multipart_request_session(
     pool_size: int = DEFAULT_POOLSIZE,
     num_retries: int = 5,
     header_provider: HeaderProvider | None = None,
+    transport_provider: TransportProvider | None = None,
 ) -> requests.Session:
     """Create a requests Session configured for multipart uploads to S3.
 
-    Each call produces an independent session with its own ThreadSafeSSLContext
-    and connection pool, safe for concurrent use across threads.
+    Each call produces an independent session safe for concurrent use across threads.
+    The transport provider's ``create_multipart_adapter()`` builds the adapter mounted
+    for ``https://``.
 
     Args:
         pool_size: Number of concurrent workers. Controls the number of cached host pools
             and the per-host connection limit (2 * pool_size).
         num_retries: Number of times to retry failed requests.
         header_provider: Additional default headers to attach to every request issued by the session.
+        transport_provider: Transport provider. Its ``create_multipart_adapter()`` supplies
+            the adapter. Defaults to ``TransportProvider()`` when not specified.
     """
     if pool_size <= 0:
         raise ValueError(f"pool_size must be positive, got {pool_size}")
@@ -289,13 +361,11 @@ def create_multipart_request_session(
         backoff_factor=0.5,
         status_forcelist=(429, 500, 502, 503, 504),
     )
-    session = HeaderProviderSession(header_provider)
-    adapter = SslBypassRequestsAdapter(
+    provider = transport_provider or TransportProvider()
+    adapter = provider.create_multipart_adapter(
         max_retries=retries,
-        # Match the number of cached host pools to the thread count to avoid LRU eviction.
-        pool_connections=pool_size,
-        # Double the per-host connection limit so retries/redirects don't discard connections.
-        pool_maxsize=pool_size * 2,
+        pool_size=pool_size,
     )
+    session = HeaderProviderSession(header_provider)
     session.mount("https://", adapter)
     return session

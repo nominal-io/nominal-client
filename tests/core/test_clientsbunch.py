@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from conjure_python_client import ServiceConfiguration
 
+from nominal.core import TransportProvider
 from nominal.core._clientsbunch import (
     ON_BEHALF_OF_USER_RID_HEADER,
     ClientsBunch,
@@ -29,6 +30,7 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
             "workspace_rid",
             "app_base_url",
             "header_provider",
+            "transport_provider",
             "_api_base_url",
             "_user_agent",
             "_token",
@@ -41,6 +43,7 @@ def _make_clients_bunch(*, workspace_rid: str | None) -> ClientsBunch:
         workspace_rid=workspace_rid,
         app_base_url="https://app.nominal.test",
         header_provider=None,
+        transport_provider=None,
         _api_base_url="https://api.nominal.test",
         _user_agent="test-agent",
         _token="token",
@@ -79,8 +82,9 @@ def _fake_create_conjure_client_factory(
     service_config,
     return_none_for_unknown_union_types=False,
     header_provider=None,
+    transport_provider=None,
 ):
-    del user_agent, service_config, return_none_for_unknown_union_types
+    del user_agent, service_config, return_none_for_unknown_union_types, transport_provider
     headers = header_provider.headers() if header_provider is not None else None
 
     def factory(service_class):
@@ -237,3 +241,25 @@ def test_experimental_as_user_returns_derived_nominal_client(monkeypatch):
     assert impersonated._clients.assets._requests_session.headers[ON_BEHALF_OF_USER_RID_HEADER] == (
         "ri.authn.dev.user.target"
     )
+    assert impersonated._clients.transport_provider is client._clients.transport_provider
+
+
+def test_experimental_as_user_propagates_non_none_transport_provider(monkeypatch):
+    """as_user must forward a non-None transport_provider so the impersonated client uses the same transport."""
+    monkeypatch.setattr("nominal.core._clientsbunch.create_conjure_client_factory", _fake_create_conjure_client_factory)
+
+    provider = TransportProvider()
+    client = NominalClient(
+        _clients=ClientsBunch.from_config(
+            ServiceConfiguration(uris=["https://api.nominal.test"]),
+            "https://api.nominal.test",
+            "test-agent",
+            "token",
+            None,
+            transport_provider=provider,
+        )
+    )
+
+    impersonated = as_user(client, "ri.authn.dev.user.target")
+
+    assert impersonated._clients.transport_provider is provider

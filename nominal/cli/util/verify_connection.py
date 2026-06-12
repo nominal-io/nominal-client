@@ -3,16 +3,23 @@ from __future__ import annotations
 import click
 from conjure_python_client import ConjureHTTPError
 
+from nominal.core import TransportProvider
 from nominal.core.client import NominalClient
 from nominal.core.exceptions import NominalConfigError
 
 
-def validate_token_url(token: str, base_url: str, workspace_rid: str | None) -> None:
+def validate_token_url(
+    token: str,
+    base_url: str,
+    workspace_rid: str | None,
+    *,
+    transport_provider: TransportProvider | None = None,
+) -> None:
     """Ensure the user sets a valid configuration before letting them import the client."""
     docs_link = "https://docs.nominal.io/core/sdk/python-client/authentication"
     status_code = 200
     err_msg = ""
-    client = NominalClient.create(base_url, token)
+    client = NominalClient.create(base_url, token, transport_provider=transport_provider)
 
     # first, validate that the api key is correct for the tenant / org by fetching the
     # current user using the api key
