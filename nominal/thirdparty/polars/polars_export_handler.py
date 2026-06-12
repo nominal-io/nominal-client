@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import concurrent.futures
 import dataclasses
@@ -7,11 +9,15 @@ import pathlib
 import random
 import threading
 import time
-from typing import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Callable, Iterator, Mapping, Sequence
 
 import requests
 from nominal_api import api, scout_compute_api, scout_dataexport_api
 from typing_extensions import Self
+
+if TYPE_CHECKING:
+    from rich.console import Console
 
 import polars as pl
 from nominal._utils import LogTiming
@@ -157,6 +163,45 @@ class _PlanningProfile:
             sem_avg,
             sem_max,
         )
+
+
+@contextmanager
+def _progress_bars(
+    total: int, show: bool, console: Console | None = None
+) -> Iterator[tuple[Callable[[], None], Callable[[], None]]]:
+    """Yield ``(advance_prepare, advance_download)`` callables for the pipelined export.
+
+    When ``show`` is set, both advance tasks on a single Rich progress display: one tracks files
+    whose presigned link is ready (planning/pre-allocation) and one tracks completed downloads, each
+    with an elapsed timer and an estimated time remaining. When not shown, both are no-ops. Pass the
+    ``console`` shared with a Rich logging handler so log lines render cleanly above the live bars;
+    otherwise route logs to a file so they don't corrupt the display.
+    """
+    if not show:
+        noop: Callable[[], None] = lambda: None  # noqa: E731 - trivial no-op
+        yield noop, noop
+        return
+
+    from rich.progress import (
+        BarColumn,
+        MofNCompleteColumn,
+        Progress,
+        TextColumn,
+        TimeElapsedColumn,
+        TimeRemainingColumn,
+    )
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),  # estimated time remaining
+        console=console,
+    ) as progress:
+        prepare = progress.add_task("Preparing links", total=total)
+        download = progress.add_task("Downloading", total=total)
+        yield (lambda: progress.advance(prepare, 1), lambda: progress.advance(download, 1))
 
 
 def _extract_bucket_counts(
@@ -1029,6 +1074,8 @@ class PolarsExportHandler:
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
         file_prefix: str = "export",
+        show_progress: bool = False,
+        console: Console | None = None,
     ) -> list[pathlib.Path]:
         """Export the given channels to gzipped CSV files in ``output_dir`` and return the written paths.
 
@@ -1037,6 +1084,12 @@ class PolarsExportHandler:
         (``generate_export_channel_data_presigned_link``) and downloads each file **straight to disk**
         using parallel ranged GETs. This lifts the API-proxy size ceiling and is much faster for large
         exports.
+
+        Link generation (server-side compute + S3 materialization) is **pipelined** with downloads via
+        a single :class:`MultipartFileDownloader`: each file starts downloading the instant its own link
+        is ready, while other links are still being generated, and all byte downloads share one pool so
+        the number of download threads stays constant. Concurrent link generation is bounded by
+        ``max_concurrent_links`` to stay under the backend's concurrent-query limit.
 
         It reuses the exact same planning phase as :meth:`export`: each planned export request maps to
         one file, so an export of more than ``channels_per_request`` channels (or across multiple
@@ -1060,6 +1113,11 @@ class PolarsExportHandler:
             resolution: Decimate each channel to samples at this interval (nanoseconds). Mutually
                 exclusive with ``buckets``.
             file_prefix: Prefix for written file names.
+            show_progress: When True, render a Rich progress display with two bars -- files whose
+                presigned link is ready, and completed downloads -- each with elapsed time and an
+                estimated time remaining. Route logs to a file (not stdout) so they don't corrupt the
+                live display; pass ``console`` to share a console with a Rich logging handler instead.
+            console: Optional Rich console to render the progress display on.
 
         Returns:
             The list of written file paths, sorted.
@@ -1105,13 +1163,21 @@ class PolarsExportHandler:
         logger.info("Exporting %d channels into %d file(s) under %s", len(supported_channels), len(items), output_dir)
         with (
             LogTiming(f"Downloaded {len(items)} export file(s)"),
+            _progress_bars(len(items), show_progress, console) as (advance_prepare, advance_download),
+            # A single downloader for the whole export: byte downloads share one pool (constant
+            # download-thread count) while link generation is pipelined on the downloader's separate
+            # planning pool, so files download as soon as their link is ready.
             MultipartFileDownloader.create(
                 max_workers=self._num_workers,
                 # No header_provider: the links are genuinely pre-signed (auth is in the URL), so the
                 # readiness probe and the downloads are both header-less and consistent.
             ) as downloader,
         ):
-            results = downloader.download_files(items)
+            results = downloader.download_files_pipelined(
+                items,
+                on_file_planned=lambda _path: advance_prepare(),
+                on_file_complete=lambda _path: advance_download(),
+            )
         profile.log_summary()
 
         if results.failed:
