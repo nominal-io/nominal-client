@@ -211,6 +211,11 @@ def sync_missing_channel_data(
             on_advance=advance,
         )
 
+    # Channels detection could only presence-probe (precise=False) are the ones whose rate the export
+    # can't estimate (e.g. high-cardinality enums that error with Compute:TooManyCategories). They get
+    # the per-channel recursive-halving export fallback instead of the rate-sized grouped path.
+    non_precise = {name for name, counts in source_counts.items() if not counts.precise}
+
     missing = _detect_missing(source_counts, destination_dataset, start, end, options)
     report.channels_missing = len(missing)
     if not missing:
@@ -231,7 +236,9 @@ def sync_missing_channel_data(
         else:
             logger.info("Retry %d/%d: %d channel(s) still short", attempt, options.max_retries, len(missing))
 
-        report.points_streamed += _stream_missing(handler, destination_dataset, missing, source_by_name, options)
+        report.points_streamed += _stream_missing(
+            handler, destination_dataset, missing, source_by_name, non_precise, options
+        )
 
         # Streaming ingestion is eventually-consistent; let it settle before re-counting so we don't
         # report false shortfalls (and needlessly re-stream).
@@ -313,12 +320,15 @@ def _stream_missing(
     destination_dataset: Dataset,
     missing: Mapping[str, list[tuple[int, int]]],
     source_by_name: Mapping[str, Channel],
+    non_precise: set[str],
     options: ChannelSyncOptions,
 ) -> int:
     """Export each channel's missing ranges from the source and stream them to the destination.
 
-    Channels sharing an identical set of missing ranges are exported together (one
-    ``export_to_files`` call per shared range). Returns the number of points streamed.
+    Channels whose rate the export *can* estimate (``precise``) are grouped by identical missing-range
+    signature and exported together. Channels detection could only presence-probe (``non_precise`` --
+    e.g. high-cardinality enums the rate estimator rejects) are exported one channel at a time with a
+    recursive-halving fallback (see :func:`_export_and_stream_channel`). Returns points streamed.
     """
     # Source channels were filtered to exportable (non-None) data types upstream, so data_type is
     # always present here; the comprehension makes that explicit for the type checker.
@@ -326,22 +336,21 @@ def _stream_missing(
         name: dt for name in missing if (dt := source_by_name[name].data_type) is not None
     }
 
-    # Group channels by identical missing-range signature so each range is exported once with all
-    # the channels that need exactly it -- no channel is exported over a range it isn't missing.
+    # Group the rate-estimable channels by identical missing-range signature so each range is exported
+    # once with all the channels that need exactly it.
     groups: dict[tuple[tuple[int, int], ...], list[Channel]] = {}
     for name, ranges in missing.items():
-        groups.setdefault(tuple(ranges), []).append(source_by_name[name])
+        if name not in non_precise:
+            groups.setdefault(tuple(ranges), []).append(source_by_name[name])
+    fallback = [(source_by_name[name], ranges) for name, ranges in missing.items() if name in non_precise]
 
     # A slice is one (channel, missing-bucket) unit -- the exact, up-front total for the progress bar.
-    total_slices = sum(
-        len(channels) * sum(_buckets_in_range(rs, re, options.bucket) for rs, re in signature)
-        for signature, channels in groups.items()
-    )
+    total_slices = sum(_buckets_in_range(rs, re, options.bucket) for ranges in missing.values() for rs, re in ranges)
 
     points = 0
     # One progress display for the whole pass (the export's own per-call bars are disabled). The bar
-    # advances per streamed file -- by the slices that file covers -- so it moves smoothly within a
-    # range and only counts data that actually landed (failed exports don't advance it).
+    # advances per streamed file -- by the slices that file covers -- so it moves smoothly and only
+    # counts data that actually landed (failed exports don't advance it).
     with (
         _progress_bar(options.show_progress, total_slices, "Syncing slices") as advance,
         destination_dataset.get_write_stream(batch_size=options.batch_size) as stream,
@@ -351,11 +360,16 @@ def _stream_missing(
                 points += _export_and_stream_range(
                     handler, stream, channels, range_start, range_end, type_by_name, options, advance
                 )
+        for channel, ranges in fallback:
+            for range_start, range_end in ranges:
+                points += _export_and_stream_channel(
+                    handler, stream, channel, range_start, range_end, type_by_name, options, advance
+                )
     # Exiting the context flushes and closes the stream (wait=True).
     return points
 
 
-def _export_and_stream_range(
+def _export_and_stream(
     handler: PolarsExportHandler,
     stream: DataStream,
     channels: Sequence[Channel],
@@ -363,18 +377,16 @@ def _export_and_stream_range(
     range_end: int,
     type_by_name: Mapping[str, ChannelDataType],
     options: ChannelSyncOptions,
-    advance: Callable[[int], None] | None = None,
+    advance: Callable[[int], None] | None,
+    *,
+    skip_rate_estimation: bool = False,
 ) -> int:
-    """Export ``channels`` over ``[range_start, range_end)`` to CSV, streaming each file up the
-    instant it finishes downloading (rather than waiting for the whole batch).
+    """Export ``channels`` over ``[range_start, range_end)`` to CSV, streaming each file the instant it
+    finishes downloading. Returns points streamed; **re-raises** any whole-export failure so callers can
+    decide how to handle it. A single-file *streaming* failure is non-fatal (logged, range left short).
 
-    The ``on_file_complete`` hook fires serially from the export's download-driving thread, so the
-    streaming below needs no locking. Both a single-file streaming failure and a whole-export failure
-    are non-fatal: they are logged and the range is left short, so the verify/re-detect loop retries
-    it on the next pass (files that did stream before a mid-export failure are kept). The handler's
-    own progress bars are disabled (``show_progress=False``); ``advance`` (when given) moves the shared
-    sync bar by the slices each file covers, the instant it streams -- so only data that actually
-    landed advances the bar, smoothly, within the range.
+    ``on_file_complete`` fires serially from the export's download-driving thread (no locking needed);
+    ``advance`` (when given) moves the shared bar by the slices each file covers as it streams.
     """
     if options.output_dir is not None:
         options.output_dir.mkdir(parents=True, exist_ok=True)
@@ -402,35 +414,105 @@ def _export_and_stream_range(
                 path.unlink(missing_ok=True)
 
     with tmp_ctx as out_dir:
-        try:
-            handler.export_to_files(
-                channels,
+        handler.export_to_files(
+            channels,
+            range_start,
+            range_end,
+            out_dir,
+            tags=options.tags,
+            timestamp_type=_TIMESTAMP_TYPE,
+            file_prefix=f"sync_{range_start}_{range_end}",
+            show_progress=False,
+            on_file_complete=_on_file_complete,
+            # Reuse files a prior attempt/run already downloaded (size-matched) instead of failing to
+            # re-create them; the retry then re-streams the existing file rather than colliding.
+            reuse_complete=True,
+            skip_rate_estimation=skip_rate_estimation,
+        )
+    return points
+
+
+def _export_and_stream_range(
+    handler: PolarsExportHandler,
+    stream: DataStream,
+    channels: Sequence[Channel],
+    range_start: int,
+    range_end: int,
+    type_by_name: Mapping[str, ChannelDataType],
+    options: ChannelSyncOptions,
+    advance: Callable[[int], None] | None = None,
+) -> int:
+    """Grouped, rate-sized export of ``channels`` over a range (the normal path). A whole-export
+    failure is non-fatal: logged, and the range is left short for the verify/re-detect loop to retry.
+    """
+    try:
+        return _export_and_stream(handler, stream, channels, range_start, range_end, type_by_name, options, advance)
+    except Exception as exc:
+        logger.exception(
+            "Export failed for range [%d, %d) over %d channel(s) (%s); range will be retried on re-detect",
+            range_start,
+            range_end,
+            len(channels),
+            exc,
+        )
+        return 0
+
+
+def _export_and_stream_channel(
+    handler: PolarsExportHandler,
+    stream: DataStream,
+    channel: Channel,
+    range_start: int,
+    range_end: int,
+    type_by_name: Mapping[str, ChannelDataType],
+    options: ChannelSyncOptions,
+    advance: Callable[[int], None] | None,
+) -> int:
+    """Export+stream one channel whose rate can't be estimated, halving the range and retrying on
+    export failure.
+
+    The export request size for these channels can't be planned (rate estimation fails), so we try the
+    whole range and, if the export request fails (e.g. too large for the backend), recursively split
+    the range at a bucket-aligned midpoint and retry each half -- discovering a workable size by trial.
+    Bottoms out at one ``bucket``: a single-bucket export that still fails is genuinely unexportable and
+    is left short (logged).
+    """
+    try:
+        return _export_and_stream(
+            handler,
+            stream,
+            [channel],
+            range_start,
+            range_end,
+            type_by_name,
+            options,
+            advance,
+            skip_rate_estimation=True,
+        )
+    except Exception as exc:
+        span = range_end - range_start
+        if span <= int(options.bucket):
+            logger.warning(
+                "Channel %r range [%d, %d) could not be exported even at one-bucket granularity (%s); leaving short",
+                channel.name,
                 range_start,
                 range_end,
-                out_dir,
-                tags=options.tags,
-                timestamp_type=_TIMESTAMP_TYPE,
-                file_prefix=f"sync_{range_start}_{range_end}",
-                show_progress=False,
-                on_file_complete=_on_file_complete,
-                # Reuse files a prior attempt/run already downloaded (size-matched) instead of failing
-                # to re-create them; the retry then re-streams the existing file rather than colliding.
-                reuse_complete=True,
-            )
-        except Exception as exc:
-            # A whole-export failure (e.g. link-gen / S3 / download errors, or a pre-existing export
-            # file) must not abort the sync: log it and leave the range short so the verify/re-detect
-            # loop retries it. Files that streamed before the failure are already counted. The cause
-            # is included in the headline (export_to_files surfaces it) so it's clear without the
-            # traceback below.
-            logger.exception(
-                "Export failed for range [%d, %d) over %d channel(s) (%s); range will be retried on re-detect",
-                range_start,
-                range_end,
-                len(channels),
                 exc,
             )
-    return points
+            return 0
+        # Split at a bucket-aligned midpoint; guarantee forward progress.
+        mid = range_start + max(1, (span // int(options.bucket)) // 2) * int(options.bucket)
+        logger.info(
+            "Export failed for channel %r over [%d, %d) (%s); halving at %d and retrying",
+            channel.name,
+            range_start,
+            range_end,
+            exc,
+            mid,
+        )
+        return _export_and_stream_channel(
+            handler, stream, channel, range_start, mid, type_by_name, options, advance
+        ) + _export_and_stream_channel(handler, stream, channel, mid, range_end, type_by_name, options, advance)
 
 
 def _polars_dtype(data_type: ChannelDataType) -> pl.DataType:
