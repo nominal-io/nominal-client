@@ -461,7 +461,10 @@ def _stream_file(
     schema_overrides = {col: _polars_dtype(type_by_name[col]) for col in header if col in type_by_name}
     # Wide multi-channel exports merge on timestamp, so a channel without a sample at a given row has
     # an empty cell. Treat empty as null (not the string "") so those rows are dropped, not streamed.
-    frame = pl.read_csv(raw, schema_overrides=schema_overrides, null_values=[""])
+    # infer_schema_length=None scans the whole file when inferring any column not covered by the
+    # overrides above, so a numeric column whose first rows look integral can't be typed Int64 and
+    # then fail on a later float ("could not parse '12.65' as dtype i64").
+    frame = pl.read_csv(raw, schema_overrides=schema_overrides, null_values=[""], infer_schema_length=None)
     if frame.height == 0:
         return 0
 

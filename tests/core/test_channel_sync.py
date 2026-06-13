@@ -88,6 +88,23 @@ def test_stream_file_int_channel_tolerates_floats_and_recasts_integral(tmp_path:
     assert isinstance(values[2], float)
 
 
+def test_stream_file_does_not_crash_on_integral_then_float_column(tmp_path: Path) -> None:
+    # A numeric column that looks integral for many rows before a float must not be inferred as i64
+    # and crash the read (infer_schema_length=None scans the whole file). 'rpm' is overridden to
+    # Float64; 'extra' is NOT in type_by_name (left to inference) yet must still not break the read.
+    rows = "".join(f"{i * SEC},{i},{i}\n" for i in range(50)) + f"{50 * SEC},5,12.65\n"
+    path = tmp_path / "part.csv.gz"
+    _write_csv_gz(path, "timestamp,rpm,extra\n" + rows)
+    stream = FakeStream()
+
+    points = sync_mod._stream_file(stream, path, {"rpm": ChannelDataType.DOUBLE}, None)
+
+    # 51 rpm points stream; 'extra' (not a known channel) is ignored, but its float didn't crash.
+    assert points == 51
+    assert stream.calls[0][0] == "rpm"
+    assert all(isinstance(v, float) for v in stream.calls[0][2])
+
+
 def test_stream_file_identifies_timestamp_when_channel_named_timestamp(tmp_path: Path) -> None:
     # A data channel literally named "timestamp" forces the exporter to rename the time column.
     path = tmp_path / "part.csv.gz"
