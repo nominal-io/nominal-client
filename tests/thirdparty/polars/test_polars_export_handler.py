@@ -411,6 +411,29 @@ def test_compute_export_jobs_excludes_zero_and_none_pps_channels(
     assert exported_names == {"known"}
 
 
+def test_compute_export_jobs_skip_rate_estimation_keeps_all_channels(mock_client, make_channel):
+    """skip_rate_estimation bypasses rate planning: one single-channel job per channel, none dropped.
+
+    This is the path for channels whose rate can't be estimated (e.g. high-cardinality enums that
+    error with Compute:TooManyCategories) -- they must NOT be excluded.
+    """
+    channels = [
+        make_channel("high_card_enum", ChannelDataType.STRING),
+        make_channel("plain", ChannelDataType.DOUBLE),
+    ]
+    rng = _TimeRange(0, TEN_SECONDS_NS)
+    handler = PolarsExportHandler(client=mock_client)
+
+    jobs = handler._compute_export_jobs(channels, rng, timestamp_type="epoch_nanoseconds", skip_rate_estimation=True)
+
+    all_jobs = [job for job_list in jobs.values() for job in job_list]
+    assert {name for job in all_jobs for name in job.channel_names} == {"high_card_enum", "plain"}
+    assert all(len(job.channel_names) == 1 for job in all_jobs)  # one channel per request
+    assert all(job.time_slice == rng for job in all_jobs)  # whole range, no time-batching
+    # No compute calls were made -- rate estimation was skipped entirely.
+    mock_client._clients.compute.batch_compute_with_units.assert_not_called()
+
+
 def test_compute_export_jobs_handles_cross_datasource_name_collision(
     mock_client, mock_clients, make_channel, make_compute_result, make_numeric_response, make_series_count_response
 ):
@@ -750,9 +773,7 @@ class _FakeDownloader:
     def __exit__(self, *_args):
         return False
 
-    def download_files_pipelined(
-        self, items, *, on_file_planned=None, on_file_complete=None, reuse_complete=False
-    ):
+    def download_files_pipelined(self, items, *, on_file_planned=None, on_file_complete=None, reuse_complete=False):
         type(self).last_items = list(items)
         if type(self).fail:
             return DownloadResults(succeeded=[], failed={items[0].destination: RuntimeError("boom")})
