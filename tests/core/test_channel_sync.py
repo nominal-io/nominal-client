@@ -105,6 +105,22 @@ def test_stream_file_does_not_crash_on_integral_then_float_column(tmp_path: Path
     assert all(isinstance(v, float) for v in stream.calls[0][2])
 
 
+def test_stream_file_tolerates_float_beyond_inference_sample(tmp_path: Path) -> None:
+    # The header peek must not infer types: a column that stays integral well past polars' default
+    # 100-row inference sample, then turns float, would otherwise infer i64 and crash the peek before
+    # the type-forced main read runs (the real-data stall: most files failed to stream at the peek).
+    n = 300
+    rows = "".join(f"{i * SEC},{i}\n" for i in range(n)) + f"{n * SEC},0.5\n"
+    path = tmp_path / "part.csv.gz"
+    _write_csv_gz(path, "timestamp,rpm\n" + rows)
+    stream = FakeStream()
+
+    points, _slices = sync_mod._stream_file(stream, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
+
+    assert points == n + 1
+    assert stream.calls[0][2][-1] == 0.5  # the late float streamed as a float, no crash
+
+
 def test_stream_file_identifies_timestamp_when_channel_named_timestamp(tmp_path: Path) -> None:
     # A data channel literally named "timestamp" forces the exporter to rename the time column.
     path = tmp_path / "part.csv.gz"
