@@ -31,7 +31,7 @@ import gzip
 import logging
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -103,8 +103,9 @@ class ChannelSyncOptions:
     max_concurrent_links: int = DEFAULT_MAX_CONCURRENT_LINKS
     """Export tuning: max presigned links generated concurrently (bounds backend compute queries)."""
     show_progress: bool = True
-    """Render the export's live progress bars (per export call). Route logs to a file when enabled,
-    since the live display and interleaved log lines on stdout corrupt each other."""
+    """Render a single live progress display for the whole pass (links prepared, files downloaded,
+    points streamed, ranges done). Route logs to a file when enabled, since the live display and
+    interleaved log lines on stdout corrupt each other."""
     output_dir: Path | None = None
     """Directory for exported CSVs; a temporary directory is used (and cleaned up) when omitted."""
 
@@ -130,6 +131,68 @@ class ChannelSyncReport:
     """Channels that started short and ended fully filled."""
     points_streamed: int = 0
     still_short: list[StillShort] = field(default_factory=list)
+
+
+class _SyncProgress:
+    """Thin wrapper over a Rich progress display shared across every export call in one pass.
+
+    Four bars: ranges done (determinate), links prepared, files downloaded, and points streamed
+    (running counters). Updates come serially from the export download-driving thread and the main
+    loop; Rich's progress is itself thread-safe.
+    """
+
+    def __init__(self, progress: object, ranges: int, prepared: int, downloaded: int, streamed: int) -> None:
+        self._progress = progress
+        self._ranges = ranges
+        self._prepared = prepared
+        self._downloaded = downloaded
+        self._streamed = streamed
+
+    def range_done(self) -> None:
+        self._progress.advance(self._ranges, 1)  # type: ignore[attr-defined]
+
+    def file_prepared(self) -> None:
+        self._progress.advance(self._prepared, 1)  # type: ignore[attr-defined]
+
+    def file_downloaded(self) -> None:
+        self._progress.advance(self._downloaded, 1)  # type: ignore[attr-defined]
+
+    def points_streamed(self, n: int) -> None:
+        self._progress.advance(self._streamed, n)  # type: ignore[attr-defined]
+
+
+@contextlib.contextmanager
+def _sync_progress(show: bool, total_ranges: int) -> Iterator[_SyncProgress | None]:
+    """Yield a :class:`_SyncProgress` rendering one live display, or ``None`` when ``show`` is False.
+
+    The "ranges" bar is determinate (total known up front); links/files/points are running counters
+    (their totals are only known as the export plans, so they show a count rather than a percentage).
+    """
+    if not show:
+        yield None
+        return
+
+    from rich.progress import BarColumn, Progress, ProgressColumn, TextColumn, TimeElapsedColumn
+    from rich.text import Text
+
+    class _CountColumn(ProgressColumn):
+        def render(self, task: object) -> Text:
+            completed = int(getattr(task, "completed", 0))
+            total = getattr(task, "total", None)
+            return Text(f"{completed:,}" if total is None else f"{completed:,}/{int(total):,}")
+
+    progress = Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        _CountColumn(),
+        TimeElapsedColumn(),
+    )
+    with progress:
+        ranges = progress.add_task("Ranges synced", total=total_ranges)
+        prepared = progress.add_task("Links prepared", total=None)
+        downloaded = progress.add_task("Files downloaded", total=None)
+        streamed = progress.add_task("Points streamed", total=None)
+        yield _SyncProgress(progress, ranges, prepared, downloaded, streamed)
 
 
 def sync_missing_channel_data(
@@ -289,13 +352,21 @@ def _stream_missing(
     for name, ranges in missing.items():
         groups.setdefault(tuple(ranges), []).append(source_by_name[name])
 
+    total_ranges = sum(len(signature) for signature in groups)
     points = 0
-    with destination_dataset.get_write_stream(batch_size=options.batch_size) as stream:
+    # One progress display for the whole pass -- the export's own per-call bars are disabled so
+    # downloads and streaming advance on shared bars instead of a fresh fragment per export call.
+    with (
+        _sync_progress(options.show_progress, total_ranges) as progress,
+        destination_dataset.get_write_stream(batch_size=options.batch_size) as stream,
+    ):
         for signature, channels in groups.items():
             for range_start, range_end in signature:
                 points += _export_and_stream_range(
-                    handler, stream, channels, range_start, range_end, type_by_name, options
+                    handler, stream, channels, range_start, range_end, type_by_name, options, progress
                 )
+                if progress is not None:
+                    progress.range_done()
     # Exiting the context flushes and closes the stream (wait=True).
     return points
 
@@ -308,13 +379,16 @@ def _export_and_stream_range(
     range_end: int,
     type_by_name: Mapping[str, ChannelDataType],
     options: ChannelSyncOptions,
+    progress: _SyncProgress | None = None,
 ) -> int:
     """Export ``channels`` over ``[range_start, range_end)`` to CSV, streaming each file up the
     instant it finishes downloading (rather than waiting for the whole batch).
 
-    The ``on_file_complete`` hook fires serially from the export's download-driving thread, so the
-    streaming below needs no locking. A streaming failure for one file is non-fatal: it is logged
-    and the range is left short, so the verify/re-detect loop retries it on the next pass.
+    The ``on_file_*`` hooks fire serially from the export's download-driving thread, so the streaming
+    and progress updates below need no locking. A streaming failure for one file is non-fatal: it is
+    logged and the range is left short, so the verify/re-detect loop retries it on the next pass.
+    The handler's own progress bars are disabled (``show_progress=False``); ``progress`` (when given)
+    is the shared display that spans the whole sync pass.
     """
     if options.output_dir is not None:
         options.output_dir.mkdir(parents=True, exist_ok=True)
@@ -328,10 +402,19 @@ def _export_and_stream_range(
     cleanup_files = options.output_dir is None
     points = 0
 
+    def _on_file_planned(_path: Path) -> None:
+        if progress is not None:
+            progress.file_prepared()
+
     def _on_file_complete(path: Path) -> None:
         nonlocal points
+        if progress is not None:
+            progress.file_downloaded()
         try:
-            points += _stream_file(stream, path, type_by_name, options.tags)
+            streamed = _stream_file(stream, path, type_by_name, options.tags)
+            points += streamed
+            if progress is not None:
+                progress.points_streamed(streamed)
         except Exception:
             logger.exception("Failed to stream exported file %s; range will be retried on re-detect", path)
         finally:
@@ -347,7 +430,8 @@ def _export_and_stream_range(
             tags=options.tags,
             timestamp_type=_TIMESTAMP_TYPE,
             file_prefix=f"sync_{range_start}_{range_end}",
-            show_progress=options.show_progress,
+            show_progress=False,
+            on_file_planned=_on_file_planned,
             on_file_complete=_on_file_complete,
         )
     return points
@@ -356,13 +440,15 @@ def _export_and_stream_range(
 def _polars_dtype(data_type: ChannelDataType) -> pl.DataType:
     """Map a channel data type to the polars dtype used to force the CSV re-read schema.
 
-    Forcing the schema keeps a ``DOUBLE`` channel whose values happen to look integral from being
-    inferred (and auto-created in the destination) as ``INT``.
+    STRING channels are read as strings (so numeric-looking labels stay strings). All numeric
+    channels -- including ``INT`` -- are read as ``Float64``: a channel's declared type cannot be
+    trusted to match its exported values (an ``INT``-typed channel may export floats), and forcing
+    ``Int64`` would fail to parse such a file. Forcing ``Float64`` also keeps a ``DOUBLE`` channel
+    whose values happen to look integral from being inferred (and re-created in the destination) as
+    an integer. Genuinely-integral ``INT`` values are re-cast back to ``int`` at enqueue time.
     """
     if data_type == ChannelDataType.STRING:
         return pl.String()
-    if data_type == ChannelDataType.INT:
-        return pl.Int64()
     return pl.Float64()
 
 
@@ -405,6 +491,10 @@ def _stream_file(
             continue
         timestamps = column.get_column(time_col).to_list()
         values = column.get_column(channel_name).to_list()
+        # INT channels were read as Float64 (see _polars_dtype); re-cast whole-number values back to
+        # int so a genuine integer channel streams as INT, while non-integral values stay float.
+        if type_by_name[channel_name] == ChannelDataType.INT:
+            values = [int(v) if isinstance(v, float) and v.is_integer() else v for v in values]
         stream.enqueue_batch(channel_name, timestamps, values, tags)
         points += len(values)
     return points

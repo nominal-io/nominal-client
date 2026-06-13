@@ -71,6 +71,23 @@ def test_stream_file_maps_columns_types_and_drops_nulls(tmp_path: Path) -> None:
     assert points == 5
 
 
+def test_stream_file_int_channel_tolerates_floats_and_recasts_integral(tmp_path: Path) -> None:
+    # An INT-typed channel whose export holds a non-integral value must NOT crash on read (the bug:
+    # forcing Int64 failed to parse "0.5"). Integral values re-cast to int; non-integral stay float.
+    path = tmp_path / "part.csv.gz"
+    _write_csv_gz(path, "timestamp,count\n0,5\n1000000000,7\n2000000000,0.5\n")
+    stream = FakeStream()
+    type_by_name = {"count": ChannelDataType.INT}
+
+    points = sync_mod._stream_file(stream, path, type_by_name, None)
+
+    assert points == 3
+    values = stream.calls[0][2]
+    assert values == [5, 7, 0.5]
+    assert isinstance(values[0], int) and isinstance(values[1], int)
+    assert isinstance(values[2], float)
+
+
 def test_stream_file_identifies_timestamp_when_channel_named_timestamp(tmp_path: Path) -> None:
     # A data channel literally named "timestamp" forces the exporter to rename the time column.
     path = tmp_path / "part.csv.gz"
@@ -107,14 +124,17 @@ class FakeHandler:
         timestamp_type: Any = None,
         file_prefix: str = "export",
         show_progress: bool = False,
+        on_file_planned: Any = None,
         on_file_complete: Any = None,
     ) -> list[Path]:
-        """Write each file and invoke on_file_complete immediately, mimicking the pipelined exporter."""
+        """Write each file and invoke the hooks immediately, mimicking the pipelined exporter."""
         written: list[Path] = []
         for name, text in self.files:
             path = Path(out_dir) / name
             _write_csv_gz(path, text)
             written.append(path)
+            if on_file_planned is not None:
+                on_file_planned(path)
             if on_file_complete is not None:
                 on_file_complete(path)
         return sorted(written)
