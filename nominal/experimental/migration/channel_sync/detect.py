@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from nominal_api import api, scout_compute_api
@@ -119,12 +119,16 @@ def count_channels(
     *,
     channels_per_request: int = DEFAULT_DETECT_CHANNELS_PER_REQUEST,
     workers: int = DEFAULT_DETECT_WORKERS,
+    on_advance: Callable[[int], None] | None = None,
 ) -> dict[str, ChannelBucketCounts]:
     """Count per-bucket data for many channels using batched, parallel server-side compute.
 
     Numeric and string channels are summarized in ``batch_compute_with_units`` requests, chunked by
     ``channels_per_request`` with chunks issued across ``workers`` threads. Any channel whose batch
     result errored falls back to a whole-window presence probe.
+
+    ``on_advance`` (when given) is called with the number of channels resolved each step, summing to
+    ``len(channels)`` over the call -- a progress hook for the caller's detection bar.
 
     Returns a mapping of channel name to zero-filled :class:`ChannelBucketCounts` for every input
     channel. Channels are assumed to have unique names and to share a single client (e.g. all from
@@ -155,6 +159,10 @@ def count_channels(
                 errored.extend(chunk_errored)
                 done += len(chunk_counts) + len(chunk_errored)
                 logger.info("Detection progress: %d/%d channels counted", done, len(batchable))
+                # Advance only by channels resolved in this batch; errored ones advance below in the
+                # presence pass, so the total over the whole call sums to len(channels).
+                if on_advance is not None:
+                    on_advance(len(chunk_counts))
 
     presence_channels = fallback + errored
     if presence_channels:
@@ -164,6 +172,8 @@ def count_channels(
                 lambda c: (c, _presence_counts(c, start, end, starts, tags)), presence_channels
             ):
                 results[channel.name] = ChannelBucketCounts(channel.name, counts, precise=False)
+                if on_advance is not None:
+                    on_advance(1)
 
     return results
 

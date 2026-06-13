@@ -176,7 +176,13 @@ def test_count_channels_batches_and_routes_fallback(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(detect_mod, "_count_chunk", fake_count_chunk)
     monkeypatch.setattr(detect_mod, "_presence_counts", fake_presence)
 
-    result = count_channels(channels, 0, SEC, SEC, channels_per_request=100, workers=4)
+    advanced = 0
+
+    def on_advance(n: int) -> None:
+        nonlocal advanced
+        advanced += n
+
+    result = count_channels(channels, 0, SEC, SEC, channels_per_request=100, workers=4, on_advance=on_advance)
 
     # Every input channel is represented.
     assert len(result) == 152
@@ -187,3 +193,5 @@ def test_count_channels_batches_and_routes_fallback(monkeypatch: pytest.MonkeyPa
     assert sorted(presence_seen) == ["err", "log0"]
     # 151 batchable channels -> chunks of 100 and 51.
     assert sorted(chunk_sizes) == [51, 100]
+    # on_advance sums to every input channel exactly once (errored counted only in the presence pass).
+    assert advanced == 152
