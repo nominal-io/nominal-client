@@ -181,7 +181,7 @@ def test_sync_returns_early_when_nothing_missing(monkeypatch: pytest.MonkeyPatch
     source = SimpleNamespace(rid="src", search_channels=lambda: [_channel("a")])
     dest = SimpleNamespace(rid="dst")
 
-    monkeypatch.setattr(sync_mod, "count_per_bucket", lambda *a, **k: SimpleNamespace(counts={}, precise=True))
+    monkeypatch.setattr(sync_mod, "count_channels", lambda *a, **k: {})
     monkeypatch.setattr(sync_mod, "_detect_missing", lambda *a, **k: {})
     # If this were called it would try to construct a real handler -> fail loudly.
     monkeypatch.setattr(sync_mod, "PolarsExportHandler", lambda *a, **k: pytest.fail("should not export"))
@@ -197,7 +197,7 @@ def test_sync_retries_then_reports_still_short(monkeypatch: pytest.MonkeyPatch) 
     source = SimpleNamespace(rid="src", search_channels=lambda: [_channel("a"), _channel("b")])
     dest = SimpleNamespace(rid="dst")
 
-    monkeypatch.setattr(sync_mod, "count_per_bucket", lambda *a, **k: SimpleNamespace(counts={0: 1}, precise=True))
+    monkeypatch.setattr(sync_mod, "count_channels", lambda *a, **k: {})
     monkeypatch.setattr(sync_mod, "PolarsExportHandler", lambda *a, **k: object())
     monkeypatch.setattr(sync_mod.time, "sleep", lambda *_: None)
 
