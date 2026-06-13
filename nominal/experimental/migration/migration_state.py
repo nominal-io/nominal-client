@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from dataclass_wizard import JSONWizard
+import json
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 from nominal.experimental.migration.resource_type import ResourceType
 
@@ -15,7 +15,7 @@ class SkippedResource:
 
 
 @dataclass
-class MigrationState(JSONWizard):
+class MigrationState:
     # resource_type -> old_rid -> new_rid
     rid_mapping: dict[str, dict[str, str]] = field(default_factory=dict)
     # source workbook_rid -> list of source asset_rids (for deferred multi-asset migration)
@@ -24,6 +24,25 @@ class MigrationState(JSONWizard):
     pending_multi_run_workbooks: dict[str, list[str]] = field(default_factory=dict)
     # log of resources skipped due to missing dependencies or out-of-scope references
     skipped_resources: list[SkippedResource] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MigrationState:
+        skipped_resources = [
+            SkippedResource(**item) for item in data.get("skipped_resources", []) if isinstance(item, dict)
+        ]
+        return cls(
+            rid_mapping=data.get("rid_mapping", {}),
+            pending_multi_asset_workbooks=data.get("pending_multi_asset_workbooks", {}),
+            pending_multi_run_workbooks=data.get("pending_multi_run_workbooks", {}),
+            skipped_resources=skipped_resources,
+        )
+
+    @classmethod
+    def from_json(cls, data: str) -> MigrationState:
+        return cls.from_dict(json.loads(data))
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self))
 
     def record_mapping(self, resource_type: ResourceType, old_rid: str, new_rid: str) -> None:
         self.rid_mapping.setdefault(resource_type.value, {})[old_rid] = new_rid
