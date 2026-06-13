@@ -103,10 +103,9 @@ class ChannelSyncOptions:
     max_concurrent_links: int = DEFAULT_MAX_CONCURRENT_LINKS
     """Export tuning: max presigned links generated concurrently (bounds backend compute queries)."""
     show_progress: bool = True
-    """Render a single live progress bar for the whole pass: a determinate percentage (by points
-    streamed, the total known from detection) with the running files-streamed count in the label.
-    Route logs to a file when enabled, since the live display and interleaved log lines on stdout
-    corrupt each other."""
+    """Render a single determinate progress bar for the whole pass, measured in slices (channel x
+    missing-bucket units, the total known up front from detection). Route logs to a file when
+    enabled, since the live display and interleaved log lines on stdout corrupt each other."""
     output_dir: Path | None = None
     """Directory for exported CSVs; a temporary directory is used (and cleaned up) when omitted."""
 
@@ -135,35 +134,28 @@ class ChannelSyncReport:
 
 
 class _SyncProgress:
-    """One determinate progress bar for the whole sync pass.
+    """One determinate progress bar for the whole sync pass, measured in *slices*.
 
-    The bar fills by *points streamed*: detection knows the total source points across all missing
-    buckets up front, and each streamed file contributes a known point count, so the bar advances
-    smoothly *within* a range -- not just once per range -- and shows a real percentage + ETA. The
-    number of files streamed so far is shown in the label, since that is the figure worth watching
-    (a determinate files bar isn't possible -- the total file count isn't known until each export is
-    planned mid-run). Updates arrive serially from the export download-driving thread; Rich's
-    progress is thread-safe regardless.
+    A slice is one (channel, missing-bucket) unit. Detection knows the total number of slices to fill
+    up front, so the bar has a real total, percentage, and ETA. It advances once per completed
+    ``(channel-group x range)`` export -- by that export's slice count -- so it is exact and reaches
+    100%, but does not sub-divide within a range. Updates arrive serially from the main loop.
     """
 
     def __init__(self, progress: object, task: object) -> None:
         self._progress = progress
         self._task = task
-        self._files = 0
 
-    def file_streamed(self, points: int) -> None:
-        self._files += 1
-        self._progress.advance(self._task, points)  # type: ignore[attr-defined]
-        self._progress.update(self._task, description=f"Streaming ({self._files:,} files)")  # type: ignore[attr-defined]
+    def advance(self, slices: int) -> None:
+        self._progress.advance(self._task, slices)  # type: ignore[attr-defined]
 
 
 @contextlib.contextmanager
-def _sync_progress(show: bool, total_points: int) -> Iterator[_SyncProgress | None]:
+def _sync_progress(show: bool, total_slices: int) -> Iterator[_SyncProgress | None]:
     """Yield a :class:`_SyncProgress` rendering one live bar, or ``None`` when ``show`` is False.
 
-    ``total_points`` is the source point count over all missing buckets (from detection); streamed
-    points may end slightly under it for the rare presence-probed channel whose exact count is
-    unknown, which Rich simply shows as <100%.
+    ``total_slices`` is the exact (channel x missing-bucket) count from detection, so the bar fills
+    to 100%.
     """
     if not show:
         yield None
@@ -171,10 +163,10 @@ def _sync_progress(show: bool, total_points: int) -> Iterator[_SyncProgress | No
 
     from rich.progress import (
         BarColumn,
+        MofNCompleteColumn,
         Progress,
         TaskProgressColumn,
         TextColumn,
-        TimeElapsedColumn,
         TimeRemainingColumn,
     )
 
@@ -182,11 +174,11 @@ def _sync_progress(show: bool, total_points: int) -> Iterator[_SyncProgress | No
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
-        TimeElapsedColumn(),
+        MofNCompleteColumn(),
         TimeRemainingColumn(),
     )
     with progress:
-        task = progress.add_task("Streaming (0 files)", total=max(total_points, 1))
+        task = progress.add_task("Syncing slices", total=max(total_slices, 1))
         yield _SyncProgress(progress, task)
 
 
@@ -253,9 +245,7 @@ def sync_missing_channel_data(
         else:
             logger.info("Retry %d/%d: %d channel(s) still short", attempt, options.max_retries, len(missing))
 
-        report.points_streamed += _stream_missing(
-            handler, destination_dataset, missing, source_by_name, source_counts, options
-        )
+        report.points_streamed += _stream_missing(handler, destination_dataset, missing, source_by_name, options)
 
         # Streaming ingestion is eventually-consistent; let it settle before re-counting so we don't
         # report false shortfalls (and needlessly re-stream).
@@ -325,26 +315,9 @@ def _detect_missing(
     return missing
 
 
-def _expected_points(
-    missing: Mapping[str, list[tuple[int, int]]],
-    source_counts: Mapping[str, ChannelBucketCounts],
-    bucket: IntegralNanosecondsUTC,
-) -> int:
-    """Total source points across every missing bucket -- the up-front total for the progress bar.
-
-    Ranges are bucket-aligned, so iterating from each range start in ``bucket`` steps hits exactly
-    the per-bucket counts detection recorded. Presence-probed channels contribute their proxy count.
-    """
-    step = int(bucket)
-    total = 0
-    for name, ranges in missing.items():
-        counts = source_counts[name].counts
-        for range_start, range_end in ranges:
-            bucket_start = range_start
-            while bucket_start < range_end:
-                total += counts.get(bucket_start, 0)
-                bucket_start += step
-    return total
+def _buckets_in_range(range_start: int, range_end: int, bucket: IntegralNanosecondsUTC) -> int:
+    """Number of ``bucket``-wide buckets in the (bucket-aligned) ``[range_start, range_end)``."""
+    return (range_end - range_start) // int(bucket)
 
 
 def _stream_missing(
@@ -352,7 +325,6 @@ def _stream_missing(
     destination_dataset: Dataset,
     missing: Mapping[str, list[tuple[int, int]]],
     source_by_name: Mapping[str, Channel],
-    source_counts: Mapping[str, ChannelBucketCounts],
     options: ChannelSyncOptions,
 ) -> int:
     """Export each channel's missing ranges from the source and stream them to the destination.
@@ -372,19 +344,26 @@ def _stream_missing(
     for name, ranges in missing.items():
         groups.setdefault(tuple(ranges), []).append(source_by_name[name])
 
+    # A slice is one (channel, missing-bucket) unit -- the exact, up-front total for the progress bar.
+    total_slices = sum(
+        len(channels) * sum(_buckets_in_range(rs, re, options.bucket) for rs, re in signature)
+        for signature, channels in groups.items()
+    )
+
     points = 0
-    # One progress display for the whole pass -- the export's own per-call bars are disabled so a
-    # single bar advances (by points, per streamed file) across every export call instead of a fresh
-    # fragment per call.
+    # One progress display for the whole pass (the export's own per-call bars are disabled), advancing
+    # by slice count once per completed (group x range) export.
     with (
-        _sync_progress(options.show_progress, _expected_points(missing, source_counts, options.bucket)) as progress,
+        _sync_progress(options.show_progress, total_slices) as progress,
         destination_dataset.get_write_stream(batch_size=options.batch_size) as stream,
     ):
         for signature, channels in groups.items():
             for range_start, range_end in signature:
                 points += _export_and_stream_range(
-                    handler, stream, channels, range_start, range_end, type_by_name, options, progress
+                    handler, stream, channels, range_start, range_end, type_by_name, options
                 )
+                if progress is not None:
+                    progress.advance(len(channels) * _buckets_in_range(range_start, range_end, options.bucket))
     # Exiting the context flushes and closes the stream (wait=True).
     return points
 
@@ -397,16 +376,15 @@ def _export_and_stream_range(
     range_end: int,
     type_by_name: Mapping[str, ChannelDataType],
     options: ChannelSyncOptions,
-    progress: _SyncProgress | None = None,
 ) -> int:
     """Export ``channels`` over ``[range_start, range_end)`` to CSV, streaming each file up the
     instant it finishes downloading (rather than waiting for the whole batch).
 
-    The ``on_file_*`` hooks fire serially from the export's download-driving thread, so the streaming
-    and progress updates below need no locking. A streaming failure for one file is non-fatal: it is
-    logged and the range is left short, so the verify/re-detect loop retries it on the next pass.
-    The handler's own progress bars are disabled (``show_progress=False``); ``progress`` (when given)
-    is the shared display that spans the whole sync pass.
+    The ``on_file_complete`` hook fires serially from the export's download-driving thread, so the
+    streaming below needs no locking. A streaming failure for one file is non-fatal: it is logged and
+    the range is left short, so the verify/re-detect loop retries it on the next pass. The handler's
+    own progress bars are disabled (``show_progress=False``); the shared sync bar advances at the
+    range level in the caller.
     """
     if options.output_dir is not None:
         options.output_dir.mkdir(parents=True, exist_ok=True)
@@ -423,10 +401,7 @@ def _export_and_stream_range(
     def _on_file_complete(path: Path) -> None:
         nonlocal points
         try:
-            streamed = _stream_file(stream, path, type_by_name, options.tags)
-            points += streamed
-            if progress is not None:
-                progress.file_streamed(streamed)
+            points += _stream_file(stream, path, type_by_name, options.tags)
         except Exception:
             logger.exception("Failed to stream exported file %s; range will be retried on re-detect", path)
         finally:
