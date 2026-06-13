@@ -43,8 +43,10 @@ from nominal.core.channel import Channel, ChannelDataType
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.experimental.migration.channel_sync.detect import (
+    DEFAULT_DETECT_CHANNELS_PER_REQUEST,
+    DEFAULT_DETECT_WORKERS,
     ChannelBucketCounts,
-    count_per_bucket,
+    count_channels,
     merge_bucket_ranges,
     shortfall_buckets,
 )
@@ -84,6 +86,10 @@ class ChannelSyncOptions:
     """How many times to re-stream a still-short range after the first attempt."""
     settle_seconds: float = 30.0
     """How long to wait for asynchronous ingestion to settle before re-detecting."""
+    detect_workers: int = DEFAULT_DETECT_WORKERS
+    """Threads issuing batched detection (count) requests concurrently."""
+    detect_channels_per_request: int = DEFAULT_DETECT_CHANNELS_PER_REQUEST
+    """Channels summarized per batched detection request (batch_compute_with_units)."""
     num_workers: int = DEFAULT_NUM_WORKERS
     """Worker threads for the export download pool."""
     batch_size: int = 50_000
@@ -157,8 +163,17 @@ def sync_missing_channel_data(
         return report
 
     source_by_name = {ch.name: ch for ch in source_channels}
-    # Source counts never change across retries -- compute them once.
-    source_counts = {ch.name: count_per_bucket(ch, start, end, options.bucket, options.tags) for ch in source_channels}
+    # Source counts never change across retries -- compute them once, in batch.
+    logger.info("Counting source data across %d channel(s)", len(source_channels))
+    source_counts = count_channels(
+        source_channels,
+        start,
+        end,
+        options.bucket,
+        options.tags,
+        channels_per_request=options.detect_channels_per_request,
+        workers=options.detect_workers,
+    )
 
     missing = _detect_missing(source_counts, destination_dataset, start, end, options)
     report.channels_missing = len(missing)
@@ -222,20 +237,28 @@ def _detect_missing(
 
     ``only`` restricts the comparison to the given channels (used on retries); otherwise every
     channel in ``source_counts`` is checked. Destination channels are looked up fresh each call so
-    a re-detect sees newly-streamed data.
+    a re-detect sees newly-streamed data, and counted in batch.
     """
     scope_names = {ch.name for ch in only} if only is not None else set(source_counts)
     dest_by_name = {ch.name: ch for ch in destination_dataset.search_channels()}
+    in_scope_dest = [dest_by_name[name] for name in scope_names if name in dest_by_name]
+
+    logger.info("Counting destination data across %d of %d in-scope channel(s)", len(in_scope_dest), len(scope_names))
+    dest_counts = count_channels(
+        in_scope_dest,
+        start,
+        end,
+        options.bucket,
+        options.tags,
+        channels_per_request=options.detect_channels_per_request,
+        workers=options.detect_workers,
+    )
 
     missing: dict[str, list[tuple[int, int]]] = {}
     for name in scope_names:
         src = source_counts[name]
-        dest_channel = dest_by_name.get(name)
-        if dest_channel is None:
-            # Channel absent in the destination -> zero data everywhere.
-            dest = ChannelBucketCounts(name, {}, src.precise)
-        else:
-            dest = count_per_bucket(dest_channel, start, end, options.bucket, options.tags)
+        # Channel absent in the destination (not in dest_counts) -> zero data everywhere.
+        dest = dest_counts.get(name) or ChannelBucketCounts(name, {}, src.precise)
         short = shortfall_buckets(src, dest)
         if short:
             missing[name] = merge_bucket_ranges(short, options.bucket)
