@@ -206,11 +206,11 @@ def test_stream_missing_progress_total_and_advance_are_slices(tmp_path: Path, mo
     import contextlib
 
     @contextlib.contextmanager
-    def fake_sync_progress(show: bool, total_slices: int) -> Any:
-        recorder.total = total_slices
-        yield recorder
+    def fake_progress_bar(show: bool, total: int, description: str) -> Any:
+        recorder.total = total
+        yield recorder.advance
 
-    monkeypatch.setattr(sync_mod, "_sync_progress", fake_sync_progress)
+    monkeypatch.setattr(sync_mod, "_progress_bar", fake_progress_bar)
 
     # Two channels share one range [0, 2h) -> 1 group, 2 buckets -> 2 channels x 2 buckets = 4 slices.
     source_by_name = {"c1": _channel("c1"), "c2": _channel("c2")}
