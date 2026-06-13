@@ -160,6 +160,7 @@ class FakeHandler:
         on_file_planned: Any = None,
         on_file_complete: Any = None,
         reuse_complete: bool = False,
+        skip_rate_estimation: bool = False,
     ) -> list[Path]:
         """Write each file and invoke the hooks immediately, mimicking the pipelined exporter."""
         written: list[Path] = []
@@ -224,7 +225,81 @@ def test_export_and_stream_range_streaming_error_is_non_fatal(tmp_path: Path, mo
     assert points == 1  # only the second file streamed successfully
 
 
+class HalvingFakeHandler:
+    """export_to_files that fails for ranges wider than ``max_success_span`` (None = always fail).
+
+    Records every (start, end) it was called with so tests can assert the recursive halving pattern.
+    """
+
+    def __init__(self, max_success_span: int | None) -> None:
+        """``max_success_span``: widest range that succeeds (None = always fail)."""
+        self.max_success_span = max_success_span
+        self.calls: list[tuple[int, int]] = []
+
+    def export_to_files(
+        self,
+        channels: Any,
+        start: int,
+        end: int,
+        out_dir: str,
+        *,
+        tags: Any = None,
+        timestamp_type: Any = None,
+        file_prefix: str = "export",
+        show_progress: bool = False,
+        on_file_planned: Any = None,
+        on_file_complete: Any = None,
+        reuse_complete: bool = False,
+        skip_rate_estimation: bool = False,
+    ) -> list[Path]:
+        self.calls.append((start, end))
+        if self.max_success_span is None or (end - start) > self.max_success_span:
+            raise RuntimeError("export request too large")
+        path = Path(out_dir) / f"{file_prefix}.csv.gz"
+        _write_csv_gz(path, f"timestamp,c\n{start},1\n")
+        if on_file_complete is not None:
+            on_file_complete(path)
+        return [path]
+
+
+def test_export_and_stream_channel_recursively_halves_on_failure(tmp_path: Path) -> None:
+    # Only single-bucket exports succeed -> the [0, 4h) range must halve down to four 1h exports.
+    hour = 3600 * SEC
+    handler = HalvingFakeHandler(max_success_span=hour)
+    stream = FakeStream()
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path)
+    advanced: list[int] = []
+
+    points = sync_mod._export_and_stream_channel(
+        handler, stream, _channel("c"), 0, 4 * hour, {"c": ChannelDataType.DOUBLE}, options, advanced.append
+    )
+
+    assert points == 4  # four single-bucket files streamed (1 point each)
+    assert sum(advanced) == 4  # one slice per successful bucket
+    assert (0, 4 * hour) in handler.calls  # tried the whole range first
+    succeeded = [(s, e) for s, e in handler.calls if e - s == hour]
+    assert len(succeeded) == 4  # bottomed out at one-bucket exports
+
+
+def test_export_and_stream_channel_gives_up_at_one_bucket(tmp_path: Path) -> None:
+    # An export that fails even at one bucket must not recurse forever; it bottoms out and returns 0.
+    hour = 3600 * SEC
+    handler = HalvingFakeHandler(max_success_span=None)  # always fails
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path)
+
+    points = sync_mod._export_and_stream_channel(
+        handler, FakeStream(), _channel("c"), 0, 2 * hour, {"c": ChannelDataType.DOUBLE}, options, None
+    )
+
+    assert points == 0
+    # tried the full range, then each single bucket, then stopped (no sub-bucket splits)
+    assert (0, 2 * hour) in handler.calls
+    assert (0, hour) in handler.calls and (hour, 2 * hour) in handler.calls
+    assert all(e - s >= hour for s, e in handler.calls)
+
+
 def test_stream_missing_progress_total_and_advance_are_slices(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hour = 3600 * SEC
     hour = 3600 * SEC
 
     class _RecordingProgress:
@@ -254,7 +329,7 @@ def test_stream_missing_progress_total_and_advance_are_slices(tmp_path: Path, mo
     dest = SimpleNamespace(get_write_stream=lambda batch_size: FakeStream())
     options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path)
 
-    sync_mod._stream_missing(handler, dest, missing, source_by_name, options)
+    sync_mod._stream_missing(handler, dest, missing, source_by_name, set(), options)
 
     assert recorder.total == 4
     assert recorder.advanced == 4  # per-file slices: 2 channels x 2 distinct buckets covered
