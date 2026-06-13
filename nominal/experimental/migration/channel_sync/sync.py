@@ -139,9 +139,10 @@ def _progress_bar(show: bool, total: int, description: str) -> Iterator[Callable
 
     Used for both the detection bars (counted in channels) and the streaming bar (counted in slices);
     ``total`` is known exactly up front in each case, so the bar shows a real percentage + ETA and
-    fills to 100%.
+    fills to 100%. When there is nothing to count (``total <= 0`` -- e.g. detecting against a freshly
+    empty destination), no bar is rendered rather than a misleading single phantom unit.
     """
-    if not show:
+    if not show or total <= 0:
         yield None
         return
 
@@ -162,7 +163,7 @@ def _progress_bar(show: bool, total: int, description: str) -> Iterator[Callable
         TimeRemainingColumn(),
     )
     with progress:
-        task = progress.add_task(description, total=max(total, 1))
+        task = progress.add_task(description, total=total)
         yield lambda n: progress.advance(task, n)
 
 
