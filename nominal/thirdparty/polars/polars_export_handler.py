@@ -834,13 +834,36 @@ class PolarsExportHandler:
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
         batch_duration: datetime.timedelta | None = None,
+        skip_rate_estimation: bool = False,
     ) -> Mapping[_TimeRange, Sequence[_ExportJob]]:
         """Compute the mapping of export time slices to the sequence of export jobs to produce data for that range.
 
         `channels` is expected to be already filtered to exportable data types by the caller.
+
+        When ``skip_rate_estimation`` is set, the rate-based planning is bypassed entirely: each channel
+        becomes a single job over the whole ``time_range`` (one request per channel, no grouping, no
+        time-batching, no channel dropped). The caller controls request size via ``time_range`` -- used
+        for channels whose rate can't be estimated (e.g. high-cardinality enums that error with
+        ``Compute:TooManyCategories``), where the caller halves the range and retries on failure.
         """
         if buckets is not None and resolution is not None:
             raise ValueError("Cannot provide `buckets` and `resolution`")
+
+        if skip_rate_estimation:
+            unsized_jobs: list[_ExportJob] = [
+                _ExportJob(
+                    datasource_rid=channel.data_source,
+                    channel_names=[channel.name],
+                    channel_types={channel.name: channel.data_type},
+                    time_slice=time_range,
+                    tags=dict(tags or {}),
+                    buckets=buckets,
+                    resolution=resolution,
+                    timestamp_type=timestamp_type,
+                )
+                for channel in channels
+            ]
+            return {time_range: unsized_jobs}
 
         supported_channels, points_per_second = self._compute_channel_rates(channels, time_range, tags)
         batch_duration_ns = _compute_batch_duration(
@@ -1079,6 +1102,7 @@ class PolarsExportHandler:
         on_file_planned: Callable[[pathlib.Path], None] | None = None,
         on_file_complete: Callable[[pathlib.Path], None] | None = None,
         reuse_complete: bool = False,
+        skip_rate_estimation: bool = False,
     ) -> list[pathlib.Path]:
         """Export the given channels to gzipped CSV files in ``output_dir`` and return the written paths.
 
@@ -1133,6 +1157,10 @@ class PolarsExportHandler:
             reuse_complete: When set, an output file that already exists with a byte size matching the
                 planned export size is reused as-is instead of re-downloading (useful when re-running
                 over a populated output_dir); a differently-sized leftover is overwritten.
+            skip_rate_estimation: When set, bypass rate-based planning and emit one export request per
+                channel over the whole range (no grouping, no time-batching, no channel dropped). Use
+                for channels whose rate can't be estimated (e.g. high-cardinality enums); the caller
+                controls request size via the range (and may halve it and retry on failure).
 
         Returns:
             The list of written file paths, sorted.
@@ -1160,7 +1188,14 @@ class PolarsExportHandler:
         # Plan first (the only blocking step); rate estimation is internally multi-threaded. The
         # existing planner already maps each export request to exactly one file.
         export_jobs = self._compute_export_jobs(
-            supported_channels, _TimeRange(start, end), timestamp_type, tags or {}, buckets, resolution, batch_duration
+            supported_channels,
+            _TimeRange(start, end),
+            timestamp_type,
+            tags or {},
+            buckets,
+            resolution,
+            batch_duration,
+            skip_rate_estimation=skip_rate_estimation,
         )
         # One semaphore shared across all providers bounds how many presigned links (server-side
         # compute queries) generate concurrently while the downloader plans files in parallel, keeping
