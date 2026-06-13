@@ -86,6 +86,90 @@ def test_stream_file_identifies_timestamp_when_channel_named_timestamp(tmp_path:
     assert stream.calls[0][2] == [5.0, 6.0]
 
 
+# --- _export_and_stream_range: stream-as-files-land via on_file_complete -------------------
+
+
+class FakeHandler:
+    """A PolarsExportHandler stand-in that writes gz files and fires on_file_complete per file."""
+
+    def __init__(self, files: list[tuple[str, str]]) -> None:
+        """Take ``(filename, csv_text)`` pairs to write on export."""
+        self.files = files
+
+    def export_to_files(
+        self,
+        channels: Any,
+        start: int,
+        end: int,
+        out_dir: str,
+        *,
+        tags: Any = None,
+        timestamp_type: Any = None,
+        file_prefix: str = "export",
+        show_progress: bool = False,
+        on_file_complete: Any = None,
+    ) -> list[Path]:
+        """Write each file and invoke on_file_complete immediately, mimicking the pipelined exporter."""
+        written: list[Path] = []
+        for name, text in self.files:
+            path = Path(out_dir) / name
+            _write_csv_gz(path, text)
+            written.append(path)
+            if on_file_complete is not None:
+                on_file_complete(path)
+        return sorted(written)
+
+
+def test_export_and_stream_range_streams_each_file_via_callback(tmp_path: Path) -> None:
+    handler = FakeHandler(
+        [
+            ("a.csv.gz", "timestamp,rpm\n0,1\n"),
+            ("b.csv.gz", "timestamp,rpm\n1000000000,2\n"),
+        ]
+    )
+    stream = FakeStream()
+    options = ChannelSyncOptions(output_dir=tmp_path)  # set output_dir -> files are kept
+
+    points = sync_mod._export_and_stream_range(
+        handler, stream, [_channel("rpm")], 0, SEC, {"rpm": ChannelDataType.DOUBLE}, options
+    )
+
+    assert points == 2
+    assert [c[0] for c in stream.calls] == ["rpm", "rpm"]
+    assert stream.calls[0][1] == [0] and stream.calls[1][1] == [SEC]
+    # output_dir was provided, so files are left intact for inspection.
+    assert (tmp_path / "a.csv.gz").exists()
+    assert (tmp_path / "b.csv.gz").exists()
+
+
+def test_export_and_stream_range_streaming_error_is_non_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    handler = FakeHandler([("a.csv.gz", "timestamp,rpm\n0,1\n"), ("b.csv.gz", "timestamp,rpm\n1000000000,2\n")])
+    stream = FakeStream()
+
+    calls = {"n": 0}
+    real_stream_file = sync_mod._stream_file
+
+    def flaky_stream_file(*args: Any, **kwargs: Any) -> int:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return real_stream_file(*args, **kwargs)
+
+    monkeypatch.setattr(sync_mod, "_stream_file", flaky_stream_file)
+
+    # Must not raise; the failed file is swallowed (retried later via re-detect).
+    points = sync_mod._export_and_stream_range(
+        handler,
+        stream,
+        [_channel("rpm")],
+        0,
+        SEC,
+        {"rpm": ChannelDataType.DOUBLE},
+        ChannelSyncOptions(output_dir=tmp_path),
+    )
+    assert points == 1  # only the second file streamed successfully
+
+
 # --- sync_missing_channel_data orchestration ----------------------------------------------
 
 

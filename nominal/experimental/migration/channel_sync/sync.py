@@ -286,8 +286,13 @@ def _export_and_stream_range(
     type_by_name: Mapping[str, ChannelDataType],
     options: ChannelSyncOptions,
 ) -> int:
-    """Export ``channels`` over ``[range_start, range_end)`` to CSV and stream the points up."""
-    points = 0
+    """Export ``channels`` over ``[range_start, range_end)`` to CSV, streaming each file up the
+    instant it finishes downloading (rather than waiting for the whole batch).
+
+    The ``on_file_complete`` hook fires serially from the export's download-driving thread, so the
+    streaming below needs no locking. A streaming failure for one file is non-fatal: it is logged
+    and the range is left short, so the verify/re-detect loop retries it on the next pass.
+    """
     if options.output_dir is not None:
         options.output_dir.mkdir(parents=True, exist_ok=True)
     tmp_ctx: contextlib.AbstractContextManager[str] = (
@@ -295,8 +300,23 @@ def _export_and_stream_range(
         if options.output_dir is not None
         else tempfile.TemporaryDirectory()
     )
+    # When exporting to a temporary directory, delete each file once streamed so peak disk stays at
+    # ~one file instead of the whole batch. A caller-provided output_dir is left intact for inspection.
+    cleanup_files = options.output_dir is None
+    points = 0
+
+    def _on_file_complete(path: Path) -> None:
+        nonlocal points
+        try:
+            points += _stream_file(stream, path, type_by_name, options.tags)
+        except Exception:
+            logger.exception("Failed to stream exported file %s; range will be retried on re-detect", path)
+        finally:
+            if cleanup_files:
+                path.unlink(missing_ok=True)
+
     with tmp_ctx as out_dir:
-        paths = handler.export_to_files(
+        handler.export_to_files(
             channels,
             range_start,
             range_end,
@@ -305,9 +325,8 @@ def _export_and_stream_range(
             timestamp_type=_TIMESTAMP_TYPE,
             file_prefix=f"sync_{range_start}_{range_end}",
             show_progress=options.show_progress,
+            on_file_complete=_on_file_complete,
         )
-        for path in paths:
-            points += _stream_file(stream, path, type_by_name, options.tags)
     return points
 
 
