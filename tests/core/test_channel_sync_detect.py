@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,8 +11,10 @@ if sys.version_info < (3, 13):
     pytest.skip("Migration module requires Python 3.13+ (TypeVar default parameter)", allow_module_level=True)
 
 from nominal.core.channel import ChannelDataType
+from nominal.experimental.migration.channel_sync import detect as detect_mod
 from nominal.experimental.migration.channel_sync.detect import (
     ChannelBucketCounts,
+    count_channels,
     count_per_bucket,
     iter_bucket_starts,
     merge_bucket_ranges,
@@ -138,3 +141,49 @@ def test_count_per_bucket_string_absent_maps_to_zero() -> None:
     channel.get_available_tags.return_value = {}
     result = count_per_bucket(channel, 0, 2 * SEC, SEC, tags={"source": "daq"})
     assert result.counts == {0: 0, SEC: 0}
+
+
+# --- count_channels: batching, fallback routing, threading --------------------------------
+
+
+def test_count_channels_batches_and_routes_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    doubles = [SimpleNamespace(name=f"c{i}", data_type=ChannelDataType.DOUBLE) for i in range(150)]
+    errored_channel = SimpleNamespace(name="err", data_type=ChannelDataType.DOUBLE)
+    log_channel = SimpleNamespace(name="log0", data_type=ChannelDataType.LOG)  # non-batchable
+    channels = [*doubles, errored_channel, log_channel]
+
+    chunk_sizes: list[int] = []
+
+    def fake_count_chunk(
+        chunk: Any, start: int, end: int, bucket: int, starts: Any, tags: Any
+    ) -> tuple[dict[str, ChannelBucketCounts], list[Any]]:
+        chunk_sizes.append(len(chunk))
+        counts: dict[str, ChannelBucketCounts] = {}
+        errored: list[Any] = []
+        for ch in chunk:
+            if ch.name == "err":
+                errored.append(ch)  # simulate a batch result that errored -> presence fallback
+            else:
+                counts[ch.name] = ChannelBucketCounts(ch.name, {0: 1}, precise=True)
+        return counts, errored
+
+    presence_seen: list[str] = []
+
+    def fake_presence(ch: Any, start: int, end: int, starts: Any, tags: Any) -> dict[int, int]:
+        presence_seen.append(ch.name)
+        return {0: 0}
+
+    monkeypatch.setattr(detect_mod, "_count_chunk", fake_count_chunk)
+    monkeypatch.setattr(detect_mod, "_presence_counts", fake_presence)
+
+    result = count_channels(channels, 0, SEC, SEC, channels_per_request=100, workers=4)
+
+    # Every input channel is represented.
+    assert len(result) == 152
+    assert result["c0"].precise is True
+    # The errored batch channel and the non-batchable LOG channel both fall back to presence.
+    assert result["err"].precise is False
+    assert result["log0"].precise is False
+    assert sorted(presence_seen) == ["err", "log0"]
+    # 151 batchable channels -> chunks of 100 and 51.
+    assert sorted(chunk_sizes) == [51, 100]
