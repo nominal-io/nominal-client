@@ -1076,6 +1076,7 @@ class PolarsExportHandler:
         file_prefix: str = "export",
         show_progress: bool = False,
         console: Console | None = None,
+        on_file_complete: Callable[[pathlib.Path], None] | None = None,
     ) -> list[pathlib.Path]:
         """Export the given channels to gzipped CSV files in ``output_dir`` and return the written paths.
 
@@ -1118,6 +1119,12 @@ class PolarsExportHandler:
                 estimated time remaining. Route logs to a file (not stdout) so they don't corrupt the
                 live display; pass ``console`` to share a console with a Rich logging handler instead.
             console: Optional Rich console to render the progress display on.
+            on_file_complete: Optional callback invoked with each file's path the instant that file
+                finishes downloading -- before this method returns -- so callers can begin processing
+                files as they land rather than waiting for the whole batch. It is called serially from
+                the single download-driving thread (never concurrently), so it needs no locking; keep
+                it reasonably quick, since a slow callback pauses harvesting of other completed
+                downloads (the byte-download workers keep running regardless).
 
         Returns:
             The list of written file paths, sorted.
@@ -1173,10 +1180,16 @@ class PolarsExportHandler:
                 # readiness probe and the downloads are both header-less and consistent.
             ) as downloader,
         ):
+
+            def _on_download_complete(path: pathlib.Path) -> None:
+                advance_download()
+                if on_file_complete is not None:
+                    on_file_complete(path)
+
             results = downloader.download_files_pipelined(
                 items,
                 on_file_planned=lambda _path: advance_prepare(),
-                on_file_complete=lambda _path: advance_download(),
+                on_file_complete=_on_download_complete,
             )
         profile.log_summary()
 
