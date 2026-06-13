@@ -410,15 +410,18 @@ def _export_and_stream_range(
                 show_progress=False,
                 on_file_complete=_on_file_complete,
             )
-        except Exception:
-            # A whole-export failure (e.g. link-gen / S3 / download errors) must not abort the sync:
-            # log it and leave the range short so the verify/re-detect loop retries it. Files that
-            # streamed before the failure are already counted.
+        except Exception as exc:
+            # A whole-export failure (e.g. link-gen / S3 / download errors, or a pre-existing export
+            # file) must not abort the sync: log it and leave the range short so the verify/re-detect
+            # loop retries it. Files that streamed before the failure are already counted. The cause
+            # is included in the headline (export_to_files surfaces it) so it's clear without the
+            # traceback below.
             logger.exception(
-                "Export failed for range [%d, %d) over %d channel(s); range will be retried on re-detect",
+                "Export failed for range [%d, %d) over %d channel(s) (%s); range will be retried on re-detect",
                 range_start,
                 range_end,
                 len(channels),
+                exc,
             )
     return points
 
