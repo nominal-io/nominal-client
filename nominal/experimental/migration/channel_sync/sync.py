@@ -31,7 +31,7 @@ import gzip
 import logging
 import tempfile
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -133,29 +133,13 @@ class ChannelSyncReport:
     still_short: list[StillShort] = field(default_factory=list)
 
 
-class _SyncProgress:
-    """One determinate progress bar for the whole sync pass, measured in *slices*.
-
-    A slice is one (channel, missing-bucket) unit. Detection knows the total number of slices to fill
-    up front, so the bar has a real total, percentage, and ETA. It advances once per completed
-    ``(channel-group x range)`` export -- by that export's slice count -- so it is exact and reaches
-    100%, but does not sub-divide within a range. Updates arrive serially from the main loop.
-    """
-
-    def __init__(self, progress: object, task: object) -> None:
-        self._progress = progress
-        self._task = task
-
-    def advance(self, slices: int) -> None:
-        self._progress.advance(self._task, slices)  # type: ignore[attr-defined]
-
-
 @contextlib.contextmanager
-def _sync_progress(show: bool, total_slices: int) -> Iterator[_SyncProgress | None]:
-    """Yield a :class:`_SyncProgress` rendering one live bar, or ``None`` when ``show`` is False.
+def _progress_bar(show: bool, total: int, description: str) -> Iterator[Callable[[int], None] | None]:
+    """Yield an ``advance(n)`` callable rendering one determinate Rich bar, or ``None`` if not shown.
 
-    ``total_slices`` is the exact (channel x missing-bucket) count from detection, so the bar fills
-    to 100%.
+    Used for both the detection bars (counted in channels) and the streaming bar (counted in slices);
+    ``total`` is known exactly up front in each case, so the bar shows a real percentage + ETA and
+    fills to 100%.
     """
     if not show:
         yield None
@@ -178,8 +162,8 @@ def _sync_progress(show: bool, total_slices: int) -> Iterator[_SyncProgress | No
         TimeRemainingColumn(),
     )
     with progress:
-        task = progress.add_task("Syncing slices", total=max(total_slices, 1))
-        yield _SyncProgress(progress, task)
+        task = progress.add_task(description, total=max(total, 1))
+        yield lambda n: progress.advance(task, n)
 
 
 def sync_missing_channel_data(
@@ -215,15 +199,17 @@ def sync_missing_channel_data(
     source_by_name = {ch.name: ch for ch in source_channels}
     # Source counts never change across retries -- compute them once, in batch.
     logger.info("Counting source data across %d channel(s)", len(source_channels))
-    source_counts = count_channels(
-        source_channels,
-        start,
-        end,
-        options.bucket,
-        options.tags,
-        channels_per_request=options.detect_channels_per_request,
-        workers=options.detect_workers,
-    )
+    with _progress_bar(options.show_progress, len(source_channels), "Counting source channels") as advance:
+        source_counts = count_channels(
+            source_channels,
+            start,
+            end,
+            options.bucket,
+            options.tags,
+            channels_per_request=options.detect_channels_per_request,
+            workers=options.detect_workers,
+            on_advance=advance,
+        )
 
     missing = _detect_missing(source_counts, destination_dataset, start, end, options)
     report.channels_missing = len(missing)
@@ -294,15 +280,17 @@ def _detect_missing(
     in_scope_dest = [dest_by_name[name] for name in scope_names if name in dest_by_name]
 
     logger.info("Counting destination data across %d of %d in-scope channel(s)", len(in_scope_dest), len(scope_names))
-    dest_counts = count_channels(
-        in_scope_dest,
-        start,
-        end,
-        options.bucket,
-        options.tags,
-        channels_per_request=options.detect_channels_per_request,
-        workers=options.detect_workers,
-    )
+    with _progress_bar(options.show_progress, len(in_scope_dest), "Counting destination channels") as advance:
+        dest_counts = count_channels(
+            in_scope_dest,
+            start,
+            end,
+            options.bucket,
+            options.tags,
+            channels_per_request=options.detect_channels_per_request,
+            workers=options.detect_workers,
+            on_advance=advance,
+        )
 
     missing: dict[str, list[tuple[int, int]]] = {}
     for name in scope_names:
@@ -354,7 +342,7 @@ def _stream_missing(
     # One progress display for the whole pass (the export's own per-call bars are disabled), advancing
     # by slice count once per completed (group x range) export.
     with (
-        _sync_progress(options.show_progress, total_slices) as progress,
+        _progress_bar(options.show_progress, total_slices, "Syncing slices") as advance,
         destination_dataset.get_write_stream(batch_size=options.batch_size) as stream,
     ):
         for signature, channels in groups.items():
@@ -362,8 +350,8 @@ def _stream_missing(
                 points += _export_and_stream_range(
                     handler, stream, channels, range_start, range_end, type_by_name, options
                 )
-                if progress is not None:
-                    progress.advance(len(channels) * _buckets_in_range(range_start, range_end, options.bucket))
+                if advance is not None:
+                    advance(len(channels) * _buckets_in_range(range_start, range_end, options.bucket))
     # Exiting the context flushes and closes the stream (wait=True).
     return points
 
@@ -381,8 +369,9 @@ def _export_and_stream_range(
     instant it finishes downloading (rather than waiting for the whole batch).
 
     The ``on_file_complete`` hook fires serially from the export's download-driving thread, so the
-    streaming below needs no locking. A streaming failure for one file is non-fatal: it is logged and
-    the range is left short, so the verify/re-detect loop retries it on the next pass. The handler's
+    streaming below needs no locking. Both a single-file streaming failure and a whole-export failure
+    are non-fatal: they are logged and the range is left short, so the verify/re-detect loop retries
+    it on the next pass (files that did stream before a mid-export failure are kept). The handler's
     own progress bars are disabled (``show_progress=False``); the shared sync bar advances at the
     range level in the caller.
     """
@@ -409,17 +398,28 @@ def _export_and_stream_range(
                 path.unlink(missing_ok=True)
 
     with tmp_ctx as out_dir:
-        handler.export_to_files(
-            channels,
-            range_start,
-            range_end,
-            out_dir,
-            tags=options.tags,
-            timestamp_type=_TIMESTAMP_TYPE,
-            file_prefix=f"sync_{range_start}_{range_end}",
-            show_progress=False,
-            on_file_complete=_on_file_complete,
-        )
+        try:
+            handler.export_to_files(
+                channels,
+                range_start,
+                range_end,
+                out_dir,
+                tags=options.tags,
+                timestamp_type=_TIMESTAMP_TYPE,
+                file_prefix=f"sync_{range_start}_{range_end}",
+                show_progress=False,
+                on_file_complete=_on_file_complete,
+            )
+        except Exception:
+            # A whole-export failure (e.g. link-gen / S3 / download errors) must not abort the sync:
+            # log it and leave the range short so the verify/re-detect loop retries it. Files that
+            # streamed before the failure are already counted.
+            logger.exception(
+                "Export failed for range [%d, %d) over %d channel(s); range will be retried on re-detect",
+                range_start,
+                range_end,
+                len(channels),
+            )
     return points
 
 
