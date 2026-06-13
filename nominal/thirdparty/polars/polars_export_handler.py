@@ -1205,7 +1205,14 @@ class PolarsExportHandler:
         if results.failed:
             for dest, ex in results.failed.items():
                 logger.error("Failed to export %s", dest, exc_info=ex)
-            raise RuntimeError(f"Failed to export {len(results.failed)} of {len(items)} file(s)")
+            # Surface the distinct underlying causes in the error itself (not just a count), so the
+            # failure is diagnosable without digging through the per-file tracebacks above.
+            causes = sorted({f"{type(ex).__name__}: {ex}" for ex in results.failed.values()})
+            raise RuntimeError(
+                f"Failed to export {len(results.failed)} of {len(items)} file(s); cause(s): "
+                + "; ".join(causes[:3])
+                + (f" (+{len(causes) - 3} more)" if len(causes) > 3 else "")
+            )
 
         return sorted(results.succeeded)
 
