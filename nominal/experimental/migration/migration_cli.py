@@ -590,6 +590,20 @@ def _parse_tags(tag: Sequence[str]) -> dict[str, str]:
     help="Wait for asynchronous ingestion to settle before re-detecting.",
 )
 @click.option(
+    "--detect-workers",
+    default=8,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Threads issuing batched detection (count) requests concurrently.",
+)
+@click.option(
+    "--detect-channels-per-request",
+    default=100,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Channels summarized per batched detection request.",
+)
+@click.option(
     "--output-dir",
     default=None,
     type=click.Path(file_okay=False, path_type=Path),
@@ -605,6 +619,8 @@ def sync_channels(
     tag: tuple[str, ...],
     max_retries: int,
     settle_seconds: float,
+    detect_workers: int,
+    detect_channels_per_request: int,
     output_dir: Path | None,
 ) -> None:
     # Imported lazily so timestamp parsing stays out of the module import path.
@@ -622,6 +638,8 @@ def sync_channels(
         tags=tags or None,
         max_retries=max_retries,
         settle_seconds=settle_seconds,
+        detect_workers=detect_workers,
+        detect_channels_per_request=detect_channels_per_request,
         output_dir=output_dir,
     )
 
