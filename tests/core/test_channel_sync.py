@@ -190,6 +190,41 @@ def test_export_and_stream_range_streaming_error_is_non_fatal(tmp_path: Path, mo
     assert points == 1  # only the second file streamed successfully
 
 
+def test_stream_missing_progress_total_and_advance_are_slices(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hour = 3600 * SEC
+
+    class _RecordingProgress:
+        def __init__(self) -> None:
+            self.total = -1
+            self.advanced = 0
+
+        def advance(self, slices: int) -> None:
+            self.advanced += slices
+
+    recorder = _RecordingProgress()
+
+    import contextlib
+
+    @contextlib.contextmanager
+    def fake_sync_progress(show: bool, total_slices: int) -> Any:
+        recorder.total = total_slices
+        yield recorder
+
+    monkeypatch.setattr(sync_mod, "_sync_progress", fake_sync_progress)
+
+    # Two channels share one range [0, 2h) -> 1 group, 2 buckets -> 2 channels x 2 buckets = 4 slices.
+    source_by_name = {"c1": _channel("c1"), "c2": _channel("c2")}
+    missing = {"c1": [(0, 2 * hour)], "c2": [(0, 2 * hour)]}
+    handler = FakeHandler([("f.csv.gz", "timestamp,c1,c2\n0,1,2\n")])
+    dest = SimpleNamespace(get_write_stream=lambda batch_size: FakeStream())
+    options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path)
+
+    sync_mod._stream_missing(handler, dest, missing, source_by_name, options)
+
+    assert recorder.total == 4
+    assert recorder.advanced == 4  # one (group x range) export covering all 4 slices
+
+
 # --- sync_missing_channel_data orchestration ----------------------------------------------
 
 
