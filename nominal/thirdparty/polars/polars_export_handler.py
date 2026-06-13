@@ -1081,6 +1081,7 @@ class PolarsExportHandler:
         file_prefix: str = "export",
         show_progress: bool = False,
         console: Console | None = None,
+        on_file_planned: Callable[[pathlib.Path], None] | None = None,
         on_file_complete: Callable[[pathlib.Path], None] | None = None,
     ) -> list[pathlib.Path]:
         """Export the given channels to gzipped CSV files in ``output_dir`` and return the written paths.
@@ -1124,6 +1125,9 @@ class PolarsExportHandler:
                 estimated time remaining. Route logs to a file (not stdout) so they don't corrupt the
                 live display; pass ``console`` to share a console with a Rich logging handler instead.
             console: Optional Rich console to render the progress display on.
+            on_file_planned: Optional callback invoked with each file's path once its presigned link
+                is ready and the file is pre-allocated (before its bytes download). Fires serially
+                from the download-driving thread, like ``on_file_complete``.
             on_file_complete: Optional callback invoked with each file's path the instant that file
                 finishes downloading -- before this method returns -- so callers can begin processing
                 files as they land rather than waiting for the whole batch. It is called serially from
@@ -1186,6 +1190,11 @@ class PolarsExportHandler:
             ) as downloader,
         ):
 
+            def _on_download_planned(path: pathlib.Path) -> None:
+                advance_prepare()
+                if on_file_planned is not None:
+                    on_file_planned(path)
+
             def _on_download_complete(path: pathlib.Path) -> None:
                 advance_download()
                 if on_file_complete is not None:
@@ -1193,7 +1202,7 @@ class PolarsExportHandler:
 
             results = downloader.download_files_pipelined(
                 items,
-                on_file_planned=lambda _path: advance_prepare(),
+                on_file_planned=_on_download_planned,
                 on_file_complete=_on_download_complete,
             )
         profile.log_summary()
