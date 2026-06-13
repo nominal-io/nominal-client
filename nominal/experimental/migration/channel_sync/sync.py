@@ -339,8 +339,9 @@ def _stream_missing(
     )
 
     points = 0
-    # One progress display for the whole pass (the export's own per-call bars are disabled), advancing
-    # by slice count once per completed (group x range) export.
+    # One progress display for the whole pass (the export's own per-call bars are disabled). The bar
+    # advances per streamed file -- by the slices that file covers -- so it moves smoothly within a
+    # range and only counts data that actually landed (failed exports don't advance it).
     with (
         _progress_bar(options.show_progress, total_slices, "Syncing slices") as advance,
         destination_dataset.get_write_stream(batch_size=options.batch_size) as stream,
@@ -348,10 +349,8 @@ def _stream_missing(
         for signature, channels in groups.items():
             for range_start, range_end in signature:
                 points += _export_and_stream_range(
-                    handler, stream, channels, range_start, range_end, type_by_name, options
+                    handler, stream, channels, range_start, range_end, type_by_name, options, advance
                 )
-                if advance is not None:
-                    advance(len(channels) * _buckets_in_range(range_start, range_end, options.bucket))
     # Exiting the context flushes and closes the stream (wait=True).
     return points
 
@@ -364,6 +363,7 @@ def _export_and_stream_range(
     range_end: int,
     type_by_name: Mapping[str, ChannelDataType],
     options: ChannelSyncOptions,
+    advance: Callable[[int], None] | None = None,
 ) -> int:
     """Export ``channels`` over ``[range_start, range_end)`` to CSV, streaming each file up the
     instant it finishes downloading (rather than waiting for the whole batch).
@@ -372,8 +372,9 @@ def _export_and_stream_range(
     streaming below needs no locking. Both a single-file streaming failure and a whole-export failure
     are non-fatal: they are logged and the range is left short, so the verify/re-detect loop retries
     it on the next pass (files that did stream before a mid-export failure are kept). The handler's
-    own progress bars are disabled (``show_progress=False``); the shared sync bar advances at the
-    range level in the caller.
+    own progress bars are disabled (``show_progress=False``); ``advance`` (when given) moves the shared
+    sync bar by the slices each file covers, the instant it streams -- so only data that actually
+    landed advances the bar, smoothly, within the range.
     """
     if options.output_dir is not None:
         options.output_dir.mkdir(parents=True, exist_ok=True)
@@ -390,7 +391,10 @@ def _export_and_stream_range(
     def _on_file_complete(path: Path) -> None:
         nonlocal points
         try:
-            points += _stream_file(stream, path, type_by_name, options.tags)
+            streamed, slices = _stream_file(stream, path, type_by_name, options.tags, options.bucket)
+            points += streamed
+            if advance is not None:
+                advance(slices)
         except Exception:
             logger.exception("Failed to stream exported file %s; range will be retried on re-detect", path)
         finally:
@@ -409,6 +413,9 @@ def _export_and_stream_range(
                 file_prefix=f"sync_{range_start}_{range_end}",
                 show_progress=False,
                 on_file_complete=_on_file_complete,
+                # Reuse files a prior attempt/run already downloaded (size-matched) instead of failing
+                # to re-create them; the retry then re-streams the existing file rather than colliding.
+                reuse_complete=True,
             )
         except Exception as exc:
             # A whole-export failure (e.g. link-gen / S3 / download errors, or a pre-existing export
@@ -446,12 +453,17 @@ def _stream_file(
     path: Path,
     type_by_name: Mapping[str, ChannelDataType],
     tags: Mapping[str, str] | None,
-) -> int:
+    bucket: IntegralNanosecondsUTC,
+) -> tuple[int, int]:
     """Re-read one exported gzipped CSV and enqueue every non-null point into ``stream``.
 
     The file is a wide CSV: one timestamp column (epoch nanoseconds) plus one column per channel.
     The timestamp column is the single column that is not a known channel name. Channel columns are
     parsed with their source data type so values stream up with the correct type.
+
+    Returns ``(points_streamed, slices_covered)`` where a slice is one (channel, ``bucket``-wide
+    bucket) cell that had data in this file -- used to advance the per-file progress bar. Each
+    (channel, bucket) lives in exactly one file, so per-file slice counts sum to the run's total.
     """
     # Peek the header to know which columns this column-partitioned file carries, then force the
     # schema for the channel columns (timestamp infers as Int64 from epoch-nanosecond integers).
@@ -466,7 +478,7 @@ def _stream_file(
     # then fail on a later float ("could not parse '12.65' as dtype i64").
     frame = pl.read_csv(raw, schema_overrides=schema_overrides, null_values=[""], infer_schema_length=None)
     if frame.height == 0:
-        return 0
+        return 0, 0
 
     data_columns = [col for col in frame.columns if col in type_by_name]
     time_candidates = [col for col in frame.columns if col not in type_by_name]
@@ -477,6 +489,7 @@ def _stream_file(
         time_col = _get_exported_timestamp_channel(data_columns)
 
     points = 0
+    slices = 0
     for channel_name in data_columns:
         column = frame.select([time_col, channel_name]).drop_nulls(channel_name)
         if column.height == 0:
@@ -489,4 +502,6 @@ def _stream_file(
             values = [int(v) if isinstance(v, float) and v.is_integer() else v for v in values]
         stream.enqueue_batch(channel_name, timestamps, values, tags)
         points += len(values)
-    return points
+        # Distinct buckets this channel has data in within this file -- one slice each.
+        slices += (column.get_column(time_col) // int(bucket)).n_unique()
+    return points, slices
