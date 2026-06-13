@@ -469,7 +469,11 @@ def _stream_file(
     # schema for the channel columns (timestamp infers as Int64 from epoch-nanosecond integers).
     with gzip.open(path, "rb") as fh:
         raw = fh.read()
-    header = pl.read_csv(raw, n_rows=0).columns
+    # infer_schema_length=0 reads every column as a string -- we only need the names here, and this
+    # peek must NOT infer types: a numeric column that looks integral within the inference sample but
+    # holds a float later would otherwise raise "could not parse '<float>' as dtype i64" *before* the
+    # type-forced main read below ever runs.
+    header = pl.read_csv(raw, n_rows=0, infer_schema_length=0).columns
     schema_overrides = {col: _polars_dtype(type_by_name[col]) for col in header if col in type_by_name}
     # Wide multi-channel exports merge on timestamp, so a channel without a sample at a given row has
     # an empty cell. Treat empty as null (not the string "") so those rows are dropped, not streamed.
