@@ -50,6 +50,11 @@ from nominal.experimental.migration.channel_sync.detect import (
 )
 from nominal.thirdparty.polars.polars_export_handler import (
     _EXPORTABLE_DATA_TYPES,
+    DEFAULT_CHANNELS_PER_REQUEST,
+    DEFAULT_MAX_CONCURRENT_LINKS,
+    DEFAULT_NUM_WORKERS,
+    DEFAULT_POINTS_PER_DATAFRAME,
+    DEFAULT_POINTS_PER_REQUEST,
     PolarsExportHandler,
     _get_exported_timestamp_channel,
 )
@@ -79,10 +84,21 @@ class ChannelSyncOptions:
     """How many times to re-stream a still-short range after the first attempt."""
     settle_seconds: float = 30.0
     """How long to wait for asynchronous ingestion to settle before re-detecting."""
-    num_workers: int = 8
+    num_workers: int = DEFAULT_NUM_WORKERS
     """Worker threads for the export download pool."""
     batch_size: int = 50_000
     """Write-stream batch size."""
+    points_per_request: int = DEFAULT_POINTS_PER_REQUEST
+    """Export tuning: target points per export request (per channel group / time batch)."""
+    points_per_dataframe: int = DEFAULT_POINTS_PER_DATAFRAME
+    """Export tuning: target points per written file; drives automatic time-batching."""
+    channels_per_request: int = DEFAULT_CHANNELS_PER_REQUEST
+    """Export tuning: max channels per export request (column-partitions large channel sets)."""
+    max_concurrent_links: int = DEFAULT_MAX_CONCURRENT_LINKS
+    """Export tuning: max presigned links generated concurrently (bounds backend compute queries)."""
+    show_progress: bool = True
+    """Render the export's live progress bars (per export call). Route logs to a file when enabled,
+    since the live display and interleaved log lines on stdout corrupt each other."""
     output_dir: Path | None = None
     """Directory for exported CSVs; a temporary directory is used (and cleaned up) when omitted."""
 
@@ -150,7 +166,14 @@ def sync_missing_channel_data(
         logger.info("Destination is already complete over the window; nothing to sync")
         return report
 
-    handler = PolarsExportHandler(source_client, num_workers=options.num_workers)
+    handler = PolarsExportHandler(
+        source_client,
+        points_per_request=options.points_per_request,
+        points_per_dataframe=options.points_per_dataframe,
+        channels_per_request=options.channels_per_request,
+        num_workers=options.num_workers,
+        max_concurrent_links=options.max_concurrent_links,
+    )
     for attempt in range(options.max_retries + 1):
         if attempt == 0:
             logger.info("Syncing %d channel(s) with missing data", len(missing))
@@ -281,6 +304,7 @@ def _export_and_stream_range(
             tags=options.tags,
             timestamp_type=_TIMESTAMP_TYPE,
             file_prefix=f"sync_{range_start}_{range_end}",
+            show_progress=options.show_progress,
         )
         for path in paths:
             points += _stream_file(stream, path, type_by_name, options.tags)
