@@ -56,7 +56,7 @@ def test_stream_file_maps_columns_types_and_drops_nulls(tmp_path: Path) -> None:
     stream = FakeStream()
     type_by_name = {"rpm": ChannelDataType.DOUBLE, "state": ChannelDataType.STRING}
 
-    points = sync_mod._stream_file(stream, path, type_by_name, {"unit": "rpm"})
+    points, _slices = sync_mod._stream_file(stream, path, type_by_name, {"unit": "rpm"}, SEC)
 
     by_channel = {c[0]: c for c in stream.calls}
     # DOUBLE channel streams floats even though the CSV held integral text.
@@ -79,7 +79,7 @@ def test_stream_file_int_channel_tolerates_floats_and_recasts_integral(tmp_path:
     stream = FakeStream()
     type_by_name = {"count": ChannelDataType.INT}
 
-    points = sync_mod._stream_file(stream, path, type_by_name, None)
+    points, _slices = sync_mod._stream_file(stream, path, type_by_name, None, SEC)
 
     assert points == 3
     values = stream.calls[0][2]
@@ -97,7 +97,7 @@ def test_stream_file_does_not_crash_on_integral_then_float_column(tmp_path: Path
     _write_csv_gz(path, "timestamp,rpm,extra\n" + rows)
     stream = FakeStream()
 
-    points = sync_mod._stream_file(stream, path, {"rpm": ChannelDataType.DOUBLE}, None)
+    points, _slices = sync_mod._stream_file(stream, path, {"rpm": ChannelDataType.DOUBLE}, None, SEC)
 
     # 51 rpm points stream; 'extra' (not a known channel) is ignored, but its float didn't crash.
     assert points == 51
@@ -112,7 +112,7 @@ def test_stream_file_identifies_timestamp_when_channel_named_timestamp(tmp_path:
     stream = FakeStream()
     type_by_name = {"timestamp": ChannelDataType.DOUBLE}
 
-    points = sync_mod._stream_file(stream, path, type_by_name, None)
+    points, _slices = sync_mod._stream_file(stream, path, type_by_name, None, SEC)
 
     assert points == 2
     assert stream.calls[0][0] == "timestamp"
@@ -143,6 +143,7 @@ class FakeHandler:
         show_progress: bool = False,
         on_file_planned: Any = None,
         on_file_complete: Any = None,
+        reuse_complete: bool = False,
     ) -> list[Path]:
         """Write each file and invoke the hooks immediately, mimicking the pipelined exporter."""
         written: list[Path] = []
@@ -186,7 +187,7 @@ def test_export_and_stream_range_streaming_error_is_non_fatal(tmp_path: Path, mo
     calls = {"n": 0}
     real_stream_file = sync_mod._stream_file
 
-    def flaky_stream_file(*args: Any, **kwargs: Any) -> int:
+    def flaky_stream_file(*args: Any, **kwargs: Any) -> tuple[int, int]:
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("boom")
@@ -230,16 +231,17 @@ def test_stream_missing_progress_total_and_advance_are_slices(tmp_path: Path, mo
     monkeypatch.setattr(sync_mod, "_progress_bar", fake_progress_bar)
 
     # Two channels share one range [0, 2h) -> 1 group, 2 buckets -> 2 channels x 2 buckets = 4 slices.
+    # The exported file carries a row in each bucket (t=0 and t=1h) so all 4 slices are covered.
     source_by_name = {"c1": _channel("c1"), "c2": _channel("c2")}
     missing = {"c1": [(0, 2 * hour)], "c2": [(0, 2 * hour)]}
-    handler = FakeHandler([("f.csv.gz", "timestamp,c1,c2\n0,1,2\n")])
+    handler = FakeHandler([("f.csv.gz", f"timestamp,c1,c2\n0,1,2\n{hour},3,4\n")])
     dest = SimpleNamespace(get_write_stream=lambda batch_size: FakeStream())
     options = ChannelSyncOptions(bucket=hour, output_dir=tmp_path)
 
     sync_mod._stream_missing(handler, dest, missing, source_by_name, options)
 
     assert recorder.total == 4
-    assert recorder.advanced == 4  # one (group x range) export covering all 4 slices
+    assert recorder.advanced == 4  # per-file slices: 2 channels x 2 distinct buckets covered
 
 
 # --- sync_missing_channel_data orchestration ----------------------------------------------
