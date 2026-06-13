@@ -335,6 +335,12 @@ def test_stream_missing_progress_total_and_advance_are_slices(tmp_path: Path, mo
     assert recorder.advanced == 4  # per-file slices: 2 channels x 2 distinct buckets covered
 
 
+def test_progress_bar_renders_nothing_when_total_is_zero() -> None:
+    # Nothing to count (e.g. detecting against a freshly empty destination) -> no bar, not a phantom 1.
+    with sync_mod._progress_bar(show=True, total=0, description="Counting destination channels") as advance:
+        assert advance is None
+
+
 # --- sync_missing_channel_data orchestration ----------------------------------------------
 
 
