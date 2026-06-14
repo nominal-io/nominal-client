@@ -102,9 +102,12 @@ def test_shortfall_buckets_no_shortfall_when_dest_exceeds_src() -> None:
 
 
 def test_count_per_bucket_numeric_uses_bucketed_counts() -> None:
+    # Decimation stamps each bucket with its RIGHT edge: bucket [0,SEC)->SEC, [SEC,2SEC)->2SEC,
+    # [2SEC,3SEC)->3SEC. Binning must shift left by one bucket so counts land in the right bucket
+    # (and the first data bucket isn't dropped / shifted forward).
     response = SimpleNamespace(
         bucketed_numeric=SimpleNamespace(
-            timestamps=[_ts(SEC // 2), _ts(SEC + SEC // 2), _ts(2 * SEC + SEC // 2)],
+            timestamps=[_ts(SEC), _ts(2 * SEC), _ts(3 * SEC)],
             buckets=[SimpleNamespace(count=10), SimpleNamespace(count=0), SimpleNamespace(count=3)],
         ),
         numeric=None,
@@ -112,6 +115,21 @@ def test_count_per_bucket_numeric_uses_bucketed_counts() -> None:
     result = count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags={"s": "daq"})
     assert result.precise is True
     assert result.counts == {0: 10, SEC: 0, 2 * SEC: 3}
+
+
+def test_count_per_bucket_numeric_first_bucket_not_shifted_forward() -> None:
+    # Regression: data only in the LAST bucket [2SEC,3SEC) returns right-edge ts=3SEC. Before the fix
+    # this binned to 3SEC (out of range) and the bucket read 0 -- the off-by-one that dropped a
+    # channel's first data bucket and left destination gaps. It must bin to 2SEC.
+    response = SimpleNamespace(
+        bucketed_numeric=SimpleNamespace(
+            timestamps=[_ts(3 * SEC)],
+            buckets=[SimpleNamespace(count=42)],
+        ),
+        numeric=None,
+    )
+    result = count_per_bucket(_numeric_channel(response), 0, 3 * SEC, SEC, tags=None)
+    assert result.counts == {0: 0, SEC: 0, 2 * SEC: 42}
 
 
 def test_count_per_bucket_numeric_raw_fallback_bins_points() -> None:
