@@ -260,13 +260,29 @@ def _counts_from_response(
     bucket: IntegralNanosecondsUTC,
     start: IntegralNanosecondsUTC,
 ) -> dict[int, int] | None:
-    """Bin a single channel's bucketed compute response into per-bucket counts, or None if untyped."""
+    """Bin a single channel's bucketed compute response into per-bucket counts, or None if untyped.
+
+    Decimated responses (``bucketed_numeric`` / ``bucketed_enum``) carry each bucket's **right-edge**
+    timestamp, so they are shifted left by one ``bucket`` before binning -- otherwise every count lands
+    one bucket too late and a channel's first data bucket reads 0 (it would then never be flagged
+    missing or synced). Undecimated/raw responses carry real point timestamps and bin as-is.
+    """
     counts = dict.fromkeys(starts, 0)
-    if response.bucketed_numeric is not None or response.numeric is not None or response.numeric_point is not None:
+    step = int(bucket)
+    if response.bucketed_numeric is not None:
+        for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
+            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp) - step, bucket, start, numeric_bucket.count or 0)
+        return counts
+    if response.numeric is not None or response.numeric_point is not None:
         for timestamp, numeric_bucket in _numeric_buckets_from_compute_response(response):
             _add_to_bucket(counts, starts, _ts_to_nanos(timestamp), bucket, start, numeric_bucket.count or 0)
         return counts
-    if response.bucketed_enum is not None or response.enum is not None:
+    if response.bucketed_enum is not None:
+        for enum_bucket in _enum_buckets_from_compute_response(response):
+            total = sum(enum_bucket.frequencies.values())
+            _add_to_bucket(counts, starts, enum_bucket.timestamp - step, bucket, start, total)
+        return counts
+    if response.enum is not None:
         for enum_bucket in _enum_buckets_from_compute_response(response):
             _add_to_bucket(counts, starts, enum_bucket.timestamp, bucket, start, sum(enum_bucket.frequencies.values()))
         return counts
@@ -282,15 +298,17 @@ def _numeric_counts(
     tags: Mapping[str, str] | None,
 ) -> dict[int, int]:
     counts = dict.fromkeys(starts, 0)
+    step = int(bucket)
     response = channel._decimate_request(start, end, tags=tags, resolution=int(bucket))
 
     if response.bucketed_numeric is not None:
+        # Decimation timestamps are bucket right edges; shift left one bucket to bin correctly.
         for timestamp, point in zip(
             response.bucketed_numeric.timestamps, response.bucketed_numeric.buckets, strict=False
         ):
-            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp), bucket, start, point.count or 0)
+            _add_to_bucket(counts, starts, _ts_to_nanos(timestamp) - step, bucket, start, point.count or 0)
     elif response.numeric is not None:
-        # Server returns raw points instead of buckets when the range holds few points; bin them.
+        # Server returns raw points instead of buckets when the range holds few points; bin them as-is.
         for timestamp in response.numeric.timestamps:
             _add_to_bucket(counts, starts, _ts_to_nanos(timestamp), bucket, start, 1)
     else:
