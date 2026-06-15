@@ -607,7 +607,17 @@ def _parse_tags(tag: Sequence[str]) -> dict[str, str]:
     "--output-dir",
     default=None,
     type=click.Path(file_okay=False, path_type=Path),
-    help="Directory for exported CSVs. A temporary directory is used (and cleaned up) when omitted.",
+    help="Directory for exported CSVs. A temporary directory is used (and cleaned up) when omitted. "
+    "Required for --phase download and --phase stream.",
+)
+@click.option(
+    "--phase",
+    default="all",
+    show_default=True,
+    type=click.Choice(["all", "plan", "download", "stream"]),
+    help="Which stage(s) to run: 'all' detects+downloads+streams (with retries); 'plan' only detects "
+    "and reports what would sync; 'download' exports the missing ranges to --output-dir without "
+    "streaming; 'stream' streams the CSVs already in --output-dir into the destination.",
 )
 def sync_channels(
     clients: tuple[NominalClient, NominalClient],
@@ -622,9 +632,13 @@ def sync_channels(
     detect_workers: int,
     detect_channels_per_request: int,
     output_dir: Path | None,
+    phase: str,
 ) -> None:
     # Imported lazily so timestamp parsing stays out of the module import path.
     from nominal.ts import _SecondsNanos
+
+    if phase in ("download", "stream") and output_dir is None:
+        raise click.UsageError(f"--phase {phase} requires --output-dir (files must be persisted/read from disk)")
 
     source_client, destination_client = clients
     source_dataset = source_client.get_dataset(source_dataset_rid)
@@ -641,6 +655,7 @@ def sync_channels(
         detect_workers=detect_workers,
         detect_channels_per_request=detect_channels_per_request,
         output_dir=output_dir,
+        phase=phase,  # type: ignore[arg-type]  # click.Choice constrains to the Literal members
     )
 
     report = sync_missing_channel_data(source_dataset, source_client, destination_dataset, start_ns, end_ns, options)
